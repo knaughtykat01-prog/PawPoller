@@ -169,7 +169,7 @@ WS_REQUEST_DELAY_SECONDS = 1.0  # Rate-limit delay between Weasyl API calls
 SF_REQUEST_DELAY_SECONDS = 1.5  # Rate-limit delay between SoFurry page scrapes (slightly higher for scraping)
 
 # ── App metadata ──
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL
