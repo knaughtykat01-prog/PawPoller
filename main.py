@@ -252,6 +252,22 @@ def _start_digest_scheduler():
         pass  # Daemon teardown
 
 
+# ── Telegram Bot Command Listener ─────────────────────────────
+# Long-polls Telegram for incoming commands and dispatches them.
+
+def _start_telegram_bot():
+    """Run Telegram bot command listener in its own daemon thread."""
+    import asyncio
+    from polling.telegram_bot import run_bot
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(run_bot())
+    except Exception:
+        pass  # Daemon teardown
+
+
 # ── Background web server (uvicorn) ──────────────────────────
 # The FastAPI dashboard is served by uvicorn in a daemon thread.
 # pywebview (the native window) points its embedded browser at this
@@ -437,6 +453,10 @@ def main():
     logger.info("Starting Telegram digest scheduler...")
     digest_thread = threading.Thread(target=_start_digest_scheduler, daemon=True)
     digest_thread.start()
+
+    logger.info("Starting Telegram bot command listener...")
+    bot_thread = threading.Thread(target=_start_telegram_bot, daemon=True)
+    bot_thread.start()
 
     # --- Step 3: System tray icon (initially hidden) ---
     _tray_icon = _create_tray_icon()
