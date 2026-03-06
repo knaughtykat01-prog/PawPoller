@@ -2212,7 +2212,10 @@ const App = {
                     <h3>Version</h3>
                     <div class="settings-row">
                         <span class="settings-label">Version ${Utils.escapeHtml(updateInfo.current)}</span>
-                        <span class="settings-value" style="color:var(--success)">Up to date</span>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <span class="settings-value" style="color:var(--success)" id="update-status-text">Up to date</span>
+                            <button class="btn btn-secondary" id="check-update-btn" style="padding:4px 12px;font-size:12px">Check for Updates</button>
+                        </div>
                     </div>
                 </div>`}
 
@@ -3095,6 +3098,30 @@ const App = {
                     } catch (err) {
                         applyUpdateBtn.textContent = 'Failed';
                         alert('Update failed: ' + err.message);
+                    }
+                });
+            }
+
+            // Check for Updates button (shown when already up to date)
+            const checkUpdateBtn = document.getElementById('check-update-btn');
+            if (checkUpdateBtn) {
+                checkUpdateBtn.addEventListener('click', async () => {
+                    checkUpdateBtn.disabled = true;
+                    checkUpdateBtn.textContent = 'Checking...';
+                    try {
+                        const result = await API.checkUpdate();
+                        if (result.available) {
+                            // Re-render settings to show the update section
+                            this.settings();
+                        } else {
+                            const statusText = document.getElementById('update-status-text');
+                            if (statusText) statusText.textContent = 'Up to date';
+                            checkUpdateBtn.textContent = 'No updates';
+                            setTimeout(() => { checkUpdateBtn.textContent = 'Check for Updates'; checkUpdateBtn.disabled = false; }, 3000);
+                        }
+                    } catch (err) {
+                        checkUpdateBtn.textContent = 'Check failed';
+                        setTimeout(() => { checkUpdateBtn.textContent = 'Check for Updates'; checkUpdateBtn.disabled = false; }, 3000);
                     }
                 });
             }
