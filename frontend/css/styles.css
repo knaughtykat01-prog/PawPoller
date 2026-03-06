@@ -1,0 +1,1139 @@
+/* ── Reset & Base ──────────────────────────────────────────── */
+/* Universal box-sizing reset: forces all elements (including pseudo-elements)
+   to use border-box so padding and borders are included in width/height
+   calculations. Margins and padding are zeroed to remove browser defaults. */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* CSS custom properties (design tokens) for the dark theme.
+   All colours, spacing, and styling values are defined here so the
+   entire theme can be adjusted from a single location. */
+:root {
+    --bg-primary: #0f1117;      /* Deepest background: page body, scrollbar track */
+    --bg-secondary: #1a1d27;    /* Secondary background: sidebar, table headers */
+    --bg-card: #22252f;         /* Card/panel surface: stat cards, charts, settings */
+    --bg-tertiary: #2a2d35;     /* Tertiary background: inline code, subtle surface accents */
+    --bg-hover: #2a2d3a;        /* Interactive hover state: nav links, table rows, toggle track */
+    --border: #2e3140;          /* Universal border colour for cards, dividers, inputs */
+    --text-primary: #e4e6ed;    /* Primary text: headings, stat values, body copy */
+    --text-secondary: #9198a8;  /* Secondary text: descriptions, nav labels, chart titles */
+    --text-muted: #5f6578;      /* De-emphasised text: labels, timestamps, placeholders */
+    --accent: #6c8cff;          /* Primary accent: links, active states, focus rings */
+    --accent-dim: #4a6bdf;      /* Dimmed accent: active nav background, primary button bg */
+    --success: #4ade80;         /* Positive indicators: growth deltas, connected status */
+    --warning: #fbbf24;         /* Warning indicators: caution states */
+    --danger: #f87171;          /* Negative indicators: loss deltas, errors, danger buttons */
+    --info: #60a5fa;            /* Informational highlights */
+    --sidebar-w: 220px;         /* Fixed sidebar width; also used as main-content left margin */
+    --radius: 8px;              /* Default border-radius for cards, inputs, buttons */
+    --shadow: 0 2px 8px rgba(0,0,0,0.3); /* Subtle drop shadow for elevated card surfaces */
+}
+
+/* Body: flex row layout (sidebar + main) filling at least the full viewport
+   height. System font stack for native-feeling typography on all platforms. */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    display: flex;
+    min-height: 100vh;
+    line-height: 1.5;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────── */
+/* Fixed-position navigation panel pinned to the left edge of the viewport.
+   Uses a flex column layout so nav-links can grow to fill available space
+   while the header stays at top and footer at bottom. Width is driven by
+   the --sidebar-w custom property (220px). z-index:10 keeps it above main
+   content but below the refresh indicator (z:100) and overlay (z:9). */
+.sidebar {
+    width: var(--sidebar-w);
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 10;
+}
+
+/* Sidebar header: contains app title (and hamburger button on mobile). */
+.sidebar-header {
+    padding: 20px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.sidebar-header h1 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+}
+
+/* Nav links list: flex:1 makes it grow to push the sidebar footer to the
+   bottom. list-style:none removes default bullet markers. */
+.nav-links {
+    list-style: none;
+    padding: 8px;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+/* Individual nav link: flex row aligns icon + label. Hover brightens
+   background; .active highlights the current page with accent colour. */
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: var(--radius);
+    font-size: 14px;
+    transition: all 0.15s;
+}
+
+.nav-link:hover { background: var(--bg-hover); color: var(--text-primary); }
+.nav-link.active { background: var(--accent-dim); color: #fff; }
+/* Fixed-width icon slot ensures text labels align regardless of icon glyph. */
+.nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+/* Sidebar footer: anchored at the bottom, shows poll status badge and
+   logout button. border-top separates it from the nav links above. */
+.sidebar-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+}
+
+/* Poll status mini badge: displays last-poll timestamp or status text. */
+.poll-badge {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* Logout button: ghost style by default, turns danger-red on hover. */
+.btn-logout {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    padding: 6px 0;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.btn-logout:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+/* ── Main Content ─────────────────────────────────────────── */
+/* Primary content area offset to the right of the fixed sidebar by
+   --sidebar-w (220px). flex:1 ensures it stretches to fill the remaining
+   viewport width. All page content rendered by app.js lands here. */
+.main-content {
+    margin-left: var(--sidebar-w);
+    flex: 1;
+    padding: 24px 32px;
+    min-height: 100vh;
+}
+
+/* ── Page Header ──────────────────────────────────────────── */
+/* Flex row placing the page title on the left and action buttons (e.g.
+   "Refresh", "Export") on the right. Collapses to a stacked column
+   layout at the 768px breakpoint for mobile. */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.page-header h2 {
+    font-size: 22px;
+    font-weight: 600;
+}
+
+/* ── Cards Grid ───────────────────────────────────────────── */
+/* Responsive grid for stat cards (views, faves, comments, etc.).
+   auto-fit with minmax(200px, 1fr) auto-wraps cards into as many columns
+   as will fit at >= 200px each. Falls back to 2-col at 900px and
+   single-col at 480px via media queries below. */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+/* Individual stat card: elevated dark surface with --bg-card background,
+   subtle border, and drop shadow to separate it from the page. */
+.stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+}
+
+/* Card label: small uppercase descriptor above the stat value (e.g. "VIEWS"). */
+.stat-card .label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+/* Card value: large bold number displaying the current metric total. */
+.stat-card .value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* Delta indicator: shows change since last period (e.g. "+12").
+   Coloured green/red/grey via .positive/.negative/.neutral modifiers. */
+.stat-card .delta {
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.delta.positive { color: var(--success); }
+.delta.negative { color: var(--danger); }
+.delta.neutral { color: var(--text-muted); }
+
+/* ── Growth Rate Cards ────────────────────────────────────── */
+/* 3-column fixed grid for growth-rate metric cards (24h / 7d / 30d).
+   Each card shows stacked growth metrics comparing time periods.
+   Collapses to single column at the 900px breakpoint. */
+.growth-grid {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+/* Vertical stack of individual growth metric rows inside a growth card. */
+.growth-card .growth-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+/* Single growth metric row: label on the left, value on the right. */
+.growth-metric {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Growth value: the numeric rate (e.g. "+3.2%"). */
+.growth-val {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* Growth label: period descriptor (e.g. "24h", "7d", "30d"). */
+.growth-lbl {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* ── Charts ───────────────────────────────────────────────── */
+/* Container card for Chart.js canvases. Same elevated surface treatment
+   as stat cards (--bg-card background, border, shadow). Each chart gets
+   a descriptive h3 title above its canvas. */
+.chart-container {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+}
+
+.chart-container h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+}
+
+/* Chart wrapper: position:relative is required by Chart.js for responsive
+   sizing. Fixed 280px height gives charts a consistent aspect ratio. */
+.chart-wrap {
+    position: relative;
+    height: 280px;
+}
+
+/* 2-column grid for placing charts side-by-side (e.g. views chart next
+   to faves chart). Stacks to a single column at the 900px breakpoint. */
+.chart-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+/* ── Date Range ───────────────────────────────────────────── */
+/* Flex row of preset time-filter buttons (e.g. "7d", "30d", "All").
+   flex-wrap ensures buttons wrap on narrow viewports rather than
+   overflowing. The .active class highlights the currently selected
+   range with the accent colour. */
+.date-range-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+/* Individual range button: pill-shaped toggle that highlights on hover
+   and uses accent fill when active. */
+.range-btn {
+    padding: 5px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.range-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+.range-btn.active { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
+
+/* ── Tables ───────────────────────────────────────────────── */
+/* Full-width data tables for submission listings and comparison views.
+   border-collapse merges cell borders; overflow:hidden clips content
+   to honour the rounded corners on the outer border. */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.data-table th, .data-table td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+}
+
+/* Table header: uppercase labels on a darker background. cursor:pointer
+   and user-select:none signal that columns are sortable via click.
+   .sorted class highlights the currently active sort column in accent. */
+.data-table th {
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.data-table th:hover { color: var(--text-primary); }
+.data-table th.sorted { color: var(--accent); }
+
+/* Row hover effect: subtly brightens the row background on mouseover. */
+.data-table tr:hover td { background: var(--bg-hover); }
+
+/* In-cell links styled with accent colour; underline appears on hover. */
+.data-table td a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.data-table td a:hover { text-decoration: underline; }
+
+/* Thumbnail cell: small square image for submission previews in table rows.
+   object-fit:cover prevents aspect-ratio distortion. */
+.thumb-cell {
+    width: 50px;
+    height: 50px;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+/* ── Top Lists ────────────────────────────────────────────── */
+/* Ranked list items for "Top Submissions" / "Most Faved" widgets.
+   Each row shows a clickable title on the left and a numeric value
+   on the right. Titles truncate with ellipsis if they exceed 180px.
+   Clicking a title navigates to the submission detail page. */
+.top-list {
+    list-style: none;
+}
+
+.top-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+}
+
+.top-list li:last-child { border-bottom: none; }
+
+/* Truncated title with cursor:pointer to indicate click-navigability. */
+.top-list .top-title {
+    color: var(--text-primary);
+    cursor: pointer;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.top-list .top-title:hover { color: var(--accent); }
+
+/* Numeric value displayed on the right side (e.g. fave count, view count). */
+.top-list .top-value {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+/* ── Fave Activity ────────────────────────────────────────── */
+/* Activity feed showing recent fave events. Each row displays the
+   username who faved, the submission title, and a relative timestamp
+   (e.g. "2h ago"). margin-left:auto on .fave-time pushes the timestamp
+   to the far right of the flex row. */
+.fave-item {
+    display: flex;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+}
+
+.fave-item:last-child { border-bottom: none; }
+
+.fave-user { color: var(--accent); font-weight: 500; }   /* Username in accent colour */
+.fave-sub { color: var(--text-secondary); }                /* Submission title */
+.fave-time { color: var(--text-muted); font-size: 11px; margin-left: auto; white-space: nowrap; } /* Relative timestamp, right-aligned */
+
+/* ── Search & Filters ─────────────────────────────────────── */
+/* Toolbar: flex row containing a text search input and dropdown filter
+   selects. flex-wrap allows controls to wrap on narrow screens; at 768px
+   the toolbar switches to a full-width stacked column layout. */
+.toolbar {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* Shared styling for the search input and filter dropdowns. Both use
+   the card-surface colour and gain an accent border ring on focus. */
+.search-input, .filter-select {
+    padding: 8px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.search-input:focus, .filter-select:focus {
+    border-color: var(--accent);
+}
+
+.search-input { width: 260px; }              /* Fixed width; becomes 100% at 768px */
+.filter-select { min-width: 120px; }         /* Minimum width for dropdown selects */
+.filter-select option { background: var(--bg-secondary); } /* Dropdown option bg in dark theme */
+
+/* ── Buttons ──────────────────────────────────────────────── */
+/* Base button: neutral ghost style with card background. Gains an
+   accent border on hover. Disabled state reduces opacity and blocks
+   pointer events. At the 768px breakpoint, min-height is bumped to
+   44px to meet mobile touch-target guidelines. */
+.btn {
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.btn:hover { border-color: var(--accent); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Primary variant: filled accent background for main CTAs (e.g. "Save", "Login"). */
+.btn-primary {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.btn-primary:hover { background: var(--accent); }
+
+/* Secondary variant: subtle hover-surface background for less prominent actions. */
+.btn-secondary {
+    background: var(--bg-hover);
+    border-color: var(--border);
+    color: var(--text-secondary);
+}
+.btn-secondary:hover { background: var(--border); color: var(--text-primary); }
+
+/* Danger variant: red outline by default, fills solid red on hover.
+   Used for destructive actions like delete or disconnect. */
+.btn-danger { border-color: var(--danger); color: var(--danger); }
+.btn-danger:hover { background: var(--danger); color: #fff; }
+
+/* ── Tags / Keywords ──────────────────────────────────────── */
+/* Inline pill-style keyword badges displayed on submission detail pages.
+   Small, rounded, and lightly tinted to sit unobtrusively alongside
+   other metadata. Used to show submission tags/keywords. */
+.tag {
+    display: inline-block;
+    padding: 2px 8px;
+    background: var(--bg-hover);
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin: 2px;
+}
+
+/* ── Compare Checkboxes ───────────────────────────────────── */
+/* Selectable chip UI for the comparison page. Users click chips to
+   select which submissions to compare. The underlying checkbox input
+   is hidden (display:none) and the chip itself acts as the visual
+   toggle. .selected state fills the chip with accent colour. */
+.compare-select {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.compare-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.compare-chip:hover { border-color: var(--accent); }
+.compare-chip.selected { border-color: var(--accent); background: var(--accent-dim); color: #fff; }
+.compare-chip input { display: none; } /* Hidden checkbox; visual state managed by .selected class */
+
+/* ── Settings ─────────────────────────────────────────────── */
+/* Card-based settings sections with label/value rows. Each section
+   groups related settings (e.g. "Polling", "Notifications") under a
+   heading. Rows display a muted label on the left and a value or
+   toggle control on the right. */
+.settings-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.settings-section h3 {
+    font-size: 15px;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+}
+
+/* Individual settings row: label on left, value/control on right. */
+.settings-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+}
+
+.settings-row:last-child { border-bottom: none; }
+
+.settings-label { color: var(--text-muted); }                   /* Descriptive label */
+.settings-value { color: var(--text-primary); font-weight: 500; } /* Current value display */
+
+/* ── Toggle Switch ────────────────────────────────────────── */
+/* CSS-only toggle switch using a hidden checkbox + sibling .toggle-slider.
+   The checkbox is made invisible (opacity:0, zero dimensions) but remains
+   in the DOM for accessibility/form data. The slider pseudo-element
+   (::before) acts as the circular knob that slides 20px right when
+   the checkbox is :checked, transitioning from muted grey to white
+   with an accent-coloured track. */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+/* Hidden checkbox: invisible but still focusable/clickable. */
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+
+/* Slider track: fills the toggle-switch container. */
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    transition: all 0.2s;
+}
+
+/* Slider knob: circular pseudo-element positioned inside the track. */
+.toggle-slider::before {
+    content: "";
+    position: absolute;
+    height: 18px;
+    width: 18px;
+    left: 2px;
+    bottom: 2px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: all 0.2s;
+}
+
+/* Checked state: track becomes accent-coloured. */
+.toggle-switch input:checked + .toggle-slider {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+}
+
+/* Checked state: knob turns white and slides to the right. */
+.toggle-switch input:checked + .toggle-slider::before {
+    background: #fff;
+    transform: translateX(20px);
+}
+
+/* ── Refresh Indicator ────────────────────────────────────── */
+/* Fixed-position "Refreshing..." toast in the top-right corner.
+   Hidden by default (opacity:0, pointer-events:none). JavaScript
+   fades it in by setting opacity:1 when a background data refresh
+   is in progress. z-index:100 ensures it floats above all content. */
+.refresh-indicator {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    padding: 4px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--accent-dim);
+    border-radius: 4px;
+    color: var(--accent);
+    font-size: 11px;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+/* ── Loading ──────────────────────────────────────────────── */
+/* Centered loading placeholder displayed while page content is being
+   fetched. Shows simple "Loading..." text in muted colour. */
+.loading-spinner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 200px;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+/* ── Login Screen ────────────────────────────────────────── */
+/* Full-screen centered card layout shown when the user is not
+   authenticated. The login-screen fills the entire viewport and
+   centres the login-card both horizontally and vertically. */
+.login-screen {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 24px;
+}
+
+/* Login card: constrained-width panel with the app title, credential
+   fields, remember-me checkbox, and submit button. */
+.login-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 36px 32px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: var(--shadow);
+    text-align: center;
+}
+
+.login-card h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 6px;
+}
+
+/* Form field wrapper: left-aligns label + input inside the centred card. */
+.login-field {
+    text-align: left;
+    margin-bottom: 14px;
+}
+
+.login-field label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+/* "Remember me" checkbox row. */
+.login-remember {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 18px;
+    cursor: pointer;
+}
+
+.login-remember input {
+    accent-color: var(--accent);
+}
+
+/* Full-width login submit button. */
+.login-btn {
+    width: 100%;
+    padding: 10px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* Error message area below the login button (e.g. invalid credentials).
+   min-height prevents layout shift when the message appears. */
+.login-error {
+    color: var(--danger);
+    font-size: 13px;
+    margin-top: 12px;
+    min-height: 20px;
+}
+
+/* ── Loading / Progress Screen ───────────────────────────── */
+/* Full-screen centred card shown during initial data load after login.
+   Similar layout to the login screen but slightly wider (420px) to
+   accommodate the progress bar and status text. */
+.loading-screen {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 24px;
+}
+
+.loading-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 36px 32px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: var(--shadow);
+    text-align: center;
+}
+
+.loading-card h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+/* Progress bar: track (container) + fill (bar). The bar width is set
+   via inline style by JavaScript. transition:width 0.4s animates the
+   fill smoothly as progress increases. */
+.progress-bar-container {
+    width: 100%;
+    height: 8px;
+    background: var(--bg-hover);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+
+/* ── Detail Page ──────────────────────────────────────────── */
+/* Submission detail page header: flex row with a thumbnail image on
+   the left and metadata (title, creator, date, stats) on the right.
+   At the 480px breakpoint, stacks vertically with a smaller thumbnail. */
+.detail-header {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 24px;
+    align-items: flex-start;
+}
+
+/* Submission thumbnail: 120px square with cover-fit to prevent distortion. */
+.detail-thumb {
+    width: 120px;
+    height: 120px;
+    border-radius: var(--radius);
+    object-fit: cover;
+    border: 1px solid var(--border);
+}
+
+.detail-info h2 {
+    font-size: 20px;
+    margin-bottom: 6px;
+}
+
+/* Metadata lines: creator name, upload date, file type, etc. */
+.detail-meta {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+/* Stats row: horizontal flex of view/fave/comment counts below the
+   metadata. Each stat shows a bold number with a muted label beneath. */
+.detail-stats {
+    display: flex;
+    gap: 20px;
+    margin-top: 8px;
+}
+
+.detail-stat {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.detail-stat .lbl {
+    font-weight: 400;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+/* ── Empty state ──────────────────────────────────────────── */
+/* Centred placeholder shown on pages with no data (e.g. no submissions
+   yet, no comparison selected). Generous padding gives visual breathing
+   room and draws attention to the message. */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+
+.empty-state h3 {
+    font-size: 18px;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+}
+
+.empty-state p { font-size: 14px; }
+
+/* ── Hamburger Button ────────────────────────────────────── */
+/* Hidden by default on desktop (display:none). Shown at the 768px
+   breakpoint to toggle the slide-in sidebar overlay on mobile. */
+.hamburger-btn {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--radius);
+}
+.hamburger-btn:hover { background: var(--bg-hover); }
+
+/* Semi-transparent backdrop behind the mobile sidebar. Hidden by default;
+   .open class is toggled by JavaScript when the hamburger is tapped. */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 9;
+}
+
+/* ── Table Scroll Wrapper ────────────────────────────────── */
+/* Enables horizontal scrolling for tables that overflow on narrow screens. */
+.table-scroll { overflow-x: auto; }
+
+/* ── Responsive ───────────────────────────────────────────── */
+
+/* -- 900px breakpoint: tablets / small laptops --
+   - Chart rows stack vertically (single column)
+   - Stat cards switch to a 2-column grid
+   - Growth rate cards stack to single column */
+@media (max-width: 900px) {
+    .chart-row { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .growth-grid { grid-template-columns: 1fr; }
+}
+
+/* -- 768px breakpoint: mobile layout --
+   - Sidebar becomes a slide-in overlay (translated off-screen left by
+     default; .open class slides it back via transform transition)
+   - Hamburger button becomes visible (display:block) to toggle sidebar
+   - Main content loses its left margin and takes full viewport width
+   - Buttons gain 44px min-height for touch-friendly tap targets
+   - Nav links get extra padding for easier finger tapping
+   - Page header, toolbar, and search input stack vertically */
+@media (max-width: 768px) {
+    .hamburger-btn { display: block; }
+    .sidebar-header { display: flex; align-items: center; gap: 8px; }
+
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+    }
+    .sidebar.open {
+        transform: translateX(0);
+    }
+    .sidebar-overlay.open {
+        display: block;
+    }
+
+    .main-content {
+        margin-left: 0;
+        padding: 16px;
+    }
+
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .chart-row { grid-template-columns: 1fr; }
+
+    .btn { min-height: 44px; }
+    .nav-link { padding: 12px; }
+    .page-header { flex-direction: column; gap: 12px; align-items: flex-start; }
+    .toolbar { flex-direction: column; }
+    .search-input { width: 100%; }
+}
+
+/* -- 480px breakpoint: small phones --
+   - Stat cards go to single column
+   - Detail header stacks (thumbnail above metadata) with smaller thumb
+   - Compare chips stack vertically
+   - Table columns 3 and 4 are hidden to prevent horizontal overflow */
+@media (max-width: 480px) {
+    .stats-grid { grid-template-columns: 1fr; }
+    .detail-header { flex-direction: column; }
+    .detail-thumb { width: 80px; height: 80px; }
+    .compare-select { flex-direction: column; }
+
+    .data-table th:nth-child(3),
+    .data-table td:nth-child(3),
+    .data-table th:nth-child(4),
+    .data-table td:nth-child(4) { display: none; }
+}
+
+/* ── Scrollbar ────────────────────────────────────────────── */
+/* Dark-themed WebKit scrollbar customisation. Thin 8px track blends with
+   the page background; thumb uses the border colour and lightens on hover.
+   Only affects Chromium/Safari; Firefox uses its own scrollbar styling. */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Back link ────────────────────────────────────────────── */
+/* Navigation breadcrumb/back arrow shown on detail pages to return
+   to the parent listing. Turns accent blue on hover. */
+.back-link {
+    display: inline-block;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.back-link:hover { color: var(--accent); }
+
+/* ── Sidebar Sections ────────────────────────────────────── */
+/* Section headers within the sidebar nav list (e.g. "Inkbunny",
+   "FurAffinity", "Tools"). Small uppercase labels that visually
+   group related nav links. first-of-type reduces top padding so the
+   first section sits snugly below the sidebar header. */
+.nav-section {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    padding: 16px 12px 4px;
+    font-weight: 600;
+    list-style: none;
+}
+
+.nav-section:first-of-type {
+    padding-top: 8px;
+}
+
+/* ── Platform Badges ─────────────────────────────────────── */
+/* Tiny coloured pill badges identifying which platform a submission
+   belongs to. Each variant uses a 30% opacity (#..30) tinted background
+   with matching solid text colour:
+     .ib = Inkbunny  (blue  #6c8cff)
+     .fa = FurAffinity (red   #f87171)
+     .ws = Weasyl     (green #4ade80)  */
+.platform-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+.platform-badge.ib {
+    background: #6c8cff30;
+    color: #6c8cff;
+}
+.platform-badge.fa {
+    background: #f8717130;
+    color: #f87171;
+}
+.platform-badge.ws {
+    background: #4ade8030;
+    color: #4ade80;
+}
+.platform-badge.sf {
+    background: #fbbf2430;
+    color: #fbbf24;
+}
+
+/* ── FA Metadata ─────────────────────────────────────────── */
+/* Grid layout for FurAffinity submission detail metadata fields
+   (category, theme, species, gender, etc.). auto-fit with minmax(140px)
+   lets items flow into as many columns as fit, wrapping automatically
+   on narrow screens. Each item has a small uppercase label and a bold value. */
+.fa-metadata {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.fa-meta-item {
+    font-size: 13px;
+}
+
+.fa-meta-item .fa-meta-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.fa-meta-item .fa-meta-value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* ── Telegram ────────────────────────────────────────────── */
+/* Telegram bot integration section on the Settings page. Includes a
+   connection status badge and setup instructions with inline code
+   formatting for bot commands. */
+
+/* Status badge: green "Connected" or red "Disconnected" pill with a
+   semi-transparent tinted background and matching border/text. */
+.telegram-status {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.telegram-status.connected {
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--success);
+    border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.telegram-status.disconnected {
+    background: rgba(248, 113, 113, 0.15);
+    color: var(--danger);
+    border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+/* Setup instructions text with inline code snippets styled as small
+   monospace pills (e.g. /start, /link commands). */
+.telegram-instructions {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.6;
+}
+
+.telegram-instructions code {
+    background: var(--bg-hover);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* ── Comments ────────────────────────────────────────────── */
+/* Threaded comment cards shown on submission detail pages. Each card
+   has a header row (username + date) and a body. Reply comments can be
+   visually indented by the component using margin-left and a left accent
+   border (applied via inline styles or JS classes). */
+.comments-list { display: flex; flex-direction: column; gap: 12px; }
+
+/* Individual comment card with secondary-surface background to
+   differentiate it from the detail page's card background. */
+.comment-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+}
+
+/* Comment header: username on the left, date pushed right via auto margin. */
+.comment-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 13px;
+}
+
+.comment-user { color: var(--accent); font-weight: 500; text-decoration: none; }
+.comment-user:hover { text-decoration: underline; }
+.comment-date { color: var(--text-muted); font-size: 11px; margin-left: auto; }
+
+/* Comment body: pre-wrap preserves intentional line breaks from the
+   original comment; word-wrap prevents long unbroken strings from
+   overflowing the card. */
+.comment-body {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}

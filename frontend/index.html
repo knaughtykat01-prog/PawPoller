@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Viewport meta for responsive layout: ensures proper scaling on mobile
+         devices and honours the CSS breakpoints defined in styles.css -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PawPoller</title>
+
+    <!-- Dark-themed stylesheet with all component styles, responsive breakpoints,
+         and CSS custom properties (design tokens) for the UI -->
+    <link rel="stylesheet" href="/css/styles.css">
+
+    <!-- Vendor scripts: loaded in <head> so they are available before app scripts.
+         Order matters because each subsequent script depends on the previous:
+           1. Chart.js core library (UMD build) - provides the Chart constructor
+           2. Annotation plugin - adds annotation overlays to Chart.js canvases
+           3. date-fns adapter - enables time-scale axes with date-fns formatting -->
+    <script src="/js/vendor/chart.umd.min.js"></script>
+    <script src="/js/vendor/chartjs-plugin-annotation.min.js"></script>
+    <script src="/js/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+    <!-- ============================================================
+         SIDEBAR NAVIGATION
+         Fixed-position sidebar (220px wide on desktop). On mobile
+         (<=768px) it slides off-screen and is toggled by the hamburger
+         button. Navigation links are organised into platform sections.
+         ============================================================ -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <!-- Hamburger toggle: hidden on desktop (display:none in CSS),
+                 shown at the 768px breakpoint to open/close the sidebar overlay -->
+            <button class="hamburger-btn" id="hamburger-btn" aria-label="Toggle menu">&#9776;</button>
+            <h1>PawPoller</h1>
+        </div>
+
+        <ul class="nav-links">
+            <!-- Cross-platform overview page -->
+            <li><a href="#/overview" class="nav-link" data-page="overview">
+                <span class="nav-icon">&#9776;</span> Overview
+            </a></li>
+
+            <!-- Inkbunny platform section: Dashboard, Submissions list, Compare tool -->
+            <li class="nav-section">Inkbunny</li>
+            <li><a href="#/" class="nav-link active" data-page="dashboard">
+                <span class="nav-icon">&#9632;</span> Dashboard
+            </a></li>
+            <li><a href="#/submissions" class="nav-link" data-page="submissions">
+                <span class="nav-icon">&#9998;</span> Submissions
+            </a></li>
+            <li><a href="#/compare" class="nav-link" data-page="compare">
+                <span class="nav-icon">&#8646;</span> Compare
+            </a></li>
+
+            <!-- FurAffinity platform section: Dashboard, Submissions list, Compare tool -->
+            <li class="nav-section">FurAffinity</li>
+            <li><a href="#/fa" class="nav-link" data-page="fa-dashboard">
+                <span class="nav-icon">&#9632;</span> Dashboard
+            </a></li>
+            <li><a href="#/fa/submissions" class="nav-link" data-page="fa-submissions">
+                <span class="nav-icon">&#9998;</span> Submissions
+            </a></li>
+            <li><a href="#/fa/compare" class="nav-link" data-page="fa-compare">
+                <span class="nav-icon">&#8646;</span> Compare
+            </a></li>
+
+            <!-- Weasyl platform section: Dashboard, Submissions list, Compare tool -->
+            <li class="nav-section">Weasyl</li>
+            <li><a href="#/ws" class="nav-link" data-page="ws-dashboard">
+                <span class="nav-icon">&#9632;</span> Dashboard
+            </a></li>
+            <li><a href="#/ws/submissions" class="nav-link" data-page="ws-submissions">
+                <span class="nav-icon">&#9998;</span> Submissions
+            </a></li>
+            <li><a href="#/ws/compare" class="nav-link" data-page="ws-compare">
+                <span class="nav-icon">&#8646;</span> Compare
+            </a></li>
+
+            <!-- SoFurry platform section: Dashboard, Submissions list, Compare tool -->
+            <li class="nav-section">SoFurry</li>
+            <li><a href="#/sf" class="nav-link" data-page="sf-dashboard">
+                <span class="nav-icon">&#9632;</span> Dashboard
+            </a></li>
+            <li><a href="#/sf/submissions" class="nav-link" data-page="sf-submissions">
+                <span class="nav-icon">&#9998;</span> Submissions
+            </a></li>
+            <li><a href="#/sf/compare" class="nav-link" data-page="sf-compare">
+                <span class="nav-icon">&#8646;</span> Compare
+            </a></li>
+
+            <!-- Tools section: cross-platform utilities -->
+            <li class="nav-section">Tools</li>
+            <li><a href="#/groups" class="nav-link" data-page="groups">
+                <span class="nav-icon">&#128193;</span> Groups
+            </a></li>
+            <li><a href="#/cross-platform" class="nav-link" data-page="cross-platform">
+                <span class="nav-icon">&#128279;</span> Cross-Platform
+            </a></li>
+
+            <!-- Spacer: flex-grow:1 pushes Settings to the bottom of the nav list -->
+            <li class="nav-section" style="flex-grow:1"></li>
+
+            <!-- Settings link pinned to the bottom of the nav list -->
+            <li><a href="#/settings" class="nav-link" data-page="settings">
+                <span class="nav-icon">&#9881;</span> Settings
+            </a></li>
+        </ul>
+
+        <!-- Sidebar footer: poll status badge (updated by app.js with last poll
+             time) and logout button -->
+        <div class="sidebar-footer">
+            <div id="poll-status-mini" class="poll-badge">--</div>
+            <button class="btn-logout" id="logout-btn" title="Sign out">&#x2190; Sign Out</button>
+        </div>
+    </nav>
+
+    <!-- ============================================================
+         MAIN CONTENT AREA (SPA container)
+         All page content is dynamically rendered into this <main>
+         element by app.js based on the current hash route. The initial
+         "Loading..." spinner is replaced once the app initialises.
+         ============================================================ -->
+    <main id="app" class="main-content">
+        <div class="loading-spinner">Loading...</div>
+    </main>
+
+    <!-- ============================================================
+         APPLICATION SCRIPTS
+         Loaded at the end of <body> so the DOM is ready before execution.
+         Order matters because each script depends on the previous ones:
+           1. utils.js  - Shared utility functions (formatting, DOM helpers);
+                          no dependencies on other app scripts.
+           2. api.js    - API client for backend communication;
+                          uses Utils for error handling and formatting.
+           3. components.js - Reusable UI component builders (tables, cards,
+                          stat grids); uses Utils for DOM/formatting helpers.
+           4. charts.js - Chart.js wrapper functions for creating/updating
+                          time-series and comparison charts; uses Utils and
+                          the Chart.js vendor library loaded in <head>.
+           5. app.js    - Main application controller: router, page rendering,
+                          event binding; orchestrates all of the above.
+         ============================================================ -->
+    <script src="/js/utils.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/components.js"></script>
+    <script src="/js/charts.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>

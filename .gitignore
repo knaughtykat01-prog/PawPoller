@@ -1,0 +1,20 @@
+# Build artifacts
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# User data & secrets
+.env
+settings.json
+data/
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp

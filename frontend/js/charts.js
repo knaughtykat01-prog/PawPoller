@@ -1,0 +1,471 @@
+/* ── Chart.js factory functions ────────────────────────────── */
+/*
+ * Chart.js wrapper singleton managing chart lifecycle and rendering.
+ * Uses Chart.js with the date-fns time adapter for temporal X axes and
+ * the annotation plugin for milestone marker overlays.
+ *
+ * All public methods accept a canvasId string, fetch the <canvas> element,
+ * and store the resulting Chart instance in _instances for later cleanup.
+ */
+
+function _toDate(ts) {
+    if (!ts) return new Date(NaN);
+    const s = String(ts);
+    return new Date(s.endsWith('Z') || s.includes('+') ? s : s + 'Z');
+}
+
+const Charts = {
+    /**
+     * Map of canvasId -> Chart instance.
+     * Tracked so we can call .destroy() before re-rendering into the same
+     * <canvas>, preventing "Canvas is already in use" errors and memory leaks
+     * when the SPA navigates between pages without full page reloads.
+     */
+    _instances: {},
+
+    /**
+     * Configurable thresholds for milestone marker detection, keyed by metric
+     * name. When a metric's value crosses one of these thresholds between two
+     * consecutive snapshots, a milestone is recorded and can be rendered as a
+     * vertical annotation line on the chart (e.g. 100 views, 50 faves).
+     */
+    _milestones: {
+        views: [100, 250, 500, 1000, 2500, 5000, 10000],
+        favorites_count: [10, 25, 50, 100, 250],
+        comments_count: [10, 25, 50, 100],
+    },
+
+    /**
+     * Scans sequential snapshots to find the first moment a metric crossed
+     * each configured threshold. Compares adjacent snapshot pairs (prev, curr)
+     * and records a milestone when prev < threshold <= curr.
+     *
+     * @param {Array}  snapshots - Chronologically ordered snapshot objects,
+     *                             each containing polled_at and metric values.
+     * @param {string} metric    - Metric key to check (e.g. 'views').
+     * @returns {Array} Array of { threshold, timestamp, metric } objects
+     *                  representing each crossed milestone.
+     */
+    _detectMilestones(snapshots, metric) {
+        const thresholds = this._milestones[metric];
+        if (!thresholds || snapshots.length < 2) return [];
+        const found = [];
+        for (let i = 1; i < snapshots.length; i++) {
+            const prev = snapshots[i - 1][metric];
+            const curr = snapshots[i][metric];
+            for (const t of thresholds) {
+                if (prev < t && curr >= t) {
+                    found.push({ threshold: t, timestamp: snapshots[i].polled_at, metric });
+                }
+            }
+        }
+        return found;
+    },
+
+    /**
+     * Converts detected milestones into Chart.js annotation plugin format.
+     * Each milestone becomes a vertical dashed line at the timestamp where the
+     * threshold was crossed, with a small colored label at the top showing a
+     * compact descriptor like "V:1K" (1000 views) or "F:100" (100 favourites).
+     *
+     * Colour-coded per metric to match the corresponding dataset line colour.
+     * Labels use shortened metric prefixes: V = Views, F = Favourites, C = Comments.
+     * Thresholds >= 1000 are displayed in K notation (e.g. 5000 -> "5K").
+     *
+     * @param {Array}  snapshots - Chronologically ordered snapshot objects.
+     * @param {Array}  metrics   - Array of metric keys to scan for milestones.
+     * @returns {Object} Keyed annotation config object for Chart.js annotation plugin.
+     */
+    _milestoneAnnotations(snapshots, metrics) {
+        const prefixes = { views: 'V', favorites_count: 'F', comments_count: 'C' };
+        const colors = { views: '#6c8cff', favorites_count: '#f87171', comments_count: '#4ade80' };
+        const annotations = {};
+        let idx = 0;
+        for (const metric of metrics) {
+            const milestones = this._detectMilestones(snapshots, metric);
+            for (const m of milestones) {
+                // Each annotation is a vertical line (xMin === xMax) with a label pill
+                annotations[`ms_${idx++}`] = {
+                    type: 'line',
+                    xMin: _toDate(m.timestamp),
+                    xMax: _toDate(m.timestamp),
+                    borderColor: colors[metric] || '#6c8cff',
+                    borderWidth: 1,
+                    borderDash: [6, 4],
+                    label: {
+                        display: true,
+                        content: `${prefixes[metric]}:${m.threshold >= 1000 ? (m.threshold / 1000) + 'K' : m.threshold}`,
+                        position: 'start',
+                        backgroundColor: colors[metric] || '#6c8cff',
+                        color: '#fff',
+                        font: { size: 9, weight: 'bold' },
+                        padding: { top: 2, bottom: 2, left: 4, right: 4 },
+                        borderRadius: 3,
+                    },
+                };
+            }
+        }
+        return annotations;
+    },
+
+    /**
+     * Shared base chart configuration providing a consistent dark-theme
+     * appearance across all chart types. Colours are chosen to match the
+     * application's CSS custom properties (--surface, --muted, --border, etc.).
+     *
+     * Includes:
+     *  - Responsive sizing with no forced aspect ratio (fills container)
+     *  - Muted legend text for low visual weight
+     *  - Dark tooltip styling with subtle border
+     *  - Dimmed axis ticks and grid lines for a clean dark-mode look
+     *  - Y axis always starts at zero for honest visual comparisons
+     *
+     * Callers override or extend the returned object (e.g. adding time X axis,
+     * dual Y axes, or annotation config) before passing to new Chart().
+     */
+    _baseOptions() {
+        return {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { color: '#9198a8', font: { size: 11 } }
+                },
+                tooltip: {
+                    backgroundColor: '#22252f',   // --surface dark bg
+                    titleColor: '#e4e6ed',         // --text-primary
+                    bodyColor: '#9198a8',           // --text-secondary / muted
+                    borderColor: '#2e3140',         // --border subtle
+                    borderWidth: 1,
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#5f6578', font: { size: 10 } },
+                    grid: { color: '#2e3140' },
+                },
+                y: {
+                    ticks: { color: '#5f6578', font: { size: 10 } },
+                    grid: { color: '#2e3140' },
+                    beginAtZero: true,
+                }
+            }
+        };
+    },
+
+    /**
+     * Time-scale X axis configuration using the date-fns Chart.js adapter.
+     *
+     * - tooltipFormat: full date+time shown on hover ("25 Jan 2026 14:30")
+     * - displayFormats: controls the axis tick labels at each auto-detected
+     *   zoom level -- hours show "HH:mm", days/weeks show "dd MMM", months
+     *   show "MMM yyyy". Chart.js picks the appropriate unit automatically
+     *   based on the data's time span.
+     * - maxTicksLimit: caps axis labels at 12 to prevent overcrowding.
+     *
+     * @returns {Object} Chart.js scale configuration object for a time X axis.
+     */
+    _timeXAxis() {
+        return {
+            type: 'time',
+            ticks: { color: '#5f6578', font: { size: 10 }, maxTicksLimit: 12 },
+            grid: { color: '#2e3140' },
+            time: {
+                tooltipFormat: 'dd MMM yyyy HH:mm',
+                displayFormats: {
+                    hour: 'HH:mm',
+                    day: 'dd MMM',
+                    week: 'dd MMM',
+                    month: 'MMM yyyy',
+                }
+            }
+        };
+    },
+
+    /**
+     * Destroys a single chart instance by canvas ID to free resources and
+     * release the canvas element. Prevents the "Canvas is already in use"
+     * error that occurs when Chart.js tries to binds to a canvas that still
+     * has an active chart attached. Called automatically at the start of
+     * every chart-creation method.
+     *
+     * @param {string} id - The canvas element ID whose chart should be destroyed.
+     */
+    destroy(id) {
+        if (this._instances[id]) {
+            this._instances[id].destroy();
+            delete this._instances[id];
+        }
+    },
+
+    /**
+     * Destroys all tracked chart instances. Called during SPA page transitions
+     * (e.g. by the router) to ensure a clean slate when navigating away from
+     * a page that rendered charts.
+     */
+    destroyAll() {
+        Object.keys(this._instances).forEach(id => this.destroy(id));
+    },
+
+    /**
+     * Time-series multi-metric line chart for the dashboard aggregate view.
+     * Overlays views, favourites, and comments as separate coloured lines on
+     * a shared Y axis with a time-based X axis.
+     *
+     * Point radius adapts to data density: when there are more than 50
+     * snapshots, individual data points are hidden (radius 0) to keep the
+     * chart readable; with fewer points, dots are shown at radius 3.
+     *
+     * @param {string} canvasId  - ID of the target <canvas> element.
+     * @param {Array}  snapshots - Chronologically ordered snapshot objects
+     *                             with polled_at timestamps and metric values.
+     * @param {Array}  metrics   - Metric keys to plot (defaults to all three).
+     */
+    aggregateLine(canvasId, snapshots, metrics = ['views', 'favorites_count', 'comments_count']) {
+        this.destroy(canvasId);
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return;
+
+        // Metric-to-colour mapping (consistent across all chart types)
+        const colors = {
+            views: '#6c8cff',            // blue
+            favorites_count: '#f87171',  // red
+            comments_count: '#4ade80',   // green
+        };
+        // Human-readable legend labels
+        const labels = {
+            views: 'Views',
+            favorites_count: 'Favorites',
+            comments_count: 'Comments',
+        };
+
+        // Build one dataset per requested metric
+        const datasets = metrics.map(m => ({
+            label: labels[m] || m,
+            data: snapshots.map(s => ({ x: _toDate(s.polled_at), y: s[m] })),
+            borderColor: colors[m] || '#6c8cff',
+            backgroundColor: (colors[m] || '#6c8cff') + '20', // 12.5% opacity fill
+            borderWidth: 2,
+            pointRadius: snapshots.length > 50 ? 0 : 3, // hide dots on dense data
+            tension: 0.3,  // slight curve smoothing
+            fill: false,
+        }));
+
+        const opts = this._baseOptions();
+        opts.scales.x = this._timeXAxis();
+
+        this._instances[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: { datasets },
+            options: opts,
+        });
+    },
+
+    /**
+     * Dual Y-axis time-series chart for individual submission detail pages.
+     *
+     * Uses two Y axes because views typically dwarf faves/comments in magnitude:
+     *  - Left axis  (y):  Views (blue) -- own scale so large view counts
+     *                      don't compress the faves/comments lines to zero.
+     *  - Right axis (y1): Favourites (red) + Comments (green) -- shares a
+     *                      scale since they are usually similar in magnitude.
+     *                      Grid lines are hidden on this axis to avoid clutter.
+     *
+     * Milestone annotations (vertical dashed lines) are overlaid for all three
+     * metrics, marking when configured thresholds were crossed (e.g. "V:1K").
+     *
+     * @param {string} canvasId  - ID of the target <canvas> element.
+     * @param {Array}  snapshots - Chronologically ordered snapshot objects.
+     */
+    submissionLine(canvasId, snapshots) {
+        this.destroy(canvasId);
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return;
+
+        const opts = this._baseOptions();
+        opts.scales.x = this._timeXAxis();
+
+        // Left Y axis -- Views (blue ticks and title)
+        opts.scales.y = {
+            type: 'linear',
+            position: 'left',
+            ticks: { color: '#6c8cff', font: { size: 10 } },
+            grid: { color: '#2e3140' },
+            beginAtZero: true,
+            title: { display: true, text: 'Views', color: '#6c8cff' },
+        };
+        // Right Y axis -- Faves/Comments (red ticks, grid hidden to avoid
+        // double grid lines overlapping with the left axis grid)
+        opts.scales.y1 = {
+            type: 'linear',
+            position: 'right',
+            ticks: { color: '#f87171', font: { size: 10 } },
+            grid: { drawOnChartArea: false },
+            beginAtZero: true,
+            title: { display: true, text: 'Faves / Comments', color: '#f87171' },
+        };
+
+        // Generate milestone annotation lines for all three metrics
+        const annotations = this._milestoneAnnotations(snapshots, ['views', 'favorites_count', 'comments_count']);
+        opts.plugins.annotation = { annotations };
+
+        this._instances[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [
+                    {
+                        label: 'Views',
+                        data: snapshots.map(s => ({ x: _toDate(s.polled_at), y: s.views })),
+                        borderColor: '#6c8cff',
+                        borderWidth: 2,
+                        pointRadius: snapshots.length > 50 ? 0 : 3,
+                        tension: 0.3,
+                        yAxisID: 'y',   // bound to left axis
+                    },
+                    {
+                        label: 'Favorites',
+                        data: snapshots.map(s => ({ x: _toDate(s.polled_at), y: s.favorites_count })),
+                        borderColor: '#f87171',
+                        borderWidth: 2,
+                        pointRadius: snapshots.length > 50 ? 0 : 3,
+                        tension: 0.3,
+                        yAxisID: 'y1',  // bound to right axis
+                    },
+                    {
+                        label: 'Comments',
+                        data: snapshots.map(s => ({ x: _toDate(s.polled_at), y: s.comments_count })),
+                        borderColor: '#4ade80',
+                        borderWidth: 2,
+                        pointRadius: snapshots.length > 50 ? 0 : 3,
+                        tension: 0.3,
+                        yAxisID: 'y1',  // bound to right axis
+                    },
+                ],
+            },
+            options: opts,
+        });
+    },
+
+    /**
+     * Horizontal bar chart for "Top Viewed" / "Top Faved" rankings on the
+     * dashboard. Bars are oriented horizontally (indexAxis: 'y') so that
+     * submission titles are readable as Y-axis labels.
+     *
+     * Legend is hidden since there is only one dataset. Titles are truncated
+     * to 25 characters via Utils.truncate() to prevent label overflow.
+     *
+     * @param {string} canvasId - ID of the target <canvas> element.
+     * @param {Array}  items    - Array of submission objects to rank.
+     * @param {string} valueKey - Property name for the bar value (e.g. 'views').
+     * @param {string} labelKey - Property name for the bar label (default: 'title').
+     */
+    topBar(canvasId, items, valueKey, labelKey = 'title') {
+        this.destroy(canvasId);
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return;
+
+        const labels = items.map(i => Utils.truncate(i[labelKey], 25));
+        const values = items.map(i => i[valueKey]);
+
+        const opts = this._baseOptions();
+        opts.indexAxis = 'y';                       // horizontal bars
+        opts.plugins.legend = { display: false };   // single dataset, no legend needed
+        opts.scales.x.beginAtZero = true;
+        opts.scales.y.ticks = { color: '#9198a8', font: { size: 11 } };
+
+        this._instances[canvasId] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: '#6c8cff40', // blue at 25% opacity for bar fill
+                    borderColor: '#6c8cff',       // solid blue border
+                    borderWidth: 1,
+                }]
+            },
+            options: opts,
+        });
+    },
+
+    /**
+     * Multi-submission overlay line chart for the Compare page. Each selected
+     * submission gets its own line, coloured from a 10-colour palette that
+     * wraps around if more than 10 submissions are compared.
+     *
+     * Unlike submissionLine(), this uses a single Y axis (the chosen metric)
+     * so that all submissions are directly comparable on the same scale.
+     *
+     * Per-series milestone annotations are generated individually so each
+     * annotation line inherits the colour of its parent submission's line,
+     * making it visually clear which submission hit which milestone.
+     *
+     * @param {string} canvasId   - ID of the target <canvas> element.
+     * @param {Object} seriesData - Map of submissionId -> snapshot arrays.
+     * @param {Object} titles     - Map of submissionId -> submission title string.
+     * @param {string} metric     - Which metric to plot (default: 'views').
+     */
+    comparisonLine(canvasId, seriesData, titles, metric = 'views') {
+        this.destroy(canvasId);
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return;
+
+        // 10-colour palette -- wraps via modulo for >10 submissions
+        const palette = ['#6c8cff', '#f87171', '#4ade80', '#fbbf24', '#a78bfa', '#f472b6', '#34d399', '#fb923c', '#60a5fa', '#e879f9'];
+
+        // Build one dataset per submission, each assigned a palette colour
+        const datasets = Object.entries(seriesData).map(([id, snaps], i) => ({
+            label: Utils.truncate(titles[id] || `#${id}`, 30),
+            data: snaps.map(s => ({ x: _toDate(s.polled_at), y: s[metric] })),
+            borderColor: palette[i % palette.length],
+            borderWidth: 2,
+            pointRadius: snaps.length > 50 ? 0 : 3,
+            tension: 0.3,
+            fill: false,
+        }));
+
+        // Per-series milestone annotations: each submission's milestones are
+        // coloured to match that submission's line, so the user can tell which
+        // series hit which threshold at a glance.
+        const annotations = {};
+        let idx = 0;
+        Object.entries(seriesData).forEach(([id, snaps], i) => {
+            const milestones = this._detectMilestones(snaps, metric);
+            const color = palette[i % palette.length];
+            const prefix = { views: 'V', favorites_count: 'F', comments_count: 'C' }[metric] || '?';
+            for (const m of milestones) {
+                annotations[`ms_${idx++}`] = {
+                    type: 'line',
+                    xMin: _toDate(m.timestamp),
+                    xMax: _toDate(m.timestamp),
+                    borderColor: color,
+                    borderWidth: 1,
+                    borderDash: [6, 4],
+                    label: {
+                        display: true,
+                        content: `${prefix}:${m.threshold >= 1000 ? (m.threshold / 1000) + 'K' : m.threshold}`,
+                        position: 'start',
+                        backgroundColor: color,
+                        color: '#fff',
+                        font: { size: 9, weight: 'bold' },
+                        padding: { top: 2, bottom: 2, left: 4, right: 4 },
+                        borderRadius: 3,
+                    },
+                };
+            }
+        });
+
+        const opts = this._baseOptions();
+        opts.scales.x = this._timeXAxis();
+        // Only attach annotation plugin config if there are milestones to show
+        if (Object.keys(annotations).length > 0) {
+            opts.plugins.annotation = { annotations };
+        }
+
+        this._instances[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: { datasets },
+            options: opts,
+        });
+    },
+};

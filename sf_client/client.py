@@ -1,0 +1,435 @@
+"""SoFurry client using web scraping for gallery and submission data.
+
+SoFurry's new platform ("SoFurry Next") does not offer API key generation,
+despite having had a public API in the past.  This client authenticates via
+email/password to obtain session cookies, then scrapes the web interface for
+submission data.
+
+Authentication flow:
+  1. GET /login to extract CSRF _token
+  2. POST /login with _token, email, password
+  3. On success, SoFurry sets session cookies in the response
+  4. All subsequent requests use those cookies automatically (httpx cookie jar)
+
+Data collection:
+  - Gallery listing: scrape /u/{display_name}/gallery for submission IDs
+  - Submission metadata: GET /ui/submission/{id} (JSON API)
+  - Submission stats (views/likes): scrape /s/{id} web page
+  - No individual comment text available (count only, like Weasyl)
+  - No faving-user lists available (count only)
+
+Important: SoFurry defaults to showing NSFW content after login.
+Do NOT call GET /sfw — that toggles SFW mode ON, hiding Adult submissions.
+"""
+
+from __future__ import annotations
+import asyncio
+import logging
+import re
+from typing import Any
+
+import httpx
+
+import config
+
+logger = logging.getLogger(__name__)
+
+SOFURRY_BASE = "https://sofurry.com"
+
+# SoFurry rating codes (from /ui/submission JSON)
+_RATING_MAP = {10: "Clean", 20: "Adult"}
+
+
+class SoFurryClient:
+    """SoFurry web scraping client using session cookie authentication."""
+
+    def __init__(self, username: str = "", password: str = "", totp_code: str = "",
+                 display_name: str = ""):
+        self.username = username          # email address used for login
+        self.password = password
+        self.totp_code = totp_code
+        self.display_name = display_name  # SF profile handle (e.g. "KnaughtyKat")
+        self._http = httpx.AsyncClient(
+            timeout=30.0,
+            follow_redirects=True,
+            headers={"User-Agent": "PawPoller/1.0"},
+        )
+        self._logged_in = False
+
+    async def close(self) -> None:
+        await self._http.aclose()
+
+    # -- Authentication ------------------------------------------------
+
+    async def login(self) -> bool:
+        """Authenticate via email/password (+ optional TOTP 2FA).
+
+        SoFurry uses Laravel with CSRF protection.  Login flow:
+          1. GET /login to obtain the CSRF _token from a hidden form field
+          2. POST /login with _token, email, password
+          3. If 2FA is enabled the server redirects to /auth/2fa — we then
+             submit the TOTP code from ``self.totp_code`` (set by caller)
+          4. On success the server redirects to / (home)
+        """
+        if not self.username or not self.password:
+            return False
+        try:
+            # Step 1: Fetch CSRF token from the login page
+            login_page = await self._http.get(f"{SOFURRY_BASE}/login")
+            csrf_match = re.search(
+                r'name="_token"\s*value="([^"]+)"', login_page.text
+            )
+            csrf_token = csrf_match.group(1) if csrf_match else ""
+
+            # Step 2: POST credentials with CSRF token
+            resp = await self._http.post(
+                f"{SOFURRY_BASE}/login",
+                data={
+                    "_token": csrf_token,
+                    "email": self.username,
+                    "password": self.password,
+                },
+            )
+            final_url = str(resp.url)
+            page_text = resp.text
+            final_path = final_url.split("sofurry.com")[-1] if "sofurry.com" in final_url else final_url
+
+            logger.info("SoFurry login — final URL: %s (status %s)", final_url, resp.status_code)
+
+            # Step 3: Handle 2FA if redirected to /auth/2fa
+            if "/auth/2fa" in final_path or "2fa" in final_path:
+                if not self.totp_code:
+                    logger.warning("SoFurry 2FA required but no TOTP code provided")
+                    return False
+                return await self._submit_2fa(page_text)
+
+            # Success: ended up anywhere other than /login
+            if "/login" not in final_path:
+                self._logged_in = True
+                logger.info("SoFurry login successful for %s", self.username)
+                return True
+
+            # Landed on /login — login failed
+            if "credentials" in page_text.lower() or "invalid" in page_text.lower():
+                logger.warning("SoFurry login failed — invalid credentials")
+            else:
+                logger.warning("SoFurry login failed — redirected back to login page")
+            return False
+        except Exception as e:
+            logger.warning("SoFurry login failed: %s", e)
+            return False
+
+    async def _submit_2fa(self, page_text: str) -> bool:
+        """Submit a TOTP 2FA code to complete authentication."""
+        try:
+            # Extract form action URL
+            form_action = f"{SOFURRY_BASE}/auth/2fa"
+            action_match = re.search(
+                r'<form[^>]*action="([^"]*)"[^>]*>',
+                page_text, re.IGNORECASE
+            )
+            if action_match:
+                action_url = action_match.group(1)
+                if action_url.startswith("/"):
+                    form_action = f"{SOFURRY_BASE}{action_url}"
+                elif action_url.startswith("http"):
+                    form_action = action_url
+
+            csrf_match = re.search(r'name="_token"\s*value="([^"]+)"', page_text)
+            csrf_token = csrf_match.group(1) if csrf_match else ""
+
+            code_field = "one_time_password"
+            field_match = re.search(
+                r'name="((?:code|one_time_password|totp|otp|2fa_code)[^"]*)"',
+                page_text, re.IGNORECASE
+            )
+            if field_match:
+                code_field = field_match.group(1)
+
+            resp = await self._http.post(
+                form_action,
+                data={"_token": csrf_token, code_field: self.totp_code},
+            )
+            final_url = str(resp.url)
+            final_path = final_url.split("sofurry.com")[-1] if "sofurry.com" in final_url else final_url
+
+            if "/login" not in final_path and "/2fa" not in final_path:
+                self._logged_in = True
+                logger.info("SoFurry 2FA successful for %s", self.username)
+                return True
+
+            logger.warning("SoFurry 2FA failed — still on auth page")
+            return False
+        except Exception as e:
+            logger.warning("SoFurry 2FA submission failed: %s", e)
+            return False
+
+    async def check_session(self) -> bool:
+        """Lightweight check: are we still authenticated?
+
+        Fetches the user's profile page and checks for a redirect to /login
+        (which SoFurry does when the session has expired).  Returns True if
+        the session cookies are still valid, False otherwise.
+        """
+        if not self._logged_in:
+            return False
+        try:
+            resp = await self._http.get(
+                f"{SOFURRY_BASE}/u/{self.display_name}",
+                follow_redirects=False,
+            )
+            # A 302 to /login means the session expired
+            if resp.status_code in (301, 302):
+                location = resp.headers.get("location", "")
+                if "/login" in location:
+                    logger.info("SoFurry session expired (redirected to login)")
+                    self._logged_in = False
+                    return False
+            # 200 with gallery content = still logged in
+            return resp.status_code == 200
+        except Exception as e:
+            logger.debug("SoFurry session check failed: %s", e)
+            return False
+
+    async def ensure_logged_in(self) -> bool:
+        """Re-use existing session if valid, otherwise log in fresh.
+
+        Returns True if we end up authenticated, False on failure.
+        """
+        if await self.check_session():
+            logger.info("SoFurry session still valid — skipping login")
+            return True
+        # Session expired or never established — do a full login
+        self._logged_in = False
+        return await self.login()
+
+    def update_credentials(self, username: str, password: str,
+                           display_name: str, totp_code: str = "") -> bool:
+        """Update stored credentials.  Returns True if they changed."""
+        changed = (self.username != username or self.password != password
+                   or self.display_name != display_name)
+        self.username = username
+        self.password = password
+        self.display_name = display_name
+        self.totp_code = totp_code
+        if changed:
+            self._logged_in = False  # Force re-login on next poll
+        return changed
+
+    async def validate_session(self) -> str | None:
+        """Login and verify the display name works.
+
+        Returns the display name on success, None on failure.
+        """
+        if not await self.ensure_logged_in():
+            return None
+
+        try:
+            if self.display_name:
+                resp = await self._http.get(f"{SOFURRY_BASE}/u/{self.display_name}")
+                if resp.status_code == 200 and "/gallery" in resp.text:
+                    return self.display_name
+
+            # Try to discover display name from window.handle in gallery JS
+            resp = await self._http.get(f"{SOFURRY_BASE}/u/{self.display_name}/gallery")
+            handle_match = re.search(r'window\.handle\s*=\s*"([^"]+)"', resp.text)
+            if handle_match:
+                self.display_name = handle_match.group(1)
+                return self.display_name
+
+            logger.warning("Could not verify SF display name")
+            return None
+        except Exception as e:
+            logger.warning("SoFurry session validation failed: %s", e)
+            return None
+
+    # -- Gallery Listing -----------------------------------------------
+
+    async def get_all_gallery_ids(self) -> list[dict]:
+        """Scrape all gallery submissions from the user's gallery pages.
+
+        SoFurry gallery pages at /u/{display_name}/gallery contain
+        submission links in /s/{id} format.  We paginate until empty.
+
+        Note: Do NOT toggle SFW mode — default after login already shows
+        NSFW content.  Calling GET /sfw would hide Adult submissions.
+        """
+        if not self._logged_in:
+            await self.login()
+
+        all_subs: list[dict] = []
+        page = 1
+
+        while True:
+            try:
+                resp = await self._http.get(
+                    f"{SOFURRY_BASE}/u/{self.display_name}/gallery",
+                    params={"page": str(page)} if page > 1 else {},
+                )
+                resp.raise_for_status()
+                html = resp.text
+
+                # Extract submission IDs from href="/s/{id}" or href="https://sofurry.com/s/{id}"
+                ids_on_page = re.findall(
+                    r'href="(?:https://sofurry\.com)?/s/([A-Za-z0-9]+)', html
+                )
+                # Deduplicate while preserving order
+                seen = set()
+                unique_ids = []
+                for sid in ids_on_page:
+                    if sid not in seen:
+                        seen.add(sid)
+                        unique_ids.append(sid)
+
+                if not unique_ids:
+                    break
+
+                for sid in unique_ids:
+                    all_subs.append({
+                        "submission_id": sid,
+                        "title": "",
+                        "thumbnail_url": "",
+                    })
+
+                page += 1
+                await asyncio.sleep(config.SF_REQUEST_DELAY_SECONDS)
+
+            except Exception as e:
+                logger.warning("Failed to fetch SF gallery page %d: %s", page, e)
+                break
+
+        return all_subs
+
+    # -- Submission Detail ---------------------------------------------
+
+    async def get_submission_detail(self, submission_id: str) -> dict:
+        """Fetch submission details using both the JSON API and web page.
+
+        Uses /ui/submission/{id} for metadata (title, author, rating,
+        publishedAt, thumbnail, description) and /s/{id} web page for
+        stats (views, likes, comments) which aren't in the API response.
+        """
+        detail = {
+            "submission_id": submission_id,
+            "title": "",
+            "username": self.display_name,
+            "posted_at": "",
+            "content_type": "",
+            "rating": "",
+            "thumbnail_url": "",
+            "description": "",
+            "keywords": [],
+            "link": f"{SOFURRY_BASE}/s/{submission_id}",
+            "views": 0,
+            "favorites_count": 0,
+            "comments_count": 0,
+        }
+
+        # Step 1: Get metadata from JSON API
+        try:
+            resp = await self._http.get(
+                f"{SOFURRY_BASE}/ui/submission/{submission_id}",
+                headers={"Accept": "application/json"},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                detail["title"] = data.get("title", "")
+                detail["username"] = data.get("author", self.display_name)
+                detail["description"] = data.get("description", "")
+                detail["thumbnail_url"] = data.get("thumbUrl", "") or data.get("coverUrl", "")
+                detail["rating"] = _RATING_MAP.get(data.get("rating", 0), "Clean")
+                detail["posted_at"] = data.get("publishedAt", "")
+                detail["keywords"] = data.get("artistTags", []) or []
+                # Content type based on category
+                cat = data.get("category", 0)
+                if cat == 20:
+                    detail["content_type"] = "story"
+                elif cat == 30:
+                    detail["content_type"] = "art"
+                elif cat == 40:
+                    detail["content_type"] = "music"
+                elif cat == 50:
+                    detail["content_type"] = "photo"
+        except Exception as e:
+            logger.debug("Failed to fetch SF API metadata for %s: %s", submission_id, e)
+
+        # Step 2: Get stats from the web page
+        try:
+            await asyncio.sleep(0.5)  # Small delay between API and web requests
+            resp = await self._http.get(f"{SOFURRY_BASE}/s/{submission_id}")
+            if resp.status_code == 200:
+                html = resp.text
+                # Extract title from page if not from API
+                if not detail["title"]:
+                    title_match = re.search(r'<title>([^<]+)</title>', html)
+                    if title_match:
+                        title = title_match.group(1).strip()
+                        detail["title"] = re.sub(r'\s*[-|]\s*SoFurry.*$', '', title).strip()
+                        # Also strip "by Author" suffix
+                        detail["title"] = re.sub(r'\s+by\s+\S+$', '', detail["title"]).strip()
+
+                # Views: "X Views" or "X views"
+                views_match = re.search(r'(\d[\d,]*)\s*[Vv]iews?\b', html)
+                if views_match:
+                    detail["views"] = _safe_int(views_match.group(1))
+
+                # Likes/Favorites: "X Likes"
+                likes_match = re.search(r'(\d[\d,]*)\s*[Ll]ikes?\b', html)
+                if likes_match:
+                    detail["favorites_count"] = _safe_int(likes_match.group(1))
+
+                # Comments: "X Comments"
+                comments_match = re.search(r'(\d[\d,]*)\s*[Cc]omments?\b', html)
+                if comments_match:
+                    detail["comments_count"] = _safe_int(comments_match.group(1))
+
+                # Thumbnail fallback: og:image
+                if not detail["thumbnail_url"]:
+                    og_match = re.search(
+                        r'<meta[^>]+property="og:image"[^>]+content="([^"]+)"', html
+                    )
+                    if og_match:
+                        detail["thumbnail_url"] = og_match.group(1)
+        except Exception as e:
+            logger.debug("Failed to fetch SF web page for %s: %s", submission_id, e)
+
+        return detail
+
+    async def get_submission_details_batch(self, submission_ids: list[str]) -> list[dict]:
+        """Fetch details for multiple submissions sequentially with rate limiting."""
+        details: list[dict] = []
+        for i, sid in enumerate(submission_ids):
+            try:
+                detail = await self.get_submission_detail(sid)
+                details.append(detail)
+            except Exception as e:
+                logger.warning("Failed to fetch SF submission %s: %s", sid, e)
+            if i < len(submission_ids) - 1:
+                await asyncio.sleep(config.SF_REQUEST_DELAY_SECONDS)
+        return details
+
+    # -- Followers/Watchers --------------------------------------------
+
+    async def get_follower_count(self) -> int:
+        """Scrape the follower count from the user's profile page."""
+        try:
+            resp = await self._http.get(f"{SOFURRY_BASE}/u/{self.display_name}")
+            resp.raise_for_status()
+            match = re.search(r'(\d[\d,]*)\s*Followers?\b', resp.text, re.IGNORECASE)
+            if match:
+                return _safe_int(match.group(1))
+        except Exception as e:
+            logger.warning("Failed to get SF follower count: %s", e)
+        return 0
+
+
+def _safe_int(val: Any) -> int:
+    """Safely convert a value to int, handling None, comma-formatted strings, etc."""
+    if val is None:
+        return 0
+    try:
+        if isinstance(val, str):
+            val = val.replace(",", "").strip()
+        return int(val)
+    except (ValueError, TypeError):
+        return 0
