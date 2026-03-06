@@ -737,6 +737,43 @@ def disconnect_telegram():
     return {"status": "success", "message": "Telegram disconnected"}
 
 
+@router.get("/settings/telegram/features")
+def get_telegram_features():
+    """Return Telegram notification feature toggles."""
+    settings = config.get_settings()
+    return {
+        "poll_summaries": settings.get("telegram_poll_summaries", True),
+        "error_alerts": settings.get("telegram_error_alerts", True),
+        "milestones": settings.get("telegram_milestones", True),
+        "digest": settings.get("telegram_digest", True),
+    }
+
+
+@router.post("/settings/telegram/features")
+def set_telegram_features(body: dict):
+    """Update Telegram notification feature toggles."""
+    update = {}
+    for key in ("telegram_poll_summaries", "telegram_error_alerts",
+                "telegram_milestones", "telegram_digest"):
+        short = key.replace("telegram_", "")
+        if short in body:
+            update[key] = bool(body[short])
+    if update:
+        config.save_settings(update)
+    return {"status": "success"}
+
+
+@router.post("/settings/telegram/digest")
+async def send_digest_now():
+    """Manually trigger a 6-hourly digest report."""
+    from polling.telegram import send_digest_report
+    try:
+        await send_digest_report()
+        return {"status": "success", "message": "Digest sent"}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to send digest: {e}")
+
+
 # ── CSV Export ────────────────────────────────────────────────
 # CSV export uses the DictWriter -> StreamingResponse pattern:
 #   1. Query returns a list of dicts (rows from the database)

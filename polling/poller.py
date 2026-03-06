@@ -443,6 +443,19 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         logger.info("Poll complete in %.1fs — %d submissions, %d snapshots, %d new faves, %d new comments, %d new watchers",
                      duration, stats["submissions_found"], stats["snapshots_inserted"],
                      stats["new_faves_found"], stats["new_comments_found"], stats["new_watchers_found"])
+
+        # ── Telegram summaries + milestones ───────────────────
+        from polling.telegram import send_poll_summary, check_milestones_batch
+        if not _first_poll:
+            try:
+                await send_poll_summary("ib", stats, duration)
+            except Exception as te:
+                logger.warning("Failed to send IB Telegram summary: %s", te)
+            try:
+                await check_milestones_batch("ib", "snapshots", "submissions")
+            except Exception as me:
+                logger.warning("Failed to check IB milestones: %s", me)
+
         return stats
 
     except Exception as e:
@@ -452,6 +465,12 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         _update_progress("error", message=str(e))
         logger.error("Poll failed: %s", e)
         queries.finish_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
+        # Send error alert via Telegram
+        from polling.telegram import send_poll_error
+        try:
+            await send_poll_error("ib", e)
+        except Exception:
+            pass
         raise
     finally:
         # Always release the concurrency guard, close the HTTP client, and

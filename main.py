@@ -223,6 +223,35 @@ def _start_sf_poller():
         pass  # Daemon teardown
 
 
+# ── 6-Hourly Telegram Digest ─────────────────────────────────
+# Sends a cross-platform stats digest every 6 hours via Telegram.
+# Uses its own asyncio event loop like the pollers.
+
+def _start_digest_scheduler():
+    """Run 6-hourly Telegram digest in its own daemon thread."""
+    import asyncio
+    from polling.telegram import send_digest_report
+
+    async def _run():
+        logger.info("Telegram digest scheduler started (every 6 hours)")
+        # Wait 5 minutes after startup before the first digest to let
+        # pollers complete their initial cycles and populate data.
+        await asyncio.sleep(300)
+        while True:
+            try:
+                await send_digest_report()
+            except Exception as e:
+                logger.error("Digest report failed: %s", e)
+            await asyncio.sleep(6 * 60 * 60)  # 6 hours
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run())
+    except Exception:
+        pass  # Daemon teardown
+
+
 # ── Background web server (uvicorn) ──────────────────────────
 # The FastAPI dashboard is served by uvicorn in a daemon thread.
 # pywebview (the native window) points its embedded browser at this
@@ -404,6 +433,10 @@ def main():
     logger.info("Starting SF background poller...")
     sf_poller_thread = threading.Thread(target=_start_sf_poller, daemon=True)
     sf_poller_thread.start()
+
+    logger.info("Starting Telegram digest scheduler...")
+    digest_thread = threading.Thread(target=_start_digest_scheduler, daemon=True)
+    digest_thread.start()
 
     # --- Step 3: System tray icon (initially hidden) ---
     _tray_icon = _create_tray_icon()

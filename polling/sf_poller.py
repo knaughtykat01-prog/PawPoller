@@ -36,6 +36,7 @@ sf_poll_progress = {
 
 _sf_poll_running = False
 _sf_poll_lock = threading.Lock()
+_sf_first_poll = True
 
 # Persistent client — reused across poll cycles to avoid re-logging in
 # every time.  Recreated only when credentials change in settings.
@@ -141,7 +142,7 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
       3. Fetch details for each submission
       4. Upsert submissions and record snapshots
     """
-    global _sf_poll_running
+    global _sf_poll_running, _sf_first_poll
 
     if not _sf_poll_lock.acquire(blocking=False):
         logger.warning("SF poll already running -- skipping")
@@ -217,6 +218,19 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
                                       duration_seconds=duration, **stats)
         logger.info("SF poll complete in %.1fs -- %d submissions, %d snapshots",
                      duration, stats["submissions_found"], stats["snapshots_inserted"])
+
+        # ── Telegram notifications ────────────────────────────
+        if not _sf_first_poll:
+            from polling.telegram import send_poll_summary, check_milestones_batch
+            try:
+                await send_poll_summary("sf", stats, duration)
+            except Exception as te:
+                logger.warning("Failed to send SF Telegram summary: %s", te)
+            try:
+                await check_milestones_batch("sf", "sf_snapshots", "sf_submissions")
+            except Exception as me:
+                logger.warning("Failed to check SF milestones: %s", me)
+
         return stats
 
     except Exception as e:
@@ -226,8 +240,16 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
         sf_queries.finish_sf_poll_log(conn, log_id, "error",
                                       error_message=str(e),
                                       duration_seconds=duration, **stats)
+        # Send error alert via Telegram
+        from polling.telegram import send_poll_error
+        try:
+            await send_poll_error("sf", e)
+        except Exception:
+            pass
         raise
     finally:
+        if _sf_first_poll:
+            _sf_first_poll = False
         _sf_poll_running = False
         _sf_poll_lock.release()
         # NOTE: client is NOT closed here — it persists across poll cycles

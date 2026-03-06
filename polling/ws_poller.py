@@ -49,6 +49,7 @@ ws_poll_progress = {
 # boolean remains as a readable status indicator.
 _ws_poll_running = False
 _ws_poll_lock = threading.Lock()
+_ws_first_poll = True
 
 
 def _update_ws_progress(phase: str, current: int = 0, total: int = 0, message: str = ""):
@@ -158,7 +159,7 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
         Stats dict with keys: submissions_found, snapshots_inserted.
         Empty dict if a poll was already running.
     """
-    global _ws_poll_running
+    global _ws_poll_running, _ws_first_poll
 
     # Concurrency guard -- same pattern as the other pollers.
     # The Lock makes the check-and-set atomic so two near-simultaneous
@@ -233,16 +234,25 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
         conn.commit()
 
         # ── Finalise ───────────────────────────────────────────
-        # Note: no notification dispatch here by default -- WS notifications
-        # are only sent via the general _send_ws_notifications helper if
-        # there were notable changes (currently not triggered since we don't
-        # track per-user activity).
         duration = time.time() - start_time
         _update_ws_progress("complete", current=len(details), total=len(details),
                             message=f"Done — {stats['submissions_found']} submissions in {duration:.1f}s")
         ws_queries.finish_ws_poll_log(conn, log_id, "success", duration_seconds=duration, **stats)
         logger.info("WS poll complete in %.1fs — %d submissions, %d snapshots",
                      duration, stats["submissions_found"], stats["snapshots_inserted"])
+
+        # ── Telegram notifications ────────────────────────────
+        if not _ws_first_poll:
+            from polling.telegram import send_poll_summary, check_milestones_batch
+            try:
+                await send_poll_summary("ws", stats, duration)
+            except Exception as te:
+                logger.warning("Failed to send WS Telegram summary: %s", te)
+            try:
+                await check_milestones_batch("ws", "ws_snapshots", "ws_submissions")
+            except Exception as me:
+                logger.warning("Failed to check WS milestones: %s", me)
+
         return stats
 
     except Exception as e:
@@ -251,9 +261,17 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
         _update_ws_progress("error", message=str(e))
         logger.error("WS poll failed: %s", e)
         ws_queries.finish_ws_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
+        # Send error alert via Telegram
+        from polling.telegram import send_poll_error
+        try:
+            await send_poll_error("ws", e)
+        except Exception:
+            pass
         raise
     finally:
         # Always clear the guard and release resources.
+        if _ws_first_poll:
+            _ws_first_poll = False
         _ws_poll_running = False
         _ws_poll_lock.release()
         await client.close()
