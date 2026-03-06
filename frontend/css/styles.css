@@ -134,6 +134,54 @@ body {
     color: var(--danger);
 }
 
+/* Sidebar version + update check */
+.sidebar-version {
+    margin-top: 10px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+.sidebar-version .version-text {
+    display: block;
+    margin-bottom: 4px;
+}
+.sidebar-version .btn-check-update {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.sidebar-version .btn-check-update:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.sidebar-version .btn-check-update:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.sidebar-version .update-available {
+    color: var(--success);
+    font-weight: 600;
+}
+.sidebar-version .btn-update-now {
+    background: var(--success);
+    border: none;
+    color: #fff;
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    margin-top: 4px;
+    display: inline-block;
+}
+.sidebar-version .btn-update-now:hover {
+    opacity: 0.85;
+}
+
 /* ── Main Content ─────────────────────────────────────────── */
 /* Primary content area offset to the right of the fixed sidebar by
    --sidebar-w (220px). flex:1 ensures it stretches to fill the remaining

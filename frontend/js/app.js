@@ -124,6 +124,57 @@ const App = {
             } catch { /* ignore */ }
             this.navigate('/login');
         });
+
+        /* Sidebar version + update check */
+        this._initSidebarVersion();
+    },
+
+    async _initSidebarVersion() {
+        const container = document.getElementById('sidebar-version');
+        if (!container) return;
+        try {
+            const info = await API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' }));
+            this._renderSidebarVersion(container, info);
+        } catch {
+            container.innerHTML = '';
+        }
+    },
+
+    _renderSidebarVersion(container, info) {
+        if (info.available) {
+            container.innerHTML = `
+                <span class="update-available">v${Utils.escapeHtml(info.latest)} available</span>
+                <button class="btn-update-now" id="sidebar-update-btn">Update Now</button>`;
+            document.getElementById('sidebar-update-btn')?.addEventListener('click', async () => {
+                if (!confirm('Download and apply the update? The app will restart.')) return;
+                const btn = document.getElementById('sidebar-update-btn');
+                btn.disabled = true;
+                btn.textContent = 'Updating...';
+                try {
+                    await API.applyUpdate({ download_url: info.download_url });
+                    btn.textContent = 'Restarting...';
+                } catch (err) {
+                    btn.textContent = 'Failed';
+                    alert('Update failed: ' + err.message);
+                }
+            });
+        } else {
+            container.innerHTML = `
+                <span class="version-text">v${Utils.escapeHtml(info.current)}</span>
+                <button class="btn-check-update" id="sidebar-check-btn">Check for Updates</button>`;
+            document.getElementById('sidebar-check-btn')?.addEventListener('click', async () => {
+                const btn = document.getElementById('sidebar-check-btn');
+                btn.disabled = true;
+                btn.textContent = 'Checking...';
+                try {
+                    const result = await API.checkUpdate();
+                    this._renderSidebarVersion(container, result);
+                } catch {
+                    btn.textContent = 'Failed';
+                    setTimeout(() => { btn.textContent = 'Check for Updates'; btn.disabled = false; }, 3000);
+                }
+            });
+        }
     },
 
     /*
