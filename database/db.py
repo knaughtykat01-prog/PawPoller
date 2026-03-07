@@ -200,3 +200,35 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError as e:
         if "duplicate column" not in str(e).lower():
             raise
+
+    # Migration: Goals table for tracking progress toward user-defined targets
+    if "goals" not in tables:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS goals (
+                goal_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform      TEXT NOT NULL,
+                scope         TEXT NOT NULL DEFAULT 'account',
+                submission_id INTEGER,
+                metric        TEXT NOT NULL,
+                target_value  INTEGER NOT NULL,
+                created_at    TEXT DEFAULT (datetime('now')),
+                completed_at  TEXT
+            );
+        """)
+
+    # Migration: Tags and submission_tags for user-defined categorisation
+    if "tags" not in tables:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS tags (
+                tag_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                name     TEXT NOT NULL UNIQUE,
+                color    TEXT DEFAULT '#6c8cff'
+            );
+            CREATE TABLE IF NOT EXISTS submission_tags (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                tag_id        INTEGER REFERENCES tags(tag_id) ON DELETE CASCADE,
+                platform      TEXT NOT NULL,
+                submission_id INTEGER NOT NULL,
+                UNIQUE(tag_id, platform, submission_id)
+            );
+        """)

@@ -90,6 +90,7 @@ const App = {
         this.route();
         this._updatePollStatus();
         this._pollStatusInterval = setInterval(() => this._updatePollStatus(), 60000);
+        this._initPollProgressBar();
 
         /* Hamburger menu — create an overlay backdrop for mobile sidebar */
         const sidebar = document.querySelector('.sidebar');
@@ -125,8 +126,29 @@ const App = {
             this.navigate('/login');
         });
 
+        /* Theme toggle — restore saved theme from localStorage */
+        const savedTheme = localStorage.getItem('pawpoller-theme') || 'dark';
+        document.documentElement.dataset.theme = savedTheme;
+        this._updateThemeButton(savedTheme);
+        document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
+            const current = document.documentElement.dataset.theme || 'dark';
+            const next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.dataset.theme = next;
+            localStorage.setItem('pawpoller-theme', next);
+            this._updateThemeButton(next);
+            Charts.destroyAll();
+            this.route(); // re-render current page with new theme colors
+        });
+
         /* Sidebar version + update check */
         this._initSidebarVersion();
+    },
+
+    _updateThemeButton(theme) {
+        const btn = document.getElementById('theme-toggle-btn');
+        if (btn) {
+            btn.innerHTML = theme === 'dark' ? '&#9788; Light Mode' : '&#9790; Dark Mode';
+        }
     },
 
     async _initSidebarVersion() {
@@ -255,6 +277,8 @@ const App = {
             this.renderGroupDetail(parseInt(parts[1]));
         } else if (parts[0] === 'cross-platform') {
             this.renderCrossPlatform();
+        } else if (parts[0] === 'analytics') {
+            this.renderAnalytics();
         } else if (parts[0] === 'settings') {
             this.renderSettings();
         } else {
@@ -635,15 +659,22 @@ const App = {
     async renderDashboard() {
         this._loading();
         try {
-            /* Fetch IB summary stats and aggregate snapshots in parallel */
-            const [summary, agg] = await Promise.all([
+            /* Fetch IB summary stats, aggregate snapshots, pins, and goals in parallel */
+            const [summary, agg, pins, goals] = await Promise.all([
                 API.getSummary(),
                 API.getAggregate(Utils.getDateRange(this._dateRange)),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
             ]);
+            const ibPins = (pins.pins || []).filter(p => p.platform === 'ib');
+            const ibGoals = (goals.goals || []).filter(g => g.platform === 'ib' || g.platform === 'all');
 
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>Dashboard</h2></div>
+
+                ${ibPins.length ? Components.pinnedSubmissions(ibPins, 'ib') : ''}
+                ${ibGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(ibGoals)}</div>` : ''}
 
                 <div class="stats-grid">
                     ${Components.statCard('Total Submissions', summary.total_submissions)}
@@ -711,6 +742,7 @@ const App = {
 
             // Date range click handler
             this._bindDateRange(() => this.renderDashboard());
+            this._bindPinAndGoalActions(() => this.renderDashboard());
 
             this._startAutoRefresh(() => this.renderDashboard());
         } catch (err) {
@@ -771,8 +803,14 @@ const App = {
     async renderDetail(id) {
         this._loading();
         try {
-            const data = await API.getSubmission(id);
+            const [data, pins, allTags] = await Promise.all([
+                API.getSubmission(id),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
             const sub = data.submission;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'ib' && p.submission_id === id);
+            const currentTags = sub.tags || [];
 
             const html = `
                 ${this._refreshIndicatorHtml()}
@@ -787,6 +825,11 @@ const App = {
                             <div class="detail-stat">${Utils.formatNumber(sub.views)} <span class="lbl">views</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.favorites_count)} <span class="lbl">faves</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.comments_count)} <span class="lbl">comments</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="ib" data-id="${id}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="ib" data-id="${id}" style="padding:4px 10px;font-size:12px">+ Tag</button>
                         </div>
                         <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
                     </div>
@@ -825,6 +868,7 @@ const App = {
                 Charts.submissionLine('chart-detail', snaps.snapshots);
             });
 
+            this._bindDetailPinTag('ib', id, allTags.tags || [], () => this.renderDetail(id));
             this._startAutoRefresh(() => this.renderDetail(id));
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading submission</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -938,15 +982,21 @@ const App = {
     async renderFADashboard() {
         this._loading();
         try {
-            // Fetch summary stats and aggregate snapshots in parallel
-            const [summary, agg] = await Promise.all([
+            const [summary, agg, pins, goals] = await Promise.all([
                 API.getFASummary(),
                 API.getFAAggregate(Utils.getDateRange(this._dateRange)),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
             ]);
+            const faPins = (pins.pins || []).filter(p => p.platform === 'fa');
+            const faGoals = (goals.goals || []).filter(g => g.platform === 'fa' || g.platform === 'all');
 
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>FurAffinity Dashboard</h2></div>
+
+                ${faPins.length ? Components.pinnedSubmissions(faPins, 'fa') : ''}
+                ${faGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(faGoals)}</div>` : ''}
 
                 <div class="stats-grid">
                     ${Components.statCard('Total Submissions', summary.total_submissions)}
@@ -1008,9 +1058,8 @@ const App = {
                 Charts.topBar('chart-top-faves', summary.top_faved, 'favorites_count');
             }
 
-            // Wire date range buttons to re-render the entire dashboard with new date window
             this._bindDateRange(() => this.renderFADashboard());
-            // Start 60s auto-refresh cycle for live data updates
+            this._bindPinAndGoalActions(() => this.renderFADashboard());
             this._startAutoRefresh(() => this.renderFADashboard());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading FA dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -1070,8 +1119,14 @@ const App = {
     async renderFADetail(id) {
         this._loading();
         try {
-            const data = await API.getFASubmission(id);
+            const [data, pins, allTags] = await Promise.all([
+                API.getFASubmission(id),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
             const sub = data.submission;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'fa' && p.submission_id === id);
+            const currentTags = sub.tags || [];
 
             const html = `
                 ${this._refreshIndicatorHtml()}
@@ -1086,6 +1141,11 @@ const App = {
                             <div class="detail-stat">${Utils.formatNumber(sub.views)} <span class="lbl">views</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.favorites_count)} <span class="lbl">faves</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.comments_count)} <span class="lbl">comments</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="fa" data-id="${id}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="fa" data-id="${id}" style="padding:4px 10px;font-size:12px">+ Tag</button>
                         </div>
                         <div class="fa-metadata">
                             ${sub.category ? `<div class="fa-meta-item"><span class="fa-meta-label">Category</span><span class="fa-meta-value">${Utils.escapeHtml(sub.category)}</span></div>` : ''}
@@ -1127,6 +1187,7 @@ const App = {
                 Charts.submissionLine('chart-detail', snaps.snapshots);
             });
 
+            this._bindDetailPinTag('fa', id, allTags.tags || [], () => this.renderFADetail(id));
             this._startAutoRefresh(() => this.renderFADetail(id));
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading FA submission</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -1245,11 +1306,14 @@ const App = {
     async renderWSDashboard() {
         this._loading();
         try {
-            // Parallel fetch: summary stats and aggregate snapshot time-series
-            const [summary, agg] = await Promise.all([
+            const [summary, agg, pins, goals] = await Promise.all([
                 API.getWSSummary(),
                 API.getWSAggregate(Utils.getDateRange(this._dateRange)),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
             ]);
+            const wsPins = (pins.pins || []).filter(p => p.platform === 'ws');
+            const wsGoals = (goals.goals || []).filter(g => g.platform === 'ws' || g.platform === 'all');
 
             const html = `
                 ${this._refreshIndicatorHtml()}
@@ -1257,6 +1321,9 @@ const App = {
                     <h2>Weasyl Dashboard</h2>
                     <button class="btn btn-secondary" onclick="API.exportSubmissions('ws')">Export CSV</button>
                 </div>
+
+                ${wsPins.length ? Components.pinnedSubmissions(wsPins, 'ws') : ''}
+                ${wsGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(wsGoals)}</div>` : ''}
 
                 <div class="stats-grid">
                     ${Components.statCard('Total Submissions', summary.total_submissions)}
@@ -1307,6 +1374,7 @@ const App = {
             }
 
             this._bindDateRange(() => this.renderWSDashboard());
+            this._bindPinAndGoalActions(() => this.renderWSDashboard());
             this._startAutoRefresh(() => this.renderWSDashboard());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading WS dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -1364,8 +1432,14 @@ const App = {
     async renderWSDetail(id) {
         this._loading();
         try {
-            const data = await API.getWSSubmission(id);
+            const [data, pins, allTags] = await Promise.all([
+                API.getWSSubmission(id),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
             const sub = data.submission;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'ws' && p.submission_id === id);
+            const currentTags = sub.tags || [];
 
             const html = `
                 ${this._refreshIndicatorHtml()}
@@ -1380,6 +1454,11 @@ const App = {
                             <div class="detail-stat">${Utils.formatNumber(sub.views)} <span class="lbl">views</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.favorites_count)} <span class="lbl">faves</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.comments_count)} <span class="lbl">comments</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="ws" data-id="${id}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="ws" data-id="${id}" style="padding:4px 10px;font-size:12px">+ Tag</button>
                         </div>
                         <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
                     </div>
@@ -1409,6 +1488,7 @@ const App = {
                 Charts.submissionLine('chart-detail', snaps.snapshots);
             });
 
+            this._bindDetailPinTag('ws', id, allTags.tags || [], () => this.renderWSDetail(id));
             this._startAutoRefresh(() => this.renderWSDetail(id));
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading WS submission</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -1518,10 +1598,14 @@ const App = {
     async renderSFDashboard() {
         this._loading();
         try {
-            const [summary, agg] = await Promise.all([
+            const [summary, agg, pins, goals] = await Promise.all([
                 API.getSFSummary(),
                 API.getSFAggregate(Utils.getDateRange(this._dateRange)),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
             ]);
+            const sfPins = (pins.pins || []).filter(p => p.platform === 'sf');
+            const sfGoals = (goals.goals || []).filter(g => g.platform === 'sf' || g.platform === 'all');
 
             const html = `
                 ${this._refreshIndicatorHtml()}
@@ -1529,6 +1613,9 @@ const App = {
                     <h2>SoFurry Dashboard</h2>
                     <button class="btn btn-secondary" onclick="API.exportSubmissions('sf')">Export CSV</button>
                 </div>
+
+                ${sfPins.length ? Components.pinnedSubmissions(sfPins, 'sf') : ''}
+                ${sfGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(sfGoals)}</div>` : ''}
 
                 <div class="stats-grid">
                     ${Components.statCard('Total Submissions', summary.total_submissions)}
@@ -1578,6 +1665,7 @@ const App = {
             }
 
             this._bindDateRange(() => this.renderSFDashboard());
+            this._bindPinAndGoalActions(() => this.renderSFDashboard());
             this._startAutoRefresh(() => this.renderSFDashboard());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading SF dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -1625,8 +1713,14 @@ const App = {
     async renderSFDetail(id) {
         this._loading();
         try {
-            const data = await API.getSFSubmission(id);
+            const [data, pins, allTags] = await Promise.all([
+                API.getSFSubmission(id),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
             const sub = data.submission;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'sf' && String(p.submission_id) === String(id));
+            const currentTags = sub.tags || [];
 
             const html = `
                 ${this._refreshIndicatorHtml()}
@@ -1641,6 +1735,11 @@ const App = {
                             <div class="detail-stat">${Utils.formatNumber(sub.views)} <span class="lbl">views</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.favorites_count)} <span class="lbl">likes</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.comments_count)} <span class="lbl">comments</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="sf" data-id="${id}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="sf" data-id="${id}" style="padding:4px 10px;font-size:12px">+ Tag</button>
                         </div>
                         <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
                     </div>
@@ -1668,6 +1767,7 @@ const App = {
                 Charts.submissionLine('chart-detail', snaps.snapshots);
             });
 
+            this._bindDetailPinTag('sf', id, allTags.tags || [], () => this.renderSFDetail(id));
             this._startAutoRefresh(() => this.renderSFDetail(id));
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading SF submission</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -2189,6 +2289,36 @@ const App = {
                             <option value="240" ${prefs.sf_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
                         </select>
                     </div>
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Display timezone</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Timezone for Telegram messages and timestamps</div>
+                        </div>
+                        <select class="filter-select" id="pref-timezone" style="width:auto">
+                            ${[
+                                ['UTC', 'UTC'],
+                                ['Australia/Sydney', 'Sydney (AEST/AEDT)'],
+                                ['Australia/Melbourne', 'Melbourne (AEST/AEDT)'],
+                                ['Australia/Brisbane', 'Brisbane (AEST)'],
+                                ['Australia/Adelaide', 'Adelaide (ACST/ACDT)'],
+                                ['Australia/Perth', 'Perth (AWST)'],
+                                ['Australia/Darwin', 'Darwin (ACST)'],
+                                ['Australia/Hobart', 'Hobart (AEST/AEDT)'],
+                                ['Pacific/Auckland', 'Auckland (NZST/NZDT)'],
+                                ['Asia/Tokyo', 'Tokyo (JST)'],
+                                ['Asia/Singapore', 'Singapore (SGT)'],
+                                ['Asia/Hong_Kong', 'Hong Kong (HKT)'],
+                                ['Asia/Kolkata', 'India (IST)'],
+                                ['Europe/London', 'London (GMT/BST)'],
+                                ['Europe/Paris', 'Paris (CET/CEST)'],
+                                ['Europe/Berlin', 'Berlin (CET/CEST)'],
+                                ['America/New_York', 'New York (EST/EDT)'],
+                                ['America/Chicago', 'Chicago (CST/CDT)'],
+                                ['America/Denver', 'Denver (MST/MDT)'],
+                                ['America/Los_Angeles', 'Los Angeles (PST/PDT)'],
+                            ].map(([val, label]) => `<option value="${val}" ${prefs.display_timezone === val ? 'selected' : ''}>${label}</option>`).join('')}
+                        </select>
+                    </div>
                 </div>
 
                 <div class="settings-section">
@@ -2247,6 +2377,49 @@ const App = {
                         </div>
                         <input type="number" class="search-input" id="pref-min-faves-delta" value="${prefs.notification_min_faves_delta || 0}" min="0" style="width:80px;text-align:center">
                     </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Milestone Thresholds</h3>
+                    <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Comma-separated numbers. Telegram will notify when a submission crosses any of these thresholds.</p>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">View milestones</label>
+                        <input type="text" id="pref-milestone-views" class="search-input" value="${(prefs.milestone_views || [100,250,500,1000,2500,5000,10000,25000,50000,100000]).join(', ')}" style="max-width:500px">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Fave milestones</label>
+                        <input type="text" id="pref-milestone-faves" class="search-input" value="${(prefs.milestone_faves || [10,25,50,100,250,500,1000,2500,5000]).join(', ')}" style="max-width:500px">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Comment milestones</label>
+                        <input type="text" id="pref-milestone-comments" class="search-input" value="${(prefs.milestone_comments || [10,25,50,100,250,500,1000]).join(', ')}" style="max-width:500px">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
+                        <button class="btn btn-primary" id="save-milestones-btn">Save Milestones</button>
+                        <span id="milestones-msg" style="font-size:13px"></span>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Backup &amp; Restore</h3>
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Download database backup</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Download a complete copy of your database</div>
+                        </div>
+                        <button class="btn btn-secondary" id="backup-download-btn">Download Backup</button>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">Restore from backup</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Replace current database with a backup file</div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <input type="file" id="restore-file-input" accept=".db,.sqlite,.sqlite3" style="font-size:12px">
+                            <button class="btn btn-danger" id="backup-restore-btn" disabled>Restore</button>
+                        </div>
+                    </div>
+                    <span id="backup-msg" style="font-size:13px;margin-top:8px;display:block"></span>
                 </div>
 
                 ${updateInfo.available ? `
@@ -3029,6 +3202,15 @@ const App = {
                 }
             });
 
+            // Display timezone dropdown
+            document.getElementById('pref-timezone')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ display_timezone: e.target.value });
+                } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
             // SF notification filter toggle
             document.getElementById('pref-sf-notif-comments-only')?.addEventListener('change', async (e) => {
                 try { await API.savePreferences({ sf_notification_comments_only: e.target.checked }); }
@@ -3136,6 +3318,52 @@ const App = {
                 });
             }
 
+            // Save Milestones
+            document.getElementById('save-milestones-btn')?.addEventListener('click', async () => {
+                const msg = document.getElementById('milestones-msg');
+                const parse = (id) => document.getElementById(id).value.split(',').map(s => parseInt(s.trim())).filter(n => n > 0).sort((a, b) => a - b);
+                try {
+                    const payload = {
+                        milestone_views: parse('pref-milestone-views'),
+                        milestone_faves: parse('pref-milestone-faves'),
+                        milestone_comments: parse('pref-milestone-comments'),
+                    };
+                    await API.savePreferences(payload);
+                    msg.textContent = 'Saved!'; msg.style.color = 'var(--success)';
+                } catch (err) {
+                    msg.textContent = 'Error: ' + err.message; msg.style.color = 'var(--danger)';
+                }
+            });
+
+            // Backup Download
+            document.getElementById('backup-download-btn')?.addEventListener('click', () => API.downloadBackup());
+
+            // Backup Restore
+            const restoreFileInput = document.getElementById('restore-file-input');
+            const restoreBtn = document.getElementById('backup-restore-btn');
+            if (restoreFileInput && restoreBtn) {
+                restoreFileInput.addEventListener('change', () => {
+                    restoreBtn.disabled = !restoreFileInput.files.length;
+                });
+                restoreBtn.addEventListener('click', async () => {
+                    if (!confirm('Replace current database with this backup? This cannot be undone.')) return;
+                    const msg = document.getElementById('backup-msg');
+                    restoreBtn.disabled = true;
+                    restoreBtn.textContent = 'Restoring...';
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', restoreFileInput.files[0]);
+                        await API.restoreBackup(formData);
+                        msg.textContent = 'Restored! Reloading...'; msg.style.color = 'var(--success)';
+                        setTimeout(() => window.location.reload(), 1500);
+                    } catch (err) {
+                        msg.textContent = 'Error: ' + err.message; msg.style.color = 'var(--danger)';
+                        restoreBtn.textContent = 'Restore';
+                        restoreBtn.disabled = false;
+                    }
+                });
+            }
+
             // Auto-Update
             const applyUpdateBtn = document.getElementById('apply-update-btn');
             if (applyUpdateBtn) {
@@ -3163,7 +3391,7 @@ const App = {
                         const result = await API.checkUpdate();
                         if (result.available) {
                             // Re-render settings to show the update section
-                            this.settings();
+                            this.renderSettings();
                         } else {
                             const statusText = document.getElementById('update-status-text');
                             if (statusText) statusText.textContent = 'Up to date';
@@ -3441,6 +3669,152 @@ const App = {
         ratingSelect?.addEventListener('change', doFilter);
     },
 
+    // ── Pin/Goal/Tag action helpers ──────────────────────────
+
+    // Binds click handlers for unpin buttons and goal delete buttons on dashboards
+    _bindPinAndGoalActions(rerender) {
+        document.querySelectorAll('.pinned-card[data-nav]').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.btn-unpin')) return;
+                const nav = card.dataset.nav;
+                if (nav) this.navigate('/' + nav);
+            });
+            card.style.cursor = 'pointer';
+        });
+        document.querySelectorAll('.btn-unpin').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                try {
+                    await API.removePin(btn.dataset.platform, btn.dataset.id);
+                    rerender();
+                } catch (err) { alert('Failed to unpin: ' + err.message); }
+            });
+        });
+        document.querySelectorAll('.btn-goal-delete').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (!confirm('Delete this goal?')) return;
+                try {
+                    await API.deleteGoal(parseInt(btn.dataset.goalId));
+                    rerender();
+                } catch (err) { alert('Failed to delete goal: ' + err.message); }
+            });
+        });
+    },
+
+    // Binds pin toggle button and tag add button on detail pages
+    _bindDetailPinTag(platform, subId, allTags, rerender) {
+        document.querySelectorAll('.btn-pin').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const isPinned = btn.textContent.trim() === 'Unpin';
+                try {
+                    if (isPinned) {
+                        await API.removePin(platform, subId);
+                    } else {
+                        await API.addPin({ platform, submission_id: subId });
+                    }
+                    rerender();
+                } catch (err) { alert('Failed: ' + err.message); }
+            });
+        });
+        document.querySelectorAll('.btn-add-tag').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (!allTags.length) {
+                    const name = prompt('Create a new tag (enter name):');
+                    if (!name) return;
+                    try {
+                        const result = await API.createTag({ name });
+                        await API.addTagToSubmission(result.tag_id, { platform, submission_id: subId });
+                        rerender();
+                    } catch (err) { alert('Failed: ' + err.message); }
+                    return;
+                }
+                const options = allTags.map(t => `${t.tag_id}: ${t.name}`).join('\n');
+                const choice = prompt(`Enter tag ID to add (or "new" to create):\n${options}`);
+                if (!choice) return;
+                try {
+                    if (choice.toLowerCase() === 'new') {
+                        const name = prompt('New tag name:');
+                        if (!name) return;
+                        const result = await API.createTag({ name });
+                        await API.addTagToSubmission(result.tag_id, { platform, submission_id: subId });
+                    } else {
+                        const tagId = parseInt(choice);
+                        if (isNaN(tagId)) return;
+                        await API.addTagToSubmission(tagId, { platform, submission_id: subId });
+                    }
+                    rerender();
+                } catch (err) { alert('Failed: ' + err.message); }
+            });
+        });
+        document.querySelectorAll('.tag-badge[data-tag-id]').forEach(badge => {
+            badge.style.cursor = 'pointer';
+            badge.title = 'Click to remove tag';
+            badge.addEventListener('click', async () => {
+                try {
+                    await API.removeTagFromSubmission(parseInt(badge.dataset.tagId), platform, subId);
+                    rerender();
+                } catch (err) { alert('Failed: ' + err.message); }
+            });
+        });
+    },
+
+    // ── Analytics Page ──────────────────────────────────────────
+
+    async renderAnalytics() {
+        this._loading();
+        try {
+            const data = await API.getHistoricalAnalytics({ weeks: 12 });
+
+            const bestMonth = data.best_month || {};
+            const fastest = data.fastest_growing || [];
+            const weekly = data.weekly_growth || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>Analytics</h2></div>
+
+                <div class="stats-grid">
+                    ${Components.highlightCard('Best Month (Views)', bestMonth.views ? `+${Utils.formatNumber(bestMonth.views.delta)}` : '--', bestMonth.views ? bestMonth.views.period : '')}
+                    ${Components.highlightCard('Best Month (Faves)', bestMonth.faves ? `+${Utils.formatNumber(bestMonth.faves.delta)}` : '--', bestMonth.faves ? bestMonth.faves.period : '')}
+                    ${Components.highlightCard('Best Month (Comments)', bestMonth.comments ? `+${Utils.formatNumber(bestMonth.comments.delta)}` : '--', bestMonth.comments ? bestMonth.comments.period : '')}
+                </div>
+
+                ${fastest.length ? `
+                <div class="chart-container">
+                    <h3>Fastest Growing All-Time</h3>
+                    <div class="table-scroll">
+                        <table class="data-table">
+                            <thead><tr><th>Platform</th><th>Title</th><th>Views</th><th>Faves</th><th>Views/Day</th></tr></thead>
+                            <tbody>
+                                ${fastest.map(f => `<tr>
+                                    <td>${Utils.escapeHtml(f.platform || '')}</td>
+                                    <td>${Utils.escapeHtml(f.title || '')}</td>
+                                    <td>${Utils.formatNumber(f.views || 0)}</td>
+                                    <td>${Utils.formatNumber(f.faves || 0)}</td>
+                                    <td>${(f.views_per_day || 0).toFixed(1)}</td>
+                                </tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>` : ''}
+
+                ${weekly.length ? `
+                <div class="chart-container">
+                    <h3>Weekly Growth (Last 12 Weeks)</h3>
+                    <div class="chart-wrap" style="min-height:300px"><canvas id="chart-weekly-growth"></canvas></div>
+                </div>` : ''}
+            `;
+
+            this._setContent(html);
+
+            if (weekly.length) {
+                Charts.weeklyGrowthBar('chart-weekly-growth', weekly);
+            }
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading analytics</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
     // Sidebar footer poll status ticker. Called on a 60-second interval set up
     // in init(). Fetches the latest poll log entry and updates the small
     // "Last poll: X ago" badge at the bottom of the sidebar. Failures are
@@ -3452,6 +3826,96 @@ const App = {
             if (el && status.last_poll) {
                 el.textContent = `Last poll: ${Utils.timeAgo(status.last_poll.started_at)}`;
             }
+        } catch { /* ignore */ }
+    },
+
+    // ── Global Poll Progress Bar ──────────────────────────────
+    // Polls all 4 platform progress endpoints on a timer. When any platform
+    // is actively polling, shows a thin progress bar at the top of the page.
+    // Uses a fast interval (1.5s) when active, slow (10s) when idle.
+
+    _pollProgressActive: false,
+    _pollProgressTimer: null,
+
+    _initPollProgressBar() {
+        this._pollProgressTick();
+        this._pollProgressTimer = setInterval(() => this._pollProgressTick(), 10000);
+    },
+
+    async _pollProgressTick() {
+        const bar = document.getElementById('poll-progress-bar');
+        const fill = document.getElementById('poll-progress-fill');
+        const label = document.getElementById('poll-progress-label');
+        if (!bar || !fill || !label) return;
+
+        try {
+            const [ib, fa, ws, sf] = await Promise.all([
+                API.getPollProgress().catch(() => null),
+                API.getFAPollProgress().catch(() => null),
+                API.getWSPollProgress().catch(() => null),
+                API.getSFPollProgress().catch(() => null),
+            ]);
+
+            const platforms = [
+                { name: 'Inkbunny', data: ib },
+                { name: 'FurAffinity', data: fa },
+                { name: 'Weasyl', data: ws },
+                { name: 'SoFurry', data: sf },
+            ];
+
+            const active = platforms.filter(p => p.data && p.data.active);
+
+            if (active.length === 0) {
+                bar.style.display = 'none';
+                if (this._pollProgressActive) {
+                    this._pollProgressActive = false;
+                    clearInterval(this._pollProgressTimer);
+                    this._pollProgressTimer = setInterval(() => this._pollProgressTick(), 10000);
+                }
+                return;
+            }
+
+            // Switch to fast polling when active
+            if (!this._pollProgressActive) {
+                this._pollProgressActive = true;
+                clearInterval(this._pollProgressTimer);
+                this._pollProgressTimer = setInterval(() => this._pollProgressTick(), 1500);
+            }
+
+            bar.style.display = 'block';
+
+            // Aggregate progress: average across active pollers
+            let totalPct = 0;
+            const labels = [];
+            for (const p of active) {
+                const d = p.data;
+                let pct = 0;
+                if (d.total > 0) {
+                    pct = Math.round((d.current / d.total) * 100);
+                } else if (d.phase === 'complete') {
+                    pct = 100;
+                } else if (d.phase === 'starting' || d.phase === 'logging_in') {
+                    pct = 10;
+                } else if (d.phase === 'searching') {
+                    pct = 20;
+                } else if (d.phase === 'fetching_details') {
+                    pct = 35;
+                } else {
+                    pct = 5;
+                }
+                totalPct += pct;
+                const msg = d.message || d.phase || '';
+                if (d.total > 0) {
+                    labels.push(`${p.name}: ${d.current}/${d.total}`);
+                } else {
+                    labels.push(`${p.name}: ${msg}`);
+                }
+            }
+
+            const avgPct = Math.round(totalPct / active.length);
+            fill.style.width = Math.min(100, Math.max(2, avgPct)) + '%';
+            label.textContent = labels.join('  ·  ');
+
         } catch { /* ignore */ }
     },
 };

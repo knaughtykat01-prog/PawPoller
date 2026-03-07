@@ -874,4 +874,67 @@ const Components = {
         }).join('');
         return `<div class="comments-list">${items}</div>`;
     },
+
+    /* ── Pinned Submissions ──────────────────────────────────── */
+    pinnedSubmissions(items, platform) {
+        if (!items || items.length === 0) return '';
+        const cards = items.map(sub => `
+            <div class="pinned-card" data-nav="${platform === 'ib' ? '' : platform + '/'}submission/${sub.submission_id}">
+                <div class="pinned-title">${Utils.escapeHtml(sub.title)}</div>
+                <div class="pinned-stats">
+                    <div><span>${Utils.formatCompact(sub.views)}</span> views</div>
+                    <div><span>${Utils.formatCompact(sub.favorites_count)}</span> faves</div>
+                    <div><span>${Utils.formatCompact(sub.comments_count)}</span> cmts</div>
+                </div>
+                <button class="btn-unpin" data-platform="${platform}" data-id="${sub.submission_id}">Unpin</button>
+            </div>
+        `).join('');
+        return `<div class="pinned-section"><h3>Pinned</h3><div class="pinned-row">${cards}</div></div>`;
+    },
+
+    /* ── Goal Progress Cards ─────────────────────────────────── */
+    goalProgressCards(goals) {
+        if (!goals || goals.length === 0) return '';
+        const metricLabels = { views: 'Views', favorites_count: 'Faves', comments_count: 'Comments', watchers: 'Watchers' };
+        const cards = goals.map(g => {
+            const pct = g.target_value > 0 ? Math.min(100, Math.round((g.current_value / g.target_value) * 100)) : 0;
+            const complete = pct >= 100;
+            const title = g.submission_title ? Utils.truncate(g.submission_title, 25) : 'Account Total';
+            return `
+                <div class="goal-card">
+                    <div class="goal-header">
+                        <div>
+                            <div class="goal-title">${Utils.escapeHtml(title)}</div>
+                            <div class="goal-metric">${metricLabels[g.metric] || g.metric}</div>
+                        </div>
+                        <button class="btn-goal-delete" data-goal-id="${g.goal_id}" title="Delete goal">&#x2715;</button>
+                    </div>
+                    <div class="goal-progress-bar">
+                        <div class="goal-progress-fill ${complete ? 'complete' : ''}" style="width:${pct}%"></div>
+                    </div>
+                    <div class="goal-numbers">
+                        <span class="goal-current">${Utils.formatNumber(g.current_value)}</span>
+                        <span>${Utils.formatNumber(g.target_value)} (${pct}%)</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        return `<div class="goal-grid">${cards}</div>`;
+    },
+
+    /* ── Tag Badge ───────────────────────────────────────────── */
+    tagBadge(tag) {
+        return `<span class="tag-badge" data-tag-id="${tag.tag_id}" style="background:${Utils.escapeHtml(tag.color)}">${Utils.escapeHtml(tag.name)}</span>`;
+    },
+
+    /* ── Highlight Card (Analytics) ──────────────────────────── */
+    highlightCard(label, value, subtitle) {
+        return `
+            <div class="highlight-card">
+                <div class="label">${Utils.escapeHtml(label)}</div>
+                <div class="value">${value}</div>
+                ${subtitle ? `<div class="subtitle">${Utils.escapeHtml(subtitle)}</div>` : ''}
+            </div>
+        `;
+    },
 };

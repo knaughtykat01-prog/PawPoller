@@ -97,6 +97,9 @@
             <li><a href="#/cross-platform" class="nav-link" data-page="cross-platform">
                 <span class="nav-icon">&#128279;</span> Cross-Platform
             </a></li>
+            <li><a href="#/analytics" class="nav-link" data-page="analytics">
+                <span class="nav-icon">&#128200;</span> Analytics
+            </a></li>
 
             <!-- Spacer: flex-grow:1 pushes Settings to the bottom of the nav list -->
             <li class="nav-section" style="flex-grow:1"></li>
@@ -111,6 +114,7 @@
              time) and logout button -->
         <div class="sidebar-footer">
             <div id="poll-status-mini" class="poll-badge">--</div>
+            <button class="btn-theme-toggle" id="theme-toggle-btn" title="Toggle light/dark theme">&#9788; Light Mode</button>
             <button class="btn-logout" id="logout-btn" title="Sign out">&#x2190; Sign Out</button>
             <div id="sidebar-version" class="sidebar-version"></div>
         </div>
@@ -122,6 +126,12 @@
          element by app.js based on the current hash route. The initial
          "Loading..." spinner is replaced once the app initialises.
          ============================================================ -->
+    <div id="poll-progress-bar" class="poll-progress-bar" style="display:none">
+        <div class="poll-progress-track">
+            <div class="poll-progress-fill" id="poll-progress-fill"></div>
+        </div>
+        <div class="poll-progress-label" id="poll-progress-label"></div>
+    </div>
     <main id="app" class="main-content">
         <div class="loading-spinner">Loading...</div>
     </main>

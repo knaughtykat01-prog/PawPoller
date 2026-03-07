@@ -445,7 +445,7 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
                      stats["new_faves_found"], stats["new_comments_found"], stats["new_watchers_found"])
 
         # ── Telegram summaries + milestones ───────────────────
-        from polling.telegram import send_poll_summary, check_milestones_batch
+        from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
         if not _first_poll:
             try:
                 await send_poll_summary("ib", stats, duration)
@@ -455,6 +455,10 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
                 await check_milestones_batch("ib", "snapshots", "submissions")
             except Exception as me:
                 logger.warning("Failed to check IB milestones: %s", me)
+            try:
+                await check_goals()
+            except Exception as ge:
+                logger.warning("Failed to check goals: %s", ge)
 
         return stats
 

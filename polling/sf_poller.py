@@ -221,7 +221,7 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
 
         # ── Telegram notifications ────────────────────────────
         if not _sf_first_poll:
-            from polling.telegram import send_poll_summary, check_milestones_batch
+            from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
             try:
                 await send_poll_summary("sf", stats, duration)
             except Exception as te:
@@ -230,6 +230,10 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
                 await check_milestones_batch("sf", "sf_snapshots", "sf_submissions")
             except Exception as me:
                 logger.warning("Failed to check SF milestones: %s", me)
+            try:
+                await check_goals()
+            except Exception as ge:
+                logger.warning("Failed to check goals: %s", ge)
 
         return stats
 

@@ -221,4 +221,59 @@ const API = {
      */
     checkUpdate() { return this.get('/api/update/check'); },
     applyUpdate(data) { return this.post('/api/update/apply', data); },
+    /* ── Pins methods ─────────────────────────────────────────────
+     * Pin/unpin favourite submissions to dashboard tops.
+     */
+    getPins() { return this.get('/api/pins'); },
+    addPin(data) { return this.post('/api/pins', data); },
+    removePin(platform, submissionId) {
+        return fetch(`/api/pins?platform=${platform}&submission_id=${submissionId}`, { method: 'DELETE' }).then(r => {
+            if (!r.ok) throw new Error(`Unpin failed: ${r.status}`);
+            return r.json();
+        });
+    },
+    /* ── Goals methods ────────────────────────────────────────────
+     * Track progress toward user-defined metric targets.
+     */
+    getGoals() { return this.get('/api/goals'); },
+    createGoal(data) { return this.post('/api/goals', data); },
+    deleteGoal(id) {
+        return fetch(`/api/goals/${id}`, { method: 'DELETE' }).then(r => {
+            if (!r.ok) throw new Error(`Delete goal failed: ${r.status}`);
+            return r.json();
+        });
+    },
+    /* ── Tags methods ─────────────────────────────────────────────
+     * User-defined submission categorisation labels.
+     */
+    getTags() { return this.get('/api/tags'); },
+    createTag(data) { return this.post('/api/tags', data); },
+    deleteTag(id) {
+        return fetch(`/api/tags/${id}`, { method: 'DELETE' }).then(r => {
+            if (!r.ok) throw new Error(`Delete tag failed: ${r.status}`);
+            return r.json();
+        });
+    },
+    addTagToSubmission(tagId, data) { return this.post(`/api/tags/${tagId}/submissions`, data); },
+    removeTagFromSubmission(tagId, platform, submissionId) {
+        return fetch(`/api/tags/${tagId}/submissions?platform=${platform}&submission_id=${submissionId}`, { method: 'DELETE' }).then(r => {
+            if (!r.ok) throw new Error(`Remove tag failed: ${r.status}`);
+            return r.json();
+        });
+    },
+    getTagStats(id) { return this.get(`/api/tags/${id}/stats`); },
+    /* ── Backup methods ───────────────────────────────────────────
+     * Database backup and restore.
+     */
+    downloadBackup() { window.open('/api/backup/database', '_blank'); },
+    restoreBackup(formData) {
+        return fetch('/api/backup/restore', { method: 'POST', body: formData }).then(r => {
+            if (!r.ok) throw new Error(`Restore failed: ${r.status}`);
+            return r.json();
+        });
+    },
+    /* ── Historical Analytics ─────────────────────────────────────
+     * Best periods, fastest growing, weekly growth reports.
+     */
+    getHistoricalAnalytics(params) { return this.get('/api/analytics/historical', params); },
 };

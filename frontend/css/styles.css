@@ -28,6 +28,28 @@
     --shadow: 0 2px 8px rgba(0,0,0,0.3); /* Subtle drop shadow for elevated card surfaces */
 }
 
+/* Light theme overrides: applied when data-theme="light" is set on <html>.
+   Inverts the dark palette to a clean, bright appearance while preserving
+   the same accent/success/danger/warning colours for consistency. */
+[data-theme="light"] {
+    --bg-primary: #f5f6f8;
+    --bg-secondary: #ffffff;
+    --bg-card: #ffffff;
+    --bg-tertiary: #eef0f4;
+    --bg-hover: #e8eaf0;
+    --border: #d4d7e0;
+    --text-primary: #1a1d27;
+    --text-secondary: #4a5068;
+    --text-muted: #7c8298;
+    --accent: #4a6bdf;
+    --accent-dim: #3d5bc9;
+    --success: #16a34a;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --info: #2563eb;
+    --shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
 /* Body: flex row layout (sidebar + main) filling at least the full viewport
    height. System font stack for native-feeling typography on all platforms. */
 body {
@@ -834,6 +856,45 @@ body {
     transition: width 0.4s ease;
 }
 
+/* ── Global Poll Progress Bar ─────────────────────────────── */
+/* Thin horizontal bar pinned to the top of the content area, shown while
+   any platform poller is actively running. Slides in/out with a height
+   transition. The fill animates width for smooth progress updates. */
+.poll-progress-bar {
+    position: fixed;
+    top: 0;
+    left: var(--sidebar-w);
+    right: 0;
+    z-index: 100;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    padding: 0;
+    transition: opacity 0.3s ease;
+}
+.poll-progress-track {
+    width: 100%;
+    height: 4px;
+    background: var(--bg-hover);
+}
+.poll-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+    transition: width 0.5s ease;
+    width: 0%;
+}
+.poll-progress-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 12px 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+@media (max-width: 768px) {
+    .poll-progress-bar { left: 0; }
+}
+
 /* ── Detail Page ──────────────────────────────────────────── */
 /* Submission detail page header: flex row with a thumbnail image on
    the left and metadata (title, creator, date, stats) on the right.
@@ -980,6 +1041,14 @@ body {
     .page-header { flex-direction: column; gap: 12px; align-items: flex-start; }
     .toolbar { flex-direction: column; }
     .search-input { width: 100%; }
+
+    .settings-row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .settings-row input, .settings-row select { width: 100%; }
+    .chart-wrap { min-height: 200px; }
+    .pinned-row { gap: 12px; }
+    .pinned-card { min-width: 140px; }
+    .goal-grid { grid-template-columns: 1fr; }
+    .filter-select, .toggle-switch { touch-action: manipulation; }
 }
 
 /* -- 480px breakpoint: small phones --
@@ -997,6 +1066,13 @@ body {
     .data-table td:nth-child(3),
     .data-table th:nth-child(4),
     .data-table td:nth-child(4) { display: none; }
+
+    .main-content { padding: 12px; }
+    .page-header h2 { font-size: 1.2rem; }
+    .growth-grid { grid-template-columns: 1fr; }
+    .pinned-row { scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
+    .pinned-card { scroll-snap-align: start; min-width: 130px; }
+    .stat-card { font-size: 14px; }
 }
 
 /* ── Scrollbar ────────────────────────────────────────────── */
@@ -1184,4 +1260,237 @@ body {
     line-height: 1.6;
     white-space: pre-wrap;
     word-wrap: break-word;
+}
+
+/* ── Theme Toggle ────────────────────────────────────────── */
+.btn-theme-toggle {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    padding: 5px 0;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.btn-theme-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Light-theme scrollbar override for WebKit browsers */
+[data-theme="light"] ::-webkit-scrollbar-track { background: var(--bg-primary); }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--border); }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Pinned Submissions ─────────────────────────────────── */
+.pinned-section {
+    margin-bottom: 20px;
+}
+.pinned-section h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+}
+.pinned-row {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    scroll-snap-type: x mandatory;
+}
+.pinned-card {
+    flex: 0 0 200px;
+    background: var(--bg-card);
+    border: 1px solid var(--accent-dim);
+    border-radius: var(--radius);
+    padding: 12px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: border-color 0.15s;
+    scroll-snap-align: start;
+}
+.pinned-card:hover { border-color: var(--accent); }
+.pinned-card .pinned-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 6px;
+}
+.pinned-card .pinned-stats {
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+.pinned-card .pinned-stats span { font-weight: 600; color: var(--text-secondary); }
+.pinned-card .btn-unpin {
+    display: block;
+    margin-top: 6px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 10px;
+    cursor: pointer;
+    padding: 0;
+}
+.pinned-card .btn-unpin:hover { color: var(--danger); }
+
+/* ── Goal Tracking ──────────────────────────────────────── */
+.goals-section { margin-bottom: 20px; }
+.goals-section h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.goal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+}
+.goal-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    box-shadow: var(--shadow);
+}
+.goal-card .goal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.goal-card .goal-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.goal-card .goal-metric {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.goal-progress-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+.goal-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+.goal-progress-fill.complete { background: var(--success); }
+.goal-card .goal-numbers {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.goal-card .goal-numbers .goal-current { color: var(--text-primary); font-weight: 600; }
+.goal-card .btn-goal-delete {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0;
+}
+.goal-card .btn-goal-delete:hover { color: var(--danger); }
+
+/* ── Tags ───────────────────────────────────────────────── */
+.tag-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    margin: 2px;
+    color: #fff;
+}
+.tag-editor {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    margin-top: 8px;
+}
+.tag-editor .btn-add-tag {
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: 3px;
+    color: var(--text-muted);
+    font-size: 11px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+.tag-editor .btn-add-tag:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Historical Analytics ───────────────────────────────── */
+.highlight-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    box-shadow: var(--shadow);
+}
+.highlight-card .label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+.highlight-card .value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.highlight-card .subtitle {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+.milestone-timeline {
+    list-style: none;
+}
+.milestone-timeline li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+}
+.milestone-timeline li:last-child { border-bottom: none; }
+.milestone-timeline .ms-date {
+    color: var(--text-muted);
+    font-size: 11px;
+    min-width: 90px;
+}
+.milestone-timeline .ms-badge {
+    background: var(--accent-dim);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
 }

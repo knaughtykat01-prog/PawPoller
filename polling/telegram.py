@@ -10,6 +10,7 @@ Provides reusable send function and higher-level notification builders:
 from __future__ import annotations
 import logging
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -20,11 +21,38 @@ from html import escape as _esc
 
 logger = logging.getLogger(__name__)
 
-# Milestone thresholds — when a submission crosses one of these values for a
-# given metric, a one-time notification is sent.  Checked after each poll cycle.
-VIEW_MILESTONES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000]
-FAVE_MILESTONES = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
-COMMENT_MILESTONES = [10, 25, 50, 100, 250, 500, 1000]
+# Default milestone thresholds — overridden by settings.json if configured.
+_DEFAULT_VIEW_MILESTONES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000]
+_DEFAULT_FAVE_MILESTONES = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
+_DEFAULT_COMMENT_MILESTONES = [10, 25, 50, 100, 250, 500, 1000]
+
+
+def _get_milestones() -> dict:
+    """Return current milestone thresholds from settings, falling back to defaults."""
+    s = config.get_settings()
+    return {
+        "views": s.get("milestone_views", _DEFAULT_VIEW_MILESTONES),
+        "faves": s.get("milestone_faves", _DEFAULT_FAVE_MILESTONES),
+        "comments": s.get("milestone_comments", _DEFAULT_COMMENT_MILESTONES),
+    }
+
+
+def format_tz(dt: datetime | None = None) -> str:
+    """Format a datetime in the user's configured display_timezone.
+
+    If *dt* is None, uses the current UTC time.  Falls back to UTC if the
+    configured timezone is invalid.  Returns 'YYYY-MM-DD HH:MM TZ'.
+    """
+    if dt is None:
+        dt = datetime.now(timezone.utc)
+    tz_name = config.get_settings().get("display_timezone", "UTC")
+    try:
+        tz = ZoneInfo(tz_name)
+    except (KeyError, Exception):
+        tz = timezone.utc
+    local = dt.astimezone(tz)
+    abbr = local.strftime("%Z")
+    return f"{local.strftime('%Y-%m-%d %H:%M')} {abbr}"
 
 
 # ── Core send helper ─────────────────────────────────────────
@@ -125,15 +153,16 @@ async def check_milestones(platform: str, submission_id: int, title: str,
     name = PLATFORM_NAME.get(platform, platform.upper())
     lines = []
 
-    view_m = _crossed_milestone(current_views, prev_views, VIEW_MILESTONES)
+    ms = _get_milestones()
+    view_m = _crossed_milestone(current_views, prev_views, ms["views"])
     if view_m:
         lines.append(f"  👁 {current_views:,} views (passed {view_m:,})")
 
-    fave_m = _crossed_milestone(current_faves, prev_faves, FAVE_MILESTONES)
+    fave_m = _crossed_milestone(current_faves, prev_faves, ms["faves"])
     if fave_m:
         lines.append(f"  ❤️ {current_faves:,} faves (passed {fave_m:,})")
 
-    comment_m = _crossed_milestone(current_comments, prev_comments, COMMENT_MILESTONES)
+    comment_m = _crossed_milestone(current_comments, prev_comments, ms["comments"])
     if comment_m:
         lines.append(f"  💬 {current_comments:,} comments (passed {comment_m:,})")
 
@@ -170,6 +199,76 @@ async def check_milestones_batch(platform: str, snap_table: str, sub_table: str)
                 curr["views"], curr["favorites_count"], curr["comments_count"],
                 prev["views"], prev["favorites_count"], prev["comments_count"],
             )
+    finally:
+        conn.close()
+
+
+# ── Goal Completion Check ─────────────────────────────────────
+
+async def check_goals() -> None:
+    """Check all active goals and send notifications for newly completed ones."""
+    settings = config.get_settings()
+    if not settings.get("telegram_enabled", False):
+        return
+
+    ALLOWED_METRICS = {"views", "favorites_count", "comments_count"}
+    conn = get_connection()
+    try:
+        goals = conn.execute("SELECT * FROM goals WHERE completed_at IS NULL").fetchall()
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions"}
+
+        for g in goals:
+            g = dict(g)
+            metric = g["metric"]
+            if metric not in ALLOWED_METRICS:
+                continue
+            current = 0
+            title = None
+
+            if g["scope"] == "submission" and g["submission_id"]:
+                table = table_map.get(g["platform"])
+                if table:
+                    sub = conn.execute(
+                        f"SELECT title, {metric} FROM {table} WHERE submission_id = ?",
+                        (g["submission_id"],),
+                    ).fetchone()
+                    if sub:
+                        title = sub["title"]
+                        current = sub[metric] or 0
+            else:
+                if g["platform"] == "all":
+                    for tbl in table_map.values():
+                        try:
+                            r = conn.execute(f"SELECT COALESCE(SUM({metric}), 0) as total FROM {tbl}").fetchone()
+                            current += r["total"]
+                        except Exception:
+                            pass
+                else:
+                    table = table_map.get(g["platform"])
+                    if table:
+                        try:
+                            r = conn.execute(f"SELECT COALESCE(SUM({metric}), 0) as total FROM {table}").fetchone()
+                            current = r["total"]
+                        except Exception:
+                            pass
+
+            if current >= g["target_value"] and g["target_value"] > 0:
+                # Use rowcount to prevent duplicate notifications from concurrent pollers
+                cursor = conn.execute(
+                    "UPDATE goals SET completed_at = datetime('now') WHERE goal_id = ? AND completed_at IS NULL",
+                    (g["goal_id"],),
+                )
+                conn.commit()
+                if cursor.rowcount == 0:
+                    continue
+                emoji = PLATFORM_EMOJI.get(g["platform"], "🎯")
+                metric_labels = {"views": "views", "favorites_count": "faves", "comments_count": "comments"}
+                metric_label = metric_labels.get(metric, metric)
+                sub_label = f"\n<b>{_esc(title)}</b>" if title else ""
+                await send_telegram(
+                    f"<b>{emoji} Goal Reached!</b>{sub_label}\n"
+                    f"  🎯 {current:,} / {g['target_value']:,} {metric_label}"
+                )
     finally:
         conn.close()
 
@@ -252,7 +351,7 @@ async def send_digest_report() -> None:
     conn = get_connection()
     try:
         lines = [f"<b>📊 PawPoller 6-Hour Digest</b>"]
-        lines.append(f"<i>{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC</i>")
+        lines.append(f"<i>{format_tz()}</i>")
         lines.append("")
 
         grand_views = 0

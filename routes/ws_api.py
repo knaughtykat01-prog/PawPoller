@@ -275,7 +275,16 @@ def get_ws_submission(submission_id: int):
             raise HTTPException(status_code=404, detail="WS submission not found")
         snapshots = ws_queries.get_ws_snapshots(conn, submission_id)
         growth_rates = ws_queries.get_ws_submission_growth_rates(conn, submission_id)
-        return {"submission": sub, "snapshots": snapshots, "growth_rates": growth_rates}
+        try:
+            tags = conn.execute(
+                "SELECT t.tag_id, t.name, t.color FROM tags t JOIN submission_tags st ON t.tag_id = st.tag_id WHERE st.platform = 'ws' AND st.submission_id = ?",
+                (submission_id,),
+            ).fetchall()
+        except Exception:
+            tags = []
+        sub_dict = dict(sub) if not isinstance(sub, dict) else sub
+        sub_dict["tags"] = [dict(r) for r in tags]
+        return {"submission": sub_dict, "snapshots": snapshots, "growth_rates": growth_rates}
     except HTTPException:
         raise
     except Exception as e:

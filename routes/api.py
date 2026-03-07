@@ -19,15 +19,19 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import sqlite3
+import shutil
+import tempfile
+from datetime import datetime
 from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, UploadFile, File
 from fastapi.responses import Response, StreamingResponse
 
-from database.db import get_connection
-from database import queries, fa_queries, ws_queries, group_queries, analytics_queries
+from database.db import get_connection, init_db
+from database import queries, fa_queries, ws_queries, sf_queries, group_queries, analytics_queries
 from polling.poller import run_poll_cycle, poll_progress
 from api_client.client import InkbunnyClient
 import config
@@ -300,7 +304,10 @@ def get_submission(submission_id: int):
         faving = queries.get_faving_users(conn, submission_id)
         comments = queries.get_comments(conn, submission_id)
         growth_rates = queries.get_submission_growth_rates(conn, submission_id)
-        return {"submission": sub, "snapshots": snapshots, "faving_users": faving, "comments": comments, "growth_rates": growth_rates}
+        tags = _get_submission_tags(conn, "ib", submission_id)
+        sub_dict = dict(sub) if not isinstance(sub, dict) else sub
+        sub_dict["tags"] = tags
+        return {"submission": sub_dict, "snapshots": snapshots, "faving_users": faving, "comments": comments, "growth_rates": growth_rates}
     except HTTPException:
         raise
     except Exception as e:
@@ -547,6 +554,11 @@ def get_preferences():
         "notification_min_faves_delta": settings.get("notification_min_faves_delta", 0),
         "fa_notification_comments_only": settings.get("fa_notification_comments_only", False),
         "ws_notification_comments_only": settings.get("ws_notification_comments_only", False),
+        "sf_poll_interval_minutes": settings.get("sf_poll_interval_minutes", 60),
+        "display_timezone": settings.get("display_timezone", "UTC"),
+        "milestone_views": settings.get("milestone_views", [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000]),
+        "milestone_faves": settings.get("milestone_faves", [10, 25, 50, 100, 250, 500, 1000, 2500, 5000]),
+        "milestone_comments": settings.get("milestone_comments", [10, 25, 50, 100, 250, 500, 1000]),
     }
 
 
@@ -600,6 +612,21 @@ def save_preferences(body: dict):
         val = int(body["ws_poll_interval_minutes"])
         if val in (15, 30, 60, 120, 240):
             update["ws_poll_interval_minutes"] = val
+    if "sf_poll_interval_minutes" in body:
+        val = int(body["sf_poll_interval_minutes"])
+        if val in (15, 30, 60, 120, 240):
+            update["sf_poll_interval_minutes"] = val
+    if "display_timezone" in body:
+        update["display_timezone"] = str(body["display_timezone"])
+    # Milestone threshold arrays: validate as sorted positive integer lists
+    for ms_key in ("milestone_views", "milestone_faves", "milestone_comments"):
+        if ms_key in body:
+            try:
+                vals = sorted(int(v) for v in body[ms_key] if int(v) > 0)
+                if vals:
+                    update[ms_key] = vals
+            except (TypeError, ValueError):
+                pass
     # run_on_startup is handled separately because it modifies the system
     # registry (Windows) or launch agents (macOS) rather than settings.json
     if "run_on_startup" in body:
@@ -1125,3 +1152,447 @@ async def proxy_thumbnail(url: str = Query(..., description="Inkbunny thumbnail 
     except Exception as e:
         logger.warning("Thumb proxy failed for %s: %s", url, e)
         raise HTTPException(502, detail="Failed to fetch thumbnail")
+
+
+# ── Pinned Submissions ────────────────────────────────────────
+
+@router.get("/pins")
+def get_pins():
+    """Return the list of pinned submissions with current stats."""
+    settings = config.get_settings()
+    pins = settings.get("pinned_submissions", [])
+    result = []
+    conn = get_connection()
+    try:
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions"}
+        for pin in pins:
+            table = table_map.get(pin.get("platform"))
+            if not table:
+                continue
+            row = conn.execute(
+                f"SELECT submission_id, title, views, favorites_count, comments_count FROM {table} WHERE submission_id = ?",
+                (pin["submission_id"],),
+            ).fetchone()
+            if row:
+                d = dict(row)
+                d["platform"] = pin["platform"]
+                result.append(d)
+    finally:
+        conn.close()
+    return {"pins": result}
+
+
+@router.post("/pins")
+def add_pin(body: dict):
+    """Pin a submission. Body: { platform, submission_id }. Max 10 pins."""
+    platform = body.get("platform", "")
+    sub_id = body.get("submission_id")
+    if not platform or sub_id is None:
+        raise HTTPException(400, "platform and submission_id required")
+    settings = config.get_settings()
+    pins = settings.get("pinned_submissions", [])
+    if any(p["platform"] == platform and str(p["submission_id"]) == str(sub_id) for p in pins):
+        return {"status": "already_pinned"}
+    if len(pins) >= 10:
+        raise HTTPException(400, "Maximum 10 pins allowed")
+    pins.append({"platform": platform, "submission_id": sub_id})
+    config.save_settings({"pinned_submissions": pins})
+    return {"status": "pinned"}
+
+
+@router.delete("/pins")
+def remove_pin(platform: str = Query(...), submission_id: str = Query(...)):
+    """Unpin a submission."""
+    settings = config.get_settings()
+    pins = settings.get("pinned_submissions", [])
+    pins = [p for p in pins if not (p["platform"] == platform and str(p["submission_id"]) == str(submission_id))]
+    config.save_settings({"pinned_submissions": pins})
+    return {"status": "unpinned"}
+
+
+# ── Goal Tracking ─────────────────────────────────────────────
+
+@router.get("/goals")
+def get_goals():
+    """Return all goals with computed current values and progress."""
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT * FROM goals ORDER BY created_at DESC").fetchall()
+        result = []
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions"}
+        allowed_metrics = {"views", "favorites_count", "comments_count"}
+        for row in rows:
+            g = dict(row)
+            metric = g["metric"]
+            current = 0
+            title = None
+            if metric not in allowed_metrics:
+                g["current_value"] = 0
+                g["submission_title"] = None
+                g["progress_pct"] = 0
+                result.append(g)
+                continue
+            if g["scope"] == "submission" and g["submission_id"]:
+                table = table_map.get(g["platform"])
+                if table:
+                    sub = conn.execute(
+                        f"SELECT title, {metric} FROM {table} WHERE submission_id = ?",
+                        (g["submission_id"],),
+                    ).fetchone()
+                    if sub:
+                        title = sub["title"]
+                        current = sub[metric] or 0
+            else:
+                if g["platform"] == "all":
+                    for tbl in table_map.values():
+                        try:
+                            r = conn.execute(f"SELECT COALESCE(SUM({metric}), 0) as total FROM {tbl}").fetchone()
+                            current += r["total"]
+                        except Exception:
+                            pass
+                else:
+                    table = table_map.get(g["platform"])
+                    if table:
+                        try:
+                            r = conn.execute(f"SELECT COALESCE(SUM({metric}), 0) as total FROM {table}").fetchone()
+                            current = r["total"]
+                        except Exception:
+                            pass
+            g["current_value"] = current
+            g["submission_title"] = title
+            g["progress_pct"] = min(100, round((current / g["target_value"]) * 100)) if g["target_value"] > 0 else 0
+            result.append(g)
+        return {"goals": result}
+    finally:
+        conn.close()
+
+
+@router.post("/goals")
+def create_goal(body: dict):
+    """Create a new goal. Body: { platform, scope, submission_id?, metric, target_value }."""
+    platform = body.get("platform", "ib")
+    scope = body.get("scope", "account")
+    sub_id = body.get("submission_id")
+    metric = body.get("metric", "views")
+    target = int(body.get("target_value", 0))
+    if metric not in ("views", "favorites_count", "comments_count", "watchers"):
+        raise HTTPException(400, "Invalid metric")
+    if target <= 0:
+        raise HTTPException(400, "Target must be positive")
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO goals (platform, scope, submission_id, metric, target_value) VALUES (?, ?, ?, ?, ?)",
+            (platform, scope, sub_id, metric, target),
+        )
+        conn.commit()
+        return {"status": "created"}
+    finally:
+        conn.close()
+
+
+@router.delete("/goals/{goal_id}")
+def delete_goal(goal_id: int):
+    """Delete a goal."""
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM goals WHERE goal_id = ?", (goal_id,))
+        conn.commit()
+        return {"status": "deleted"}
+    finally:
+        conn.close()
+
+
+def _get_submission_tags(conn, platform: str, submission_id) -> list:
+    """Get tags assigned to a specific submission."""
+    try:
+        rows = conn.execute(
+            "SELECT t.tag_id, t.name, t.color FROM tags t "
+            "JOIN submission_tags st ON t.tag_id = st.tag_id "
+            "WHERE st.platform = ? AND st.submission_id = ?",
+            (platform, submission_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+# ── Tags / Submission Categorisation ──────────────────────────
+
+@router.get("/tags")
+def get_tags():
+    """Return all tags with submission counts."""
+    conn = get_connection()
+    try:
+        tags = conn.execute("SELECT * FROM tags ORDER BY name").fetchall()
+        result = []
+        for t in tags:
+            d = dict(t)
+            count = conn.execute("SELECT COUNT(*) as c FROM submission_tags WHERE tag_id = ?", (t["tag_id"],)).fetchone()
+            d["submission_count"] = count["c"]
+            result.append(d)
+        return {"tags": result}
+    finally:
+        conn.close()
+
+
+@router.post("/tags")
+def create_tag(body: dict):
+    """Create a tag. Body: { name, color? }."""
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(400, "Tag name required")
+    color = body.get("color", "#6c8cff")
+    conn = get_connection()
+    try:
+        cursor = conn.execute("INSERT INTO tags (name, color) VALUES (?, ?)", (name, color))
+        conn.commit()
+        return {"status": "created", "tag_id": cursor.lastrowid}
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "Tag already exists")
+    finally:
+        conn.close()
+
+
+@router.delete("/tags/{tag_id}")
+def delete_tag(tag_id: int):
+    """Delete a tag and all its associations."""
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM tags WHERE tag_id = ?", (tag_id,))
+        conn.commit()
+        return {"status": "deleted"}
+    finally:
+        conn.close()
+
+
+@router.post("/tags/{tag_id}/submissions")
+def add_tag_to_submission(tag_id: int, body: dict):
+    """Assign a tag to a submission. Body: { platform, submission_id }."""
+    platform = body.get("platform")
+    sub_id = body.get("submission_id")
+    if not platform or sub_id is None:
+        raise HTTPException(400, "platform and submission_id required")
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO submission_tags (tag_id, platform, submission_id) VALUES (?, ?, ?)",
+            (tag_id, platform, sub_id),
+        )
+        conn.commit()
+        return {"status": "tagged"}
+    finally:
+        conn.close()
+
+
+@router.delete("/tags/{tag_id}/submissions")
+def remove_tag_from_submission(tag_id: int, platform: str = Query(...), submission_id: str = Query(...)):
+    """Remove a tag from a submission."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "DELETE FROM submission_tags WHERE tag_id = ? AND platform = ? AND submission_id = ?",
+            (tag_id, platform, submission_id),
+        )
+        conn.commit()
+        return {"status": "untagged"}
+    finally:
+        conn.close()
+
+
+@router.get("/tags/{tag_id}/stats")
+def get_tag_stats(tag_id: int):
+    """Aggregate stats for all submissions with a given tag."""
+    conn = get_connection()
+    try:
+        members = conn.execute("SELECT platform, submission_id FROM submission_tags WHERE tag_id = ?", (tag_id,)).fetchall()
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions"}
+        total_views = total_faves = total_comments = 0
+        subs = []
+        for m in members:
+            table = table_map.get(m["platform"])
+            if not table:
+                continue
+            row = conn.execute(
+                f"SELECT submission_id, title, views, favorites_count, comments_count FROM {table} WHERE submission_id = ?",
+                (m["submission_id"],),
+            ).fetchone()
+            if row:
+                d = dict(row)
+                d["platform"] = m["platform"]
+                total_views += d.get("views", 0)
+                total_faves += d.get("favorites_count", 0)
+                total_comments += d.get("comments_count", 0)
+                subs.append(d)
+        return {"total_views": total_views, "total_favorites": total_faves, "total_comments": total_comments, "submissions": subs}
+    finally:
+        conn.close()
+
+
+# ── Backup & Restore ──────────────────────────────────────────
+
+@router.get("/backup/database")
+def download_backup():
+    """Download a consistent backup of the SQLite database."""
+    conn = get_connection()
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        conn.close()
+    db_bytes = config.DB_PATH.read_bytes()
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        content=db_bytes,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="pawpoller_backup_{ts}.db"'},
+    )
+
+
+@router.post("/backup/restore")
+async def restore_backup(file: UploadFile = File(...)):
+    """Restore the database from an uploaded .db file."""
+    content = await file.read()
+    if len(content) < 100:
+        raise HTTPException(400, "File too small to be a valid database")
+    # Validate it's a SQLite file (magic bytes)
+    if content[:16] != b"SQLite format 3\x00":
+        raise HTTPException(400, "Not a valid SQLite database file")
+    # Write to a temp file and validate expected tables exist
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+    try:
+        test_conn = sqlite3.connect(tmp_path)
+        tables = {r[0] for r in test_conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        test_conn.close()
+        if "submissions" not in tables:
+            raise HTTPException(400, "Database does not contain expected PawPoller tables")
+        # Checkpoint current DB and replace
+        conn = get_connection()
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            conn.close()
+        shutil.copy2(tmp_path, str(config.DB_PATH))
+        init_db()
+        return {"status": "restored", "tables_found": len(tables)}
+    finally:
+        try:
+            import os
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+# ── Historical Analytics ──────────────────────────────────────
+
+@router.get("/analytics/historical")
+def get_historical_analytics(weeks: int = Query(12)):
+    """Return historical analytics: best periods, fastest growing, weekly growth."""
+    conn = get_connection()
+    try:
+        weeks = min(52, max(1, weeks))
+        result = {
+            "best_month": None,
+            "fastest_growing": None,
+            "weekly_growth": [],
+            "milestone_history": [],
+        }
+
+        # Best month: find the month with the highest total views gained
+        table_pairs = [
+            ("snapshots", "submissions"),
+            ("fa_snapshots", "fa_submissions"),
+            ("ws_snapshots", "ws_submissions"),
+            ("sf_snapshots", "sf_submissions"),
+        ]
+
+        month_data = {}
+        for snap_t, _ in table_pairs:
+            try:
+                rows = conn.execute(f"""
+                    SELECT strftime('%Y-%m', polled_at) as month,
+                           MAX(views) - MIN(views) as views_delta,
+                           MAX(favorites_count) - MIN(favorites_count) as faves_delta,
+                           MAX(comments_count) - MIN(comments_count) as comments_delta
+                    FROM {snap_t}
+                    GROUP BY month, submission_id
+                """).fetchall()
+                for r in rows:
+                    m = r["month"]
+                    if m not in month_data:
+                        month_data[m] = {"month": m, "views": 0, "faves": 0, "comments": 0}
+                    month_data[m]["views"] += r["views_delta"] or 0
+                    month_data[m]["faves"] += r["faves_delta"] or 0
+                    month_data[m]["comments"] += r["comments_delta"] or 0
+            except Exception:
+                pass
+
+        if month_data:
+            months_list = list(month_data.values())
+            best_views = max(months_list, key=lambda x: x["views"])
+            best_faves = max(months_list, key=lambda x: x["faves"])
+            best_comments = max(months_list, key=lambda x: x["comments"])
+            result["best_month"] = {
+                "views": {"period": best_views["month"], "delta": best_views["views"]},
+                "faves": {"period": best_faves["month"], "delta": best_faves["faves"]},
+                "comments": {"period": best_comments["month"], "delta": best_comments["comments"]},
+            }
+
+        # Fastest growing all-time: top submissions by views gained across platforms
+        fastest = []
+        for snap_t, sub_t in table_pairs:
+            try:
+                platform = "ib" if "fa_" not in snap_t and "ws_" not in snap_t and "sf_" not in snap_t else \
+                           "fa" if "fa_" in snap_t else "ws" if "ws_" in snap_t else "sf"
+                rows = conn.execute(f"""
+                    SELECT s.submission_id, s.title, s.views, s.favorites_count,
+                           MAX(sn.views) - MIN(sn.views) as views_gained,
+                           JULIANDAY('now') - JULIANDAY(MIN(sn.polled_at)) as days_tracked
+                    FROM {sub_t} s
+                    JOIN {snap_t} sn ON s.submission_id = sn.submission_id
+                    GROUP BY s.submission_id
+                    HAVING views_gained > 0
+                    ORDER BY views_gained DESC
+                    LIMIT 5
+                """).fetchall()
+                for row in rows:
+                    days = max(1, row["days_tracked"] or 1)
+                    fastest.append({
+                        "platform": platform.upper(),
+                        "title": row["title"],
+                        "views": row["views"],
+                        "faves": row["favorites_count"],
+                        "views_per_day": (row["views_gained"] or 0) / days,
+                    })
+            except Exception:
+                pass
+        fastest.sort(key=lambda x: x["views_per_day"], reverse=True)
+        result["fastest_growing"] = fastest[:10]
+
+        # Weekly growth report
+        weekly = {}
+        for snap_t, _ in table_pairs:
+            try:
+                rows = conn.execute(f"""
+                    SELECT strftime('%Y-W%W', polled_at) as week_label,
+                           MAX(views) - MIN(views) as views_delta,
+                           MAX(favorites_count) - MIN(favorites_count) as faves_delta,
+                           MAX(comments_count) - MIN(comments_count) as comments_delta
+                    FROM {snap_t}
+                    WHERE polled_at >= datetime('now', '-{weeks * 7} days')
+                    GROUP BY week_label, submission_id
+                """).fetchall()
+                for r in rows:
+                    w = r["week_label"]
+                    if w not in weekly:
+                        weekly[w] = {"week_label": w, "views_delta": 0, "faves_delta": 0, "comments_delta": 0}
+                    weekly[w]["views_delta"] += r["views_delta"] or 0
+                    weekly[w]["faves_delta"] += r["faves_delta"] or 0
+                    weekly[w]["comments_delta"] += r["comments_delta"] or 0
+            except Exception:
+                pass
+        result["weekly_growth"] = sorted(weekly.values(), key=lambda x: x["week_label"])
+
+        return result
+    finally:
+        conn.close()

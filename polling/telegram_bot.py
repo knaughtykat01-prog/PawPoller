@@ -20,7 +20,9 @@ Commands:
 from __future__ import annotations
 import asyncio
 import logging
+from datetime import datetime, timezone
 from html import escape as _esc
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -260,6 +262,14 @@ async def _cmd_status(token: str, chat_id: str, args: str) -> None:
     try:
         lines = ["<b>📋 Poll Status</b>", ""]
 
+        # Resolve display timezone
+        settings = config.get_settings()
+        tz_name = settings.get("display_timezone", "UTC")
+        try:
+            tz = ZoneInfo(tz_name)
+        except (KeyError, Exception):
+            tz = timezone.utc
+
         poll_funcs = [
             ("🐾 Inkbunny", queries.get_last_poll),
             ("🦊 FurAffinity", fa_queries.get_fa_last_poll),
@@ -272,12 +282,24 @@ async def _cmd_status(token: str, chat_id: str, args: str) -> None:
                 poll = func(conn)
                 if poll:
                     status = poll.get("status", "?")
-                    time = poll.get("started_at", "?")
+                    raw_time = poll.get("started_at", "")
+                    # Convert stored UTC timestamp to display timezone
+                    if raw_time:
+                        try:
+                            dt = datetime.fromisoformat(raw_time.replace(" ", "T"))
+                            if dt.tzinfo is None:
+                                dt = dt.replace(tzinfo=timezone.utc)
+                            local = dt.astimezone(tz)
+                            time_str = local.strftime("%Y-%m-%d %H:%M %Z")
+                        except (ValueError, TypeError):
+                            time_str = raw_time
+                    else:
+                        time_str = "?"
                     dur = poll.get("duration_seconds")
                     dur_str = f" ({dur:.1f}s)" if dur else ""
                     err = poll.get("error_message")
                     lines.append(f"<b>{name}</b>")
-                    lines.append(f"  Last: {time}{dur_str} — {status}")
+                    lines.append(f"  Last: {time_str}{dur_str} — {status}")
                     if err:
                         lines.append(f"  Error: {_esc(err[:100])}")
                 else:

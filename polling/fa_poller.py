@@ -351,7 +351,7 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                      stats["new_comments_found"], stats["new_watchers_found"])
 
         # ── Telegram summaries + milestones ───────────────────
-        from polling.telegram import send_poll_summary, check_milestones_batch
+        from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
         if not _fa_first_poll:
             try:
                 await send_poll_summary("fa", stats, duration)
@@ -361,6 +361,10 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                 await check_milestones_batch("fa", "fa_snapshots", "fa_submissions")
             except Exception as me:
                 logger.warning("Failed to check FA milestones: %s", me)
+            try:
+                await check_goals()
+            except Exception as ge:
+                logger.warning("Failed to check goals: %s", ge)
 
         return stats
 

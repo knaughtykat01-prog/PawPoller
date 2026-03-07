@@ -294,7 +294,16 @@ def get_fa_submission(submission_id: int):
         snapshots = fa_queries.get_fa_snapshots(conn, submission_id)
         comments = fa_queries.get_fa_comments(conn, submission_id)
         growth_rates = fa_queries.get_fa_submission_growth_rates(conn, submission_id)
-        return {"submission": sub, "snapshots": snapshots, "comments": comments, "growth_rates": growth_rates}
+        try:
+            tags = conn.execute(
+                "SELECT t.tag_id, t.name, t.color FROM tags t JOIN submission_tags st ON t.tag_id = st.tag_id WHERE st.platform = 'fa' AND st.submission_id = ?",
+                (submission_id,),
+            ).fetchall()
+        except Exception:
+            tags = []
+        sub_dict = dict(sub) if not isinstance(sub, dict) else sub
+        sub_dict["tags"] = [dict(r) for r in tags]
+        return {"submission": sub_dict, "snapshots": snapshots, "comments": comments, "growth_rates": growth_rates}
     except HTTPException:
         raise
     except Exception as e:

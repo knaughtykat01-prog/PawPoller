@@ -25,14 +25,38 @@ const Charts = {
 
     /**
      * Configurable thresholds for milestone marker detection, keyed by metric
-     * name. When a metric's value crosses one of these thresholds between two
-     * consecutive snapshots, a milestone is recorded and can be rendered as a
-     * vertical annotation line on the chart (e.g. 100 views, 50 faves).
+     * name. Can be updated at runtime via setMilestones() after loading user
+     * preferences from the backend.
      */
     _milestones: {
         views: [100, 250, 500, 1000, 2500, 5000, 10000],
         favorites_count: [10, 25, 50, 100, 250],
         comments_count: [10, 25, 50, 100],
+    },
+
+    /**
+     * Update milestone thresholds from user preferences.
+     * @param {Object} m - { views: [...], faves: [...], comments: [...] }
+     */
+    setMilestones(m) {
+        if (m.views) this._milestones.views = m.views;
+        if (m.faves) this._milestones.favorites_count = m.faves;
+        if (m.comments) this._milestones.comments_count = m.comments;
+    },
+
+    /**
+     * Read current theme colors from CSS custom properties so charts
+     * adapt to dark/light theme without hard-coded hex values.
+     */
+    _getThemeColors() {
+        const s = getComputedStyle(document.documentElement);
+        return {
+            text: s.getPropertyValue('--text-secondary').trim() || '#9198a8',
+            muted: s.getPropertyValue('--text-muted').trim() || '#5f6578',
+            border: s.getPropertyValue('--border').trim() || '#2e3140',
+            card: s.getPropertyValue('--bg-card').trim() || '#22252f',
+            primary: s.getPropertyValue('--text-primary').trim() || '#e4e6ed',
+        };
     },
 
     /**
@@ -124,29 +148,30 @@ const Charts = {
      * dual Y axes, or annotation config) before passing to new Chart().
      */
     _baseOptions() {
+        const c = this._getThemeColors();
         return {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    labels: { color: '#9198a8', font: { size: 11 } }
+                    labels: { color: c.text, font: { size: 11 } }
                 },
                 tooltip: {
-                    backgroundColor: '#22252f',   // --surface dark bg
-                    titleColor: '#e4e6ed',         // --text-primary
-                    bodyColor: '#9198a8',           // --text-secondary / muted
-                    borderColor: '#2e3140',         // --border subtle
+                    backgroundColor: c.card,
+                    titleColor: c.primary,
+                    bodyColor: c.text,
+                    borderColor: c.border,
                     borderWidth: 1,
                 }
             },
             scales: {
                 x: {
-                    ticks: { color: '#5f6578', font: { size: 10 } },
-                    grid: { color: '#2e3140' },
+                    ticks: { color: c.muted, font: { size: 10 } },
+                    grid: { color: c.border },
                 },
                 y: {
-                    ticks: { color: '#5f6578', font: { size: 10 } },
-                    grid: { color: '#2e3140' },
+                    ticks: { color: c.muted, font: { size: 10 } },
+                    grid: { color: c.border },
                     beginAtZero: true,
                 }
             }
@@ -166,10 +191,11 @@ const Charts = {
      * @returns {Object} Chart.js scale configuration object for a time X axis.
      */
     _timeXAxis() {
+        const c = this._getThemeColors();
         return {
             type: 'time',
-            ticks: { color: '#5f6578', font: { size: 10 }, maxTicksLimit: 12 },
-            grid: { color: '#2e3140' },
+            ticks: { color: c.muted, font: { size: 10 }, maxTicksLimit: 12 },
+            grid: { color: c.border },
             time: {
                 tooltipFormat: 'dd MMM yyyy HH:mm',
                 displayFormats: {
@@ -371,7 +397,7 @@ const Charts = {
         opts.indexAxis = 'y';                       // horizontal bars
         opts.plugins.legend = { display: false };   // single dataset, no legend needed
         opts.scales.x.beginAtZero = true;
-        opts.scales.y.ticks = { color: '#9198a8', font: { size: 11 } };
+        opts.scales.y.ticks = { color: this._getThemeColors().text, font: { size: 11 } };
 
         this._instances[canvasId] = new Chart(ctx, {
             type: 'bar',
@@ -465,6 +491,33 @@ const Charts = {
         this._instances[canvasId] = new Chart(ctx, {
             type: 'line',
             data: { datasets },
+            options: opts,
+        });
+    },
+
+    /**
+     * Grouped bar chart for weekly growth on the Analytics page.
+     * Shows views/faves/comments gained per week.
+     */
+    weeklyGrowthBar(canvasId, weeklyData) {
+        this.destroy(canvasId);
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return;
+
+        const labels = weeklyData.map(w => w.week_label);
+        const opts = this._baseOptions();
+        opts.plugins.legend = { labels: { color: this._getThemeColors().text, font: { size: 11 } } };
+
+        this._instances[canvasId] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    { label: 'Views', data: weeklyData.map(w => w.views_delta), backgroundColor: '#6c8cff80', borderColor: '#6c8cff', borderWidth: 1 },
+                    { label: 'Faves', data: weeklyData.map(w => w.faves_delta), backgroundColor: '#f8717180', borderColor: '#f87171', borderWidth: 1 },
+                    { label: 'Comments', data: weeklyData.map(w => w.comments_delta), backgroundColor: '#4ade8080', borderColor: '#4ade80', borderWidth: 1 },
+                ],
+            },
             options: opts,
         });
     },
