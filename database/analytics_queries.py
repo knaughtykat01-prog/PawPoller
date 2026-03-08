@@ -141,6 +141,12 @@ def get_trending_submissions(conn: sqlite3.Connection, hours: int = 24, z_thresh
         ("ib", "submissions", "snapshots"),
         ("fa", "fa_submissions", "fa_snapshots"),
         ("ws", "ws_submissions", "ws_snapshots"),
+        ("sf", "sf_submissions", "sf_snapshots"),
+        ("sqw", "sqw_submissions", "sqw_snapshots"),
+        ("ao3", "ao3_submissions", "ao3_snapshots"),
+        ("da", "da_submissions", "da_snapshots"),
+        ("wp", "wp_submissions", "wp_snapshots"),
+        ("ik", "ik_submissions", "ik_snapshots"),
     ]:
         try:
             _find_spikes(conn, platform, sub_table, snap_table, hours, z_threshold, trending)
@@ -179,7 +185,22 @@ def _find_spikes(conn: sqlite3.Connection, platform: str, sub_table: str, snap_t
        delta, z-score, mean, and stddev for reporting.
 
     Results are appended to the shared `results` list (mutated in place).
+    Uses platform-aware column names for Wattpad (reads/votes) and Itaku (likes, no views).
     """
+    # Platform-specific metric column mapping
+    _platform_cols = {
+        "ib":  ["views", "favorites_count", "comments_count"],
+        "fa":  ["views", "favorites_count", "comments_count"],
+        "ws":  ["views", "favorites_count", "comments_count"],
+        "sf":  ["views", "favorites_count", "comments_count"],
+        "sqw": ["views", "favorites_count", "comments_count"],
+        "ao3": ["views", "favorites_count", "comments_count"],
+        "da":  ["views", "favorites_count", "comments_count"],
+        "wp":  ["reads", "votes", "comments_count"],
+        "ik":  ["likes", "comments_count"],  # No views column
+    }
+    metric_cols = _platform_cols.get(platform, ["views", "favorites_count", "comments_count"])
+
     # Get all submission IDs and titles from this platform.
     subs = conn.execute(f"SELECT submission_id, title FROM {sub_table}").fetchall()
 
@@ -188,8 +209,9 @@ def _find_spikes(conn: sqlite3.Connection, platform: str, sub_table: str, snap_t
         title = sub_row["title"]
 
         # Step 1: Get the 2 most recent snapshots to compute the current delta.
+        cols_str = ", ".join(metric_cols)
         latest = conn.execute(
-            f"SELECT views, favorites_count, comments_count, polled_at FROM {snap_table} "
+            f"SELECT {cols_str}, polled_at FROM {snap_table} "
             f"WHERE submission_id = ? ORDER BY polled_at DESC LIMIT 2",
             (sub_id,),
         ).fetchall()
@@ -205,7 +227,7 @@ def _find_spikes(conn: sqlite3.Connection, platform: str, sub_table: str, snap_t
         # The 30-day window provides enough data points for reliable statistics
         # while being recent enough to reflect current activity patterns.
         baseline_snaps = conn.execute(
-            f"SELECT views, favorites_count, comments_count FROM {snap_table} "
+            f"SELECT {cols_str} FROM {snap_table} "
             f"WHERE submission_id = ? AND polled_at >= datetime('now', '-30 days') "
             f"ORDER BY polled_at ASC",
             (sub_id,),
@@ -219,7 +241,7 @@ def _find_spikes(conn: sqlite3.Connection, platform: str, sub_table: str, snap_t
         spike_info = {}
         max_z = 0
 
-        for metric in ["views", "favorites_count", "comments_count"]:
+        for metric in metric_cols:
             # Current delta: change in this metric between the two most recent snapshots.
             current_delta = current[metric] - previous[metric]
             if current_delta <= 0:
@@ -328,14 +350,17 @@ def get_links(conn: sqlite3.Connection) -> list[dict]:
         for m in members:
             md = dict(m)
             # Enrich each member with title and stats from the platform's table.
-            table = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions"}.get(md["platform"])
+            table = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions"}.get(md["platform"])
             if table:
-                sub = conn.execute(
-                    f"SELECT title, views, favorites_count, comments_count FROM {table} WHERE submission_id = ?",
-                    (md["submission_id"],),
-                ).fetchone()
-                if sub:
-                    md.update(dict(sub))
+                try:
+                    sub = conn.execute(
+                        f"SELECT * FROM {table} WHERE submission_id = ?",
+                        (md["submission_id"],),
+                    ).fetchone()
+                    if sub:
+                        md.update(dict(sub))
+                except Exception:
+                    pass
             l["members"].append(md)
         result.append(l)
     return result
@@ -358,20 +383,38 @@ def get_link_combined_stats(conn: sqlite3.Connection, link_id: int) -> dict:
     total_comments = 0
     subs = []
 
+    _table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions"}
+    _metrics = {
+        "ib": ("views", "favorites_count", "comments_count"),
+        "fa": ("views", "favorites_count", "comments_count"),
+        "ws": ("views", "favorites_count", "comments_count"),
+        "sf": ("views", "favorites_count", "comments_count"),
+        "sqw": ("views", "favorites_count", "comments_count"),
+        "ao3": ("views", "favorites_count", "comments_count"),
+        "da": ("views", "favorites_count", "comments_count"),
+        "wp": ("reads", "votes", "comments_count"),
+        "ik": (None, "likes", "comments_count"),
+    }
+
     for m in members:
-        table = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions"}.get(m["platform"])
+        plat = m["platform"]
+        table = _table_map.get(plat)
         if not table:
             continue
-        row = conn.execute(
-            f"SELECT submission_id, title, views, favorites_count, comments_count FROM {table} WHERE submission_id = ?",
-            (m["submission_id"],),
-        ).fetchone()
+        try:
+            row = conn.execute(
+                f"SELECT * FROM {table} WHERE submission_id = ?",
+                (m["submission_id"],),
+            ).fetchone()
+        except Exception:
+            continue
         if row:
             r = dict(row)
-            r["platform"] = m["platform"]
-            total_views += r.get("views", 0)
-            total_faves += r.get("favorites_count", 0)
-            total_comments += r.get("comments_count", 0)
+            r["platform"] = plat
+            v_col, f_col, c_col = _metrics.get(plat, ("views", "favorites_count", "comments_count"))
+            total_views += (r.get(v_col, 0) or 0) if v_col else 0
+            total_faves += (r.get(f_col, 0) or 0) if f_col else 0
+            total_comments += (r.get(c_col, 0) or 0) if c_col else 0
             subs.append(r)
 
     return {
@@ -405,24 +448,51 @@ def get_link_combined_snapshots(conn: sqlite3.Connection, link_id: int) -> list[
     # have a snapshot at that exact time.
     time_data: dict[str, dict] = {}
 
+    _snap_map = {"ib": "snapshots", "fa": "fa_snapshots", "ws": "ws_snapshots", "sf": "sf_snapshots", "sqw": "sqw_snapshots", "ao3": "ao3_snapshots", "da": "da_snapshots", "wp": "wp_snapshots", "ik": "ik_snapshots"}
+    _metrics = {
+        "ib": ("views", "favorites_count", "comments_count"),
+        "fa": ("views", "favorites_count", "comments_count"),
+        "ws": ("views", "favorites_count", "comments_count"),
+        "sf": ("views", "favorites_count", "comments_count"),
+        "sqw": ("views", "favorites_count", "comments_count"),
+        "ao3": ("views", "favorites_count", "comments_count"),
+        "da": ("views", "favorites_count", "comments_count"),
+        "wp": ("reads", "votes", "comments_count"),
+        "ik": (None, "likes", "comments_count"),
+    }
+
     for m in members:
+        plat = m["platform"]
         # Dynamic table lookup for the platform's snapshot table.
-        snap_table = {"ib": "snapshots", "fa": "fa_snapshots", "ws": "ws_snapshots"}.get(m["platform"])
+        snap_table = _snap_map.get(plat)
         if not snap_table:
             continue
-        rows = conn.execute(
-            f"SELECT polled_at, views, favorites_count, comments_count FROM {snap_table} "
-            f"WHERE submission_id = ? ORDER BY polled_at ASC",
-            (m["submission_id"],),
-        ).fetchall()
+        v_col, f_col, c_col = _metrics.get(plat, ("views", "favorites_count", "comments_count"))
+        # Build SELECT with only existing columns
+        select_cols = ["polled_at"]
+        if v_col:
+            select_cols.append(v_col)
+        if f_col:
+            select_cols.append(f_col)
+        if c_col:
+            select_cols.append(c_col)
+        try:
+            rows = conn.execute(
+                f"SELECT {', '.join(select_cols)} FROM {snap_table} "
+                f"WHERE submission_id = ? ORDER BY polled_at ASC",
+                (m["submission_id"],),
+            ).fetchall()
+        except Exception:
+            continue
         for r in rows:
             ts = r["polled_at"]
             if ts not in time_data:
                 time_data[ts] = {"polled_at": ts, "views": 0, "favorites_count": 0, "comments_count": 0}
             # Sum values from multiple platforms at the same timestamp.
-            time_data[ts]["views"] += r["views"]
-            time_data[ts]["favorites_count"] += r["favorites_count"]
-            time_data[ts]["comments_count"] += r["comments_count"]
+            # Map platform-specific columns to the canonical output keys.
+            time_data[ts]["views"] += (r[v_col] or 0) if v_col else 0
+            time_data[ts]["favorites_count"] += (r[f_col] or 0) if f_col else 0
+            time_data[ts]["comments_count"] += (r[c_col] or 0) if c_col else 0
 
     # Return sorted by timestamp for chronological chart rendering.
     return sorted(time_data.values(), key=lambda x: x["polled_at"])
@@ -432,7 +502,7 @@ def auto_suggest_links(conn: sqlite3.Connection) -> list[dict]:
     """Find potential cross-platform matches by title similarity.
 
     Algorithm:
-    1. Load all submissions from all three platforms (IB, FA, WS).
+    1. Load all submissions from all nine platforms.
     2. Build a set of (platform, submission_id) pairs that are already linked,
        so we can exclude them from suggestions. This prevents suggesting links
        for content that has already been linked by the user.
@@ -454,10 +524,18 @@ def auto_suggest_links(conn: sqlite3.Connection) -> list[dict]:
     suggestions = []
 
     # Step 1: Load all submissions from each platform.
-    # IB uses create_datetime; FA and WS use posted_at for the post date column.
-    date_col = {"ib": "create_datetime", "fa": "posted_at", "ws": "posted_at"}
+    # IB uses create_datetime; most others use posted_at for the post date column.
+    date_col = {
+        "ib": "create_datetime", "fa": "posted_at", "ws": "posted_at",
+        "sf": "posted_at", "sqw": "posted_at", "ao3": "posted_at",
+        "da": "posted_at", "wp": "posted_at", "ik": "posted_at",
+    }
     platforms = {}
-    for platform, table in [("ib", "submissions"), ("fa", "fa_submissions"), ("ws", "ws_submissions")]:
+    for platform, table in [
+        ("ib", "submissions"), ("fa", "fa_submissions"), ("ws", "ws_submissions"),
+        ("sf", "sf_submissions"), ("sqw", "sqw_submissions"), ("ao3", "ao3_submissions"),
+        ("da", "da_submissions"), ("wp", "wp_submissions"), ("ik", "ik_submissions"),
+    ]:
         try:
             rows = conn.execute(
                 f"SELECT submission_id, title, {date_col[platform]} as posted_at FROM {table}"

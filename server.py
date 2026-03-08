@@ -54,6 +54,13 @@ _ENV_TO_SETTINGS = {
     "SQW_USERNAME":     "sqw_username",
     "SQW_PASSWORD":     "sqw_password",
     "SQW_TARGET_USER":  "sqw_target_user",
+    "AO3_USERNAME":     "ao3_username",
+    "AO3_PASSWORD":     "ao3_password",
+    "AO3_TARGET_USER":  "ao3_target_user",
+    "DA_COOKIE":        "da_cookie",
+    "DA_TARGET_USER":   "da_target_user",
+    "WP_TARGET_USER":   "wp_target_user",
+    "IK_TARGET_USER":   "ik_target_user",
     "TELEGRAM_BOT_TOKEN": "telegram_bot_token",
     "TELEGRAM_CHAT_ID":   "telegram_chat_id",
     "TELEGRAM_ENABLED":   "telegram_enabled",
@@ -247,6 +254,138 @@ def _start_sqw_poller():
         pass
 
 
+def _start_ao3_poller():
+    """Run AO3 poller in its own daemon thread with a dynamic interval."""
+    import asyncio
+    from polling.ao3_poller import run_ao3_poll_cycle
+
+    async def _scheduled_ao3_poll():
+        settings = config.get_settings()
+        if not settings.get("ao3_username") or not settings.get("ao3_password"):
+            logger.info("Scheduled AO3 poll skipped -- no AO3 credentials configured")
+            return
+        try:
+            await run_ao3_poll_cycle()
+        except Exception as e:
+            logger.error("Scheduled AO3 poll failed: %s", e)
+
+    async def _run():
+        logger.info("AO3 poller loop started")
+        await _scheduled_ao3_poll()
+        while True:
+            settings = config.get_settings()
+            interval = settings.get("ao3_poll_interval_minutes", 60)
+            logger.info("Next AO3 poll in %d minutes", interval)
+            await asyncio.sleep(interval * 60)
+            await _scheduled_ao3_poll()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run())
+    except Exception:
+        pass
+
+
+def _start_da_poller():
+    """Run DeviantArt poller in its own daemon thread with a dynamic interval."""
+    import asyncio
+    from polling.da_poller import run_da_poll_cycle
+
+    async def _scheduled_da_poll():
+        settings = config.get_settings()
+        if not settings.get("da_cookie") or not settings.get("da_target_user"):
+            logger.info("Scheduled DA poll skipped -- no DeviantArt credentials configured")
+            return
+        try:
+            await run_da_poll_cycle()
+        except Exception as e:
+            logger.error("Scheduled DA poll failed: %s", e)
+
+    async def _run():
+        logger.info("DA poller loop started")
+        await _scheduled_da_poll()
+        while True:
+            settings = config.get_settings()
+            interval = settings.get("da_poll_interval_minutes", 60)
+            logger.info("Next DA poll in %d minutes", interval)
+            await asyncio.sleep(interval * 60)
+            await _scheduled_da_poll()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run())
+    except Exception:
+        pass
+
+
+def _start_wp_poller():
+    """Run Wattpad poller in its own daemon thread with a dynamic interval."""
+    import asyncio
+    from polling.wp_poller import run_wp_poll_cycle
+
+    async def _scheduled_wp_poll():
+        settings = config.get_settings()
+        if not settings.get("wp_target_user"):
+            logger.info("Scheduled WP poll skipped -- no Wattpad username configured")
+            return
+        try:
+            await run_wp_poll_cycle()
+        except Exception as e:
+            logger.error("Scheduled WP poll failed: %s", e)
+
+    async def _run():
+        logger.info("WP poller loop started")
+        await _scheduled_wp_poll()
+        while True:
+            settings = config.get_settings()
+            interval = settings.get("wp_poll_interval_minutes", 60)
+            logger.info("Next WP poll in %d minutes", interval)
+            await asyncio.sleep(interval * 60)
+            await _scheduled_wp_poll()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run())
+    except Exception:
+        pass
+
+
+def _start_ik_poller():
+    """Run Itaku poller in its own daemon thread with a dynamic interval."""
+    import asyncio
+    from polling.ik_poller import run_ik_poll_cycle
+
+    async def _scheduled_ik_poll():
+        settings = config.get_settings()
+        if not settings.get("ik_target_user"):
+            logger.info("Scheduled IK poll skipped -- no Itaku username configured")
+            return
+        try:
+            await run_ik_poll_cycle()
+        except Exception as e:
+            logger.error("Scheduled IK poll failed: %s", e)
+
+    async def _run():
+        logger.info("IK poller loop started")
+        await _scheduled_ik_poll()
+        while True:
+            settings = config.get_settings()
+            interval = settings.get("ik_poll_interval_minutes", 60)
+            logger.info("Next IK poll in %d minutes", interval)
+            await asyncio.sleep(interval * 60)
+            await _scheduled_ik_poll()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run())
+    except Exception:
+        pass
+
+
 def _start_digest_scheduler():
     """Run 6-hourly Telegram digest in its own daemon thread."""
     import asyncio
@@ -329,6 +468,10 @@ def main():
         ("WS poller",          _start_ws_poller),
         ("SF poller",          _start_sf_poller),
         ("SqW poller",         _start_sqw_poller),
+        ("AO3 poller",         _start_ao3_poller),
+        ("DA poller",          _start_da_poller),
+        ("WP poller",          _start_wp_poller),
+        ("IK poller",          _start_ik_poller),
         ("Telegram digest",    _start_digest_scheduler),
         ("Telegram bot",       _start_telegram_bot),
     ]

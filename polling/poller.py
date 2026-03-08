@@ -19,6 +19,7 @@ import logging
 import threading
 import time
 from datetime import datetime, timezone
+from html import escape as _esc
 
 import httpx
 
@@ -184,7 +185,7 @@ async def _send_telegram(new_fave_details: list[dict], new_comment_details: list
     if new_fave_details:
         lines.append(f"<b>❤️ {len(new_fave_details)} New Fave{'s' if len(new_fave_details) != 1 else ''}</b>")
         for d in new_fave_details[:5]:
-            lines.append(f"  • <b>{d['username']}</b> faved {d['title']}")
+            lines.append(f"  • <b>{_esc(d['username'])}</b> faved {_esc(d['title'])}")
         if len(new_fave_details) > 5:
             lines.append(f"  ...and {len(new_fave_details) - 5} more")
 
@@ -193,7 +194,7 @@ async def _send_telegram(new_fave_details: list[dict], new_comment_details: list
             lines.append("")  # Visual separator between faves and comments
         lines.append(f"<b>💬 {len(new_comment_details)} New Comment{'s' if len(new_comment_details) != 1 else ''}</b>")
         for d in new_comment_details[:5]:
-            lines.append(f"  • <b>{d['username']}</b> commented on {d['title']}")
+            lines.append(f"  • <b>{_esc(d['username'])}</b> commented on {_esc(d['title'])}")
         if len(new_comment_details) > 5:
             lines.append(f"  ...and {len(new_comment_details) - 5} more")
 
@@ -202,7 +203,7 @@ async def _send_telegram(new_fave_details: list[dict], new_comment_details: list
             lines.append("")  # Visual separator before watchers
         lines.append(f"<b>👀 {len(new_watcher_details)} New Watcher{'s' if len(new_watcher_details) != 1 else ''}</b>")
         for d in new_watcher_details[:5]:
-            lines.append(f"  • <b>{d['username']}</b> started watching")
+            lines.append(f"  • <b>{_esc(d['username'])}</b> started watching")
         if len(new_watcher_details) > 5:
             lines.append(f"  ...and {len(new_watcher_details) - 5} more")
 
@@ -258,8 +259,8 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
     _poll_running = True
     _update_progress("starting", message="Initialising poll cycle...")
 
-    conn = get_connection()
-    log_id = queries.start_poll_log(conn)
+    conn = None
+    log_id = None
     start_time = time.time()
 
     stats = {
@@ -273,6 +274,8 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
     client = InkbunnyClient()
 
     try:
+        conn = get_connection()
+        log_id = queries.start_poll_log(conn)
         # ── Step 1: Authenticate ───────────────────────────────
         # Try to reuse a cached session ID (SID) to avoid logging in on
         # every cycle.  If the cached SID has expired the client will
@@ -293,6 +296,7 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         if not submission_ids:
             _update_progress("complete", message="No submissions found.")
             queries.finish_poll_log(conn, log_id, "success", duration_seconds=time.time() - start_time, **stats)
+            conn.commit()
             return stats
 
         # ── Step 3: Fetch full details in batches ──────────────
@@ -468,7 +472,8 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         duration = time.time() - start_time
         _update_progress("error", message=str(e))
         logger.error("Poll failed: %s", e)
-        queries.finish_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
+        if conn and log_id:
+            queries.finish_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
         # Send error alert via Telegram
         from polling.telegram import send_poll_error
         try:
@@ -486,4 +491,5 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         _poll_running = False
         _poll_lock.release()
         await client.close()
-        conn.close()
+        if conn:
+            conn.close()

@@ -276,10 +276,11 @@ const Components = {
      *                         views_per_day, faves_per_day, comments_per_day
      * @returns {string} HTML string for a .stats-grid.growth-grid container
      */
-    growthRateCards(rates) {
+    growthRateCards(rates, metricLabels) {
         if (!rates) return '';
         const periods = ['24h', '7d', '30d'];
         const labels = { '24h': 'Last 24 Hours', '7d': 'Last 7 Days', '30d': 'Last 30 Days' };
+        const ml = metricLabels || { views: 'views/day', faves: 'faves/day', comments: 'comments/day' };
         const fmt = (v) => v === null || v === undefined ? '--' : v >= 0 ? '+' + v.toFixed(1) : v.toFixed(1);
         const cls = (v) => v === null || v === undefined ? 'neutral' : v > 0 ? 'positive' : v < 0 ? 'negative' : 'neutral';
 
@@ -292,15 +293,15 @@ const Components = {
                     <div class="growth-metrics">
                         <div class="growth-metric">
                             <span class="growth-val" style="color:var(--accent)">${fmt(r.views_per_day)}</span>
-                            <span class="growth-lbl">views/day</span>
+                            <span class="growth-lbl">${ml.views}</span>
                         </div>
                         <div class="growth-metric">
                             <span class="growth-val" style="color:var(--danger)">${fmt(r.faves_per_day)}</span>
-                            <span class="growth-lbl">faves/day</span>
+                            <span class="growth-lbl">${ml.faves}</span>
                         </div>
                         <div class="growth-metric">
                             <span class="growth-val" style="color:var(--success)">${fmt(r.comments_per_day)}</span>
-                            <span class="growth-lbl">comments/day</span>
+                            <span class="growth-lbl">${ml.comments}</span>
                         </div>
                     </div>
                 </div>
@@ -344,9 +345,9 @@ const Components = {
             return '<p style="color:var(--text-muted);font-size:13px">No data yet</p>';
         }
         const lis = items.map(item => {
-            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', ib: '/submission/' };
+            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', ib: '/submission/' };
             const prefix = prefixes[item._platform] || prefixes.ib;
-            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', ib: '<span class="platform-badge ib">IB</span>' };
+            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', ib: '<span class="platform-badge ib">IB</span>' };
             const badge = badges[item._platform] || badges.ib;
             return `
                 <li>
@@ -373,9 +374,9 @@ const Components = {
             return '<p style="color:var(--text-muted);font-size:13px">No recent activity</p>';
         }
         return items.map(item => {
-            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', ib: '/submission/' };
+            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', ib: '/submission/' };
             const prefix = prefixes[item._platform] || prefixes.ib;
-            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', ib: '<span class="platform-badge ib">IB</span>' };
+            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', ib: '<span class="platform-badge ib">IB</span>' };
             const badge = badges[item._platform] || badges.ib;
             const action = item._type === 'fave' ? 'faved' : 'on';
             return `
@@ -770,6 +771,374 @@ const Components = {
         `;
     },
 
+    // ── AO3 (Archive of Our Own) Components ──────────────────────
+
+    ao3TopList(items, valueKey, labelKey = 'title', idKey = 'submission_id') {
+        if (!items || items.length === 0) {
+            return '<p style="color:var(--text-muted);font-size:13px">No data yet</p>';
+        }
+        const lis = items.map(item => `
+            <li>
+                <span class="top-title" onclick="App.navigate('/ao3/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
+            </li>
+        `).join('');
+        return `<ul class="top-list">${lis}</ul>`;
+    },
+
+    ao3SubmissionsTable(submissions) {
+        if (!submissions || submissions.length === 0) {
+            return `<div class="empty-state"><h3>No submissions</h3><p>Connect your AO3 account and run a poll to fetch data.</p></div>`;
+        }
+        const rows = submissions.map(s => `
+            <tr>
+                <td><a href="#/ao3/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td>${Utils.escapeHtml(s.fandom || '--')}</td>
+                <td>${Utils.escapeHtml(s.rating || '--')}</td>
+                <td>${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
+                <td>${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
+                <td>${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td>${Utils.formatNumber(s.bookmarks_count || 0)}</td>
+                <td>${Utils.formatDate(s.posted_at)}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table" id="ao3-submissions-table">
+                <thead>
+                    <tr>
+                        <th data-sort="title">Title</th>
+                        <th data-sort="fandom">Fandom</th>
+                        <th data-sort="rating">Rating</th>
+                        <th data-sort="views">Hits</th>
+                        <th data-sort="favorites_count">Kudos</th>
+                        <th data-sort="comments_count">Comments</th>
+                        <th data-sort="bookmarks_count">Bookmarks</th>
+                        <th data-sort="posted_at">Posted</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
+    ao3PollLogTable(polls) {
+        if (!polls || polls.length === 0) {
+            return '<p style="color:var(--text-muted)">No AO3 polls recorded yet.</p>';
+        }
+        const rows = polls.map(p => `
+            <tr>
+                <td>${Utils.formatDateTime(p.started_at)}</td>
+                <td><span style="color:${p.status === 'success' ? 'var(--success)' : p.status === 'error' ? 'var(--danger)' : 'var(--warning)'}">${p.status}</span></td>
+                <td>${p.submissions_found || 0}</td>
+                <td>${p.snapshots_inserted || 0}</td>
+                <td>${p.duration_seconds ? p.duration_seconds.toFixed(1) + 's' : '--'}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${Utils.escapeHtml(p.error_message || '')}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th><th>Status</th><th>Subs</th><th>Snaps</th><th>Duration</th><th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
+    // ── DeviantArt Components ──────────────────────────────────────
+
+    /**
+     * DA-specific ranked list linking to /da/ routes.
+     * Identical in structure to faTopList() but navigates to /da/submission/:id.
+     * @param {Array} items    - Array of DA submission objects
+     * @param {string} valueKey - Object key for numeric display value
+     * @param {string} labelKey - Object key for display title (default: 'title')
+     * @param {string} idKey    - Object key for submission ID (default: 'submission_id')
+     * @returns {string} HTML string for a .top-list element
+     */
+    daTopList(items, valueKey, labelKey = 'title', idKey = 'submission_id') {
+        if (!items || items.length === 0) {
+            return '<p style="color:var(--text-muted);font-size:13px">No data yet</p>';
+        }
+        const lis = items.map(item => `
+            <li>
+                <span class="top-title" onclick="App.navigate('/da/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
+            </li>
+        `).join('');
+        return `<ul class="top-list">${lis}</ul>`;
+    },
+
+    /**
+     * DA-specific submissions table linking to /da/ routes.
+     * Includes Views, Favourites, Comments, and Downloads columns (Downloads is unique to DA).
+     * No thumbnail column or proxy. Sortable headers use data-sort attributes.
+     * @param {Array} submissions - Array of DA submission objects
+     * @returns {string} HTML string for the data-table with id="da-submissions-table"
+     */
+    daSubmissionsTable(submissions) {
+        if (!submissions || submissions.length === 0) {
+            return `<div class="empty-state"><h3>No submissions</h3><p>Connect your DeviantArt account and run a poll to fetch data.</p></div>`;
+        }
+        const rows = submissions.map(s => `
+            <tr>
+                <td><a href="#/da/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td>${Utils.escapeHtml(s.category || '--')}</td>
+                <td>${Utils.escapeHtml(s.rating || '--')}</td>
+                <td>${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
+                <td>${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
+                <td>${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td>${Utils.formatNumber(s.downloads || 0)} ${Utils.formatDelta(s.downloads_delta)}</td>
+                <td>${Utils.formatDate(s.posted_at)}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table" id="da-submissions-table">
+                <thead>
+                    <tr>
+                        <th data-sort="title">Title</th>
+                        <th data-sort="category">Category</th>
+                        <th data-sort="rating">Rating</th>
+                        <th data-sort="views">Views</th>
+                        <th data-sort="favorites_count">Favourites</th>
+                        <th data-sort="comments_count">Comments</th>
+                        <th data-sort="downloads">Downloads</th>
+                        <th data-sort="posted_at">Posted</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
+    /**
+     * DA-specific poll history table with color-coded status.
+     * Same color coding as faPollLogTable(): green=success, red=error, yellow=running.
+     * @param {Array} polls - Array of DA poll log objects
+     * @returns {string} HTML string for the DA poll log data-table
+     */
+    daPollLogTable(polls) {
+        if (!polls || polls.length === 0) {
+            return '<p style="color:var(--text-muted)">No DA polls recorded yet.</p>';
+        }
+        const rows = polls.map(p => `
+            <tr>
+                <td>${Utils.formatDateTime(p.started_at)}</td>
+                <td><span style="color:${p.status === 'success' ? 'var(--success)' : p.status === 'error' ? 'var(--danger)' : 'var(--warning)'}">${p.status}</span></td>
+                <td>${p.submissions_found || 0}</td>
+                <td>${p.snapshots_inserted || 0}</td>
+                <td>${p.duration_seconds ? p.duration_seconds.toFixed(1) + 's' : '--'}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${Utils.escapeHtml(p.error_message || '')}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th><th>Status</th><th>Subs</th><th>Snaps</th><th>Duration</th><th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
+    /**
+     * Clickable ranked list for WP (Wattpad) submissions.
+     * Each item navigates to the WP submission detail page via App.navigate().
+     * @param {Array} items    - Array of submission objects
+     * @param {string} valueKey - Object key for the numeric display value (e.g. 'reads')
+     * @param {string} labelKey - Object key for the display label (default 'title')
+     * @param {string} idKey   - Object key for the submission ID (default 'submission_id')
+     * @returns {string} HTML string for a .top-list element
+     */
+    wpTopList(items, valueKey, labelKey = 'title', idKey = 'submission_id') {
+        if (!items || items.length === 0) {
+            return '<p style="color:var(--text-muted);font-size:13px">No data yet</p>';
+        }
+        const lis = items.map(item => `
+            <li>
+                <span class="top-title" onclick="App.navigate('/wp/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
+            </li>
+        `).join('');
+        return `<ul class="top-list">${lis}</ul>`;
+    },
+
+    /**
+     * WP-specific submissions table linking to /wp/ routes.
+     * Includes Reads, Votes, Comments, and Lists columns (Wattpad-specific metric names).
+     * Sortable headers use data-sort attributes.
+     * @param {Array} submissions - Array of WP submission objects
+     * @returns {string} HTML string for the data-table with id="wp-submissions-table"
+     */
+    wpSubmissionsTable(submissions) {
+        if (!submissions || submissions.length === 0) {
+            return `<div class="empty-state"><h3>No submissions</h3><p>Connect your Wattpad account and run a poll to fetch data.</p></div>`;
+        }
+        const rows = submissions.map(s => `
+            <tr>
+                <td><a href="#/wp/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td>${Utils.formatNumber(s.reads || s.views || 0)} ${Utils.formatDelta(s.reads_delta || s.views_delta)}</td>
+                <td>${Utils.formatNumber(s.votes || s.favorites_count || 0)} ${Utils.formatDelta(s.votes_delta || s.faves_delta)}</td>
+                <td>${Utils.formatNumber(s.comments_count || 0)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td>${Utils.formatNumber(s.num_lists || 0)} ${Utils.formatDelta(s.lists_delta)}</td>
+                <td>${Utils.formatDate(s.posted_at)}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table" id="wp-submissions-table">
+                <thead>
+                    <tr>
+                        <th data-sort="title">Title</th>
+                        <th data-sort="reads">Reads</th>
+                        <th data-sort="votes">Votes</th>
+                        <th data-sort="comments_count">Comments</th>
+                        <th data-sort="num_lists">Lists</th>
+                        <th data-sort="posted_at">Posted</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
+    /**
+     * WP-specific poll history table with color-coded status.
+     * Same color coding as daPollLogTable(): green=success, red=error, yellow=running.
+     * @param {Array} polls - Array of WP poll log objects
+     * @returns {string} HTML string for the WP poll log data-table
+     */
+    wpPollLogTable(polls) {
+        if (!polls || polls.length === 0) {
+            return '<p style="color:var(--text-muted)">No WP polls recorded yet.</p>';
+        }
+        const rows = polls.map(p => `
+            <tr>
+                <td>${Utils.formatDateTime(p.started_at)}</td>
+                <td><span style="color:${p.status === 'success' ? 'var(--success)' : p.status === 'error' ? 'var(--danger)' : 'var(--warning)'}">${p.status}</span></td>
+                <td>${p.submissions_found || 0}</td>
+                <td>${p.snapshots_inserted || 0}</td>
+                <td>${p.duration_seconds ? p.duration_seconds.toFixed(1) + 's' : '--'}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${Utils.escapeHtml(p.error_message || '')}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th><th>Status</th><th>Subs</th><th>Snaps</th><th>Duration</th><th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
+    // ── IK (Itaku) Components ────────────────────────────────────
+
+    /**
+     * Clickable ranked list for IK submissions.
+     * Each item navigates to the IK submission detail page via App.navigate().
+     * @param {Array} items    - Array of submission objects
+     * @param {string} valueKey - Object key for the numeric display value (e.g. 'likes')
+     * @param {string} labelKey - Object key for the display label (default: 'title')
+     * @param {string} idKey    - Object key for the submission ID (default: 'submission_id')
+     * @returns {string} HTML string for a .top-list element
+     */
+    ikTopList(items, valueKey, labelKey = 'title', idKey = 'submission_id') {
+        if (!items || items.length === 0) {
+            return '<p style="color:var(--text-muted);font-size:13px">No data yet</p>';
+        }
+        const lis = items.map(item => `
+            <li>
+                <span class="top-title" onclick="App.navigate('/ik/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
+            </li>
+        `).join('');
+        return `<ul class="top-list">${lis}</ul>`;
+    },
+
+    /**
+     * IK-specific submissions table linking to /ik/ routes.
+     * Includes Type, Likes, Comments, and Reshares columns (Itaku-specific metrics — NO views).
+     * Sortable headers use data-sort attributes.
+     * @param {Array} submissions - Array of IK submission objects
+     * @returns {string} HTML string for the data-table with id="ik-submissions-table"
+     */
+    ikSubmissionsTable(submissions) {
+        if (!submissions || submissions.length === 0) {
+            return `<div class="empty-state"><h3>No submissions</h3><p>Connect your Itaku account and run a poll to fetch data.</p></div>`;
+        }
+        const rows = submissions.map(s => `
+            <tr>
+                <td><a href="#/ik/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td>${Utils.escapeHtml(s.content_type || 'image')}</td>
+                <td>${Utils.formatNumber(s.likes || 0)} ${Utils.formatDelta(s.likes_delta)}</td>
+                <td>${Utils.formatNumber(s.comments_count || 0)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td>${Utils.formatNumber(s.reshares || 0)} ${Utils.formatDelta(s.reshares_delta)}</td>
+                <td>${Utils.formatDate(s.posted_at)}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table" id="ik-submissions-table">
+                <thead>
+                    <tr>
+                        <th data-sort="title">Title</th>
+                        <th data-sort="content_type">Type</th>
+                        <th data-sort="likes">Likes</th>
+                        <th data-sort="comments_count">Comments</th>
+                        <th data-sort="reshares">Reshares</th>
+                        <th data-sort="posted_at">Posted</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
+    /**
+     * IK-specific poll history table with color-coded status.
+     * Green=success, red=error, yellow=running.
+     * @param {Array} polls - Array of IK poll log objects
+     * @returns {string} HTML string for the IK poll log data-table
+     */
+    ikPollLogTable(polls) {
+        if (!polls || polls.length === 0) {
+            return '<p style="color:var(--text-muted)">No IK polls recorded yet.</p>';
+        }
+        const rows = polls.map(p => `
+            <tr>
+                <td>${Utils.formatDateTime(p.started_at)}</td>
+                <td><span style="color:${p.status === 'success' ? 'var(--success)' : p.status === 'error' ? 'var(--danger)' : 'var(--warning)'}">${p.status}</span></td>
+                <td>${p.submissions_found || 0}</td>
+                <td>${p.snapshots_inserted || 0}</td>
+                <td>${p.duration_seconds ? p.duration_seconds.toFixed(1) + 's' : '--'}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${Utils.escapeHtml(p.error_message || '')}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th><th>Status</th><th>Subs</th><th>Snaps</th><th>Duration</th><th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
     // ── Groups Components ────────────────────────────────────────
 
     /**
@@ -843,9 +1212,9 @@ const Components = {
             return '<p style="color:var(--text-muted);font-size:13px">No trending submissions detected. Need at least a few polls to calculate trends.</p>';
         }
         return items.map(item => {
-            const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', ib: '<span class="platform-badge ib">IB</span>' };
+            const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', ib: '<span class="platform-badge ib">IB</span>' };
             const platformBadge = badgeMap[item.platform] || badgeMap.ib;
-            const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', ib: '/submission/' };
+            const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', ib: '/submission/' };
             const prefix = prefixMap[item.platform] || prefixMap.ib;
             const metrics = [];
             if (item.views_delta) metrics.push(`Views +${item.views_delta}`);
@@ -878,7 +1247,7 @@ const Components = {
         }
         return links.map(link => {
             const members = (link.members || []).map(m => {
-                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', ib: '<span class="platform-badge ib">IB</span>' };
+                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[m.platform] || badgeMap.ib;
                 return `${badge} ${Utils.escapeHtml(Utils.truncate(m.title || '#' + m.submission_id, 25))}`;
             }).join('<br>');
@@ -910,7 +1279,7 @@ const Components = {
         }
         return suggestions.map(s => {
             const items = s.items.map(i => {
-                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', ib: '<span class="platform-badge ib">IB</span>' };
+                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[i.platform] || badgeMap.ib;
                 return `${badge} ${Utils.escapeHtml(Utils.truncate(i.title, 30))}`;
             }).join(' &harr; ');
@@ -956,12 +1325,15 @@ const Components = {
     /* ── Pinned Submissions ──────────────────────────────────── */
     pinnedSubmissions(items, platform) {
         if (!items || items.length === 0) return '';
+        /* Platform-aware metric labels: WP uses reads/votes, IK has likes (no views) */
+        const metricLabels = { ib: { v: 'views', f: 'faves' }, fa: { v: 'views', f: 'faves' }, ws: { v: 'views', f: 'faves' }, sf: { v: 'views', f: 'faves' }, sqw: { v: 'views', f: 'faves' }, ao3: { v: 'views', f: 'faves' }, da: { v: 'views', f: 'faves' }, wp: { v: 'reads', f: 'votes' }, ik: { v: null, f: 'likes' } };
+        const labels = metricLabels[platform] || metricLabels.ib;
         const cards = items.map(sub => `
             <div class="pinned-card" data-nav="${platform === 'ib' ? '' : platform + '/'}submission/${sub.submission_id}">
                 <div class="pinned-title">${Utils.escapeHtml(sub.title)}</div>
                 <div class="pinned-stats">
-                    <div><span>${Utils.formatCompact(sub.views)}</span> views</div>
-                    <div><span>${Utils.formatCompact(sub.favorites_count)}</span> faves</div>
+                    ${labels.v ? `<div><span>${Utils.formatCompact(sub.views || sub.reads || 0)}</span> ${labels.v}</div>` : ''}
+                    <div><span>${Utils.formatCompact(sub.favorites_count || sub.votes || sub.likes || 0)}</span> ${labels.f}</div>
                     <div><span>${Utils.formatCompact(sub.comments_count)}</span> cmts</div>
                 </div>
                 <button class="btn-unpin" data-platform="${platform}" data-id="${sub.submission_id}">Unpin</button>

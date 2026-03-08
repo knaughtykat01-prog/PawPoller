@@ -133,26 +133,45 @@ def get_group_stats(conn: sqlite3.Connection, group_id: int) -> dict:
     total_comments = 0
     submissions = []
 
+    _table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions"}
+    # Platform-specific column mappings: (views_col, faves_col, comments_col)
+    # views_col is None for platforms without a views column (e.g. Itaku)
+    _metrics = {
+        "ib": ("views", "favorites_count", "comments_count"),
+        "fa": ("views", "favorites_count", "comments_count"),
+        "ws": ("views", "favorites_count", "comments_count"),
+        "sf": ("views", "favorites_count", "comments_count"),
+        "sqw": ("views", "favorites_count", "comments_count"),
+        "ao3": ("views", "favorites_count", "comments_count"),
+        "da": ("views", "favorites_count", "comments_count"),
+        "wp": ("reads", "votes", "comments_count"),
+        "ik": (None, "likes", "comments_count"),
+    }
+
     for m in members:
         platform = m["platform"]
         sub_id = m["submission_id"]
         # Dynamic table lookup: resolve platform string to the correct
         # platform-specific submissions table name.
-        table = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions"}.get(platform)
+        table = _table_map.get(platform)
         if not table:
             # Unknown platform -- skip this member gracefully.
             continue
-        row = conn.execute(
-            f"SELECT submission_id, title, views, favorites_count, comments_count FROM {table} WHERE submission_id = ?",
-            (sub_id,),
-        ).fetchone()
+        try:
+            row = conn.execute(
+                f"SELECT * FROM {table} WHERE submission_id = ?",
+                (sub_id,),
+            ).fetchone()
+        except Exception:
+            continue
         if row:
             r = dict(row)
             # Tag each result with its source platform for display purposes.
             r["platform"] = platform
-            total_views += r.get("views", 0)
-            total_faves += r.get("favorites_count", 0)
-            total_comments += r.get("comments_count", 0)
+            v_col, f_col, c_col = _metrics.get(platform, ("views", "favorites_count", "comments_count"))
+            total_views += (r.get(v_col, 0) or 0) if v_col else 0
+            total_faves += (r.get(f_col, 0) or 0) if f_col else 0
+            total_comments += (r.get(c_col, 0) or 0) if c_col else 0
             submissions.append(r)
 
     return {

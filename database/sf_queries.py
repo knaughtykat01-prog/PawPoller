@@ -136,9 +136,9 @@ def finish_sf_poll_log(conn: sqlite3.Connection, log_id: int, status: str,
                        error_message: str | None = None, duration_seconds: float = 0) -> None:
     conn.execute(
         """UPDATE sf_poll_log SET finished_at=datetime('now'), status=?, submissions_found=?,
-           snapshots_inserted=?, error_message=?, duration_seconds=?
+           snapshots_inserted=?, new_watchers_found=?, error_message=?, duration_seconds=?
            WHERE id=?""",
-        (status, submissions_found, snapshots_inserted, error_message, duration_seconds, log_id),
+        (status, submissions_found, snapshots_inserted, new_watchers_found, error_message, duration_seconds, log_id),
     )
     conn.commit()
 

@@ -28,7 +28,7 @@ import httpx
 
 import config
 from database.db import get_connection
-from database import queries, fa_queries, ws_queries, sf_queries
+from database import queries, fa_queries, ws_queries, sf_queries, sqw_queries, ao3_queries, da_queries, wp_queries, ik_queries
 from database.analytics_queries import get_top_fans, get_trending_submissions
 
 logger = logging.getLogger(__name__)
@@ -77,15 +77,15 @@ async def _cmd_help(token: str, chat_id: str, args: str) -> None:
 
 <b>Queries</b>
 /stats — Cross-platform totals
-/top [ib|fa|ws|sf] — Top 5 by views
+/top [ib|fa|ws|sf|sqw|ao3|da|wp|ik] — Top 5 by views
 /trending — Spike detection
 /digest — Send digest report
 /fans — Top fans leaderboard
 
 <b>Control</b>
-/poll [ib|fa|ws|sf|all] — Force poll
+/poll [ib|fa|ws|sf|sqw|ao3|da|wp|ik|all] — Force poll
 /status — Last poll times
-/interval [ib|fa|ws|sf] [mins] — Set poll interval
+/interval [ib|fa|ws|sf|sqw|ao3|da|wp|ik] [mins] — Set poll interval
 
 <b>Notifications</b>
 /notify — Show all toggle states
@@ -108,16 +108,19 @@ async def _cmd_stats(token: str, chat_id: str, args: str) -> None:
     try:
         lines = ["<b>📊 PawPoller Stats</b>", ""]
 
-        platforms = [
+        # Standard platforms: views, favorites_count, comments_count
+        std_platforms = [
             ("🐾", "Inkbunny", "submissions"),
             ("🦊", "FurAffinity", "fa_submissions"),
             ("🦎", "Weasyl", "ws_submissions"),
             ("🐺", "SoFurry", "sf_submissions"),
+            ("🦑", "SquidgeWorld", "sqw_submissions"),
+            ("📖", "AO3", "ao3_submissions"),
         ]
 
         grand_v = grand_f = grand_c = grand_s = 0
 
-        for emoji, name, table in platforms:
+        for emoji, name, table in std_platforms:
             try:
                 row = conn.execute(
                     f"SELECT COUNT(*) as subs, COALESCE(SUM(views),0) as views, "
@@ -137,6 +140,64 @@ async def _cmd_stats(token: str, chat_id: str, args: str) -> None:
             except Exception:
                 continue
 
+        # DeviantArt: views, favorites_count, comments_count, downloads
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) as subs, COALESCE(SUM(views),0) as views, "
+                "COALESCE(SUM(favorites_count),0) as faves, "
+                "COALESCE(SUM(comments_count),0) as comments, "
+                "COALESCE(SUM(downloads),0) as downloads "
+                "FROM da_submissions"
+            ).fetchone()
+            row = dict(row)
+            if row["subs"] > 0:
+                grand_v += row["views"]
+                grand_f += row["faves"]
+                grand_c += row["comments"]
+                grand_s += row["subs"]
+                lines.append(f"<b>🎨 DeviantArt</b> ({row['subs']} subs)")
+                lines.append(f"  Views: {row['views']:,}  Faves: {row['faves']:,}  Comments: {row['comments']:,}  DLs: {row['downloads']:,}")
+        except Exception:
+            pass
+
+        # Wattpad: reads, votes, comments_count, num_lists
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) as subs, COALESCE(SUM(reads),0) as reads, "
+                "COALESCE(SUM(votes),0) as votes, "
+                "COALESCE(SUM(comments_count),0) as comments, "
+                "COALESCE(SUM(num_lists),0) as lists "
+                "FROM wp_submissions"
+            ).fetchone()
+            row = dict(row)
+            if row["subs"] > 0:
+                grand_v += row["reads"]
+                grand_f += row["votes"]
+                grand_c += row["comments"]
+                grand_s += row["subs"]
+                lines.append(f"<b>📙 Wattpad</b> ({row['subs']} subs)")
+                lines.append(f"  Reads: {row['reads']:,}  Votes: {row['votes']:,}  Comments: {row['comments']:,}  Lists: {row['lists']:,}")
+        except Exception:
+            pass
+
+        # Itaku: likes, comments_count, reshares (no views)
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) as subs, COALESCE(SUM(likes),0) as likes, "
+                "COALESCE(SUM(comments_count),0) as comments, "
+                "COALESCE(SUM(reshares),0) as reshares "
+                "FROM ik_submissions"
+            ).fetchone()
+            row = dict(row)
+            if row["subs"] > 0:
+                grand_f += row["likes"]
+                grand_c += row["comments"]
+                grand_s += row["subs"]
+                lines.append(f"<b>🎯 Itaku</b> ({row['subs']} subs)")
+                lines.append(f"  Likes: {row['likes']:,}  Comments: {row['comments']:,}  Reshares: {row['reshares']:,}")
+        except Exception:
+            pass
+
         if grand_s > 0:
             lines.append("")
             lines.append(f"<b>📈 Total</b>: {grand_v:,} views, {grand_f:,} faves, {grand_c:,} comments")
@@ -148,19 +209,34 @@ async def _cmd_stats(token: str, chat_id: str, args: str) -> None:
 
 async def _cmd_top(token: str, chat_id: str, args: str) -> None:
     platform = args.strip().lower() if args.strip() else "ib"
-    table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions"}
-    emoji_map = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺"}
-    name_map = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry"}
 
-    if platform not in table_map:
-        await _send(token, chat_id, "Usage: /top [ib|fa|ws|sf]")
+    # table, sort_col, display columns: list of (col_name, label)
+    platform_cfg = {
+        "ib":  ("submissions",     "views", [("views", "views"), ("favorites_count", "faves"), ("comments_count", "comments")]),
+        "fa":  ("fa_submissions",  "views", [("views", "views"), ("favorites_count", "faves"), ("comments_count", "comments")]),
+        "ws":  ("ws_submissions",  "views", [("views", "views"), ("favorites_count", "faves"), ("comments_count", "comments")]),
+        "sf":  ("sf_submissions",  "views", [("views", "views"), ("favorites_count", "faves"), ("comments_count", "comments")]),
+        "sqw": ("sqw_submissions", "views", [("views", "views"), ("favorites_count", "faves"), ("comments_count", "comments")]),
+        "ao3": ("ao3_submissions", "views", [("views", "views"), ("favorites_count", "faves"), ("comments_count", "comments")]),
+        "da":  ("da_submissions",  "views", [("views", "views"), ("favorites_count", "faves"), ("comments_count", "comments"), ("downloads", "DLs")]),
+        "wp":  ("wp_submissions",  "reads", [("reads", "reads"), ("votes", "votes"), ("comments_count", "comments"), ("num_lists", "lists")]),
+        "ik":  ("ik_submissions",  "likes", [("likes", "likes"), ("comments_count", "comments"), ("reshares", "reshares")]),
+    }
+    emoji_map = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺", "sqw": "🦑", "ao3": "📖", "da": "🎨", "wp": "📙", "ik": "🎯"}
+    name_map = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku"}
+
+    if platform not in platform_cfg:
+        await _send(token, chat_id, "Usage: /top [ib|fa|ws|sf|sqw|ao3|da|wp|ik]")
         return
+
+    table, sort_col, columns = platform_cfg[platform]
+    col_names = [c[0] for c in columns]
 
     conn = get_connection()
     try:
         rows = conn.execute(
-            f"SELECT title, views, favorites_count, comments_count FROM {table_map[platform]} "
-            f"ORDER BY views DESC LIMIT 5"
+            f"SELECT title, {', '.join(col_names)} FROM {table} "
+            f"ORDER BY {sort_col} DESC LIMIT 5"
         ).fetchall()
 
         if not rows:
@@ -171,7 +247,8 @@ async def _cmd_top(token: str, chat_id: str, args: str) -> None:
         for i, r in enumerate(rows, 1):
             r = dict(r)
             lines.append(f"{i}. <b>{_esc(r['title'][:40])}</b>")
-            lines.append(f"   {r['views']:,} views | {r['favorites_count']:,} faves | {r['comments_count']:,} comments")
+            stats = " | ".join(f"{r[c]:,} {label}" for c, label in columns)
+            lines.append(f"   {stats}")
 
         await _send(token, chat_id, "\n".join(lines))
     finally:
@@ -188,7 +265,7 @@ async def _cmd_trending(token: str, chat_id: str, args: str) -> None:
 
         lines = ["<b>🔥 Trending Submissions</b>", ""]
         for r in results[:5]:
-            emoji = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺"}.get(r["platform"], "")
+            emoji = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺", "sqw": "🦑", "ao3": "📖", "da": "🎨", "wp": "📙", "ik": "🎯"}.get(r["platform"], "")
             lines.append(f"{emoji} <b>{_esc(r['title'][:35])}</b> (z={r['max_z']})")
             for metric, info in r["spikes"].items():
                 label = metric.replace("_count", "").replace("favorites", "faves")
@@ -228,13 +305,14 @@ async def _cmd_fans(token: str, chat_id: str, args: str) -> None:
 
 async def _cmd_poll(token: str, chat_id: str, args: str) -> None:
     platform = args.strip().lower() if args.strip() else "all"
-    valid = {"ib", "fa", "ws", "sf", "all"}
+    valid = {"ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik", "all"}
     if platform not in valid:
-        await _send(token, chat_id, "Usage: /poll [ib|fa|ws|sf|all]")
+        await _send(token, chat_id, "Usage: /poll [ib|fa|ws|sf|sqw|ao3|da|wp|ik|all]")
         return
 
-    targets = ["ib", "fa", "ws", "sf"] if platform == "all" else [platform]
-    name_map = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry"}
+    all_platforms = ["ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik"]
+    targets = all_platforms if platform == "all" else [platform]
+    name_map = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku"}
 
     await _send(token, chat_id, f"Starting poll for: {', '.join(name_map[t] for t in targets)}...")
 
@@ -242,8 +320,16 @@ async def _cmd_poll(token: str, chat_id: str, args: str) -> None:
     from polling.fa_poller import run_fa_poll_cycle
     from polling.ws_poller import run_ws_poll_cycle
     from polling.sf_poller import run_sf_poll_cycle
+    from polling.sqw_poller import run_sqw_poll_cycle
+    from polling.ao3_poller import run_ao3_poll_cycle
+    from polling.da_poller import run_da_poll_cycle
+    from polling.wp_poller import run_wp_poll_cycle
+    from polling.ik_poller import run_ik_poll_cycle
 
-    poll_funcs = {"ib": run_poll_cycle, "fa": run_fa_poll_cycle, "ws": run_ws_poll_cycle, "sf": run_sf_poll_cycle}
+    poll_funcs = {
+        "ib": run_poll_cycle, "fa": run_fa_poll_cycle, "ws": run_ws_poll_cycle, "sf": run_sf_poll_cycle,
+        "sqw": run_sqw_poll_cycle, "ao3": run_ao3_poll_cycle, "da": run_da_poll_cycle, "wp": run_wp_poll_cycle, "ik": run_ik_poll_cycle,
+    }
 
     results = []
     for t in targets:
@@ -275,6 +361,11 @@ async def _cmd_status(token: str, chat_id: str, args: str) -> None:
             ("🦊 FurAffinity", fa_queries.get_fa_last_poll),
             ("🦎 Weasyl", ws_queries.get_ws_last_poll),
             ("🐺 SoFurry", sf_queries.get_sf_last_poll),
+            ("🦑 SquidgeWorld", sqw_queries.get_sqw_last_poll),
+            ("📖 AO3", ao3_queries.get_ao3_last_poll),
+            ("🎨 DeviantArt", da_queries.get_da_last_poll),
+            ("📙 Wattpad", wp_queries.get_wp_last_poll),
+            ("🎯 Itaku", ik_queries.get_ik_last_poll),
         ]
 
         for name, func in poll_funcs:
@@ -315,6 +406,11 @@ async def _cmd_status(token: str, chat_id: str, args: str) -> None:
         lines.append(f"  FA: {settings.get('fa_poll_interval_minutes', 60)} min")
         lines.append(f"  WS: {settings.get('ws_poll_interval_minutes', 60)} min")
         lines.append(f"  SF: {settings.get('sf_poll_interval_minutes', 60)} min")
+        lines.append(f"  SqW: {settings.get('sqw_poll_interval_minutes', 60)} min")
+        lines.append(f"  AO3: {settings.get('ao3_poll_interval_minutes', 60)} min")
+        lines.append(f"  DA: {settings.get('da_poll_interval_minutes', 60)} min")
+        lines.append(f"  WP: {settings.get('wp_poll_interval_minutes', 60)} min")
+        lines.append(f"  IK: {settings.get('ik_poll_interval_minutes', 60)} min")
 
         await _send(token, chat_id, "\n".join(lines))
     finally:
@@ -324,7 +420,7 @@ async def _cmd_status(token: str, chat_id: str, args: str) -> None:
 async def _cmd_interval(token: str, chat_id: str, args: str) -> None:
     parts = args.strip().lower().split()
     if len(parts) != 2:
-        await _send(token, chat_id, "Usage: /interval [ib|fa|ws|sf] [minutes]")
+        await _send(token, chat_id, "Usage: /interval [ib|fa|ws|sf|sqw|ao3|da|wp|ik] [minutes]")
         return
 
     platform, minutes_str = parts
@@ -333,11 +429,16 @@ async def _cmd_interval(token: str, chat_id: str, args: str) -> None:
         "fa": "fa_poll_interval_minutes",
         "ws": "ws_poll_interval_minutes",
         "sf": "sf_poll_interval_minutes",
+        "sqw": "sqw_poll_interval_minutes",
+        "ao3": "ao3_poll_interval_minutes",
+        "da": "da_poll_interval_minutes",
+        "wp": "wp_poll_interval_minutes",
+        "ik": "ik_poll_interval_minutes",
     }
-    name_map = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry"}
+    name_map = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku"}
 
     if platform not in key_map:
-        await _send(token, chat_id, "Platform must be: ib, fa, ws, sf")
+        await _send(token, chat_id, "Platform must be: ib, fa, ws, sf, sqw, ao3, da, wp, ik")
         return
 
     try:

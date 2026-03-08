@@ -5,13 +5,16 @@ Usage:
     Open http://127.0.0.1:8420
 """
 
+import base64
 import logging
+import os
+import secrets
 import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 import config
 from database.db import init_db
@@ -20,6 +23,10 @@ from routes.fa_api import fa_router
 from routes.ws_api import ws_router
 from routes.sf_api import sf_router
 from routes.sqw_api import sqw_router
+from routes.ao3_api import ao3_router
+from routes.da_api import da_router
+from routes.wp_api import wp_router
+from routes.ik_api import ik_router
 
 # Logging
 logging.basicConfig(
@@ -55,6 +62,36 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
+# ── Optional Basic Auth for Server Deployments ─────────────────
+# When DASHBOARD_PASSWORD is set (via environment variable or settings.json),
+# all requests require HTTP Basic Auth. This protects server/Docker deployments
+# where the dashboard is exposed on 0.0.0.0. Desktop mode (127.0.0.1) typically
+# doesn't need this, so it's opt-in.
+
+_dashboard_password = os.environ.get("DASHBOARD_PASSWORD") or config.get_settings().get("dashboard_password")
+
+if _dashboard_password:
+    _dashboard_user = os.environ.get("DASHBOARD_USER", "admin")
+    logger.info("Dashboard authentication enabled (user: %s)", _dashboard_user)
+
+    @app.middleware("http")
+    async def basic_auth_middleware(request: Request, call_next):
+        auth = request.headers.get("Authorization")
+        if auth and auth.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(auth[6:]).decode("utf-8")
+                user, passwd = decoded.split(":", 1)
+                if secrets.compare_digest(user, _dashboard_user) and secrets.compare_digest(passwd, _dashboard_password):
+                    return await call_next(request)
+            except Exception:
+                pass
+        return Response(
+            status_code=401,
+            content="Authentication required",
+            headers={"WWW-Authenticate": 'Basic realm="PawPoller"'},
+        )
+
+
 # Mount API routes BEFORE static file mounts. FastAPI/Starlette matches routes
 # in registration order, so API endpoints (e.g. /api/*, /fa/*, /ws/*) must be
 # registered first. If static file mounts were registered first, a request to
@@ -64,6 +101,10 @@ app.include_router(fa_router)    # FurAffinity routes (/api/fa/*)
 app.include_router(ws_router)    # Weasyl routes (/api/ws/*)
 app.include_router(sf_router)    # SoFurry routes (/api/sf/*)
 app.include_router(sqw_router)   # SquidgeWorld routes (/api/sqw/*)
+app.include_router(ao3_router)   # AO3 routes (/api/ao3/*)
+app.include_router(da_router)    # DeviantArt routes (/api/da/*)
+app.include_router(wp_router)    # Wattpad routes (/api/wp/*)
+app.include_router(ik_router)    # Itaku routes (/api/ik/*)
 
 # Serve frontend static files. config.resource_path() resolves differently
 # depending on the build mode:

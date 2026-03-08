@@ -46,11 +46,18 @@ class InkbunnyClient:
         # that require a user_id parameter (e.g. watcher list pages).
         self.user_id: int = 0
         # Primary HTTP client for all official API endpoints.
-        self._http = httpx.AsyncClient(timeout=30.0)
+        transport = httpx.AsyncHTTPTransport(retries=2)
+        self._http = httpx.AsyncClient(timeout=30.0, transport=transport)
         # Secondary HTTP client for web scraping (lazy-initialised in _ensure_web_session).
         # Kept separate because it carries browser cookies and follows redirects,
         # which the API client does not need.
         self._web_http: httpx.AsyncClient | None = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        await self.close()
 
     async def close(self):
         """Shut down both HTTP clients and release their connection pools."""
@@ -83,10 +90,17 @@ class InkbunnyClient:
         # Unlock all content ratings so searches return the full catalogue.
         # tag[2]=Violence, tag[3]=Sexual, tag[4]=Strong Violence, tag[5]=Strong Sexual.
         # Without this call, the API only returns General-rated submissions.
-        await self._http.post(
+        rating_resp = await self._http.post(
             f"{config.INKBUNNY_API_BASE}/api_userrating.php",
             data={"sid": self.sid, "tag[2]": "yes", "tag[3]": "yes", "tag[4]": "yes", "tag[5]": "yes"},
         )
+        try:
+            rating_data = rating_resp.json()
+            if "error_code" in rating_data:
+                logger.warning("Rating unlock failed (error %s): %s — adult content may be missing",
+                               rating_data.get("error_code"), rating_data.get("error_message", ""))
+        except Exception:
+            logger.warning("Rating unlock response was not JSON — adult content may be missing")
         logger.info("Logged in as %s (sid=%s...)", self.username, self.sid[:8])
         return result
 
@@ -135,7 +149,7 @@ class InkbunnyClient:
         all_submissions = []
         page = 1
 
-        while True:
+        for _page_safety in range(1000):
             resp = await self._http.post(
                 f"{config.INKBUNNY_API_BASE}/api_search.php",
                 data={
@@ -276,7 +290,8 @@ class InkbunnyClient:
             return
 
         # follow_redirects=True because Inkbunny redirects after login
-        self._web_http = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
+        web_transport = httpx.AsyncHTTPTransport(retries=2)
+        self._web_http = httpx.AsyncClient(timeout=30.0, follow_redirects=True, transport=web_transport)
 
         # Step 1: Fetch the login page and extract the CSRF token.
         # The token is in a hidden input: <input name="token" value="...">
@@ -294,7 +309,7 @@ class InkbunnyClient:
             },
         )
         # Presence of "logout.php" link in the response body indicates successful login
-        if "logout.php" in resp.text or resp.status_code == 200:
+        if "logout.php" in resp.text:
             logger.info("Web session established for comment scraping")
         else:
             logger.warning("Web login may have failed (status %d)", resp.status_code)
@@ -428,7 +443,7 @@ class InkbunnyClient:
         seen: set[str] = set()
         page = 1
 
-        while True:
+        for _page_safety in range(1000):
             try:
                 resp = await self._web_http.get(
                     f"{config.INKBUNNY_API_BASE}/usersviewall.php",

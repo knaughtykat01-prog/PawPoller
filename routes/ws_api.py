@@ -64,13 +64,14 @@ def ws_auth_status():
     settings = config.get_settings()
     has_key = bool(settings.get("ws_api_key"))
     has_data = False
+    conn = get_connection()
     try:
-        conn = get_connection()
         count = conn.execute("SELECT COUNT(*) as c FROM ws_submissions").fetchone()["c"]
         has_data = count > 0
-        conn.close()
     except Exception:
         pass
+    finally:
+        conn.close()
     return {
         "has_key": has_key,
         "has_data": has_data,

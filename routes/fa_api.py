@@ -66,13 +66,14 @@ def fa_auth_status():
     settings = config.get_settings()
     has_cookies = bool(settings.get("fa_cookie_a") and settings.get("fa_cookie_b"))
     has_data = False
+    conn = get_connection()
     try:
-        conn = get_connection()
         count = conn.execute("SELECT COUNT(*) as c FROM fa_submissions").fetchone()["c"]
         has_data = count > 0
-        conn.close()
     except Exception:
         pass
+    finally:
+        conn.close()
     return {
         "has_cookies": has_cookies,
         "has_data": has_data,
@@ -474,7 +475,9 @@ async def proxy_fa_thumbnail(url: str = Query(..., description="FA thumbnail URL
     allowed = ("furaffinity.net", "facdn.net")
     # Check if the hostname ends with one of the allowed domains
     # (covers subdomains like t.facdn.net, www.furaffinity.net, etc.)
-    if not parsed.hostname or not any(parsed.hostname.endswith(d) for d in allowed):
+    if not parsed.hostname or not any(
+        parsed.hostname == d or parsed.hostname.endswith("." + d) for d in allowed
+    ):
         raise HTTPException(400, "Only FurAffinity CDN URLs allowed")
     try:
         resp = await _fa_thumb_client.get(url)

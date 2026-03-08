@@ -134,11 +134,22 @@ CREATE TABLE IF NOT EXISTS fa_poll_log (
 -- Tracks users watching the authenticated FurAffinity account. Fetched via
 -- FAExport /user/{name}/watchers.json. Only usernames are available (no
 -- user_ids from FAExport). UNIQUE on username prevents duplicates.
+--
+-- Spam protection columns:
+--   confirmed    -- 0 = pending (seen once), 1 = confirmed (seen in 2+ consecutive polls)
+--   last_seen_at -- when the watcher was last seen in FAExport's list
+--   is_spam      -- 1 if flagged as bot/spam by heuristics or profile sniff
+--   notified     -- 1 if a notification has already been sent for this watcher
 CREATE TABLE IF NOT EXISTS fa_watchers (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     username      TEXT NOT NULL,
     first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+    confirmed     INTEGER NOT NULL DEFAULT 0,
+    last_seen_at  TEXT DEFAULT (datetime('now')),
+    is_spam       INTEGER NOT NULL DEFAULT 0,
+    notified      INTEGER NOT NULL DEFAULT 0,
     UNIQUE(username)
 );
 
 CREATE INDEX IF NOT EXISTS idx_fa_watchers_seen ON fa_watchers(first_seen_at);
+CREATE INDEX IF NOT EXISTS idx_fa_watchers_pending ON fa_watchers(confirmed, notified);

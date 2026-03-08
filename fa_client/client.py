@@ -52,9 +52,16 @@ class FAClient:
         self.cookie_a = cookie_a or config.FA_COOKIE_A
         self.cookie_b = cookie_b or config.FA_COOKIE_B
         # Primary client: talks to FAExport (no auth needed)
-        self._http = httpx.AsyncClient(timeout=30.0)
+        transport = httpx.AsyncHTTPTransport(retries=2)
+        self._http = httpx.AsyncClient(timeout=30.0, transport=transport)
         # Secondary client: direct FA with cookies (lazy-initialised)
         self._fa_http: httpx.AsyncClient | None = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        await self.close()
 
     async def close(self) -> None:
         """Shut down both HTTP clients and release their connection pools."""
@@ -74,12 +81,14 @@ class FAClient:
         validation, so we avoid the overhead of creating it unless actually needed.
         """
         if self._fa_http is None:
+            fa_transport = httpx.AsyncHTTPTransport(retries=2)
             self._fa_http = httpx.AsyncClient(
                 timeout=30.0,
                 cookies=self._fa_cookies(),
                 follow_redirects=True,
                 # Custom UA to identify our traffic to FA's servers
                 headers={"User-Agent": "PawPoller/1.0"},
+                transport=fa_transport,
             )
         return self._fa_http
 
@@ -147,7 +156,7 @@ class FAClient:
         """
         all_subs: list[dict] = []
         page = 1
-        while True:
+        for _page_safety in range(1000):
             items = await self.get_gallery_page(page)
             # Empty list = no more pages
             if not items:
@@ -223,6 +232,59 @@ class FAClient:
             return []
         return [self._normalize_comment(c, submission_id) for c in raw_comments]
 
+    # ── Profile Sniff (Spam Detection) ──────────────────────
+
+    async def get_user_profile(self, username: str) -> dict | None:
+        """Fetch a user's profile summary from FAExport.
+
+        Returns a dict with profile data (name, profile, submissions count, etc.)
+        or None if the user doesn't exist or the request fails. Used to sniff
+        new watchers for bot characteristics (zero submissions, zero favorites).
+        """
+        try:
+            resp = await self._http.get(
+                f"{config.FAEXPORT_BASE}/user/{username}.json",
+            )
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            return data if isinstance(data, dict) else None
+        except Exception as e:
+            logger.debug("Failed to fetch profile for %s: %s", username, e)
+            return None
+
+    async def sniff_watcher_profiles(self, usernames: list[str]) -> dict[str, bool]:
+        """Check a batch of watcher usernames for bot characteristics.
+
+        For each username, fetches their FAExport profile and checks:
+        - Zero submissions + zero favorites + zero watches = likely bot
+        - Profile doesn't exist (banned already) = definitely bot
+
+        Returns a dict of {username: is_spam} for each checked user.
+        Rate-limited to avoid hammering FAExport.
+        """
+        results: dict[str, bool] = {}
+        for username in usernames:
+            await asyncio.sleep(config.FA_REQUEST_DELAY_SECONDS)
+            profile = await self.get_user_profile(username)
+            if profile is None:
+                # Profile doesn't exist = already banned = spam
+                results[username] = True
+                continue
+            # Check activity indicators
+            stats = profile.get("stats", {})
+            submissions = _safe_int(stats.get("submissions", 0))
+            favorites = _safe_int(stats.get("favorites", 0))
+            watches = _safe_int(stats.get("watches", 0))
+            # Zero activity across the board = almost certainly a bot
+            if submissions == 0 and favorites == 0 and watches == 0:
+                results[username] = True
+            else:
+                results[username] = False
+            logger.debug("Profile sniff %s: subs=%d fav=%d watches=%d -> spam=%s",
+                         username, submissions, favorites, watches, results[username])
+        return results
+
     # ── Watcher Tracking ──────────────────────────────────────
 
     async def get_watchers_page(self, page: int = 1) -> list[str]:
@@ -254,7 +316,7 @@ class FAClient:
         """
         all_watchers: list[str] = []
         page = 1
-        while True:
+        for _page_safety in range(1000):
             items = await self.get_watchers_page(page)
             # Empty list = no more pages
             if not items:

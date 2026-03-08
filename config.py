@@ -171,8 +171,20 @@ SF_REQUEST_DELAY_SECONDS = 1.5  # Rate-limit delay between SoFurry page scrapes 
 # ── SquidgeWorld settings ──
 SQW_REQUEST_DELAY_SECONDS = 2.0  # Rate-limit delay between SquidgeWorld page scrapes (higher due to anti-bot)
 
+# ── AO3 settings ──
+AO3_REQUEST_DELAY_SECONDS = 3.0  # Rate-limit delay between AO3 page scrapes (higher — volunteer-run site)
+
+# ── DeviantArt settings ──
+DA_REQUEST_DELAY_SECONDS = 2.0  # Rate-limit delay between DeviantArt API requests
+
+# ── Wattpad settings ──
+WP_REQUEST_DELAY_SECONDS = 1.0  # Rate-limit delay between Wattpad API requests
+
+# ── Itaku settings ──
+IK_REQUEST_DELAY_SECONDS = 1.0  # Rate-limit delay between Itaku API requests
+
 # ── App metadata ──
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.1"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

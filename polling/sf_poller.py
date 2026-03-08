@@ -11,10 +11,12 @@ Key differences:
 """
 
 from __future__ import annotations
+import atexit
 import logging
 import threading
 import time
 from datetime import datetime, timezone
+from html import escape as _esc
 
 import httpx
 
@@ -41,6 +43,18 @@ _sf_first_poll = True
 # Persistent client — reused across poll cycles to avoid re-logging in
 # every time.  Recreated only when credentials change in settings.
 _sf_client: SoFurryClient | None = None
+
+
+def _cleanup_sf_client():
+    if _sf_client is not None:
+        import asyncio
+        try:
+            asyncio.get_event_loop().run_until_complete(_sf_client.close())
+        except Exception:
+            pass
+
+
+atexit.register(_cleanup_sf_client)
 
 
 def _update_sf_progress(phase: str, current: int = 0, total: int = 0, message: str = ""):
@@ -91,7 +105,7 @@ async def _send_sf_telegram(new_details: list[dict]) -> None:
 
     lines = [f"<b>SF: {len(new_details)} Submission{'s' if len(new_details) != 1 else ''} Updated</b>"]
     for d in new_details[:5]:
-        lines.append(f"  * {d['title']}")
+        lines.append(f"  • {_esc(d['title'])}")
     if len(new_details) > 5:
         lines.append(f"  ...and {len(new_details) - 5} more")
 
@@ -146,7 +160,7 @@ async def _send_sf_follower_telegram(new_follower_names: list[str]) -> None:
 
     lines = [f"<b>🐾 SF: {len(new_follower_names)} New Follower{'s' if len(new_follower_names) != 1 else ''}</b>"]
     for name in new_follower_names[:5]:
-        lines.append(f"  • {name}")
+        lines.append(f"  • {_esc(name)}")
     if len(new_follower_names) > 5:
         lines.append(f"  ...and {len(new_follower_names) - 5} more")
 
@@ -205,8 +219,8 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
     _sf_poll_running = True
     _update_sf_progress("starting", message="Initialising SoFurry poll cycle...")
 
-    conn = get_connection()
-    log_id = sf_queries.start_sf_poll_log(conn)
+    conn = None
+    log_id = None
     start_time = time.time()
 
     stats = {
@@ -219,6 +233,8 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
     client = _get_or_create_client(settings)
 
     try:
+        conn = get_connection()
+        log_id = sf_queries.start_sf_poll_log(conn)
         # Step 1: Authenticate (reuses existing session if still valid)
         _update_sf_progress("searching", message="Authenticating with SoFurry...")
         username = await client.validate_session()
@@ -236,6 +252,7 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
             _update_sf_progress("complete", message="No SoFurry submissions found.")
             sf_queries.finish_sf_poll_log(conn, log_id, "success",
                                           duration_seconds=time.time() - start_time, **stats)
+            conn.commit()
             return stats
 
         # Step 3: Fetch details
@@ -327,9 +344,10 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
         duration = time.time() - start_time
         _update_sf_progress("error", message=str(e))
         logger.error("SF poll failed: %s", e)
-        sf_queries.finish_sf_poll_log(conn, log_id, "error",
-                                      error_message=str(e),
-                                      duration_seconds=duration, **stats)
+        if conn and log_id:
+            sf_queries.finish_sf_poll_log(conn, log_id, "error",
+                                          error_message=str(e),
+                                          duration_seconds=duration, **stats)
         # Send error alert via Telegram
         from polling.telegram import send_poll_error
         try:
@@ -344,4 +362,5 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
         _sf_poll_lock.release()
         # NOTE: client is NOT closed here — it persists across poll cycles
         # to reuse the authenticated session and avoid re-logging in.
-        conn.close()
+        if conn:
+            conn.close()

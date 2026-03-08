@@ -23,6 +23,7 @@ import logging
 import threading
 import time
 from datetime import datetime, timezone
+from html import escape as _esc
 
 import httpx
 
@@ -115,7 +116,7 @@ async def _send_ws_telegram(new_details: list[dict]) -> None:
     # Title-only bullets since we don't have per-user interaction data.
     lines = [f"<b>🦎 WS: {len(new_details)} Submission{'s' if len(new_details) != 1 else ''} Updated</b>"]
     for d in new_details[:5]:
-        lines.append(f"  • {d['title']}")
+        lines.append(f"  • {_esc(d['title'])}")
     if len(new_details) > 5:
         lines.append(f"  ...and {len(new_details) - 5} more")
 
@@ -170,8 +171,8 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
     _ws_poll_running = True
     _update_ws_progress("starting", message="Initialising Weasyl poll cycle...")
 
-    conn = get_connection()
-    log_id = ws_queries.start_ws_poll_log(conn)
+    conn = None
+    log_id = None
     start_time = time.time()
 
     # Minimal stats dict -- no fave or comment tracking for Weasyl.
@@ -184,6 +185,8 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
     client = WeasylClient(api_key=settings.get("ws_api_key", ""))
 
     try:
+        conn = get_connection()
+        log_id = ws_queries.start_ws_poll_log(conn)
         # ── Step 1: Validate API key ───────────────────────────
         # The Weasyl API requires a valid API key for all requests.
         # We call validate_key() first to fail fast with a clear error
@@ -202,6 +205,7 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
         if not submission_ids:
             _update_ws_progress("complete", message="No Weasyl submissions found.")
             ws_queries.finish_ws_poll_log(conn, log_id, "success", duration_seconds=time.time() - start_time, **stats)
+            conn.commit()
             return stats
 
         # ── Step 3: Fetch details for each submission ──────────
@@ -212,6 +216,7 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
         # ── Step 4: Upsert submissions and insert snapshots ────
         # This is the final step -- no conditional fave/comment fetching.
         # We just record the aggregate counts for historical charting.
+        new_activity_details: list[dict] = []
         poll_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         for idx, detail in enumerate(details, 1):
             _update_ws_progress("processing", current=idx, total=len(details),
@@ -221,6 +226,11 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
                 views = detail.get("views", 0)
                 faves = detail.get("favorites_count", 0)
                 comments = detail.get("comments_count", 0)
+
+                # Check for stat increases to drive notifications.
+                prev_faves = ws_queries.get_ws_previous_favorites_count(conn, sub_id)
+                if prev_faves is not None and faves > prev_faves:
+                    new_activity_details.append({"title": detail.get("title", "")})
 
                 ws_queries.upsert_ws_submission(conn, detail)
                 ws_queries.insert_ws_snapshot(conn, sub_id, views, faves, comments, polled_at=poll_timestamp)
@@ -232,6 +242,20 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
                 logger.warning("Error processing WS submission %s: %s", detail.get("submission_id"), e)
 
         conn.commit()
+
+        # ── Notifications ─────────────────────────────────────
+        if _ws_first_poll:
+            logger.info("First WS poll after startup — suppressing %d activity notifications",
+                        len(new_activity_details))
+        else:
+            try:
+                _send_ws_notifications(new_activity_details)
+            except Exception as ne:
+                logger.warning("Failed to send WS notifications: %s", ne)
+            try:
+                await _send_ws_telegram(new_activity_details)
+            except Exception as te:
+                logger.warning("Failed to send WS Telegram notification: %s", te)
 
         # ── Finalise ───────────────────────────────────────────
         duration = time.time() - start_time
@@ -264,7 +288,8 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
         duration = time.time() - start_time
         _update_ws_progress("error", message=str(e))
         logger.error("WS poll failed: %s", e)
-        ws_queries.finish_ws_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
+        if conn and log_id:
+            ws_queries.finish_ws_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
         # Send error alert via Telegram
         from polling.telegram import send_poll_error
         try:
@@ -279,4 +304,5 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
         _ws_poll_running = False
         _ws_poll_lock.release()
         await client.close()
-        conn.close()
+        if conn:
+            conn.close()

@@ -16,6 +16,10 @@ a = Analysis(
         ('database/ws_schema.sql', 'database'),
         ('database/sf_schema.sql', 'database'),
         ('database/sqw_schema.sql', 'database'),
+        ('database/ao3_schema.sql', 'database'),
+        ('database/da_schema.sql', 'database'),
+        ('database/wp_schema.sql', 'database'),
+        ('database/ik_schema.sql', 'database'),
         ('assets', 'assets'),
     ],
     hiddenimports=[

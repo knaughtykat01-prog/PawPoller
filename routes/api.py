@@ -44,7 +44,11 @@ router = APIRouter(prefix="/api")
 # When the user logs in without ticking "remember me", credentials are stored
 # here in the process memory rather than persisted to settings.json on disk.
 # They survive for the lifetime of the server process but are lost on restart.
+# Protected by _cred_lock to prevent race conditions between the web server
+# thread (writes) and poller threads (reads).
+import threading
 _session_credentials: dict = {}
+_cred_lock = threading.Lock()
 
 
 def get_effective_credentials() -> tuple[str, str]:
@@ -59,8 +63,9 @@ def get_effective_credentials() -> tuple[str, str]:
     This allows temporary logins to override persisted credentials, and persisted
     credentials to override the initial config defaults.
     """
-    if _session_credentials.get("username") and _session_credentials.get("password"):
-        return _session_credentials["username"], _session_credentials["password"]
+    with _cred_lock:
+        if _session_credentials.get("username") and _session_credentials.get("password"):
+            return _session_credentials["username"], _session_credentials["password"]
     settings = config.get_settings()
     username = settings.get("username") or config.INKBUNNY_USERNAME
     password = settings.get("password") or config.INKBUNNY_PASSWORD
@@ -89,13 +94,14 @@ def auth_status():
     username, password = get_effective_credentials()
     has_credentials = bool(username and password)
     has_data = False
+    conn = get_connection()
     try:
-        conn = get_connection()
         count = conn.execute("SELECT COUNT(*) as c FROM submissions").fetchone()["c"]
         has_data = count > 0
-        conn.close()
     except Exception:
         pass
+    finally:
+        conn.close()
     return {"has_credentials": has_credentials, "has_data": has_data}
 
 
@@ -140,17 +146,18 @@ async def auth_login(body: dict):
 
     # Hot-reload: update the config module globals in-place so the background
     # poller uses these new credentials on its next cycle, without needing
-    # a full server restart.
-    config.INKBUNNY_USERNAME = username
-    config.INKBUNNY_PASSWORD = password
+    # a full server restart. Lock ensures poller reads consistent username+password.
+    with _cred_lock:
+        config.INKBUNNY_USERNAME = username
+        config.INKBUNNY_PASSWORD = password
 
-    if remember:
-        # Persist to settings.json so credentials survive server restarts
-        config.save_settings({"username": username, "password": password})
-    else:
-        # Store in process memory only -- lost on restart
-        _session_credentials["username"] = username
-        _session_credentials["password"] = password
+        if remember:
+            # Persist to settings.json so credentials survive server restarts
+            config.save_settings({"username": username, "password": password})
+        else:
+            # Store in process memory only -- lost on restart
+            _session_credentials["username"] = username
+            _session_credentials["password"] = password
 
     return {"status": "success", "message": "Authenticated successfully"}
 
@@ -165,19 +172,21 @@ def auth_logout():
       3. settings.json on disk (removes persisted username/password)
       4. Cached API session in the database (forces full re-auth on next poll)
     """
-    _session_credentials.clear()
-    config.INKBUNNY_USERNAME = ""
-    config.INKBUNNY_PASSWORD = ""
+    with _cred_lock:
+        _session_credentials.clear()
+        config.INKBUNNY_USERNAME = ""
+        config.INKBUNNY_PASSWORD = ""
     # Remove from settings.json on disk
     config.delete_settings_keys(["username", "password"])
     # Clear the cached Inkbunny API session (SID) from the database so the
     # next poll cycle will perform a fresh login rather than reusing a stale SID
+    conn = get_connection()
     try:
-        conn = get_connection()
         queries.clear_session(conn)
-        conn.close()
     except Exception:
         pass
+    finally:
+        conn.close()
     return {"status": "success", "message": "Logged out"}
 
 
@@ -1114,6 +1123,15 @@ def apply_update(body: dict):
     download_url = body.get("download_url", "")
     if not download_url:
         raise HTTPException(400, "download_url is required")
+    # Security: only allow downloads from the official GitHub repository
+    parsed = urlparse(download_url)
+    if not parsed.hostname or not (
+        parsed.hostname == "github.com"
+        or parsed.hostname.endswith(".github.com")
+        or parsed.hostname == "api.github.com"
+        or parsed.hostname.endswith(".githubusercontent.com")
+    ):
+        raise HTTPException(400, "Only GitHub URLs are allowed for updates")
     try:
         zip_path = updater.download_update(download_url)
         updater.apply_update(zip_path)
@@ -1141,7 +1159,9 @@ async def proxy_thumbnail(url: str = Query(..., description="Inkbunny thumbnail 
     """
     parsed = urlparse(url)
     # Domain whitelist: only proxy requests to Inkbunny's CDN (metapix.net)
-    if not parsed.hostname or "metapix.net" not in parsed.hostname:
+    if not parsed.hostname or not (
+        parsed.hostname == "metapix.net" or parsed.hostname.endswith(".metapix.net")
+    ):
         raise HTTPException(400, "Only Inkbunny CDN URLs allowed")
     try:
         resp = await _thumb_client.get(url)
@@ -1164,15 +1184,18 @@ def get_pins():
     result = []
     conn = get_connection()
     try:
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions"}
         for pin in pins:
             table = table_map.get(pin.get("platform"))
             if not table:
                 continue
-            row = conn.execute(
-                f"SELECT submission_id, title, views, favorites_count, comments_count FROM {table} WHERE submission_id = ?",
-                (pin["submission_id"],),
-            ).fetchone()
+            try:
+                row = conn.execute(
+                    f"SELECT * FROM {table} WHERE submission_id = ?",
+                    (pin["submission_id"],),
+                ).fetchone()
+            except Exception:
+                continue
             if row:
                 d = dict(row)
                 d["platform"] = pin["platform"]
@@ -1219,8 +1242,11 @@ def get_goals():
     try:
         rows = conn.execute("SELECT * FROM goals ORDER BY created_at DESC").fetchall()
         result = []
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions"}
-        allowed_metrics = {"views", "favorites_count", "comments_count"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions"}
+        allowed_metrics = {
+            "views", "favorites_count", "comments_count",
+            "reads", "votes", "likes", "reshares", "downloads", "num_lists",
+        }
         for row in rows:
             g = dict(row)
             metric = g["metric"]
@@ -1235,13 +1261,16 @@ def get_goals():
             if g["scope"] == "submission" and g["submission_id"]:
                 table = table_map.get(g["platform"])
                 if table:
-                    sub = conn.execute(
-                        f"SELECT title, {metric} FROM {table} WHERE submission_id = ?",
-                        (g["submission_id"],),
-                    ).fetchone()
-                    if sub:
-                        title = sub["title"]
-                        current = sub[metric] or 0
+                    try:
+                        sub = conn.execute(
+                            f"SELECT title, {metric} FROM {table} WHERE submission_id = ?",
+                            (g["submission_id"],),
+                        ).fetchone()
+                        if sub:
+                            title = sub["title"]
+                            current = sub[metric] or 0
+                    except Exception:
+                        pass
             else:
                 if g["platform"] == "all":
                     for tbl in table_map.values():
@@ -1275,7 +1304,8 @@ def create_goal(body: dict):
     sub_id = body.get("submission_id")
     metric = body.get("metric", "views")
     target = int(body.get("target_value", 0))
-    if metric not in ("views", "favorites_count", "comments_count", "watchers"):
+    if metric not in ("views", "favorites_count", "comments_count", "watchers",
+                       "reads", "votes", "likes", "reshares", "downloads", "num_lists"):
         raise HTTPException(400, "Invalid metric")
     if target <= 0:
         raise HTTPException(400, "Target must be positive")
@@ -1405,23 +1435,40 @@ def get_tag_stats(tag_id: int):
     conn = get_connection()
     try:
         members = conn.execute("SELECT platform, submission_id FROM submission_tags WHERE tag_id = ?", (tag_id,)).fetchall()
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions"}
+        # Platform-specific column mappings for stats aggregation
+        _metrics = {
+            "ib": ("views", "favorites_count", "comments_count"),
+            "fa": ("views", "favorites_count", "comments_count"),
+            "ws": ("views", "favorites_count", "comments_count"),
+            "sf": ("views", "favorites_count", "comments_count"),
+            "sqw": ("views", "favorites_count", "comments_count"),
+            "ao3": ("views", "favorites_count", "comments_count"),
+            "da": ("views", "favorites_count", "comments_count"),
+            "wp": ("reads", "votes", "comments_count"),
+            "ik": (None, "likes", "comments_count"),
+        }
         total_views = total_faves = total_comments = 0
         subs = []
         for m in members:
-            table = table_map.get(m["platform"])
+            plat = m["platform"]
+            table = table_map.get(plat)
             if not table:
                 continue
-            row = conn.execute(
-                f"SELECT submission_id, title, views, favorites_count, comments_count FROM {table} WHERE submission_id = ?",
-                (m["submission_id"],),
-            ).fetchone()
+            try:
+                row = conn.execute(
+                    f"SELECT * FROM {table} WHERE submission_id = ?",
+                    (m["submission_id"],),
+                ).fetchone()
+            except Exception:
+                continue
             if row:
                 d = dict(row)
-                d["platform"] = m["platform"]
-                total_views += d.get("views", 0)
-                total_faves += d.get("favorites_count", 0)
-                total_comments += d.get("comments_count", 0)
+                d["platform"] = plat
+                v_col, f_col, c_col = _metrics.get(plat, ("views", "favorites_count", "comments_count"))
+                total_views += d.get(v_col, 0) or 0 if v_col else 0
+                total_faves += d.get(f_col, 0) or 0 if f_col else 0
+                total_comments += d.get(c_col, 0) or 0 if c_col else 0
                 subs.append(d)
         return {"total_views": total_views, "total_favorites": total_faves, "total_comments": total_comments, "submissions": subs}
     finally:
@@ -1499,21 +1546,32 @@ def get_historical_analytics(weeks: int = Query(12)):
         }
 
         # Best month: find the month with the highest total views gained
+        # Each tuple: (platform_key, snap_table, sub_table, views_col, faves_col, comments_col)
+        # views_col is None for platforms without a views column (e.g. Itaku)
         table_pairs = [
-            ("snapshots", "submissions"),
-            ("fa_snapshots", "fa_submissions"),
-            ("ws_snapshots", "ws_submissions"),
-            ("sf_snapshots", "sf_submissions"),
+            ("ib",  "snapshots",       "submissions",       "views", "favorites_count", "comments_count"),
+            ("fa",  "fa_snapshots",    "fa_submissions",    "views", "favorites_count", "comments_count"),
+            ("ws",  "ws_snapshots",    "ws_submissions",    "views", "favorites_count", "comments_count"),
+            ("sf",  "sf_snapshots",    "sf_submissions",    "views", "favorites_count", "comments_count"),
+            ("sqw", "sqw_snapshots",   "sqw_submissions",   "views", "favorites_count", "comments_count"),
+            ("ao3", "ao3_snapshots",   "ao3_submissions",   "views", "favorites_count", "comments_count"),
+            ("da",  "da_snapshots",    "da_submissions",    "views", "favorites_count", "comments_count"),
+            ("wp",  "wp_snapshots",    "wp_submissions",    "reads", "votes",           "comments_count"),
+            ("ik",  "ik_snapshots",    "ik_submissions",    None,    "likes",           "comments_count"),
         ]
 
         month_data = {}
-        for snap_t, _ in table_pairs:
+        for plat, snap_t, _, v_col, f_col, c_col in table_pairs:
             try:
+                # Build column expressions, using 0 for missing columns
+                v_expr = f"MAX({v_col}) - MIN({v_col})" if v_col else "0"
+                f_expr = f"MAX({f_col}) - MIN({f_col})" if f_col else "0"
+                c_expr = f"MAX({c_col}) - MIN({c_col})" if c_col else "0"
                 rows = conn.execute(f"""
                     SELECT strftime('%Y-%m', polled_at) as month,
-                           MAX(views) - MIN(views) as views_delta,
-                           MAX(favorites_count) - MIN(favorites_count) as faves_delta,
-                           MAX(comments_count) - MIN(comments_count) as comments_delta
+                           {v_expr} as views_delta,
+                           {f_expr} as faves_delta,
+                           {c_expr} as comments_delta
                     FROM {snap_t}
                     GROUP BY month, submission_id
                 """).fetchall()
@@ -1540,13 +1598,15 @@ def get_historical_analytics(weeks: int = Query(12)):
 
         # Fastest growing all-time: top submissions by views gained across platforms
         fastest = []
-        for snap_t, sub_t in table_pairs:
+        for plat, snap_t, sub_t, v_col, f_col, _ in table_pairs:
+            if not v_col:
+                # Skip platforms without a views column for "fastest growing by views"
+                continue
             try:
-                platform = "ib" if "fa_" not in snap_t and "ws_" not in snap_t and "sf_" not in snap_t else \
-                           "fa" if "fa_" in snap_t else "ws" if "ws_" in snap_t else "sf"
                 rows = conn.execute(f"""
-                    SELECT s.submission_id, s.title, s.views, s.favorites_count,
-                           MAX(sn.views) - MIN(sn.views) as views_gained,
+                    SELECT s.submission_id, s.title, s.{v_col} as current_views,
+                           s.{f_col} as current_faves,
+                           MAX(sn.{v_col}) - MIN(sn.{v_col}) as views_gained,
                            JULIANDAY('now') - JULIANDAY(MIN(sn.polled_at)) as days_tracked
                     FROM {sub_t} s
                     JOIN {snap_t} sn ON s.submission_id = sn.submission_id
@@ -1558,10 +1618,10 @@ def get_historical_analytics(weeks: int = Query(12)):
                 for row in rows:
                     days = max(1, row["days_tracked"] or 1)
                     fastest.append({
-                        "platform": platform.upper(),
+                        "platform": plat.upper(),
                         "title": row["title"],
-                        "views": row["views"],
-                        "faves": row["favorites_count"],
+                        "views": row["current_views"],
+                        "faves": row["current_faves"],
                         "views_per_day": (row["views_gained"] or 0) / days,
                     })
             except Exception:
@@ -1571,17 +1631,20 @@ def get_historical_analytics(weeks: int = Query(12)):
 
         # Weekly growth report
         weekly = {}
-        for snap_t, _ in table_pairs:
+        for plat, snap_t, _, v_col, f_col, c_col in table_pairs:
             try:
+                v_expr = f"MAX({v_col}) - MIN({v_col})" if v_col else "0"
+                f_expr = f"MAX({f_col}) - MIN({f_col})" if f_col else "0"
+                c_expr = f"MAX({c_col}) - MIN({c_col})" if c_col else "0"
                 rows = conn.execute(f"""
                     SELECT strftime('%Y-W%W', polled_at) as week_label,
-                           MAX(views) - MIN(views) as views_delta,
-                           MAX(favorites_count) - MIN(favorites_count) as faves_delta,
-                           MAX(comments_count) - MIN(comments_count) as comments_delta
+                           {v_expr} as views_delta,
+                           {f_expr} as faves_delta,
+                           {c_expr} as comments_delta
                     FROM {snap_t}
-                    WHERE polled_at >= datetime('now', '-{weeks * 7} days')
+                    WHERE polled_at >= datetime('now', ? || ' days')
                     GROUP BY week_label, submission_id
-                """).fetchall()
+                """, (str(-(weeks * 7)),)).fetchall()
                 for r in rows:
                     w = r["week_label"]
                     if w not in weekly:

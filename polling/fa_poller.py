@@ -24,6 +24,7 @@ import logging
 import threading
 import time
 from datetime import datetime, timezone
+from html import escape as _esc
 
 import httpx
 
@@ -55,6 +56,36 @@ _fa_poll_lock = threading.Lock()
 
 # First-poll suppression: silent baseline on first poll after startup.
 _fa_first_poll = True
+
+# ── Watcher spam filter ──────────────────────────────────────
+# FA attracts waves of bot/spam watchers with obvious patterns.
+# This filter suppresses notifications (not DB storage) for them.
+import re
+
+_SPAM_KEYWORDS = re.compile(
+    r"(1xbet|promo|casino|betting|slot|poker|viagra|cialis|crypto|forex|"
+    r"onlyfans|escort|dating|hookup|webcam|livecam|sexchat|porno)",
+    re.IGNORECASE,
+)
+# Alphanumeric soup: mostly digits with a few letters, or long gibberish
+# e.g. "2charlottec262ye0", "123gaa", "a8k3m2x9p1"
+_ALPHANUM_SOUP = re.compile(r"^(?=.*\d)[a-z0-9]{8,}$", re.IGNORECASE)
+
+# Bulk threshold: if more than this many new watchers in one cycle,
+# it's almost certainly a spam wave — summarise instead of listing names.
+_SPAM_WAVE_THRESHOLD = 20
+
+
+def _is_spam_watcher(username: str) -> bool:
+    """Heuristic check for bot/spam watcher usernames."""
+    if _SPAM_KEYWORDS.search(username):
+        return True
+    # Alternating letters+digits pattern (e.g. "a8k3m2x9p1")
+    if _ALPHANUM_SOUP.match(username):
+        digit_ratio = sum(c.isdigit() for c in username) / len(username)
+        if digit_ratio >= 0.4:
+            return True
+    return False
 
 
 def _update_fa_progress(phase: str, current: int = 0, total: int = 0, message: str = ""):
@@ -104,7 +135,7 @@ def _send_fa_notifications(new_comment_details: list[dict],
         )
         toast.show()
 
-    # --- Watcher toast (truncated to 3 items) ---
+    # --- Watcher toast (pre-filtered confirmed watchers) ---
     if new_watcher_names and settings.get("fa_watcher_notifications_enabled", True):
         shown = new_watcher_names[:3]
         lines = [f"{name} started watching you" for name in shown]
@@ -145,19 +176,22 @@ async def _send_fa_telegram(new_comment_details: list[dict],
     if new_comment_details:
         lines.append(f"<b>🦊 FA: {len(new_comment_details)} New Comment{'s' if len(new_comment_details) != 1 else ''}</b>")
         for d in new_comment_details[:5]:
-            lines.append(f"  • <b>{d['username']}</b> commented on {d['title']}")
+            lines.append(f"  • <b>{_esc(d['username'])}</b> commented on {_esc(d['title'])}")
         if len(new_comment_details) > 5:
             lines.append(f"  ...and {len(new_comment_details) - 5} more")
 
-    # --- Watchers section ---
-    if new_watcher_names:
+    # --- Watchers section (pre-filtered: confirmed, non-spam, un-notified) ---
+    if new_watcher_names and settings.get("fa_watcher_notifications_enabled", True):
         if lines:
             lines.append("")  # Visual separator before watchers
         lines.append(f"<b>🦊 FA: {len(new_watcher_names)} New Watcher{'s' if len(new_watcher_names) != 1 else ''}</b>")
         for name in new_watcher_names[:5]:
-            lines.append(f"  • <b>{name}</b> started watching")
+            lines.append(f"  • <b>{_esc(name)}</b> started watching")
         if len(new_watcher_names) > 5:
             lines.append(f"  ...and {len(new_watcher_names) - 5} more")
+
+    if not lines:
+        return  # Everything was filtered out — nothing to send
 
     text = "\n".join(lines)
     try:
@@ -207,8 +241,8 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
     _fa_poll_running = True
     _update_fa_progress("starting", message="Initialising FA poll cycle...")
 
-    conn = get_connection()
-    log_id = fa_queries.start_fa_poll_log(conn)
+    conn = None
+    log_id = None
     start_time = time.time()
 
     # Note: no "new_faves_found" key -- FA doesn't provide faving user data.
@@ -230,6 +264,8 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
     )
 
     try:
+        conn = get_connection()
+        log_id = fa_queries.start_fa_poll_log(conn)
         # ── Step 1: Discover gallery submissions via FAExport ──
         # FAExport provides a JSON list of submission IDs for a user's
         # gallery, which avoids the need to scrape FA's HTML gallery pages.
@@ -242,6 +278,7 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
         if not submission_ids:
             _update_fa_progress("complete", message="No FA submissions found.")
             fa_queries.finish_fa_poll_log(conn, log_id, "success", duration_seconds=time.time() - start_time, **stats)
+            conn.commit()
             return stats
 
         # ── Step 2: Fetch details for each submission ──────────
@@ -307,10 +344,17 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
 
         conn.commit()
 
-        # ── Step 5: Fetch watchers ───────────────────────────
-        # Fetch the full watcher list and upsert each one.  New watchers
-        # (not previously recorded) are counted for stats and notifications.
+        # ── Step 5: Fetch watchers (confirmation delay + spam protection) ──
+        #
+        # Flow:
+        #   a) Upsert all watchers from FAExport (new ones start as pending/unconfirmed)
+        #   b) Confirm pending watchers that were seen again (survived 2+ cycles)
+        #   c) Profile-sniff newly confirmed watchers to catch bots with zero activity
+        #   d) Keyword-filter remaining watchers
+        #   e) Notify only confirmed, non-spam, non-notified watchers
+        #
         new_watcher_names = []
+        confirmed_watcher_names = []
         try:
             _update_fa_progress("fetching_watchers", message="Fetching watcher list...")
             watchers = await client.get_all_watchers()
@@ -320,26 +364,75 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                     stats["new_watchers_found"] += 1
                     new_watcher_names.append(username)
             conn.commit()
+
+            if new_watcher_names:
+                logger.info("FA: %d new watchers discovered (pending confirmation)", len(new_watcher_names))
+                # Keyword-filter obvious spam immediately and mark in DB
+                keyword_spam = [n for n in new_watcher_names if _is_spam_watcher(n)]
+                if keyword_spam:
+                    fa_queries.mark_watchers_spam(conn, keyword_spam)
+                    conn.commit()
+                    logger.info("FA watcher keyword filter: %d/%d flagged as obvious bots (e.g. %s)",
+                                len(keyword_spam), len(new_watcher_names), ", ".join(keyword_spam[:3]))
+
+            # Confirm pending watchers that survived from a previous cycle
+            confirmed_watcher_names = fa_queries.confirm_pending_watchers(conn)
+            conn.commit()
+
+            if confirmed_watcher_names:
+                logger.info("FA: %d watchers confirmed (seen in 2+ consecutive polls)", len(confirmed_watcher_names))
+
+                # Profile sniff confirmed watchers to catch zero-activity bots.
+                # Only sniff watchers not already flagged by keyword filter.
+                # Cap at 10 to avoid excessive FAExport requests.
+                to_sniff = [n for n in confirmed_watcher_names if not _is_spam_watcher(n)][:10]
+                if to_sniff:
+                    _update_fa_progress("sniffing_profiles", message=f"Checking {len(to_sniff)} watcher profiles...")
+                    try:
+                        sniff_results = await client.sniff_watcher_profiles(to_sniff)
+                        profile_spam = [name for name, is_spam in sniff_results.items() if is_spam]
+                        if profile_spam:
+                            fa_queries.mark_watchers_spam(conn, profile_spam)
+                            conn.commit()
+                            logger.info("FA profile sniff: %d/%d confirmed watchers flagged as bots (zero activity)",
+                                        len(profile_spam), len(to_sniff))
+                    except Exception as pe:
+                        logger.warning("FA profile sniff failed (non-fatal): %s", pe)
+
         except Exception as we:
             logger.warning("Failed to fetch FA watchers: %s", we)
 
-        # ── Notifications (comments + watchers on FA) ────────────
+        # ── Notifications (comments + confirmed watchers) ───────────
         # Skip on first poll after startup (silent baseline).
-        # Note: _fa_first_poll is cleared in the `finally` block so it
-        # gets reset even if this poll fails with an exception.
+        # Watcher notifications respect fa_watcher_notification_mode:
+        #   "immediate" (default) = notify per-poll as watchers confirm
+        #   "daily"               = accumulate, sent via send_fa_watcher_digest()
+        #   "off"                 = never notify about watchers
+        settings = config.get_settings()
+        watcher_mode = settings.get("fa_watcher_notification_mode", "immediate")
+        notify_watchers = []
+        if not _fa_first_poll and watcher_mode == "immediate":
+            notify_watchers = fa_queries.get_unnotified_confirmed_watchers(conn)
+
         if _fa_first_poll:
             logger.info("First FA poll after startup — suppressing %d comment, %d watcher notifications",
                         len(new_comment_details), len(new_watcher_names))
         else:
+            # Comments always notify immediately; watchers depend on mode
             try:
-                _send_fa_notifications(new_comment_details, new_watcher_names)
+                _send_fa_notifications(new_comment_details, notify_watchers)
             except Exception as ne:
                 logger.warning("Failed to send FA notifications: %s", ne)
 
             try:
-                await _send_fa_telegram(new_comment_details, new_watcher_names)
+                await _send_fa_telegram(new_comment_details, notify_watchers)
             except Exception as te:
                 logger.warning("Failed to send FA Telegram notification: %s", te)
+
+            # Mark as notified so we don't re-send
+            if notify_watchers:
+                fa_queries.mark_watchers_notified(conn, notify_watchers)
+                conn.commit()
 
         # ── Finalise ───────────────────────────────────────────
         duration = time.time() - start_time
@@ -373,7 +466,8 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
         duration = time.time() - start_time
         _update_fa_progress("error", message=str(e))
         logger.error("FA poll failed: %s", e)
-        fa_queries.finish_fa_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
+        if conn and log_id:
+            fa_queries.finish_fa_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
         # Send error alert via Telegram
         from polling.telegram import send_poll_error
         try:
@@ -390,4 +484,52 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
         _fa_poll_running = False
         _fa_poll_lock.release()
         await client.close()
+        if conn:
+            conn.close()
+
+
+async def send_fa_watcher_digest() -> None:
+    """Send a daily digest of confirmed watchers that haven't been notified yet.
+
+    Called by the digest scheduler when fa_watcher_notification_mode is "daily".
+    Collects all unnotified confirmed non-spam watchers and sends a single
+    Telegram message summarising them.
+    """
+    settings = config.get_settings()
+    if settings.get("fa_watcher_notification_mode", "immediate") != "daily":
+        return
+    if not settings.get("telegram_enabled", False):
+        return
+    token = settings.get("telegram_bot_token")
+    chat_id = settings.get("telegram_chat_id")
+    if not token or not chat_id:
+        return
+
+    conn = get_connection()
+    try:
+        pending = fa_queries.get_unnotified_confirmed_watchers(conn)
+        if not pending:
+            return
+
+        lines = [f"<b>🦊 FA Daily Watcher Digest: {len(pending)} New Watcher{'s' if len(pending) != 1 else ''}</b>"]
+        for name in pending[:10]:
+            lines.append(f"  • <b>{_esc(name)}</b>")
+        if len(pending) > 10:
+            lines.append(f"  ...and {len(pending) - 10} more")
+
+        text = "\n".join(lines)
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as http:
+                await http.post(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+                )
+        except Exception as e:
+            logger.warning("Failed to send FA watcher digest: %s", e)
+            return
+
+        fa_queries.mark_watchers_notified(conn, pending)
+        conn.commit()
+        logger.info("FA watcher digest sent: %d watchers", len(pending))
+    finally:
         conn.close()

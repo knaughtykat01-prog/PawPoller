@@ -32,6 +32,10 @@ _FA_SCHEMA_PATH = config.resource_path("database/fa_schema.sql") # FurAffinity t
 _WS_SCHEMA_PATH = config.resource_path("database/ws_schema.sql") # Weasyl tables
 _SF_SCHEMA_PATH = config.resource_path("database/sf_schema.sql") # SoFurry tables
 _SQW_SCHEMA_PATH = config.resource_path("database/sqw_schema.sql") # SquidgeWorld tables
+_AO3_SCHEMA_PATH = config.resource_path("database/ao3_schema.sql") # AO3 tables
+_DA_SCHEMA_PATH = config.resource_path("database/da_schema.sql")   # DeviantArt tables
+_WP_SCHEMA_PATH = config.resource_path("database/wp_schema.sql")   # Wattpad tables
+_IK_SCHEMA_PATH = config.resource_path("database/ik_schema.sql")   # Itaku tables
 
 
 def get_connection() -> sqlite3.Connection:
@@ -72,15 +76,22 @@ def init_db() -> None:
     ws_schema_sql = _WS_SCHEMA_PATH.read_text(encoding="utf-8")
     sf_schema_sql = _SF_SCHEMA_PATH.read_text(encoding="utf-8")
     sqw_schema_sql = _SQW_SCHEMA_PATH.read_text(encoding="utf-8")
+    ao3_schema_sql = _AO3_SCHEMA_PATH.read_text(encoding="utf-8")
+    da_schema_sql = _DA_SCHEMA_PATH.read_text(encoding="utf-8")
+    wp_schema_sql = _WP_SCHEMA_PATH.read_text(encoding="utf-8")
     conn = get_connection()
     try:
-        # Execute each platform's schema in order. The primary Inkbunny schema
-        # goes first since FA, WS, SF, and SqW schemas are independent (no cross-references).
+        # Execute each platform's schema in order.
         conn.executescript(schema_sql)
         conn.executescript(fa_schema_sql)
         conn.executescript(ws_schema_sql)
         conn.executescript(sf_schema_sql)
         conn.executescript(sqw_schema_sql)
+        conn.executescript(ao3_schema_sql)
+        conn.executescript(da_schema_sql)
+        conn.executescript(wp_schema_sql)
+        ik_schema_sql = _IK_SCHEMA_PATH.read_text(encoding="utf-8")
+        conn.executescript(ik_schema_sql)
         # Apply any migrations for tables added after the original schema release.
         _run_migrations(conn)
         conn.commit()
@@ -261,3 +272,30 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             ALTER TABLE watchers_new RENAME TO watchers;
             CREATE INDEX IF NOT EXISTS idx_watchers_seen ON watchers(first_seen_at);
         """)
+
+    # Migration: Add confirmation/spam columns to fa_watchers for spam protection.
+    # - confirmed: 0 = pending (first seen this cycle), 1 = confirmed (still present next cycle)
+    # - last_seen_at: tracks when the watcher was last seen in FAExport's list
+    # - is_spam: heuristic or profile-sniff flagged as bot/spam
+    # - notified: whether we've already sent a notification for this watcher
+    fa_watcher_cols = {r[1] for r in conn.execute("PRAGMA table_info(fa_watchers)").fetchall()}
+    if "confirmed" not in fa_watcher_cols:
+        logger.info("Migrating fa_watchers: adding confirmed/last_seen_at/is_spam/notified columns")
+        try:
+            conn.execute("ALTER TABLE fa_watchers ADD COLUMN confirmed INTEGER DEFAULT 1")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE fa_watchers ADD COLUMN last_seen_at TEXT DEFAULT (datetime('now'))")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE fa_watchers ADD COLUMN is_spam INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE fa_watchers ADD COLUMN notified INTEGER DEFAULT 1")
+        except sqlite3.OperationalError:
+            pass
+        # Mark all existing watchers as confirmed+notified (they're from before this feature)
+        conn.execute("UPDATE fa_watchers SET confirmed = 1, notified = 1, last_seen_at = first_seen_at WHERE confirmed IS NULL OR confirmed = 1")

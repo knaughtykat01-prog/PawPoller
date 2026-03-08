@@ -21,6 +21,23 @@ from html import escape as _esc
 
 logger = logging.getLogger(__name__)
 
+# Platform-specific column name mapping.
+# Most platforms use views/favorites_count/comments_count, but some differ:
+#   Wattpad: reads/votes/comments_count/num_lists (no views column)
+#   Itaku: likes/comments_count/reshares (no views column at all)
+#   DeviantArt: also has downloads
+PLATFORM_METRICS = {
+    "ib":  {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
+    "fa":  {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
+    "ws":  {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
+    "sf":  {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
+    "sqw": {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
+    "ao3": {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
+    "da":  {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
+    "wp":  {"views": "reads", "faves": "votes", "comments": "comments_count"},
+    "ik":  {"views": None,   "faves": "likes", "comments": "comments_count"},
+}
+
 # Default milestone thresholds — overridden by settings.json if configured.
 _DEFAULT_VIEW_MILESTONES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000]
 _DEFAULT_FAVE_MILESTONES = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
@@ -80,8 +97,8 @@ async def send_telegram(text: str) -> bool:
 
 # ── Poll cycle summary ───────────────────────────────────────
 
-PLATFORM_EMOJI = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺", "sqw": "🦑"}
-PLATFORM_NAME = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld"}
+PLATFORM_EMOJI = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺", "sqw": "🦑", "ao3": "📖", "da": "🎨", "wp": "📙", "ik": "🎯"}
+PLATFORM_NAME = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku"}
 
 
 async def send_poll_summary(platform: str, stats: dict, duration: float) -> None:
@@ -176,9 +193,27 @@ async def check_milestones_batch(platform: str, snap_table: str, sub_table: str)
 
     Called at the end of each poll cycle.  Compares the two most recent snapshots
     per submission to detect threshold crossings.
+    Uses platform-aware column names via PLATFORM_METRICS.
     """
     settings = config.get_settings()
     if not settings.get("telegram_milestones", True):
+        return
+
+    metrics = PLATFORM_METRICS.get(platform, PLATFORM_METRICS["ib"])
+    views_col = metrics["views"]
+    faves_col = metrics["faves"]
+    comments_col = metrics["comments"]
+
+    # Build SELECT columns, skipping None (e.g. Itaku has no views)
+    select_cols = []
+    if views_col:
+        select_cols.append(views_col)
+    if faves_col:
+        select_cols.append(faves_col)
+    if comments_col:
+        select_cols.append(comments_col)
+
+    if not select_cols:
         return
 
     conn = get_connection()
@@ -187,7 +222,7 @@ async def check_milestones_batch(platform: str, snap_table: str, sub_table: str)
         for sub in subs:
             sid = sub["submission_id"]
             rows = conn.execute(
-                f"SELECT views, favorites_count, comments_count FROM {snap_table} "
+                f"SELECT {', '.join(select_cols)} FROM {snap_table} "
                 f"WHERE submission_id = ? ORDER BY polled_at DESC LIMIT 2",
                 (sid,),
             ).fetchall()
@@ -196,8 +231,12 @@ async def check_milestones_batch(platform: str, snap_table: str, sub_table: str)
             curr, prev = dict(rows[0]), dict(rows[1])
             await check_milestones(
                 platform, sid, sub["title"],
-                curr["views"], curr["favorites_count"], curr["comments_count"],
-                prev["views"], prev["favorites_count"], prev["comments_count"],
+                curr.get(views_col, 0) if views_col else 0,
+                curr.get(faves_col, 0) if faves_col else 0,
+                curr.get(comments_col, 0) if comments_col else 0,
+                prev.get(views_col, 0) if views_col else 0,
+                prev.get(faves_col, 0) if faves_col else 0,
+                prev.get(comments_col, 0) if comments_col else 0,
             )
     finally:
         conn.close()
@@ -211,11 +250,15 @@ async def check_goals() -> None:
     if not settings.get("telegram_enabled", False):
         return
 
-    ALLOWED_METRICS = {"views", "favorites_count", "comments_count"}
+    # All valid metric column names across all platforms
+    ALLOWED_METRICS = {
+        "views", "favorites_count", "comments_count",
+        "reads", "votes", "likes", "reshares", "downloads", "num_lists",
+    }
     conn = get_connection()
     try:
         goals = conn.execute("SELECT * FROM goals WHERE completed_at IS NULL").fetchall()
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions"}
 
         for g in goals:
             g = dict(g)
@@ -228,20 +271,24 @@ async def check_goals() -> None:
             if g["scope"] == "submission" and g["submission_id"]:
                 table = table_map.get(g["platform"])
                 if table:
-                    sub = conn.execute(
-                        f"SELECT title, {metric} FROM {table} WHERE submission_id = ?",
-                        (g["submission_id"],),
-                    ).fetchone()
-                    if sub:
-                        title = sub["title"]
-                        current = sub[metric] or 0
+                    try:
+                        sub = conn.execute(
+                            f"SELECT title, {metric} FROM {table} WHERE submission_id = ?",
+                            (g["submission_id"],),
+                        ).fetchone()
+                        if sub:
+                            title = sub["title"]
+                            current = sub[metric] or 0
+                    except Exception:
+                        pass
             else:
                 if g["platform"] == "all":
-                    for tbl in table_map.values():
+                    for plat_key, tbl in table_map.items():
                         try:
                             r = conn.execute(f"SELECT COALESCE(SUM({metric}), 0) as total FROM {tbl}").fetchone()
                             current += r["total"]
                         except Exception:
+                            # Column doesn't exist on this platform — skip
                             pass
                 else:
                     table = table_map.get(g["platform"])
@@ -262,7 +309,11 @@ async def check_goals() -> None:
                 if cursor.rowcount == 0:
                     continue
                 emoji = PLATFORM_EMOJI.get(g["platform"], "🎯")
-                metric_labels = {"views": "views", "favorites_count": "faves", "comments_count": "comments"}
+                metric_labels = {
+                    "views": "views", "favorites_count": "faves", "comments_count": "comments",
+                    "reads": "reads", "votes": "votes", "likes": "likes",
+                    "reshares": "reshares", "downloads": "downloads", "num_lists": "lists",
+                }
                 metric_label = metric_labels.get(metric, metric)
                 sub_label = f"\n<b>{_esc(title)}</b>" if title else ""
                 await send_telegram(
@@ -275,20 +326,44 @@ async def check_goals() -> None:
 
 # ── 6-Hourly Digest Report ──────────────────────────────────
 
-def _get_6h_deltas(conn, snap_table: str, sub_table: str) -> dict:
+def _get_6h_deltas(conn, snap_table: str, sub_table: str, platform: str) -> dict:
     """Compute aggregate stat deltas over the last 6 hours for a platform.
 
     Returns dict with total_views_delta, total_faves_delta, total_comments_delta,
-    top_gainers (up to 3 submissions with biggest view gains), and submission count.
+    top_gainers (up to 3 submissions with biggest view/fave gains), and submission count.
+    Uses platform-aware column names via PLATFORM_METRICS.
     """
-    # Get the nearest snapshot >= 6h old for each submission, compare to current.
+    metrics = PLATFORM_METRICS.get(platform, PLATFORM_METRICS["ib"])
+    views_col = metrics["views"]
+    faves_col = metrics["faves"]
+    comments_col = metrics["comments"]
+
+    # Build dynamic SELECT columns for the current sub table
+    current_cols = ["s.submission_id", "s.title"]
+    old_select_cols = []  # columns from the old snapshot subquery
+    old_join_cols = []    # columns to select in the inner snapshot subquery
+
+    if views_col:
+        current_cols.append(f"s.{views_col}")
+        old_select_cols.append(f"s1.{views_col} as old_views")
+        old_join_cols.append(f"s1.{views_col}")
+    if faves_col:
+        current_cols.append(f"s.{faves_col}")
+        old_select_cols.append(f"s1.{faves_col} as old_faves")
+        old_join_cols.append(f"s1.{faves_col}")
+    if comments_col:
+        current_cols.append(f"s.{comments_col}")
+        old_select_cols.append(f"s1.{comments_col} as old_comments")
+        old_join_cols.append(f"s1.{comments_col}")
+
+    old_cols_str = ", ".join(old_select_cols) if old_select_cols else "1 as _dummy"
+
     rows = conn.execute(
-        f"""SELECT s.submission_id, s.title, s.views, s.favorites_count, s.comments_count,
-                   old.views as old_views, old.favorites_count as old_faves,
-                   old.comments_count as old_comments
+        f"""SELECT {', '.join(current_cols)},
+                   {', '.join(f'old.{c.split(" as ")[1]}' for c in old_select_cols) if old_select_cols else '1 as _dummy2'}
             FROM {sub_table} s
             LEFT JOIN (
-                SELECT s1.submission_id, s1.views, s1.favorites_count, s1.comments_count
+                SELECT s1.submission_id, {old_cols_str}
                 FROM {snap_table} s1
                 INNER JOIN (
                     SELECT submission_id, MAX(polled_at) as max_polled
@@ -309,9 +384,9 @@ def _get_6h_deltas(conn, snap_table: str, sub_table: str) -> dict:
         old_v = r.get("old_views") or 0
         old_f = r.get("old_faves") or 0
         old_c = r.get("old_comments") or 0
-        dv = r["views"] - old_v
-        df = r["favorites_count"] - old_f
-        dc = r["comments_count"] - old_c
+        dv = (r.get(views_col, 0) or 0) - old_v if views_col else 0
+        df = (r.get(faves_col, 0) or 0) - old_f if faves_col else 0
+        dc = (r.get(comments_col, 0) or 0) - old_c if comments_col else 0
         total_views_delta += max(dv, 0)
         total_faves_delta += max(df, 0)
         total_comments_delta += max(dc, 0)
@@ -329,12 +404,24 @@ def _get_6h_deltas(conn, snap_table: str, sub_table: str) -> dict:
     }
 
 
-def _get_platform_totals(conn, sub_table: str) -> dict:
-    """Get current aggregate totals for a platform."""
+def _get_platform_totals(conn, sub_table: str, platform: str) -> dict:
+    """Get current aggregate totals for a platform.
+
+    Uses platform-aware column names via PLATFORM_METRICS.
+    """
+    metrics = PLATFORM_METRICS.get(platform, PLATFORM_METRICS["ib"])
+    views_col = metrics["views"]
+    faves_col = metrics["faves"]
+    comments_col = metrics["comments"]
+
+    views_expr = f"COALESCE(SUM({views_col}),0)" if views_col else "0"
+    faves_expr = f"COALESCE(SUM({faves_col}),0)" if faves_col else "0"
+    comments_expr = f"COALESCE(SUM({comments_col}),0)" if comments_col else "0"
+
     row = conn.execute(
-        f"SELECT COUNT(*) as subs, COALESCE(SUM(views),0) as views, "
-        f"COALESCE(SUM(favorites_count),0) as faves, "
-        f"COALESCE(SUM(comments_count),0) as comments "
+        f"SELECT COUNT(*) as subs, {views_expr} as views, "
+        f"{faves_expr} as faves, "
+        f"{comments_expr} as comments "
         f"FROM {sub_table}"
     ).fetchone()
     return dict(row)
@@ -367,6 +454,10 @@ async def send_digest_report() -> None:
             ("ws", "ws_snapshots", "ws_submissions"),
             ("sf", "sf_snapshots", "sf_submissions"),
             ("sqw", "sqw_snapshots", "sqw_submissions"),
+            ("ao3", "ao3_snapshots", "ao3_submissions"),
+            ("da", "da_snapshots", "da_submissions"),
+            ("wp", "wp_snapshots", "wp_submissions"),
+            ("ik", "ik_snapshots", "ik_submissions"),
         ]
 
         for plat, snap_t, sub_t in platforms:
@@ -381,8 +472,8 @@ async def send_digest_report() -> None:
             if count == 0:
                 continue
 
-            totals = _get_platform_totals(conn, sub_t)
-            deltas = _get_6h_deltas(conn, snap_t, sub_t)
+            totals = _get_platform_totals(conn, sub_t, plat)
+            deltas = _get_6h_deltas(conn, snap_t, sub_t, plat)
 
             grand_views += deltas["views_delta"]
             grand_faves += deltas["faves_delta"]
@@ -427,6 +518,13 @@ async def send_digest_report() -> None:
         )
 
         await send_telegram("\n".join(lines))
+
+        # Piggyback: send FA watcher daily digest if in "daily" mode
+        try:
+            from polling.fa_poller import send_fa_watcher_digest
+            await send_fa_watcher_digest()
+        except Exception as e:
+            logger.warning("FA watcher digest failed: %s", e)
 
     finally:
         conn.close()

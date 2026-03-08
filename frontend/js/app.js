@@ -56,6 +56,18 @@ const App = {
     _sqwSortState: { field: 'views', order: 'desc' },
     _sqwCompareIds: new Set(),
     _sqwCompareMetric: 'views',
+    _ao3SortState: { field: 'views', order: 'desc' },
+    _ao3CompareIds: new Set(),
+    _ao3CompareMetric: 'views',
+    _daSortState: { field: 'views', order: 'desc' },
+    _daCompareIds: new Set(),
+    _daCompareMetric: 'views',
+    _wpSortState: { field: 'reads', order: 'desc' },
+    _wpCompareIds: new Set(),
+    _wpCompareMetric: 'reads',
+    _ikSortState: { field: 'likes', order: 'desc' },
+    _ikCompareIds: new Set(),
+    _ikCompareMetric: 'likes',
 
     /*
      * init() — Boot sequence, called once from index.html on DOMContentLoaded.
@@ -92,6 +104,7 @@ const App = {
         /* Render the initial page and kick off the poll-status ticker */
         this.route();
         this._updatePollStatus();
+        if (this._pollStatusInterval) clearInterval(this._pollStatusInterval);
         this._pollStatusInterval = setInterval(() => this._updatePollStatus(), 60000);
         this._initPollProgressBar();
 
@@ -282,6 +295,38 @@ const App = {
             this.renderSQWDetail(parseInt(parts[2]));
         } else if (parts[0] === 'sqw' && parts[1] === 'compare') {
             this.renderSQWCompare();
+        } else if (parts[0] === 'ao3' && (!parts[1] || parts[1] === '')) {
+            this.renderAO3Dashboard();
+        } else if (parts[0] === 'ao3' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderAO3Submissions();
+        } else if (parts[0] === 'ao3' && parts[1] === 'submission' && parts[2]) {
+            this.renderAO3Detail(parseInt(parts[2]));
+        } else if (parts[0] === 'ao3' && parts[1] === 'compare') {
+            this.renderAO3Compare();
+        } else if (parts[0] === 'da' && (!parts[1] || parts[1] === '')) {
+            this.renderDADashboard();
+        } else if (parts[0] === 'da' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderDASubmissions();
+        } else if (parts[0] === 'da' && parts[1] === 'submission' && parts[2]) {
+            this.renderDADetail(parseInt(parts[2]));
+        } else if (parts[0] === 'da' && parts[1] === 'compare') {
+            this.renderDACompare();
+        } else if (parts[0] === 'wp' && (!parts[1] || parts[1] === '')) {
+            this.renderWPDashboard();
+        } else if (parts[0] === 'wp' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderWPSubmissions();
+        } else if (parts[0] === 'wp' && parts[1] === 'submission' && parts[2]) {
+            this.renderWPDetail(parseInt(parts[2]));
+        } else if (parts[0] === 'wp' && parts[1] === 'compare') {
+            this.renderWPCompare();
+        } else if (parts[0] === 'ik' && (!parts[1] || parts[1] === '')) {
+            this.renderIKDashboard();
+        } else if (parts[0] === 'ik' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderIKSubmissions();
+        } else if (parts[0] === 'ik' && parts[1] === 'submission' && parts[2]) {
+            this.renderIKDetail(parseInt(parts[2]));
+        } else if (parts[0] === 'ik' && parts[1] === 'compare') {
+            this.renderIKCompare();
         } else if (parts[0] === 'groups' && !parts[1]) {
             this.renderGroups();
         } else if (parts[0] === 'group' && parts[1]) {
@@ -439,6 +484,7 @@ const App = {
         };
 
         /* Poll /api/poll/progress every 1.5s; auto-navigate to dashboard on completion */
+        if (this._loadingPollInterval) clearInterval(this._loadingPollInterval);
         const pollInterval = setInterval(async () => {
             try {
                 const p = await API.getPollProgress();
@@ -497,17 +543,25 @@ const App = {
         this._loading();
         try {
             /* Fetch all platform data in parallel; .catch() fallbacks prevent one failure from blocking all */
-            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, topFans, trending] = await Promise.all([
+            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, topFans, trending] = await Promise.all([
                 API.getSummary().catch(() => null),
                 API.getFASummary().catch(() => null),
                 API.getWSSummary().catch(() => null),
                 API.getSFSummary().catch(() => null),
                 API.getSQWSummary().catch(() => null),
+                API.getAO3Summary().catch(() => null),
+                API.getDASummary().catch(() => null),
+                API.getWPSummary().catch(() => null),
+                API.getIKSummary().catch(() => null),
                 API.getAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getFAAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getWSAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getSFAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getSQWAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
+                API.getAO3Aggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
+                API.getDAAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
+                API.getWPAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
+                API.getIKAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getTopFans(10).catch(() => ({ fans: [] })),
                 API.getTrending({ hours: 24, threshold: 2.0 }).catch(() => ({ trending: [] })),
             ]);
@@ -517,33 +571,62 @@ const App = {
             const ws = wsSummary || {};
             const sf = sfSummary || {};
             const sqw = sqwSummary || {};
+            const ao3 = ao3Summary || {};
+            const da = daSummary || {};
+            const wp = wpSummary || {};
+            const ik = ikSummary || {};
 
-            /* Sum totals across all four platforms for the top-level stat cards */
-            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0);
-            const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0) + (sqw.total_views || 0);
-            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0);
-            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0);
+            /* Sum totals across all platforms for the top-level stat cards.
+             * Wattpad uses 'reads' instead of 'views' and 'votes' instead of 'favorites',
+             * so we map them into the unified totals here.
+             * Itaku has NO views — only likes (mapped to favorites), comments, and reshares. */
+            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0);
+            const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0) + (sqw.total_views || 0) + (ao3.total_views || 0) + (da.total_views || 0) + (wp.total_reads || wp.total_views || 0);
+            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0);
+            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0) + (ao3.total_comments || 0) + (da.total_comments || 0) + (wp.total_comments || 0) + (ik.total_comments || 0);
+            const totalDownloads = (da.total_downloads || 0);
 
             /* Merge top lists across platforms: tag each with _platform, sort desc, take top 10 */
-            const mergeTop = (ibList, faList, wsList, sfList, sqwList, key) => {
+            const mergeTop = (ibList, faList, wsList, sfList, sqwList, ao3List, daList, wpList, ikList, key) => {
                 const merged = [];
                 (ibList || []).forEach(item => merged.push({ ...item, _platform: 'ib' }));
                 (faList || []).forEach(item => merged.push({ ...item, _platform: 'fa' }));
                 (wsList || []).forEach(item => merged.push({ ...item, _platform: 'ws' }));
                 (sfList || []).forEach(item => merged.push({ ...item, _platform: 'sf' }));
                 (sqwList || []).forEach(item => merged.push({ ...item, _platform: 'sqw' }));
+                (ao3List || []).forEach(item => merged.push({ ...item, _platform: 'ao3' }));
+                (daList || []).forEach(item => merged.push({ ...item, _platform: 'da' }));
+                /* Wattpad uses 'reads' for views and 'votes' for favorites — map to unified keys */
+                (wpList || []).forEach(item => merged.push({ ...item, views: item.reads || item.views || 0, favorites_count: item.votes || item.favorites_count || 0, _platform: 'wp' }));
+                /* Itaku has no views — map likes to favorites_count for unified merging */
+                (ikList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'ik' }));
                 merged.sort((a, b) => (b[key] || 0) - (a[key] || 0));
                 return merged.slice(0, 10);
             };
 
-            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, 'views');
-            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, 'favorites_count');
+            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, ao3.top_viewed, da.top_viewed, wp.top_viewed || wp.top_read, null, 'views');
+            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, ao3.top_faved, da.top_faved, wp.top_faved || wp.top_voted, ik.top_liked || ik.top_faved, 'favorites_count');
 
             /* Merge recent faves + comments into a unified timeline, sorted newest first */
             const recentActivity = [];
             (ib.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'ib', _type: 'fave' }));
             (ib.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'ib', _type: 'comment' }));
+            (fa.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'fa', _type: 'fave' }));
             (fa.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'fa', _type: 'comment' }));
+            (ws.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'ws', _type: 'fave' }));
+            (ws.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'ws', _type: 'comment' }));
+            (sf.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'sf', _type: 'fave' }));
+            (sf.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'sf', _type: 'comment' }));
+            (sqw.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'sqw', _type: 'fave' }));
+            (sqw.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'sqw', _type: 'comment' }));
+            (ao3.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'ao3', _type: 'fave' }));
+            (ao3.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'ao3', _type: 'comment' }));
+            (da.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'da', _type: 'fave' }));
+            (da.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'da', _type: 'comment' }));
+            (wp.recent_faves || wp.recent_votes || []).forEach(item => recentActivity.push({ ...item, _platform: 'wp', _type: 'fave' }));
+            (wp.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'wp', _type: 'comment' }));
+            (ik.recent_faves || ik.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'ik', _type: 'fave' }));
+            (ik.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'ik', _type: 'comment' }));
             recentActivity.sort((a, b) => new Date(b.first_seen_at || 0) - new Date(a.first_seen_at || 0));
 
             /* Per-platform mini stat card showing views, faves, subs with a coloured badge */
@@ -567,6 +650,10 @@ const App = {
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('ws')" title="Export WS CSV">Export WS</button>
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('sf')" title="Export SF CSV">Export SF</button>
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('sqw')" title="Export SqW CSV">Export SqW</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ao3')" title="Export AO3 CSV">Export AO3</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('da')" title="Export DA CSV">Export DA</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('wp')" title="Export WP CSV">Export WP</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ik')" title="Export IK CSV">Export IK</button>
                     </div>
                 </div>
 
@@ -575,6 +662,7 @@ const App = {
                     ${Components.statCard('Total Views', totalViews)}
                     ${Components.statCard('Total Favorites', totalFaves)}
                     ${Components.statCard('Total Comments', totalComments)}
+                    ${totalDownloads > 0 ? Components.statCard('Total Downloads', totalDownloads) : ''}
                 </div>
 
                 <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-top:0">
@@ -583,6 +671,19 @@ const App = {
                     ${platformCard('<span class="platform-badge ws">WS</span>', 'Weasyl', ws)}
                     ${platformCard('<span class="platform-badge sf">SF</span>', 'SoFurry', sf)}
                     ${platformCard('<span class="platform-badge sqw">SqW</span>', 'SquidgeWorld', sqw)}
+                    ${platformCard('<span class="platform-badge ao3">AO3</span>', 'AO3', ao3)}
+                    ${platformCard('<span class="platform-badge da">\u{1F3A8} DA</span>', 'DeviantArt', da)}
+                    ${platformCard('<span class="platform-badge wp">\u{1F4D9} WP</span>', 'Wattpad', { total_views: wp.total_reads || wp.total_views || 0, total_favorites: wp.total_votes || wp.total_favorites || 0, total_submissions: wp.total_submissions || 0 })}
+                    ${ ik.total_submissions ? `
+                    <div class="stat-card">
+                        <div class="label"><span class="platform-badge ik">\u{1F3AF} IK</span> Itaku</div>
+                        <div style="display:flex;gap:16px;margin-top:6px">
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(ik.total_likes || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">likes</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(ik.total_comments || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">comments</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(ik.total_reshares || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">reshares</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(ik.total_submissions || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">subs</span></div>
+                        </div>
+                    </div>` : platformCard('<span class="platform-badge ik">\u{1F3AF} IK</span>', 'Itaku', ik) }
                 </div>
 
                 ${(trending.trending || []).length > 0 ? `
@@ -620,6 +721,30 @@ const App = {
                 <div class="chart-container">
                     <h3>SquidgeWorld Views</h3>
                     <div class="chart-wrap"><canvas id="chart-sqw-views"></canvas></div>
+                </div>` : ''}
+
+                ${ao3Agg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>AO3 Views</h3>
+                    <div class="chart-wrap"><canvas id="chart-ao3-views"></canvas></div>
+                </div>` : ''}
+
+                ${daAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>DeviantArt Views</h3>
+                    <div class="chart-wrap"><canvas id="chart-da-views"></canvas></div>
+                </div>` : ''}
+
+                ${wpAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>Wattpad Reads</h3>
+                    <div class="chart-wrap"><canvas id="chart-wp-reads"></canvas></div>
+                </div>` : ''}
+
+                ${ikAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>Itaku Likes</h3>
+                    <div class="chart-wrap"><canvas id="chart-ik-likes"></canvas></div>
                 </div>` : ''}
 
                 <div class="chart-row">
@@ -662,6 +787,18 @@ const App = {
             }
             if (sqwAgg?.snapshots?.length > 0) {
                 Charts.aggregateLine('chart-sqw-views', sqwAgg.snapshots, ['views']);
+            }
+            if (ao3Agg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-ao3-views', ao3Agg.snapshots, ['views']);
+            }
+            if (daAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-da-views', daAgg.snapshots, ['views']);
+            }
+            if (wpAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-wp-reads', wpAgg.snapshots, ['reads']);
+            }
+            if (ikAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-ik-likes', ikAgg.snapshots, ['likes']);
             }
 
             /* Wire date range buttons to full re-render; start 60s auto-refresh */
@@ -1844,7 +1981,7 @@ const App = {
             document.querySelectorAll('.compare-chip').forEach(chip => {
                 chip.addEventListener('click', (e) => {
                     e.preventDefault();
-                    const id = chip.dataset.id;
+                    const id = parseInt(chip.dataset.id);
                     if (this._sfCompareIds.has(id)) {
                         this._sfCompareIds.delete(id);
                     } else if (this._sfCompareIds.size < 5) {
@@ -2113,7 +2250,7 @@ const App = {
             document.querySelectorAll('.compare-chip').forEach(chip => {
                 chip.addEventListener('click', (e) => {
                     e.preventDefault();
-                    const id = chip.dataset.id;
+                    const id = parseInt(chip.dataset.id);
                     if (this._sqwCompareIds.has(id)) {
                         this._sqwCompareIds.delete(id);
                     } else if (this._sqwCompareIds.size < 5) {
@@ -2153,6 +2290,1110 @@ const App = {
             Charts.comparisonLine('chart-compare', data.series, data.titles, this._sqwCompareMetric);
         } catch (e) {
             console.error('Failed to load SqW comparison chart:', e);
+        }
+    },
+
+    // ── AO3 Dashboard ──────────────────────────────────────────
+
+    async renderAO3Dashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getAO3Summary(),
+                API.getAO3Aggregate(Utils.getDateRange(this._dateRange)),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const ao3Pins = (pins.pins || []).filter(p => p.platform === 'ao3');
+            const ao3Goals = (goals.goals || []).filter(g => g.platform === 'ao3' || g.platform === 'all');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>AO3 Dashboard</h2>
+                    <button class="btn btn-secondary" onclick="API.exportSubmissions('ao3')">Export CSV</button>
+                </div>
+
+                ${ao3Pins.length ? Components.pinnedSubmissions(ao3Pins, 'ao3') : ''}
+                ${ao3Goals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(ao3Goals)}</div>` : ''}
+
+                <div class="stats-grid">
+                    ${Components.statCard('Total Works', summary.total_submissions)}
+                    ${Components.statCard('Total Hits', summary.total_views)}
+                    ${Components.statCard('Total Kudos', summary.total_favorites)}
+                    ${Components.statCard('Total Comments', summary.total_comments)}
+                </div>
+
+                ${Components.growthRateCards(summary.growth_rates)}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Hits Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-views"></canvas></div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Viewed</h3>
+                        <div class="chart-wrap"><canvas id="chart-top-views"></canvas></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Most Kudos</h3>
+                        <div class="chart-wrap"><canvas id="chart-top-faves"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container" style="grid-column: 1 / -1">
+                        <h3>Fastest Growing (24h)</h3>
+                        ${Components.ao3TopList(summary.fastest_growing, 'views_gained')}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-views', agg.snapshots, ['views']);
+            }
+            if (summary.top_viewed && summary.top_viewed.length > 0) {
+                Charts.topBar('chart-top-views', summary.top_viewed, 'views');
+            }
+            if (summary.top_faved && summary.top_faved.length > 0) {
+                Charts.topBar('chart-top-faves', summary.top_faved, 'favorites_count');
+            }
+
+            this._bindDateRange(() => this.renderAO3Dashboard());
+            this._bindPinAndGoalActions(() => this.renderAO3Dashboard());
+            this._startAutoRefresh(() => this.renderAO3Dashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading AO3 dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── AO3 Submissions ────────────────────────────────────────
+
+    async renderAO3Submissions() {
+        this._loading();
+        try {
+            const data = await API.getAO3Submissions({
+                sort_by: this._ao3SortState.field,
+                order: this._ao3SortState.order,
+            });
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>AO3 Works</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search titles and tags...">
+                    <select class="filter-select" id="filter-rating">
+                        <option value="">All Ratings</option>
+                        <option value="General Audiences">General</option>
+                        <option value="Teen And Up Audiences">Teen</option>
+                        <option value="Mature">Mature</option>
+                        <option value="Explicit">Explicit</option>
+                    </select>
+                </div>
+                <div id="table-container" class="table-scroll">
+                    ${Components.ao3SubmissionsTable(data.submissions)}
+                </div>
+            `;
+
+            this._setContent(html);
+            this._bindAO3TableSort();
+            this._bindAO3Search(data.submissions);
+            this._startAutoRefresh(() => this.renderAO3Submissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading AO3 submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── AO3 Submission Detail ──────────────────────────────────
+
+    async renderAO3Detail(id) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getAO3Submission(id),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'ao3' && String(p.submission_id) === String(id));
+            const currentTags = sub.tags || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/ao3/submissions" class="back-link">&larr; Back to AO3 Works</a>
+                <div class="detail-header">
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.escapeHtml(sub.posted_at || '')} &middot; ${Utils.escapeHtml(sub.rating || '')}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on AO3</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.views)} <span class="lbl">hits</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.favorites_count)} <span class="lbl">kudos</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.comments_count)} <span class="lbl">comments</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.bookmarks_count || 0)} <span class="lbl">bookmarks</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="ao3" data-id="${id}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="ao3" data-id="${id}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+
+                ${Components.growthRateCards(data.growth_rates)}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Stats Over Time</h3>
+                    <div class="chart-wrap"><canvas id="chart-detail"></canvas></div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots);
+            }
+
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getAO3Snapshots(id, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots);
+            });
+
+            this._bindDetailPinTag('ao3', id, allTags.tags || [], () => this.renderAO3Detail(id));
+            this._startAutoRefresh(() => this.renderAO3Detail(id));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading AO3 work</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── AO3 Compare ────────────────────────────────────────────
+
+    async renderAO3Compare() {
+        this._loading();
+        try {
+            const data = await API.getAO3Submissions({ sort_by: 'views', order: 'desc' });
+            const subs = data.submissions;
+
+            const chips = subs.map(s => `
+                <label class="compare-chip ${this._ao3CompareIds.has(s.submission_id) ? 'selected' : ''}" data-id="${s.submission_id}">
+                    <input type="checkbox" ${this._ao3CompareIds.has(s.submission_id) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>
+            `).join('');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Compare AO3 Works</h2>
+                    <div>
+                        <select class="filter-select" id="compare-metric">
+                            <option value="views" ${this._ao3CompareMetric === 'views' ? 'selected' : ''}>Hits</option>
+                            <option value="favorites_count" ${this._ao3CompareMetric === 'favorites_count' ? 'selected' : ''}>Kudos</option>
+                            <option value="comments_count" ${this._ao3CompareMetric === 'comments_count' ? 'selected' : ''}>Comments</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 AO3 works to compare their trends over time.</p>
+                <div class="compare-select">${chips}</div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container" id="compare-chart-container" style="${this._ao3CompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3>
+                    <div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._ao3CompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 works above to see their trends compared.</p></div>' : ''}
+            `;
+
+            this._setContent(html);
+
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = parseInt(chip.dataset.id);
+                    if (this._ao3CompareIds.has(id)) {
+                        this._ao3CompareIds.delete(id);
+                    } else if (this._ao3CompareIds.size < 5) {
+                        this._ao3CompareIds.add(id);
+                    }
+                    this.renderAO3Compare();
+                });
+            });
+
+            const metricSelect = document.getElementById('compare-metric');
+            if (metricSelect) {
+                metricSelect.addEventListener('change', () => {
+                    this._ao3CompareMetric = metricSelect.value;
+                    this._loadAO3ComparisonChart();
+                });
+            }
+
+            this._bindDateRange(() => this._loadAO3ComparisonChart());
+
+            if (this._ao3CompareIds.size >= 2) {
+                await this._loadAO3ComparisonChart();
+            }
+
+            this._startAutoRefresh(() => this.renderAO3Compare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadAO3ComparisonChart() {
+        try {
+            if (this._ao3CompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getAO3Comparison([...this._ao3CompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, this._ao3CompareMetric);
+        } catch (e) {
+            console.error('Failed to load AO3 comparison chart:', e);
+        }
+    },
+
+    // ── DA Dashboard ──────────────────────────────────────────
+    // DeviantArt dashboard with stat cards including Downloads (unique to DA),
+    // growth rates, top lists (top viewed, top faved, top downloaded), and poll log.
+
+    async renderDADashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getDASummary(),
+                API.getDAAggregate(Utils.getDateRange(this._dateRange)),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const daPins = (pins.pins || []).filter(p => p.platform === 'da');
+            const daGoals = (goals.goals || []).filter(g => g.platform === 'da' || g.platform === 'all');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>DeviantArt Dashboard</h2>
+                    <button class="btn btn-secondary" onclick="API.exportSubmissions('da')">Export CSV</button>
+                </div>
+
+                ${daPins.length ? Components.pinnedSubmissions(daPins, 'da') : ''}
+                ${daGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(daGoals)}</div>` : ''}
+
+                <div class="stats-grid">
+                    ${Components.statCard('Total Submissions', summary.total_submissions)}
+                    ${Components.statCard('Total Views', summary.total_views)}
+                    ${Components.statCard('Total Favourites', summary.total_favorites)}
+                    ${Components.statCard('Total Comments', summary.total_comments)}
+                    ${Components.statCard('Total Downloads', summary.total_downloads || 0)}
+                </div>
+
+                ${Components.growthRateCards(summary.growth_rates)}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Views Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-views"></canvas></div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Viewed</h3>
+                        <div class="chart-wrap"><canvas id="chart-top-views"></canvas></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Top Faved</h3>
+                        <div class="chart-wrap"><canvas id="chart-top-faves"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Downloaded</h3>
+                        <div class="chart-wrap"><canvas id="chart-top-downloads"></canvas></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Fastest Growing (24h)</h3>
+                        ${Components.daTopList(summary.fastest_growing, 'views_gained')}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-views', agg.snapshots, ['views']);
+            }
+            if (summary.top_viewed && summary.top_viewed.length > 0) {
+                Charts.topBar('chart-top-views', summary.top_viewed, 'views');
+            }
+            if (summary.top_faved && summary.top_faved.length > 0) {
+                Charts.topBar('chart-top-faves', summary.top_faved, 'favorites_count');
+            }
+            if (summary.top_downloaded && summary.top_downloaded.length > 0) {
+                Charts.topBar('chart-top-downloads', summary.top_downloaded, 'downloads');
+            }
+
+            this._bindDateRange(() => this.renderDADashboard());
+            this._bindPinAndGoalActions(() => this.renderDADashboard());
+            this._startAutoRefresh(() => this.renderDADashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading DA dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── DA Submissions ─────────────────────────────────────────
+    // DA submissions table with text search (title/keywords) and rating filter.
+    // Includes Downloads column unique to DeviantArt.
+
+    async renderDASubmissions() {
+        this._loading();
+        try {
+            const data = await API.getDASubmissions({
+                sort_by: this._daSortState.field,
+                order: this._daSortState.order,
+            });
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>DA Submissions</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search titles and keywords...">
+                    <select class="filter-select" id="filter-rating">
+                        <option value="">All Ratings</option>
+                        <option value="General">General</option>
+                        <option value="Mature">Mature</option>
+                    </select>
+                </div>
+                <div id="table-container" class="table-scroll">
+                    ${Components.daSubmissionsTable(data.submissions)}
+                </div>
+            `;
+
+            this._setContent(html);
+            this._bindDATableSort();
+            this._bindDASearch(data.submissions);
+            this._startAutoRefresh(() => this.renderDASubmissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading DA submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── DA Submission Detail ───────────────────────────────────
+    // Individual DA submission detail page with 4 metrics including Downloads.
+
+    async renderDADetail(id) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getDASubmission(id),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'da' && p.submission_id === id);
+            const currentTags = sub.tags || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/da/submissions" class="back-link">&larr; Back to DA Submissions</a>
+                <div class="detail-header">
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(sub.rating || '')}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on DeviantArt</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.views)} <span class="lbl">views</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.favorites_count)} <span class="lbl">faves</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.comments_count)} <span class="lbl">comments</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.downloads || 0)} <span class="lbl">downloads</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="da" data-id="${id}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="da" data-id="${id}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+
+                ${Components.growthRateCards(data.growth_rates)}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Stats Over Time</h3>
+                    <div class="chart-wrap"><canvas id="chart-detail"></canvas></div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots);
+            }
+
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getDASnapshots(id, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots);
+            });
+
+            this._bindDetailPinTag('da', id, allTags.tags || [], () => this.renderDADetail(id));
+            this._startAutoRefresh(() => this.renderDADetail(id));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading DA submission</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── DA Compare ─────────────────────────────────────────────
+    // DA comparison page with Downloads as an additional metric option.
+
+    async renderDACompare() {
+        this._loading();
+        try {
+            const data = await API.getDASubmissions({ sort_by: 'views', order: 'desc' });
+            const subs = data.submissions;
+
+            const chips = subs.map(s => `
+                <label class="compare-chip ${this._daCompareIds.has(s.submission_id) ? 'selected' : ''}" data-id="${s.submission_id}">
+                    <input type="checkbox" ${this._daCompareIds.has(s.submission_id) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>
+            `).join('');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Compare DA Submissions</h2>
+                    <div>
+                        <select class="filter-select" id="compare-metric">
+                            <option value="views" ${this._daCompareMetric === 'views' ? 'selected' : ''}>Views</option>
+                            <option value="favorites_count" ${this._daCompareMetric === 'favorites_count' ? 'selected' : ''}>Favourites</option>
+                            <option value="comments_count" ${this._daCompareMetric === 'comments_count' ? 'selected' : ''}>Comments</option>
+                            <option value="downloads" ${this._daCompareMetric === 'downloads' ? 'selected' : ''}>Downloads</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 DA submissions to compare their trends over time.</p>
+                <div class="compare-select">${chips}</div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container" id="compare-chart-container" style="${this._daCompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3>
+                    <div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._daCompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 submissions above to see their trends compared.</p></div>' : ''}
+            `;
+
+            this._setContent(html);
+
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = parseInt(chip.dataset.id);
+                    if (this._daCompareIds.has(id)) {
+                        this._daCompareIds.delete(id);
+                    } else if (this._daCompareIds.size < 5) {
+                        this._daCompareIds.add(id);
+                    }
+                    this.renderDACompare();
+                });
+            });
+
+            const metricSelect = document.getElementById('compare-metric');
+            if (metricSelect) {
+                metricSelect.addEventListener('change', () => {
+                    this._daCompareMetric = metricSelect.value;
+                    this._loadDAComparisonChart();
+                });
+            }
+
+            this._bindDateRange(() => this._loadDAComparisonChart());
+
+            if (this._daCompareIds.size >= 2) {
+                await this._loadDAComparisonChart();
+            }
+
+            this._startAutoRefresh(() => this.renderDACompare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadDAComparisonChart() {
+        try {
+            if (this._daCompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getDAComparison([...this._daCompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, this._daCompareMetric);
+        } catch (e) {
+            console.error('Failed to load DA comparison chart:', e);
+        }
+    },
+
+    // ── WP Dashboard ─────────────────────────────────────────
+    // Wattpad dashboard showing Reads, Votes, Comments, Lists stats.
+    // Uses Wattpad-specific metric names throughout.
+
+    async renderWPDashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getWPSummary(),
+                API.getWPAggregate(Utils.getDateRange(this._dateRange)),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const wpPins = (pins.pins || []).filter(p => p.platform === 'wp');
+            const wpGoals = (goals.goals || []).filter(g => g.platform === 'wp' || g.platform === 'all');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Wattpad Dashboard</h2>
+                    <button class="btn btn-secondary" onclick="API.exportSubmissions('wp')">Export CSV</button>
+                </div>
+
+                ${wpPins.length ? Components.pinnedSubmissions(wpPins, 'wp') : ''}
+                ${wpGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(wpGoals)}</div>` : ''}
+
+                <div class="stats-grid">
+                    ${Components.statCard('Total Submissions', summary.total_submissions)}
+                    ${Components.statCard('Total Reads', summary.total_reads || summary.total_views || 0)}
+                    ${Components.statCard('Total Votes', summary.total_votes || summary.total_favorites || 0)}
+                    ${Components.statCard('Total Comments', summary.total_comments)}
+                    ${Components.statCard('Total Lists', summary.total_lists || summary.total_num_lists || 0)}
+                </div>
+
+                ${summary.growth_rates ? (() => {
+                    /* Map Wattpad growth rate field names for the growthRateCards component */
+                    const rates = {};
+                    for (const period of ['24h', '7d', '30d']) {
+                        const r = summary.growth_rates[period];
+                        if (r) {
+                            rates[period] = {
+                                views_per_day: r.reads_per_day != null ? r.reads_per_day : r.views_per_day,
+                                faves_per_day: r.votes_per_day != null ? r.votes_per_day : r.faves_per_day,
+                                comments_per_day: r.comments_per_day,
+                            };
+                        }
+                    }
+                    return Components.growthRateCards(rates, { views: 'reads/day', faves: 'votes/day', comments: 'comments/day' });
+                })() : ''}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Reads Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-reads"></canvas></div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Read</h3>
+                        ${Components.wpTopList(summary.top_read || summary.top_viewed, 'reads', 'title', 'submission_id')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Top Voted</h3>
+                        ${Components.wpTopList(summary.top_voted || summary.top_faved, 'votes', 'title', 'submission_id')}
+                    </div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Most Listed</h3>
+                        ${Components.wpTopList(summary.top_listed, 'num_lists', 'title', 'submission_id')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Fastest Growing (24h)</h3>
+                        ${Components.wpTopList(summary.fastest_growing, 'reads_gained', 'title', 'submission_id')}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-reads', agg.snapshots, ['reads']);
+            }
+
+            this._bindDateRange(() => this.renderWPDashboard());
+            this._bindPinAndGoalActions(() => this.renderWPDashboard());
+            this._startAutoRefresh(() => this.renderWPDashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading WP dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── WP Submissions ─────────────────────────────────────────
+    // Wattpad submissions table with Reads, Votes, Comments, Lists columns.
+
+    async renderWPSubmissions() {
+        this._loading();
+        try {
+            const data = await API.getWPSubmissions({
+                sort_by: this._wpSortState.field,
+                order: this._wpSortState.order,
+            });
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>WP Submissions</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search titles...">
+                </div>
+                <div id="table-container" class="table-scroll">
+                    ${Components.wpSubmissionsTable(data.submissions)}
+                </div>
+            `;
+
+            this._setContent(html);
+            this._bindWPTableSort();
+            this._bindWPSearch(data.submissions);
+            this._startAutoRefresh(() => this.renderWPSubmissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading WP submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── WP Submission Detail ───────────────────────────────────
+    // Individual Wattpad submission detail with 4 metrics: reads, votes, comments, num_lists.
+
+    async renderWPDetail(id) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getWPSubmission(id),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'wp' && p.submission_id === id);
+            const currentTags = sub.tags || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/wp/submissions" class="back-link">&larr; Back to WP Submissions</a>
+                <div class="detail-header">
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Wattpad</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.reads || sub.views || 0)} <span class="lbl">reads</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.votes || sub.favorites_count || 0)} <span class="lbl">votes</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.comments_count || 0)} <span class="lbl">comments</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.num_lists || 0)} <span class="lbl">lists</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="wp" data-id="${id}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="wp" data-id="${id}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+
+                ${Components.growthRateCards(data.growth_rates, { views: 'reads/day', faves: 'votes/day', comments: 'comments/day' })}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Stats Over Time</h3>
+                    <div class="chart-wrap"><canvas id="chart-detail"></canvas></div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots, ['reads', 'votes', 'comments_count', 'num_lists']);
+            }
+
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getWPSnapshots(id, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots, ['reads', 'votes', 'comments_count', 'num_lists']);
+            });
+
+            this._bindDetailPinTag('wp', id, allTags.tags || [], () => this.renderWPDetail(id));
+            this._startAutoRefresh(() => this.renderWPDetail(id));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading WP submission</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── WP Compare ─────────────────────────────────────────────
+    // Wattpad comparison page with reads, votes, comments_count, num_lists metrics.
+
+    async renderWPCompare() {
+        this._loading();
+        try {
+            const data = await API.getWPSubmissions({ sort_by: 'reads', order: 'desc' });
+            const subs = data.submissions;
+
+            const chips = subs.map(s => `
+                <label class="compare-chip ${this._wpCompareIds.has(s.submission_id) ? 'selected' : ''}" data-id="${s.submission_id}">
+                    <input type="checkbox" ${this._wpCompareIds.has(s.submission_id) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>
+            `).join('');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Compare WP Submissions</h2>
+                    <div>
+                        <select class="filter-select" id="compare-metric">
+                            <option value="reads" ${this._wpCompareMetric === 'reads' ? 'selected' : ''}>Reads</option>
+                            <option value="votes" ${this._wpCompareMetric === 'votes' ? 'selected' : ''}>Votes</option>
+                            <option value="comments_count" ${this._wpCompareMetric === 'comments_count' ? 'selected' : ''}>Comments</option>
+                            <option value="num_lists" ${this._wpCompareMetric === 'num_lists' ? 'selected' : ''}>Lists</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 WP submissions to compare their trends over time.</p>
+                <div class="compare-select">${chips}</div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container" id="compare-chart-container" style="${this._wpCompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3>
+                    <div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._wpCompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 submissions above to see their trends compared.</p></div>' : ''}
+            `;
+
+            this._setContent(html);
+
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = parseInt(chip.dataset.id);
+                    if (this._wpCompareIds.has(id)) {
+                        this._wpCompareIds.delete(id);
+                    } else if (this._wpCompareIds.size < 5) {
+                        this._wpCompareIds.add(id);
+                    }
+                    this.renderWPCompare();
+                });
+            });
+
+            const metricSelect = document.getElementById('compare-metric');
+            if (metricSelect) {
+                metricSelect.addEventListener('change', () => {
+                    this._wpCompareMetric = metricSelect.value;
+                    this._loadWPComparisonChart();
+                });
+            }
+
+            this._bindDateRange(() => this._loadWPComparisonChart());
+
+            if (this._wpCompareIds.size >= 2) {
+                await this._loadWPComparisonChart();
+            }
+
+            this._startAutoRefresh(() => this.renderWPCompare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadWPComparisonChart() {
+        try {
+            if (this._wpCompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getWPComparison([...this._wpCompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, this._wpCompareMetric);
+        } catch (e) {
+            console.error('Failed to load WP comparison chart:', e);
+        }
+    },
+
+    // ── IK Dashboard ─────────────────────────────────────────
+    // Itaku dashboard with Likes, Comments, Reshares stat cards (NO views).
+
+    async renderIKDashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getIKSummary(),
+                API.getIKAggregate(Utils.getDateRange(this._dateRange)),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const ikPins = (pins.pins || []).filter(p => p.platform === 'ik');
+            const ikGoals = (goals.goals || []).filter(g => g.platform === 'ik' || g.platform === 'all');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Itaku Dashboard</h2>
+                    <button class="btn btn-secondary" onclick="API.exportSubmissions('ik')">Export CSV</button>
+                </div>
+
+                ${ikPins.length ? Components.pinnedSubmissions(ikPins, 'ik') : ''}
+                ${ikGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(ikGoals)}</div>` : ''}
+
+                <div class="stats-grid">
+                    ${Components.statCard('Total Submissions', summary.total_submissions)}
+                    ${Components.statCard('Total Likes', summary.total_likes || 0)}
+                    ${Components.statCard('Total Comments', summary.total_comments)}
+                    ${Components.statCard('Total Reshares', summary.total_reshares || 0)}
+                </div>
+
+                ${summary.growth_rates ? (() => {
+                    const rates = {};
+                    for (const period of ['24h', '7d', '30d']) {
+                        const r = summary.growth_rates[period];
+                        if (r) {
+                            rates[period] = {
+                                views_per_day: r.likes_per_day != null ? r.likes_per_day : 0,
+                                faves_per_day: r.reshares_per_day != null ? r.reshares_per_day : 0,
+                                comments_per_day: r.comments_per_day,
+                            };
+                        }
+                    }
+                    return Components.growthRateCards(rates, { views: 'likes/day', faves: 'reshares/day', comments: 'comments/day' });
+                })() : ''}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Likes Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-likes"></canvas></div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Liked</h3>
+                        ${Components.ikTopList(summary.top_liked || summary.top_faved, 'likes', 'title', 'submission_id')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Top Reshared</h3>
+                        ${Components.ikTopList(summary.top_reshared, 'reshares', 'title', 'submission_id')}
+                    </div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Fastest Growing (24h)</h3>
+                        ${Components.ikTopList(summary.fastest_growing, 'likes_gained', 'title', 'submission_id')}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-likes', agg.snapshots, ['likes']);
+            }
+
+            this._bindDateRange(() => this.renderIKDashboard());
+            this._bindPinAndGoalActions(() => this.renderIKDashboard());
+            this._startAutoRefresh(() => this.renderIKDashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading IK dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── IK Submissions ─────────────────────────────────────────
+    // Itaku submissions table with Type, Likes, Comments, Reshares columns (no views).
+
+    async renderIKSubmissions() {
+        this._loading();
+        try {
+            const data = await API.getIKSubmissions({
+                sort_by: this._ikSortState.field,
+                order: this._ikSortState.order,
+            });
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>IK Submissions</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search titles...">
+                </div>
+                <div id="table-container" class="table-scroll">
+                    ${Components.ikSubmissionsTable(data.submissions)}
+                </div>
+            `;
+
+            this._setContent(html);
+            this._bindIKTableSort();
+            this._bindIKSearch(data.submissions);
+            this._startAutoRefresh(() => this.renderIKSubmissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading IK submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── IK Submission Detail ───────────────────────────────────
+    // Individual Itaku submission detail with 3 metrics: likes, comments, reshares (no views).
+
+    async renderIKDetail(id) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getIKSubmission(id),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'ik' && p.submission_id === id);
+            const currentTags = sub.tags || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/ik/submissions" class="back-link">&larr; Back to IK Submissions</a>
+                <div class="detail-header">
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(sub.content_type || 'image')}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Itaku</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.likes || 0)} <span class="lbl">likes</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.comments_count || 0)} <span class="lbl">comments</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.reshares || 0)} <span class="lbl">reshares</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="ik" data-id="${id}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="ik" data-id="${id}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+
+                ${Components.growthRateCards(data.growth_rates, { views: 'likes/day', faves: 'reshares/day', comments: 'comments/day' })}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Stats Over Time</h3>
+                    <div class="chart-wrap"><canvas id="chart-detail"></canvas></div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots, ['likes', 'comments_count', 'reshares']);
+            }
+
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getIKSnapshots(id, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots, ['likes', 'comments_count', 'reshares']);
+            });
+
+            this._bindDetailPinTag('ik', id, allTags.tags || [], () => this.renderIKDetail(id));
+            this._startAutoRefresh(() => this.renderIKDetail(id));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading IK submission</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── IK Compare ─────────────────────────────────────────────
+    // Itaku comparison page with likes, comments_count, reshares metrics (no views).
+
+    async renderIKCompare() {
+        this._loading();
+        try {
+            const data = await API.getIKSubmissions({ sort_by: 'likes', order: 'desc' });
+            const subs = data.submissions;
+
+            const chips = subs.map(s => `
+                <label class="compare-chip ${this._ikCompareIds.has(s.submission_id) ? 'selected' : ''}" data-id="${s.submission_id}">
+                    <input type="checkbox" ${this._ikCompareIds.has(s.submission_id) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>
+            `).join('');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Compare IK Submissions</h2>
+                    <div>
+                        <select class="filter-select" id="compare-metric">
+                            <option value="likes" ${this._ikCompareMetric === 'likes' ? 'selected' : ''}>Likes</option>
+                            <option value="comments_count" ${this._ikCompareMetric === 'comments_count' ? 'selected' : ''}>Comments</option>
+                            <option value="reshares" ${this._ikCompareMetric === 'reshares' ? 'selected' : ''}>Reshares</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 IK submissions to compare their trends over time.</p>
+                <div class="compare-select">${chips}</div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container" id="compare-chart-container" style="${this._ikCompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3>
+                    <div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._ikCompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 submissions above to see their trends compared.</p></div>' : ''}
+            `;
+
+            this._setContent(html);
+
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = parseInt(chip.dataset.id);
+                    if (this._ikCompareIds.has(id)) {
+                        this._ikCompareIds.delete(id);
+                    } else if (this._ikCompareIds.size < 5) {
+                        this._ikCompareIds.add(id);
+                    }
+                    this.renderIKCompare();
+                });
+            });
+
+            const metricSelect = document.getElementById('compare-metric');
+            if (metricSelect) {
+                metricSelect.addEventListener('change', () => {
+                    this._ikCompareMetric = metricSelect.value;
+                    this._loadIKComparisonChart();
+                });
+            }
+
+            this._bindDateRange(() => this._loadIKComparisonChart());
+
+            if (this._ikCompareIds.size >= 2) {
+                await this._loadIKComparisonChart();
+            }
+
+            this._startAutoRefresh(() => this.renderIKCompare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadIKComparisonChart() {
+        try {
+            if (this._ikCompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getIKComparison([...this._ikCompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, this._ikCompareMetric);
+        } catch (e) {
+            console.error('Failed to load IK comparison chart:', e);
         }
     },
 
@@ -2222,9 +3463,9 @@ const App = {
             // (routing to the correct platform detail page), stats, and remove button
             const memberRows = members.map(m => {
                 // Determine platform badge colour and the correct hash route prefix
-                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', ib: '<span class="platform-badge ib">IB</span>' };
+                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[m.platform] || badgeMap.ib;
-                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', ib: '/submission/' };
+                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', ib: '/submission/' };
                 const prefix = prefixMap[m.platform] || prefixMap.ib;
                 return `
                     <tr>
@@ -2267,8 +3508,8 @@ const App = {
             // "Add Submission" button: prompt for platform (ib/fa/ws/sf) then
             // submission ID, add to group via API, and re-render
             document.getElementById('add-member-btn').addEventListener('click', async () => {
-                const platform = prompt('Platform (ib, fa, ws, or sf):');
-                if (!platform || !['ib', 'fa', 'ws', 'sf'].includes(platform)) { alert('Invalid platform'); return; }
+                const platform = prompt('Platform (ib, fa, ws, sf, sqw, ao3, da, wp, ik):');
+                if (!platform || !['ib', 'fa', 'ws', 'sf', 'sqw', 'ao3', 'da', 'wp', 'ik'].includes(platform)) { alert('Invalid platform'); return; }
                 const subId = prompt('Submission ID:');
                 if (!subId) { alert('Invalid ID'); return; }
                 if (platform !== 'sf' && isNaN(subId)) { alert('Invalid ID'); return; }
@@ -2443,7 +3684,7 @@ const App = {
         this._loading();
         try {
             // Parallel-fetch all 15 settings endpoints; FA/WS/SF use .catch() fallbacks
-            const [status, pollLog, creds, prefs, telegram, faAuth, faStatus, faPollLog, wsAuth, wsStatus, wsPollLog, sfAuth, sfStatus, sfPollLog, sqwAuth, sqwStatus, sqwPollLog, updateInfo] = await Promise.all([
+            const [status, pollLog, creds, prefs, telegram, faAuth, faStatus, faPollLog, wsAuth, wsStatus, wsPollLog, sfAuth, sfStatus, sfPollLog, sqwAuth, sqwStatus, sqwPollLog, ao3Auth, ao3Status, ao3PollLog, daAuth, daStatus, daPollLog, wpAuth, wpStatus, wpPollLog, ikAuth, ikStatus, ikPollLog, updateInfo] = await Promise.all([
                 API.getStatus(),
                 API.getPollLog(20),
                 API.getCredentials(),
@@ -2461,6 +3702,18 @@ const App = {
                 API.getSQWAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getSQWStatus().catch(() => ({})),
                 API.getSQWPollLog(20).catch(() => ({ polls: [] })),
+                API.getAO3AuthStatus().catch(() => ({ has_credentials: false })),
+                API.getAO3Status().catch(() => ({})),
+                API.getAO3PollLog(20).catch(() => ({ polls: [] })),
+                API.getDAAuthStatus().catch(() => ({ has_credentials: false })),
+                API.getDAStatus().catch(() => ({})),
+                API.getDAPollLog(20).catch(() => ({ polls: [] })),
+                API.getWPAuthStatus().catch(() => ({ has_credentials: false })),
+                API.getWPStatus().catch(() => ({})),
+                API.getWPPollLog(20).catch(() => ({ polls: [] })),
+                API.getIKAuthStatus().catch(() => ({ has_credentials: false })),
+                API.getIKStatus().catch(() => ({})),
+                API.getIKPollLog(20).catch(() => ({ polls: [] })),
                 API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' })),
             ]);
 
@@ -2585,6 +3838,71 @@ const App = {
                             <option value="60" ${prefs.sf_poll_interval_minutes === 60 || !prefs.sf_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
                             <option value="120" ${prefs.sf_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
                             <option value="240" ${prefs.sf_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                        </select>
+                    </div>
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">SqW poll interval</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">How often to check for new SquidgeWorld data</div>
+                        </div>
+                        <select class="filter-select" id="pref-sqw-poll-interval" style="width:auto">
+                            <option value="15" ${prefs.sqw_poll_interval_minutes === 15 ? 'selected' : ''}>15 min</option>
+                            <option value="30" ${prefs.sqw_poll_interval_minutes === 30 ? 'selected' : ''}>30 min</option>
+                            <option value="60" ${prefs.sqw_poll_interval_minutes === 60 || !prefs.sqw_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
+                            <option value="120" ${prefs.sqw_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
+                            <option value="240" ${prefs.sqw_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                        </select>
+                    </div>
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">AO3 poll interval</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">How often to check for new AO3 data</div>
+                        </div>
+                        <select class="filter-select" id="pref-ao3-poll-interval" style="width:auto">
+                            <option value="15" ${prefs.ao3_poll_interval_minutes === 15 ? 'selected' : ''}>15 min</option>
+                            <option value="30" ${prefs.ao3_poll_interval_minutes === 30 ? 'selected' : ''}>30 min</option>
+                            <option value="60" ${prefs.ao3_poll_interval_minutes === 60 || !prefs.ao3_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
+                            <option value="120" ${prefs.ao3_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
+                            <option value="240" ${prefs.ao3_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                        </select>
+                    </div>
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">DA poll interval</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">How often to check for new DeviantArt data</div>
+                        </div>
+                        <select class="filter-select" id="pref-da-poll-interval" style="width:auto">
+                            <option value="15" ${prefs.da_poll_interval_minutes === 15 ? 'selected' : ''}>15 min</option>
+                            <option value="30" ${prefs.da_poll_interval_minutes === 30 ? 'selected' : ''}>30 min</option>
+                            <option value="60" ${prefs.da_poll_interval_minutes === 60 || !prefs.da_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
+                            <option value="120" ${prefs.da_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
+                            <option value="240" ${prefs.da_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                        </select>
+                    </div>
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">WP poll interval</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">How often to check for new Wattpad data</div>
+                        </div>
+                        <select class="filter-select" id="pref-wp-poll-interval" style="width:auto">
+                            <option value="15" ${prefs.wp_poll_interval_minutes === 15 ? 'selected' : ''}>15 min</option>
+                            <option value="30" ${prefs.wp_poll_interval_minutes === 30 ? 'selected' : ''}>30 min</option>
+                            <option value="60" ${prefs.wp_poll_interval_minutes === 60 || !prefs.wp_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
+                            <option value="120" ${prefs.wp_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
+                            <option value="240" ${prefs.wp_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                        </select>
+                    </div>
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">IK poll interval</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">How often to check for new Itaku data</div>
+                        </div>
+                        <select class="filter-select" id="pref-ik-poll-interval" style="width:auto">
+                            <option value="15" ${prefs.ik_poll_interval_minutes === 15 ? 'selected' : ''}>15 min</option>
+                            <option value="30" ${prefs.ik_poll_interval_minutes === 30 ? 'selected' : ''}>30 min</option>
+                            <option value="60" ${prefs.ik_poll_interval_minutes === 60 || !prefs.ik_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
+                            <option value="120" ${prefs.ik_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
+                            <option value="240" ${prefs.ik_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
                         </select>
                     </div>
                     <div class="settings-row">
@@ -2939,6 +4257,157 @@ const App = {
                 </div>
 
                 <div class="settings-section">
+                    <h3>AO3</h3>
+                    ${ao3Auth.has_credentials ? `
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Status</span>
+                        </div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(ao3Auth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">AO3 desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for AO3 activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-ao3-notifications" ${prefs.ao3_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="ao3-poll-btn">AO3 Poll Now</button>
+                        <button class="btn btn-secondary" id="ao3-resync-btn">AO3 Full Resync</button>
+                        <button class="btn btn-danger" id="ao3-disconnect-btn">Disconnect</button>
+                        <span id="ao3-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to AO3 with a login account and specify the user to track.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="ao3-username" class="search-input" placeholder="Login username">
+                        <input type="password" id="ao3-password" class="search-input" placeholder="Login password">
+                        <input type="text" id="ao3-target-user" class="search-input" placeholder="Target user to track">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="ao3-connect-btn">Connect</button>
+                        <span id="ao3-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                </div>
+
+                <div class="settings-section">
+                    <h3>DeviantArt</h3>
+                    ${daAuth.has_credentials ? `
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Status</span>
+                        </div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(daAuth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">DA desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for DA activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-da-notifications" ${prefs.da_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="da-poll-btn">DA Poll Now</button>
+                        <button class="btn btn-secondary" id="da-resync-btn">DA Full Resync</button>
+                        <button class="btn btn-danger" id="da-disconnect-btn">Disconnect</button>
+                        <span id="da-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect your DeviantArt account using your full browser cookie string and specify the username to track.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <textarea id="da-cookie" class="search-input" placeholder="Full cookie string from browser" rows="3" style="resize:vertical;font-family:monospace;font-size:12px"></textarea>
+                        <input type="text" id="da-target-user" class="search-input" placeholder="DeviantArt username to track">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="da-connect-btn">Connect</button>
+                        <span id="da-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                </div>
+
+                <div class="settings-section">
+                    <h3>Wattpad</h3>
+                    ${wpAuth.has_credentials ? `
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Status</span>
+                        </div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(wpAuth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">WP desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for Wattpad activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-wp-notifications" ${prefs.wp_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="wp-poll-btn">WP Poll Now</button>
+                        <button class="btn btn-secondary" id="wp-resync-btn">WP Full Resync</button>
+                        <button class="btn btn-danger" id="wp-disconnect-btn">Disconnect</button>
+                        <span id="wp-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to Wattpad by entering the username to track. No auth required — just enter the username.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="wp-target-user" class="search-input" placeholder="Wattpad username to track">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="wp-connect-btn">Connect</button>
+                        <span id="wp-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                </div>
+
+                <div class="settings-section">
+                    <h3>Itaku</h3>
+                    ${ikAuth.has_credentials ? `
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Status</span>
+                        </div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(ikAuth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">IK desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for Itaku activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-ik-notifications" ${prefs.ik_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="ik-poll-btn">IK Poll Now</button>
+                        <button class="btn btn-secondary" id="ik-resync-btn">IK Full Resync</button>
+                        <button class="btn btn-danger" id="ik-disconnect-btn">Disconnect</button>
+                        <span id="ik-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to Itaku by entering the username to track. No auth required — just enter the username.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="ik-target-user" class="search-input" placeholder="Itaku username to track">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="ik-connect-btn">Connect</button>
+                        <span id="ik-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                </div>
+
+                <div class="settings-section">
                     <h3>Inkbunny Polling Status</h3>
                     <div class="settings-row">
                         <span class="settings-label">Submissions tracked</span>
@@ -3069,6 +4538,108 @@ const App = {
                 <div class="settings-section">
                     <h3>SF Poll History</h3>
                     ${Components.sfPollLogTable(sfPollLog.polls)}
+                </div>
+                ` : ''}
+
+                ${daAuth.has_credentials ? `
+                <div class="settings-section">
+                    <h3>DA Polling Status</h3>
+                    <div class="settings-row">
+                        <span class="settings-label">DA submissions tracked</span>
+                        <span class="settings-value">${daStatus.total_submissions || 0}</span>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-label">DA snapshots stored</span>
+                        <span class="settings-value">${Utils.formatNumber(daStatus.total_snapshots || 0)}</span>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-label">Last DA poll</span>
+                        <span class="settings-value">${daStatus.last_poll ? Utils.formatDateTime(daStatus.last_poll.started_at) : 'Never'}</span>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-label">Last DA poll status</span>
+                        <span class="settings-value" style="color:${daStatus.last_poll?.status === 'success' ? 'var(--success)' : daStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
+                            ${daStatus.last_poll?.status || '--'}
+                        </span>
+                    </div>
+                    ${daStatus.last_poll?.error_message ? `
+                    <div class="settings-row">
+                        <span class="settings-label">Last DA error</span>
+                        <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(daStatus.last_poll.error_message)}</span>
+                    </div>` : ''}
+                </div>
+
+                <div class="settings-section">
+                    <h3>DA Poll History</h3>
+                    ${Components.daPollLogTable(daPollLog.polls)}
+                </div>
+                ` : ''}
+
+                ${wpAuth.has_credentials ? `
+                <div class="settings-section">
+                    <h3>WP Polling Status</h3>
+                    <div class="settings-row">
+                        <span class="settings-label">WP submissions tracked</span>
+                        <span class="settings-value">${wpStatus.total_submissions || 0}</span>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-label">WP snapshots stored</span>
+                        <span class="settings-value">${Utils.formatNumber(wpStatus.total_snapshots || 0)}</span>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-label">Last WP poll</span>
+                        <span class="settings-value">${wpStatus.last_poll ? Utils.formatDateTime(wpStatus.last_poll.started_at) : 'Never'}</span>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-label">Last WP poll status</span>
+                        <span class="settings-value" style="color:${wpStatus.last_poll?.status === 'success' ? 'var(--success)' : wpStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
+                            ${wpStatus.last_poll?.status || '--'}
+                        </span>
+                    </div>
+                    ${wpStatus.last_poll?.error_message ? `
+                    <div class="settings-row">
+                        <span class="settings-label">Last WP error</span>
+                        <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(wpStatus.last_poll.error_message)}</span>
+                    </div>` : ''}
+                </div>
+
+                <div class="settings-section">
+                    <h3>WP Poll History</h3>
+                    ${Components.wpPollLogTable(wpPollLog.polls)}
+                </div>
+                ` : ''}
+
+                ${ikAuth.has_credentials ? `
+                <div class="settings-section">
+                    <h3>IK Polling Status</h3>
+                    <div class="settings-row">
+                        <span class="settings-label">IK submissions tracked</span>
+                        <span class="settings-value">${ikStatus.total_submissions || 0}</span>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-label">IK snapshots stored</span>
+                        <span class="settings-value">${Utils.formatNumber(ikStatus.total_snapshots || 0)}</span>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-label">Last IK poll</span>
+                        <span class="settings-value">${ikStatus.last_poll ? Utils.formatDateTime(ikStatus.last_poll.started_at) : 'Never'}</span>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-label">Last IK poll status</span>
+                        <span class="settings-value" style="color:${ikStatus.last_poll?.status === 'success' ? 'var(--success)' : ikStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
+                            ${ikStatus.last_poll?.status || '--'}
+                        </span>
+                    </div>
+                    ${ikStatus.last_poll?.error_message ? `
+                    <div class="settings-row">
+                        <span class="settings-label">Last IK error</span>
+                        <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(ikStatus.last_poll.error_message)}</span>
+                    </div>` : ''}
+                </div>
+
+                <div class="settings-section">
+                    <h3>IK Poll History</h3>
+                    ${Components.ikPollLogTable(ikPollLog.polls)}
                 </div>
                 ` : ''}
             `;
@@ -3539,6 +5110,51 @@ const App = {
                 }
             });
 
+            // SqW poll interval dropdown
+            document.getElementById('pref-sqw-poll-interval')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ sqw_poll_interval_minutes: parseInt(e.target.value) });
+                } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
+            // AO3 poll interval dropdown
+            document.getElementById('pref-ao3-poll-interval')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ ao3_poll_interval_minutes: parseInt(e.target.value) });
+                } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
+            // DA poll interval dropdown
+            document.getElementById('pref-da-poll-interval')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ da_poll_interval_minutes: parseInt(e.target.value) });
+                } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
+            // WP poll interval dropdown
+            document.getElementById('pref-wp-poll-interval')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ wp_poll_interval_minutes: parseInt(e.target.value) });
+                } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
+            // IK poll interval dropdown
+            document.getElementById('pref-ik-poll-interval')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ ik_poll_interval_minutes: parseInt(e.target.value) });
+                } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
             // Display timezone dropdown
             document.getElementById('pref-timezone')?.addEventListener('change', async (e) => {
                 try {
@@ -3748,6 +5364,401 @@ const App = {
                 sqwNotifToggle.addEventListener('change', async (e) => {
                     try {
                         await API.savePreferences({ sqw_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
+            // AO3: Connect
+            const ao3ConnectBtn = document.getElementById('ao3-connect-btn');
+            if (ao3ConnectBtn) {
+                ao3ConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('ao3-msg');
+                    const username = document.getElementById('ao3-username').value.trim();
+                    const password = document.getElementById('ao3-password').value;
+                    const target_user = document.getElementById('ao3-target-user').value.trim();
+                    if (!username || !password || !target_user) {
+                        msg.textContent = 'All fields required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    ao3ConnectBtn.disabled = true;
+                    ao3ConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.ao3Connect({ username, password, target_user });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        ao3ConnectBtn.textContent = 'Connect';
+                        ao3ConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            // AO3: Disconnect
+            const ao3DisconnectBtn = document.getElementById('ao3-disconnect-btn');
+            if (ao3DisconnectBtn) {
+                ao3DisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect AO3? This clears saved credentials.')) return;
+                    try {
+                        await API.ao3Disconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+
+            // AO3: Poll Now
+            const ao3PollBtn = document.getElementById('ao3-poll-btn');
+            if (ao3PollBtn) {
+                ao3PollBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('ao3-msg');
+                    ao3PollBtn.disabled = true;
+                    ao3PollBtn.textContent = 'Polling...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.triggerAO3Poll();
+                        ao3PollBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        ao3PollBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // AO3: Full Resync
+            const ao3ResyncBtn = document.getElementById('ao3-resync-btn');
+            if (ao3ResyncBtn) {
+                ao3ResyncBtn.addEventListener('click', async () => {
+                    if (!confirm('AO3 full resync will re-fetch all work details. Continue?')) return;
+                    const msg = document.getElementById('ao3-msg');
+                    ao3ResyncBtn.disabled = true;
+                    ao3ResyncBtn.textContent = 'Syncing...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.fullAO3Resync();
+                        ao3ResyncBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        ao3ResyncBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // AO3: Notifications toggle
+            const ao3NotifToggle = document.getElementById('pref-ao3-notifications');
+            if (ao3NotifToggle) {
+                ao3NotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ ao3_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
+            // DA Connect: sends cookie string + target_user to authenticate with DeviantArt
+            const daConnectBtn = document.getElementById('da-connect-btn');
+            if (daConnectBtn) {
+                daConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('da-msg');
+                    const cookie = document.getElementById('da-cookie').value.trim();
+                    const target_user = document.getElementById('da-target-user').value.trim();
+                    if (!cookie || !target_user) {
+                        msg.textContent = 'Both cookie and username are required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    daConnectBtn.disabled = true;
+                    daConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.daConnect({ cookie, target_user });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        daConnectBtn.textContent = 'Connect';
+                        daConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            // DA Disconnect: clears saved credentials, re-renders to show connect form
+            const daDisconnectBtn = document.getElementById('da-disconnect-btn');
+            if (daDisconnectBtn) {
+                daDisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect DeviantArt? This clears saved cookies.')) return;
+                    try {
+                        await API.daDisconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+
+            // DA Poll Now: triggers an immediate DA data-fetch cycle
+            const daPollBtn = document.getElementById('da-poll-btn');
+            if (daPollBtn) {
+                daPollBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('da-msg');
+                    daPollBtn.disabled = true;
+                    daPollBtn.textContent = 'Polling...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.triggerDAPoll();
+                        daPollBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        daPollBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // DA Full Resync: re-fetches all DA submission details.
+            const daResyncBtn = document.getElementById('da-resync-btn');
+            if (daResyncBtn) {
+                daResyncBtn.addEventListener('click', async () => {
+                    if (!confirm('DA full resync will re-fetch all submission details. This may take a while. Continue?')) return;
+                    const msg = document.getElementById('da-msg');
+                    daResyncBtn.disabled = true;
+                    daResyncBtn.textContent = 'Syncing...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.fullDAResync();
+                        daResyncBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        daResyncBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // DA: Notifications toggle
+            const daNotifToggle = document.getElementById('pref-da-notifications');
+            if (daNotifToggle) {
+                daNotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ da_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
+            // WP Connect: sends just target_user (username-only auth, no password/cookie)
+            const wpConnectBtn = document.getElementById('wp-connect-btn');
+            if (wpConnectBtn) {
+                wpConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('wp-msg');
+                    const target_user = document.getElementById('wp-target-user').value.trim();
+                    if (!target_user) {
+                        msg.textContent = 'Username is required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    wpConnectBtn.disabled = true;
+                    wpConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.wpConnect({ target_user });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        wpConnectBtn.textContent = 'Connect';
+                        wpConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            // WP Disconnect: clears saved credentials, re-renders to show connect form
+            const wpDisconnectBtn = document.getElementById('wp-disconnect-btn');
+            if (wpDisconnectBtn) {
+                wpDisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect Wattpad? This clears the tracked username.')) return;
+                    try {
+                        await API.wpDisconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+
+            // WP Poll Now: triggers an immediate Wattpad data-fetch cycle
+            const wpPollBtn = document.getElementById('wp-poll-btn');
+            if (wpPollBtn) {
+                wpPollBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('wp-msg');
+                    wpPollBtn.disabled = true;
+                    wpPollBtn.textContent = 'Polling...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.triggerWPPoll();
+                        wpPollBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        wpPollBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // WP Full Resync: re-fetches all WP submission details.
+            const wpResyncBtn = document.getElementById('wp-resync-btn');
+            if (wpResyncBtn) {
+                wpResyncBtn.addEventListener('click', async () => {
+                    if (!confirm('WP full resync will re-fetch all submission details. This may take a while. Continue?')) return;
+                    const msg = document.getElementById('wp-msg');
+                    wpResyncBtn.disabled = true;
+                    wpResyncBtn.textContent = 'Syncing...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.fullWPResync();
+                        wpResyncBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        wpResyncBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // WP: Notifications toggle
+            const wpNotifToggle = document.getElementById('pref-wp-notifications');
+            if (wpNotifToggle) {
+                wpNotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ wp_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
+            // IK Connect: sends just target_user (username-only auth, no password/cookie)
+            const ikConnectBtn = document.getElementById('ik-connect-btn');
+            if (ikConnectBtn) {
+                ikConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('ik-msg');
+                    const target_user = document.getElementById('ik-target-user').value.trim();
+                    if (!target_user) {
+                        msg.textContent = 'Username is required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    ikConnectBtn.disabled = true;
+                    ikConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.ikConnect({ target_user });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        ikConnectBtn.textContent = 'Connect';
+                        ikConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            // IK Disconnect: clears saved credentials, re-renders to show connect form
+            const ikDisconnectBtn = document.getElementById('ik-disconnect-btn');
+            if (ikDisconnectBtn) {
+                ikDisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect Itaku? This clears the tracked username.')) return;
+                    try {
+                        await API.ikDisconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+
+            // IK Poll Now: triggers an immediate Itaku data-fetch cycle
+            const ikPollBtn = document.getElementById('ik-poll-btn');
+            if (ikPollBtn) {
+                ikPollBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('ik-msg');
+                    ikPollBtn.disabled = true;
+                    ikPollBtn.textContent = 'Polling...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.triggerIKPoll();
+                        ikPollBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        ikPollBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // IK Full Resync: re-fetches all IK submission details.
+            const ikResyncBtn = document.getElementById('ik-resync-btn');
+            if (ikResyncBtn) {
+                ikResyncBtn.addEventListener('click', async () => {
+                    if (!confirm('IK full resync will re-fetch all submission details. This may take a while. Continue?')) return;
+                    const msg = document.getElementById('ik-msg');
+                    ikResyncBtn.disabled = true;
+                    ikResyncBtn.textContent = 'Syncing...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.fullIKResync();
+                        ikResyncBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        ikResyncBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // IK: Notifications toggle
+            const ikNotifToggle = document.getElementById('pref-ik-notifications');
+            if (ikNotifToggle) {
+                ikNotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ ik_notifications_enabled: e.target.checked });
                     } catch (err) {
                         e.target.checked = !e.target.checked;
                         alert('Failed to save preference: ' + err.message);
@@ -4122,6 +6133,170 @@ const App = {
         ratingSelect?.addEventListener('change', doFilter);
     },
 
+    // AO3 variant of _bindTableSort(). Targets #ao3-submissions-table headers,
+    // uses _ao3SortState + renderAO3Submissions().
+    _bindAO3TableSort() {
+        document.querySelectorAll('#ao3-submissions-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (this._ao3SortState.field === field) {
+                    this._ao3SortState.order = this._ao3SortState.order === 'desc' ? 'asc' : 'desc';
+                } else {
+                    this._ao3SortState.field = field;
+                    this._ao3SortState.order = 'desc';
+                }
+                this.renderAO3Submissions();
+            });
+        });
+    },
+
+    // AO3 variant of _bindSearch(). Filters by text (title/tags) and rating.
+    _bindAO3Search(allSubmissions) {
+        const input = document.getElementById('search-input');
+        const ratingSelect = document.getElementById('filter-rating');
+
+        const doFilter = () => {
+            const q = (input?.value || '').toLowerCase();
+            const rating = ratingSelect?.value || '';
+
+            let filtered = allSubmissions;
+            if (q) {
+                filtered = filtered.filter(s =>
+                    (s.title || '').toLowerCase().includes(q) || (s.keywords || '').toLowerCase().includes(q)
+                );
+            }
+            if (rating) {
+                filtered = filtered.filter(s => (s.rating || '') === rating);
+            }
+
+            document.getElementById('table-container').innerHTML = Components.ao3SubmissionsTable(filtered);
+            this._bindAO3TableSort();
+        };
+
+        input?.addEventListener('input', doFilter);
+        ratingSelect?.addEventListener('change', doFilter);
+    },
+
+    // DA variant of _bindTableSort(). Targets #da-submissions-table headers,
+    // uses _daSortState + renderDASubmissions().
+    _bindDATableSort() {
+        document.querySelectorAll('#da-submissions-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (this._daSortState.field === field) {
+                    this._daSortState.order = this._daSortState.order === 'desc' ? 'asc' : 'desc';
+                } else {
+                    this._daSortState.field = field;
+                    this._daSortState.order = 'desc';
+                }
+                this.renderDASubmissions();
+            });
+        });
+    },
+
+    // DA variant of _bindSearch(). Filters by text (title/keywords) and rating.
+    _bindDASearch(allSubmissions) {
+        const input = document.getElementById('search-input');
+        const ratingSelect = document.getElementById('filter-rating');
+
+        const doFilter = () => {
+            const q = (input?.value || '').toLowerCase();
+            const rating = ratingSelect?.value || '';
+
+            let filtered = allSubmissions;
+            if (q) {
+                filtered = filtered.filter(s =>
+                    (s.title || '').toLowerCase().includes(q) || (s.keywords || '').toLowerCase().includes(q)
+                );
+            }
+            if (rating) {
+                filtered = filtered.filter(s => (s.rating || '') === rating);
+            }
+
+            document.getElementById('table-container').innerHTML = Components.daSubmissionsTable(filtered);
+            this._bindDATableSort();
+        };
+
+        input?.addEventListener('input', doFilter);
+        ratingSelect?.addEventListener('change', doFilter);
+    },
+
+    // WP variant of _bindTableSort(). Targets #wp-submissions-table headers,
+    // uses _wpSortState + renderWPSubmissions().
+    _bindWPTableSort() {
+        document.querySelectorAll('#wp-submissions-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (this._wpSortState.field === field) {
+                    this._wpSortState.order = this._wpSortState.order === 'desc' ? 'asc' : 'desc';
+                } else {
+                    this._wpSortState.field = field;
+                    this._wpSortState.order = 'desc';
+                }
+                this.renderWPSubmissions();
+            });
+        });
+    },
+
+    // WP variant of _bindSearch(). Filters by text (title only — Wattpad has no rating filter).
+    _bindWPSearch(allSubmissions) {
+        const input = document.getElementById('search-input');
+
+        const doFilter = () => {
+            const q = (input?.value || '').toLowerCase();
+
+            let filtered = allSubmissions;
+            if (q) {
+                filtered = filtered.filter(s =>
+                    (s.title || '').toLowerCase().includes(q)
+                );
+            }
+
+            document.getElementById('table-container').innerHTML = Components.wpSubmissionsTable(filtered);
+            this._bindWPTableSort();
+        };
+
+        input?.addEventListener('input', doFilter);
+    },
+
+    // IK variant of _bindTableSort(). Targets #ik-submissions-table headers,
+    // uses _ikSortState + renderIKSubmissions().
+    _bindIKTableSort() {
+        document.querySelectorAll('#ik-submissions-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (this._ikSortState.field === field) {
+                    this._ikSortState.order = this._ikSortState.order === 'desc' ? 'asc' : 'desc';
+                } else {
+                    this._ikSortState.field = field;
+                    this._ikSortState.order = 'desc';
+                }
+                this.renderIKSubmissions();
+            });
+        });
+    },
+
+    // IK variant of _bindSearch(). Filters by text (title only).
+    _bindIKSearch(allSubmissions) {
+        const input = document.getElementById('search-input');
+
+        const doFilter = () => {
+            const q = (input?.value || '').toLowerCase();
+
+            let filtered = allSubmissions;
+            if (q) {
+                filtered = filtered.filter(s =>
+                    (s.title || '').toLowerCase().includes(q)
+                );
+            }
+
+            document.getElementById('table-container').innerHTML = Components.ikSubmissionsTable(filtered);
+            this._bindIKTableSort();
+        };
+
+        input?.addEventListener('input', doFilter);
+    },
+
     // SF variant of _bindSearch(). Filters by text (title/keywords) and rating
     // (Clean/Mature/Adult — SoFurry's terminology).
     _bindSFSearch(allSubmissions) {
@@ -4265,15 +6440,19 @@ const App = {
                     <h3>Fastest Growing All-Time</h3>
                     <div class="table-scroll">
                         <table class="data-table">
-                            <thead><tr><th>Platform</th><th>Title</th><th>Views</th><th>Faves</th><th>Views/Day</th></tr></thead>
+                            <thead><tr><th>Platform</th><th>Title</th><th>Views</th><th>Faves</th><th>Growth/Day</th></tr></thead>
                             <tbody>
-                                ${fastest.map(f => `<tr>
+                                ${fastest.map(f => {
+                                    const isIK = (f.platform || '').toLowerCase() === 'ik';
+                                    const isWP = (f.platform || '').toLowerCase() === 'wp';
+                                    return `<tr>
                                     <td>${Utils.escapeHtml(f.platform || '')}</td>
                                     <td>${Utils.escapeHtml(f.title || '')}</td>
-                                    <td>${Utils.formatNumber(f.views || 0)}</td>
+                                    <td>${isIK ? '--' : Utils.formatNumber(isWP ? (f.reads || f.views || 0) : (f.views || 0))}</td>
                                     <td>${Utils.formatNumber(f.faves || 0)}</td>
-                                    <td>${(f.views_per_day || 0).toFixed(1)}</td>
-                                </tr>`).join('')}
+                                    <td>${(f.views_per_day || 0).toFixed(1)} ${isIK ? 'likes' : isWP ? 'reads' : 'views'}</td>
+                                </tr>`;
+                                }).join('')}
                             </tbody>
                         </table>
                     </div>
@@ -4320,6 +6499,7 @@ const App = {
 
     _initPollProgressBar() {
         this._pollProgressTick();
+        if (this._pollProgressTimer) clearInterval(this._pollProgressTimer);
         this._pollProgressTimer = setInterval(() => this._pollProgressTick(), 10000);
     },
 
@@ -4330,12 +6510,16 @@ const App = {
         if (!bar || !fill || !label) return;
 
         try {
-            const [ib, fa, ws, sf, sqw] = await Promise.all([
+            const [ib, fa, ws, sf, sqw, ao3, da, wp, ik] = await Promise.all([
                 API.getPollProgress().catch(() => null),
                 API.getFAPollProgress().catch(() => null),
                 API.getWSPollProgress().catch(() => null),
                 API.getSFPollProgress().catch(() => null),
                 API.getSQWPollProgress().catch(() => null),
+                API.getAO3PollProgress().catch(() => null),
+                API.getDAPollProgress().catch(() => null),
+                API.getWPPollProgress().catch(() => null),
+                API.getIKPollProgress().catch(() => null),
             ]);
 
             const platforms = [
@@ -4344,6 +6528,10 @@ const App = {
                 { name: 'Weasyl', data: ws },
                 { name: 'SoFurry', data: sf },
                 { name: 'SquidgeWorld', data: sqw },
+                { name: 'AO3', data: ao3 },
+                { name: 'DeviantArt', data: da },
+                { name: 'Wattpad', data: wp },
+                { name: 'Itaku', data: ik },
             ];
 
             const active = platforms.filter(p => p.data && p.data.active);

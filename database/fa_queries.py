@@ -427,20 +427,87 @@ def get_fa_submission_deltas(conn: sqlite3.Connection) -> dict[int, dict]:
 # ── FA Watcher Queries ────────────────────────────────────────────
 
 def upsert_fa_watcher(conn: sqlite3.Connection, username: str) -> bool:
-    """Insert an FA watcher if not already tracked. Returns True if new."""
+    """Insert an FA watcher if not already tracked, or update last_seen_at.
+
+    New watchers start with confirmed=0 (pending). On the next poll cycle,
+    if they're still present, confirm_pending_watchers() promotes them to
+    confirmed=1. This prevents spam bots (which get banned quickly) from
+    ever triggering a notification.
+
+    Returns True if the watcher is brand new (first insert).
+    """
     try:
         conn.execute(
-            "INSERT INTO fa_watchers (username, first_seen_at) VALUES (?, datetime('now'))",
+            "INSERT INTO fa_watchers (username, first_seen_at, last_seen_at, confirmed, notified) "
+            "VALUES (?, datetime('now'), datetime('now'), 0, 0)",
             (username,),
         )
         return True
     except sqlite3.IntegrityError:
+        # Already exists -- update last_seen_at to track continued presence
+        conn.execute(
+            "UPDATE fa_watchers SET last_seen_at = datetime('now') WHERE username = ?",
+            (username,),
+        )
         return False
 
 
+def confirm_pending_watchers(conn: sqlite3.Connection) -> list[str]:
+    """Promote pending watchers (confirmed=0) that are still present (last_seen_at
+    updated this cycle) to confirmed=1. Returns list of newly confirmed usernames.
+
+    This is the core of the confirmation delay: watchers must survive at least
+    2 consecutive poll cycles to be confirmed. Bots that get banned between
+    polls are never promoted and never trigger notifications.
+    """
+    # A pending watcher whose last_seen_at was updated (i.e. still in the
+    # FAExport list) gets promoted. We check that last_seen_at > first_seen_at
+    # (meaning it was refreshed at least once after initial insert).
+    rows = conn.execute(
+        "SELECT username FROM fa_watchers WHERE confirmed = 0 AND last_seen_at > first_seen_at"
+    ).fetchall()
+    confirmed_names = [r["username"] for r in rows]
+    if confirmed_names:
+        conn.execute(
+            "UPDATE fa_watchers SET confirmed = 1 WHERE confirmed = 0 AND last_seen_at > first_seen_at"
+        )
+    return confirmed_names
+
+
+def mark_watchers_spam(conn: sqlite3.Connection, usernames: list[str]) -> None:
+    """Flag watchers as spam (is_spam=1). They remain in the DB but are
+    excluded from notifications."""
+    if not usernames:
+        return
+    placeholders = ",".join("?" for _ in usernames)
+    conn.execute(
+        f"UPDATE fa_watchers SET is_spam = 1 WHERE username IN ({placeholders})",
+        usernames,
+    )
+
+
+def get_unnotified_confirmed_watchers(conn: sqlite3.Connection) -> list[str]:
+    """Get confirmed, non-spam watchers that haven't been notified yet."""
+    rows = conn.execute(
+        "SELECT username FROM fa_watchers WHERE confirmed = 1 AND notified = 0 AND is_spam = 0"
+    ).fetchall()
+    return [r["username"] for r in rows]
+
+
+def mark_watchers_notified(conn: sqlite3.Connection, usernames: list[str]) -> None:
+    """Mark watchers as notified so we don't re-notify."""
+    if not usernames:
+        return
+    placeholders = ",".join("?" for _ in usernames)
+    conn.execute(
+        f"UPDATE fa_watchers SET notified = 1 WHERE username IN ({placeholders})",
+        usernames,
+    )
+
+
 def get_fa_watchers_count(conn: sqlite3.Connection) -> int:
-    """Total number of tracked FA watchers."""
-    row = conn.execute("SELECT COUNT(*) as c FROM fa_watchers").fetchone()
+    """Total number of tracked FA watchers (confirmed only)."""
+    row = conn.execute("SELECT COUNT(*) as c FROM fa_watchers WHERE confirmed = 1").fetchone()
     return row["c"] if row else 0
 
 

@@ -49,12 +49,20 @@ class SoFurryClient:
         self.password = password
         self.totp_code = totp_code
         self.display_name = display_name  # SF profile handle (e.g. "KnaughtyKat")
+        transport = httpx.AsyncHTTPTransport(retries=2)
         self._http = httpx.AsyncClient(
             timeout=30.0,
             follow_redirects=True,
             headers={"User-Agent": "PawPoller/1.0"},
+            transport=transport,
         )
         self._logged_in = False
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        await self.close()
 
     async def close(self) -> None:
         await self._http.aclose()
@@ -79,7 +87,10 @@ class SoFurryClient:
             csrf_match = re.search(
                 r'name="_token"\s*value="([^"]+)"', login_page.text
             )
-            csrf_token = csrf_match.group(1) if csrf_match else ""
+            if not csrf_match:
+                logger.error("SoFurry: Could not find CSRF token on login page")
+                return False
+            csrf_token = csrf_match.group(1)
 
             # Step 2: POST credentials with CSRF token
             resp = await self._http.post(
@@ -136,7 +147,10 @@ class SoFurryClient:
                     form_action = action_url
 
             csrf_match = re.search(r'name="_token"\s*value="([^"]+)"', page_text)
-            csrf_token = csrf_match.group(1) if csrf_match else ""
+            if not csrf_match:
+                logger.error("SoFurry: Could not find CSRF token on 2FA page")
+                return False
+            csrf_token = csrf_match.group(1)
 
             code_field = "one_time_password"
             field_match = re.search(
@@ -260,7 +274,7 @@ class SoFurryClient:
         all_subs: list[dict] = []
         page = 1
 
-        while True:
+        for _page_safety in range(1000):
             try:
                 resp = await self._http.get(
                     f"{SOFURRY_BASE}/u/{self.display_name}/gallery",
@@ -438,7 +452,7 @@ class SoFurryClient:
         seen: set[str] = set()
         page = 1
 
-        while True:
+        for _page_safety in range(1000):
             try:
                 resp = await self._http.get(
                     f"{SOFURRY_BASE}/u/{self.display_name}/followers",

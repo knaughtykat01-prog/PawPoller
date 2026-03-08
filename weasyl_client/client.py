@@ -36,11 +36,19 @@ class WeasylClient:
         # from the user's account settings. It is sent on every request as
         # a default header on the httpx client so callers don't need to
         # manage auth per-request.
+        transport = httpx.AsyncHTTPTransport(retries=2)
         self._http = httpx.AsyncClient(
             timeout=30.0,
             headers={"X-Weasyl-API-Key": self.api_key},
+            transport=transport,
         )
         self.username: str = ""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        await self.close()
 
     async def close(self) -> None:
         await self._http.aclose()
@@ -92,7 +100,7 @@ class WeasylClient:
         all_subs: list[dict] = []
         next_id: int | None = None  # None means "start from the beginning"
 
-        while True:
+        for _page_safety in range(1000):
             # Request up to 100 submissions per page (Weasyl's max batch size).
             params: dict[str, Any] = {"count": "100"}
             if next_id is not None:

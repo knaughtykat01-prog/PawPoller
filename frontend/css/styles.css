@@ -1155,6 +1155,22 @@ body {
     background: #a78bfa30;
     color: #a78bfa;
 }
+.platform-badge.ao3 {
+    background: #ef444430;
+    color: #ef4444;
+}
+.platform-badge.da {
+    background: #00c85330;
+    color: #00c853;
+}
+.platform-badge.wp {
+    background: #f4731530;
+    color: #f47315;
+}
+.platform-badge.ik {
+    background: #00968830;
+    color: #009688;
+}
 
 /* ── FA Metadata ─────────────────────────────────────────── */
 /* Grid layout for FurAffinity submission detail metadata fields

@@ -38,13 +38,14 @@ def sf_auth_status():
     settings = config.get_settings()
     has_credentials = bool(settings.get("sf_username")) and bool(settings.get("sf_password"))
     has_data = False
+    conn = get_connection()
     try:
-        conn = get_connection()
         count = conn.execute("SELECT COUNT(*) as c FROM sf_submissions").fetchone()["c"]
         has_data = count > 0
-        conn.close()
     except Exception:
         pass
+    finally:
+        conn.close()
     return {
         "has_credentials": has_credentials,
         "has_data": has_data,

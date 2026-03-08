@@ -1,0 +1,287 @@
+"""Wattpad (WP) poll cycle orchestration.
+
+Simpler than other pollers since Wattpad's public API requires no
+authentication — only a target username is needed. Stories are discovered
+via the user profile endpoint and stats (reads, votes, comments,
+reading lists) are fetched per-story.
+
+Key differences from other platform pollers:
+  - No login/authentication step
+  - Only needs wp_target_user setting
+  - No kudos/fave/comment individual user tracking — just counts
+  - Unique metric: num_lists (reading lists)
+"""
+
+from __future__ import annotations
+import atexit
+import logging
+import threading
+import time
+from datetime import datetime, timezone
+from html import escape as _esc
+
+import httpx
+
+import config
+from wp_client.client import WPClient
+from database.db import get_connection
+from database import wp_queries
+
+logger = logging.getLogger(__name__)
+
+# -- Progress tracking -----------------------------------------------------
+wp_poll_progress = {
+    "active": False,
+    "phase": "idle",
+    "current": 0,
+    "total": 0,
+    "message": "",
+}
+
+_wp_poll_running = False
+_wp_poll_lock = threading.Lock()
+_wp_first_poll = True
+
+# Persistent client — reused across poll cycles
+_wp_client: WPClient | None = None
+
+
+def _cleanup_wp_client():
+    if _wp_client is not None:
+        import asyncio
+        try:
+            asyncio.get_event_loop().run_until_complete(_wp_client.close())
+        except Exception:
+            pass
+
+
+atexit.register(_cleanup_wp_client)
+
+
+def _update_wp_progress(phase: str, current: int = 0, total: int = 0, message: str = ""):
+    wp_poll_progress["active"] = phase not in ("idle", "complete", "error")
+    wp_poll_progress["phase"] = phase
+    wp_poll_progress["current"] = current
+    wp_poll_progress["total"] = total
+    wp_poll_progress["message"] = message
+
+
+def _send_wp_notifications(new_details: list[dict]) -> None:
+    """Send Windows toast notifications for Wattpad activity."""
+    settings = config.get_settings()
+    if not settings.get("wp_notifications_enabled", True):
+        return
+    if not new_details:
+        return
+
+    try:
+        from winotify import Notification
+    except ImportError:
+        logger.debug("winotify not installed -- skipping WP notifications")
+        return
+
+    shown = new_details[:3]
+    lines = [f"{d['title']} gained activity" for d in shown]
+    if len(new_details) > 3:
+        lines.append(f"...and {len(new_details) - 3} more")
+    toast = Notification(
+        app_id="PawPoller",
+        title=f"WP: {len(new_details)} Stor{'ies' if len(new_details) != 1 else 'y'} Updated",
+        msg="\n".join(lines),
+    )
+    toast.show()
+
+
+async def _send_wp_telegram(new_details: list[dict]) -> None:
+    """Send Telegram notification for Wattpad activity."""
+    settings = config.get_settings()
+    if not settings.get("telegram_enabled", False):
+        return
+    token = settings.get("telegram_bot_token")
+    chat_id = settings.get("telegram_chat_id")
+    if not token or not chat_id:
+        return
+    if not new_details:
+        return
+
+    lines = [f"<b>\U0001f4d9 WP: {len(new_details)} Stor{'ies' if len(new_details) != 1 else 'y'} Updated</b>"]
+    for d in new_details[:5]:
+        lines.append(f"  \u2022 {_esc(d['title'])}")
+    if len(new_details) > 5:
+        lines.append(f"  ...and {len(new_details) - 5} more")
+
+    text = "\n".join(lines)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+            )
+    except Exception as e:
+        logger.warning("Failed to send WP Telegram notification: %s", e)
+
+
+def _get_or_create_client(settings: dict) -> WPClient:
+    """Return the persistent WPClient, creating or updating as needed."""
+    global _wp_client
+    wp_target = settings.get("wp_target_user", "")
+
+    if _wp_client is None:
+        _wp_client = WPClient(target_user=wp_target)
+    else:
+        _wp_client.update_credentials(wp_target)
+
+    return _wp_client
+
+
+async def run_wp_poll_cycle(force_full: bool = False) -> dict:
+    """Execute one complete Wattpad poll cycle.
+
+    Steps:
+      1. Validate the target user exists
+      2. Discover all stories for the target user
+      3. Fetch details for each story
+      4. Upsert stories and record snapshots
+    """
+    global _wp_poll_running, _wp_first_poll
+
+    if not _wp_poll_lock.acquire(blocking=False):
+        logger.warning("WP poll already running -- skipping")
+        return {}
+    _wp_poll_running = True
+    _update_wp_progress("starting", message="Initialising WP poll cycle...")
+
+    conn = None
+    log_id = None
+    start_time = time.time()
+
+    stats = {
+        "submissions_found": 0,
+        "snapshots_inserted": 0,
+    }
+
+    settings = config.get_settings()
+    client = _get_or_create_client(settings)
+
+    try:
+        conn = get_connection()
+        log_id = wp_queries.start_wp_poll_log(conn)
+        # Step 1: Validate user
+        _update_wp_progress("searching", message="Validating Wattpad user...")
+        target = await client.validate_user()
+        if not target:
+            raise ValueError("Wattpad user not found -- check wp_target_user setting")
+
+        # Step 2: Discover stories
+        _update_wp_progress("searching", message="Fetching stories list...")
+        stories = await client.get_all_story_ids()
+        story_ids = [s["story_id"] for s in stories]
+        stats["submissions_found"] = len(story_ids)
+        logger.info("WP: Found %d stories", len(story_ids))
+
+        if not story_ids:
+            _update_wp_progress("complete", message="No Wattpad stories found.")
+            wp_queries.finish_wp_poll_log(conn, log_id, "success",
+                                          duration_seconds=time.time() - start_time, **stats)
+            conn.commit()
+            return stats
+
+        # Step 3: Fetch details
+        _update_wp_progress("fetching_details",
+                            message=f"Fetching details for {len(story_ids)} stories...")
+        details = await client.get_story_details_batch(story_ids)
+        logger.info("WP: Fetched details for %d stories", len(details))
+
+        # Step 4: Upsert + snapshot
+        new_activity_details: list[dict] = []
+        poll_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+        for idx, detail in enumerate(details, 1):
+            _update_wp_progress("processing", current=idx, total=len(details),
+                                message=f"Processing story {idx}/{len(details)}...")
+            try:
+                sid = detail["story_id"]
+                reads = detail.get("reads", 0)
+                votes = detail.get("votes", 0)
+                comments = detail.get("comments_count", 0)
+                num_lists = detail.get("num_lists", 0)
+
+                # Check for stat increases to drive notifications.
+                prev = wp_queries.get_wp_submission(conn, sid)
+                if prev and (votes > prev.get("votes", 0)
+                             or comments > prev.get("comments_count", 0)):
+                    new_activity_details.append({"title": detail.get("title", "")})
+
+                wp_queries.upsert_wp_submission(conn, detail)
+                wp_queries.insert_wp_snapshot(conn, sid, reads, votes, comments,
+                                              num_lists, polled_at=poll_timestamp)
+                stats["snapshots_inserted"] += 1
+
+            except Exception as e:
+                logger.warning("Error processing WP story %s: %s",
+                               detail.get("story_id"), e)
+
+        conn.commit()
+
+        # ── Notifications ─────────────────────────────────────
+        if _wp_first_poll:
+            logger.info("First WP poll after startup -- suppressing %d activity notifications",
+                        len(new_activity_details))
+        else:
+            try:
+                _send_wp_notifications(new_activity_details)
+            except Exception as ne:
+                logger.warning("Failed to send WP notifications: %s", ne)
+            try:
+                await _send_wp_telegram(new_activity_details)
+            except Exception as te:
+                logger.warning("Failed to send WP Telegram notification: %s", te)
+
+        # Finalise
+        duration = time.time() - start_time
+        _update_wp_progress("complete", current=len(details), total=len(details),
+                            message=f"Done -- {stats['submissions_found']} stories in {duration:.1f}s")
+        wp_queries.finish_wp_poll_log(conn, log_id, "success",
+                                      duration_seconds=duration, **stats)
+        logger.info("WP poll complete in %.1fs -- %d stories, %d snapshots",
+                     duration, stats["submissions_found"], stats["snapshots_inserted"])
+
+        # -- Telegram notifications ----------------------------------------
+        if not _wp_first_poll:
+            from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
+            try:
+                await send_poll_summary("wp", stats, duration)
+            except Exception as te:
+                logger.warning("Failed to send WP Telegram summary: %s", te)
+            try:
+                await check_milestones_batch("wp", "wp_snapshots", "wp_submissions")
+            except Exception as me:
+                logger.warning("Failed to check WP milestones: %s", me)
+            try:
+                await check_goals()
+            except Exception as ge:
+                logger.warning("Failed to check goals: %s", ge)
+
+        return stats
+
+    except Exception as e:
+        duration = time.time() - start_time
+        _update_wp_progress("error", message=str(e))
+        logger.error("WP poll failed: %s", e)
+        if conn and log_id:
+            wp_queries.finish_wp_poll_log(conn, log_id, "error",
+                                          error_message=str(e),
+                                          duration_seconds=duration, **stats)
+        from polling.telegram import send_poll_error
+        try:
+            await send_poll_error("wp", e)
+        except Exception:
+            pass
+        raise
+    finally:
+        if _wp_first_poll:
+            _wp_first_poll = False
+        _wp_poll_running = False
+        _wp_poll_lock.release()
+        if conn:
+            conn.close()

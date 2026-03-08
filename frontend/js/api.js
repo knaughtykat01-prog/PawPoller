@@ -173,6 +173,79 @@ const API = {
     triggerSQWPoll() { return this.post('/api/sqw/poll/trigger'); },
     fullSQWResync() { return this.post('/api/sqw/poll/full-resync'); },
     getSQWPollProgress() { return this.get('/api/sqw/poll/progress'); },
+    /* ── AO3 (Archive of Our Own) convenience methods ──────────────
+     * Mirror of the SQW methods, namespaced under /api/ao3/.
+     * AO3 uses username/password auth to track a target user.
+     */
+    getAO3AuthStatus() { return this.get('/api/ao3/auth/status'); },
+    ao3Connect(data) { return this.post('/api/ao3/auth/connect', data); },
+    ao3Disconnect() { return this.post('/api/ao3/auth/disconnect'); },
+    getAO3Status() { return this.get('/api/ao3/status'); },
+    getAO3Summary() { return this.get('/api/ao3/summary'); },
+    getAO3Submissions(params) { return this.get('/api/ao3/submissions', params); },
+    getAO3Submission(id) { return this.get(`/api/ao3/submissions/${id}`); },
+    getAO3Snapshots(id, params) { return this.get(`/api/ao3/submissions/${id}/snapshots`, params); },
+    getAO3Aggregate(params) { return this.get('/api/ao3/aggregate', params); },
+    getAO3Comparison(ids, params) { return this.get('/api/ao3/comparison', { ids: ids.join(','), ...params }); },
+    getAO3PollLog(limit) { return this.get('/api/ao3/poll_log', { limit }); },
+    triggerAO3Poll() { return this.post('/api/ao3/poll/trigger'); },
+    fullAO3Resync() { return this.post('/api/ao3/poll/full-resync'); },
+    getAO3PollProgress() { return this.get('/api/ao3/poll/progress'); },
+    /* ── DA (DeviantArt) convenience methods ────────────────────────
+     * Mirror of the FA methods, namespaced under /api/da/.
+     * DeviantArt uses cookie-based auth with a target user to track.
+     */
+    getDAAuthStatus() { return this.get('/api/da/auth/status'); },
+    daConnect(data) { return this.post('/api/da/auth/connect', data); },
+    daDisconnect() { return this.post('/api/da/auth/disconnect'); },
+    getDAStatus() { return this.get('/api/da/status'); },
+    getDASummary() { return this.get('/api/da/summary'); },
+    getDASubmissions(params) { return this.get('/api/da/submissions', params); },
+    getDASubmission(id) { return this.get(`/api/da/submissions/${id}`); },
+    getDASnapshots(id, params) { return this.get(`/api/da/submissions/${id}/snapshots`, params); },
+    getDAAggregate(params) { return this.get('/api/da/aggregate', params); },
+    getDAComparison(ids, params) { return this.get('/api/da/comparison', { ids: ids.join(','), ...params }); },
+    getDAPollLog(limit) { return this.get('/api/da/poll_log', { limit }); },
+    triggerDAPoll() { return this.post('/api/da/poll/trigger'); },
+    fullDAResync() { return this.post('/api/da/poll/full-resync'); },
+    getDAPollProgress() { return this.get('/api/da/poll/progress'); },
+    /* ── WP (Wattpad) convenience methods ─────────────────────────
+     * Mirror of the DA methods, namespaced under /api/wp/.
+     * Wattpad uses username-only auth (no password or cookie needed).
+     */
+    getWPAuthStatus() { return this.get('/api/wp/auth/status'); },
+    wpConnect(data) { return this.post('/api/wp/auth/connect', data); },
+    wpDisconnect() { return this.post('/api/wp/auth/disconnect'); },
+    getWPStatus() { return this.get('/api/wp/status'); },
+    getWPSummary() { return this.get('/api/wp/summary'); },
+    getWPSubmissions(params) { return this.get('/api/wp/submissions', params); },
+    getWPSubmission(id) { return this.get(`/api/wp/submissions/${id}`); },
+    getWPSnapshots(id, params) { return this.get(`/api/wp/submissions/${id}/snapshots`, params); },
+    getWPAggregate(params) { return this.get('/api/wp/aggregate', params); },
+    getWPComparison(ids, params) { return this.get('/api/wp/comparison', { ids: ids.join(','), ...params }); },
+    getWPPollLog(limit) { return this.get('/api/wp/poll_log', { limit }); },
+    triggerWPPoll() { return this.post('/api/wp/poll/trigger'); },
+    fullWPResync() { return this.post('/api/wp/poll/full-resync'); },
+    getWPPollProgress() { return this.get('/api/wp/poll/progress'); },
+    /* ── IK (Itaku) convenience methods ──────────────────────────
+     * Mirror of the WP methods, namespaced under /api/ik/.
+     * Itaku uses username-only auth (no password or cookie needed).
+     * Tracks likes, comments, reshares (no views).
+     */
+    getIKAuthStatus() { return this.get('/api/ik/auth/status'); },
+    ikConnect(data) { return this.post('/api/ik/auth/connect', data); },
+    ikDisconnect() { return this.post('/api/ik/auth/disconnect'); },
+    getIKStatus() { return this.get('/api/ik/status'); },
+    getIKSummary() { return this.get('/api/ik/summary'); },
+    getIKSubmissions(params) { return this.get('/api/ik/submissions', params); },
+    getIKSubmission(id) { return this.get(`/api/ik/submissions/${id}`); },
+    getIKSnapshots(id, params) { return this.get(`/api/ik/submissions/${id}/snapshots`, params); },
+    getIKAggregate(params) { return this.get('/api/ik/aggregate', params); },
+    getIKComparison(ids, params) { return this.get('/api/ik/comparison', { ids: ids.join(','), ...params }); },
+    getIKPollLog(limit) { return this.get('/api/ik/poll_log', { limit }); },
+    triggerIKPoll() { return this.post('/api/ik/poll/trigger'); },
+    fullIKResync() { return this.post('/api/ik/poll/full-resync'); },
+    getIKPollProgress() { return this.get('/api/ik/poll/progress'); },
     /* ── Export methods ───────────────────────────────────────────
      * These trigger browser-native file downloads by opening the
      * streaming CSV endpoint in a new tab via window.open().
@@ -180,11 +253,11 @@ const API = {
      * download, not JSON to be parsed in-page.
      */
     exportSubmissions(platform) {
-        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions', sqw: '/api/sqw/export/submissions' };
+        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions', sqw: '/api/sqw/export/submissions', ao3: '/api/ao3/export/submissions', da: '/api/da/export/submissions', wp: '/api/wp/export/submissions', ik: '/api/ik/export/submissions' };
         window.open(urls[platform] || urls.ib, '_blank');
     },
     exportSnapshots(platform, id) {
-        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots', sqw: '/api/sqw/export/snapshots' };
+        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots', sqw: '/api/sqw/export/snapshots', ao3: '/api/ao3/export/snapshots', da: '/api/da/export/snapshots', wp: '/api/wp/export/snapshots', ik: '/api/ik/export/snapshots' };
         const url = (bases[platform] || bases.ib) + (id ? `?id=${id}` : '');
         window.open(url, '_blank');
     },
