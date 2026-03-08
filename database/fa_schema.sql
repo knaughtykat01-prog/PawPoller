@@ -152,4 +152,6 @@ CREATE TABLE IF NOT EXISTS fa_watchers (
 );
 
 CREATE INDEX IF NOT EXISTS idx_fa_watchers_seen ON fa_watchers(first_seen_at);
-CREATE INDEX IF NOT EXISTS idx_fa_watchers_pending ON fa_watchers(confirmed, notified);
+-- NOTE: idx_fa_watchers_pending is created in db.py _run_migrations() because
+-- existing databases may not have the confirmed/notified columns yet when this
+-- schema file runs (the columns are added by migration).

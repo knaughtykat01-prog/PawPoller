@@ -299,3 +299,9 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             pass
         # Mark all existing watchers as confirmed+notified (they're from before this feature)
         conn.execute("UPDATE fa_watchers SET confirmed = 1, notified = 1, last_seen_at = first_seen_at WHERE confirmed IS NULL OR confirmed = 1")
+    # Ensure the pending-watchers index exists (created here rather than in fa_schema.sql
+    # because existing databases need the migration above to add the columns first).
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_fa_watchers_pending ON fa_watchers(confirmed, notified)")
+    except sqlite3.OperationalError:
+        pass  # columns not yet present (shouldn't happen but safe fallback)
