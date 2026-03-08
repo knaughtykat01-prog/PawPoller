@@ -148,13 +148,15 @@ CREATE TABLE IF NOT EXISTS poll_log (
 -- Tracks users who watch/follow the authenticated Inkbunny account. Scraped
 -- from the web UI since the API has no "who watches me" endpoint. Each row
 -- represents one watcher, inserted the first time they are detected. UNIQUE
--- on user_id prevents duplicates across poll cycles.
+-- on username prevents duplicates across poll cycles.  user_id is kept for
+-- backwards compatibility but defaults to 0 (the usersviewall page does not
+-- expose user_id values).
 CREATE TABLE IF NOT EXISTS watchers (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id       INTEGER NOT NULL,
-    username      TEXT NOT NULL DEFAULT '',
+    user_id       INTEGER NOT NULL DEFAULT 0,
+    username      TEXT NOT NULL,
     first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(user_id)
+    UNIQUE(username)
 );
 
 CREATE INDEX IF NOT EXISTS idx_watchers_seen ON watchers(first_seen_at);

@@ -168,6 +168,9 @@ WS_REQUEST_DELAY_SECONDS = 1.0  # Rate-limit delay between Weasyl API calls
 # ── SoFurry settings ──
 SF_REQUEST_DELAY_SECONDS = 1.5  # Rate-limit delay between SoFurry page scrapes (slightly higher for scraping)
 
+# ── SquidgeWorld settings ──
+SQW_REQUEST_DELAY_SECONDS = 2.0  # Rate-limit delay between SquidgeWorld page scrapes (higher due to anti-bot)
+
 # ── App metadata ──
 APP_VERSION = "1.3.0"
 

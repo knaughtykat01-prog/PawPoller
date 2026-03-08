@@ -106,6 +106,61 @@ async def _send_sf_telegram(new_details: list[dict]) -> None:
         logger.warning("Failed to send SF Telegram notification: %s", e)
 
 
+def _send_sf_follower_notifications(new_follower_names: list[str]) -> None:
+    """Send Windows toast notifications for new SF followers."""
+    settings = config.get_settings()
+    if not settings.get("sf_notifications_enabled", True):
+        return
+    if not new_follower_names:
+        return
+
+    try:
+        from winotify import Notification
+    except ImportError:
+        logger.debug("winotify not installed -- skipping SF follower notifications")
+        return
+
+    shown = new_follower_names[:3]
+    lines = [f"  {name}" for name in shown]
+    if len(new_follower_names) > 3:
+        lines.append(f"...and {len(new_follower_names) - 3} more")
+    toast = Notification(
+        app_id="PawPoller",
+        title=f"SF: {len(new_follower_names)} New Follower{'s' if len(new_follower_names) != 1 else ''}",
+        msg="\n".join(lines),
+    )
+    toast.show()
+
+
+async def _send_sf_follower_telegram(new_follower_names: list[str]) -> None:
+    """Send Telegram notification for new SF followers."""
+    settings = config.get_settings()
+    if not settings.get("telegram_enabled", False):
+        return
+    token = settings.get("telegram_bot_token")
+    chat_id = settings.get("telegram_chat_id")
+    if not token or not chat_id:
+        return
+    if not new_follower_names:
+        return
+
+    lines = [f"<b>🐾 SF: {len(new_follower_names)} New Follower{'s' if len(new_follower_names) != 1 else ''}</b>"]
+    for name in new_follower_names[:5]:
+        lines.append(f"  • {name}")
+    if len(new_follower_names) > 5:
+        lines.append(f"  ...and {len(new_follower_names) - 5} more")
+
+    text = "\n".join(lines)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+            )
+    except Exception as e:
+        logger.warning("Failed to send SF follower Telegram notification: %s", e)
+
+
 def _get_or_create_client(settings: dict) -> SoFurryClient:
     """Return the persistent SoFurryClient, creating or updating as needed.
 
@@ -157,6 +212,7 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
     stats = {
         "submissions_found": 0,
         "snapshots_inserted": 0,
+        "new_watchers_found": 0,
     }
 
     settings = config.get_settings()
@@ -210,14 +266,44 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
 
         conn.commit()
 
+        # ── Step 5: Scrape followers ────────────────────────────
+        new_follower_names: list[str] = []
+        try:
+            _update_sf_progress("fetching_watchers", message="Scraping follower list...")
+            followers = await client.scrape_followers()
+            for username in followers:
+                is_new = sf_queries.upsert_sf_watcher(conn, username)
+                if is_new:
+                    stats["new_watchers_found"] += 1
+                    new_follower_names.append(username)
+            conn.commit()
+        except Exception as we:
+            logger.warning("Failed to scrape SF followers: %s", we)
+
+        # ── Notifications (followers) ────────────────────────────
+        if _sf_first_poll:
+            logger.info("First SF poll after startup -- suppressing %d follower notifications",
+                        len(new_follower_names))
+        else:
+            if new_follower_names:
+                try:
+                    _send_sf_follower_notifications(new_follower_names)
+                except Exception as ne:
+                    logger.warning("Failed to send SF follower notifications: %s", ne)
+                try:
+                    await _send_sf_follower_telegram(new_follower_names)
+                except Exception as te:
+                    logger.warning("Failed to send SF follower Telegram notification: %s", te)
+
         # Finalise
         duration = time.time() - start_time
         _update_sf_progress("complete", current=len(details), total=len(details),
-                            message=f"Done -- {stats['submissions_found']} submissions in {duration:.1f}s")
+                            message=f"Done -- {stats['submissions_found']} submissions, {stats['new_watchers_found']} new followers in {duration:.1f}s")
         sf_queries.finish_sf_poll_log(conn, log_id, "success",
                                       duration_seconds=duration, **stats)
-        logger.info("SF poll complete in %.1fs -- %d submissions, %d snapshots",
-                     duration, stats["submissions_found"], stats["snapshots_inserted"])
+        logger.info("SF poll complete in %.1fs -- %d submissions, %d snapshots, %d new followers",
+                     duration, stats["submissions_found"], stats["snapshots_inserted"],
+                     stats["new_watchers_found"])
 
         # ── Telegram notifications ────────────────────────────
         if not _sf_first_poll:

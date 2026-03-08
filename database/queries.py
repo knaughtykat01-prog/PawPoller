@@ -584,16 +584,22 @@ def get_submission_deltas(conn: sqlite3.Connection) -> dict[int, dict]:
 
 # ── Watcher Queries ───────────────────────────────────────────────
 
-def upsert_watcher(conn: sqlite3.Connection, watcher: dict) -> bool:
-    """Insert a watcher if not already tracked. Returns True if new."""
-    try:
-        conn.execute(
-            "INSERT INTO watchers (user_id, username, first_seen_at) VALUES (?, ?, datetime('now'))",
-            (watcher["user_id"], watcher.get("username", "")),
-        )
-        return True
-    except sqlite3.IntegrityError:
+def upsert_watcher(conn: sqlite3.Connection, username: str) -> bool:
+    """Insert a watcher if not already tracked. Returns True if new.
+
+    Keyed on username because Inkbunny's usersviewall page does not
+    expose user_id values in its HTML.
+    """
+    row = conn.execute(
+        "SELECT 1 FROM watchers WHERE username = ?", (username,)
+    ).fetchone()
+    if row:
         return False
+    conn.execute(
+        "INSERT INTO watchers (user_id, username, first_seen_at) VALUES (0, ?, datetime('now'))",
+        (username,),
+    )
+    return True
 
 
 def get_watchers_count(conn: sqlite3.Connection) -> int:

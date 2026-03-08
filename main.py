@@ -223,6 +223,42 @@ def _start_sf_poller():
         pass  # Daemon teardown
 
 
+# ── Background SqW poller ────────────────────────────────────
+# SquidgeWorld uses OTW Archive login (username/password + CSRF token).
+
+def _start_sqw_poller():
+    """Run SquidgeWorld poller in its own daemon thread with a dynamic interval from settings."""
+    import asyncio
+    from polling.sqw_poller import run_sqw_poll_cycle
+
+    async def _scheduled_sqw_poll():
+        settings = config.get_settings()
+        if not settings.get("sqw_username") or not settings.get("sqw_password"):
+            logger.info("Scheduled SqW poll skipped — no SquidgeWorld credentials configured")
+            return
+        try:
+            await run_sqw_poll_cycle()
+        except Exception as e:
+            logger.error("Scheduled SqW poll failed: %s", e)
+
+    async def _run():
+        logger.info("SqW poller loop started")
+        await _scheduled_sqw_poll()  # Immediate first poll
+        while True:
+            settings = config.get_settings()
+            interval = settings.get("sqw_poll_interval_minutes", 60)
+            logger.info("Next SqW poll in %d minutes", interval)
+            await asyncio.sleep(interval * 60)
+            await _scheduled_sqw_poll()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run())
+    except Exception:
+        pass  # Daemon teardown
+
+
 # ── 6-Hourly Telegram Digest ─────────────────────────────────
 # Sends a cross-platform stats digest every 6 hours via Telegram.
 # Uses its own asyncio event loop like the pollers.
@@ -449,6 +485,10 @@ def main():
     logger.info("Starting SF background poller...")
     sf_poller_thread = threading.Thread(target=_start_sf_poller, daemon=True)
     sf_poller_thread.start()
+
+    logger.info("Starting SqW background poller...")
+    sqw_poller_thread = threading.Thread(target=_start_sqw_poller, daemon=True)
+    sqw_poller_thread.start()
 
     logger.info("Starting Telegram digest scheduler...")
     digest_thread = threading.Thread(target=_start_digest_scheduler, daemon=True)

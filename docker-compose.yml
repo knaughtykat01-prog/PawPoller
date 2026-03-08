@@ -1,0 +1,14 @@
+services:
+  pawpoller:
+    build: .
+    ports:
+      - "8420:8420"
+    volumes:
+      - pawpoller-data:/app/data
+      - pawpoller-logs:/app/logs
+    restart: unless-stopped
+    env_file: .env
+
+volumes:
+  pawpoller-data:
+  pawpoller-logs:

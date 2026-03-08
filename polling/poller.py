@@ -405,11 +405,11 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         try:
             _update_progress("fetching_watchers", message="Scraping watcher list...")
             watchers = await client.scrape_watchers()
-            for w in watchers:
-                is_new = queries.upsert_watcher(conn, w)
+            for username in watchers:
+                is_new = queries.upsert_watcher(conn, username)
                 if is_new:
                     stats["new_watchers_found"] += 1
-                    new_watcher_details.append({"username": w.get("username", "")})
+                    new_watcher_details.append({"username": username})
             conn.commit()
         except Exception as we:
             logger.warning("Failed to scrape watchers: %s", we)

@@ -422,6 +422,74 @@ class SoFurryClient:
             logger.warning("Failed to get SF follower count: %s", e)
         return 0
 
+    async def scrape_followers(self) -> list[str]:
+        """Scrape the follower list from /u/{display_name}/followers.
+
+        The followers page is public (no login required) and renders each
+        follower as:
+            <a href="https://sofurry.com/u/Username">
+                <h5>Display Name</h5>
+                <h6>@username</h6>
+            </a>
+
+        Returns a list of follower usernames.
+        """
+        all_followers: list[str] = []
+        seen: set[str] = set()
+        page = 1
+
+        while True:
+            try:
+                resp = await self._http.get(
+                    f"{SOFURRY_BASE}/u/{self.display_name}/followers",
+                    params={"page": str(page)} if page > 1 else {},
+                )
+                resp.raise_for_status()
+                html = resp.text
+
+                # Extract usernames from user-card follower entries.
+                # Each follower is rendered as:
+                #   <div class="... user-card ...">
+                #     <a href="https://sofurry.com/u/Username" class="card ...">
+                # We match the href inside user-card blocks to avoid picking up
+                # navigation or header links.
+                usernames = re.findall(
+                    r'user-card[^>]*>\s*<a\s+href="(?:https://sofurry\.com)?/u/([A-Za-z0-9_\-]+)"',
+                    html,
+                )
+
+                page_new = []
+                for u in usernames:
+                    if u not in seen:
+                        seen.add(u)
+                        page_new.append(u)
+
+                if not page_new:
+                    if page == 1:
+                        logger.info("No SF followers found for %s", self.display_name)
+                    break
+
+                all_followers.extend(page_new)
+                logger.info("Scraped SF follower page %d — found %d users", page, len(page_new))
+
+                # Check for pagination — look for a next page link
+                has_next = re.search(
+                    rf'followers\?page={page + 1}',
+                    html,
+                )
+                if not has_next:
+                    break
+
+                page += 1
+                await asyncio.sleep(config.SF_REQUEST_DELAY_SECONDS)
+
+            except Exception as e:
+                logger.warning("Error scraping SF follower page %d: %s", page, e)
+                break
+
+        logger.info("Total SF followers scraped: %d", len(all_followers))
+        return all_followers
+
 
 def _safe_int(val: Any) -> int:
     """Safely convert a value to int, handling None, comma-formatted strings, etc."""

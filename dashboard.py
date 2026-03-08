@@ -19,6 +19,7 @@ from routes.api import router
 from routes.fa_api import fa_router
 from routes.ws_api import ws_router
 from routes.sf_api import sf_router
+from routes.sqw_api import sqw_router
 
 # Logging
 logging.basicConfig(
@@ -62,6 +63,7 @@ app.include_router(router)       # Core REST API routes (/api/*)
 app.include_router(fa_router)    # FurAffinity routes (/api/fa/*)
 app.include_router(ws_router)    # Weasyl routes (/api/ws/*)
 app.include_router(sf_router)    # SoFurry routes (/api/sf/*)
+app.include_router(sqw_router)   # SquidgeWorld routes (/api/sqw/*)
 
 # Serve frontend static files. config.resource_path() resolves differently
 # depending on the build mode:

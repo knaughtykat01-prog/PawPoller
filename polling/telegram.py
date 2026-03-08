@@ -80,8 +80,8 @@ async def send_telegram(text: str) -> bool:
 
 # ── Poll cycle summary ───────────────────────────────────────
 
-PLATFORM_EMOJI = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺"}
-PLATFORM_NAME = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry"}
+PLATFORM_EMOJI = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺", "sqw": "🦑"}
+PLATFORM_NAME = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld"}
 
 
 async def send_poll_summary(platform: str, stats: dict, duration: float) -> None:
@@ -215,7 +215,7 @@ async def check_goals() -> None:
     conn = get_connection()
     try:
         goals = conn.execute("SELECT * FROM goals WHERE completed_at IS NULL").fetchall()
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions"}
 
         for g in goals:
             g = dict(g)
@@ -366,6 +366,7 @@ async def send_digest_report() -> None:
             ("fa", "fa_snapshots", "fa_submissions"),
             ("ws", "ws_snapshots", "ws_submissions"),
             ("sf", "sf_snapshots", "sf_submissions"),
+            ("sqw", "sqw_snapshots", "sqw_submissions"),
         ]
 
         for plat, snap_t, sub_t in platforms:

@@ -16,9 +16,12 @@ Key design decisions:
   so they are idempotent and safe to re-run on every startup.
 """
 
+import logging
 import sqlite3
 
 import config
+
+logger = logging.getLogger(__name__)
 
 # Schema file paths resolved via resource_path(). In development these point to
 # the source tree; in a PyInstaller frozen build they resolve into the _internal/
@@ -28,6 +31,7 @@ _SCHEMA_PATH = config.resource_path("database/schema.sql")       # Inkbunny (pri
 _FA_SCHEMA_PATH = config.resource_path("database/fa_schema.sql") # FurAffinity tables
 _WS_SCHEMA_PATH = config.resource_path("database/ws_schema.sql") # Weasyl tables
 _SF_SCHEMA_PATH = config.resource_path("database/sf_schema.sql") # SoFurry tables
+_SQW_SCHEMA_PATH = config.resource_path("database/sqw_schema.sql") # SquidgeWorld tables
 
 
 def get_connection() -> sqlite3.Connection:
@@ -67,14 +71,16 @@ def init_db() -> None:
     fa_schema_sql = _FA_SCHEMA_PATH.read_text(encoding="utf-8")
     ws_schema_sql = _WS_SCHEMA_PATH.read_text(encoding="utf-8")
     sf_schema_sql = _SF_SCHEMA_PATH.read_text(encoding="utf-8")
+    sqw_schema_sql = _SQW_SCHEMA_PATH.read_text(encoding="utf-8")
     conn = get_connection()
     try:
         # Execute each platform's schema in order. The primary Inkbunny schema
-        # goes first since FA, WS, and SF schemas are independent (no cross-references).
+        # goes first since FA, WS, SF, and SqW schemas are independent (no cross-references).
         conn.executescript(schema_sql)
         conn.executescript(fa_schema_sql)
         conn.executescript(ws_schema_sql)
         conn.executescript(sf_schema_sql)
+        conn.executescript(sqw_schema_sql)
         # Apply any migrations for tables added after the original schema release.
         _run_migrations(conn)
         conn.commit()
@@ -166,10 +172,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     if "watchers" not in tables:
         conn.execute("""CREATE TABLE IF NOT EXISTS watchers (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id       INTEGER NOT NULL,
-            username      TEXT NOT NULL DEFAULT '',
+            user_id       INTEGER NOT NULL DEFAULT 0,
+            username      TEXT NOT NULL,
             first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
-            UNIQUE(user_id)
+            UNIQUE(username)
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_watchers_seen ON watchers(first_seen_at)")
 
@@ -231,4 +237,27 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
                 submission_id INTEGER NOT NULL,
                 UNIQUE(tag_id, platform, submission_id)
             );
+        """)
+
+    # Migration: Rebuild watchers table to use UNIQUE(username) instead of UNIQUE(user_id).
+    # The usersviewall page does not expose user_id, so username is the natural key.
+    # Check if the old schema is in use by looking for UNIQUE(user_id) constraint.
+    watcher_schema = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='watchers'"
+    ).fetchone()
+    if watcher_schema and "UNIQUE(user_id)" in (watcher_schema[0] or ""):
+        logger.info("Migrating watchers table: UNIQUE(user_id) -> UNIQUE(username)")
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS watchers_new (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id       INTEGER NOT NULL DEFAULT 0,
+                username      TEXT NOT NULL,
+                first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(username)
+            );
+            INSERT OR IGNORE INTO watchers_new (user_id, username, first_seen_at)
+                SELECT user_id, username, first_seen_at FROM watchers WHERE username != '';
+            DROP TABLE watchers;
+            ALTER TABLE watchers_new RENAME TO watchers;
+            CREATE INDEX IF NOT EXISTS idx_watchers_seen ON watchers(first_seen_at);
         """)

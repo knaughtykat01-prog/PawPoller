@@ -406,21 +406,26 @@ class InkbunnyClient:
     # comments are scraped above.
     #
 
-    async def scrape_watchers(self) -> list[dict]:
-        """Scrape the watcher list from the usersviewall.php page.
+    async def scrape_watchers(self) -> list[str]:
+        """Scrape the list of users watching you from usersviewall.php.
 
         There is no Inkbunny API endpoint for retrieving a user's watcher list.
         This method logs in via the web session (same PHPSESSID cookie auth used
         by comment scraping) and paginates through the usersviewall.php page to
         extract all watchers.
 
-        Returns a list of {user_id, username} dicts. On error, logs a warning
-        and returns whatever was collected so far rather than raising -- this
-        keeps batch processing from halting on a transient failure.
+        Uses mode=watched_by to get users watching YOU (not users you watch).
+        The page renders watchers as widget_userNameSmall links with no user_id,
+        so we extract usernames only.
+
+        Returns a list of username strings. On error, logs a warning and returns
+        whatever was collected so far rather than raising -- this keeps batch
+        processing from halting on a transient failure.
         """
         await self._ensure_web_session()
 
-        all_watchers = []
+        all_watchers: list[str] = []
+        seen: set[str] = set()
         page = 1
 
         while True:
@@ -428,7 +433,7 @@ class InkbunnyClient:
                 resp = await self._web_http.get(
                     f"{config.INKBUNNY_API_BASE}/usersviewall.php",
                     params={
-                        "mode": "watching",
+                        "mode": "watched_by",
                         "user_id": str(self.user_id),
                         "page": str(page),
                     },
@@ -436,65 +441,31 @@ class InkbunnyClient:
                 resp.raise_for_status()
                 page_html = resp.text
 
-                # Extract user profile links from the page HTML.
-                # Inkbunny renders watcher entries as links like:
-                #   <a href="/SomeUsername" ...>
-                # with a data attribute or nearby element containing the user_id.
-                # We look for anchor tags that link to user profiles with an
-                # associated user_id value in the surrounding markup.
-                #
-                # Pattern targets elements like:
-                #   <a ... href="/username" ... data-user_id="12345" ...>
-                # or the reverse attribute order.
-                user_links = re.findall(
-                    r'<a\s[^>]*href="/([A-Za-z0-9_\-]+)"[^>]*>',
+                # Inkbunny renders watcher entries as:
+                #   <a class="widget_userNameSmall" href="/Username">Username</a>
+                # Extract the username from the href attribute.
+                usernames = re.findall(
+                    r'widget_userNameSmall"\s*href="/([A-Za-z0-9_\-]+)"',
                     page_html,
                 )
 
-                # Also try to extract user_id values paired with usernames.
-                # Inkbunny's usersviewall page includes user_id in various forms:
-                #   - As a data attribute: data-user_id="12345"
-                #   - In a link like: user_id=12345
-                #   - In a widget/element near the username link
-                user_entries = re.findall(
-                    r'user_id=(\d+)[^>]*>([^<]+)</a>',
-                    page_html,
-                )
+                # Filter out our own username (appears in the page header)
+                # and deduplicate within/across pages.
+                page_new = []
+                for u in usernames:
+                    if u != self.username and u not in seen:
+                        seen.add(u)
+                        page_new.append(u)
 
-                if not user_entries:
-                    # Fallback: try matching profile links with nearby user_id attributes.
-                    # Pattern: <a href="/username" ... data-user_id="12345">
-                    user_entries = re.findall(
-                        r'href="/([A-Za-z0-9_\-]+)"[^>]*?user_id[=\s:]+["\']?(\d+)',
-                        page_html,
-                    )
-                    # Swap tuple order to (user_id, username) for consistency
-                    user_entries = [(uid, uname) for uname, uid in user_entries]
-
-                if not user_entries:
-                    # Final fallback: try a broader pattern for any user list widget.
-                    # Matches patterns like: <a href="/Username">Username</a> near user_id
-                    user_entries = re.findall(
-                        r'data-user_id=["\'](\d+)["\'][^>]*>[^<]*<a[^>]*href="/([A-Za-z0-9_\-]+)"',
-                        page_html,
-                    )
-
-                if not user_entries:
-                    # No user entries found on this page -- we've passed the last page
+                if not page_new:
                     if page == 1:
                         logger.info("No watchers found for user_id %d", self.user_id)
                     break
 
-                for uid, username in user_entries:
-                    all_watchers.append({
-                        "user_id": int(uid),
-                        "username": username,
-                    })
-
-                logger.info("Scraped watcher page %d — found %d users", page, len(user_entries))
+                all_watchers.extend(page_new)
+                logger.info("Scraped watcher page %d — found %d users", page, len(page_new))
 
                 # Check if there's a next page link; if not, we've reached the end.
-                # Inkbunny uses "next page" links like: page=N in the pagination controls.
                 has_next = re.search(
                     rf'usersviewall\.php[^"]*page={page + 1}',
                     page_html,
@@ -503,7 +474,6 @@ class InkbunnyClient:
                     break
 
                 page += 1
-                # Rate-limit between pages to avoid hammering the server
                 await asyncio.sleep(config.REQUEST_DELAY_SECONDS)
 
             except Exception as e:
