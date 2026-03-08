@@ -53,6 +53,9 @@ const App = {
     _sfSortState: { field: 'views', order: 'desc' },
     _sfCompareIds: new Set(),
     _sfCompareMetric: 'views',
+    _sqwSortState: { field: 'views', order: 'desc' },
+    _sqwCompareIds: new Set(),
+    _sqwCompareMetric: 'views',
 
     /*
      * init() — Boot sequence, called once from index.html on DOMContentLoaded.
@@ -271,6 +274,14 @@ const App = {
             this.renderSFDetail(parts[2]);
         } else if (parts[0] === 'sf' && parts[1] === 'compare') {
             this.renderSFCompare();
+        } else if (parts[0] === 'sqw' && (!parts[1] || parts[1] === '')) {
+            this.renderSQWDashboard();
+        } else if (parts[0] === 'sqw' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderSQWSubmissions();
+        } else if (parts[0] === 'sqw' && parts[1] === 'submission' && parts[2]) {
+            this.renderSQWDetail(parseInt(parts[2]));
+        } else if (parts[0] === 'sqw' && parts[1] === 'compare') {
+            this.renderSQWCompare();
         } else if (parts[0] === 'groups' && !parts[1]) {
             this.renderGroups();
         } else if (parts[0] === 'group' && parts[1]) {
@@ -486,15 +497,17 @@ const App = {
         this._loading();
         try {
             /* Fetch all platform data in parallel; .catch() fallbacks prevent one failure from blocking all */
-            const [ibSummary, faSummary, wsSummary, sfSummary, ibAgg, faAgg, wsAgg, sfAgg, topFans, trending] = await Promise.all([
+            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, topFans, trending] = await Promise.all([
                 API.getSummary().catch(() => null),
                 API.getFASummary().catch(() => null),
                 API.getWSSummary().catch(() => null),
                 API.getSFSummary().catch(() => null),
+                API.getSQWSummary().catch(() => null),
                 API.getAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getFAAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getWSAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getSFAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
+                API.getSQWAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getTopFans(10).catch(() => ({ fans: [] })),
                 API.getTrending({ hours: 24, threshold: 2.0 }).catch(() => ({ trending: [] })),
             ]);
@@ -503,26 +516,28 @@ const App = {
             const fa = faSummary || {};
             const ws = wsSummary || {};
             const sf = sfSummary || {};
+            const sqw = sqwSummary || {};
 
             /* Sum totals across all four platforms for the top-level stat cards */
-            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0);
-            const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0);
-            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0);
-            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0);
+            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0);
+            const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0) + (sqw.total_views || 0);
+            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0);
+            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0);
 
             /* Merge top lists across platforms: tag each with _platform, sort desc, take top 10 */
-            const mergeTop = (ibList, faList, wsList, sfList, key) => {
+            const mergeTop = (ibList, faList, wsList, sfList, sqwList, key) => {
                 const merged = [];
                 (ibList || []).forEach(item => merged.push({ ...item, _platform: 'ib' }));
                 (faList || []).forEach(item => merged.push({ ...item, _platform: 'fa' }));
                 (wsList || []).forEach(item => merged.push({ ...item, _platform: 'ws' }));
                 (sfList || []).forEach(item => merged.push({ ...item, _platform: 'sf' }));
+                (sqwList || []).forEach(item => merged.push({ ...item, _platform: 'sqw' }));
                 merged.sort((a, b) => (b[key] || 0) - (a[key] || 0));
                 return merged.slice(0, 10);
             };
 
-            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, 'views');
-            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, 'favorites_count');
+            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, 'views');
+            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, 'favorites_count');
 
             /* Merge recent faves + comments into a unified timeline, sorted newest first */
             const recentActivity = [];
@@ -551,6 +566,7 @@ const App = {
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('fa')" title="Export FA CSV">Export FA</button>
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('ws')" title="Export WS CSV">Export WS</button>
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('sf')" title="Export SF CSV">Export SF</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('sqw')" title="Export SqW CSV">Export SqW</button>
                     </div>
                 </div>
 
@@ -566,6 +582,7 @@ const App = {
                     ${platformCard('<span class="platform-badge fa">FA</span>', 'FurAffinity', fa)}
                     ${platformCard('<span class="platform-badge ws">WS</span>', 'Weasyl', ws)}
                     ${platformCard('<span class="platform-badge sf">SF</span>', 'SoFurry', sf)}
+                    ${platformCard('<span class="platform-badge sqw">SqW</span>', 'SquidgeWorld', sqw)}
                 </div>
 
                 ${(trending.trending || []).length > 0 ? `
@@ -597,6 +614,12 @@ const App = {
                 <div class="chart-container">
                     <h3>SoFurry Views</h3>
                     <div class="chart-wrap"><canvas id="chart-sf-views"></canvas></div>
+                </div>` : ''}
+
+                ${sqwAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>SquidgeWorld Views</h3>
+                    <div class="chart-wrap"><canvas id="chart-sqw-views"></canvas></div>
                 </div>` : ''}
 
                 <div class="chart-row">
@@ -636,6 +659,9 @@ const App = {
             }
             if (sfAgg?.snapshots?.length > 0) {
                 Charts.aggregateLine('chart-sf-views', sfAgg.snapshots, ['views']);
+            }
+            if (sqwAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-sqw-views', sqwAgg.snapshots, ['views']);
             }
 
             /* Wire date range buttons to full re-render; start 60s auto-refresh */
@@ -1861,6 +1887,275 @@ const App = {
         }
     },
 
+    // ── SQW Dashboard ──────────────────────────────────────────
+
+    async renderSQWDashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getSQWSummary(),
+                API.getSQWAggregate(Utils.getDateRange(this._dateRange)),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const sqwPins = (pins.pins || []).filter(p => p.platform === 'sqw');
+            const sqwGoals = (goals.goals || []).filter(g => g.platform === 'sqw' || g.platform === 'all');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>SquidgeWorld Dashboard</h2>
+                    <button class="btn btn-secondary" onclick="API.exportSubmissions('sqw')">Export CSV</button>
+                </div>
+
+                ${sqwPins.length ? Components.pinnedSubmissions(sqwPins, 'sqw') : ''}
+                ${sqwGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(sqwGoals)}</div>` : ''}
+
+                <div class="stats-grid">
+                    ${Components.statCard('Total Works', summary.total_submissions)}
+                    ${Components.statCard('Total Hits', summary.total_views)}
+                    ${Components.statCard('Total Kudos', summary.total_favorites)}
+                    ${Components.statCard('Total Comments', summary.total_comments)}
+                </div>
+
+                ${Components.growthRateCards(summary.growth_rates)}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Hits Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-views"></canvas></div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Viewed</h3>
+                        <div class="chart-wrap"><canvas id="chart-top-views"></canvas></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Most Kudos</h3>
+                        <div class="chart-wrap"><canvas id="chart-top-faves"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container" style="grid-column: 1 / -1">
+                        <h3>Fastest Growing (24h)</h3>
+                        ${Components.sqwTopList(summary.fastest_growing, 'views_gained')}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-views', agg.snapshots, ['views']);
+            }
+            if (summary.top_viewed && summary.top_viewed.length > 0) {
+                Charts.topBar('chart-top-views', summary.top_viewed, 'views');
+            }
+            if (summary.top_faved && summary.top_faved.length > 0) {
+                Charts.topBar('chart-top-faves', summary.top_faved, 'favorites_count');
+            }
+
+            this._bindDateRange(() => this.renderSQWDashboard());
+            this._bindPinAndGoalActions(() => this.renderSQWDashboard());
+            this._startAutoRefresh(() => this.renderSQWDashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading SqW dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── SQW Submissions ────────────────────────────────────────
+
+    async renderSQWSubmissions() {
+        this._loading();
+        try {
+            const data = await API.getSQWSubmissions({
+                sort_by: this._sqwSortState.field,
+                order: this._sqwSortState.order,
+            });
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>SquidgeWorld Works</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search titles and tags...">
+                    <select class="filter-select" id="filter-rating">
+                        <option value="">All Ratings</option>
+                        <option value="General Audiences">General</option>
+                        <option value="Teen And Up Audiences">Teen</option>
+                        <option value="Mature">Mature</option>
+                        <option value="Explicit">Explicit</option>
+                    </select>
+                </div>
+                <div id="table-container" class="table-scroll">
+                    ${Components.sqwSubmissionsTable(data.submissions)}
+                </div>
+            `;
+
+            this._setContent(html);
+            this._bindSQWTableSort();
+            this._bindSQWSearch(data.submissions);
+            this._startAutoRefresh(() => this.renderSQWSubmissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading SqW submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── SQW Submission Detail ──────────────────────────────────
+
+    async renderSQWDetail(id) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getSQWSubmission(id),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'sqw' && String(p.submission_id) === String(id));
+            const currentTags = sub.tags || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/sqw/submissions" class="back-link">&larr; Back to SqW Works</a>
+                <div class="detail-header">
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.escapeHtml(sub.posted_at || '')} &middot; ${Utils.escapeHtml(sub.rating || '')}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on SquidgeWorld</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.views)} <span class="lbl">hits</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.favorites_count)} <span class="lbl">kudos</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.comments_count)} <span class="lbl">comments</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.bookmarks_count || 0)} <span class="lbl">bookmarks</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="sqw" data-id="${id}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="sqw" data-id="${id}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+
+                ${Components.growthRateCards(data.growth_rates)}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Stats Over Time</h3>
+                    <div class="chart-wrap"><canvas id="chart-detail"></canvas></div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots);
+            }
+
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getSQWSnapshots(id, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots);
+            });
+
+            this._bindDetailPinTag('sqw', id, allTags.tags || [], () => this.renderSQWDetail(id));
+            this._startAutoRefresh(() => this.renderSQWDetail(id));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading SqW work</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── SQW Compare ────────────────────────────────────────────
+
+    async renderSQWCompare() {
+        this._loading();
+        try {
+            const data = await API.getSQWSubmissions({ sort_by: 'views', order: 'desc' });
+            const subs = data.submissions;
+
+            const chips = subs.map(s => `
+                <label class="compare-chip ${this._sqwCompareIds.has(s.submission_id) ? 'selected' : ''}" data-id="${s.submission_id}">
+                    <input type="checkbox" ${this._sqwCompareIds.has(s.submission_id) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>
+            `).join('');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Compare SqW Works</h2>
+                    <div>
+                        <select class="filter-select" id="compare-metric">
+                            <option value="views" ${this._sqwCompareMetric === 'views' ? 'selected' : ''}>Hits</option>
+                            <option value="favorites_count" ${this._sqwCompareMetric === 'favorites_count' ? 'selected' : ''}>Kudos</option>
+                            <option value="comments_count" ${this._sqwCompareMetric === 'comments_count' ? 'selected' : ''}>Comments</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 SquidgeWorld works to compare their trends over time.</p>
+                <div class="compare-select">${chips}</div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container" id="compare-chart-container" style="${this._sqwCompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3>
+                    <div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._sqwCompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 works above to see their trends compared.</p></div>' : ''}
+            `;
+
+            this._setContent(html);
+
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = chip.dataset.id;
+                    if (this._sqwCompareIds.has(id)) {
+                        this._sqwCompareIds.delete(id);
+                    } else if (this._sqwCompareIds.size < 5) {
+                        this._sqwCompareIds.add(id);
+                    }
+                    this.renderSQWCompare();
+                });
+            });
+
+            const metricSelect = document.getElementById('compare-metric');
+            if (metricSelect) {
+                metricSelect.addEventListener('change', () => {
+                    this._sqwCompareMetric = metricSelect.value;
+                    this._loadSQWComparisonChart();
+                });
+            }
+
+            this._bindDateRange(() => this._loadSQWComparisonChart());
+
+            if (this._sqwCompareIds.size >= 2) {
+                await this._loadSQWComparisonChart();
+            }
+
+            this._startAutoRefresh(() => this.renderSQWCompare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadSQWComparisonChart() {
+        try {
+            if (this._sqwCompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getSQWComparison([...this._sqwCompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, this._sqwCompareMetric);
+        } catch (e) {
+            console.error('Failed to load SqW comparison chart:', e);
+        }
+    },
+
     // ── Groups ────────────────────────────────────────────────
     // Submission groups management page. Groups are cross-platform collections
     // that let users organise related submissions from any platform (IB, FA, WS, SF)
@@ -2148,7 +2443,7 @@ const App = {
         this._loading();
         try {
             // Parallel-fetch all 15 settings endpoints; FA/WS/SF use .catch() fallbacks
-            const [status, pollLog, creds, prefs, telegram, faAuth, faStatus, faPollLog, wsAuth, wsStatus, wsPollLog, sfAuth, sfStatus, sfPollLog, updateInfo] = await Promise.all([
+            const [status, pollLog, creds, prefs, telegram, faAuth, faStatus, faPollLog, wsAuth, wsStatus, wsPollLog, sfAuth, sfStatus, sfPollLog, sqwAuth, sqwStatus, sqwPollLog, updateInfo] = await Promise.all([
                 API.getStatus(),
                 API.getPollLog(20),
                 API.getCredentials(),
@@ -2163,6 +2458,9 @@ const App = {
                 API.getSFAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getSFStatus().catch(() => ({})),
                 API.getSFPollLog(20).catch(() => ({ polls: [] })),
+                API.getSQWAuthStatus().catch(() => ({ has_credentials: false })),
+                API.getSQWStatus().catch(() => ({})),
+                API.getSQWPollLog(20).catch(() => ({ polls: [] })),
                 API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' })),
             ]);
 
@@ -2597,6 +2895,45 @@ const App = {
                     <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
                         <button class="btn btn-primary" id="sf-connect-btn">Connect</button>
                         <span id="sf-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                </div>
+
+                <div class="settings-section">
+                    <h3>SquidgeWorld</h3>
+                    ${sqwAuth.has_credentials ? `
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Status</span>
+                        </div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(sqwAuth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">SqW desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for SqW activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-sqw-notifications" ${prefs.sqw_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="sqw-poll-btn">SqW Poll Now</button>
+                        <button class="btn btn-secondary" id="sqw-resync-btn">SqW Full Resync</button>
+                        <button class="btn btn-danger" id="sqw-disconnect-btn">Disconnect</button>
+                        <span id="sqw-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to SquidgeWorld with a login account and specify the user to track.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="sqw-username" class="search-input" placeholder="Login username (e.g. PawPoller)">
+                        <input type="password" id="sqw-password" class="search-input" placeholder="Login password">
+                        <input type="text" id="sqw-target-user" class="search-input" placeholder="Target user to track (e.g. KnaughtyKat)">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="sqw-connect-btn">Connect</button>
+                        <span id="sqw-msg" style="font-size:13px"></span>
                     </div>
                     `}
                 </div>
@@ -3318,6 +3655,106 @@ const App = {
                 });
             }
 
+            // SQW: Connect
+            const sqwConnectBtn = document.getElementById('sqw-connect-btn');
+            if (sqwConnectBtn) {
+                sqwConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('sqw-msg');
+                    const username = document.getElementById('sqw-username').value.trim();
+                    const password = document.getElementById('sqw-password').value;
+                    const target_user = document.getElementById('sqw-target-user').value.trim();
+                    if (!username || !password || !target_user) {
+                        msg.textContent = 'All fields required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    sqwConnectBtn.disabled = true;
+                    sqwConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.sqwConnect({ username, password, target_user });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        sqwConnectBtn.textContent = 'Connect';
+                        sqwConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            // SQW: Disconnect
+            const sqwDisconnectBtn = document.getElementById('sqw-disconnect-btn');
+            if (sqwDisconnectBtn) {
+                sqwDisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect SquidgeWorld? This clears saved credentials.')) return;
+                    try {
+                        await API.sqwDisconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+
+            // SQW: Poll Now
+            const sqwPollBtn = document.getElementById('sqw-poll-btn');
+            if (sqwPollBtn) {
+                sqwPollBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('sqw-msg');
+                    sqwPollBtn.disabled = true;
+                    sqwPollBtn.textContent = 'Polling...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.triggerSQWPoll();
+                        sqwPollBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        sqwPollBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // SQW: Full Resync
+            const sqwResyncBtn = document.getElementById('sqw-resync-btn');
+            if (sqwResyncBtn) {
+                sqwResyncBtn.addEventListener('click', async () => {
+                    if (!confirm('SqW full resync will re-fetch all work details. Continue?')) return;
+                    const msg = document.getElementById('sqw-msg');
+                    sqwResyncBtn.disabled = true;
+                    sqwResyncBtn.textContent = 'Syncing...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.fullSQWResync();
+                        sqwResyncBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        sqwResyncBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // SQW: Notifications toggle
+            const sqwNotifToggle = document.getElementById('pref-sqw-notifications');
+            if (sqwNotifToggle) {
+                sqwNotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ sqw_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
             // Save Milestones
             document.getElementById('save-milestones-btn')?.addEventListener('click', async () => {
                 const msg = document.getElementById('milestones-msg');
@@ -3641,6 +4078,50 @@ const App = {
         });
     },
 
+    // SQW variant of _bindTableSort(). Targets #sqw-submissions-table headers,
+    // uses _sqwSortState + renderSQWSubmissions().
+    _bindSQWTableSort() {
+        document.querySelectorAll('#sqw-submissions-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (this._sqwSortState.field === field) {
+                    this._sqwSortState.order = this._sqwSortState.order === 'desc' ? 'asc' : 'desc';
+                } else {
+                    this._sqwSortState.field = field;
+                    this._sqwSortState.order = 'desc';
+                }
+                this.renderSQWSubmissions();
+            });
+        });
+    },
+
+    // SQW variant of _bindSearch(). Filters by text (title/tags) and rating.
+    _bindSQWSearch(allSubmissions) {
+        const input = document.getElementById('search-input');
+        const ratingSelect = document.getElementById('filter-rating');
+
+        const doFilter = () => {
+            const q = (input?.value || '').toLowerCase();
+            const rating = ratingSelect?.value || '';
+
+            let filtered = allSubmissions;
+            if (q) {
+                filtered = filtered.filter(s =>
+                    (s.title || '').toLowerCase().includes(q) || (s.keywords || '').toLowerCase().includes(q)
+                );
+            }
+            if (rating) {
+                filtered = filtered.filter(s => (s.rating || '') === rating);
+            }
+
+            document.getElementById('table-container').innerHTML = Components.sqwSubmissionsTable(filtered);
+            this._bindSQWTableSort();
+        };
+
+        input?.addEventListener('input', doFilter);
+        ratingSelect?.addEventListener('change', doFilter);
+    },
+
     // SF variant of _bindSearch(). Filters by text (title/keywords) and rating
     // (Clean/Mature/Adult — SoFurry's terminology).
     _bindSFSearch(allSubmissions) {
@@ -3849,11 +4330,12 @@ const App = {
         if (!bar || !fill || !label) return;
 
         try {
-            const [ib, fa, ws, sf] = await Promise.all([
+            const [ib, fa, ws, sf, sqw] = await Promise.all([
                 API.getPollProgress().catch(() => null),
                 API.getFAPollProgress().catch(() => null),
                 API.getWSPollProgress().catch(() => null),
                 API.getSFPollProgress().catch(() => null),
+                API.getSQWPollProgress().catch(() => null),
             ]);
 
             const platforms = [
@@ -3861,6 +4343,7 @@ const App = {
                 { name: 'FurAffinity', data: fa },
                 { name: 'Weasyl', data: ws },
                 { name: 'SoFurry', data: sf },
+                { name: 'SquidgeWorld', data: sqw },
             ];
 
             const active = platforms.filter(p => p.data && p.data.active);

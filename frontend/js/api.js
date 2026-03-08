@@ -155,6 +155,24 @@ const API = {
     triggerSFPoll() { return this.post('/api/sf/poll/trigger'); },
     fullSFResync() { return this.post('/api/sf/poll/full-resync'); },
     getSFPollProgress() { return this.get('/api/sf/poll/progress'); },
+    /* ── SQW (SquidgeWorld) convenience methods ──────────────────
+     * Mirror of the SF methods, namespaced under /api/sqw/.
+     * SquidgeWorld uses username/password auth to track a target user.
+     */
+    getSQWAuthStatus() { return this.get('/api/sqw/auth/status'); },
+    sqwConnect(data) { return this.post('/api/sqw/auth/connect', data); },
+    sqwDisconnect() { return this.post('/api/sqw/auth/disconnect'); },
+    getSQWStatus() { return this.get('/api/sqw/status'); },
+    getSQWSummary() { return this.get('/api/sqw/summary'); },
+    getSQWSubmissions(params) { return this.get('/api/sqw/submissions', params); },
+    getSQWSubmission(id) { return this.get(`/api/sqw/submissions/${id}`); },
+    getSQWSnapshots(id, params) { return this.get(`/api/sqw/submissions/${id}/snapshots`, params); },
+    getSQWAggregate(params) { return this.get('/api/sqw/aggregate', params); },
+    getSQWComparison(ids, params) { return this.get('/api/sqw/comparison', { ids: ids.join(','), ...params }); },
+    getSQWPollLog(limit) { return this.get('/api/sqw/poll_log', { limit }); },
+    triggerSQWPoll() { return this.post('/api/sqw/poll/trigger'); },
+    fullSQWResync() { return this.post('/api/sqw/poll/full-resync'); },
+    getSQWPollProgress() { return this.get('/api/sqw/poll/progress'); },
     /* ── Export methods ───────────────────────────────────────────
      * These trigger browser-native file downloads by opening the
      * streaming CSV endpoint in a new tab via window.open().
@@ -162,11 +180,11 @@ const API = {
      * download, not JSON to be parsed in-page.
      */
     exportSubmissions(platform) {
-        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions' };
+        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions', sqw: '/api/sqw/export/submissions' };
         window.open(urls[platform] || urls.ib, '_blank');
     },
     exportSnapshots(platform, id) {
-        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots' };
+        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots', sqw: '/api/sqw/export/snapshots' };
         const url = (bases[platform] || bases.ib) + (id ? `?id=${id}` : '');
         window.open(url, '_blank');
     },

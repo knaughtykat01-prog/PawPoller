@@ -1151,6 +1151,11 @@ body {
     color: #fbbf24;
 }
 
+.platform-badge.sqw {
+    background: #a78bfa30;
+    color: #a78bfa;
+}
+
 /* ── FA Metadata ─────────────────────────────────────────── */
 /* Grid layout for FurAffinity submission detail metadata fields
    (category, theme, species, gender, etc.). auto-fit with minmax(140px)
