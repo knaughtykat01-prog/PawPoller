@@ -82,7 +82,7 @@ class SoFurryClient:
 
     # -- Authentication ------------------------------------------------
 
-    async def login(self, chain_gallery: bool = False) -> bool:
+    async def login(self) -> bool:
         """Authenticate via email/password (+ optional TOTP 2FA).
 
         SoFurry uses Laravel with CSRF protection.  Login flow:
@@ -92,14 +92,12 @@ class SoFurryClient:
              submit the TOTP code from ``self.totp_code`` (set by caller)
           4. On success the server redirects to / (home)
 
-        If ``chain_gallery`` is True and we're using the CF Worker proxy,
-        the login POST will chain the gallery URL so both happen in the
-        same Worker invocation (same egress IP).  The response body will
-        be the gallery HTML, stored in ``self._chained_gallery_html``.
+        Note: when using the CF Worker proxy, use ``login_and_fetch_gallery``
+        instead — it does GET/POST/gallery in one Worker invocation to avoid
+        IP rotation breaking the session.
         """
         if not self.username or not self.password:
             return False
-        self._chained_gallery_html: str | None = None
         try:
             # Step 1: Fetch CSRF token from the login page
             login_page = await self._http.get(f"{SOFURRY_BASE}/login")
@@ -112,14 +110,6 @@ class SoFurryClient:
             csrf_token = csrf_match.group(1)
 
             # Step 2: POST credentials with CSRF token
-            # If chain_gallery is set and we're using the proxy, tell the Worker
-            # to also fetch the gallery page within the same invocation.
-            transport = self._http._transport
-            if chain_gallery and hasattr(transport, 'set_chain') and self.display_name:
-                gallery_url = f"{SOFURRY_BASE}/u/{self.display_name}/gallery"
-                transport.set_chain([gallery_url])
-                logger.info("SoFurry: chaining gallery URL in login request: %s", gallery_url)
-
             resp = await self._http.post(
                 f"{SOFURRY_BASE}/login",
                 data={
@@ -128,22 +118,11 @@ class SoFurryClient:
                     "password": self.password,
                 },
             )
-            # The CF Worker follows redirects internally and returns the final
-            # response.  Check X-Final-URL header for the actual landing page.
             final_url = resp.headers.get("x-final-url", str(resp.url))
             page_text = resp.text
             final_path = final_url.split("sofurry.com")[-1] if "sofurry.com" in final_url else final_url
 
             logger.info("SoFurry login — final URL: %s (status %s)", final_url, resp.status_code)
-
-            # Debug: log transport cookie state after login
-            if hasattr(transport, '_session_cookies'):
-                cookie_str = transport._session_cookies
-                if cookie_str:
-                    names = [p.split("=")[0] for p in cookie_str.split("; ") if "=" in p]
-                    logger.info("SoFurry: transport cookies after login: %s", names)
-                else:
-                    logger.warning("SoFurry: transport has NO cookies after login POST")
 
             # Step 3: Handle 2FA if redirected to /auth/2fa
             if "/auth/2fa" in final_path or "2fa" in final_path:
@@ -151,22 +130,6 @@ class SoFurryClient:
                     logger.warning("SoFurry 2FA required but no TOTP code provided")
                     return False
                 return await self._submit_2fa(page_text)
-
-            # If we chained the gallery, the response body IS the gallery HTML
-            # (the Worker returns the last chain URL's response)
-            if chain_gallery and hasattr(transport, 'set_chain'):
-                # Check if final URL is the gallery (chain worked)
-                if "/gallery" in final_url:
-                    self._chained_gallery_html = page_text
-                    self._logged_in = True
-                    logger.info("SoFurry login+gallery chain successful (final: %s, %d chars)",
-                                final_url, len(page_text))
-                    return True
-                # Chain didn't land on gallery — check if login itself succeeded
-                if "/login" not in final_path:
-                    self._logged_in = True
-                    logger.info("SoFurry login successful (chain may have failed, final: %s)", final_url)
-                    return True
 
             # Success: ended up anywhere other than /login
             if "/login" not in final_path:
@@ -183,6 +146,66 @@ class SoFurryClient:
         except Exception as e:
             logger.warning("SoFurry login failed: %s", e)
             return False
+
+    async def login_and_fetch_gallery(self) -> str | None:
+        """Login + fetch gallery in a single CF Worker invocation.
+
+        Uses the Worker's x-proxy-login mode which does GET /login →
+        extract CSRF → POST /login → GET gallery all in one execution
+        (same egress IP).  This is required because SoFurry pins
+        sessions to IPs, and CF Workers rotate IPs between invocations.
+
+        Returns the gallery HTML on success, None on failure.
+        """
+        if not self.username or not self.password or not self.display_name:
+            return None
+
+        transport = self._http._transport
+        if not hasattr(transport, 'login_and_fetch'):
+            logger.error("SoFurry: login_and_fetch_gallery requires CF proxy transport")
+            return None
+
+        try:
+            gallery_url = f"{SOFURRY_BASE}/u/{self.display_name}/gallery"
+            logger.info("SoFurry: login_and_fetch_gallery → %s", gallery_url)
+
+            resp = await transport.login_and_fetch(
+                login_url=f"{SOFURRY_BASE}/login",
+                email=self.username,
+                password=self.password,
+                then_url=gallery_url,
+            )
+
+            # Read response
+            raw_bytes = b""
+            async for chunk in resp.stream:
+                raw_bytes += chunk
+            html = raw_bytes.decode("utf-8", errors="replace")
+
+            final_url = resp.headers.get("x-final-url", "")
+            logger.info("SoFurry login_and_fetch — status=%d final=%s size=%d",
+                        resp.status_code, final_url, len(html))
+
+            # Check if login succeeded (page has logout link = authenticated)
+            has_logout = bool(re.search(r'logout|sign.?out', html, re.IGNORECASE))
+            has_subs = bool(re.search(r'/s/[A-Za-z0-9]+', html))
+
+            if has_logout or has_subs:
+                self._logged_in = True
+                logger.info("SoFurry login_and_fetch OK — authenticated=%s, has_subs=%s",
+                            has_logout, has_subs)
+                return html
+
+            # Login may have failed
+            if "/login" in final_url:
+                logger.warning("SoFurry login_and_fetch failed — still on login page")
+            else:
+                logger.warning("SoFurry login_and_fetch — no auth indicators (size=%d)", len(html))
+            return None
+
+        except Exception as e:
+            logger.warning("SoFurry login_and_fetch failed: %s", e)
+            return None
 
     async def _submit_2fa(self, page_text: str) -> bool:
         """Submit a TOTP 2FA code to complete authentication."""
@@ -321,37 +344,24 @@ class SoFurryClient:
         an ``<a href="/s/{sid}?ref=glr">`` link and a ``<div class="title">``
         inside it.  We extract IDs and titles directly from the HTML.
 
-        When using the CF Worker proxy, the first page is fetched as part
-        of the login chain (same Worker invocation = same egress IP) to
-        avoid session IP mismatch.
+        When using the CF Worker proxy, the first page is fetched via
+        ``login_and_fetch_gallery`` which does GET /login → POST /login →
+        GET gallery all in one Worker invocation (same egress IP).  This
+        is required because SoFurry pins sessions to IPs.
         """
         transport = self._http._transport
-        uses_proxy = hasattr(transport, 'set_chain')
+        uses_proxy = hasattr(transport, 'login_and_fetch')
 
-        if not self._logged_in or uses_proxy:
-            # When using proxy: ALWAYS do fresh login+chain because CF Workers
-            # rotate egress IPs between invocations, so cached sessions from
-            # a previous invocation are invalid.  Chain the gallery URL with
-            # login so both happen in the same invocation (same IP).
-            if uses_proxy:
-                self._logged_in = False  # Force fresh login
-            await self.login(chain_gallery=uses_proxy)
-
-        # Check if we got gallery HTML from the chained login
-        chained_html = getattr(self, '_chained_gallery_html', None)
-        if chained_html:
-            self._chained_gallery_html = None  # consume it
-
-        # Log cookie state
-        if hasattr(transport, '_session_cookies'):
-            cookie_str = transport._session_cookies
-            if cookie_str:
-                names = [p.split("=")[0] for p in cookie_str.split("; ") if "=" in p]
-                logger.info("SF gallery fetch — transport cookies: %s", names)
-            else:
-                logger.warning("SF gallery fetch — transport has NO cookies!")
-        else:
-            logger.info("SF gallery fetch — not using proxy transport")
+        # For proxy: always do fresh login+gallery in one invocation
+        # (CF Workers rotate IPs, so cached sessions are useless)
+        proxy_gallery_html: str | None = None
+        if uses_proxy:
+            proxy_gallery_html = await self.login_and_fetch_gallery()
+            if not proxy_gallery_html:
+                logger.warning("SF: login_and_fetch_gallery failed")
+                return []
+        elif not self._logged_in:
+            await self.login()
 
         all_subs: list[dict] = []
         seen: set[str] = set()
@@ -359,10 +369,10 @@ class SoFurryClient:
 
         for _page_safety in range(100):
             try:
-                # Use chained HTML for page 1 if available
-                if page == 1 and chained_html:
-                    html = chained_html
-                    logger.info("SF gallery: using chained HTML from login (%d chars)", len(html))
+                # Use proxy gallery HTML for page 1 if available
+                if page == 1 and proxy_gallery_html:
+                    html = proxy_gallery_html
+                    logger.info("SF gallery: using login_and_fetch HTML (%d chars)", len(html))
                 else:
                     resp = await self._http.get(
                         f"{SOFURRY_BASE}/u/{self.display_name}/gallery",

@@ -237,14 +237,14 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
     try:
         conn = get_connection()
         log_id = sf_queries.start_sf_poll_log(conn)
-        # Step 1+2: Login and fetch gallery in one step.
-        # When using the CF Worker proxy, login chains the gallery fetch
-        # so both happen in the same Worker invocation (same egress IP),
-        # which is critical because SoFurry pins sessions to IPs.
+        # Step 1+2: Login and fetch gallery.
+        # When using the CF Worker proxy, login + gallery happen in one
+        # Worker invocation (x-proxy-login) to avoid IP rotation breaking
+        # SoFurry's IP-pinned sessions.
         _update_sf_progress("searching", message="Authenticating + fetching gallery...")
         gallery = await client.get_all_gallery_ids()
-        if not client._logged_in:
-            raise ValueError("SoFurry login failed -- check credentials")
+        if not gallery and not client._logged_in:
+            raise ValueError("SoFurry login failed -- check credentials (is SF_USERNAME an email?)")
         submission_ids = [s["submission_id"] for s in gallery]
         stats["submissions_found"] = len(submission_ids)
         logger.info("SF: Found %d submissions", len(submission_ids))
