@@ -37,17 +37,29 @@ class CloudflareProxyTransport(httpx.AsyncBaseTransport):
         self._worker_host = urlparse(worker_url).netloc
         self._inner = httpx.AsyncHTTPTransport(retries=2)
         self._session_cookies: str = ""  # Raw "name=val; name2=val2" string
+        self._pending_chain: list[str] | None = None  # URLs to chain in next request
 
     def set_cookies(self, cookie_str: str) -> None:
         """Store a raw cookie string to inject into every proxied request."""
         self._session_cookies = cookie_str
 
+    def set_chain(self, urls: list[str]) -> None:
+        """Set follow-up URLs for the next request (x-proxy-chain).
+
+        The Worker will fetch these URLs sequentially within the same
+        invocation (same egress IP), forwarding cookies between them.
+        The response body will be from the LAST chain URL.
+        Chain is consumed after one request.
+        """
+        self._pending_chain = urls
+
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         target_url = str(request.url)
 
-        logger.debug("CF proxy: %s %s | cookies: %s",
+        logger.debug("CF proxy: %s %s | cookies: %s | chain: %s",
                       request.method, target_url,
-                      self._session_cookies[:120] if self._session_cookies else "(none)")
+                      self._session_cookies[:120] if self._session_cookies else "(none)",
+                      self._pending_chain or "(none)")
 
         # Build new headers: keep originals but replace Host with worker host
         # and inject session cookies (bypassing httpx's broken cookie jar).
@@ -71,6 +83,12 @@ class CloudflareProxyTransport(httpx.AsyncBaseTransport):
         headers.append((b"x-proxy-key", self.proxy_key.encode()))
         headers.append((b"x-target-url", target_url.encode()))
 
+        # Add chain URLs if set (consumed after this request)
+        if self._pending_chain:
+            import json as _json
+            headers.append((b"x-proxy-chain", _json.dumps(self._pending_chain).encode()))
+            self._pending_chain = None
+
         # Rewrite request to go to the Worker instead of the real target
         proxy_request = httpx.Request(
             method=request.method,
@@ -92,6 +110,14 @@ class CloudflareProxyTransport(httpx.AsyncBaseTransport):
         # Capture Set-Cookie headers from the response and update our
         # stored cookies so they persist across requests.
         self._update_cookies_from_response(response)
+
+        # Also capture X-Session-Cookies from the Worker — this contains
+        # ALL accumulated cookies from the entire invocation (login +
+        # chain requests), which is critical when chain URLs are used.
+        session_cookies = response.headers.get("x-session-cookies")
+        if session_cookies:
+            logger.debug("CF proxy: X-Session-Cookies from worker: %s", session_cookies[:120])
+            self._session_cookies = session_cookies
 
         if self._session_cookies:
             cookie_names = [p.split("=")[0] for p in self._session_cookies.split("; ") if "=" in p]
