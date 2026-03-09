@@ -273,17 +273,124 @@ class SoFurryClient:
     # -- Gallery Listing -----------------------------------------------
 
     async def get_all_gallery_ids(self) -> list[dict]:
-        """Scrape all gallery submissions from the user's gallery pages.
+        """Fetch all gallery submissions using the SoFurry JSON API.
 
-        SoFurry gallery pages at /u/{display_name}/gallery contain
-        submission links in /s/{id} format.  We paginate until empty.
-
-        Note: Do NOT toggle SFW mode — default after login already shows
-        NSFW content.  Calling GET /sfw would hide Adult submissions.
+        SoFurry Next is a SPA — the gallery HTML is a shell with no submission
+        links.  Instead we use the /ui/browse endpoint which returns JSON with
+        submission listings filtered by author.
         """
         if not self._logged_in:
             await self.login()
 
+        all_subs: list[dict] = []
+        seen: set[str] = set()
+        page = 0
+
+        # Try the /ui/browse API endpoint (SoFurry Next internal API)
+        for _page_safety in range(1000):
+            try:
+                resp = await self._http.get(
+                    f"{SOFURRY_BASE}/ui/browse",
+                    params={
+                        "from": self.display_name,
+                        "page": str(page),
+                    },
+                    headers={"Accept": "application/json"},
+                )
+
+                if resp.status_code == 404:
+                    # Fallback: try alternative API endpoints
+                    logger.info("SF /ui/browse returned 404, trying alternatives...")
+                    return await self._discover_gallery_api()
+
+                resp.raise_for_status()
+                data = resp.json()
+
+                items = data if isinstance(data, list) else data.get("items", data.get("submissions", []))
+                if not items:
+                    break
+
+                new_this_page = 0
+                for item in items:
+                    sid = str(item.get("id", "") or item.get("submission_id", ""))
+                    if sid and sid not in seen:
+                        seen.add(sid)
+                        all_subs.append({
+                            "submission_id": sid,
+                            "title": item.get("title", ""),
+                            "thumbnail_url": item.get("thumbUrl", "") or item.get("coverUrl", ""),
+                        })
+                        new_this_page += 1
+
+                if new_this_page == 0:
+                    break
+
+                page += 1
+                await asyncio.sleep(config.SF_REQUEST_DELAY_SECONDS)
+
+            except Exception as e:
+                if page == 0:
+                    logger.info("SF /ui/browse failed (%s), trying alternatives...", e)
+                    return await self._discover_gallery_api()
+                logger.warning("Failed to fetch SF gallery page %d: %s", page, e)
+                break
+
+        logger.info("SF: Found %d submissions via /ui/browse API", len(all_subs))
+        return all_subs
+
+    async def _discover_gallery_api(self) -> list[dict]:
+        """Try multiple known SF API patterns to find the gallery listing."""
+        all_subs: list[dict] = []
+
+        # List of API endpoints to try
+        endpoints = [
+            (f"{SOFURRY_BASE}/api/v2/user/{self.display_name}/submissions", {}),
+            (f"{SOFURRY_BASE}/ui/user/{self.display_name}/submissions", {}),
+            (f"{SOFURRY_BASE}/api/submissions", {"owner": self.display_name}),
+            (f"{SOFURRY_BASE}/ui/browse", {"owner": self.display_name}),
+            (f"{SOFURRY_BASE}/ui/browse", {"author": self.display_name}),
+            (f"{SOFURRY_BASE}/ui/browse", {"username": self.display_name}),
+        ]
+
+        for url, params in endpoints:
+            try:
+                resp = await self._http.get(url, params=params,
+                                            headers={"Accept": "application/json"})
+                logger.info("SF API probe: %s %s -> %d (%d chars, content-type: %s)",
+                            url, params, resp.status_code, len(resp.text),
+                            resp.headers.get("content-type", "?"))
+
+                if resp.status_code == 200 and "json" in resp.headers.get("content-type", ""):
+                    data = resp.json()
+                    logger.info("SF API probe response (first 500 chars): %.500s", str(data))
+
+                    # If we got a list or dict with items, use it
+                    items = data if isinstance(data, list) else data.get("items", data.get("submissions", []))
+                    if items and isinstance(items, list) and len(items) > 0:
+                        seen: set[str] = set()
+                        for item in items:
+                            sid = str(item.get("id", "") or item.get("submission_id", ""))
+                            if sid and sid not in seen:
+                                seen.add(sid)
+                                all_subs.append({
+                                    "submission_id": sid,
+                                    "title": item.get("title", ""),
+                                    "thumbnail_url": item.get("thumbUrl", "") or item.get("coverUrl", ""),
+                                })
+                        if all_subs:
+                            logger.info("SF: Found %d submissions via %s", len(all_subs), url)
+                            return all_subs
+
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                logger.info("SF API probe %s failed: %s", url, e)
+
+        # Last resort: scrape HTML gallery page for /s/ links
+        logger.info("SF: All API endpoints failed, falling back to HTML scrape")
+        return await self._scrape_gallery_html()
+
+    async def _scrape_gallery_html(self) -> list[dict]:
+        """Fallback: scrape submission IDs from gallery HTML (legacy SF)."""
         all_subs: list[dict] = []
         page = 1
 
@@ -296,19 +403,9 @@ class SoFurryClient:
                 resp.raise_for_status()
                 html = resp.text
 
-                logger.info("SF gallery page %d: %d chars, /s/ count: %d",
-                             page, len(html), html.count("/s/"))
-                if page == 1 and "/s/" not in html:
-                    logger.warning("SF gallery page has no /s/ links. URL: %s, "
-                                   "title: %s, snippet: %.500s",
-                                   str(resp.url), re.search(r'<title>([^<]*)</title>', html),
-                                   html[:500])
-
-                # Extract submission IDs from href="/s/{id}" or href="https://sofurry.com/s/{id}"
                 ids_on_page = re.findall(
                     r'href="(?:https://sofurry\.com)?/s/([A-Za-z0-9]+)', html
                 )
-                # Deduplicate while preserving order
                 seen = set()
                 unique_ids = []
                 for sid in ids_on_page:
