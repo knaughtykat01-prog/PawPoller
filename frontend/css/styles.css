@@ -1061,8 +1061,11 @@ body {
         padding-bottom: calc(16px + var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
     }
 
-    /* Stat cards: 2-column grid */
+    /* Stat cards: 2-column grid, tighter padding */
     .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .stat-card { padding: 14px; }
+    .stat-card .value { font-size: 22px; }
+    .stat-card .label { font-size: 11px; margin-bottom: 2px; }
 
     /* Charts stack to single column, reduced height */
     .chart-row { grid-template-columns: 1fr; }
@@ -1202,10 +1205,10 @@ body {
 /* -- 480px breakpoint: small phones --
    Further reductions for very narrow screens */
 @media (max-width: 480px) {
-    .stats-grid { grid-template-columns: 1fr; gap: 8px; }
-    .stat-card { padding: 14px; }
-    .stat-card .value { font-size: 24px; }
-    .stat-card .label { font-size: 11px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stat-card { padding: 10px 12px; }
+    .stat-card .value { font-size: 20px; }
+    .stat-card .label { font-size: 10px; letter-spacing: 0.3px; }
 
     .detail-header { flex-direction: column; gap: 12px; }
     .detail-thumb { width: 80px; height: 80px; }
@@ -1220,7 +1223,9 @@ body {
     .page-header { margin-bottom: 16px; }
 
     .growth-grid { grid-template-columns: 1fr; }
-    .growth-val { font-size: 14px; }
+    .growth-val { font-size: 13px; }
+    .growth-card .growth-metrics { gap: 3px; margin-top: 4px; }
+    .growth-card .label { font-size: 10px; }
 
     .pinned-row { scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
     .pinned-card { scroll-snap-align: start; min-width: 130px; flex: 0 0 140px; }
