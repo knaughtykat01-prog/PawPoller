@@ -305,3 +305,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_fa_watchers_pending ON fa_watchers(confirmed, notified)")
     except sqlite3.OperationalError:
         pass  # columns not yet present (shouldn't happen but safe fallback)
+
+    # Migration: Add new_watchers_found column to sf_poll_log
+    try:
+        conn.execute("ALTER TABLE sf_poll_log ADD COLUMN new_watchers_found INTEGER DEFAULT 0")
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise

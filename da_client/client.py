@@ -41,10 +41,19 @@ _HEADERS = {
 class DAClient:
     """Async HTTP client for DeviantArt using Eclipse _napi endpoints."""
 
-    def __init__(self, cookie_value: str, target_user: str):
+    def __init__(self, cookie_value: str, target_user: str,
+                 proxy_url: str = "", proxy_key: str = ""):
         self.cookie_value = cookie_value  # Full cookie string from browser
         self.target_user = target_user
-        transport = httpx.AsyncHTTPTransport(retries=2)
+
+        # Use Cloudflare Worker proxy if configured (bypasses datacenter IP blocks)
+        if proxy_url and proxy_key:
+            from polling.cf_proxy import CloudflareProxyTransport
+            transport = CloudflareProxyTransport(proxy_url, proxy_key)
+            logger.info("DA client using CF proxy: %s", proxy_url)
+        else:
+            transport = httpx.AsyncHTTPTransport(retries=2)
+
         self._http = httpx.AsyncClient(
             timeout=30.0,
             follow_redirects=True,

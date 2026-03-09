@@ -130,6 +130,8 @@ def _get_or_create_client(settings: dict) -> DAClient:
         _da_client = DAClient(
             cookie_value=da_cookie,
             target_user=da_target,
+            proxy_url=settings.get("cf_worker_url", ""),
+            proxy_key=settings.get("cf_worker_key", ""),
         )
     else:
         _da_client.update_credentials(da_cookie, da_target)

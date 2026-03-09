@@ -44,16 +44,29 @@ class SoFurryClient:
     """SoFurry web scraping client using session cookie authentication."""
 
     def __init__(self, username: str = "", password: str = "", totp_code: str = "",
-                 display_name: str = ""):
+                 display_name: str = "", proxy_url: str = "", proxy_key: str = ""):
         self.username = username          # email address used for login
         self.password = password
         self.totp_code = totp_code
         self.display_name = display_name  # SF profile handle (e.g. "KnaughtyKat")
-        transport = httpx.AsyncHTTPTransport(retries=2)
+
+        # Use Cloudflare Worker proxy if configured (bypasses datacenter IP blocks)
+        if proxy_url and proxy_key:
+            from polling.cf_proxy import CloudflareProxyTransport
+            transport = CloudflareProxyTransport(proxy_url, proxy_key)
+            logger.info("SoFurry client using CF proxy: %s", proxy_url)
+        else:
+            transport = httpx.AsyncHTTPTransport(retries=2)
+
         self._http = httpx.AsyncClient(
             timeout=30.0,
             follow_redirects=True,
-            headers={"User-Agent": "PawPoller/1.0"},
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Referer": "https://sofurry.com/",
+            },
             transport=transport,
         )
         self._logged_in = False

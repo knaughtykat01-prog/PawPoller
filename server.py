@@ -66,6 +66,8 @@ _ENV_TO_SETTINGS = {
     "TELEGRAM_ENABLED":   "telegram_enabled",
     "DASHBOARD_PASSWORD":  "dashboard_password",
     "DASHBOARD_USER":      "dashboard_user",
+    "CF_WORKER_URL":       "cf_worker_url",
+    "CF_WORKER_KEY":       "cf_worker_key",
 }
 
 import os

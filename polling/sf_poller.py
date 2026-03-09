@@ -195,6 +195,8 @@ def _get_or_create_client(settings: dict) -> SoFurryClient:
             password=sf_pass,
             display_name=sf_display,
             totp_code=sf_totp,
+            proxy_url=settings.get("cf_worker_url", ""),
+            proxy_key=settings.get("cf_worker_key", ""),
         )
     else:
         _sf_client.update_credentials(sf_user, sf_pass, sf_display, sf_totp)
