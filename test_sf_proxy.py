@@ -257,6 +257,41 @@ async def main():
             print(f"  If this is your display name, login will fail silently.")
             print(f"  Set SF_USERNAME to your SoFurry email address.")
 
+        # ── PART 5: Deep dive on /browse?by= endpoint ──────────
+        section("PART 5: /browse?by= endpoint (171K chars last time)")
+
+        resp = await proxy_get(c, f"{SOFURRY}/browse?by={SF_DISPLAY}")
+        html = resp.text
+        print(f"  Size: {len(html)} chars")
+
+        # Find /s/ submission links
+        s_ids = re.findall(r'/s/([A-Za-z0-9]+)', html)
+        unique_ids = list(set(s_ids))
+        print(f"  /s/ links found: {len(s_ids)} (unique: {len(unique_ids)})")
+        if unique_ids:
+            print(f"  Submission IDs: {unique_ids[:20]}")
+
+        # Find submission titles
+        titles = re.findall(r'class="title[^"]*"[^>]*>([^<]+)<', html)
+        if titles:
+            print(f"  Titles found: {titles[:10]}")
+
+        # Check for submission grid
+        grids = re.findall(r'class="[^"]*submission[^"]*"', html, re.IGNORECASE)
+        if grids:
+            print(f"  Submission elements: {grids[:10]}")
+
+        # Show a chunk around the first /s/ link if found
+        if s_ids:
+            idx = html.index(f"/s/{s_ids[0]}")
+            print(f"\n  Context around first submission link:")
+            print(html[max(0,idx-200):idx+200])
+
+        # If no /s/ links, show some content
+        if not s_ids:
+            print(f"\n  No submissions found. First 2000 chars:")
+            print(html[:2000])
+
     print(f"\n{'='*60}")
     print(f"  EXPLORATION COMPLETE")
     print(f"{'='*60}")
