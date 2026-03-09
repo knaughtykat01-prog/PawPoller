@@ -271,7 +271,12 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         "new_watchers_found": 0,
     }
 
-    client = InkbunnyClient()
+    # Read credentials at poll time (not from frozen module-level constants)
+    # so that env-seeded settings.json values are picked up.
+    settings = config.get_settings()
+    ib_user = settings.get("username", "") or config.INKBUNNY_USERNAME
+    ib_pass = settings.get("password", "") or config.INKBUNNY_PASSWORD
+    client = InkbunnyClient(username=ib_user, password=ib_pass)
 
     try:
         conn = get_connection()
