@@ -11,6 +11,12 @@ The Worker expects two headers:
 The Worker forwards the request, strips proxy headers, and returns the
 response with redirect: 'manual' so httpx can handle redirects itself
 (each redirect also goes through the proxy transport).
+
+Cookie handling:
+  httpx's cookie jar doesn't work correctly through the proxy because
+  the HTTP-level request goes to the worker URL, breaking domain matching.
+  The transport provides set_cookies() / get_response_cookies() to manage
+  cookies at the transport level, bypassing the jar entirely.
 """
 
 from __future__ import annotations
@@ -30,19 +36,32 @@ class CloudflareProxyTransport(httpx.AsyncBaseTransport):
         self.proxy_key = proxy_key
         self._worker_host = urlparse(worker_url).netloc
         self._inner = httpx.AsyncHTTPTransport(retries=2)
+        self._session_cookies: str = ""  # Raw "name=val; name2=val2" string
+
+    def set_cookies(self, cookie_str: str) -> None:
+        """Store a raw cookie string to inject into every proxied request."""
+        self._session_cookies = cookie_str
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         target_url = str(request.url)
 
         # Build new headers: keep originals but replace Host with worker host
-        # so Cloudflare's edge routes the request to our Worker, not the
-        # original site.
+        # and inject session cookies (bypassing httpx's broken cookie jar).
         headers = []
+        has_cookie = False
         for k, v in request.headers.raw:
             if k.lower() == b"host":
                 headers.append((b"host", self._worker_host.encode()))
+            elif k.lower() == b"cookie" and self._session_cookies:
+                # Replace httpx's (likely empty) cookie header with our stored cookies
+                headers.append((b"cookie", self._session_cookies.encode()))
+                has_cookie = True
             else:
                 headers.append((k, v))
+
+        # If no cookie header existed but we have session cookies, add one
+        if not has_cookie and self._session_cookies:
+            headers.append((b"cookie", self._session_cookies.encode()))
 
         # Add proxy-specific headers
         headers.append((b"x-proxy-key", self.proxy_key.encode()))
@@ -56,7 +75,41 @@ class CloudflareProxyTransport(httpx.AsyncBaseTransport):
             stream=request.stream,
         )
 
-        return await self._inner.handle_async_request(proxy_request)
+        response = await self._inner.handle_async_request(proxy_request)
+
+        # Capture Set-Cookie headers from the response and update our
+        # stored cookies so they persist across requests.
+        self._update_cookies_from_response(response)
+
+        return response
+
+    def _update_cookies_from_response(self, response: httpx.Response) -> None:
+        """Parse Set-Cookie headers and merge into stored session cookies."""
+        new_cookies: dict[str, str] = {}
+        # Start with existing cookies
+        if self._session_cookies:
+            for part in self._session_cookies.split("; "):
+                if "=" in part:
+                    name, _, value = part.partition("=")
+                    new_cookies[name.strip()] = value.strip()
+
+        # Merge in any Set-Cookie from the response
+        changed = False
+        for header_value in response.headers.get_list("set-cookie"):
+            cookie_part = header_value.split(";")[0].strip()
+            if "=" in cookie_part:
+                name, _, value = cookie_part.partition("=")
+                name = name.strip()
+                value = value.strip()
+                if name and not name.startswith("__"):
+                    if new_cookies.get(name) != value:
+                        new_cookies[name] = value
+                        changed = True
+
+        if changed:
+            self._session_cookies = "; ".join(
+                f"{k}={v}" for k, v in new_cookies.items()
+            )
 
     async def aclose(self) -> None:
         await self._inner.aclose()
