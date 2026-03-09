@@ -50,13 +50,13 @@ class SoFurryClient:
         self.totp_code = totp_code
         self.display_name = display_name  # SF profile handle (e.g. "KnaughtyKat")
 
-        # SoFurry: connect directly instead of through CF proxy.
-        # CF Workers rotate egress IPs between requests, which breaks
-        # Laravel's IP-pinned session validation.  SoFurry doesn't
-        # block datacenter IPs, so direct connection works fine.
-        transport = httpx.AsyncHTTPTransport(retries=2)
+        # Use Cloudflare Worker proxy if configured (bypasses datacenter IP blocks)
         if proxy_url and proxy_key:
-            logger.info("SoFurry: skipping CF proxy (IP-pinned sessions break through Workers)")
+            from polling.cf_proxy import CloudflareProxyTransport
+            transport = CloudflareProxyTransport(proxy_url, proxy_key)
+            logger.info("SoFurry client using CF proxy: %s", proxy_url)
+        else:
+            transport = httpx.AsyncHTTPTransport(retries=2)
 
         self._http = httpx.AsyncClient(
             timeout=30.0,
@@ -114,7 +114,9 @@ class SoFurryClient:
                     "password": self.password,
                 },
             )
-            final_url = str(resp.url)
+            # The CF Worker follows redirects internally and returns the final
+            # response.  Check X-Final-URL header for the actual landing page.
+            final_url = resp.headers.get("x-final-url", str(resp.url))
             page_text = resp.text
             final_path = final_url.split("sofurry.com")[-1] if "sofurry.com" in final_url else final_url
 
