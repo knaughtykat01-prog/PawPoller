@@ -296,6 +296,14 @@ class SoFurryClient:
                 resp.raise_for_status()
                 html = resp.text
 
+                logger.info("SF gallery page %d: %d chars, /s/ count: %d",
+                             page, len(html), html.count("/s/"))
+                if page == 1 and "/s/" not in html:
+                    logger.warning("SF gallery page has no /s/ links. URL: %s, "
+                                   "title: %s, snippet: %.500s",
+                                   str(resp.url), re.search(r'<title>([^<]*)</title>', html),
+                                   html[:500])
+
                 # Extract submission IDs from href="/s/{id}" or href="https://sofurry.com/s/{id}"
                 ids_on_page = re.findall(
                     r'href="(?:https://sofurry\.com)?/s/([A-Za-z0-9]+)', html
