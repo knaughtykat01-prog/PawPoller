@@ -45,6 +45,10 @@ class CloudflareProxyTransport(httpx.AsyncBaseTransport):
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         target_url = str(request.url)
 
+        logger.debug("CF proxy: %s %s | cookies: %s",
+                      request.method, target_url,
+                      self._session_cookies[:120] if self._session_cookies else "(none)")
+
         # Build new headers: keep originals but replace Host with worker host
         # and inject session cookies (bypassing httpx's broken cookie jar).
         headers = []
@@ -77,9 +81,21 @@ class CloudflareProxyTransport(httpx.AsyncBaseTransport):
 
         response = await self._inner.handle_async_request(proxy_request)
 
+        # Log response status and Set-Cookie headers for debugging
+        set_cookies = response.headers.get_list("set-cookie")
+        logger.debug("CF proxy: response %d for %s | Set-Cookie count: %d",
+                      response.status_code, target_url, len(set_cookies))
+        if set_cookies:
+            for sc in set_cookies:
+                logger.debug("CF proxy:   Set-Cookie: %s", sc[:100])
+
         # Capture Set-Cookie headers from the response and update our
         # stored cookies so they persist across requests.
         self._update_cookies_from_response(response)
+
+        if self._session_cookies:
+            cookie_names = [p.split("=")[0] for p in self._session_cookies.split("; ") if "=" in p]
+            logger.debug("CF proxy: stored cookies after response: %s", cookie_names)
 
         return response
 

@@ -120,6 +120,16 @@ class SoFurryClient:
 
             logger.info("SoFurry login — final URL: %s (status %s)", final_url, resp.status_code)
 
+            # Debug: log transport cookie state after login
+            transport = self._http._transport
+            if hasattr(transport, '_session_cookies'):
+                cookie_str = transport._session_cookies
+                if cookie_str:
+                    names = [p.split("=")[0] for p in cookie_str.split("; ") if "=" in p]
+                    logger.info("SoFurry: transport cookies after login: %s", names)
+                else:
+                    logger.warning("SoFurry: transport has NO cookies after login POST")
+
             # Step 3: Handle 2FA if redirected to /auth/2fa
             if "/auth/2fa" in final_path or "2fa" in final_path:
                 if not self.totp_code:
@@ -283,6 +293,18 @@ class SoFurryClient:
         if not self._logged_in:
             await self.login()
 
+        # Log cookie state before gallery fetch
+        transport = self._http._transport
+        if hasattr(transport, '_session_cookies'):
+            cookie_str = transport._session_cookies
+            if cookie_str:
+                names = [p.split("=")[0] for p in cookie_str.split("; ") if "=" in p]
+                logger.info("SF gallery fetch — transport cookies: %s", names)
+            else:
+                logger.warning("SF gallery fetch — transport has NO cookies!")
+        else:
+            logger.info("SF gallery fetch — not using proxy transport")
+
         all_subs: list[dict] = []
         seen: set[str] = set()
         page = 1
@@ -311,6 +333,11 @@ class SoFurryClient:
 
                 if not ids_on_page:
                     if page == 1:
+                        # Log a snippet of the HTML to help debug
+                        logger.warning(
+                            "SF gallery page has no /s/ links (%d chars). First 500 chars: %s",
+                            len(html), html[:500],
+                        )
                         logger.warning(
                             "SF gallery page has no /s/ links (%d chars). "
                             "Submissions may be hidden (SFW mode?) or page structure changed.",

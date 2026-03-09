@@ -34,6 +34,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("server")
 
+# Enable debug logging for CF proxy transport to trace cookie handling
+logging.getLogger("polling.cf_proxy").setLevel(logging.DEBUG)
+
 
 # ── Env-to-settings seeding ──────────────────────────────────
 # On headless deployments there is no UI to configure credentials.
