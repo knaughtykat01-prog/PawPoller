@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
-"""Standalone SoFurry proxy test script.
+"""SoFurry proxy + API exploration script.
 
 Run directly on the GCP VM (no Docker needed):
     cd ~/PawPoller
-    pip install httpx python-dotenv
-    python test_sf_proxy.py
+    python3 test_sf_proxy.py
 
 Reads credentials from .env or environment variables:
     SF_USERNAME, SF_PASSWORD, SF_DISPLAY_NAME, CF_WORKER_URL, CF_WORKER_KEY
-
-Tests multiple approaches to find what works for authenticated gallery access
-through the Cloudflare Worker proxy.
 """
 
 import asyncio
@@ -22,10 +18,9 @@ import sys
 try:
     import httpx
 except ImportError:
-    print("ERROR: httpx not installed. Run: pip install httpx")
+    print("ERROR: httpx not installed. Run: pip3 install --break-system-packages httpx")
     sys.exit(1)
 
-# Try loading .env
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -39,281 +34,232 @@ CF_URL = os.environ.get("CF_WORKER_URL", "")
 CF_KEY = os.environ.get("CF_WORKER_KEY", "")
 
 SOFURRY = "https://sofurry.com"
-UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
 
-def check_gallery_html(html: str, label: str):
-    """Analyze gallery HTML and print diagnostics."""
-    ids = re.findall(r'href="(?:https://sofurry\.com)?/s/([A-Za-z0-9]+)', html)
-    has_logout = "logout" in html.lower()
-    has_login = 'href="/login"' in html or "href='/login'" in html
-    sfw_match = re.search(r'(?i)(sfw|nsfw)[^<]{0,80}', html)
-    sfw_ctx = sfw_match.group(0)[:60] if sfw_match else "not found"
-
-    print(f"\n{'='*60}")
-    print(f"  {label}")
-    print(f"{'='*60}")
-    print(f"  HTML length:    {len(html)} chars")
-    print(f"  Submissions:    {len(ids)} found")
-    if ids:
-        print(f"  IDs:            {ids[:5]}{'...' if len(ids) > 5 else ''}")
-    print(f"  Has logout:     {has_logout} (= authenticated)")
-    print(f"  Has login link: {has_login} (= NOT authenticated)")
-    print(f"  SFW/NSFW:       {sfw_ctx}")
-    print(f"{'='*60}")
-    return len(ids)
-
-
-async def proxy_request(client: httpx.AsyncClient, method: str, url: str,
-                        cookies: str = "", chain: list[str] | None = None,
-                        data: dict | None = None) -> httpx.Response:
-    """Send a request through the CF Worker proxy."""
+async def proxy_get(client, url, extra_headers=None):
+    """GET a URL through the CF Worker proxy."""
     headers = {
-        "User-Agent": UA,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Referer": "https://sofurry.com/",
         "x-proxy-key": CF_KEY,
         "x-target-url": url,
+        "User-Agent": UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
-    if cookies:
-        headers["Cookie"] = cookies
-    if chain:
-        headers["x-proxy-chain"] = json.dumps(chain)
-
-    if method == "GET":
-        resp = await client.get(CF_URL, headers=headers)
-    else:
-        # For POST, send form data
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
-        body = "&".join(f"{k}={v}" for k, v in data.items()) if data else ""
-        resp = await client.post(CF_URL, headers=headers, content=body)
-
-    return resp
+    if extra_headers:
+        headers.update(extra_headers)
+    return await client.get(CF_URL, headers=headers)
 
 
-def extract_cookies(resp: httpx.Response) -> str:
-    """Extract cookies from response headers."""
-    cookies = {}
-    # From Set-Cookie headers
-    for sc in resp.headers.get_list("set-cookie"):
-        eq = sc.index("=") if "=" in sc else -1
-        if eq > 0:
-            semi = sc.index(";") if ";" in sc else len(sc)
-            name = sc[:eq].strip()
-            value = sc[eq+1:semi].strip()
-            if not name.startswith("__"):
-                cookies[name] = value
-    # From X-Session-Cookies header
-    session = resp.headers.get("x-session-cookies", "")
-    if session:
-        for part in session.split("; "):
-            if "=" in part:
-                name, _, value = part.partition("=")
-                cookies[name.strip()] = value.strip()
-    return "; ".join(f"{k}={v}" for k, v in cookies.items())
+async def proxy_login_and_get(client, then_url):
+    """Full login sequence + fetch a URL, all in one Worker invocation."""
+    login_data = {
+        "url": f"{SOFURRY}/login",
+        "email": SF_USER,
+        "password": SF_PASS,
+        "then": then_url,
+    }
+    return await client.get(CF_URL, headers={
+        "x-proxy-key": CF_KEY,
+        "x-proxy-login": json.dumps(login_data),
+        "User-Agent": UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    })
 
 
-async def test_direct():
-    """Test 0: Direct connection (no proxy) — confirms IP blocking."""
-    print("\n" + "="*60)
-    print("  TEST 0: Direct connection (no proxy)")
-    print("="*60)
-    try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as c:
-            resp = await c.get(f"{SOFURRY}/u/{SF_DISPLAY}/gallery",
-                              headers={"User-Agent": UA})
-            print(f"  Status: {resp.status_code}")
-            print(f"  URL:    {resp.url}")
-            if resp.status_code == 200:
-                ids = re.findall(r'/s/([A-Za-z0-9]+)', resp.text)
-                print(f"  Submissions (unauthenticated): {len(ids)}")
-            else:
-                print(f"  Response: {resp.text[:200]}")
-    except Exception as e:
-        print(f"  BLOCKED/ERROR: {e}")
-
-
-async def test_separate_requests():
-    """Test 1: Login and gallery as SEPARATE proxy requests."""
-    print("\n" + "="*60)
-    print("  TEST 1: Separate requests (login then gallery)")
-    print("="*60)
-    async with httpx.AsyncClient(timeout=30, follow_redirects=False) as c:
-        # Step 1: GET /login for CSRF
-        print("  Step 1: GET /login (CSRF token)...")
-        resp = await proxy_request(c, "GET", f"{SOFURRY}/login")
-        cookies = extract_cookies(resp)
-        csrf = re.search(r'name="_token"\s*value="([^"]+)"', resp.text)
-        if not csrf:
-            print("  ERROR: No CSRF token found")
-            return
-        print(f"  CSRF token: {csrf.group(1)[:20]}...")
-        print(f"  Cookies: {cookies[:80]}...")
-
-        # Step 2: POST /login
-        print("  Step 2: POST /login...")
-        resp = await proxy_request(c, "POST", f"{SOFURRY}/login",
-                                   cookies=cookies,
-                                   data={"_token": csrf.group(1),
-                                         "email": SF_USER,
-                                         "password": SF_PASS})
-        cookies = extract_cookies(resp)
-        final = resp.headers.get("x-final-url", str(resp.url))
-        print(f"  Status: {resp.status_code}")
-        print(f"  Final URL: {final}")
-        print(f"  Cookies: {cookies[:80]}...")
-
-        if "/login" in final:
-            print("  FAILED: Still on login page")
-            return
-
-        print("  Login OK!")
-
-        # Step 3: GET gallery (separate invocation = different IP)
-        print("  Step 3: GET gallery (separate request)...")
-        resp = await proxy_request(c, "GET",
-                                   f"{SOFURRY}/u/{SF_DISPLAY}/gallery",
-                                   cookies=cookies)
-        check_gallery_html(resp.text, "TEST 1: Separate requests")
-
-
-async def test_chained():
-    """Test 2: Login POST chained with gallery (same invocation)."""
-    print("\n" + "="*60)
-    print("  TEST 2: Chained (login + gallery in one invocation)")
-    print("="*60)
-    async with httpx.AsyncClient(timeout=30, follow_redirects=False) as c:
-        # Step 1: GET /login for CSRF (separate invocation, OK)
-        print("  Step 1: GET /login (CSRF token)...")
-        resp = await proxy_request(c, "GET", f"{SOFURRY}/login")
-        cookies = extract_cookies(resp)
-        csrf = re.search(r'name="_token"\s*value="([^"]+)"', resp.text)
-        if not csrf:
-            print("  ERROR: No CSRF token found")
-            return
-        print(f"  CSRF token: {csrf.group(1)[:20]}...")
-        print(f"  Cookies: {cookies[:80]}...")
-
-        # Step 2: POST /login WITH chain to gallery
-        gallery_url = f"{SOFURRY}/u/{SF_DISPLAY}/gallery"
-        print(f"  Step 2: POST /login + chain [{gallery_url}]...")
-        resp = await proxy_request(c, "POST", f"{SOFURRY}/login",
-                                   cookies=cookies,
-                                   chain=[gallery_url],
-                                   data={"_token": csrf.group(1),
-                                         "email": SF_USER,
-                                         "password": SF_PASS})
-        final = resp.headers.get("x-final-url", "")
-        session_cookies = resp.headers.get("x-session-cookies", "")
-        print(f"  Status: {resp.status_code}")
-        print(f"  Final URL: {final}")
-        print(f"  X-Session-Cookies: {session_cookies[:80]}...")
-        count = check_gallery_html(resp.text, "TEST 2: Chained login+gallery")
-
-        # Dump HTML to file for analysis
-        with open("/tmp/sf_gallery.html", "w") as f:
-            f.write(resp.text)
-        print(f"\n  Full HTML saved to /tmp/sf_gallery.html")
-
-        # Show key diagnostic sections
-        html = resp.text
-        print("\n  --- First 800 chars ---")
-        print(html[:800])
-        print("\n  --- Nav/header area ---")
-        for m in re.finditer(r'<nav[^>]*>.*?</nav>', html, re.DOTALL):
-            print(m.group(0)[:500])
-        print("\n  --- Script tags mentioning gallery/submission/artwork ---")
-        for m in re.finditer(r'<script[^>]*>([^<]*(?:gallery|submission|artwork|login|auth)[^<]*)</script>', html, re.IGNORECASE):
-            print(m.group(0)[:400])
-        print("\n  --- Links containing /u/ or /s/ ---")
-        for m in re.findall(r'href="[^"]*(?:/u/|/s/)[^"]*"', html):
-            print(f"    {m}")
-        print("\n  --- Forms ---")
-        for m in re.finditer(r'<form[^>]*>', html):
-            print(f"    {m.group(0)}")
-        print("\n  --- Any 'login'/'logout'/'account' text ---")
-        for m in re.finditer(r'.{0,40}(?:login|logout|account|sign.?in|sign.?out).{0,40}', html, re.IGNORECASE):
-            print(f"    ...{m.group(0).strip()}...")
-
-
-async def test_login_sequence():
-    """Test 5: Full login sequence in one Worker invocation (x-proxy-login)."""
-    print("\n" + "="*60)
-    print("  TEST 5: Login sequence (GET+POST+gallery, ALL same IP)")
-    print("="*60)
-    async with httpx.AsyncClient(timeout=30, follow_redirects=False) as c:
-        login_data = {
-            "url": f"{SOFURRY}/login",
-            "email": SF_USER,
-            "password": SF_PASS,
-            "then": f"{SOFURRY}/u/{SF_DISPLAY}/gallery",
-        }
-        resp = await c.get(CF_URL, headers={
-            "x-proxy-key": CF_KEY,
-            "x-proxy-login": json.dumps(login_data),
-            "User-Agent": UA,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Referer": "https://sofurry.com/",
-        })
-        final = resp.headers.get("x-final-url", "")
-        session_cookies = resp.headers.get("x-session-cookies", "")
-        print(f"  Status: {resp.status_code}")
-        print(f"  Final URL: {final}")
-        print(f"  X-Session-Cookies: {session_cookies[:80]}...")
-        count = check_gallery_html(resp.text, "TEST 5: Login sequence (same IP)")
-
-        # Dump HTML
-        with open("/tmp/sf_gallery_t5.html", "w") as f:
-            f.write(resp.text)
-        print(f"\n  Full HTML saved to /tmp/sf_gallery_t5.html")
-
-        # Key diagnostics
-        html = resp.text
-        print("\n  --- Links containing /s/ (submissions) ---")
-        s_links = re.findall(r'href="[^"]*(/s/[^"]*)"', html)
-        for link in s_links[:10]:
-            print(f"    {link}")
-        if not s_links:
-            print("    (none)")
-        print("\n  --- Any 'login'/'logout' text ---")
-        for m in re.finditer(r'.{0,30}(?:login|logout|sign.?in|sign.?out).{0,30}', html, re.IGNORECASE):
-            print(f"    ...{m.group(0).strip()}...")
-
-
-async def test_gallery_unauthenticated():
-    """Test 4: Gallery through proxy but without login."""
-    print("\n" + "="*60)
-    print("  TEST 4: Gallery via proxy (no login)")
-    print("="*60)
-    async with httpx.AsyncClient(timeout=30, follow_redirects=False) as c:
-        resp = await proxy_request(c, "GET",
-                                   f"{SOFURRY}/u/{SF_DISPLAY}/gallery")
-        check_gallery_html(resp.text, "TEST 4: Unauthenticated gallery via proxy")
+def section(title):
+    print(f"\n{'='*60}")
+    print(f"  {title}")
+    print(f"{'='*60}")
 
 
 async def main():
-    print("SoFurry Proxy Test Script")
+    print("SoFurry Exploration Script")
     print(f"  SF User:    {SF_USER}")
     print(f"  SF Display: {SF_DISPLAY}")
     print(f"  CF Worker:  {CF_URL}")
-    print(f"  CF Key:     {'*' * len(CF_KEY) if CF_KEY else '(not set)'}")
 
     if not all([SF_USER, SF_PASS, SF_DISPLAY, CF_URL, CF_KEY]):
         print("\nERROR: Missing required env vars.")
-        print("Set: SF_USERNAME, SF_PASSWORD, SF_DISPLAY_NAME, CF_WORKER_URL, CF_WORKER_KEY")
         sys.exit(1)
 
-    await test_direct()
-    await test_gallery_unauthenticated()
-    await test_login_sequence()
+    async with httpx.AsyncClient(timeout=30, follow_redirects=False) as c:
 
-    print("\n" + "="*60)
-    print("  ALL TESTS COMPLETE")
-    print("="*60)
-    print("\nIf Test 2 shows submissions but Test 1 doesn't,")
-    print("the chain approach works and the current code should fix the issue.")
-    print("\nIf neither shows submissions, we need a different approach")
-    print("(e.g., fixed-IP proxy or Cloudflare Tunnel).")
+        # ── PART 1: Analyze gallery page structure ──────────────
+        section("PART 1: Gallery page structure analysis")
+
+        resp = await proxy_get(c, f"{SOFURRY}/u/{SF_DISPLAY}/gallery")
+        html = resp.text
+        print(f"  Page size: {len(html)} chars")
+
+        # Check for Turbo Frames (lazy-loaded content)
+        frames = re.findall(r'<turbo-frame[^>]*>', html)
+        if frames:
+            print(f"\n  TURBO FRAMES FOUND ({len(frames)}):")
+            for f in frames:
+                print(f"    {f}")
+        else:
+            print("\n  No <turbo-frame> tags found")
+
+        # Check for data-turbo-frame attributes
+        turbo_attrs = re.findall(r'data-turbo-frame="([^"]*)"', html)
+        if turbo_attrs:
+            print(f"\n  data-turbo-frame attributes: {turbo_attrs}")
+
+        # Check for any AJAX/fetch patterns in inline scripts
+        print("\n  Inline scripts mentioning fetch/ajax/load/turbo:")
+        for m in re.finditer(r'<script[^>]*>(.*?)</script>', html, re.DOTALL):
+            script = m.group(1)
+            if any(kw in script.lower() for kw in ['fetch(', 'ajax', 'xmlhttp', 'turbo', 'gallery', 'submission', 'browse']):
+                print(f"    {script[:200].strip()}")
+
+        # Check for external JS files
+        js_files = re.findall(r'<script[^>]*src="([^"]*)"[^>]*>', html)
+        print(f"\n  External JS files ({len(js_files)}):")
+        for f in js_files[:10]:
+            print(f"    {f}")
+
+        # Look for the main content area
+        print("\n  Looking for content/gallery area...")
+        # Find the section between gallery link and footer
+        content_patterns = [
+            r'class="[^"]*gallery[^"]*"',
+            r'class="[^"]*submissions?[^"]*"',
+            r'class="[^"]*artworks?[^"]*"',
+            r'class="[^"]*grid[^"]*"',
+            r'class="[^"]*content[^"]*"',
+            r'id="[^"]*gallery[^"]*"',
+            r'id="[^"]*content[^"]*"',
+            r'data-controller="[^"]*gallery[^"]*"',
+            r'data-controller="[^"]*browse[^"]*"',
+        ]
+        for pat in content_patterns:
+            matches = re.findall(pat, html, re.IGNORECASE)
+            if matches:
+                print(f"    Found: {matches}")
+
+        # Dump the middle section of the page (where content would be)
+        mid = len(html) // 2
+        print(f"\n  Middle of page (chars {mid-500} to {mid+500}):")
+        print(html[mid-500:mid+500])
+
+        # ── PART 2: Try API endpoints ──────────────────────────
+        section("PART 2: API endpoint exploration")
+
+        api_endpoints = [
+            # JSON API patterns
+            (f"{SOFURRY}/ui/user/{SF_DISPLAY}", "application/json"),
+            (f"{SOFURRY}/ui/browse?by={SF_DISPLAY}", "application/json"),
+            (f"{SOFURRY}/ui/browse?user={SF_DISPLAY}", "application/json"),
+            (f"{SOFURRY}/ui/gallery/{SF_DISPLAY}", "application/json"),
+            (f"{SOFURRY}/api/browse?by={SF_DISPLAY}", "application/json"),
+            # Gallery with JSON accept
+            (f"{SOFURRY}/u/{SF_DISPLAY}/gallery", "application/json"),
+            # Turbo stream format
+            (f"{SOFURRY}/u/{SF_DISPLAY}/gallery", "text/vnd.turbo-stream.html"),
+            # Old API
+            ("https://api2.sofurry.com/browse/all?by={}&count=30".format(SF_DISPLAY), "application/json"),
+            # Other possible patterns
+            (f"{SOFURRY}/browse?by={SF_DISPLAY}", None),
+            (f"{SOFURRY}/browse/user/{SF_DISPLAY}", None),
+            (f"{SOFURRY}/browse?filter=user:{SF_DISPLAY}", None),
+        ]
+
+        for url, accept in api_endpoints:
+            try:
+                extra = {}
+                if accept:
+                    extra["Accept"] = accept
+                resp = await proxy_get(c, url, extra)
+                body = resp.text[:300]
+                content_type = resp.headers.get("content-type", "")
+
+                # Check if it looks like JSON
+                is_json = False
+                try:
+                    data = resp.json()
+                    is_json = True
+                except Exception:
+                    pass
+
+                # Check if it has submission links
+                has_subs = bool(re.search(r'/s/[A-Za-z0-9]', body))
+
+                status_icon = "✓" if resp.status_code == 200 else "✗"
+                detail = ""
+                if is_json:
+                    detail = f" [JSON: {list(data.keys()) if isinstance(data, dict) else f'array[{len(data)}]'}]"
+                elif has_subs:
+                    detail = " [HAS /s/ LINKS!]"
+
+                print(f"  {status_icon} {resp.status_code} {url}")
+                if accept:
+                    print(f"         Accept: {accept}")
+                print(f"         Type: {content_type} | Size: {len(resp.text)}{detail}")
+                if is_json:
+                    print(f"         Data: {resp.text[:300]}")
+                elif has_subs:
+                    print(f"         Content: {body}")
+                elif resp.status_code == 200 and len(resp.text) < 5000:
+                    print(f"         Content: {body}")
+
+            except Exception as e:
+                print(f"  ✗ ERROR {url}: {e}")
+
+        # ── PART 3: Login then try API endpoints ───────────────
+        section("PART 3: Authenticated API exploration")
+        print("  (Login + fetch in one Worker invocation)")
+
+        auth_endpoints = [
+            f"{SOFURRY}/u/{SF_DISPLAY}/gallery",
+            f"{SOFURRY}/u/{SF_DISPLAY}",
+            f"{SOFURRY}/",  # Homepage after login
+        ]
+
+        for url in auth_endpoints:
+            try:
+                resp = await proxy_login_and_get(c, url)
+                html = resp.text
+                final = resp.headers.get("x-final-url", "")
+                s_links = re.findall(r'/s/([A-Za-z0-9]+)', html)
+
+                print(f"\n  URL: {url}")
+                print(f"  Final: {final}")
+                print(f"  Size: {len(html)} | /s/ links: {len(s_links)}")
+                if s_links:
+                    print(f"  SUBMISSIONS FOUND: {s_links[:10]}")
+
+                # Check for auth indicators
+                has_logout = bool(re.search(r'logout|sign.?out', html, re.IGNORECASE))
+                has_login = bool(re.search(r'href="[^"]*login"', html))
+                has_account = bool(re.search(r'href="[^"]*account|href="[^"]*settings|href="[^"]*profile/edit', html, re.IGNORECASE))
+                print(f"  Auth: logout={has_logout}, login_link={has_login}, account={has_account}")
+
+                # Check for username in nav/header
+                username_in_nav = bool(re.search(rf'>{re.escape(SF_DISPLAY)}<', html))
+                print(f"  Username in HTML: {username_in_nav}")
+
+                # Dump page structure for homepage (shows if auth worked)
+                if url.endswith("/"):
+                    print(f"  First 1000 chars:")
+                    print(html[:1000])
+
+            except Exception as e:
+                print(f"  ERROR {url}: {e}")
+
+        # ── PART 4: Check if SF_USERNAME is email ──────────────
+        section("PART 4: Credential check")
+        print(f"  SF_USERNAME value: {SF_USER}")
+        if "@" in SF_USER:
+            print(f"  Looks like an email ✓")
+        else:
+            print(f"  WARNING: Does NOT look like an email!")
+            print(f"  SoFurry login form expects 'email', not username.")
+            print(f"  If this is your display name, login will fail silently.")
+            print(f"  Set SF_USERNAME to your SoFurry email address.")
+
+    print(f"\n{'='*60}")
+    print(f"  EXPLORATION COMPLETE")
+    print(f"{'='*60}")
 
 
 if __name__ == "__main__":
