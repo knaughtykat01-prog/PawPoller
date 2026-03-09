@@ -335,16 +335,21 @@ class SoFurryClient:
 
                 if not ids_on_page:
                     if page == 1:
-                        # Log a snippet of the HTML to help debug
-                        logger.warning(
-                            "SF gallery page has no /s/ links (%d chars). First 500 chars: %s",
-                            len(html), html[:500],
-                        )
+                        # Check for authentication indicators
+                        has_logout = 'logout' in html.lower()
+                        has_username = self.display_name.lower() in html.lower()
+                        has_login_link = 'href="/login"' in html or "href='/login'" in html
+                        # Search for SFW/NSFW toggle
+                        sfw_match = re.search(r'(?i)(sfw|nsfw)[^<]{0,100}', html)
+                        sfw_context = sfw_match.group(0)[:80] if sfw_match else "not found"
+
                         logger.warning(
                             "SF gallery page has no /s/ links (%d chars). "
-                            "Submissions may be hidden (SFW mode?) or page structure changed.",
-                            len(html),
+                            "Auth indicators: logout=%s, username=%s, login_link=%s, sfw_context=%s",
+                            len(html), has_logout, has_username, has_login_link, sfw_context,
                         )
+                        # Log more of the page — look for nav bar / header area
+                        logger.warning("SF gallery first 1500 chars: %s", html[:1500])
                     break
 
                 # Build a map of ID → title from the HTML.
