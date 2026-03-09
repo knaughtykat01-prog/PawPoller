@@ -15,6 +15,7 @@ response with redirect: 'manual' so httpx can handle redirects itself
 
 from __future__ import annotations
 import logging
+from urllib.parse import urlparse
 
 import httpx
 
@@ -27,13 +28,23 @@ class CloudflareProxyTransport(httpx.AsyncBaseTransport):
     def __init__(self, worker_url: str, proxy_key: str):
         self.worker_url = worker_url.rstrip("/")
         self.proxy_key = proxy_key
+        self._worker_host = urlparse(worker_url).netloc
         self._inner = httpx.AsyncHTTPTransport(retries=2)
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         target_url = str(request.url)
 
-        # Build new headers: keep originals, add proxy headers
-        headers = [(k, v) for k, v in request.headers.raw]
+        # Build new headers: keep originals but replace Host with worker host
+        # so Cloudflare's edge routes the request to our Worker, not the
+        # original site.
+        headers = []
+        for k, v in request.headers.raw:
+            if k.lower() == b"host":
+                headers.append((b"host", self._worker_host.encode()))
+            else:
+                headers.append((k, v))
+
+        # Add proxy-specific headers
         headers.append((b"x-proxy-key", self.proxy_key.encode()))
         headers.append((b"x-target-url", target_url.encode()))
 
