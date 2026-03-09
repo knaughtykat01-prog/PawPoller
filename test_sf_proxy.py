@@ -236,6 +236,50 @@ async def test_chained():
             print(f"    ...{m.group(0).strip()}...")
 
 
+async def test_login_sequence():
+    """Test 5: Full login sequence in one Worker invocation (x-proxy-login)."""
+    print("\n" + "="*60)
+    print("  TEST 5: Login sequence (GET+POST+gallery, ALL same IP)")
+    print("="*60)
+    async with httpx.AsyncClient(timeout=30, follow_redirects=False) as c:
+        login_data = {
+            "url": f"{SOFURRY}/login",
+            "email": SF_USER,
+            "password": SF_PASS,
+            "then": f"{SOFURRY}/u/{SF_DISPLAY}/gallery",
+        }
+        resp = await c.get(CF_URL, headers={
+            "x-proxy-key": CF_KEY,
+            "x-proxy-login": json.dumps(login_data),
+            "User-Agent": UA,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Referer": "https://sofurry.com/",
+        })
+        final = resp.headers.get("x-final-url", "")
+        session_cookies = resp.headers.get("x-session-cookies", "")
+        print(f"  Status: {resp.status_code}")
+        print(f"  Final URL: {final}")
+        print(f"  X-Session-Cookies: {session_cookies[:80]}...")
+        count = check_gallery_html(resp.text, "TEST 5: Login sequence (same IP)")
+
+        # Dump HTML
+        with open("/tmp/sf_gallery_t5.html", "w") as f:
+            f.write(resp.text)
+        print(f"\n  Full HTML saved to /tmp/sf_gallery_t5.html")
+
+        # Key diagnostics
+        html = resp.text
+        print("\n  --- Links containing /s/ (submissions) ---")
+        s_links = re.findall(r'href="[^"]*(/s/[^"]*)"', html)
+        for link in s_links[:10]:
+            print(f"    {link}")
+        if not s_links:
+            print("    (none)")
+        print("\n  --- Any 'login'/'logout' text ---")
+        for m in re.finditer(r'.{0,30}(?:login|logout|sign.?in|sign.?out).{0,30}', html, re.IGNORECASE):
+            print(f"    ...{m.group(0).strip()}...")
+
+
 async def test_gallery_unauthenticated():
     """Test 4: Gallery through proxy but without login."""
     print("\n" + "="*60)
@@ -261,8 +305,7 @@ async def main():
 
     await test_direct()
     await test_gallery_unauthenticated()
-    await test_separate_requests()
-    await test_chained()
+    await test_login_sequence()
 
     print("\n" + "="*60)
     print("  ALL TESTS COMPLETE")
