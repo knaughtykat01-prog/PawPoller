@@ -108,29 +108,42 @@ const App = {
         this._pollStatusInterval = setInterval(() => this._updatePollStatus(), 60000);
         this._initPollProgressBar();
 
-        /* Hamburger menu — create an overlay backdrop for mobile sidebar */
+        /* Hamburger menu — overlay is now in HTML, just query it */
         const sidebar = document.querySelector('.sidebar');
-        const overlay = document.createElement('div');
-        overlay.className = 'sidebar-overlay';
-        overlay.id = 'sidebar-overlay';
-        document.body.appendChild(overlay);
+        const overlay = document.getElementById('sidebar-overlay');
+
+        const closeSidebar = () => {
+            sidebar?.classList.remove('open');
+            overlay?.classList.remove('open');
+        };
+        const openSidebar = () => {
+            sidebar?.classList.add('open');
+            overlay?.classList.add('open');
+        };
+
         /* Toggle sidebar open/closed when the hamburger icon is tapped */
         document.getElementById('hamburger-btn')?.addEventListener('click', () => {
-            sidebar?.classList.toggle('open');
-            overlay.classList.toggle('open');
+            if (sidebar?.classList.contains('open')) closeSidebar();
+            else openSidebar();
         });
 
         /* Tapping the translucent overlay closes the sidebar */
-        overlay.addEventListener('click', () => {
-            sidebar?.classList.remove('open');
-            overlay.classList.remove('open');
-        });
+        overlay?.addEventListener('click', closeSidebar);
 
         /* Close sidebar on nav click (mobile) so the page behind is visible */
         document.querySelectorAll('.nav-link').forEach(link => {
-            link.addEventListener('click', () => {
-                sidebar?.classList.remove('open');
-                overlay.classList.remove('open');
+            link.addEventListener('click', closeSidebar);
+        });
+
+        /* Bottom nav "Platforms" button opens the sidebar */
+        document.getElementById('bottom-nav-menu')?.addEventListener('click', openSidebar);
+
+        /* Accordion nav groups — toggle .expanded on click (mobile).
+           On desktop the groups are always visible via CSS. */
+        document.querySelectorAll('[data-nav-toggle]').forEach(toggle => {
+            toggle.addEventListener('click', () => {
+                const group = toggle.closest('.nav-group');
+                if (group) group.classList.toggle('expanded');
             });
         });
 
@@ -233,18 +246,37 @@ const App = {
         const hash = window.location.hash.slice(1) || '/';
         const parts = hash.split('/').filter(Boolean);
 
-        /* Full-screen pages (login, loading) hide the sidebar and remove left margin */
+        /* Full-screen pages (login, loading) hide the sidebar, bottom nav, and remove left margin */
         const isFullScreen = parts[0] === 'login' || parts[0] === 'loading';
         const sidebar = document.querySelector('.sidebar');
         const main = document.getElementById('app');
+        const bottomNav = document.getElementById('bottom-nav');
         if (sidebar) sidebar.style.display = isFullScreen ? 'none' : '';
         if (main) main.style.marginLeft = isFullScreen ? '0' : '';
+        if (bottomNav) bottomNav.style.display = isFullScreen ? 'none' : '';
 
         /* Highlight the active nav link in the sidebar */
         document.querySelectorAll('.nav-link').forEach(link => {
             link.classList.toggle('active', link.getAttribute('href') === '#' + hash ||
                 (hash === '/' && link.getAttribute('href') === '#/'));
         });
+
+        /* Auto-expand the nav-group containing the active link (mobile accordion) */
+        document.querySelectorAll('.nav-group').forEach(group => {
+            const hasActive = group.querySelector('.nav-link.active');
+            if (hasActive) {
+                group.classList.add('expanded');
+            }
+        });
+
+        /* Update bottom nav active state */
+        if (bottomNav) {
+            bottomNav.querySelectorAll('.bottom-nav-item[data-page]').forEach(item => {
+                const page = item.dataset.page;
+                item.classList.toggle('active', page === parts[0] ||
+                    (page === 'overview' && parts[0] === 'overview'));
+            });
+        }
 
         /* Destroy old Chart.js instances to free canvas memory */
         Charts.destroyAll();

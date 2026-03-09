@@ -4,6 +4,30 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [1.5.0] - 2026-03-09
+
+### Added
+- **Mobile-first UI overhaul** — comprehensive responsive redesign for phone and tablet use
+- **Collapsible sidebar navigation** — platform sections collapse into accordion groups on mobile (<=768px), reducing 30+ links to manageable groups that expand on tap
+- **Bottom navigation bar** — fixed bottom bar on mobile with quick access to Overview, Platforms (opens sidebar), Analytics, and Settings
+- **Table-to-card transformation** — all 9 platform submission tables transform into stacked card layouts on mobile using `data-label` attributes for inline column headers
+- **Safe area support** — `viewport-fit=cover` and `env(safe-area-inset-*)` CSS for notched devices (iPhone etc.)
+- **Touch optimisation** — `touch-action: manipulation` on all interactive elements, `-webkit-tap-highlight-color: transparent`, 44px minimum touch targets
+- **Responsive chart sizing** — chart heights reduce from 280px to 220px/200px at tablet/phone breakpoints
+- **Mobile-friendly settings** — form inputs stack vertically with full-width fields and 44px min-height on mobile
+- **Wider sidebar on mobile** — sidebar expands to 280px (up from 220px) when opened as overlay for easier tap targets
+- **Date range buttons** — range buttons flex-fill and centre-align on mobile for even spacing
+
+### Changed
+- Sidebar overlay element moved from JS-created to HTML for better bottom-nav integration
+- Stat cards use 10px gap on mobile (down from 16px) and single-column at 480px
+- Pinned cards use smaller flex-basis (160px/140px) for better mobile scrolling
+- Top list titles truncate at 55vw/60vw on mobile for consistent layout
+- Comment cards reduce padding on mobile for space efficiency
+- Growth rate values use smaller font (14px) at 480px
+
+---
+
 ## [1.4.2] - 2026-03-09
 
 ### Security

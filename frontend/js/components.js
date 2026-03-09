@@ -106,19 +106,19 @@ const Components = {
         }
         const rows = submissions.map(s => `
             <tr>
-                <td>${s.thumb_url ? `<img src="${Utils.thumbUrl(s.thumb_url)}" class="thumb-cell" loading="eager">` : ''}</td>
-                <td><a href="#/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
-                <td>${Utils.escapeHtml(s.type_name || '--')}</td>
-                <td>${Utils.escapeHtml(s.rating_name || '--')}</td>
-                <td>${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
-                <td>${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
-                <td>${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
-                <td>${Utils.formatDate(s.create_datetime)}</td>
+                <td class="mobile-hide" data-label="">${s.thumb_url ? `<img src="${Utils.thumbUrl(s.thumb_url)}" class="thumb-cell" loading="eager">` : ''}</td>
+                <td data-label="Title"><a href="#/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Type">${Utils.escapeHtml(s.type_name || '--')}</td>
+                <td data-label="Rating">${Utils.escapeHtml(s.rating_name || '--')}</td>
+                <td data-label="Views">${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
+                <td data-label="Faves">${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
+                <td data-label="Comments">${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td data-label="Created">${Utils.formatDate(s.create_datetime)}</td>
             </tr>
         `).join('');
 
         return `
-            <table class="data-table" id="submissions-table">
+            <table class="data-table" id="submissions-table" data-mobile-cards>
                 <thead>
                     <tr>
                         <th style="width:60px"></th>
@@ -447,19 +447,19 @@ const Components = {
         }
         const rows = submissions.map(s => `
             <tr>
-                <td>${s.thumbnail_url ? `<img src="${Utils.faThumbUrl(s.thumbnail_url)}" class="thumb-cell" loading="eager">` : ''}</td>
-                <td><a href="#/fa/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
-                <td>${Utils.escapeHtml(s.category || '--')}</td>
-                <td>${Utils.escapeHtml(s.rating || '--')}</td>
-                <td>${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
-                <td>${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
-                <td>${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
-                <td>${Utils.formatDate(s.posted_at)}</td>
+                <td class="mobile-hide" data-label="">${s.thumbnail_url ? `<img src="${Utils.faThumbUrl(s.thumbnail_url)}" class="thumb-cell" loading="eager">` : ''}</td>
+                <td data-label="Title"><a href="#/fa/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Category">${Utils.escapeHtml(s.category || '--')}</td>
+                <td data-label="Rating">${Utils.escapeHtml(s.rating || '--')}</td>
+                <td data-label="Views">${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
+                <td data-label="Faves">${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
+                <td data-label="Comments">${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td data-label="Posted">${Utils.formatDate(s.posted_at)}</td>
             </tr>
         `).join('');
 
         return `
-            <table class="data-table" id="fa-submissions-table">
+            <table class="data-table" id="fa-submissions-table" data-mobile-cards>
                 <thead>
                     <tr>
                         <th style="width:60px"></th>
@@ -550,19 +550,19 @@ const Components = {
         }
         const rows = submissions.map(s => `
             <tr>
-                <td>${s.thumbnail_url ? `<img src="${Utils.escapeHtml(s.thumbnail_url)}" class="thumb-cell" loading="eager">` : ''}</td>
-                <td><a href="#/ws/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
-                <td>${Utils.escapeHtml(s.subtype || '--')}</td>
-                <td>${Utils.escapeHtml(s.rating || '--')}</td>
-                <td>${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
-                <td>${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
-                <td>${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
-                <td>${Utils.formatDate(s.posted_at)}</td>
+                <td class="mobile-hide" data-label="">${s.thumbnail_url ? `<img src="${Utils.escapeHtml(s.thumbnail_url)}" class="thumb-cell" loading="eager">` : ''}</td>
+                <td data-label="Title"><a href="#/ws/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Type">${Utils.escapeHtml(s.subtype || '--')}</td>
+                <td data-label="Rating">${Utils.escapeHtml(s.rating || '--')}</td>
+                <td data-label="Views">${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
+                <td data-label="Faves">${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
+                <td data-label="Comments">${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td data-label="Posted">${Utils.formatDate(s.posted_at)}</td>
             </tr>
         `).join('');
 
         return `
-            <table class="data-table" id="ws-submissions-table">
+            <table class="data-table" id="ws-submissions-table" data-mobile-cards>
                 <thead>
                     <tr>
                         <th style="width:60px"></th>
@@ -636,19 +636,19 @@ const Components = {
         }
         const rows = submissions.map(s => `
             <tr>
-                <td>${s.thumbnail_url ? `<img src="${Utils.escapeHtml(s.thumbnail_url)}" class="thumb-cell" loading="eager">` : ''}</td>
-                <td><a href="#/sf/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
-                <td>${Utils.escapeHtml(s.content_type || '--')}</td>
-                <td>${Utils.escapeHtml(s.rating || '--')}</td>
-                <td>${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
-                <td>${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
-                <td>${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
-                <td>${Utils.formatDate(s.posted_at)}</td>
+                <td class="mobile-hide" data-label="">${s.thumbnail_url ? `<img src="${Utils.escapeHtml(s.thumbnail_url)}" class="thumb-cell" loading="eager">` : ''}</td>
+                <td data-label="Title"><a href="#/sf/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Type">${Utils.escapeHtml(s.content_type || '--')}</td>
+                <td data-label="Rating">${Utils.escapeHtml(s.rating || '--')}</td>
+                <td data-label="Views">${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
+                <td data-label="Likes">${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
+                <td data-label="Comments">${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td data-label="Posted">${Utils.formatDate(s.posted_at)}</td>
             </tr>
         `).join('');
 
         return `
-            <table class="data-table" id="sf-submissions-table">
+            <table class="data-table" id="sf-submissions-table" data-mobile-cards>
                 <thead>
                     <tr>
                         <th style="width:60px"></th>
@@ -714,19 +714,19 @@ const Components = {
         }
         const rows = submissions.map(s => `
             <tr>
-                <td><a href="#/sqw/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
-                <td>${Utils.escapeHtml(s.fandom || '--')}</td>
-                <td>${Utils.escapeHtml(s.rating || '--')}</td>
-                <td>${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
-                <td>${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
-                <td>${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
-                <td>${Utils.formatNumber(s.bookmarks_count || 0)}</td>
-                <td>${Utils.formatDate(s.posted_at)}</td>
+                <td data-label="Title"><a href="#/sqw/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Fandom">${Utils.escapeHtml(s.fandom || '--')}</td>
+                <td data-label="Rating">${Utils.escapeHtml(s.rating || '--')}</td>
+                <td data-label="Hits">${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
+                <td data-label="Kudos">${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
+                <td data-label="Comments">${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td data-label="Bookmarks">${Utils.formatNumber(s.bookmarks_count || 0)}</td>
+                <td data-label="Posted">${Utils.formatDate(s.posted_at)}</td>
             </tr>
         `).join('');
 
         return `
-            <table class="data-table" id="sqw-submissions-table">
+            <table class="data-table" id="sqw-submissions-table" data-mobile-cards>
                 <thead>
                     <tr>
                         <th data-sort="title">Title</th>
@@ -792,19 +792,19 @@ const Components = {
         }
         const rows = submissions.map(s => `
             <tr>
-                <td><a href="#/ao3/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
-                <td>${Utils.escapeHtml(s.fandom || '--')}</td>
-                <td>${Utils.escapeHtml(s.rating || '--')}</td>
-                <td>${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
-                <td>${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
-                <td>${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
-                <td>${Utils.formatNumber(s.bookmarks_count || 0)}</td>
-                <td>${Utils.formatDate(s.posted_at)}</td>
+                <td data-label="Title"><a href="#/ao3/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Fandom">${Utils.escapeHtml(s.fandom || '--')}</td>
+                <td data-label="Rating">${Utils.escapeHtml(s.rating || '--')}</td>
+                <td data-label="Hits">${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
+                <td data-label="Kudos">${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
+                <td data-label="Comments">${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td data-label="Bookmarks">${Utils.formatNumber(s.bookmarks_count || 0)}</td>
+                <td data-label="Posted">${Utils.formatDate(s.posted_at)}</td>
             </tr>
         `).join('');
 
         return `
-            <table class="data-table" id="ao3-submissions-table">
+            <table class="data-table" id="ao3-submissions-table" data-mobile-cards>
                 <thead>
                     <tr>
                         <th data-sort="title">Title</th>
@@ -886,19 +886,19 @@ const Components = {
         }
         const rows = submissions.map(s => `
             <tr>
-                <td><a href="#/da/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
-                <td>${Utils.escapeHtml(s.category || '--')}</td>
-                <td>${Utils.escapeHtml(s.rating || '--')}</td>
-                <td>${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
-                <td>${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
-                <td>${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
-                <td>${Utils.formatNumber(s.downloads || 0)} ${Utils.formatDelta(s.downloads_delta)}</td>
-                <td>${Utils.formatDate(s.posted_at)}</td>
+                <td data-label="Title"><a href="#/da/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Category">${Utils.escapeHtml(s.category || '--')}</td>
+                <td data-label="Rating">${Utils.escapeHtml(s.rating || '--')}</td>
+                <td data-label="Views">${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>
+                <td data-label="Favourites">${Utils.formatNumber(s.favorites_count)} ${Utils.formatDelta(s.faves_delta)}</td>
+                <td data-label="Comments">${Utils.formatNumber(s.comments_count)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td data-label="Downloads">${Utils.formatNumber(s.downloads || 0)} ${Utils.formatDelta(s.downloads_delta)}</td>
+                <td data-label="Posted">${Utils.formatDate(s.posted_at)}</td>
             </tr>
         `).join('');
 
         return `
-            <table class="data-table" id="da-submissions-table">
+            <table class="data-table" id="da-submissions-table" data-mobile-cards>
                 <thead>
                     <tr>
                         <th data-sort="title">Title</th>
@@ -984,17 +984,17 @@ const Components = {
         }
         const rows = submissions.map(s => `
             <tr>
-                <td><a href="#/wp/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
-                <td>${Utils.formatNumber(s.reads || s.views || 0)} ${Utils.formatDelta(s.reads_delta || s.views_delta)}</td>
-                <td>${Utils.formatNumber(s.votes || s.favorites_count || 0)} ${Utils.formatDelta(s.votes_delta || s.faves_delta)}</td>
-                <td>${Utils.formatNumber(s.comments_count || 0)} ${Utils.formatDelta(s.comments_delta)}</td>
-                <td>${Utils.formatNumber(s.num_lists || 0)} ${Utils.formatDelta(s.lists_delta)}</td>
-                <td>${Utils.formatDate(s.posted_at)}</td>
+                <td data-label="Title"><a href="#/wp/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Reads">${Utils.formatNumber(s.reads || s.views || 0)} ${Utils.formatDelta(s.reads_delta || s.views_delta)}</td>
+                <td data-label="Votes">${Utils.formatNumber(s.votes || s.favorites_count || 0)} ${Utils.formatDelta(s.votes_delta || s.faves_delta)}</td>
+                <td data-label="Comments">${Utils.formatNumber(s.comments_count || 0)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td data-label="Lists">${Utils.formatNumber(s.num_lists || 0)} ${Utils.formatDelta(s.lists_delta)}</td>
+                <td data-label="Posted">${Utils.formatDate(s.posted_at)}</td>
             </tr>
         `).join('');
 
         return `
-            <table class="data-table" id="wp-submissions-table">
+            <table class="data-table" id="wp-submissions-table" data-mobile-cards>
                 <thead>
                     <tr>
                         <th data-sort="title">Title</th>
@@ -1080,17 +1080,17 @@ const Components = {
         }
         const rows = submissions.map(s => `
             <tr>
-                <td><a href="#/ik/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
-                <td>${Utils.escapeHtml(s.content_type || 'image')}</td>
-                <td>${Utils.formatNumber(s.likes || 0)} ${Utils.formatDelta(s.likes_delta)}</td>
-                <td>${Utils.formatNumber(s.comments_count || 0)} ${Utils.formatDelta(s.comments_delta)}</td>
-                <td>${Utils.formatNumber(s.reshares || 0)} ${Utils.formatDelta(s.reshares_delta)}</td>
-                <td>${Utils.formatDate(s.posted_at)}</td>
+                <td data-label="Title"><a href="#/ik/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Type">${Utils.escapeHtml(s.content_type || 'image')}</td>
+                <td data-label="Likes">${Utils.formatNumber(s.likes || 0)} ${Utils.formatDelta(s.likes_delta)}</td>
+                <td data-label="Comments">${Utils.formatNumber(s.comments_count || 0)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td data-label="Reshares">${Utils.formatNumber(s.reshares || 0)} ${Utils.formatDelta(s.reshares_delta)}</td>
+                <td data-label="Posted">${Utils.formatDate(s.posted_at)}</td>
             </tr>
         `).join('');
 
         return `
-            <table class="data-table" id="ik-submissions-table">
+            <table class="data-table" id="ik-submissions-table" data-mobile-cards>
                 <thead>
                     <tr>
                         <th data-sort="title">Title</th>
@@ -1177,16 +1177,16 @@ const Components = {
         }
         const rows = fans.map((f, i) => `
             <tr>
-                <td style="font-weight:600;color:var(--text-muted)">#${i + 1}</td>
-                <td>${Utils.escapeHtml(f.username)}</td>
-                <td>${f.fave_count || 0}</td>
-                <td>${f.comment_count || 0}</td>
-                <td style="font-weight:600;color:var(--accent)">${f.score || 0}</td>
+                <td data-label="#" style="font-weight:600;color:var(--text-muted)">#${i + 1}</td>
+                <td data-label="Username">${Utils.escapeHtml(f.username)}</td>
+                <td data-label="Faves">${f.fave_count || 0}</td>
+                <td data-label="Comments">${f.comment_count || 0}</td>
+                <td data-label="Score" style="font-weight:600;color:var(--accent)">${f.score || 0}</td>
             </tr>
         `).join('');
 
         return `
-            <table class="data-table">
+            <table class="data-table" data-mobile-cards>
                 <thead>
                     <tr>
                         <th style="width:40px">#</th><th>Username</th><th>Faves</th><th>Comments</th><th>Score</th>

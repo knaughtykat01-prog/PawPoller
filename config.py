@@ -223,7 +223,7 @@ WP_REQUEST_DELAY_SECONDS = 1.0  # Rate-limit delay between Wattpad API requests
 IK_REQUEST_DELAY_SECONDS = 1.0  # Rate-limit delay between Itaku API requests
 
 # ── App metadata ──
-APP_VERSION = "1.4.1"
+APP_VERSION = "1.5.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

@@ -26,6 +26,7 @@
     --sidebar-w: 220px;         /* Fixed sidebar width; also used as main-content left margin */
     --radius: 8px;              /* Default border-radius for cards, inputs, buttons */
     --shadow: 0 2px 8px rgba(0,0,0,0.3); /* Subtle drop shadow for elevated card surfaces */
+    --bottom-nav-h: 56px;  /* Height of the mobile bottom navigation bar */
 }
 
 /* Light theme overrides: applied when data-theme="light" is set on <html>.
@@ -50,8 +51,15 @@
     --shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
+/* Smooth scrolling and prevent iOS text size inflation */
+html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+}
+
 /* Body: flex row layout (sidebar + main) filling at least the full viewport
-   height. System font stack for native-feeling typography on all platforms. */
+   height. System font stack for native-feeling typography on all platforms.
+   -webkit-tap-highlight-color removes the blue flash on mobile taps. */
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     background: var(--bg-primary);
@@ -59,6 +67,8 @@ body {
     display: flex;
     min-height: 100vh;
     line-height: 1.5;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
 }
 
 /* ── Sidebar ──────────────────────────────────────────────── */
@@ -891,10 +901,6 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
 }
-@media (max-width: 768px) {
-    .poll-progress-bar { left: 0; }
-}
-
 /* ── Detail Page ──────────────────────────────────────────── */
 /* Submission detail page header: flex row with a thumbnail image on
    the left and metadata (title, creator, date, stats) on the right.
@@ -1006,20 +1012,22 @@ body {
 }
 
 /* -- 768px breakpoint: mobile layout --
-   - Sidebar becomes a slide-in overlay (translated off-screen left by
-     default; .open class slides it back via transform transition)
-   - Hamburger button becomes visible (display:block) to toggle sidebar
-   - Main content loses its left margin and takes full viewport width
-   - Buttons gain 44px min-height for touch-friendly tap targets
-   - Nav links get extra padding for easier finger tapping
-   - Page header, toolbar, and search input stack vertically */
+   Major mobile overhaul:
+   - Collapsible sidebar with accordion platform groups
+   - Bottom navigation bar for quick access
+   - Tables transform into stacked cards
+   - Touch-friendly sizing throughout
+   - Safe area support for notched devices */
 @media (max-width: 768px) {
+    /* Hamburger visible, sidebar header becomes flex row */
     .hamburger-btn { display: block; }
     .sidebar-header { display: flex; align-items: center; gap: 8px; }
 
+    /* Sidebar slides off-screen left; .open class brings it back */
     .sidebar {
         transform: translateX(-100%);
         transition: transform 0.25s ease;
+        width: 280px;
     }
     .sidebar.open {
         transform: translateX(0);
@@ -1028,51 +1036,224 @@ body {
         display: block;
     }
 
+    /* Nav-group accordion: collapsed by default on mobile */
+    .nav-group-links {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.25s ease;
+    }
+    .nav-group.expanded .nav-group-links {
+        max-height: 200px;
+    }
+    .nav-group .nav-section {
+        padding: 14px 12px 6px;
+    }
+
+    /* Bottom nav bar visible on mobile */
+    .bottom-nav {
+        display: flex;
+    }
+
+    /* Main content: no sidebar margin, bottom padding for bottom nav */
     .main-content {
         margin-left: 0;
         padding: 16px;
+        padding-bottom: calc(16px + var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
     }
 
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    /* Stat cards: 2-column grid */
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+
+    /* Charts stack to single column, reduced height */
     .chart-row { grid-template-columns: 1fr; }
+    .chart-wrap { height: 220px; min-height: 180px; }
+    .chart-container { padding: 14px; margin-bottom: 14px; }
+    .chart-container h3 { font-size: 13px; margin-bottom: 8px; }
 
+    /* Touch-friendly buttons and nav links */
     .btn { min-height: 44px; }
-    .nav-link { padding: 12px; }
-    .page-header { flex-direction: column; gap: 12px; align-items: flex-start; }
-    .toolbar { flex-direction: column; }
-    .search-input { width: 100%; }
+    .nav-link { padding: 12px 14px; font-size: 14px; }
 
+    /* Stack page headers and toolbars vertically */
+    .page-header { flex-direction: column; gap: 10px; align-items: flex-start; }
+    .toolbar { flex-direction: column; gap: 8px; }
+    .search-input { width: 100%; }
+    .filter-select { width: 100%; }
+
+    /* Settings rows stack vertically */
     .settings-row { flex-direction: column; align-items: stretch; gap: 8px; }
-    .settings-row input, .settings-row select { width: 100%; }
-    .chart-wrap { min-height: 200px; }
-    .pinned-row { gap: 12px; }
-    .pinned-card { min-width: 140px; }
+    .settings-row input, .settings-row select { width: 100%; min-height: 44px; }
+    .settings-section { padding: 14px; }
+
+    /* Date range buttons: wrap and space evenly */
+    .date-range-bar { gap: 4px; }
+    .range-btn { flex: 1; min-width: 0; text-align: center; padding: 8px 6px; min-height: 38px; }
+
+    /* Pinned cards */
+    .pinned-row { gap: 10px; }
+    .pinned-card { min-width: 140px; flex: 0 0 160px; }
+
+    /* Goals */
     .goal-grid { grid-template-columns: 1fr; }
-    .filter-select, .toggle-switch { touch-action: manipulation; }
+
+    /* Touch manipulation for interactive elements */
+    .filter-select, .toggle-switch, .btn, .nav-link, .range-btn,
+    .compare-chip, .pinned-card, .bottom-nav-item { touch-action: manipulation; }
+
+    /* Detail page: smaller gaps */
+    .detail-header { gap: 14px; }
+    .detail-stats { gap: 14px; flex-wrap: wrap; }
+
+    /* Compare chips: horizontal scroll on mobile */
+    .compare-select { gap: 6px; }
+    .compare-chip { padding: 8px 12px; font-size: 13px; }
+
+    /* Top lists: wider title truncation */
+    .top-list .top-title { max-width: 55vw; }
+
+    /* Fave items: wrap on narrow */
+    .fave-item { flex-wrap: wrap; gap: 4px; }
+    .fave-time { font-size: 10px; }
+
+    /* Comments: reduce indent for reply nesting */
+    .comment-card { padding: 10px 12px; }
+
+    /* Login card: full width on mobile */
+    .login-card { padding: 28px 20px; max-width: 100%; }
+
+    /* Responsive table → card transformation.
+       Tables with [data-mobile-cards] attribute transform their rows
+       into stacked cards. Each td uses data-label for inline headers. */
+    .data-table[data-mobile-cards] {
+        border: none;
+        background: none;
+    }
+    .data-table[data-mobile-cards] thead {
+        display: none;
+    }
+    .data-table[data-mobile-cards] tbody {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .data-table[data-mobile-cards] tr {
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px 14px;
+        box-shadow: var(--shadow);
+    }
+    .data-table[data-mobile-cards] tr:hover td {
+        background: none;
+    }
+    .data-table[data-mobile-cards] td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 3px 0;
+        border-bottom: none;
+        font-size: 13px;
+    }
+    .data-table[data-mobile-cards] td::before {
+        content: attr(data-label);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        margin-right: 12px;
+        flex-shrink: 0;
+    }
+    /* Title cell spans full width as card header */
+    .data-table[data-mobile-cards] td[data-label="Title"],
+    .data-table[data-mobile-cards] td[data-label=""] {
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 8px;
+        margin-bottom: 4px;
+    }
+    .data-table[data-mobile-cards] td[data-label="Title"]::before,
+    .data-table[data-mobile-cards] td[data-label=""]::before {
+        display: none;
+    }
+    /* Hide thumbnail in card mode (title is enough) */
+    .data-table[data-mobile-cards] td.mobile-hide {
+        display: none;
+    }
+    /* Thumbnail cell in card mode */
+    .data-table[data-mobile-cards] .thumb-cell {
+        width: 40px;
+        height: 40px;
+        margin-right: 8px;
+    }
+
+    /* Non-card tables: enable horizontal scroll on mobile */
+    .data-table:not([data-mobile-cards]) {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Poll progress bar: full width on mobile (no sidebar offset) */
+    .poll-progress-bar { left: 0; }
 }
 
 /* -- 480px breakpoint: small phones --
-   - Stat cards go to single column
-   - Detail header stacks (thumbnail above metadata) with smaller thumb
-   - Compare chips stack vertically
-   - Table columns 3 and 4 are hidden to prevent horizontal overflow */
+   Further reductions for very narrow screens */
 @media (max-width: 480px) {
-    .stats-grid { grid-template-columns: 1fr; }
-    .detail-header { flex-direction: column; }
+    .stats-grid { grid-template-columns: 1fr; gap: 8px; }
+    .stat-card { padding: 14px; }
+    .stat-card .value { font-size: 24px; }
+    .stat-card .label { font-size: 11px; }
+
+    .detail-header { flex-direction: column; gap: 12px; }
     .detail-thumb { width: 80px; height: 80px; }
+    .detail-info h2 { font-size: 17px; }
+    .detail-stats { gap: 10px; }
+    .detail-stat { font-size: 13px; }
+
     .compare-select { flex-direction: column; }
 
-    .data-table th:nth-child(3),
-    .data-table td:nth-child(3),
-    .data-table th:nth-child(4),
-    .data-table td:nth-child(4) { display: none; }
+    .main-content { padding: 10px; padding-bottom: calc(10px + var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px)); }
+    .page-header h2 { font-size: 1.15rem; }
+    .page-header { margin-bottom: 16px; }
 
-    .main-content { padding: 12px; }
-    .page-header h2 { font-size: 1.2rem; }
     .growth-grid { grid-template-columns: 1fr; }
+    .growth-val { font-size: 14px; }
+
     .pinned-row { scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
-    .pinned-card { scroll-snap-align: start; min-width: 130px; }
-    .stat-card { font-size: 14px; }
+    .pinned-card { scroll-snap-align: start; min-width: 130px; flex: 0 0 140px; }
+
+    .chart-wrap { height: 200px; min-height: 160px; }
+    .chart-container { padding: 10px; }
+
+    /* Sidebar fills more of the screen on small phones */
+    .sidebar { width: min(300px, 85vw); }
+
+    /* Top list: let titles use more space */
+    .top-list .top-title { max-width: 60vw; }
+    .top-list li { font-size: 12px; padding: 6px 0; }
+
+    /* Highlight cards (analytics) */
+    .highlight-card { padding: 12px 14px; }
+    .highlight-card .value { font-size: 20px; }
+
+    /* Milestone timeline */
+    .milestone-timeline li { gap: 8px; font-size: 12px; }
+    .milestone-timeline .ms-date { min-width: 70px; font-size: 10px; }
+
+    /* FA metadata grid: 2 columns max */
+    .fa-metadata { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+    .fa-meta-item { font-size: 12px; }
+
+    /* Tags */
+    .tag { font-size: 10px; padding: 1px 6px; }
+
+    /* Comments */
+    .comment-card { padding: 8px 10px; }
+    .comment-body { font-size: 12px; }
+    .comment-header { font-size: 12px; }
 }
 
 /* ── Scrollbar ────────────────────────────────────────────── */
@@ -1114,6 +1295,100 @@ body {
 
 .nav-section:first-of-type {
     padding-top: 8px;
+}
+
+/* ── Collapsible Nav Groups ─────────────────────────────────
+   On desktop, groups are always expanded. On mobile (<=768px),
+   groups collapse by default and expand on tap via JS .expanded class.
+   The chevron rotates 90° when expanded for visual feedback. */
+.nav-group {
+    list-style: none;
+}
+
+.nav-group .nav-section {
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+}
+
+.nav-chevron {
+    font-size: 14px;
+    transition: transform 0.2s ease;
+    color: var(--text-muted);
+}
+
+.nav-group.expanded .nav-chevron {
+    transform: rotate(90deg);
+}
+
+.nav-group-links {
+    list-style: none;
+    padding: 0;
+}
+
+/* Non-collapsible section dividers (e.g. "Tools") */
+.nav-section-divider {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    padding: 16px 12px 4px;
+    font-weight: 600;
+    list-style: none;
+}
+
+.nav-spacer { list-style: none; }
+
+/* ── Bottom Navigation Bar ──────────────────────────────────
+   Hidden on desktop; shown as a fixed bottom bar at <=768px.
+   Provides quick mobile access to Overview, Platforms (opens
+   sidebar), Analytics, and Settings. */
+.bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--bottom-nav-h);
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    z-index: 11;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.bottom-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 6px 0;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: color 0.15s;
+    min-height: 44px;
+}
+
+.bottom-nav-item:hover,
+.bottom-nav-item.active {
+    color: var(--accent);
+}
+
+.bottom-nav-icon {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.bottom-nav-label {
+    font-weight: 500;
+    letter-spacing: 0.3px;
 }
 
 /* ── Platform Badges ─────────────────────────────────────── */
