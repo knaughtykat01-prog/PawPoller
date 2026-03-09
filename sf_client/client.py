@@ -201,28 +201,31 @@ class SoFurryClient:
             return False
 
     def _extract_cookies_from_response(self, resp: httpx.Response) -> None:
-        """Manually extract Set-Cookie headers and add them to the client jar.
+        """Extract session cookies and set them as a default Cookie header.
 
-        When requests go through the CF proxy transport, the HTTP-level
-        request URL is the worker domain, not sofurry.com.  This can cause
-        httpx's cookie jar to reject or misattribute cookies.  We work
-        around this by parsing Set-Cookie headers ourselves and injecting
-        the cookies directly.
+        When requests go through the CF proxy transport, httpx's cookie jar
+        fails to send cookies because the HTTP-level request goes to the
+        worker domain, not sofurry.com.  We bypass the jar entirely by
+        extracting cookie values from Set-Cookie headers and injecting them
+        as a persistent Cookie header on the client.
         """
+        cookies: dict[str, str] = {}
         all_responses = list(resp.history) + [resp]
         for r in all_responses:
             for header_value in r.headers.get_list("set-cookie"):
-                # Extract cookie name=value from the Set-Cookie header
-                # Format: "name=value; path=/; domain=.sofurry.com; ..."
                 cookie_part = header_value.split(";")[0].strip()
                 if "=" in cookie_part:
                     name, _, value = cookie_part.partition("=")
                     name = name.strip()
                     value = value.strip()
                     if name and not name.startswith("__"):
-                        self._http.cookies.set(name, value, domain="sofurry.com")
-        cookie_names = list(self._http.cookies.keys())
-        logger.info("SoFurry cookies after login: %s", cookie_names)
+                        cookies[name] = value  # later values overwrite earlier
+
+        if cookies:
+            cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
+            self._http.headers["cookie"] = cookie_header
+            logger.info("SoFurry session cookies injected: %s",
+                        list(cookies.keys()))
 
     async def _ensure_nsfw_mode(self, page_html: str = "") -> None:
         """Make sure NSFW content is visible (not in SFW-only mode).
