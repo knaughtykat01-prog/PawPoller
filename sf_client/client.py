@@ -131,6 +131,7 @@ class SoFurryClient:
             if "/login" not in final_path:
                 self._logged_in = True
                 logger.info("SoFurry login successful for %s", self.username)
+                await self._ensure_nsfw_mode(page_text)
                 return True
 
             # Landed on /login — login failed
@@ -183,6 +184,7 @@ class SoFurryClient:
             if "/login" not in final_path and "/2fa" not in final_path:
                 self._logged_in = True
                 logger.info("SoFurry 2FA successful for %s", self.username)
+                await self._ensure_nsfw_mode(resp.text)
                 return True
 
             logger.warning("SoFurry 2FA failed — still on auth page")
@@ -190,6 +192,47 @@ class SoFurryClient:
         except Exception as e:
             logger.warning("SoFurry 2FA submission failed: %s", e)
             return False
+
+    async def _ensure_nsfw_mode(self, page_html: str = "") -> None:
+        """Make sure NSFW content is visible (not in SFW-only mode).
+
+        SoFurry's /sfw endpoint is a toggle.  When SFW mode is active,
+        Adult-rated submissions are hidden from gallery pages.  We check
+        the NSFW toggle checkbox state in the page HTML and flip it if
+        needed.
+
+        The toggle in the nav looks like:
+          <input type="checkbox" checked class="switch" id="switch-sm" ...>
+        When 'checked' is present → NSFW is displayed (good).
+        When 'checked' is absent  → SFW mode is ON, Adult content hidden.
+        """
+        try:
+            # Use provided HTML or fetch a page to check the toggle state
+            html = page_html
+            if not html or 'id="switch-sm"' not in html:
+                resp = await self._http.get(f"{SOFURRY_BASE}/")
+                html = resp.text
+
+            # Look for the SFW/NSFW toggle checkbox
+            toggle_match = re.search(
+                r'<input\s+type="checkbox"\s+(checked\s+)?class="switch"\s+id="switch-sm"',
+                html,
+            )
+            if toggle_match:
+                if toggle_match.group(1):
+                    logger.info("SoFurry NSFW mode already active")
+                    return
+                else:
+                    logger.info("SoFurry is in SFW mode — toggling to NSFW")
+                    await self._http.get(f"{SOFURRY_BASE}/sfw")
+                    logger.info("SoFurry NSFW mode activated")
+            else:
+                # Can't find the toggle — try toggling anyway to be safe,
+                # since all user submissions may be Adult-rated
+                logger.info("SoFurry NSFW toggle not found in HTML, toggling /sfw to ensure NSFW mode")
+                await self._http.get(f"{SOFURRY_BASE}/sfw")
+        except Exception as e:
+            logger.warning("Failed to check/set SoFurry NSFW mode: %s", e)
 
     async def check_session(self) -> bool:
         """Lightweight check: are we still authenticated?
