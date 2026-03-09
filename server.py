@@ -71,20 +71,23 @@ _ENV_TO_SETTINGS = {
 import os
 
 def _seed_settings_from_env():
-    """Write env vars into settings.json if they are set and not already present."""
+    """Write env vars into settings.json, overwriting empty/missing values."""
     settings = config.get_settings()
     updates = {}
     for env_key, settings_key in _ENV_TO_SETTINGS.items():
         val = os.environ.get(env_key)
-        if val and not settings.get(settings_key):
-            # Handle boolean for telegram_enabled
-            if settings_key == "telegram_enabled":
-                updates[settings_key] = val.lower() in ("true", "1", "yes")
-            else:
-                updates[settings_key] = val
+        if val:
+            existing = settings.get(settings_key)
+            # Overwrite if missing, empty, or different from env
+            if not existing or existing != val:
+                if settings_key == "telegram_enabled":
+                    updates[settings_key] = val.lower() in ("true", "1", "yes")
+                else:
+                    updates[settings_key] = val
     if updates:
         config.save_settings(updates)
-        logger.info("Seeded %d credential(s) from environment variables", len(updates))
+        logger.info("Seeded %d credential(s) from environment variables: %s",
+                     len(updates), ", ".join(updates.keys()))
 
 
 # ── Poller threads ────────────────────────────────────────────
