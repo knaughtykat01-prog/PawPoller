@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import signal
 import sys
 import threading
@@ -34,8 +35,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("server")
 
-# Enable debug logging for CF proxy transport to trace cookie handling
-logging.getLogger("polling.cf_proxy").setLevel(logging.DEBUG)
+# CF proxy debug logging is extremely verbose (every request/response/cookie).
+# Only enable when actively debugging proxy issues via PAWPOLLER_DEBUG_PROXY=1.
+if os.environ.get("PAWPOLLER_DEBUG_PROXY"):
+    logging.getLogger("polling.cf_proxy").setLevel(logging.DEBUG)
 
 
 # ── Env-to-settings seeding ──────────────────────────────────
@@ -72,8 +75,6 @@ _ENV_TO_SETTINGS = {
     "CF_WORKER_URL":       "cf_worker_url",
     "CF_WORKER_KEY":       "cf_worker_key",
 }
-
-import os
 
 def _seed_settings_from_env():
     """Write env vars into settings.json, overwriting empty/missing values."""
@@ -128,8 +129,8 @@ def _start_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("IB poller thread exiting: %s", e)  # Daemon teardown
 
 
 def _start_fa_poller():
@@ -161,8 +162,8 @@ def _start_fa_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("FA poller thread exiting: %s", e)  # Daemon teardown
 
 
 def _start_ws_poller():
@@ -194,8 +195,8 @@ def _start_ws_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("WS poller thread exiting: %s", e)  # Daemon teardown
 
 
 def _start_sf_poller():
@@ -227,8 +228,8 @@ def _start_sf_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("SF poller thread exiting: %s", e)  # Daemon teardown
 
 
 def _start_sqw_poller():
@@ -260,8 +261,8 @@ def _start_sqw_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("SqW poller thread exiting: %s", e)  # Daemon teardown
 
 
 def _start_ao3_poller():
@@ -293,8 +294,8 @@ def _start_ao3_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("AO3 poller thread exiting: %s", e)  # Daemon teardown
 
 
 def _start_da_poller():
@@ -326,8 +327,8 @@ def _start_da_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("DA poller thread exiting: %s", e)  # Daemon teardown
 
 
 def _start_wp_poller():
@@ -359,8 +360,8 @@ def _start_wp_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("WP poller thread exiting: %s", e)  # Daemon teardown
 
 
 def _start_ik_poller():
@@ -392,8 +393,8 @@ def _start_ik_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("IK poller thread exiting: %s", e)  # Daemon teardown
 
 
 def _start_digest_scheduler():
@@ -415,8 +416,8 @@ def _start_digest_scheduler():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Digest scheduler thread exiting: %s", e)  # Daemon teardown
 
 
 def _start_telegram_bot():
@@ -428,8 +429,8 @@ def _start_telegram_bot():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(run_bot())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Telegram bot thread exiting: %s", e)  # Daemon teardown
 
 
 def _start_server(host: str, port: int):

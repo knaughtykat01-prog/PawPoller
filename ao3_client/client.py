@@ -322,8 +322,11 @@ class AO3Client:
         for i, work_id in enumerate(work_ids):
             if i > 0:
                 await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
-            detail = await self.get_work_detail(work_id)
-            details.append(detail)
+            try:
+                detail = await self.get_work_detail(work_id)
+                details.append(detail)
+            except Exception as e:
+                logger.warning("AO3: Failed to fetch work %d: %s", work_id, e)
         return details
 
     # ── Kudos Users ─────────────────────────────────────────────

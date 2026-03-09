@@ -479,6 +479,7 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         logger.error("Poll failed: %s", e)
         if conn and log_id:
             queries.finish_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
+            conn.commit()
         # Send error alert via Telegram
         from polling.telegram import send_poll_error
         try:

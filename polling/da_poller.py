@@ -278,6 +278,7 @@ async def run_da_poll_cycle(force_full: bool = False) -> dict:
             da_queries.finish_da_poll_log(conn, log_id, "error",
                                           error_message=str(e),
                                           duration_seconds=duration, **stats)
+            conn.commit()
         from polling.telegram import send_poll_error
         try:
             await send_poll_error("da", e)

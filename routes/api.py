@@ -23,6 +23,7 @@ import sqlite3
 import shutil
 import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -39,6 +40,18 @@ import updater
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
+
+
+@router.get("/health")
+async def health_check():
+    """Lightweight health check for Docker HEALTHCHECK and monitoring.
+
+    Returns 200 with {"status": "ok"} if the web server is responsive.
+    Does not check individual poller health — that would add latency and
+    coupling.  The point is to detect a completely dead container.
+    """
+    return {"status": "ok"}
+
 
 # In-memory credentials for "don't remember me" logins.
 # When the user logs in without ticking "remember me", credentials are stored
@@ -1520,6 +1533,14 @@ async def restore_backup(file: UploadFile = File(...)):
         finally:
             conn.close()
         shutil.copy2(tmp_path, str(config.DB_PATH))
+        # Remove stale WAL/SHM files from the old database to prevent
+        # SQLite from replaying them against the restored database.
+        wal_path = Path(str(config.DB_PATH) + "-wal")
+        shm_path = Path(str(config.DB_PATH) + "-shm")
+        if wal_path.exists():
+            wal_path.unlink()
+        if shm_path.exists():
+            shm_path.unlink()
         init_db()
         return {"status": "restored", "tables_found": len(tables)}
     finally:

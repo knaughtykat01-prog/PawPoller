@@ -272,6 +272,7 @@ async def run_wp_poll_cycle(force_full: bool = False) -> dict:
             wp_queries.finish_wp_poll_log(conn, log_id, "error",
                                           error_message=str(e),
                                           duration_seconds=duration, **stats)
+            conn.commit()
         from polling.telegram import send_poll_error
         try:
             await send_poll_error("wp", e)

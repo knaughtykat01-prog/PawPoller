@@ -345,9 +345,9 @@ const Components = {
             return '<p style="color:var(--text-muted);font-size:13px">No data yet</p>';
         }
         const lis = items.map(item => {
-            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', ib: '/submission/' };
+            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', ib: '/submission/' };
             const prefix = prefixes[item._platform] || prefixes.ib;
-            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', ib: '<span class="platform-badge ib">IB</span>' };
+            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', ib: '<span class="platform-badge ib">IB</span>' };
             const badge = badges[item._platform] || badges.ib;
             return `
                 <li>
@@ -374,9 +374,9 @@ const Components = {
             return '<p style="color:var(--text-muted);font-size:13px">No recent activity</p>';
         }
         return items.map(item => {
-            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', ib: '/submission/' };
+            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', ib: '/submission/' };
             const prefix = prefixes[item._platform] || prefixes.ib;
-            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', ib: '<span class="platform-badge ib">IB</span>' };
+            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', ib: '<span class="platform-badge ib">IB</span>' };
             const badge = badges[item._platform] || badges.ib;
             const action = item._type === 'fave' ? 'faved' : 'on';
             return `
@@ -1212,9 +1212,9 @@ const Components = {
             return '<p style="color:var(--text-muted);font-size:13px">No trending submissions detected. Need at least a few polls to calculate trends.</p>';
         }
         return items.map(item => {
-            const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', ib: '<span class="platform-badge ib">IB</span>' };
+            const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', ib: '<span class="platform-badge ib">IB</span>' };
             const platformBadge = badgeMap[item.platform] || badgeMap.ib;
-            const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', ib: '/submission/' };
+            const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', ib: '/submission/' };
             const prefix = prefixMap[item.platform] || prefixMap.ib;
             const metrics = [];
             if (item.views_delta) metrics.push(`Views +${item.views_delta}`);
@@ -1247,7 +1247,7 @@ const Components = {
         }
         return links.map(link => {
             const members = (link.members || []).map(m => {
-                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', ib: '<span class="platform-badge ib">IB</span>' };
+                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[m.platform] || badgeMap.ib;
                 return `${badge} ${Utils.escapeHtml(Utils.truncate(m.title || '#' + m.submission_id, 25))}`;
             }).join('<br>');
@@ -1279,7 +1279,7 @@ const Components = {
         }
         return suggestions.map(s => {
             const items = s.items.map(i => {
-                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', ib: '<span class="platform-badge ib">IB</span>' };
+                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[i.platform] || badgeMap.ib;
                 return `${badge} ${Utils.escapeHtml(Utils.truncate(i.title, 30))}`;
             }).join(' &harr; ');

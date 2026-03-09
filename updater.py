@@ -92,12 +92,18 @@ def download_update(download_url: str) -> Path:
     # (which could be tens of MB), we stream it in 8KB chunks and write directly
     # to disk. follow_redirects=True is needed because GitHub asset URLs redirect
     # through their CDN. The generous 120s timeout accommodates slow connections.
-    with httpx.Client(timeout=120.0, follow_redirects=True) as client:
-        with client.stream("GET", download_url, headers=headers) as resp:
-            resp.raise_for_status()
-            with open(zip_path, "wb") as f:
-                for chunk in resp.iter_bytes(chunk_size=8192):
-                    f.write(chunk)
+    try:
+        with httpx.Client(timeout=120.0, follow_redirects=True) as client:
+            with client.stream("GET", download_url, headers=headers) as resp:
+                resp.raise_for_status()
+                with open(zip_path, "wb") as f:
+                    for chunk in resp.iter_bytes(chunk_size=8192):
+                        f.write(chunk)
+    except Exception:
+        # Clean up temp directory on download failure
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
 
     logger.info("Update downloaded to %s", zip_path)
     return zip_path
@@ -119,8 +125,14 @@ def apply_update(zip_path: Path) -> None:
         raise RuntimeError("Auto-update is only supported in frozen (exe) builds")
 
     # Extract the downloaded ZIP into a sibling "extracted" folder inside temp.
+    # Validate all paths before extraction to prevent Zip Slip attacks
+    # (malicious entries with "../" that write outside the target directory).
     extract_dir = zip_path.parent / "extracted"
     with zipfile.ZipFile(zip_path, "r") as zf:
+        for member in zf.namelist():
+            member_path = (extract_dir / member).resolve()
+            if not str(member_path).startswith(str(extract_dir.resolve())):
+                raise RuntimeError(f"Zip Slip detected: {member} escapes extract directory")
         zf.extractall(extract_dir)
 
     app_dir = Path(sys.executable).parent

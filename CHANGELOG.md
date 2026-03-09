@@ -4,6 +4,32 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [1.4.2] - 2026-03-09
+
+### Security
+- **Zip Slip prevention** — auto-updater now validates all ZIP entry paths before extraction to prevent path traversal attacks
+- **XSS fix** — `escapeHtml()` now escapes single quotes (`'` -> `&#39;`) preventing attribute injection via submission titles
+- **Timing attack fix** — HTTP Basic Auth now evaluates both username and password in constant time (no short-circuit)
+- **Error response hardening** — global exception handler no longer leaks internal error details to clients
+
+### Fixed
+- **SqW Anubis solver** — proof-of-work implementation now correctly finds a nonce with leading zeros matching difficulty, instead of computing a single hash (which always failed)
+- **WP/IK detail charts broken** — `Charts.submissionLine()` now accepts a custom metrics array; Wattpad charts correctly plot reads/votes/lists and Itaku charts plot likes/reshares
+- **WP/IK missing from 5 UI components** — added Wattpad and Itaku entries to `overviewTopList`, `overviewRecentActivity`, `trendingCards`, `linkCards`, and `linkSuggestions` badge/route maps; items no longer misidentified as Inkbunny
+- **Poll error logs lost** — all 9 pollers now `conn.commit()` after writing error status to poll_log; failed cycles are no longer silently rolled back
+- **IB web session lock-in** — CSRF token failure no longer permanently locks the web client in a failed state; session now properly detects expiry and re-authenticates
+- **IB comment truncation** — added double-quote fallback for BBCode extraction regex; comments containing apostrophes are no longer silently truncated
+- **5 batch methods crash on single failure** — SqW, AO3, WP, IK, and DA `get_*_details_batch()` methods now catch per-item exceptions instead of crashing the entire batch
+- **Server startup fallthrough** — main.py now exits with error code if the server fails to start within 15 seconds, instead of opening a blank native window
+- **Poll interval zero spin** — poll intervals are now clamped to minimum 1 minute, preventing infinite CPU spin or crashes from zero/negative/non-numeric values
+- **Telegram /notify comments** — command now toggles comment-specific setting instead of the IB master notification switch
+- **Telegram /notify missing platforms** — added sqw, ao3, da, wp, ik to the notification toggle map
+- **DB restore corruption** — backup restore now removes stale WAL/SHM journal files to prevent replaying old transactions against the restored database
+- **SF schema incomplete** — added missing `new_watchers_found` column to `sf_poll_log` table definition
+- **Update temp cleanup** — failed update downloads now clean up their temp directory instead of leaving orphaned files
+
+---
+
 ## [1.4.1] - 2026-03-09
 
 ### Security

@@ -62,6 +62,11 @@ _fa_first_poll = True
 # This filter suppresses notifications (not DB storage) for them.
 import re
 
+# Why the spam keyword filter exists:
+# FA has a persistent problem with bot accounts whose usernames contain
+# gambling, adult-service, or crypto keywords.  These watchers are stored in
+# the DB for completeness (accurate watcher counts), but notifications are
+# suppressed to avoid alert fatigue from obvious spam.
 _SPAM_KEYWORDS = re.compile(
     r"(1xbet|promo|casino|betting|slot|poker|viagra|cialis|crypto|forex|"
     r"onlyfans|escort|dating|hookup|webcam|livecam|sexchat|porno)",
@@ -346,6 +351,12 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
 
         # ── Step 5: Fetch watchers (confirmation delay + spam protection) ──
         #
+        # Why watchers start as "pending" and need 2 cycles to confirm:
+        # FA attracts waves of spam/bot watchers that appear briefly then vanish.
+        # By requiring a watcher to be present in 2 consecutive polls, we filter
+        # out ephemeral bots without false-positiving on real users who simply
+        # haven't been scraped yet.  Only confirmed watchers trigger notifications.
+        #
         # Flow:
         #   a) Upsert all watchers from FAExport (new ones start as pending/unconfirmed)
         #   b) Confirm pending watchers that were seen again (survived 2+ cycles)
@@ -468,6 +479,7 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
         logger.error("FA poll failed: %s", e)
         if conn and log_id:
             fa_queries.finish_fa_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
+            conn.commit()
         # Send error alert via Telegram
         from polling.telegram import send_poll_error
         try:

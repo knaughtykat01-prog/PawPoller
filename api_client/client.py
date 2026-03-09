@@ -287,7 +287,17 @@ class InkbunnyClient:
         for all subsequent comment scraping calls in this session.
         """
         if self._web_http is not None:
-            return
+            # Quick session check — verify existing session is still valid
+            try:
+                probe = await self._web_http.get(f"{config.INKBUNNY_API_BASE}/")
+                if "logout.php" in probe.text:
+                    return  # Session still good
+                # Session expired — close and re-create
+                await self._web_http.aclose()
+                self._web_http = None
+            except Exception:
+                await self._web_http.aclose()
+                self._web_http = None
 
         # follow_redirects=True because Inkbunny redirects after login
         web_transport = httpx.AsyncHTTPTransport(retries=2)
@@ -297,7 +307,13 @@ class InkbunnyClient:
         # The token is in a hidden input: <input name="token" value="...">
         login_page = await self._web_http.get(f"{config.INKBUNNY_API_BASE}/login.php")
         token_match = re.search(r"name=['\"]token['\"].*?value=['\"]([^'\"]+)['\"]", login_page.text)
-        token = token_match.group(1) if token_match else ""
+        if not token_match:
+            logger.error("Web login failed: could not find CSRF token")
+            await self._web_http.aclose()
+            self._web_http = None
+            return
+
+        token = token_match.group(1)
 
         # Step 2: Submit the login form with extracted CSRF token.
         resp = await self._web_http.post(
@@ -312,7 +328,9 @@ class InkbunnyClient:
         if "logout.php" in resp.text:
             logger.info("Web session established for comment scraping")
         else:
-            logger.warning("Web login may have failed (status %d)", resp.status_code)
+            logger.warning("Web login may have failed (status %d) — closing web client", resp.status_code)
+            await self._web_http.aclose()
+            self._web_http = None
 
     async def scrape_comments(self, submission_id: int) -> list[dict]:
         """Scrape comments from a submission page via authenticated web session.
@@ -365,6 +383,13 @@ class InkbunnyClient:
                 page_html,
                 re.DOTALL,
             )
+            if not text_match:
+                # Fallback: try double-quoted value attribute
+                text_match = re.search(
+                    rf'id="bbcode_commentid_{cid}"[^>]*value="(.*?)"(?:\s*/>|\s*>)',
+                    page_html,
+                    re.DOTALL,
+                )
             comment["comment_text"] = html.unescape(text_match.group(1)) if text_match else ""
 
             # TIMESTAMP: The exact date is in a separate div that shows on hover.

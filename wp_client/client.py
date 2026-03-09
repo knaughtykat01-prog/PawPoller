@@ -200,6 +200,9 @@ class WPClient:
         for i, story_id in enumerate(story_ids):
             if i > 0:
                 await asyncio.sleep(config.WP_REQUEST_DELAY_SECONDS)
-            detail = await self.get_story_detail(story_id)
-            details.append(detail)
+            try:
+                detail = await self.get_story_detail(story_id)
+                details.append(detail)
+            except Exception as e:
+                logger.warning("WP: Failed to fetch story %d: %s", story_id, e)
         return details

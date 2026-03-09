@@ -352,8 +352,12 @@ class SoFurryClient:
         transport = self._http._transport
         uses_proxy = hasattr(transport, 'login_and_fetch')
 
-        # For proxy: always do fresh login+gallery in one invocation
-        # (CF Workers rotate IPs, so cached sessions are useless)
+        # Why proxy mode always does a fresh login rather than reusing sessions:
+        # CF Workers rotate egress IPs between invocations, and SoFurry pins
+        # sessions to the IP that performed login.  A session cookie obtained
+        # in one Worker invocation becomes invalid in the next (different IP),
+        # so session caching is useless through the proxy — we must re-login
+        # every poll cycle.
         proxy_gallery_html: str | None = None
         if uses_proxy:
             proxy_gallery_html = await self.login_and_fetch_gallery()

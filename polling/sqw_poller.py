@@ -344,6 +344,7 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
             sqw_queries.finish_sqw_poll_log(conn, log_id, "error",
                                              error_message=str(e),
                                              duration_seconds=duration, **stats)
+            conn.commit()
         from polling.telegram import send_poll_error
         try:
             await send_poll_error("sqw", e)

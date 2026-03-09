@@ -223,9 +223,12 @@ class IKClient:
         for i, item in enumerate(content_items):
             if i > 0:
                 await asyncio.sleep(config.IK_REQUEST_DELAY_SECONDS)
-            detail = await self.get_content_detail(
-                item["content_id"],
-                item.get("content_type", "image"),
-            )
-            details.append(detail)
+            try:
+                detail = await self.get_content_detail(
+                    item["content_id"],
+                    item.get("content_type", "image"),
+                )
+                details.append(detail)
+            except Exception as e:
+                logger.warning("IK: Failed to fetch content %s: %s", item.get("content_id"), e)
         return details

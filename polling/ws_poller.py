@@ -290,6 +290,7 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
         logger.error("WS poll failed: %s", e)
         if conn and log_id:
             ws_queries.finish_ws_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
+            conn.commit()
         # Send error alert via Telegram
         from polling.telegram import send_poll_error
         try:

@@ -349,6 +349,7 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
             sf_queries.finish_sf_poll_log(conn, log_id, "error",
                                           error_message=str(e),
                                           duration_seconds=duration, **stats)
+            conn.commit()
         # Send error alert via Telegram
         from polling.telegram import send_poll_error
         try:

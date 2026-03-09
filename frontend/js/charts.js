@@ -101,8 +101,8 @@ const Charts = {
      * @returns {Object} Keyed annotation config object for Chart.js annotation plugin.
      */
     _milestoneAnnotations(snapshots, metrics) {
-        const prefixes = { views: 'V', favorites_count: 'F', comments_count: 'C' };
-        const colors = { views: '#6c8cff', favorites_count: '#f87171', comments_count: '#4ade80' };
+        const prefixes = { views: 'V', favorites_count: 'F', comments_count: 'C', reads: 'R', votes: 'Vo', num_lists: 'L', likes: 'Lk', reshares: 'Rs', kudos_count: 'K', hits: 'H', bookmarks_count: 'B' };
+        const colors = { views: '#6c8cff', favorites_count: '#f87171', comments_count: '#4ade80', reads: '#6c8cff', votes: '#f87171', num_lists: '#fbbf24', likes: '#6c8cff', reshares: '#fbbf24', kudos_count: '#f87171', hits: '#6c8cff', bookmarks_count: '#fbbf24' };
         const annotations = {};
         let idx = 0;
         for (const metric of metrics) {
@@ -303,71 +303,75 @@ const Charts = {
      * @param {string} canvasId  - ID of the target <canvas> element.
      * @param {Array}  snapshots - Chronologically ordered snapshot objects.
      */
-    submissionLine(canvasId, snapshots) {
+    submissionLine(canvasId, snapshots, metrics = ['views', 'favorites_count', 'comments_count']) {
         this.destroy(canvasId);
         const ctx = document.getElementById(canvasId);
         if (!ctx) return;
 
+        // Metric configuration: first metric goes on left Y axis, rest on right
+        const metricConfig = {
+            views:           { label: 'Views',      color: '#6c8cff' },
+            favorites_count: { label: 'Favorites',  color: '#f87171' },
+            comments_count:  { label: 'Comments',   color: '#4ade80' },
+            reads:           { label: 'Reads',      color: '#6c8cff' },
+            votes:           { label: 'Votes',      color: '#f87171' },
+            num_lists:       { label: 'Lists',      color: '#fbbf24' },
+            likes:           { label: 'Likes',      color: '#6c8cff' },
+            reshares:        { label: 'Reshares',   color: '#fbbf24' },
+            kudos_count:     { label: 'Kudos',      color: '#f87171' },
+            hits:            { label: 'Hits',       color: '#6c8cff' },
+            bookmarks_count: { label: 'Bookmarks',  color: '#fbbf24' },
+        };
+
+        const leftMetric = metrics[0];
+        const rightMetrics = metrics.slice(1);
+        const leftCfg = metricConfig[leftMetric] || { label: leftMetric, color: '#6c8cff' };
+        const rightLabel = rightMetrics.map(m => (metricConfig[m] || { label: m }).label).join(' / ');
+        const rightColor = (metricConfig[rightMetrics[0]] || { color: '#f87171' }).color;
+
         const opts = this._baseOptions();
         opts.scales.x = this._timeXAxis();
 
-        // Left Y axis -- Views (blue ticks and title)
+        // Left Y axis -- primary metric
         opts.scales.y = {
             type: 'linear',
             position: 'left',
-            ticks: { color: '#6c8cff', font: { size: 10 } },
+            ticks: { color: leftCfg.color, font: { size: 10 } },
             grid: { color: '#2e3140' },
             beginAtZero: true,
-            title: { display: true, text: 'Views', color: '#6c8cff' },
+            title: { display: true, text: leftCfg.label, color: leftCfg.color },
         };
-        // Right Y axis -- Faves/Comments (red ticks, grid hidden to avoid
-        // double grid lines overlapping with the left axis grid)
+        // Right Y axis -- secondary metrics
         opts.scales.y1 = {
             type: 'linear',
             position: 'right',
-            ticks: { color: '#f87171', font: { size: 10 } },
+            ticks: { color: rightColor, font: { size: 10 } },
             grid: { drawOnChartArea: false },
             beginAtZero: true,
-            title: { display: true, text: 'Faves / Comments', color: '#f87171' },
+            title: { display: true, text: rightLabel, color: rightColor },
         };
 
-        // Generate milestone annotation lines for all three metrics
-        const annotations = this._milestoneAnnotations(snapshots, ['views', 'favorites_count', 'comments_count']);
+        // Generate milestone annotation lines for all metrics
+        const annotations = this._milestoneAnnotations(snapshots, metrics);
         opts.plugins.annotation = { annotations };
+
+        // Build datasets: first metric on left axis, rest on right
+        const datasets = metrics.map((m, i) => {
+            const cfg = metricConfig[m] || { label: m, color: '#6c8cff' };
+            return {
+                label: cfg.label,
+                data: snapshots.map(s => ({ x: _toDate(s.polled_at), y: s[m] })),
+                borderColor: cfg.color,
+                borderWidth: 2,
+                pointRadius: snapshots.length > 50 ? 0 : 3,
+                tension: 0.3,
+                yAxisID: i === 0 ? 'y' : 'y1',
+            };
+        });
 
         this._instances[canvasId] = new Chart(ctx, {
             type: 'line',
-            data: {
-                datasets: [
-                    {
-                        label: 'Views',
-                        data: snapshots.map(s => ({ x: _toDate(s.polled_at), y: s.views })),
-                        borderColor: '#6c8cff',
-                        borderWidth: 2,
-                        pointRadius: snapshots.length > 50 ? 0 : 3,
-                        tension: 0.3,
-                        yAxisID: 'y',   // bound to left axis
-                    },
-                    {
-                        label: 'Favorites',
-                        data: snapshots.map(s => ({ x: _toDate(s.polled_at), y: s.favorites_count })),
-                        borderColor: '#f87171',
-                        borderWidth: 2,
-                        pointRadius: snapshots.length > 50 ? 0 : 3,
-                        tension: 0.3,
-                        yAxisID: 'y1',  // bound to right axis
-                    },
-                    {
-                        label: 'Comments',
-                        data: snapshots.map(s => ({ x: _toDate(s.polled_at), y: s.comments_count })),
-                        borderColor: '#4ade80',
-                        borderWidth: 2,
-                        pointRadius: snapshots.length > 50 ? 0 : 3,
-                        tension: 0.3,
-                        yAxisID: 'y1',  // bound to right axis
-                    },
-                ],
-            },
+            data: { datasets },
             options: opts,
         });
     },

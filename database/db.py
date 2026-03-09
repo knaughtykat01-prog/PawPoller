@@ -199,7 +199,13 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_fa_watchers_seen ON fa_watchers(first_seen_at)")
 
-    # Add new_watchers_found column to poll logs
+    # Add new_watchers_found column to poll logs.
+    # Why we catch and ignore OperationalError here (and in similar blocks below):
+    # SQLite's ALTER TABLE ADD COLUMN throws OperationalError if the column
+    # already exists, and there is no IF NOT EXISTS syntax for ALTER TABLE.
+    # The try/except pattern is the standard way to make column-add migrations
+    # idempotent.  We only re-raise if the error is NOT "duplicate column" to
+    # catch genuine issues (e.g. disk full, locked database).
     try:
         conn.execute("ALTER TABLE poll_log ADD COLUMN new_watchers_found INTEGER DEFAULT 0")
     except sqlite3.OperationalError as e:

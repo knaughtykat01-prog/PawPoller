@@ -94,6 +94,14 @@ class CloudflareProxyTransport(httpx.AsyncBaseTransport):
         return response
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        # Why cookies are managed here instead of using httpx's cookie jar:
+        # httpx's jar uses domain matching to decide which cookies to send.
+        # When proxying through a CF Worker, the HTTP-level request goes to the
+        # worker URL (e.g. workers.dev), not the real target (e.g. sofurry.com).
+        # This breaks domain matching — cookies set for sofurry.com won't be
+        # attached to a workers.dev request.  So we bypass the jar entirely and
+        # manage cookies as raw strings at the transport level, injecting them
+        # into every proxied request regardless of the destination host header.
         target_url = str(request.url)
 
         logger.debug("CF proxy: %s %s | cookies: %s",

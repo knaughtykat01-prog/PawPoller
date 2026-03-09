@@ -113,22 +113,35 @@ class SquidgeWorldClient:
             logger.error("SqW: preact_info missing challenge or redir")
             return False
 
-        # Compute SHA-256 of the challenge string
-        result = hashlib.sha256(challenge.encode("utf-8")).hexdigest()
-        logger.info("SqW: Solved Anubis challenge (difficulty=%d)", difficulty)
+        # Anubis proof-of-work: find a nonce such that
+        # SHA-256(challenge + nonce) has `difficulty` leading zeros.
+        logger.info("SqW: Solving Anubis challenge (difficulty=%d)...", difficulty)
+        nonce = 0
+        prefix = "0" * difficulty
+        while True:
+            attempt = f"{challenge}{nonce}"
+            h = hashlib.sha256(attempt.encode("utf-8")).hexdigest()
+            if h.startswith(prefix):
+                break
+            nonce += 1
+            if nonce % 500000 == 0:
+                logger.debug("SqW: Anubis PoW attempt %d...", nonce)
+                await asyncio.sleep(0)  # yield to event loop
 
-        # Wait the required delay (difficulty * 100ms)
-        await asyncio.sleep(difficulty * 0.1)
+        result = hashlib.sha256(f"{challenge}{nonce}".encode("utf-8")).hexdigest()
+        logger.info("SqW: Solved Anubis challenge (nonce=%d)", nonce)
 
         # Submit the solution
         pass_url = f"{_BASE}{redir}"
-        # Add result as query parameter
         separator = "&" if "?" in pass_url else "?"
-        pass_url = f"{pass_url}{separator}result={result}"
+        pass_url = f"{pass_url}{separator}result={result}&nonce={nonce}"
 
         try:
             resp = await self._http.get(pass_url)
             logger.info("SqW: Anubis challenge response: %d -> %s", resp.status_code, resp.url)
+            if resp.status_code >= 400:
+                logger.error("SqW: Anubis challenge rejected (HTTP %d)", resp.status_code)
+                return False
             return True
         except httpx.HTTPError as e:
             logger.error("SqW: Failed to submit Anubis solution: %s", e)
@@ -422,8 +435,11 @@ class SquidgeWorldClient:
         for i, work_id in enumerate(work_ids):
             if i > 0:
                 await asyncio.sleep(config.SQW_REQUEST_DELAY_SECONDS)
-            detail = await self.get_work_detail(work_id)
-            details.append(detail)
+            try:
+                detail = await self.get_work_detail(work_id)
+                details.append(detail)
+            except Exception as e:
+                logger.warning("SqW: Failed to fetch work %d: %s", work_id, e)
         return details
 
     # ── Kudos Users ─────────────────────────────────────────────

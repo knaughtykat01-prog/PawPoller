@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS sf_poll_log (
     status          TEXT NOT NULL DEFAULT 'running',
     submissions_found INTEGER DEFAULT 0,
     snapshots_inserted INTEGER DEFAULT 0,
+    new_watchers_found INTEGER DEFAULT 0,
     error_message   TEXT,
     duration_seconds REAL
 );

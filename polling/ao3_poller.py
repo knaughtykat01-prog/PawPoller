@@ -343,6 +343,7 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
             ao3_queries.finish_ao3_poll_log(conn, log_id, "error",
                                              error_message=str(e),
                                              duration_seconds=duration, **stats)
+            conn.commit()
         from polling.telegram import send_poll_error
         try:
             await send_poll_error("ao3", e)

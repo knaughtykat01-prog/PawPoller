@@ -364,6 +364,10 @@ const App = {
             clearInterval(this._pollStatusInterval);
             this._pollStatusInterval = null;
         }
+        if (this._pollProgressTimer) {
+            clearInterval(this._pollProgressTimer);
+            this._pollProgressTimer = null;
+        }
         this._setContent(`
             <div class="login-screen">
                 <div class="login-card">

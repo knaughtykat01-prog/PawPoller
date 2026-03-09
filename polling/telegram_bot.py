@@ -464,12 +464,17 @@ async def _cmd_notify(token: str, chat_id: str, args: str) -> None:
         "milestones": "telegram_milestones",
         "digest": "telegram_digest",
         "faves": "notification_comments_only",  # inverted — comments_only=True means faves OFF
-        "comments": "notifications_enabled",  # master toggle for IB
+        "comments": "ib_comment_notifications_enabled",
         "watchers": "watcher_notifications_enabled",
         "ib": "notifications_enabled",
         "fa": "fa_notifications_enabled",
         "ws": "ws_notifications_enabled",
         "sf": "sf_notifications_enabled",
+        "sqw": "sqw_notifications_enabled",
+        "ao3": "ao3_notifications_enabled",
+        "da": "da_notifications_enabled",
+        "wp": "wp_notifications_enabled",
+        "ik": "ik_notifications_enabled",
     }
 
     parts = args.strip().lower().split()

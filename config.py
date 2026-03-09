@@ -108,11 +108,29 @@ def save_settings(data: dict) -> None:
 
     Uses read-merge-write so that keys not present in *data* are preserved.
     Thread-safe: acquires _settings_lock for the entire read-modify-write cycle.
+
+    Write is atomic: data goes to a temp file first, then os.replace() swaps it
+    in.  os.replace() is atomic on the same filesystem, so a crash mid-write
+    cannot leave a truncated/corrupt settings.json.
     """
+    import tempfile
     with _settings_lock:
         current = _load_settings()
         current.update(data)  # Overlay new values on top of existing ones
-        SETTINGS_PATH.write_text(json.dumps(current, indent=2), encoding="utf-8")
+        # Write to a temp file in the same directory, then atomically replace.
+        # Same-directory ensures same filesystem so os.replace() is atomic.
+        fd, tmp_path = tempfile.mkstemp(dir=SETTINGS_PATH.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(current, f, indent=2)
+            os.replace(tmp_path, SETTINGS_PATH)
+        except BaseException:
+            # Clean up temp file on any failure (including KeyboardInterrupt)
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
 
 def delete_settings_keys(keys: list[str]) -> None:
@@ -120,12 +138,24 @@ def delete_settings_keys(keys: list[str]) -> None:
 
     Thread-safe: acquires _settings_lock for the entire read-modify-write cycle.
     Keys that do not exist are silently ignored.
+    Uses the same atomic write pattern as save_settings().
     """
+    import tempfile
     with _settings_lock:
         current = _load_settings()
         for key in keys:
             current.pop(key, None)
-        SETTINGS_PATH.write_text(json.dumps(current, indent=2), encoding="utf-8")
+        fd, tmp_path = tempfile.mkstemp(dir=SETTINGS_PATH.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(current, f, indent=2)
+            os.replace(tmp_path, SETTINGS_PATH)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
 
 def get_settings() -> dict:
@@ -147,6 +177,11 @@ def get_settings() -> dict:
 _BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(_BASE_DIR / ".env")  # Load .env as fallback for dev environments
 
+# Why these module-level reads exist alongside get_settings():
+# These reads happen once at import time and provide backward compatibility
+# for code that imports config.INKBUNNY_USERNAME directly.  Pollers that run
+# later should call get_settings() for fresh reads — these module-level values
+# are stale snapshots that won't reflect runtime changes made through the UI.
 _settings = _load_settings()
 # `or` short-circuits: if settings.json has the value, .env is never read
 INKBUNNY_USERNAME = _settings.get("username") or os.getenv("INKBUNNY_USERNAME", "")
@@ -172,7 +207,11 @@ SF_REQUEST_DELAY_SECONDS = 1.5  # Rate-limit delay between SoFurry page scrapes 
 SQW_REQUEST_DELAY_SECONDS = 2.0  # Rate-limit delay between SquidgeWorld page scrapes (higher due to anti-bot)
 
 # ── AO3 settings ──
-AO3_REQUEST_DELAY_SECONDS = 3.0  # Rate-limit delay between AO3 page scrapes (higher — volunteer-run site)
+# Why 3 seconds: AO3 is run entirely by volunteers with limited infrastructure.
+# Aggressive scraping can degrade the site for real users.  This is a courtesy
+# rate limit — significantly slower than what the site technically requires —
+# to be a good citizen.
+AO3_REQUEST_DELAY_SECONDS = 3.0
 
 # ── DeviantArt settings ──
 DA_REQUEST_DELAY_SECONDS = 2.0  # Rate-limit delay between DeviantArt API requests

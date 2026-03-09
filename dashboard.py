@@ -59,7 +59,7 @@ app = FastAPI(title="PawPoller", version="1.0.0", lifespan=lifespan)
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled error on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
-    return JSONResponse(status_code=500, content={"error": str(exc)})
+    return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
 
 # ── Optional Basic Auth for Server Deployments ─────────────────
@@ -88,7 +88,9 @@ async def basic_auth_middleware(request: Request, call_next):
         try:
             decoded = base64.b64decode(auth[6:]).decode("utf-8")
             user, passwd = decoded.split(":", 1)
-            if secrets.compare_digest(user, user_expected) and secrets.compare_digest(passwd, password):
+            user_ok = secrets.compare_digest(user, user_expected)
+            pass_ok = secrets.compare_digest(passwd, password)
+            if user_ok and pass_ok:
                 return await call_next(request)
         except Exception:
             pass

@@ -39,7 +39,18 @@ _HEADERS = {
 
 
 class DAClient:
-    """Async HTTP client for DeviantArt using Eclipse _napi endpoints."""
+    """Async HTTP client for DeviantArt using Eclipse _napi endpoints.
+
+    Why _napi endpoints instead of a public API:
+      DeviantArt's Eclipse frontend uses internal ``_napi`` JSON endpoints that
+      are undocumented — they were discovered by inspecting browser network
+      traffic.  There is no official public API for gallery stats.
+
+    Why the CF Worker proxy is needed:
+      DA aggressively blocks datacenter IPs, so server deployments must route
+      requests through the Cloudflare Worker proxy to appear as residential
+      traffic.  Desktop/local runs (residential IP) typically work without it.
+    """
 
     def __init__(self, cookie_value: str, target_user: str,
                  proxy_url: str = "", proxy_key: str = ""):
@@ -359,8 +370,11 @@ class DAClient:
         for i, dev_id in enumerate(deviation_ids):
             if i > 0:
                 await asyncio.sleep(config.DA_REQUEST_DELAY_SECONDS)
-            detail = await self.get_deviation_detail(dev_id)
-            details.append(detail)
+            try:
+                detail = await self.get_deviation_detail(dev_id)
+                details.append(detail)
+            except Exception as e:
+                logger.warning("DA: Failed to fetch deviation %d: %s", dev_id, e)
         return details
 
 

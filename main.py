@@ -99,7 +99,7 @@ def _start_poller():
         while True:
             # Re-read interval each cycle so UI changes take effect without restart
             settings = config.get_settings()
-            interval = settings.get("poll_interval_minutes", 60)
+            interval = max(1, int(settings.get("poll_interval_minutes", 60)))
             logger.info("Next IB poll in %d minutes", interval)
             await asyncio.sleep(interval * 60)
             await _scheduled_poll()
@@ -109,8 +109,8 @@ def _start_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass  # Daemon thread is being torn down on app exit -- swallow cleanly
+    except Exception as e:
+        logger.debug("IB poller thread exiting: %s", e)  # Daemon teardown
 
 
 # ── Background FA poller ──────────────────────────────────────
@@ -147,8 +147,8 @@ def _start_fa_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass  # Daemon teardown
+    except Exception as e:
+        logger.debug("FA poller thread exiting: %s", e)  # Daemon teardown
 
 
 # ── Background WS poller ─────────────────────────────────────
@@ -183,8 +183,8 @@ def _start_ws_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass  # Daemon teardown
+    except Exception as e:
+        logger.debug("WS poller thread exiting: %s", e)  # Daemon teardown
 
 
 # ── Background SF poller ─────────────────────────────────────
@@ -219,8 +219,8 @@ def _start_sf_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass  # Daemon teardown
+    except Exception as e:
+        logger.debug("SF poller thread exiting: %s", e)  # Daemon teardown
 
 
 # ── Background SqW poller ────────────────────────────────────
@@ -255,8 +255,8 @@ def _start_sqw_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass  # Daemon teardown
+    except Exception as e:
+        logger.debug("SqW poller thread exiting: %s", e)  # Daemon teardown
 
 
 # ── Background AO3 poller ─────────────────────────────────────
@@ -291,8 +291,8 @@ def _start_ao3_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass  # Daemon teardown
+    except Exception as e:
+        logger.debug("AO3 poller thread exiting: %s", e)  # Daemon teardown
 
 
 # ── Background DA poller ──────────────────────────────────────
@@ -327,8 +327,8 @@ def _start_da_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass  # Daemon teardown
+    except Exception as e:
+        logger.debug("DA poller thread exiting: %s", e)  # Daemon teardown
 
 
 # ── Background WP poller ──────────────────────────────────────
@@ -363,8 +363,8 @@ def _start_wp_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass  # Daemon teardown
+    except Exception as e:
+        logger.debug("WP poller thread exiting: %s", e)  # Daemon teardown
 
 
 # ── Background IK poller ──────────────────────────────────────
@@ -399,8 +399,8 @@ def _start_ik_poller():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass  # Daemon teardown
+    except Exception as e:
+        logger.debug("IK poller thread exiting: %s", e)  # Daemon teardown
 
 
 # ── 6-Hourly Telegram Digest ─────────────────────────────────
@@ -428,8 +428,8 @@ def _start_digest_scheduler():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
-    except Exception:
-        pass  # Daemon teardown
+    except Exception as e:
+        logger.debug("Digest scheduler thread exiting: %s", e)  # Daemon teardown
 
 
 # ── Telegram Bot Command Listener ─────────────────────────────
@@ -444,8 +444,8 @@ def _start_telegram_bot():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(run_bot())
-    except Exception:
-        pass  # Daemon teardown
+    except Exception as e:
+        logger.debug("Telegram bot thread exiting: %s", e)  # Daemon teardown
 
 
 # ── Background web server (uvicorn) ──────────────────────────
@@ -697,6 +697,7 @@ def main():
         # for/else: this block runs if the loop exhausted without break
         logger.error("SERVER DID NOT START within 15s after %d attempts!", attempts)
         logger.error("Server thread alive: %s", server_thread.is_alive())
+        sys.exit(1)
 
     # --- Step 5: Open the native desktop window ---
     # pywebview creates a native OS window with an embedded browser that
