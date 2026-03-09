@@ -50,13 +50,13 @@ class SoFurryClient:
         self.totp_code = totp_code
         self.display_name = display_name  # SF profile handle (e.g. "KnaughtyKat")
 
-        # Use Cloudflare Worker proxy if configured (bypasses datacenter IP blocks)
+        # SoFurry: connect directly instead of through CF proxy.
+        # CF Workers rotate egress IPs between requests, which breaks
+        # Laravel's IP-pinned session validation.  SoFurry doesn't
+        # block datacenter IPs, so direct connection works fine.
+        transport = httpx.AsyncHTTPTransport(retries=2)
         if proxy_url and proxy_key:
-            from polling.cf_proxy import CloudflareProxyTransport
-            transport = CloudflareProxyTransport(proxy_url, proxy_key)
-            logger.info("SoFurry client using CF proxy: %s", proxy_url)
-        else:
-            transport = httpx.AsyncHTTPTransport(retries=2)
+            logger.info("SoFurry: skipping CF proxy (IP-pinned sessions break through Workers)")
 
         self._http = httpx.AsyncClient(
             timeout=30.0,
@@ -141,11 +141,6 @@ class SoFurryClient:
             if "/login" not in final_path:
                 self._logged_in = True
                 logger.info("SoFurry login successful for %s", self.username)
-
-                # Ensure NSFW mode is enabled so Adult submissions are visible.
-                # New sessions may default to SFW; calling /nsfw toggles to NSFW.
-                await self._ensure_nsfw_mode()
-
                 return True
 
             # Landed on /login — login failed
@@ -157,67 +152,6 @@ class SoFurryClient:
         except Exception as e:
             logger.warning("SoFurry login failed: %s", e)
             return False
-
-    async def _ensure_nsfw_mode(self) -> None:
-        """Ensure the session is in NSFW mode so Adult submissions are visible.
-
-        New proxy sessions default to SFW mode.  We call GET /sfw which acts
-        as a toggle — if currently SFW it switches to NSFW, and vice versa.
-        We check the gallery page after toggling to confirm adult content is visible.
-        """
-        try:
-            # First, check the gallery to see if we need to toggle
-            resp = await self._http.get(
-                f"{SOFURRY_BASE}/u/{self.display_name}/gallery"
-            )
-            html = resp.text
-
-            # Look for SFW/NSFW indicators in the page
-            # Search for the SFW toggle checkbox and its state
-            sfw_indicators = []
-            for pattern in [r'sfw', r'nsfw', r'safe.?for.?work', r'adult']:
-                matches = re.findall(
-                    rf'(?i)(?:<[^>]*(?:id|class|name|href|action)[^>]*{pattern}[^>]*>)',
-                    html,
-                )
-                if matches:
-                    sfw_indicators.extend(matches[:3])
-
-            if sfw_indicators:
-                logger.info("SoFurry: SFW/NSFW indicators found: %s",
-                            [s[:100] for s in sfw_indicators])
-            else:
-                logger.info("SoFurry: No SFW/NSFW indicators found in gallery page")
-
-            # Check if submissions are visible
-            has_subs = bool(re.search(r'href="[^"]*?/s/[A-Za-z0-9]+', html))
-
-            if has_subs:
-                logger.info("SoFurry: gallery already shows submissions — NSFW mode OK")
-                return
-
-            logger.info("SoFurry: gallery has no submissions — trying /sfw toggle...")
-
-            # Call /sfw as a toggle to switch from SFW → NSFW
-            toggle_resp = await self._http.get(f"{SOFURRY_BASE}/sfw")
-            logger.info("SoFurry: /sfw toggle response: %s → %s",
-                        toggle_resp.status_code, str(toggle_resp.url))
-
-            # Verify: re-fetch gallery to check if submissions now appear
-            resp2 = await self._http.get(
-                f"{SOFURRY_BASE}/u/{self.display_name}/gallery"
-            )
-            has_subs_now = bool(re.search(r'href="[^"]*?/s/[A-Za-z0-9]+', resp2.text))
-            logger.info("SoFurry: after /sfw toggle — gallery has submissions: %s (%d chars)",
-                        has_subs_now, len(resp2.text))
-
-            if not has_subs_now:
-                # Toggle didn't help or made it worse — toggle back
-                logger.warning("SoFurry: /sfw toggle didn't reveal submissions, toggling back...")
-                await self._http.get(f"{SOFURRY_BASE}/sfw")
-
-        except Exception as e:
-            logger.warning("SoFurry: failed to ensure NSFW mode: %s", e)
 
     async def _submit_2fa(self, page_text: str) -> bool:
         """Submit a TOTP 2FA code to complete authentication."""
