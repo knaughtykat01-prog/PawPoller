@@ -208,19 +208,32 @@ async def test_chained():
         print(f"  Status: {resp.status_code}")
         print(f"  Final URL: {final}")
         print(f"  X-Session-Cookies: {session_cookies[:80]}...")
-        check_gallery_html(resp.text, "TEST 2: Chained login+gallery")
+        count = check_gallery_html(resp.text, "TEST 2: Chained login+gallery")
 
+        # Dump HTML to file for analysis
+        with open("/tmp/sf_gallery.html", "w") as f:
+            f.write(resp.text)
+        print(f"\n  Full HTML saved to /tmp/sf_gallery.html")
 
-async def test_all_chained():
-    """Test 3: ALL three steps chained (CSRF + login + gallery)."""
-    print("\n" + "="*60)
-    print("  TEST 3: Full chain (CSRF login page → POST login → gallery)")
-    print("  Using GET /login as main, chain = [gallery]")
-    print("  Then POST login separately with chain")
-    print("="*60)
-    # This test is same as test 2 but documents the flow more clearly
-    print("  (Same as Test 2 — CSRF GET must be separate)")
-    print("  Skipping duplicate.")
+        # Show key diagnostic sections
+        html = resp.text
+        print("\n  --- First 800 chars ---")
+        print(html[:800])
+        print("\n  --- Nav/header area ---")
+        for m in re.finditer(r'<nav[^>]*>.*?</nav>', html, re.DOTALL):
+            print(m.group(0)[:500])
+        print("\n  --- Script tags mentioning gallery/submission/artwork ---")
+        for m in re.finditer(r'<script[^>]*>([^<]*(?:gallery|submission|artwork|login|auth)[^<]*)</script>', html, re.IGNORECASE):
+            print(m.group(0)[:400])
+        print("\n  --- Links containing /u/ or /s/ ---")
+        for m in re.findall(r'href="[^"]*(?:/u/|/s/)[^"]*"', html):
+            print(f"    {m}")
+        print("\n  --- Forms ---")
+        for m in re.finditer(r'<form[^>]*>', html):
+            print(f"    {m.group(0)}")
+        print("\n  --- Any 'login'/'logout'/'account' text ---")
+        for m in re.finditer(r'.{0,40}(?:login|logout|account|sign.?in|sign.?out).{0,40}', html, re.IGNORECASE):
+            print(f"    ...{m.group(0).strip()}...")
 
 
 async def test_gallery_unauthenticated():
