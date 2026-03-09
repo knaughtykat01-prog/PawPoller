@@ -64,6 +64,8 @@ _ENV_TO_SETTINGS = {
     "TELEGRAM_BOT_TOKEN": "telegram_bot_token",
     "TELEGRAM_CHAT_ID":   "telegram_chat_id",
     "TELEGRAM_ENABLED":   "telegram_enabled",
+    "DASHBOARD_PASSWORD":  "dashboard_password",
+    "DASHBOARD_USER":      "dashboard_user",
 }
 
 import os

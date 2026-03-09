@@ -68,28 +68,35 @@ async def global_exception_handler(request: Request, exc: Exception):
 # where the dashboard is exposed on 0.0.0.0. Desktop mode (127.0.0.1) typically
 # doesn't need this, so it's opt-in.
 
-_dashboard_password = os.environ.get("DASHBOARD_PASSWORD") or config.get_settings().get("dashboard_password")
+def _get_dashboard_password() -> str:
+    """Resolve dashboard password from env or settings (checked on every request)."""
+    return os.environ.get("DASHBOARD_PASSWORD") or config.get_settings().get("dashboard_password") or ""
 
-if _dashboard_password:
-    _dashboard_user = os.environ.get("DASHBOARD_USER", "admin")
-    logger.info("Dashboard authentication enabled (user: %s)", _dashboard_user)
 
-    @app.middleware("http")
-    async def basic_auth_middleware(request: Request, call_next):
-        auth = request.headers.get("Authorization")
-        if auth and auth.startswith("Basic "):
-            try:
-                decoded = base64.b64decode(auth[6:]).decode("utf-8")
-                user, passwd = decoded.split(":", 1)
-                if secrets.compare_digest(user, _dashboard_user) and secrets.compare_digest(passwd, _dashboard_password):
-                    return await call_next(request)
-            except Exception:
-                pass
-        return Response(
-            status_code=401,
-            content="Authentication required",
-            headers={"WWW-Authenticate": 'Basic realm="PawPoller"'},
-        )
+def _get_dashboard_user() -> str:
+    return os.environ.get("DASHBOARD_USER", "admin")
+
+
+@app.middleware("http")
+async def basic_auth_middleware(request: Request, call_next):
+    password = _get_dashboard_password()
+    if not password:
+        return await call_next(request)
+    user_expected = _get_dashboard_user()
+    auth = request.headers.get("Authorization")
+    if auth and auth.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(auth[6:]).decode("utf-8")
+            user, passwd = decoded.split(":", 1)
+            if secrets.compare_digest(user, user_expected) and secrets.compare_digest(passwd, password):
+                return await call_next(request)
+        except Exception:
+            pass
+    return Response(
+        status_code=401,
+        content="Authentication required",
+        headers={"WWW-Authenticate": 'Basic realm="PawPoller"'},
+    )
 
 
 # Mount API routes BEFORE static file mounts. FastAPI/Starlette matches routes
