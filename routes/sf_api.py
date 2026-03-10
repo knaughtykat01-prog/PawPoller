@@ -75,8 +75,11 @@ async def sf_connect(body: dict):
 
     client = SoFurryClient(username=username, password=password, totp_code=totp_code,
                            display_name=display_name)
+    cookie_data = None
     try:
         display_name = await client.validate_session()
+        if display_name:
+            cookie_data = client.export_cookies()
     except Exception as e:
         raise HTTPException(502, f"Failed to validate credentials: {e}")
     finally:
@@ -85,12 +88,15 @@ async def sf_connect(body: dict):
     if not display_name:
         raise HTTPException(401, "Login failed — check your email, password, and 2FA code.")
 
-    config.save_settings({
+    save_data = {
         "sf_username": username,
         "sf_password": password,
         "sf_display_name": display_name,
         "sf_notifications_enabled": True,
-    })
+    }
+    if cookie_data:
+        save_data["sf_session_cookies"] = cookie_data
+    config.save_settings(save_data)
 
     return {"status": "success", "message": f"Connected as {display_name}"}
 
@@ -98,7 +104,7 @@ async def sf_connect(body: dict):
 @sf_router.post("/auth/disconnect")
 def sf_disconnect():
     """Clear SoFurry credentials from settings."""
-    config.delete_settings_keys(["sf_username", "sf_password", "sf_display_name"])
+    config.delete_settings_keys(["sf_username", "sf_password", "sf_display_name", "sf_session_cookies"])
     config.save_settings({"sf_notifications_enabled": False})
     return {"status": "success", "message": "SoFurry disconnected"}
 

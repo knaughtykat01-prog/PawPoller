@@ -180,8 +180,10 @@ def _get_or_create_client(settings: dict) -> SoFurryClient:
 
     If the credentials in settings have changed since the last poll, the
     existing client is updated (which invalidates the cached session so
-    the next poll will re-login).  A brand-new client is only created on
-    first use.
+    the next poll will re-login) and saved cookies are cleared.
+
+    On first creation, restores any saved session cookies from settings.json
+    so the app can skip re-login if the remember_web cookie is still valid.
     """
     global _sf_client
     sf_user = settings.get("sf_username", "")
@@ -195,11 +197,16 @@ def _get_or_create_client(settings: dict) -> SoFurryClient:
             password=sf_pass,
             display_name=sf_display,
             totp_code=sf_totp,
-            proxy_url=settings.get("cf_worker_url", ""),
-            proxy_key=settings.get("cf_worker_key", ""),
         )
+        # Restore saved session cookies (if any) to skip login
+        saved_cookies = settings.get("sf_session_cookies")
+        if saved_cookies:
+            _sf_client.import_cookies(saved_cookies)
     else:
-        _sf_client.update_credentials(sf_user, sf_pass, sf_display, sf_totp)
+        changed = _sf_client.update_credentials(sf_user, sf_pass, sf_display, sf_totp)
+        if changed:
+            config.delete_settings_keys(["sf_session_cookies"])
+            logger.info("SF credentials changed -- cleared saved session cookies")
 
     return _sf_client
 
@@ -248,6 +255,13 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
         submission_ids = [s["submission_id"] for s in gallery]
         stats["submissions_found"] = len(submission_ids)
         logger.info("SF: Found %d submissions", len(submission_ids))
+
+        # Persist session cookies after a successful authenticated gallery fetch.
+        # Gallery success is the definitive proof the session works.
+        cookie_data = client.export_cookies()
+        if cookie_data:
+            config.save_settings({"sf_session_cookies": cookie_data})
+            logger.info("SF: Saved session cookies to settings.json")
 
         if not submission_ids:
             _update_sf_progress("complete", message="No SoFurry submissions found.")

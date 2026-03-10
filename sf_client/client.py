@@ -116,6 +116,7 @@ class SoFurryClient:
                     "_token": csrf_token,
                     "email": self.username,
                     "password": self.password,
+                    "remember": "on",
                 },
             )
             final_url = resp.headers.get("x-final-url", str(resp.url))
@@ -286,8 +287,18 @@ class SoFurryClient:
         """Re-use existing session if valid, otherwise log in fresh.
 
         Returns True if we end up authenticated, False on failure.
+        Handles restored cookies: if cookies exist in the jar but
+        _logged_in is False, temporarily enables the flag so
+        check_session() can test the restored cookies.
         """
-        if await self.check_session():
+        # If cookies were restored but _logged_in is False, try them
+        if not self._logged_in and self._http.cookies:
+            self._logged_in = True  # Temporarily enable so check_session() proceeds
+            if await self.check_session():
+                logger.info("SoFurry restored session is valid -- skipping login")
+                return True
+            self._logged_in = False  # Restored cookies were invalid
+        elif await self.check_session():
             logger.info("SoFurry session still valid — skipping login")
             return True
         # Session expired or never established — do a full login
@@ -306,6 +317,63 @@ class SoFurryClient:
         if changed:
             self._logged_in = False  # Force re-login on next poll
         return changed
+
+    def export_cookies(self) -> dict | None:
+        """Serialize the httpx cookie jar for persistence across restarts.
+
+        Returns a dict suitable for JSON storage in settings.json, or None
+        if the cookie jar is empty (no session to save).
+        """
+        from datetime import datetime, timezone
+        jar = self._http.cookies
+        if not jar:
+            return None
+        cookies = {}
+        for cookie in jar.jar:
+            cookies[cookie.name] = {
+                "value": cookie.value,
+                "domain": cookie.domain,
+                "path": cookie.path,
+            }
+        if not cookies:
+            return None
+        return {
+            "cookies": cookies,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "saved_for_user": self.username,
+        }
+
+    def import_cookies(self, data: dict) -> bool:
+        """Restore cookies from a previously exported dict.
+
+        Validates structure and checks that ``saved_for_user`` matches
+        the current username (stale cookies from a different account are
+        rejected).  Returns True if cookies were successfully restored.
+        """
+        if not isinstance(data, dict):
+            return False
+        if data.get("saved_for_user") != self.username:
+            logger.info("Saved SF cookies are for %s, current user is %s -- ignoring",
+                        data.get("saved_for_user"), self.username)
+            return False
+        cookies = data.get("cookies")
+        if not isinstance(cookies, dict) or not cookies:
+            return False
+        try:
+            for name, info in cookies.items():
+                if not isinstance(info, dict) or "value" not in info:
+                    continue
+                self._http.cookies.set(
+                    name,
+                    info["value"],
+                    domain=info.get("domain", ".sofurry.com"),
+                    path=info.get("path", "/"),
+                )
+            logger.info("Restored %d SF session cookies from settings", len(cookies))
+            return True
+        except Exception as e:
+            logger.warning("Failed to restore SF cookies: %s", e)
+            return False
 
     async def validate_session(self) -> str | None:
         """Login and verify the display name works.
