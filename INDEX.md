@@ -7,17 +7,16 @@
 
 ## Architecture Overview
 
-PawPoller is a **desktop analytics dashboard** for tracking submission stats across three art platforms: **Inkbunny (IB)**, **FurAffinity (FA)**, and **Weasyl (WS)**.
+PawPoller is a **desktop analytics dashboard** for tracking submission stats across 11 platforms: **Inkbunny (IB)**, **FurAffinity (FA)**, **Weasyl (WS)**, **SoFurry (SF)**, **SquidgeWorld (SqW)**, **AO3**, **DeviantArt (DA)**, **Wattpad (WP)**, **Itaku (IK)**, **Bluesky (BSKY)**, and **X/Twitter (TW)**.
 
 **Stack**: FastAPI + SQLite (WAL) + Vanilla JS SPA + pywebview + pystray
 
-**Runtime model**: Single process with 5 daemon threads + main thread:
-- Thread 1: Uvicorn web server (FastAPI dashboard)
-- Thread 2: Inkbunny poller (periodic stats collection)
-- Thread 3: FurAffinity poller (periodic stats collection)
-- Thread 4: Weasyl poller (periodic stats collection)
-- Thread 5: pystray system tray icon
-- Main thread: pywebview native desktop window
+**Runtime model**: Single process with 14 daemon threads + main thread:
+- Threads 1-11: Platform pollers (IB, FA, WS, SF, SqW, AO3, DA, WP, IK, BSKY, TW)
+- Thread 12: Uvicorn web server (FastAPI dashboard)
+- Thread 13: Telegram digest scheduler
+- Thread 14: Telegram bot command listener
+- Main thread: pywebview native desktop window + pystray system tray
 
 **Data flow**: Platform API → Poller → SQLite → REST API → Frontend SPA
 
@@ -46,15 +45,27 @@ PawPoller/
 │   ├── __init__.py
 │   └── client.py              # WeasylClient (REST API + API key auth)
 │
+├── bsky_client/               # Bluesky API client
+│   ├── __init__.py
+│   └── client.py              # BskyClient (AT Protocol + JWT auth)
+│
+├── tw_client/                 # X/Twitter API client
+│   ├── __init__.py
+│   └── client.py              # TWClient (GraphQL + cookie auth)
+│
 ├── database/                  # SQLite schema, queries, migrations
 │   ├── __init__.py
 │   ├── db.py                  # Connection factory, schema init, migrations
 │   ├── schema.sql             # Inkbunny tables
 │   ├── fa_schema.sql          # FurAffinity tables
 │   ├── ws_schema.sql          # Weasyl tables
+│   ├── bsky_schema.sql        # Bluesky tables
+│   ├── tw_schema.sql          # X/Twitter tables
 │   ├── queries.py             # Inkbunny CRUD + analytics
 │   ├── fa_queries.py          # FurAffinity CRUD + analytics
 │   ├── ws_queries.py          # Weasyl CRUD + analytics
+│   ├── bsky_queries.py        # Bluesky CRUD + analytics
+│   ├── tw_queries.py          # X/Twitter CRUD + analytics
 │   ├── group_queries.py       # Cross-platform submission groups
 │   └── analytics_queries.py   # Top fans, trending, cross-platform links
 │
@@ -62,13 +73,17 @@ PawPoller/
 │   ├── __init__.py
 │   ├── poller.py              # Inkbunny poll cycle
 │   ├── fa_poller.py           # FurAffinity poll cycle
-│   └── ws_poller.py           # Weasyl poll cycle
+│   ├── ws_poller.py           # Weasyl poll cycle
+│   ├── bsky_poller.py         # Bluesky poll cycle
+│   └── tw_poller.py           # X/Twitter poll cycle
 │
 ├── routes/                    # FastAPI REST API routers
 │   ├── __init__.py
 │   ├── api.py                 # /api/* — IB + cross-platform endpoints
 │   ├── fa_api.py              # /api/fa/* — FA endpoints
-│   └── ws_api.py              # /api/ws/* — WS endpoints
+│   ├── ws_api.py              # /api/ws/* — WS endpoints
+│   ├── bsky_api.py            # /api/bsky/* — Bluesky endpoints
+│   └── tw_api.py              # /api/tw/* — X/Twitter endpoints
 │
 ├── frontend/                  # Vanilla JS SPA
 │   ├── index.html             # SPA shell (sidebar + #app container)
@@ -114,6 +129,8 @@ PawPoller/
 | `api_client/models.py` | 149 | Pydantic models | — |
 | `fa_client/client.py` | 338 | `FAClient` | Cookie a + cookie b |
 | `weasyl_client/client.py` | 245 | `WeasylClient` | API key via `X-Weasyl-API-Key` header |
+| `bsky_client/client.py` | ~350 | `BskyClient` | App password → JWT (AT Protocol) |
+| `tw_client/client.py` | ~400 | `TWClient` | Browser cookies (auth_token + ct0) |
 
 ### Database
 
@@ -126,6 +143,10 @@ PawPoller/
 | `database/queries.py` | 576 | IB CRUD: session cache, upsert, snapshots, faves, comments, summary, growth |
 | `database/fa_queries.py` | 416 | FA CRUD: upsert, snapshots, comments, summary, growth |
 | `database/ws_queries.py` | 297 | WS CRUD: upsert, snapshots, summary, growth |
+| `database/bsky_schema.sql` | ~60 | BSKY tables: bsky_submissions (TEXT PK), bsky_snapshots, bsky_poll_log |
+| `database/tw_schema.sql` | ~60 | TW tables: tw_submissions (TEXT PK), tw_snapshots, tw_poll_log |
+| `database/bsky_queries.py` | ~400 | BSKY CRUD: upsert, snapshots, summary, growth (4 metrics) |
+| `database/tw_queries.py` | ~450 | TW CRUD: upsert, snapshots, summary, growth (6 metrics) |
 | `database/group_queries.py` | 114 | Cross-platform groups: CRUD, member management, aggregate stats |
 | `database/analytics_queries.py` | 355 | Top fans, trending/spikes, cross-platform links, auto-suggest |
 
@@ -136,6 +157,8 @@ PawPoller/
 | `polling/poller.py` | 397 | IB poll: auth → search → details → upsert → faves → comments → notify |
 | `polling/fa_poller.py` | 294 | FA poll: gallery → details → upsert → comments → notify |
 | `polling/ws_poller.py` | 253 | WS poll: validate → gallery → details → upsert |
+| `polling/bsky_poller.py` | ~250 | BSKY poll: login → feed → details → upsert → notify |
+| `polling/tw_poller.py` | ~250 | TW poll: cookies → tweets → details → upsert → notify |
 
 ### Routes
 
@@ -144,6 +167,8 @@ PawPoller/
 | `routes/api.py` | 1083 | `/api` | IB endpoints + groups + analytics + links + update + settings |
 | `routes/fa_api.py` | 469 | `/api/fa` | FA endpoints |
 | `routes/ws_api.py` | 417 | `/api/ws` | WS endpoints |
+| `routes/bsky_api.py` | ~350 | `/api/bsky` | Bluesky endpoints |
+| `routes/tw_api.py` | ~350 | `/api/tw` | X/Twitter endpoints |
 
 ### Frontend
 
@@ -188,6 +213,22 @@ PawPoller/
 | `ws_submissions` | `submission_id` | WS submissions with subtype/media_url |
 | `ws_snapshots` | `id` (auto) | Time-series per poll |
 | `ws_poll_log` | `id` (auto) | Poll audit trail |
+
+### Bluesky (bsky_schema.sql)
+
+| Table | Primary Key | Purpose |
+|-------|-------------|---------|
+| `bsky_submissions` | `submission_id` (TEXT) | Post metadata + AT URI as ID + denormalized stats |
+| `bsky_snapshots` | `id` (auto) | Time-series: likes, reposts, replies, quotes per poll |
+| `bsky_poll_log` | `id` (auto) | Poll audit trail |
+
+### X/Twitter (tw_schema.sql)
+
+| Table | Primary Key | Purpose |
+|-------|-------------|---------|
+| `tw_submissions` | `submission_id` (TEXT) | Tweet metadata + stats (6 metrics) |
+| `tw_snapshots` | `id` (auto) | Time-series: views, likes, retweets, replies, quotes, bookmarks |
+| `tw_poll_log` | `id` (auto) | Poll audit trail |
 
 ### Cross-Platform (created by migrations in db.py)
 
@@ -330,6 +371,48 @@ PawPoller/
 | GET | `/api/ws/export/submissions` | WS CSV export |
 | GET | `/api/ws/export/snapshots` | WS snapshots CSV |
 
+### Bluesky — `/api/bsky/*` (routes/bsky_api.py)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/bsky/auth/status` | Check if BSKY credentials are configured |
+| POST | `/api/bsky/auth/connect` | Save BSKY identifier + app_password |
+| POST | `/api/bsky/auth/disconnect` | Clear BSKY creds + delete all BSKY data |
+| GET | `/api/bsky/status` | Last BSKY poll info |
+| GET | `/api/bsky/summary` | BSKY dashboard stats |
+| GET | `/api/bsky/submissions` | All BSKY posts with deltas |
+| GET | `/api/bsky/submissions/{submission_id:path}` | BSKY post detail (AT URI path param) |
+| GET | `/api/bsky/submissions/{submission_id:path}/snapshots` | BSKY time-series |
+| GET | `/api/bsky/aggregate` | BSKY aggregate snapshots |
+| GET | `/api/bsky/comparison` | BSKY multi-post comparison |
+| GET | `/api/bsky/poll_log` | BSKY poll history |
+| POST | `/api/bsky/poll/trigger` | Trigger BSKY poll |
+| POST | `/api/bsky/poll/full-resync` | BSKY full resync |
+| GET | `/api/bsky/poll/progress` | BSKY poll progress |
+| GET | `/api/bsky/export/submissions` | BSKY CSV export |
+| GET | `/api/bsky/export/snapshots` | BSKY snapshots CSV |
+
+### X/Twitter — `/api/tw/*` (routes/tw_api.py)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/tw/auth/status` | Check if TW cookies are configured |
+| POST | `/api/tw/auth/connect` | Save TW auth_token + ct0 + target_user |
+| POST | `/api/tw/auth/disconnect` | Clear TW creds + delete all TW data |
+| GET | `/api/tw/status` | Last TW poll info |
+| GET | `/api/tw/summary` | TW dashboard stats |
+| GET | `/api/tw/submissions` | All tweets with deltas |
+| GET | `/api/tw/submissions/{submission_id}` | Tweet detail + snapshots + growth |
+| GET | `/api/tw/submissions/{submission_id}/snapshots` | TW time-series |
+| GET | `/api/tw/aggregate` | TW aggregate snapshots |
+| GET | `/api/tw/comparison` | TW multi-tweet comparison |
+| GET | `/api/tw/poll_log` | TW poll history |
+| POST | `/api/tw/poll/trigger` | Trigger TW poll |
+| POST | `/api/tw/poll/full-resync` | TW full resync |
+| GET | `/api/tw/poll/progress` | TW poll progress |
+| GET | `/api/tw/export/submissions` | TW CSV export |
+| GET | `/api/tw/export/snapshots` | TW snapshots CSV |
+
 ---
 
 ## Frontend SPA Routes
@@ -351,6 +434,14 @@ PawPoller/
 | `#/ws/submissions` | `renderWSSubmissions()` | WS submissions table |
 | `#/ws/submission/:id` | `renderWSDetail(id)` | WS submission detail |
 | `#/ws/compare` | `renderWSCompare()` | WS comparison |
+| `#/bsky` | `renderBSKYDashboard()` | BSKY dashboard |
+| `#/bsky/submissions` | `renderBSKYSubmissions()` | BSKY posts table |
+| `#/bsky/submission/:rkey` | `renderBSKYDetail(rkey)` | BSKY post detail |
+| `#/bsky/compare` | `renderBSKYCompare()` | BSKY comparison |
+| `#/tw` | `renderTWDashboard()` | TW dashboard |
+| `#/tw/submissions` | `renderTWSubmissions()` | TW tweets table |
+| `#/tw/submission/:id` | `renderTWDetail(id)` | TW tweet detail |
+| `#/tw/compare` | `renderTWCompare()` | TW comparison |
 | `#/groups` | `renderGroups()` | Submission groups list |
 | `#/group/:id` | `renderGroupDetail(id)` | Group detail + members |
 | `#/cross-platform` | `renderCrossPlatform()` | Cross-platform links management |
@@ -678,6 +769,19 @@ Same pattern as queries.py with `ws_` prefix. Key differences:
 | **Notification Type** | Faves + Comments | Comments only | Generic "activity" |
 | **DB Tables** | 6 (submissions, snapshots, faving_users, comments, poll_log, session_cache) | 4 (submissions, snapshots, comments, poll_log) | 3 (submissions, snapshots, poll_log) |
 
+### Bluesky vs X/Twitter
+
+| Feature | Bluesky | X/Twitter |
+|---------|---------|-----------|
+| **Auth** | App password → JWT (AT Protocol) | Browser cookies (auth_token + ct0) |
+| **API** | AT Protocol public API | Internal GraphQL (cookie-based scraping) |
+| **Pagination** | Cursor-based | Cursor-based (GraphQL) |
+| **Metrics** | likes, reposts, replies, quotes (4) | views, likes, retweets, replies, quotes, bookmarks (6) |
+| **ID Format** | AT URI (TEXT, contains slashes) | Numeric string (TEXT, exceeds JS safe int) |
+| **Views** | No | Yes |
+| **Notification Type** | Generic "activity" | Generic "activity" |
+| **DB Tables** | 3 (bsky_submissions, bsky_snapshots, bsky_poll_log) | 3 (tw_submissions, tw_snapshots, tw_poll_log) |
+
 ---
 
 ## Settings Keys (settings.json)
@@ -704,6 +808,15 @@ Same pattern as queries.py with `ws_` prefix. Key differences:
 | `notification_comments_only` | bool | false | IB: only notify on comments |
 | `fa_notification_comments_only` | bool | false | FA: only notify on comments |
 | `ws_notification_comments_only` | bool | false | WS: only notify on comments |
+| `bsky_identifier` | string | "" | Bluesky handle or DID |
+| `bsky_app_password` | string | "" | Bluesky app password |
+| `bsky_notifications_enabled` | bool | true | BSKY desktop notifications |
+| `bsky_poll_interval_minutes` | int | 60 | BSKY poll frequency |
+| `tw_auth_token` | string | "" | X/Twitter auth_token cookie |
+| `tw_ct0` | string | "" | X/Twitter ct0 CSRF cookie |
+| `tw_target_user` | string | "" | X/Twitter username to track |
+| `tw_notifications_enabled` | bool | true | TW desktop notifications |
+| `tw_poll_interval_minutes` | int | 60 | TW poll frequency |
 | `notification_min_views_delta` | int | 0 | Min view change to trigger notification |
 | `notification_min_faves_delta` | int | 0 | Min fave change to trigger notification |
 | `views_offset` | int | 0 | IB stat correction offset |

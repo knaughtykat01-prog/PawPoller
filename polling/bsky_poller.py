@@ -1,0 +1,290 @@
+"""Bluesky (BSKY) poll cycle orchestration.
+
+Uses the AT Protocol public API with JWT session auth (app passwords).
+Simpler than cookie-based platforms since Bluesky provides a proper API.
+
+Key differences from other pollers:
+  - Uses BskyClient with identifier (handle) + app_password
+  - Settings keys: bsky_identifier, bsky_app_password
+  - Stats: likes, reposts, replies, quotes (NO views metric)
+  - Notifications: "BSKY:" prefix, butterfly emoji
+"""
+
+from __future__ import annotations
+import atexit
+import logging
+import threading
+import time
+from datetime import datetime, timezone
+from html import escape as _esc
+
+import httpx
+
+import config
+from bsky_client.client import BskyClient
+from database.db import get_connection
+from database import bsky_queries
+
+logger = logging.getLogger(__name__)
+
+# -- Progress tracking --------------------------------------------------------
+bsky_poll_progress = {
+    "active": False,
+    "phase": "idle",
+    "current": 0,
+    "total": 0,
+    "message": "",
+}
+
+_bsky_poll_running = False
+_bsky_poll_lock = threading.Lock()
+_bsky_first_poll = True
+
+# Persistent client — reused across poll cycles
+_bsky_client: BskyClient | None = None
+
+
+def _cleanup_bsky_client():
+    if _bsky_client is not None:
+        import asyncio
+        try:
+            asyncio.get_event_loop().run_until_complete(_bsky_client.close())
+        except Exception:
+            pass
+
+
+atexit.register(_cleanup_bsky_client)
+
+
+def _update_bsky_progress(phase: str, current: int = 0, total: int = 0, message: str = ""):
+    bsky_poll_progress["active"] = phase not in ("idle", "complete", "error")
+    bsky_poll_progress["phase"] = phase
+    bsky_poll_progress["current"] = current
+    bsky_poll_progress["total"] = total
+    bsky_poll_progress["message"] = message
+
+
+def _send_bsky_notifications(new_details: list[dict]) -> None:
+    """Send Windows toast notifications for Bluesky activity."""
+    settings = config.get_settings()
+    if not settings.get("bsky_notifications_enabled", True):
+        return
+    if not new_details:
+        return
+
+    try:
+        from winotify import Notification
+    except ImportError:
+        logger.debug("winotify not installed -- skipping BSKY notifications")
+        return
+
+    shown = new_details[:3]
+    lines = [f"{d['title'][:50]} gained activity" for d in shown]
+    if len(new_details) > 3:
+        lines.append(f"...and {len(new_details) - 3} more")
+    toast = Notification(
+        app_id="PawPoller",
+        title=f"BSKY: {len(new_details)} Post{'s' if len(new_details) != 1 else ''} Updated",
+        msg="\n".join(lines),
+    )
+    toast.show()
+
+
+async def _send_bsky_telegram(new_details: list[dict]) -> None:
+    """Send Telegram notification for Bluesky activity."""
+    settings = config.get_settings()
+    if not settings.get("telegram_enabled", False):
+        return
+    token = settings.get("telegram_bot_token")
+    chat_id = settings.get("telegram_chat_id")
+    if not token or not chat_id:
+        return
+    if not new_details:
+        return
+
+    lines = [f"<b>\U0001f98b BSKY: {len(new_details)} Post{'s' if len(new_details) != 1 else ''} Updated</b>"]
+    for d in new_details[:5]:
+        lines.append(f"  \u2022 {_esc(d['title'][:50])}")
+    if len(new_details) > 5:
+        lines.append(f"  ...and {len(new_details) - 5} more")
+
+    text = "\n".join(lines)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+            )
+    except Exception as e:
+        logger.warning("Failed to send BSKY Telegram notification: %s", e)
+
+
+def _get_or_create_client(settings: dict) -> BskyClient:
+    """Return the persistent BskyClient, creating or updating as needed."""
+    global _bsky_client
+    bsky_identifier = settings.get("bsky_identifier", "")
+    bsky_app_password = settings.get("bsky_app_password", "")
+
+    if _bsky_client is None:
+        _bsky_client = BskyClient(
+            identifier=bsky_identifier,
+            app_password=bsky_app_password,
+        )
+    else:
+        _bsky_client.update_credentials(bsky_identifier, bsky_app_password)
+
+    return _bsky_client
+
+
+async def run_bsky_poll_cycle(force_full: bool = False) -> dict:
+    """Execute one complete Bluesky poll cycle.
+
+    Steps:
+      1. Login via AT Protocol createSession
+      2. Discover all posts for the authenticated user
+      3. Fetch details for each post (batched, 25 per request)
+      4. Upsert posts and record snapshots
+    """
+    global _bsky_poll_running, _bsky_first_poll
+
+    if not _bsky_poll_lock.acquire(blocking=False):
+        logger.warning("BSKY poll already running -- skipping")
+        return {}
+    _bsky_poll_running = True
+    _update_bsky_progress("starting", message="Initialising BSKY poll cycle...")
+
+    conn = None
+    log_id = None
+    start_time = time.time()
+
+    stats = {
+        "submissions_found": 0,
+        "snapshots_inserted": 0,
+    }
+
+    settings = config.get_settings()
+    client = _get_or_create_client(settings)
+
+    try:
+        conn = get_connection()
+        log_id = bsky_queries.start_bsky_poll_log(conn)
+
+        # Step 1: Login
+        _update_bsky_progress("searching", message="Logging in to Bluesky...")
+        handle = await client.validate_session()
+        if not handle:
+            raise ValueError("Bluesky login failed -- check identifier and app password")
+
+        # Step 2: Discover posts
+        _update_bsky_progress("searching", message="Fetching post list...")
+        post_items = await client.get_all_post_uris()
+        stats["submissions_found"] = len(post_items)
+        logger.info("BSKY: Found %d posts", len(post_items))
+
+        if not post_items:
+            _update_bsky_progress("complete", message="No Bluesky posts found.")
+            bsky_queries.finish_bsky_poll_log(conn, log_id, "success",
+                                              duration_seconds=time.time() - start_time, **stats)
+            conn.commit()
+            return stats
+
+        # Step 3: Fetch details (batched)
+        _update_bsky_progress("fetching_details",
+                              message=f"Fetching details for {len(post_items)} posts...")
+        details = await client.get_post_details_batch(post_items)
+        logger.info("BSKY: Fetched details for %d posts", len(details))
+
+        # Step 4: Upsert + snapshot
+        new_activity_details: list[dict] = []
+        poll_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+        for idx, detail in enumerate(details, 1):
+            _update_bsky_progress("processing", current=idx, total=len(details),
+                                  message=f"Processing post {idx}/{len(details)}...")
+            try:
+                uri = detail["post_uri"]
+                likes = detail.get("likes", 0)
+                reposts = detail.get("reposts", 0)
+                replies = detail.get("replies", 0)
+                quotes = detail.get("quotes", 0)
+
+                # Check for stat increases to drive notifications
+                prev = bsky_queries.get_bsky_submission(conn, uri)
+                if prev and (likes > prev.get("likes", 0)
+                             or reposts > prev.get("reposts", 0)):
+                    new_activity_details.append({"title": detail.get("title", "")})
+
+                bsky_queries.upsert_bsky_submission(conn, detail)
+                bsky_queries.insert_bsky_snapshot(conn, uri, likes, reposts,
+                                                  replies, quotes, polled_at=poll_timestamp)
+                stats["snapshots_inserted"] += 1
+
+            except Exception as e:
+                logger.warning("Error processing BSKY post %s: %s",
+                               detail.get("post_uri", "")[:50], e)
+
+        conn.commit()
+
+        # ── Notifications ─────────────────────────────────────
+        if _bsky_first_poll:
+            logger.info("First BSKY poll after startup -- suppressing %d activity notifications",
+                        len(new_activity_details))
+        else:
+            try:
+                _send_bsky_notifications(new_activity_details)
+            except Exception as ne:
+                logger.warning("Failed to send BSKY notifications: %s", ne)
+            try:
+                await _send_bsky_telegram(new_activity_details)
+            except Exception as te:
+                logger.warning("Failed to send BSKY Telegram notification: %s", te)
+
+        # Finalise
+        duration = time.time() - start_time
+        _update_bsky_progress("complete", current=len(details), total=len(details),
+                              message=f"Done -- {stats['submissions_found']} posts in {duration:.1f}s")
+        bsky_queries.finish_bsky_poll_log(conn, log_id, "success",
+                                          duration_seconds=duration, **stats)
+        logger.info("BSKY poll complete in %.1fs -- %d posts, %d snapshots",
+                     duration, stats["submissions_found"], stats["snapshots_inserted"])
+
+        # -- Telegram notifications ----------------------------------------
+        if not _bsky_first_poll:
+            from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
+            try:
+                await send_poll_summary("bsky", stats, duration)
+            except Exception as te:
+                logger.warning("Failed to send BSKY Telegram summary: %s", te)
+            try:
+                await check_milestones_batch("bsky", "bsky_snapshots", "bsky_submissions")
+            except Exception as me:
+                logger.warning("Failed to check BSKY milestones: %s", me)
+            try:
+                await check_goals()
+            except Exception as ge:
+                logger.warning("Failed to check goals: %s", ge)
+
+        return stats
+
+    except Exception as e:
+        duration = time.time() - start_time
+        _update_bsky_progress("error", message=str(e))
+        logger.error("BSKY poll failed: %s", e)
+        if conn and log_id:
+            bsky_queries.finish_bsky_poll_log(conn, log_id, "error",
+                                              error_message=str(e),
+                                              duration_seconds=duration, **stats)
+            conn.commit()
+        from polling.telegram import send_poll_error
+        try:
+            await send_poll_error("bsky", e)
+        except Exception:
+            pass
+        raise
+    finally:
+        if _bsky_first_poll:
+            _bsky_first_poll = False
+        _bsky_poll_running = False
+        _bsky_poll_lock.release()
+        if conn:
+            conn.close()

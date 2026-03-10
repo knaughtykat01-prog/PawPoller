@@ -1197,7 +1197,7 @@ def get_pins():
     result = []
     conn = get_connection()
     try:
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions"}
         for pin in pins:
             table = table_map.get(pin.get("platform"))
             if not table:
@@ -1255,10 +1255,11 @@ def get_goals():
     try:
         rows = conn.execute("SELECT * FROM goals ORDER BY created_at DESC").fetchall()
         result = []
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions"}
         allowed_metrics = {
             "views", "favorites_count", "comments_count",
             "reads", "votes", "likes", "reshares", "downloads", "num_lists",
+            "reposts", "retweets", "bookmarks", "quotes", "replies",
         }
         for row in rows:
             g = dict(row)
@@ -1448,7 +1449,7 @@ def get_tag_stats(tag_id: int):
     conn = get_connection()
     try:
         members = conn.execute("SELECT platform, submission_id FROM submission_tags WHERE tag_id = ?", (tag_id,)).fetchall()
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions"}
         # Platform-specific column mappings for stats aggregation
         _metrics = {
             "ib": ("views", "favorites_count", "comments_count"),
@@ -1460,6 +1461,8 @@ def get_tag_stats(tag_id: int):
             "da": ("views", "favorites_count", "comments_count"),
             "wp": ("reads", "votes", "comments_count"),
             "ik": (None, "likes", "comments_count"),
+            "bsky": (None, "likes", "replies"),
+            "tw": ("views", "likes", "replies"),
         }
         total_views = total_faves = total_comments = 0
         subs = []

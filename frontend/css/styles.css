@@ -1451,6 +1451,14 @@ body {
     background: #00968830;
     color: #009688;
 }
+.platform-badge.bsky {
+    background: #0085ff30;
+    color: #0085ff;
+}
+.platform-badge.tw {
+    background: #1d9bf030;
+    color: #1d9bf0;
+}
 
 /* ── FA Metadata ─────────────────────────────────────────── */
 /* Grid layout for FurAffinity submission detail metadata fields

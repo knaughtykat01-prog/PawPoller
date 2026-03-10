@@ -1,0 +1,427 @@
+"""Bluesky (BSKY) AT Protocol API client.
+
+Bluesky provides a free public API via the AT Protocol. Authentication
+uses app passwords to obtain JWT sessions (accessJwt + refreshJwt).
+
+Key details:
+  - Post IDs are AT URIs (at://did:plc:xxx/app.bsky.feed.post/yyy)
+  - Stats: likes, reposts, replies, quotes (NO views/impressions)
+  - Auth: App Password → JWT via com.atproto.server.createSession
+  - Session management: accessJwt/refreshJwt with auto-refresh
+  - Pagination: cursor-based (cursor field in response)
+"""
+
+from __future__ import annotations
+import asyncio
+import logging
+from typing import Any
+
+import httpx
+
+import config
+
+logger = logging.getLogger(__name__)
+
+_API_BASE = "https://bsky.social/xrpc"
+
+_HEADERS = {
+    "User-Agent": "PawPoller/1.0",
+    "Accept": "application/json",
+}
+
+
+def _safe_int(val: Any) -> int:
+    """Safely convert a value to int, handling None, comma-formatted strings, etc."""
+    if val is None:
+        return 0
+    try:
+        if isinstance(val, str):
+            val = val.replace(",", "").strip()
+        return int(val)
+    except (ValueError, TypeError):
+        return 0
+
+
+class BskyClient:
+    """Async HTTP client for Bluesky's AT Protocol API."""
+
+    def __init__(self, identifier: str = "", app_password: str = ""):
+        self.identifier = identifier      # Handle (user.bsky.social) or DID
+        self.app_password = app_password   # App password (NOT main account password)
+        self._access_jwt: str = ""
+        self._refresh_jwt: str = ""
+        self._did: str = ""
+        self._handle: str = ""
+        self._logged_in = False
+
+        transport = httpx.AsyncHTTPTransport(retries=2)
+        self._http = httpx.AsyncClient(
+            timeout=30.0,
+            follow_redirects=True,
+            headers=_HEADERS,
+            transport=transport,
+        )
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        await self.close()
+
+    async def close(self) -> None:
+        await self._http.aclose()
+
+    def update_credentials(self, identifier: str, app_password: str) -> None:
+        """Update stored credentials. Resets login state if changed."""
+        changed = (self.identifier != identifier or self.app_password != app_password)
+        self.identifier = identifier
+        self.app_password = app_password
+        if changed:
+            self._logged_in = False
+            self._access_jwt = ""
+            self._refresh_jwt = ""
+            self._did = ""
+            self._handle = ""
+
+    # -- Authentication -------------------------------------------------------
+
+    async def login(self) -> bool:
+        """Authenticate via com.atproto.server.createSession.
+
+        Posts identifier + app_password to the createSession endpoint.
+        On success, stores accessJwt, refreshJwt, and DID for subsequent
+        authenticated requests.
+        """
+        if not self.identifier or not self.app_password:
+            return False
+        try:
+            resp = await self._http.post(
+                f"{_API_BASE}/com.atproto.server.createSession",
+                json={"identifier": self.identifier, "password": self.app_password},
+            )
+            if resp.status_code != 200:
+                logger.error("BSKY: Login failed (status %d): %s", resp.status_code, resp.text[:200])
+                return False
+            data = resp.json()
+            self._access_jwt = data.get("accessJwt", "")
+            self._refresh_jwt = data.get("refreshJwt", "")
+            self._did = data.get("did", "")
+            self._handle = data.get("handle", "")
+            self._logged_in = True
+            logger.info("BSKY: Login successful for %s (did=%s)", self._handle, self._did)
+            return True
+        except Exception as e:
+            logger.error("BSKY: Login failed: %s", e)
+            return False
+
+    async def refresh_session(self) -> bool:
+        """Refresh the access token using the refresh JWT."""
+        if not self._refresh_jwt:
+            return False
+        try:
+            resp = await self._http.post(
+                f"{_API_BASE}/com.atproto.server.refreshSession",
+                headers={"Authorization": f"Bearer {self._refresh_jwt}"},
+            )
+            if resp.status_code != 200:
+                logger.warning("BSKY: Session refresh failed (status %d)", resp.status_code)
+                return False
+            data = resp.json()
+            self._access_jwt = data.get("accessJwt", "")
+            self._refresh_jwt = data.get("refreshJwt", "")
+            self._did = data.get("did", self._did)
+            self._handle = data.get("handle", self._handle)
+            logger.info("BSKY: Session refreshed for %s", self._handle)
+            return True
+        except Exception as e:
+            logger.warning("BSKY: Session refresh failed: %s", e)
+            return False
+
+    async def check_session(self) -> bool:
+        """Check if the current access token is still valid."""
+        if not self._access_jwt:
+            return False
+        try:
+            resp = await self._http.get(
+                f"{_API_BASE}/com.atproto.server.getSession",
+                headers={"Authorization": f"Bearer {self._access_jwt}"},
+            )
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+    async def ensure_logged_in(self) -> bool:
+        """Check session → refresh → login fallback chain."""
+        if await self.check_session():
+            return True
+        if await self.refresh_session():
+            return True
+        self._logged_in = False
+        return await self.login()
+
+    async def validate_session(self) -> str | None:
+        """Login and verify the account works. Returns handle on success."""
+        if not await self.ensure_logged_in():
+            return None
+        try:
+            data = await self._get_json(
+                f"{_API_BASE}/app.bsky.actor.getProfile",
+                params={"actor": self._did},
+            )
+            if data and isinstance(data, dict):
+                self._handle = data.get("handle", self._handle)
+                return self._handle
+        except Exception as e:
+            logger.warning("BSKY: Profile validation failed: %s", e)
+        return None
+
+    # -- HTTP Helpers ---------------------------------------------------------
+
+    async def _get_json(self, url: str, params: dict | None = None) -> dict | list | None:
+        """Fetch a JSON endpoint with auth header injection and error handling."""
+        headers = {}
+        if self._access_jwt:
+            headers["Authorization"] = f"Bearer {self._access_jwt}"
+        try:
+            resp = await self._http.get(url, params=params, headers=headers)
+
+            # Auto-refresh on 401
+            if resp.status_code == 401:
+                logger.info("BSKY: Got 401, attempting session refresh...")
+                if await self.refresh_session():
+                    headers["Authorization"] = f"Bearer {self._access_jwt}"
+                    resp = await self._http.get(url, params=params, headers=headers)
+                else:
+                    logger.error("BSKY: Session refresh failed after 401")
+                    return None
+
+            if resp.status_code == 429:
+                logger.warning("BSKY: Rate limited (429), waiting 30s...")
+                await asyncio.sleep(30)
+                resp = await self._http.get(url, params=params, headers=headers)
+
+            if resp.status_code == 404:
+                logger.warning("BSKY: Not found (404) for %s", url)
+                return None
+
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError as e:
+            logger.error("BSKY: Failed to fetch %s: %s", url, e)
+            return None
+        except Exception as e:
+            logger.error("BSKY: JSON parse error for %s: %s", url, e)
+            return None
+
+    # -- Post Discovery -------------------------------------------------------
+
+    async def get_all_post_uris(self) -> list[dict]:
+        """Fetch all post URIs for the authenticated user via getAuthorFeed.
+
+        Returns a list of dicts with 'post_uri' and 'title' keys.
+        Uses cursor-based pagination.
+        """
+        if not await self.ensure_logged_in():
+            logger.error("BSKY: Not logged in, cannot fetch posts")
+            return []
+
+        all_posts: list[dict] = []
+        seen_uris: set[str] = set()
+        cursor: str | None = None
+
+        for _page_safety in range(1000):
+            params: dict[str, str] = {
+                "actor": self._did,
+                "limit": "100",
+                "filter": "posts_no_replies",
+            }
+            if cursor:
+                params["cursor"] = cursor
+
+            data = await self._get_json(
+                f"{_API_BASE}/app.bsky.feed.getAuthorFeed",
+                params=params,
+            )
+            if not data or not isinstance(data, dict):
+                break
+
+            feed = data.get("feed", [])
+            if not feed:
+                break
+
+            for item in feed:
+                post = item.get("post", {})
+                uri = post.get("uri", "")
+                if uri and uri not in seen_uris:
+                    seen_uris.add(uri)
+                    # Use first 80 chars of text as title
+                    record = post.get("record", {})
+                    text = record.get("text", "")
+                    title = text[:80] + ("..." if len(text) > 80 else "") if text else ""
+                    all_posts.append({
+                        "post_uri": uri,
+                        "title": title,
+                    })
+
+            cursor = data.get("cursor")
+            if not cursor:
+                break
+
+            await asyncio.sleep(config.BSKY_REQUEST_DELAY_SECONDS)
+
+        logger.info("BSKY: Found %d posts for %s", len(all_posts), self._handle)
+        return all_posts
+
+    # -- Post Details ---------------------------------------------------------
+
+    async def get_post_detail(self, uri: str) -> dict:
+        """Fetch stats and metadata for a single post via getPosts.
+
+        Returns a dict with post metadata and engagement stats.
+        """
+        data = await self._get_json(
+            f"{_API_BASE}/app.bsky.feed.getPosts",
+            params={"uris": uri},
+        )
+
+        if not data or not isinstance(data, dict):
+            return self._empty_detail(uri)
+
+        posts = data.get("posts", [])
+        if not posts:
+            return self._empty_detail(uri)
+
+        return self._parse_post(posts[0])
+
+    async def get_post_details_batch(self, items: list[dict]) -> list[dict]:
+        """Fetch details for multiple posts using batched getPosts calls.
+
+        The getPosts endpoint accepts up to 25 URIs per request.
+        """
+        details: list[dict] = []
+        batch_size = 25
+
+        for i in range(0, len(items), batch_size):
+            if i > 0:
+                await asyncio.sleep(config.BSKY_REQUEST_DELAY_SECONDS)
+
+            batch = items[i:i + batch_size]
+            uris = [item["post_uri"] for item in batch]
+
+            try:
+                data = await self._get_json(
+                    f"{_API_BASE}/app.bsky.feed.getPosts",
+                    params={"uris": uris},
+                )
+
+                if data and isinstance(data, dict):
+                    posts = data.get("posts", [])
+                    # Build URI→post map for matching
+                    post_map = {p.get("uri", ""): p for p in posts}
+                    for item in batch:
+                        post_data = post_map.get(item["post_uri"])
+                        if post_data:
+                            details.append(self._parse_post(post_data))
+                        else:
+                            details.append(self._empty_detail(item["post_uri"]))
+                else:
+                    # Batch failed — add empty details
+                    for item in batch:
+                        details.append(self._empty_detail(item["post_uri"]))
+
+            except Exception as e:
+                logger.warning("BSKY: Failed to fetch batch at offset %d: %s", i, e)
+                for item in batch:
+                    details.append(self._empty_detail(item["post_uri"]))
+
+        return details
+
+    # -- Parsing Helpers ------------------------------------------------------
+
+    def _parse_post(self, post: dict) -> dict:
+        """Parse a post object from getPosts response into a normalised detail dict."""
+        uri = post.get("uri", "")
+        rkey = uri.rsplit("/", 1)[-1] if "/" in uri else uri
+        author = post.get("author", {})
+        handle = author.get("handle", self._handle)
+        record = post.get("record", {})
+        text = record.get("text", "")
+
+        # Determine content type
+        embed = post.get("embed", {})
+        embed_type = embed.get("$type", "") if isinstance(embed, dict) else ""
+        has_media = bool(embed_type)
+
+        # Build post link
+        link = f"https://bsky.app/profile/{handle}/post/{rkey}"
+
+        # Stats
+        likes = _safe_int(post.get("likeCount", 0))
+        reposts = _safe_int(post.get("repostCount", 0))
+        replies = _safe_int(post.get("replyCount", 0))
+        quotes = _safe_int(post.get("quoteCount", 0))
+
+        # Tags/facets as keywords
+        facets = record.get("facets", [])
+        keywords = []
+        if isinstance(facets, list):
+            for facet in facets:
+                features = facet.get("features", [])
+                for feat in features:
+                    if feat.get("$type") == "app.bsky.richtext.facet#tag":
+                        tag = feat.get("tag", "")
+                        if tag:
+                            keywords.append(tag)
+
+        # Thumbnail from embed
+        thumbnail_url = ""
+        if embed_type == "app.bsky.embed.images#view":
+            images = embed.get("images", [])
+            if images:
+                thumbnail_url = images[0].get("thumb", "")
+        elif embed_type == "app.bsky.embed.external#view":
+            ext = embed.get("external", {})
+            thumbnail_url = ext.get("thumb", "")
+
+        return {
+            "post_uri": uri,
+            "title": text[:80] + ("..." if len(text) > 80 else "") if text else "",
+            "full_text": text,
+            "username": handle,
+            "posted_at": record.get("createdAt", ""),
+            "content_type": "post",
+            "rating": "General",
+            "description": text,
+            "keywords": keywords,
+            "link": link,
+            "thumbnail_url": thumbnail_url,
+            "likes": likes,
+            "reposts": reposts,
+            "replies": replies,
+            "quotes": quotes,
+            "has_media": 1 if has_media else 0,
+            "embed_type": embed_type,
+        }
+
+    def _empty_detail(self, uri: str) -> dict:
+        """Return an empty detail dict for a post that couldn't be fetched."""
+        rkey = uri.rsplit("/", 1)[-1] if "/" in uri else uri
+        return {
+            "post_uri": uri,
+            "title": "",
+            "full_text": "",
+            "username": self._handle,
+            "posted_at": "",
+            "content_type": "post",
+            "rating": "General",
+            "description": "",
+            "keywords": [],
+            "link": f"https://bsky.app/profile/{self._handle}/post/{rkey}",
+            "thumbnail_url": "",
+            "likes": 0,
+            "reposts": 0,
+            "replies": 0,
+            "quotes": 0,
+            "has_media": 0,
+            "embed_type": "",
+        }

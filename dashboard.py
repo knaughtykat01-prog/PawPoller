@@ -27,6 +27,8 @@ from routes.ao3_api import ao3_router
 from routes.da_api import da_router
 from routes.wp_api import wp_router
 from routes.ik_api import ik_router
+from routes.bsky_api import bsky_router
+from routes.tw_api import tw_router
 
 # Logging
 logging.basicConfig(
@@ -114,6 +116,8 @@ app.include_router(ao3_router)   # AO3 routes (/api/ao3/*)
 app.include_router(da_router)    # DeviantArt routes (/api/da/*)
 app.include_router(wp_router)    # Wattpad routes (/api/wp/*)
 app.include_router(ik_router)    # Itaku routes (/api/ik/*)
+app.include_router(bsky_router)  # Bluesky routes (/api/bsky/*)
+app.include_router(tw_router)    # X/Twitter routes (/api/tw/*)
 
 # Serve frontend static files. config.resource_path() resolves differently
 # depending on the build mode:

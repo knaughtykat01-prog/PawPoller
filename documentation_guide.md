@@ -21,6 +21,8 @@ PawPoller is a multi-platform furry art analytics dashboard. It periodically pol
 | 7 | DeviantArt  | Art, literature      | Undocumented Eclipse _napi |
 | 8 | Wattpad     | Stories              | Public REST API |
 | 9 | Itaku       | Art                  | Public REST API |
+| 10 | Bluesky    | Social (microblog)   | AT Protocol public API |
+| 11 | X/Twitter  | Social (microblog)   | Cookie-based GraphQL scraping |
 
 ### Two Operating Modes
 
@@ -115,6 +117,10 @@ PawPoller/
 │   └── client.py            #   WPClient class (no auth, public API)
 ├── ik_client/               # Itaku client (REST API)
 │   └── client.py            #   IKClient class (no auth, public API)
+├── bsky_client/             # Bluesky client (AT Protocol)
+│   └── client.py            #   BskyClient class with JWT session auth
+├── tw_client/               # X/Twitter client (GraphQL scraping)
+│   └── client.py            #   TWClient class with cookie auth
 │
 ├── polling/
 │   ├── poller.py            # Inkbunny poll cycle orchestration (6-step)
@@ -126,6 +132,8 @@ PawPoller/
 │   ├── da_poller.py         # DeviantArt poll cycle (no comments/watchers)
 │   ├── wp_poller.py         # Wattpad poll cycle
 │   ├── ik_poller.py         # Itaku poll cycle
+│   ├── bsky_poller.py       # Bluesky poll cycle
+│   ├── tw_poller.py         # X/Twitter poll cycle
 │   ├── cf_proxy.py          # Cloudflare Worker proxy transport (httpx)
 │   ├── telegram.py          # Telegram notification helpers (summaries, milestones, digests)
 │   └── telegram_bot.py      # Telegram bot command listener (11 commands)
@@ -141,6 +149,8 @@ PawPoller/
 │   ├── da_queries.py        # DeviantArt queries
 │   ├── wp_queries.py        # Wattpad queries
 │   ├── ik_queries.py        # Itaku queries
+│   ├── bsky_queries.py      # Bluesky queries
+│   ├── tw_queries.py        # X/Twitter queries
 │   ├── group_queries.py     # Cross-platform submission groups
 │   ├── analytics_queries.py # Cross-platform trending, top fans, comparisons
 │   ├── schema.sql           # Inkbunny tables (submissions, snapshots, faving_users, comments, poll_log, watchers, session_cache)
@@ -152,6 +162,8 @@ PawPoller/
 │   ├── da_schema.sql        # DeviantArt tables
 │   ├── wp_schema.sql        # Wattpad tables
 │   └── ik_schema.sql        # Itaku tables
+│   ├── bsky_schema.sql      # Bluesky tables
+│   └── tw_schema.sql        # X/Twitter tables
 │
 ├── routes/
 │   ├── api.py               # Core API (IB CRUD, settings, groups, links, health, auto-update, thumbnail proxy, Telegram setup)
@@ -163,6 +175,8 @@ PawPoller/
 │   ├── da_api.py            # DeviantArt API endpoints
 │   ├── wp_api.py            # Wattpad API endpoints
 │   └── ik_api.py            # Itaku API endpoints
+│   ├── bsky_api.py          # Bluesky API endpoints
+│   └── tw_api.py            # X/Twitter API endpoints
 │
 ├── frontend/
 │   ├── index.html           # SPA shell (collapsible nav groups, bottom nav bar, sidebar overlay)
@@ -318,7 +332,7 @@ Three modes via argparse:
 
 ## 3. Threading Model
 
-Both `main.py` and `server.py` spawn 12 daemon threads plus the main thread:
+Both `main.py` and `server.py` spawn 14 daemon threads plus the main thread:
 
 | Thread | Purpose | Interval Source | Default |
 |--------|---------|----------------|---------|
@@ -332,6 +346,8 @@ Both `main.py` and `server.py` spawn 12 daemon threads plus the main thread:
 | DA poller | DeviantArt stat collection | `da_poll_interval_minutes` | 60 min |
 | WP poller | Wattpad stat collection | `wp_poll_interval_minutes` | 60 min |
 | IK poller | Itaku stat collection | `ik_poll_interval_minutes` | 60 min |
+| BSKY poller | Bluesky stat collection | `bsky_poll_interval_minutes` | 60 min |
+| TW poller | X/Twitter stat collection | `tw_poll_interval_minutes` | 60 min |
 | Telegram digest | 6-hourly cross-platform summary | Fixed 6 hours | — |
 | Telegram bot | Command listener (long-poll) | Continuous | — |
 
@@ -662,6 +678,48 @@ Rate limiting: 1s between requests, 429 handling with 30s backoff.
 
 Rate limiting: 429 handling with 30s backoff.
 
+### Bluesky (`bsky_client/client.py`) — `BskyClient`
+
+**AT Protocol API** at `bsky.social/xrpc`. Authenticated via app password → JWT session tokens.
+
+**Session management**: `com.atproto.server.createSession` returns `accessJwt` + `refreshJwt` + DID. Access tokens are short-lived; the client auto-refreshes via `com.atproto.server.refreshSession` on 401, with full re-login as fallback. Chain: `check_session()` → `refresh_session()` → `login()`.
+
+**Post discovery**: `app.bsky.feed.getAuthorFeed` with cursor-based pagination. Each response includes `cursor` for the next page. Returns AT URIs (`at://did:plc:xxx/app.bsky.feed.post/yyy`).
+
+**Post detail**: `app.bsky.feed.getPosts` accepts up to 25 URIs per call. Returns likes, reposts, replies, quotes. Batched with rate limiting between calls.
+
+**AT URI handling**: AT URIs contain slashes, so they're stored as TEXT primary keys in SQLite. The `rkey` (final path segment) is used for URL-friendly frontend routes. API resolves by suffix match (`LIKE '%/' || rkey`).
+
+**Stats**: likes, reposts, replies, quotes. **No views metric** — Bluesky does not expose impression counts. This means the dashboard has 4 stat cards instead of the typical 5.
+
+**Post links**: `https://bsky.app/profile/{handle}/post/{rkey}` where rkey is the last segment of the AT URI.
+
+Rate limiting: 1s between requests, 429 handling with 30s backoff.
+
+### X/Twitter (`tw_client/client.py`) — `TWClient`
+
+**Cookie-based GraphQL scraping** — same approach as DeviantArt. Uses internal GraphQL endpoints discovered from browser network inspection.
+
+**Cookie authentication**: `auth_token` + `ct0` cookies from the user's browser. The `ct0` value is also sent as `x-csrf-token` header. Validated by making a lightweight request and checking for non-403 response.
+
+**Bearer token**: A hardcoded public bearer token is included in all requests. This is NOT a secret — it's embedded in X's web client JavaScript bundle, shared by all users, and required for all GraphQL requests.
+
+**GraphQL endpoints**:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `UserByScreenName` | Resolve username → numeric rest_id |
+| `UserTweets` | Cursor-paginated tweet listing for a user |
+| `TweetResultByRestId` | Full tweet detail with all stats |
+
+**Content type detection**: Tweets are classified by checking `in_reply_to_status_id_str` (reply), `retweeted_status_result` (retweet), `quoted_status_id_str` (quote), else "tweet".
+
+**Stats**: views, likes, retweets, replies, quotes, bookmarks — **6 metrics**, the most of any platform. Tweet IDs are stored as TEXT because 64-bit integers exceed JS `Number.MAX_SAFE_INTEGER`.
+
+**GraphQL query IDs**: Hardcoded known IDs that may rotate over time as X updates their frontend. Comments note this limitation.
+
+Rate limiting: 2s between requests, 429 handling with 60s backoff (X is aggressive about rate limiting).
+
 ---
 
 ## 5. Polling System
@@ -678,6 +736,8 @@ Step 1: Authenticate (if needed)
     │  AO3/SqW: Rails form login with CSRF
     │  WS: validate API key
     │  DA: validate cookie string
+    │  BSKY: JWT session (login → refresh → check chain)
+    │  TW: validate cookies (auth_token + ct0)
     │  WP/IK: no auth needed
     ▼
 Step 2: Gallery Discovery
@@ -698,7 +758,7 @@ Step 5: Comments / Faves / Watchers (platform-dependent)
     │  FA: comments via FAExport + watcher list + spam filter
     │  SF: follower scraping
     │  AO3: kudos user list
-    │  WS/DA/WP/IK: none
+    │  WS/DA/WP/IK/BSKY/TW: none
     ▼
 Step 6: Notifications
     │  Windows toast (desktop only, winotify)
@@ -1402,6 +1462,8 @@ Different platforms call their stats different things:
 - IB/FA/WS/SF/SqW/AO3/DA: `views`, `favorites_count`, `comments_count`
 - Wattpad: `reads` (not views), `votes` (not favorites), `comments_count`, `num_lists`
 - Itaku: `likes` (not views/favorites), `comments_count`, `reshares` (no views metric at all)
+- Bluesky: `likes`, `replies`, `reposts`, `quotes` (no views metric)
+- X/Twitter: `views`, `likes`, `replies`, `retweets`, `quotes`, `bookmarks` (6 metrics — most of any platform)
 
 **6-Hour Digest Report** (sent by digest scheduler thread):
 ```
@@ -1584,6 +1646,13 @@ _ENV_TO_SETTINGS = {
     # Wattpad / Itaku (no auth, just target user)
     "WP_TARGET_USER":     "wp_target_user",
     "IK_TARGET_USER":     "ik_target_user",
+    # Bluesky
+    "BSKY_IDENTIFIER":    "bsky_identifier",
+    "BSKY_APP_PASSWORD":  "bsky_app_password",
+    # X/Twitter
+    "TW_AUTH_TOKEN":      "tw_auth_token",
+    "TW_CT0":             "tw_ct0",
+    "TW_TARGET_USER":     "tw_target_user",
     # Telegram
     "TELEGRAM_BOT_TOKEN": "telegram_bot_token",
     "TELEGRAM_CHAT_ID":   "telegram_chat_id",
@@ -1612,6 +1681,8 @@ AO3_REQUEST_DELAY_SECONDS      = 3.0    # AO3 (volunteer-run, courtesy delay)
 DA_REQUEST_DELAY_SECONDS       = 2.0    # DeviantArt (aggressive rate limiting)
 WP_REQUEST_DELAY_SECONDS       = 1.0    # Wattpad public API
 IK_REQUEST_DELAY_SECONDS       = 1.0    # Itaku public API
+BSKY_REQUEST_DELAY_SECONDS     = 1.0    # Bluesky AT Protocol (generous rate limits)
+TW_REQUEST_DELAY_SECONDS       = 2.0    # X/Twitter GraphQL (aggressive rate limiting)
 ```
 
 ### Windows Auto-Start (Registry)
@@ -1955,6 +2026,8 @@ Pollers read via config.get_settings() each cycle
 | DeviantArt | Browser cookie string | `da_cookie`, `da_target_user` | Full cookie string from browser DevTools |
 | Wattpad | None (public) | `wp_target_user` | Just the username to track |
 | Itaku | None (public) | `ik_target_user` | Just the username to track |
+| Bluesky | App password → JWT | `bsky_identifier`, `bsky_app_password` | Settings → App Passwords on bsky.app |
+| X/Twitter | Browser cookies | `tw_auth_token`, `tw_ct0`, `tw_target_user` | F12 → Application → Cookies on x.com |
 
 **Note on separated login vs target user**: For AO3 and SquidgeWorld, the login credentials (username/password) are for authenticating with the site, while `target_user` is the profile being tracked. These can be different accounts — you might log in with your own account but track stats for a different user.
 
@@ -2011,6 +2084,11 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 | SqW login fails with challenge | Anubis bot protection | The client automatically solves Anubis SHA-256 challenges. If it fails, the challenge format may have changed — check logs for details. |
 | Telegram bot not responding | Bot not polling updates | Verify `telegram_enabled=true`, `telegram_bot_token`, and `telegram_chat_id` are set. Check bot thread is alive in logs. Send `/start` to your bot. |
 | Proxy returns 403 | Mismatched proxy key | Ensure `CF_WORKER_KEY` in PawPoller matches `PROXY_SECRET` in Cloudflare Worker settings exactly. |
+| BSKY login fails | Wrong credential type | Use an **App Password** (Settings → App Passwords on bsky.app), not your main account password. |
+| BSKY no posts found | Wrong identifier | `bsky_identifier` should be your handle (e.g. `user.bsky.social`) or DID (`did:plc:...`). |
+| TW polls return 403 | Cookies expired/invalid | Re-export `auth_token` and `ct0` cookies from browser DevTools → Application → Cookies on x.com. |
+| TW rate limited (429) | Polling too fast | X is aggressive about rate limiting. Increase `tw_poll_interval_minutes`. Default 2s inter-request delay + 60s backoff. |
+| TW GraphQL fails | Query IDs rotated | X may update GraphQL query IDs when they deploy new frontend code. Check logs for 404s and update hardcoded IDs in `tw_client/client.py`. |
 
 ### Known Limitations (Not Fixed)
 
@@ -2060,6 +2138,14 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 | Wattpad API | `/api/v3/users/{u}/stories/published` | `wp_client/client.py` | Story listing |
 | Itaku API | `/api/user_profiles/{u}/` | `ik_client/client.py` | User resolution |
 | | `/api/gallery_images/` | | Content discovery |
+| Bluesky AT Proto | `com.atproto.server.createSession` | `bsky_client/client.py` | JWT authentication |
+| | `com.atproto.server.refreshSession` | | Token refresh |
+| | `app.bsky.feed.getAuthorFeed` | | Post discovery |
+| | `app.bsky.feed.getPosts` | | Batch post details |
+| | `app.bsky.actor.getProfile` | | Session validation |
+| X/Twitter GraphQL | `/i/api/graphql/.../UserByScreenName` | `tw_client/client.py` | User ID resolution |
+| | `/i/api/graphql/.../UserTweets` | | Tweet listing |
+| | `/i/api/graphql/.../TweetResultByRestId` | | Tweet detail |
 | Telegram | `/bot{token}/getUpdates` | `polling/telegram_bot.py` | Long-poll commands |
 | | `/bot{token}/sendMessage` | `polling/telegram.py` | Send notifications |
 | GitHub | `/repos/{owner}/{repo}/releases/latest` | `updater.py` | Version check |

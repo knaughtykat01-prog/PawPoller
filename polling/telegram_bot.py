@@ -28,7 +28,7 @@ import httpx
 
 import config
 from database.db import get_connection
-from database import queries, fa_queries, ws_queries, sf_queries, sqw_queries, ao3_queries, da_queries, wp_queries, ik_queries
+from database import queries, fa_queries, ws_queries, sf_queries, sqw_queries, ao3_queries, da_queries, wp_queries, ik_queries, bsky_queries, tw_queries
 from database.analytics_queries import get_top_fans, get_trending_submissions
 
 logger = logging.getLogger(__name__)
@@ -198,6 +198,45 @@ async def _cmd_stats(token: str, chat_id: str, args: str) -> None:
         except Exception:
             pass
 
+        # Bluesky: likes, reposts, replies, quotes (no views)
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) as subs, COALESCE(SUM(likes),0) as likes, "
+                "COALESCE(SUM(reposts),0) as reposts, "
+                "COALESCE(SUM(replies),0) as replies, "
+                "COALESCE(SUM(quotes),0) as quotes "
+                "FROM bsky_submissions"
+            ).fetchone()
+            row = dict(row)
+            if row["subs"] > 0:
+                grand_f += row["likes"]
+                grand_c += row["replies"]
+                grand_s += row["subs"]
+                lines.append(f"<b>🦋 Bluesky</b> ({row['subs']} subs)")
+                lines.append(f"  Likes: {row['likes']:,}  Reposts: {row['reposts']:,}  Replies: {row['replies']:,}  Quotes: {row['quotes']:,}")
+        except Exception:
+            pass
+
+        # X/Twitter: views, likes, retweets, replies, quotes, bookmarks
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) as subs, COALESCE(SUM(views),0) as views, "
+                "COALESCE(SUM(likes),0) as likes, "
+                "COALESCE(SUM(retweets),0) as retweets, "
+                "COALESCE(SUM(replies),0) as replies "
+                "FROM tw_submissions"
+            ).fetchone()
+            row = dict(row)
+            if row["subs"] > 0:
+                grand_v += row["views"]
+                grand_f += row["likes"]
+                grand_c += row["replies"]
+                grand_s += row["subs"]
+                lines.append(f"<b>🐦 X/Twitter</b> ({row['subs']} subs)")
+                lines.append(f"  Views: {row['views']:,}  Likes: {row['likes']:,}  Retweets: {row['retweets']:,}  Replies: {row['replies']:,}")
+        except Exception:
+            pass
+
         if grand_s > 0:
             lines.append("")
             lines.append(f"<b>📈 Total</b>: {grand_v:,} views, {grand_f:,} faves, {grand_c:,} comments")
@@ -221,12 +260,14 @@ async def _cmd_top(token: str, chat_id: str, args: str) -> None:
         "da":  ("da_submissions",  "views", [("views", "views"), ("favorites_count", "faves"), ("comments_count", "comments"), ("downloads", "DLs")]),
         "wp":  ("wp_submissions",  "reads", [("reads", "reads"), ("votes", "votes"), ("comments_count", "comments"), ("num_lists", "lists")]),
         "ik":  ("ik_submissions",  "likes", [("likes", "likes"), ("comments_count", "comments"), ("reshares", "reshares")]),
+        "bsky": ("bsky_submissions", "likes", [("likes", "likes"), ("reposts", "reposts"), ("replies", "replies"), ("quotes", "quotes")]),
+        "tw":  ("tw_submissions",  "views", [("views", "views"), ("likes", "likes"), ("retweets", "retweets"), ("replies", "replies")]),
     }
-    emoji_map = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺", "sqw": "🦑", "ao3": "📖", "da": "🎨", "wp": "📙", "ik": "🎯"}
-    name_map = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku"}
+    emoji_map = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺", "sqw": "🦑", "ao3": "📖", "da": "🎨", "wp": "📙", "ik": "🎯", "bsky": "🦋", "tw": "🐦"}
+    name_map = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter"}
 
     if platform not in platform_cfg:
-        await _send(token, chat_id, "Usage: /top [ib|fa|ws|sf|sqw|ao3|da|wp|ik]")
+        await _send(token, chat_id, "Usage: /top [ib|fa|ws|sf|sqw|ao3|da|wp|ik|bsky|tw]")
         return
 
     table, sort_col, columns = platform_cfg[platform]
@@ -305,14 +346,14 @@ async def _cmd_fans(token: str, chat_id: str, args: str) -> None:
 
 async def _cmd_poll(token: str, chat_id: str, args: str) -> None:
     platform = args.strip().lower() if args.strip() else "all"
-    valid = {"ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik", "all"}
+    valid = {"ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik", "bsky", "tw", "all"}
     if platform not in valid:
-        await _send(token, chat_id, "Usage: /poll [ib|fa|ws|sf|sqw|ao3|da|wp|ik|all]")
+        await _send(token, chat_id, "Usage: /poll [ib|fa|ws|sf|sqw|ao3|da|wp|ik|bsky|tw|all]")
         return
 
-    all_platforms = ["ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik"]
+    all_platforms = ["ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik", "bsky", "tw"]
     targets = all_platforms if platform == "all" else [platform]
-    name_map = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku"}
+    name_map = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter"}
 
     await _send(token, chat_id, f"Starting poll for: {', '.join(name_map[t] for t in targets)}...")
 
@@ -325,10 +366,13 @@ async def _cmd_poll(token: str, chat_id: str, args: str) -> None:
     from polling.da_poller import run_da_poll_cycle
     from polling.wp_poller import run_wp_poll_cycle
     from polling.ik_poller import run_ik_poll_cycle
+    from polling.bsky_poller import run_bsky_poll_cycle
+    from polling.tw_poller import run_tw_poll_cycle
 
     poll_funcs = {
         "ib": run_poll_cycle, "fa": run_fa_poll_cycle, "ws": run_ws_poll_cycle, "sf": run_sf_poll_cycle,
         "sqw": run_sqw_poll_cycle, "ao3": run_ao3_poll_cycle, "da": run_da_poll_cycle, "wp": run_wp_poll_cycle, "ik": run_ik_poll_cycle,
+        "bsky": run_bsky_poll_cycle, "tw": run_tw_poll_cycle,
     }
 
     results = []
@@ -366,6 +410,8 @@ async def _cmd_status(token: str, chat_id: str, args: str) -> None:
             ("🎨 DeviantArt", da_queries.get_da_last_poll),
             ("📙 Wattpad", wp_queries.get_wp_last_poll),
             ("🎯 Itaku", ik_queries.get_ik_last_poll),
+            ("🦋 Bluesky", bsky_queries.get_bsky_last_poll),
+            ("🐦 X/Twitter", tw_queries.get_tw_last_poll),
         ]
 
         for name, func in poll_funcs:
@@ -411,6 +457,8 @@ async def _cmd_status(token: str, chat_id: str, args: str) -> None:
         lines.append(f"  DA: {settings.get('da_poll_interval_minutes', 60)} min")
         lines.append(f"  WP: {settings.get('wp_poll_interval_minutes', 60)} min")
         lines.append(f"  IK: {settings.get('ik_poll_interval_minutes', 60)} min")
+        lines.append(f"  BSKY: {settings.get('bsky_poll_interval_minutes', 60)} min")
+        lines.append(f"  TW: {settings.get('tw_poll_interval_minutes', 60)} min")
 
         await _send(token, chat_id, "\n".join(lines))
     finally:
@@ -420,7 +468,7 @@ async def _cmd_status(token: str, chat_id: str, args: str) -> None:
 async def _cmd_interval(token: str, chat_id: str, args: str) -> None:
     parts = args.strip().lower().split()
     if len(parts) != 2:
-        await _send(token, chat_id, "Usage: /interval [ib|fa|ws|sf|sqw|ao3|da|wp|ik] [minutes]")
+        await _send(token, chat_id, "Usage: /interval [ib|fa|ws|sf|sqw|ao3|da|wp|ik|bsky|tw] [minutes]")
         return
 
     platform, minutes_str = parts
@@ -434,11 +482,13 @@ async def _cmd_interval(token: str, chat_id: str, args: str) -> None:
         "da": "da_poll_interval_minutes",
         "wp": "wp_poll_interval_minutes",
         "ik": "ik_poll_interval_minutes",
+        "bsky": "bsky_poll_interval_minutes",
+        "tw": "tw_poll_interval_minutes",
     }
-    name_map = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku"}
+    name_map = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter"}
 
     if platform not in key_map:
-        await _send(token, chat_id, "Platform must be: ib, fa, ws, sf, sqw, ao3, da, wp, ik")
+        await _send(token, chat_id, "Platform must be: ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw")
         return
 
     try:
@@ -475,6 +525,8 @@ async def _cmd_notify(token: str, chat_id: str, args: str) -> None:
         "da": "da_notifications_enabled",
         "wp": "wp_notifications_enabled",
         "ik": "ik_notifications_enabled",
+        "bsky": "bsky_notifications_enabled",
+        "tw": "tw_notifications_enabled",
     }
 
     parts = args.strip().lower().split()

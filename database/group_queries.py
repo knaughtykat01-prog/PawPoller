@@ -133,9 +133,9 @@ def get_group_stats(conn: sqlite3.Connection, group_id: int) -> dict:
     total_comments = 0
     submissions = []
 
-    _table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions"}
+    _table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions"}
     # Platform-specific column mappings: (views_col, faves_col, comments_col)
-    # views_col is None for platforms without a views column (e.g. Itaku)
+    # views_col is None for platforms without a views column (e.g. Itaku, Bluesky)
     _metrics = {
         "ib": ("views", "favorites_count", "comments_count"),
         "fa": ("views", "favorites_count", "comments_count"),
@@ -146,6 +146,8 @@ def get_group_stats(conn: sqlite3.Connection, group_id: int) -> dict:
         "da": ("views", "favorites_count", "comments_count"),
         "wp": ("reads", "votes", "comments_count"),
         "ik": (None, "likes", "comments_count"),
+        "bsky": (None, "likes", "replies"),
+        "tw":  ("views", "likes", "replies"),
     }
 
     for m in members:

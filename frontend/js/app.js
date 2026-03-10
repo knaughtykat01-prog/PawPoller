@@ -68,6 +68,12 @@ const App = {
     _ikSortState: { field: 'likes', order: 'desc' },
     _ikCompareIds: new Set(),
     _ikCompareMetric: 'likes',
+    _bskySortState: { field: 'likes', order: 'desc' },
+    _bskyCompareIds: new Set(),
+    _bskyCompareMetric: 'likes',
+    _twSortState: { field: 'views', order: 'desc' },
+    _twCompareIds: new Set(),
+    _twCompareMetric: 'views',
 
     /*
      * init() — Boot sequence, called once from index.html on DOMContentLoaded.
@@ -359,6 +365,22 @@ const App = {
             this.renderIKDetail(parseInt(parts[2]));
         } else if (parts[0] === 'ik' && parts[1] === 'compare') {
             this.renderIKCompare();
+        } else if (parts[0] === 'bsky' && (!parts[1] || parts[1] === '')) {
+            this.renderBSKYDashboard();
+        } else if (parts[0] === 'bsky' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderBSKYSubmissions();
+        } else if (parts[0] === 'bsky' && parts[1] === 'submission' && parts[2]) {
+            this.renderBSKYDetail(parts[2]);
+        } else if (parts[0] === 'bsky' && parts[1] === 'compare') {
+            this.renderBSKYCompare();
+        } else if (parts[0] === 'tw' && (!parts[1] || parts[1] === '')) {
+            this.renderTWDashboard();
+        } else if (parts[0] === 'tw' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderTWSubmissions();
+        } else if (parts[0] === 'tw' && parts[1] === 'submission' && parts[2]) {
+            this.renderTWDetail(parts[2]);
+        } else if (parts[0] === 'tw' && parts[1] === 'compare') {
+            this.renderTWCompare();
         } else if (parts[0] === 'groups' && !parts[1]) {
             this.renderGroups();
         } else if (parts[0] === 'group' && parts[1]) {
@@ -579,7 +601,7 @@ const App = {
         this._loading();
         try {
             /* Fetch all platform data in parallel; .catch() fallbacks prevent one failure from blocking all */
-            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, topFans, trending] = await Promise.all([
+            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, bskySummary, twSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, bskyAgg, twAgg, topFans, trending] = await Promise.all([
                 API.getSummary().catch(() => null),
                 API.getFASummary().catch(() => null),
                 API.getWSSummary().catch(() => null),
@@ -589,6 +611,8 @@ const App = {
                 API.getDASummary().catch(() => null),
                 API.getWPSummary().catch(() => null),
                 API.getIKSummary().catch(() => null),
+                API.getBSKYSummary().catch(() => null),
+                API.getTWSummary().catch(() => null),
                 API.getAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getFAAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getWSAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
@@ -598,6 +622,8 @@ const App = {
                 API.getDAAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getWPAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getIKAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
+                API.getBSKYAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
+                API.getTWAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getTopFans(10).catch(() => ({ fans: [] })),
                 API.getTrending({ hours: 24, threshold: 2.0 }).catch(() => ({ trending: [] })),
             ]);
@@ -611,19 +637,21 @@ const App = {
             const da = daSummary || {};
             const wp = wpSummary || {};
             const ik = ikSummary || {};
+            const bsky = bskySummary || {};
+            const tw = twSummary || {};
 
             /* Sum totals across all platforms for the top-level stat cards.
              * Wattpad uses 'reads' instead of 'views' and 'votes' instead of 'favorites',
              * so we map them into the unified totals here.
              * Itaku has NO views — only likes (mapped to favorites), comments, and reshares. */
-            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0);
-            const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0) + (sqw.total_views || 0) + (ao3.total_views || 0) + (da.total_views || 0) + (wp.total_reads || wp.total_views || 0);
-            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0);
-            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0) + (ao3.total_comments || 0) + (da.total_comments || 0) + (wp.total_comments || 0) + (ik.total_comments || 0);
+            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0) + (bsky.total_submissions || 0) + (tw.total_submissions || 0);
+            const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0) + (sqw.total_views || 0) + (ao3.total_views || 0) + (da.total_views || 0) + (wp.total_reads || wp.total_views || 0) + (tw.total_views || 0);
+            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0) + (bsky.total_likes || 0) + (tw.total_likes || 0);
+            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0) + (ao3.total_comments || 0) + (da.total_comments || 0) + (wp.total_comments || 0) + (ik.total_comments || 0) + (bsky.total_comments || 0) + (tw.total_comments || 0);
             const totalDownloads = (da.total_downloads || 0);
 
             /* Merge top lists across platforms: tag each with _platform, sort desc, take top 10 */
-            const mergeTop = (ibList, faList, wsList, sfList, sqwList, ao3List, daList, wpList, ikList, key) => {
+            const mergeTop = (ibList, faList, wsList, sfList, sqwList, ao3List, daList, wpList, ikList, bskyList, twList, key) => {
                 const merged = [];
                 (ibList || []).forEach(item => merged.push({ ...item, _platform: 'ib' }));
                 (faList || []).forEach(item => merged.push({ ...item, _platform: 'fa' }));
@@ -636,12 +664,16 @@ const App = {
                 (wpList || []).forEach(item => merged.push({ ...item, views: item.reads || item.views || 0, favorites_count: item.votes || item.favorites_count || 0, _platform: 'wp' }));
                 /* Itaku has no views — map likes to favorites_count for unified merging */
                 (ikList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'ik' }));
+                /* Bluesky has no views — map likes to favorites_count for unified merging */
+                (bskyList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'bsky' }));
+                /* X/Twitter maps likes to favorites_count for unified merging */
+                (twList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'tw' }));
                 merged.sort((a, b) => (b[key] || 0) - (a[key] || 0));
                 return merged.slice(0, 10);
             };
 
-            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, ao3.top_viewed, da.top_viewed, wp.top_viewed || wp.top_read, null, 'views');
-            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, ao3.top_faved, da.top_faved, wp.top_faved || wp.top_voted, ik.top_liked || ik.top_faved, 'favorites_count');
+            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, ao3.top_viewed, da.top_viewed, wp.top_viewed || wp.top_read, null, null, tw.top_viewed, 'views');
+            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, ao3.top_faved, da.top_faved, wp.top_faved || wp.top_voted, ik.top_liked || ik.top_faved, bsky.top_liked || bsky.top_faved, tw.top_liked || tw.top_faved, 'favorites_count');
 
             /* Merge recent faves + comments into a unified timeline, sorted newest first */
             const recentActivity = [];
@@ -663,6 +695,10 @@ const App = {
             (wp.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'wp', _type: 'comment' }));
             (ik.recent_faves || ik.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'ik', _type: 'fave' }));
             (ik.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'ik', _type: 'comment' }));
+            (bsky.recent_faves || bsky.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'bsky', _type: 'fave' }));
+            (bsky.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'bsky', _type: 'comment' }));
+            (tw.recent_faves || tw.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'tw', _type: 'fave' }));
+            (tw.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'tw', _type: 'comment' }));
             recentActivity.sort((a, b) => new Date(b.first_seen_at || 0) - new Date(a.first_seen_at || 0));
 
             /* Per-platform mini stat card showing views, faves, subs with a coloured badge */
@@ -690,6 +726,8 @@ const App = {
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('da')" title="Export DA CSV">Export DA</button>
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('wp')" title="Export WP CSV">Export WP</button>
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('ik')" title="Export IK CSV">Export IK</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('bsky')" title="Export BSKY CSV">Export BSKY</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('tw')" title="Export TW CSV">Export TW</button>
                     </div>
                 </div>
 
@@ -720,6 +758,26 @@ const App = {
                             <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(ik.total_submissions || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">subs</span></div>
                         </div>
                     </div>` : platformCard('<span class="platform-badge ik">\u{1F3AF} IK</span>', 'Itaku', ik) }
+                    ${ bsky.total_submissions ? `
+                    <div class="stat-card">
+                        <div class="label"><span class="platform-badge bsky">\u{1F98B} BSKY</span> Bluesky</div>
+                        <div style="display:flex;gap:16px;margin-top:6px">
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(bsky.total_likes || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">likes</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(bsky.total_comments || bsky.total_replies || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">replies</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(bsky.total_reposts || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">reposts</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(bsky.total_submissions || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">posts</span></div>
+                        </div>
+                    </div>` : platformCard('<span class="platform-badge bsky">\u{1F98B} BSKY</span>', 'Bluesky', bsky) }
+                    ${ tw.total_submissions ? `
+                    <div class="stat-card">
+                        <div class="label"><span class="platform-badge tw">\u{1F426} TW</span> X/Twitter</div>
+                        <div style="display:flex;gap:16px;margin-top:6px">
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(tw.total_views || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">views</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(tw.total_likes || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">likes</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(tw.total_comments || tw.total_replies || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">replies</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(tw.total_submissions || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">tweets</span></div>
+                        </div>
+                    </div>` : platformCard('<span class="platform-badge tw">\u{1F426} TW</span>', 'X/Twitter', tw) }
                 </div>
 
                 ${(trending.trending || []).length > 0 ? `
@@ -783,6 +841,18 @@ const App = {
                     <div class="chart-wrap"><canvas id="chart-ik-likes"></canvas></div>
                 </div>` : ''}
 
+                ${bskyAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>Bluesky Likes</h3>
+                    <div class="chart-wrap"><canvas id="chart-bsky-likes"></canvas></div>
+                </div>` : ''}
+
+                ${twAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>X/Twitter Views</h3>
+                    <div class="chart-wrap"><canvas id="chart-tw-views"></canvas></div>
+                </div>` : ''}
+
                 <div class="chart-row">
                     <div class="chart-container">
                         <h3>Top Viewed</h3>
@@ -835,6 +905,12 @@ const App = {
             }
             if (ikAgg?.snapshots?.length > 0) {
                 Charts.aggregateLine('chart-ik-likes', ikAgg.snapshots, ['likes']);
+            }
+            if (bskyAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-bsky-likes', bskyAgg.snapshots, ['likes']);
+            }
+            if (twAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-tw-views', twAgg.snapshots, ['views']);
             }
 
             /* Wire date range buttons to full re-render; start 60s auto-refresh */
@@ -3433,6 +3509,564 @@ const App = {
         }
     },
 
+    // ── BSKY Dashboard ─────────────────────────────────────────
+    // Bluesky dashboard with Likes, Reposts, Replies, Quotes stat cards (NO views).
+
+    async renderBSKYDashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getBSKYSummary(),
+                API.getBSKYAggregate(Utils.getDateRange(this._dateRange)),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const bskyPins = (pins.pins || []).filter(p => p.platform === 'bsky');
+            const bskyGoals = (goals.goals || []).filter(g => g.platform === 'bsky' || g.platform === 'all');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Bluesky Dashboard</h2>
+                    <button class="btn btn-secondary" onclick="API.exportSubmissions('bsky')">Export CSV</button>
+                </div>
+
+                ${bskyPins.length ? Components.pinnedSubmissions(bskyPins, 'bsky') : ''}
+                ${bskyGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(bskyGoals)}</div>` : ''}
+
+                <div class="stats-grid">
+                    ${Components.statCard('Total Posts', summary.total_submissions)}
+                    ${Components.statCard('Total Likes', summary.total_likes || 0)}
+                    ${Components.statCard('Total Reposts', summary.total_reposts || 0)}
+                    ${Components.statCard('Total Replies', summary.total_comments || summary.total_replies || 0)}
+                    ${Components.statCard('Total Quotes', summary.total_quotes || 0)}
+                </div>
+
+                ${summary.growth_rates ? (() => {
+                    const rates = {};
+                    for (const period of ['24h', '7d', '30d']) {
+                        const r = summary.growth_rates[period];
+                        if (r) {
+                            rates[period] = {
+                                views_per_day: r.likes_per_day != null ? r.likes_per_day : 0,
+                                faves_per_day: r.reposts_per_day != null ? r.reposts_per_day : 0,
+                                comments_per_day: r.comments_per_day || r.replies_per_day || 0,
+                            };
+                        }
+                    }
+                    return Components.growthRateCards(rates, { views: 'likes/day', faves: 'reposts/day', comments: 'replies/day' });
+                })() : ''}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Likes Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-likes"></canvas></div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Liked</h3>
+                        ${Components.bskyTopList(summary.top_liked || summary.top_faved, 'likes', 'title', 'submission_id')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Top Reposted</h3>
+                        ${Components.bskyTopList(summary.top_reposted, 'reposts', 'title', 'submission_id')}
+                    </div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Fastest Growing (24h)</h3>
+                        ${Components.bskyTopList(summary.fastest_growing, 'likes_gained', 'title', 'submission_id')}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-likes', agg.snapshots, ['likes']);
+            }
+
+            this._bindDateRange(() => this.renderBSKYDashboard());
+            this._bindPinAndGoalActions(() => this.renderBSKYDashboard());
+            this._startAutoRefresh(() => this.renderBSKYDashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading BSKY dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── BSKY Submissions ─────────────────────────────────────────
+
+    async renderBSKYSubmissions() {
+        this._loading();
+        try {
+            const data = await API.getBSKYSubmissions({
+                sort_by: this._bskySortState.field,
+                order: this._bskySortState.order,
+            });
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>Bluesky Posts</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search posts...">
+                </div>
+                <div id="table-container" class="table-scroll">
+                    ${Components.bskySubmissionsTable(data.submissions)}
+                </div>
+            `;
+
+            this._setContent(html);
+            this._bindBSKYTableSort();
+            this._bindBSKYSearch(data.submissions);
+            this._startAutoRefresh(() => this.renderBSKYSubmissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading BSKY submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── BSKY Submission Detail ───────────────────────────────────
+
+    async renderBSKYDetail(rkey) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getBSKYSubmission(rkey),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const fullId = sub.submission_id;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'bsky' && String(p.submission_id) === String(fullId));
+            const currentTags = sub.tags || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/bsky/submissions" class="back-link">&larr; Back to Bluesky Posts</a>
+                <div class="detail-header">
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Bluesky</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.likes || 0)} <span class="lbl">likes</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.reposts || 0)} <span class="lbl">reposts</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.replies || 0)} <span class="lbl">replies</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.quotes || 0)} <span class="lbl">quotes</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="bsky" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="bsky" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+
+                ${Components.growthRateCards(data.growth_rates, { views: 'likes/day', faves: 'reposts/day', comments: 'replies/day' })}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Stats Over Time</h3>
+                    <div class="chart-wrap"><canvas id="chart-detail"></canvas></div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots, ['likes', 'reposts', 'replies', 'quotes']);
+            }
+
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getBSKYSnapshots(rkey, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots, ['likes', 'reposts', 'replies', 'quotes']);
+            });
+
+            this._bindDetailPinTag('bsky', fullId, allTags.tags || [], () => this.renderBSKYDetail(rkey));
+            this._startAutoRefresh(() => this.renderBSKYDetail(rkey));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading BSKY post</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── BSKY Compare ─────────────────────────────────────────────
+
+    async renderBSKYCompare() {
+        this._loading();
+        try {
+            const data = await API.getBSKYSubmissions({ sort_by: 'likes', order: 'desc' });
+            const subs = data.submissions;
+
+            const chips = subs.map(s => {
+                const rkey = String(s.submission_id).split('/').pop();
+                return `
+                <label class="compare-chip ${this._bskyCompareIds.has(rkey) ? 'selected' : ''}" data-id="${rkey}" data-full-id="${Utils.escapeHtml(s.submission_id)}">
+                    <input type="checkbox" ${this._bskyCompareIds.has(rkey) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>
+            `;
+            }).join('');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Compare Bluesky Posts</h2>
+                    <div>
+                        <select class="filter-select" id="compare-metric">
+                            <option value="likes" ${this._bskyCompareMetric === 'likes' ? 'selected' : ''}>Likes</option>
+                            <option value="reposts" ${this._bskyCompareMetric === 'reposts' ? 'selected' : ''}>Reposts</option>
+                            <option value="replies" ${this._bskyCompareMetric === 'replies' ? 'selected' : ''}>Replies</option>
+                            <option value="quotes" ${this._bskyCompareMetric === 'quotes' ? 'selected' : ''}>Quotes</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 Bluesky posts to compare their trends over time.</p>
+                <div class="compare-select">${chips}</div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container" id="compare-chart-container" style="${this._bskyCompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3>
+                    <div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._bskyCompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 posts above to see their trends compared.</p></div>' : ''}
+            `;
+
+            this._setContent(html);
+
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = chip.dataset.id;
+                    if (this._bskyCompareIds.has(id)) {
+                        this._bskyCompareIds.delete(id);
+                    } else if (this._bskyCompareIds.size < 5) {
+                        this._bskyCompareIds.add(id);
+                    }
+                    this.renderBSKYCompare();
+                });
+            });
+
+            const metricSelect = document.getElementById('compare-metric');
+            if (metricSelect) {
+                metricSelect.addEventListener('change', () => {
+                    this._bskyCompareMetric = metricSelect.value;
+                    this._loadBSKYComparisonChart();
+                });
+            }
+
+            this._bindDateRange(() => this._loadBSKYComparisonChart());
+
+            if (this._bskyCompareIds.size >= 2) {
+                await this._loadBSKYComparisonChart();
+            }
+
+            this._startAutoRefresh(() => this.renderBSKYCompare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadBSKYComparisonChart() {
+        try {
+            if (this._bskyCompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getBSKYComparison([...this._bskyCompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, this._bskyCompareMetric);
+        } catch (e) {
+            console.error('Failed to load BSKY comparison chart:', e);
+        }
+    },
+
+    // ── TW Dashboard ─────────────────────────────────────────
+    // X/Twitter dashboard with Views, Likes, Retweets, Replies, Quotes, Bookmarks.
+
+    async renderTWDashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getTWSummary(),
+                API.getTWAggregate(Utils.getDateRange(this._dateRange)),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const twPins = (pins.pins || []).filter(p => p.platform === 'tw');
+            const twGoals = (goals.goals || []).filter(g => g.platform === 'tw' || g.platform === 'all');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>X/Twitter Dashboard</h2>
+                    <button class="btn btn-secondary" onclick="API.exportSubmissions('tw')">Export CSV</button>
+                </div>
+
+                ${twPins.length ? Components.pinnedSubmissions(twPins, 'tw') : ''}
+                ${twGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(twGoals)}</div>` : ''}
+
+                <div class="stats-grid">
+                    ${Components.statCard('Total Tweets', summary.total_submissions)}
+                    ${Components.statCard('Total Views', summary.total_views || 0)}
+                    ${Components.statCard('Total Likes', summary.total_likes || 0)}
+                    ${Components.statCard('Total Retweets', summary.total_retweets || 0)}
+                    ${Components.statCard('Total Replies', summary.total_comments || summary.total_replies || 0)}
+                    ${Components.statCard('Total Quotes', summary.total_quotes || 0)}
+                    ${Components.statCard('Total Bookmarks', summary.total_bookmarks || 0)}
+                </div>
+
+                ${summary.growth_rates ? (() => {
+                    const rates = {};
+                    for (const period of ['24h', '7d', '30d']) {
+                        const r = summary.growth_rates[period];
+                        if (r) {
+                            rates[period] = {
+                                views_per_day: r.views_per_day != null ? r.views_per_day : 0,
+                                faves_per_day: r.likes_per_day != null ? r.likes_per_day : 0,
+                                comments_per_day: r.comments_per_day || r.replies_per_day || 0,
+                            };
+                        }
+                    }
+                    return Components.growthRateCards(rates, { views: 'views/day', faves: 'likes/day', comments: 'replies/day' });
+                })() : ''}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Views Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-views"></canvas></div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Viewed</h3>
+                        ${Components.twTopList(summary.top_viewed, 'views', 'title', 'submission_id')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Top Liked</h3>
+                        ${Components.twTopList(summary.top_liked || summary.top_faved, 'likes', 'title', 'submission_id')}
+                    </div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Retweeted</h3>
+                        ${Components.twTopList(summary.top_retweeted, 'retweets', 'title', 'submission_id')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Fastest Growing (24h)</h3>
+                        ${Components.twTopList(summary.fastest_growing, 'views_gained', 'title', 'submission_id')}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-views', agg.snapshots, ['views']);
+            }
+
+            this._bindDateRange(() => this.renderTWDashboard());
+            this._bindPinAndGoalActions(() => this.renderTWDashboard());
+            this._startAutoRefresh(() => this.renderTWDashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading TW dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── TW Submissions ─────────────────────────────────────────
+
+    async renderTWSubmissions() {
+        this._loading();
+        try {
+            const data = await API.getTWSubmissions({
+                sort_by: this._twSortState.field,
+                order: this._twSortState.order,
+            });
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>X/Twitter Tweets</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search tweets...">
+                </div>
+                <div id="table-container" class="table-scroll">
+                    ${Components.twSubmissionsTable(data.submissions)}
+                </div>
+            `;
+
+            this._setContent(html);
+            this._bindTWTableSort();
+            this._bindTWSearch(data.submissions);
+            this._startAutoRefresh(() => this.renderTWSubmissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading TW submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── TW Submission Detail ───────────────────────────────────
+
+    async renderTWDetail(id) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getTWSubmission(id),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'tw' && String(p.submission_id) === String(id));
+            const currentTags = sub.tags || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/tw/submissions" class="back-link">&larr; Back to X/Twitter Tweets</a>
+                <div class="detail-header">
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(sub.content_type || 'tweet')}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on X</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.views || 0)} <span class="lbl">views</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.likes || 0)} <span class="lbl">likes</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.retweets || 0)} <span class="lbl">retweets</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.replies || 0)} <span class="lbl">replies</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.quotes || 0)} <span class="lbl">quotes</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.bookmarks || 0)} <span class="lbl">bookmarks</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="tw" data-id="${id}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="tw" data-id="${id}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+
+                ${Components.growthRateCards(data.growth_rates)}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Stats Over Time</h3>
+                    <div class="chart-wrap"><canvas id="chart-detail"></canvas></div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots, ['views', 'likes', 'retweets', 'replies']);
+            }
+
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getTWSnapshots(id, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots, ['views', 'likes', 'retweets', 'replies']);
+            });
+
+            this._bindDetailPinTag('tw', id, allTags.tags || [], () => this.renderTWDetail(id));
+            this._startAutoRefresh(() => this.renderTWDetail(id));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading tweet</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── TW Compare ─────────────────────────────────────────────
+
+    async renderTWCompare() {
+        this._loading();
+        try {
+            const data = await API.getTWSubmissions({ sort_by: 'views', order: 'desc' });
+            const subs = data.submissions;
+
+            const chips = subs.map(s => `
+                <label class="compare-chip ${this._twCompareIds.has(s.submission_id) ? 'selected' : ''}" data-id="${s.submission_id}">
+                    <input type="checkbox" ${this._twCompareIds.has(s.submission_id) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>
+            `).join('');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Compare X/Twitter Tweets</h2>
+                    <div>
+                        <select class="filter-select" id="compare-metric">
+                            <option value="views" ${this._twCompareMetric === 'views' ? 'selected' : ''}>Views</option>
+                            <option value="likes" ${this._twCompareMetric === 'likes' ? 'selected' : ''}>Likes</option>
+                            <option value="retweets" ${this._twCompareMetric === 'retweets' ? 'selected' : ''}>Retweets</option>
+                            <option value="replies" ${this._twCompareMetric === 'replies' ? 'selected' : ''}>Replies</option>
+                            <option value="quotes" ${this._twCompareMetric === 'quotes' ? 'selected' : ''}>Quotes</option>
+                            <option value="bookmarks" ${this._twCompareMetric === 'bookmarks' ? 'selected' : ''}>Bookmarks</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 tweets to compare their trends over time.</p>
+                <div class="compare-select">${chips}</div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container" id="compare-chart-container" style="${this._twCompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3>
+                    <div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._twCompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 tweets above to see their trends compared.</p></div>' : ''}
+            `;
+
+            this._setContent(html);
+
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = chip.dataset.id;
+                    if (this._twCompareIds.has(id)) {
+                        this._twCompareIds.delete(id);
+                    } else if (this._twCompareIds.size < 5) {
+                        this._twCompareIds.add(id);
+                    }
+                    this.renderTWCompare();
+                });
+            });
+
+            const metricSelect = document.getElementById('compare-metric');
+            if (metricSelect) {
+                metricSelect.addEventListener('change', () => {
+                    this._twCompareMetric = metricSelect.value;
+                    this._loadTWComparisonChart();
+                });
+            }
+
+            this._bindDateRange(() => this._loadTWComparisonChart());
+
+            if (this._twCompareIds.size >= 2) {
+                await this._loadTWComparisonChart();
+            }
+
+            this._startAutoRefresh(() => this.renderTWCompare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadTWComparisonChart() {
+        try {
+            if (this._twCompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getTWComparison([...this._twCompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, this._twCompareMetric);
+        } catch (e) {
+            console.error('Failed to load TW comparison chart:', e);
+        }
+    },
+
     // ── Groups ────────────────────────────────────────────────
     // Submission groups management page. Groups are cross-platform collections
     // that let users organise related submissions from any platform (IB, FA, WS, SF)
@@ -3499,9 +4133,9 @@ const App = {
             // (routing to the correct platform detail page), stats, and remove button
             const memberRows = members.map(m => {
                 // Determine platform badge colour and the correct hash route prefix
-                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', ib: '<span class="platform-badge ib">IB</span>' };
+                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[m.platform] || badgeMap.ib;
-                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', ib: '/submission/' };
+                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', ib: '/submission/' };
                 const prefix = prefixMap[m.platform] || prefixMap.ib;
                 return `
                     <tr>
@@ -3720,7 +4354,7 @@ const App = {
         this._loading();
         try {
             // Parallel-fetch all 15 settings endpoints; FA/WS/SF use .catch() fallbacks
-            const [status, pollLog, creds, prefs, telegram, faAuth, faStatus, faPollLog, wsAuth, wsStatus, wsPollLog, sfAuth, sfStatus, sfPollLog, sqwAuth, sqwStatus, sqwPollLog, ao3Auth, ao3Status, ao3PollLog, daAuth, daStatus, daPollLog, wpAuth, wpStatus, wpPollLog, ikAuth, ikStatus, ikPollLog, updateInfo] = await Promise.all([
+            const [status, pollLog, creds, prefs, telegram, faAuth, faStatus, faPollLog, wsAuth, wsStatus, wsPollLog, sfAuth, sfStatus, sfPollLog, sqwAuth, sqwStatus, sqwPollLog, ao3Auth, ao3Status, ao3PollLog, daAuth, daStatus, daPollLog, wpAuth, wpStatus, wpPollLog, ikAuth, ikStatus, ikPollLog, bskyAuth, bskyStatus, bskyPollLog, twAuth, twStatus, twPollLog, updateInfo] = await Promise.all([
                 API.getStatus(),
                 API.getPollLog(20),
                 API.getCredentials(),
@@ -3750,6 +4384,12 @@ const App = {
                 API.getIKAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getIKStatus().catch(() => ({})),
                 API.getIKPollLog(20).catch(() => ({ polls: [] })),
+                API.getBSKYAuthStatus().catch(() => ({ has_credentials: false })),
+                API.getBSKYStatus().catch(() => ({})),
+                API.getBSKYPollLog(20).catch(() => ({ polls: [] })),
+                API.getTWAuthStatus().catch(() => ({ has_credentials: false })),
+                API.getTWStatus().catch(() => ({})),
+                API.getTWPollLog(20).catch(() => ({ polls: [] })),
                 API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' })),
             ]);
 
@@ -3939,6 +4579,32 @@ const App = {
                             <option value="60" ${prefs.ik_poll_interval_minutes === 60 || !prefs.ik_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
                             <option value="120" ${prefs.ik_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
                             <option value="240" ${prefs.ik_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                        </select>
+                    </div>
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">BSKY poll interval</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">How often to check for new Bluesky data</div>
+                        </div>
+                        <select class="filter-select" id="pref-bsky-poll-interval" style="width:auto">
+                            <option value="15" ${prefs.bsky_poll_interval_minutes === 15 ? 'selected' : ''}>15 min</option>
+                            <option value="30" ${prefs.bsky_poll_interval_minutes === 30 ? 'selected' : ''}>30 min</option>
+                            <option value="60" ${prefs.bsky_poll_interval_minutes === 60 || !prefs.bsky_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
+                            <option value="120" ${prefs.bsky_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
+                            <option value="240" ${prefs.bsky_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                        </select>
+                    </div>
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">TW poll interval</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">How often to check for new X/Twitter data</div>
+                        </div>
+                        <select class="filter-select" id="pref-tw-poll-interval" style="width:auto">
+                            <option value="15" ${prefs.tw_poll_interval_minutes === 15 ? 'selected' : ''}>15 min</option>
+                            <option value="30" ${prefs.tw_poll_interval_minutes === 30 ? 'selected' : ''}>30 min</option>
+                            <option value="60" ${prefs.tw_poll_interval_minutes === 60 || !prefs.tw_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
+                            <option value="120" ${prefs.tw_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
+                            <option value="240" ${prefs.tw_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
                         </select>
                     </div>
                     <div class="settings-row">
@@ -4439,6 +5105,83 @@ const App = {
                     <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
                         <button class="btn btn-primary" id="ik-connect-btn">Connect</button>
                         <span id="ik-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                </div>
+
+                <div class="settings-section">
+                    <h3>Bluesky</h3>
+                    ${bskyAuth.has_credentials ? `
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Status</span>
+                        </div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(bskyAuth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">BSKY desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for Bluesky activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-bsky-notifications" ${prefs.bsky_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="bsky-poll-btn">BSKY Poll Now</button>
+                        <button class="btn btn-secondary" id="bsky-resync-btn">BSKY Full Resync</button>
+                        <button class="btn btn-danger" id="bsky-disconnect-btn">Disconnect</button>
+                        <span id="bsky-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to Bluesky with your handle and app password. Create an app password at Settings > App Passwords on bsky.app.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="bsky-identifier" class="search-input" placeholder="Handle (e.g. user.bsky.social)">
+                        <input type="password" id="bsky-app-password" class="search-input" placeholder="App password (xxxx-xxxx-xxxx-xxxx)">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="bsky-connect-btn">Connect</button>
+                        <span id="bsky-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                </div>
+
+                <div class="settings-section">
+                    <h3>X / Twitter</h3>
+                    ${twAuth.has_credentials ? `
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Status</span>
+                        </div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(twAuth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">TW desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for X/Twitter activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-tw-notifications" ${prefs.tw_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="tw-poll-btn">TW Poll Now</button>
+                        <button class="btn btn-secondary" id="tw-resync-btn">TW Full Resync</button>
+                        <button class="btn btn-danger" id="tw-disconnect-btn">Disconnect</button>
+                        <span id="tw-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to X/Twitter using browser cookies. Open x.com, press F12, go to Application > Cookies, and copy the auth_token and ct0 values.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="tw-auth-token" class="search-input" placeholder="auth_token cookie">
+                        <input type="text" id="tw-ct0" class="search-input" placeholder="ct0 cookie">
+                        <input type="text" id="tw-target-user" class="search-input" placeholder="Username to track (without @)">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="tw-connect-btn">Connect</button>
+                        <span id="tw-msg" style="font-size:13px"></span>
                     </div>
                     `}
                 </div>
@@ -5191,6 +5934,24 @@ const App = {
                 }
             });
 
+            // BSKY poll interval dropdown
+            document.getElementById('pref-bsky-poll-interval')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ bsky_poll_interval_minutes: parseInt(e.target.value) });
+                } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
+            // TW poll interval dropdown
+            document.getElementById('pref-tw-poll-interval')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ tw_poll_interval_minutes: parseInt(e.target.value) });
+                } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
             // Display timezone dropdown
             document.getElementById('pref-timezone')?.addEventListener('change', async (e) => {
                 try {
@@ -5802,6 +6563,205 @@ const App = {
                 });
             }
 
+            // BSKY Connect: sends identifier + app_password
+            const bskyConnectBtn = document.getElementById('bsky-connect-btn');
+            if (bskyConnectBtn) {
+                bskyConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('bsky-msg');
+                    const identifier = document.getElementById('bsky-identifier').value.trim();
+                    const app_password = document.getElementById('bsky-app-password').value.trim();
+                    if (!identifier || !app_password) {
+                        msg.textContent = 'Handle and app password are required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    bskyConnectBtn.disabled = true;
+                    bskyConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.bskyConnect({ identifier, app_password });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        bskyConnectBtn.textContent = 'Connect';
+                        bskyConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            // BSKY Disconnect
+            const bskyDisconnectBtn = document.getElementById('bsky-disconnect-btn');
+            if (bskyDisconnectBtn) {
+                bskyDisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect Bluesky? This clears your credentials.')) return;
+                    try {
+                        await API.bskyDisconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+
+            // BSKY Poll Now
+            const bskyPollBtn = document.getElementById('bsky-poll-btn');
+            if (bskyPollBtn) {
+                bskyPollBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('bsky-msg');
+                    bskyPollBtn.disabled = true;
+                    bskyPollBtn.textContent = 'Polling...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.triggerBSKYPoll();
+                        bskyPollBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        bskyPollBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // BSKY Full Resync
+            const bskyResyncBtn = document.getElementById('bsky-resync-btn');
+            if (bskyResyncBtn) {
+                bskyResyncBtn.addEventListener('click', async () => {
+                    if (!confirm('BSKY full resync will re-fetch all post details. This may take a while. Continue?')) return;
+                    const msg = document.getElementById('bsky-msg');
+                    bskyResyncBtn.disabled = true;
+                    bskyResyncBtn.textContent = 'Syncing...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.fullBSKYResync();
+                        bskyResyncBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        bskyResyncBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // BSKY: Notifications toggle
+            const bskyNotifToggle = document.getElementById('pref-bsky-notifications');
+            if (bskyNotifToggle) {
+                bskyNotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ bsky_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
+            // TW Connect: sends auth_token + ct0 + target_user
+            const twConnectBtn = document.getElementById('tw-connect-btn');
+            if (twConnectBtn) {
+                twConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('tw-msg');
+                    const auth_token = document.getElementById('tw-auth-token').value.trim();
+                    const ct0 = document.getElementById('tw-ct0').value.trim();
+                    const target_user = document.getElementById('tw-target-user').value.trim();
+                    if (!auth_token || !target_user) {
+                        msg.textContent = 'auth_token and username are required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    twConnectBtn.disabled = true;
+                    twConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.twConnect({ auth_token, ct0, target_user });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        twConnectBtn.textContent = 'Connect';
+                        twConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            // TW Disconnect
+            const twDisconnectBtn = document.getElementById('tw-disconnect-btn');
+            if (twDisconnectBtn) {
+                twDisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect X/Twitter? This clears your cookies.')) return;
+                    try {
+                        await API.twDisconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+
+            // TW Poll Now
+            const twPollBtn = document.getElementById('tw-poll-btn');
+            if (twPollBtn) {
+                twPollBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('tw-msg');
+                    twPollBtn.disabled = true;
+                    twPollBtn.textContent = 'Polling...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.triggerTWPoll();
+                        twPollBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        twPollBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // TW Full Resync
+            const twResyncBtn = document.getElementById('tw-resync-btn');
+            if (twResyncBtn) {
+                twResyncBtn.addEventListener('click', async () => {
+                    if (!confirm('TW full resync will re-fetch all tweet details. This may take a while. Continue?')) return;
+                    const msg = document.getElementById('tw-msg');
+                    twResyncBtn.disabled = true;
+                    twResyncBtn.textContent = 'Syncing...';
+                    if (msg) msg.textContent = '';
+                    try {
+                        await API.fullTWResync();
+                        twResyncBtn.textContent = 'Done!';
+                        setTimeout(() => this.renderSettings(), 1500);
+                    } catch (err) {
+                        twResyncBtn.textContent = 'Error';
+                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+                        setTimeout(() => this.renderSettings(), 2000);
+                    }
+                });
+            }
+
+            // TW: Notifications toggle
+            const twNotifToggle = document.getElementById('pref-tw-notifications');
+            if (twNotifToggle) {
+                twNotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ tw_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
             // Save Milestones
             document.getElementById('save-milestones-btn')?.addEventListener('click', async () => {
                 const msg = document.getElementById('milestones-msg');
@@ -6328,6 +7288,80 @@ const App = {
 
             document.getElementById('table-container').innerHTML = Components.ikSubmissionsTable(filtered);
             this._bindIKTableSort();
+        };
+
+        input?.addEventListener('input', doFilter);
+    },
+
+    // BSKY table sort binding — same pattern as IK but for BSKY.
+    _bindBSKYTableSort() {
+        document.querySelectorAll('#bsky-submissions-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (this._bskySortState.field === field) {
+                    this._bskySortState.order = this._bskySortState.order === 'desc' ? 'asc' : 'desc';
+                } else {
+                    this._bskySortState.field = field;
+                    this._bskySortState.order = 'desc';
+                }
+                this.renderBSKYSubmissions();
+            });
+        });
+    },
+
+    // BSKY variant of _bindSearch(). Filters by text (title only).
+    _bindBSKYSearch(allSubmissions) {
+        const input = document.getElementById('search-input');
+
+        const doFilter = () => {
+            const q = (input?.value || '').toLowerCase();
+
+            let filtered = allSubmissions;
+            if (q) {
+                filtered = filtered.filter(s =>
+                    (s.title || '').toLowerCase().includes(q)
+                );
+            }
+
+            document.getElementById('table-container').innerHTML = Components.bskySubmissionsTable(filtered);
+            this._bindBSKYTableSort();
+        };
+
+        input?.addEventListener('input', doFilter);
+    },
+
+    // TW table sort binding — same pattern as IK but for TW.
+    _bindTWTableSort() {
+        document.querySelectorAll('#tw-submissions-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (this._twSortState.field === field) {
+                    this._twSortState.order = this._twSortState.order === 'desc' ? 'asc' : 'desc';
+                } else {
+                    this._twSortState.field = field;
+                    this._twSortState.order = 'desc';
+                }
+                this.renderTWSubmissions();
+            });
+        });
+    },
+
+    // TW variant of _bindSearch(). Filters by text (title only).
+    _bindTWSearch(allSubmissions) {
+        const input = document.getElementById('search-input');
+
+        const doFilter = () => {
+            const q = (input?.value || '').toLowerCase();
+
+            let filtered = allSubmissions;
+            if (q) {
+                filtered = filtered.filter(s =>
+                    (s.title || '').toLowerCase().includes(q)
+                );
+            }
+
+            document.getElementById('table-container').innerHTML = Components.twSubmissionsTable(filtered);
+            this._bindTWTableSort();
         };
 
         input?.addEventListener('input', doFilter);

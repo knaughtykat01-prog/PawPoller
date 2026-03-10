@@ -246,6 +246,42 @@ const API = {
     triggerIKPoll() { return this.post('/api/ik/poll/trigger'); },
     fullIKResync() { return this.post('/api/ik/poll/full-resync'); },
     getIKPollProgress() { return this.get('/api/ik/poll/progress'); },
+    /* ── BSKY (Bluesky) convenience methods ───────────────────────
+     * AT Protocol API with app password auth. Posts identified by AT URIs.
+     * Tracks likes, reposts, replies, quotes (no views).
+     */
+    getBSKYAuthStatus() { return this.get('/api/bsky/auth/status'); },
+    bskyConnect(data) { return this.post('/api/bsky/auth/connect', data); },
+    bskyDisconnect() { return this.post('/api/bsky/auth/disconnect'); },
+    getBSKYStatus() { return this.get('/api/bsky/status'); },
+    getBSKYSummary() { return this.get('/api/bsky/summary'); },
+    getBSKYSubmissions(params) { return this.get('/api/bsky/submissions', params); },
+    getBSKYSubmission(id) { return this.get(`/api/bsky/submissions/${encodeURIComponent(id)}`); },
+    getBSKYSnapshots(id, params) { return this.get(`/api/bsky/submissions/${encodeURIComponent(id)}/snapshots`, params); },
+    getBSKYAggregate(params) { return this.get('/api/bsky/aggregate', params); },
+    getBSKYComparison(ids, params) { return this.get('/api/bsky/comparison', { ids: ids.join(','), ...params }); },
+    getBSKYPollLog(limit) { return this.get('/api/bsky/poll_log', { limit }); },
+    triggerBSKYPoll() { return this.post('/api/bsky/poll/trigger'); },
+    fullBSKYResync() { return this.post('/api/bsky/poll/full-resync'); },
+    getBSKYPollProgress() { return this.get('/api/bsky/poll/progress'); },
+    /* ── TW (X/Twitter) convenience methods ───────────────────────
+     * Cookie-based GraphQL API. Tweets identified by numeric ID strings.
+     * Tracks views, likes, retweets, replies, quotes, bookmarks.
+     */
+    getTWAuthStatus() { return this.get('/api/tw/auth/status'); },
+    twConnect(data) { return this.post('/api/tw/auth/connect', data); },
+    twDisconnect() { return this.post('/api/tw/auth/disconnect'); },
+    getTWStatus() { return this.get('/api/tw/status'); },
+    getTWSummary() { return this.get('/api/tw/summary'); },
+    getTWSubmissions(params) { return this.get('/api/tw/submissions', params); },
+    getTWSubmission(id) { return this.get(`/api/tw/submissions/${id}`); },
+    getTWSnapshots(id, params) { return this.get(`/api/tw/submissions/${id}/snapshots`, params); },
+    getTWAggregate(params) { return this.get('/api/tw/aggregate', params); },
+    getTWComparison(ids, params) { return this.get('/api/tw/comparison', { ids: ids.join(','), ...params }); },
+    getTWPollLog(limit) { return this.get('/api/tw/poll_log', { limit }); },
+    triggerTWPoll() { return this.post('/api/tw/poll/trigger'); },
+    fullTWResync() { return this.post('/api/tw/poll/full-resync'); },
+    getTWPollProgress() { return this.get('/api/tw/poll/progress'); },
     /* ── Export methods ───────────────────────────────────────────
      * These trigger browser-native file downloads by opening the
      * streaming CSV endpoint in a new tab via window.open().
@@ -253,11 +289,11 @@ const API = {
      * download, not JSON to be parsed in-page.
      */
     exportSubmissions(platform) {
-        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions', sqw: '/api/sqw/export/submissions', ao3: '/api/ao3/export/submissions', da: '/api/da/export/submissions', wp: '/api/wp/export/submissions', ik: '/api/ik/export/submissions' };
+        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions', sqw: '/api/sqw/export/submissions', ao3: '/api/ao3/export/submissions', da: '/api/da/export/submissions', wp: '/api/wp/export/submissions', ik: '/api/ik/export/submissions', bsky: '/api/bsky/export/submissions', tw: '/api/tw/export/submissions' };
         window.open(urls[platform] || urls.ib, '_blank');
     },
     exportSnapshots(platform, id) {
-        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots', sqw: '/api/sqw/export/snapshots', ao3: '/api/ao3/export/snapshots', da: '/api/da/export/snapshots', wp: '/api/wp/export/snapshots', ik: '/api/ik/export/snapshots' };
+        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots', sqw: '/api/sqw/export/snapshots', ao3: '/api/ao3/export/snapshots', da: '/api/da/export/snapshots', wp: '/api/wp/export/snapshots', ik: '/api/ik/export/snapshots', bsky: '/api/bsky/export/snapshots', tw: '/api/tw/export/snapshots' };
         const url = (bases[platform] || bases.ib) + (id ? `?id=${id}` : '');
         window.open(url, '_blank');
     },

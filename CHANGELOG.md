@@ -4,6 +4,50 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [1.6.0] - 2026-03-10
+
+### Added
+- **Bluesky platform support** (platform 10) — AT Protocol integration with JWT session auth via app passwords
+  - `bsky_client/client.py` — `BskyClient` with login/refresh/check session chain, batch post fetching (25 URIs per call), cursor-paginated feed discovery
+  - `database/bsky_schema.sql` — `bsky_submissions` (TEXT PK for AT URIs), `bsky_snapshots`, `bsky_poll_log`
+  - `database/bsky_queries.py` — Full CRUD with `get_bsky_submission_by_rkey()` suffix match for AT URI resolution
+  - `polling/bsky_poller.py` — Poll cycle with 🦋 emoji notifications, activity trigger on likes/reposts changes
+  - `routes/bsky_api.py` — `/api/bsky/*` endpoints with `{submission_id:path}` for AT URI path params
+  - Frontend: Dashboard (4 stat cards: likes, reposts, replies, quotes — no views), posts table, detail view, comparison charts
+  - Metrics: likes, reposts, replies, quotes (4 metrics, no view counts)
+
+- **X/Twitter platform support** (platform 11) — Cookie-based GraphQL scraping of internal endpoints
+  - `tw_client/client.py` — `TWClient` with auth_token + ct0 cookie auth, GraphQL query endpoints (UserByScreenName, UserTweets, TweetResultByRestId), content type detection (tweet/reply/retweet/quote)
+  - `database/tw_schema.sql` — `tw_submissions` (TEXT PK for tweet IDs), `tw_snapshots`, `tw_poll_log`
+  - `database/tw_queries.py` — Full CRUD with 6 metrics, default sort by views DESC
+  - `polling/tw_poller.py` — Poll cycle with 🐦 emoji notifications, 2s inter-request delay (aggressive rate limiting)
+  - `routes/tw_api.py` — `/api/tw/*` endpoints with content_type filtering
+  - Frontend: Dashboard (7 stat cards: views, likes, retweets, replies, quotes, bookmarks), tweets table with type column, detail view, comparison charts
+  - Metrics: views, likes, retweets, replies, quotes, bookmarks (6 metrics — most of any platform)
+
+- **Cross-platform integration** for both platforms:
+  - Overview page: BSKY/TW included in totals, top lists, recent activity, aggregate charts, export buttons
+  - Settings page: BSKY (identifier + app_password) and TW (auth_token + ct0 + target_user) credential sections with connect/disconnect/poll/resync controls
+  - Telegram notifications: digest reports, milestone alerts, `/stats`, `/top`, `/poll`, `/interval`, `/notifications` bot commands
+  - Analytics: trending detection, cross-platform links, group stats
+  - Platform badges: `.platform-badge.bsky` (blue #0085ff) and `.platform-badge.tw` (blue #1d9bf0)
+  - Navigation: Bluesky and X/Twitter sidebar groups with Dashboard/Posts/Compare links
+
+### Changed
+- Thread count increased from 12 to 14 daemon threads (added BSKY + TW pollers)
+- `config.py` — Added `BSKY_REQUEST_DELAY_SECONDS = 1.0` and `TW_REQUEST_DELAY_SECONDS = 2.0`
+- `database/db.py` — Schema init loads `bsky_schema.sql` and `tw_schema.sql`
+- `dashboard.py` — Registers `bsky_router` and `tw_router`
+- `server.py` — Added env-to-settings mappings for BSKY/TW credentials
+- `polling/telegram.py` — Added BSKY/TW to platform metrics, emoji, name maps, digest reports, goal checking
+- `polling/telegram_bot.py` — Added BSKY/TW to all 10+ platform maps (stats, poll, interval, notify commands)
+- `database/analytics_queries.py` — Added BSKY/TW to trending and cross-platform metrics
+- `database/group_queries.py` — Added BSKY/TW to group stats metrics
+- `routes/api.py` — Added BSKY/TW to table maps and allowed metrics (reposts, retweets, bookmarks, quotes)
+- `inkbunny_analytics.spec` — Added BSKY/TW schema files to PyInstaller datas
+
+---
+
 ## [1.5.0] - 2026-03-09
 
 ### Added

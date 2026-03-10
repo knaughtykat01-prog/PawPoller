@@ -36,6 +36,8 @@ _AO3_SCHEMA_PATH = config.resource_path("database/ao3_schema.sql") # AO3 tables
 _DA_SCHEMA_PATH = config.resource_path("database/da_schema.sql")   # DeviantArt tables
 _WP_SCHEMA_PATH = config.resource_path("database/wp_schema.sql")   # Wattpad tables
 _IK_SCHEMA_PATH = config.resource_path("database/ik_schema.sql")   # Itaku tables
+_BSKY_SCHEMA_PATH = config.resource_path("database/bsky_schema.sql")  # Bluesky tables
+_TW_SCHEMA_PATH = config.resource_path("database/tw_schema.sql")      # X/Twitter tables
 
 
 def get_connection() -> sqlite3.Connection:
@@ -92,6 +94,10 @@ def init_db() -> None:
         conn.executescript(wp_schema_sql)
         ik_schema_sql = _IK_SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(ik_schema_sql)
+        bsky_schema_sql = _BSKY_SCHEMA_PATH.read_text(encoding="utf-8")
+        conn.executescript(bsky_schema_sql)
+        tw_schema_sql = _TW_SCHEMA_PATH.read_text(encoding="utf-8")
+        conn.executescript(tw_schema_sql)
         # Apply any migrations for tables added after the original schema release.
         _run_migrations(conn)
         conn.commit()

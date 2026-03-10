@@ -345,9 +345,9 @@ const Components = {
             return '<p style="color:var(--text-muted);font-size:13px">No data yet</p>';
         }
         const lis = items.map(item => {
-            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', ib: '/submission/' };
+            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', ib: '/submission/' };
             const prefix = prefixes[item._platform] || prefixes.ib;
-            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', ib: '<span class="platform-badge ib">IB</span>' };
+            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', ib: '<span class="platform-badge ib">IB</span>' };
             const badge = badges[item._platform] || badges.ib;
             return `
                 <li>
@@ -374,9 +374,9 @@ const Components = {
             return '<p style="color:var(--text-muted);font-size:13px">No recent activity</p>';
         }
         return items.map(item => {
-            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', ib: '/submission/' };
+            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', ib: '/submission/' };
             const prefix = prefixes[item._platform] || prefixes.ib;
-            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', ib: '<span class="platform-badge ib">IB</span>' };
+            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', ib: '<span class="platform-badge ib">IB</span>' };
             const badge = badges[item._platform] || badges.ib;
             const action = item._type === 'fave' ? 'faved' : 'on';
             return `
@@ -1139,6 +1139,185 @@ const Components = {
         `;
     },
 
+    // ── BSKY Components ──────────────────────────────────────────
+
+    /**
+     * Clickable ranked list for BSKY submissions.
+     * Each item navigates to the BSKY submission detail page via App.navigate().
+     * Uses rkey (last segment of AT URI) for routing.
+     */
+    bskyTopList(items, valueKey, labelKey = 'title', idKey = 'submission_id') {
+        if (!items || items.length === 0) {
+            return '<p style="color:var(--text-muted);font-size:13px">No data yet</p>';
+        }
+        const lis = items.map(item => {
+            const rkey = String(item[idKey]).split('/').pop();
+            return `
+            <li>
+                <span class="top-title" onclick="App.navigate('/bsky/submission/${rkey}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
+            </li>
+        `;
+        }).join('');
+        return `<ul class="top-list">${lis}</ul>`;
+    },
+
+    /**
+     * BSKY-specific submissions table.
+     * Columns: Title, Likes, Reposts, Replies, Quotes, Posted (NO views).
+     */
+    bskySubmissionsTable(submissions) {
+        if (!submissions || submissions.length === 0) {
+            return `<div class="empty-state"><h3>No posts</h3><p>Connect your Bluesky account and run a poll to fetch data.</p></div>`;
+        }
+        const rows = submissions.map(s => {
+            const rkey = String(s.submission_id).split('/').pop();
+            return `
+            <tr>
+                <td data-label="Title"><a href="#/bsky/submission/${rkey}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Likes">${Utils.formatNumber(s.likes || 0)} ${Utils.formatDelta(s.likes_delta)}</td>
+                <td data-label="Reposts">${Utils.formatNumber(s.reposts || 0)} ${Utils.formatDelta(s.reposts_delta)}</td>
+                <td data-label="Replies">${Utils.formatNumber(s.replies || 0)} ${Utils.formatDelta(s.replies_delta)}</td>
+                <td data-label="Quotes">${Utils.formatNumber(s.quotes || 0)}</td>
+                <td data-label="Posted">${Utils.formatDate(s.posted_at)}</td>
+            </tr>
+        `;
+        }).join('');
+
+        return `
+            <table class="data-table" id="bsky-submissions-table" data-mobile-cards>
+                <thead>
+                    <tr>
+                        <th data-sort="title">Title</th>
+                        <th data-sort="likes">Likes</th>
+                        <th data-sort="reposts">Reposts</th>
+                        <th data-sort="replies">Replies</th>
+                        <th data-sort="quotes">Quotes</th>
+                        <th data-sort="posted_at">Posted</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
+    /**
+     * BSKY-specific poll history table with color-coded status.
+     */
+    bskyPollLogTable(polls) {
+        if (!polls || polls.length === 0) {
+            return '<p style="color:var(--text-muted)">No BSKY polls recorded yet.</p>';
+        }
+        const rows = polls.map(p => `
+            <tr>
+                <td>${Utils.formatDateTime(p.started_at)}</td>
+                <td><span style="color:${p.status === 'success' ? 'var(--success)' : p.status === 'error' ? 'var(--danger)' : 'var(--warning)'}">${p.status}</span></td>
+                <td>${p.submissions_found || 0}</td>
+                <td>${p.snapshots_inserted || 0}</td>
+                <td>${p.duration_seconds ? p.duration_seconds.toFixed(1) + 's' : '--'}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${Utils.escapeHtml(p.error_message || '')}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th><th>Status</th><th>Subs</th><th>Snaps</th><th>Duration</th><th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
+    // ── TW Components ────────────────────────────────────────────
+
+    /**
+     * Clickable ranked list for TW submissions.
+     * Each item navigates to the TW submission detail page via App.navigate().
+     */
+    twTopList(items, valueKey, labelKey = 'title', idKey = 'submission_id') {
+        if (!items || items.length === 0) {
+            return '<p style="color:var(--text-muted);font-size:13px">No data yet</p>';
+        }
+        const lis = items.map(item => `
+            <li>
+                <span class="top-title" onclick="App.navigate('/tw/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
+            </li>
+        `).join('');
+        return `<ul class="top-list">${lis}</ul>`;
+    },
+
+    /**
+     * TW-specific submissions table.
+     * Columns: Title, Type, Views, Likes, Retweets, Replies, Posted.
+     */
+    twSubmissionsTable(submissions) {
+        if (!submissions || submissions.length === 0) {
+            return `<div class="empty-state"><h3>No tweets</h3><p>Connect your X/Twitter account and run a poll to fetch data.</p></div>`;
+        }
+        const rows = submissions.map(s => `
+            <tr>
+                <td data-label="Title"><a href="#/tw/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Type">${Utils.escapeHtml(s.content_type || 'tweet')}</td>
+                <td data-label="Views">${Utils.formatNumber(s.views || 0)} ${Utils.formatDelta(s.views_delta)}</td>
+                <td data-label="Likes">${Utils.formatNumber(s.likes || 0)} ${Utils.formatDelta(s.likes_delta)}</td>
+                <td data-label="Retweets">${Utils.formatNumber(s.retweets || 0)} ${Utils.formatDelta(s.retweets_delta)}</td>
+                <td data-label="Replies">${Utils.formatNumber(s.replies || 0)} ${Utils.formatDelta(s.replies_delta)}</td>
+                <td data-label="Posted">${Utils.formatDate(s.posted_at)}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table" id="tw-submissions-table" data-mobile-cards>
+                <thead>
+                    <tr>
+                        <th data-sort="title">Title</th>
+                        <th data-sort="content_type">Type</th>
+                        <th data-sort="views">Views</th>
+                        <th data-sort="likes">Likes</th>
+                        <th data-sort="retweets">Retweets</th>
+                        <th data-sort="replies">Replies</th>
+                        <th data-sort="posted_at">Posted</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
+    /**
+     * TW-specific poll history table with color-coded status.
+     */
+    twPollLogTable(polls) {
+        if (!polls || polls.length === 0) {
+            return '<p style="color:var(--text-muted)">No TW polls recorded yet.</p>';
+        }
+        const rows = polls.map(p => `
+            <tr>
+                <td>${Utils.formatDateTime(p.started_at)}</td>
+                <td><span style="color:${p.status === 'success' ? 'var(--success)' : p.status === 'error' ? 'var(--danger)' : 'var(--warning)'}">${p.status}</span></td>
+                <td>${p.submissions_found || 0}</td>
+                <td>${p.snapshots_inserted || 0}</td>
+                <td>${p.duration_seconds ? p.duration_seconds.toFixed(1) + 's' : '--'}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${Utils.escapeHtml(p.error_message || '')}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th><th>Status</th><th>Subs</th><th>Snaps</th><th>Duration</th><th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
     // ── Groups Components ────────────────────────────────────────
 
     /**
@@ -1212,9 +1391,9 @@ const Components = {
             return '<p style="color:var(--text-muted);font-size:13px">No trending submissions detected. Need at least a few polls to calculate trends.</p>';
         }
         return items.map(item => {
-            const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', ib: '<span class="platform-badge ib">IB</span>' };
+            const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', ib: '<span class="platform-badge ib">IB</span>' };
             const platformBadge = badgeMap[item.platform] || badgeMap.ib;
-            const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', ib: '/submission/' };
+            const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', ib: '/submission/' };
             const prefix = prefixMap[item.platform] || prefixMap.ib;
             const metrics = [];
             if (item.views_delta) metrics.push(`Views +${item.views_delta}`);
@@ -1247,7 +1426,7 @@ const Components = {
         }
         return links.map(link => {
             const members = (link.members || []).map(m => {
-                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', ib: '<span class="platform-badge ib">IB</span>' };
+                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[m.platform] || badgeMap.ib;
                 return `${badge} ${Utils.escapeHtml(Utils.truncate(m.title || '#' + m.submission_id, 25))}`;
             }).join('<br>');
@@ -1279,7 +1458,7 @@ const Components = {
         }
         return suggestions.map(s => {
             const items = s.items.map(i => {
-                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', ib: '<span class="platform-badge ib">IB</span>' };
+                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[i.platform] || badgeMap.ib;
                 return `${badge} ${Utils.escapeHtml(Utils.truncate(i.title, 30))}`;
             }).join(' &harr; ');

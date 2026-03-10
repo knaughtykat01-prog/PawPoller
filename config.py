@@ -222,6 +222,12 @@ WP_REQUEST_DELAY_SECONDS = 1.0  # Rate-limit delay between Wattpad API requests
 # ── Itaku settings ──
 IK_REQUEST_DELAY_SECONDS = 1.0  # Rate-limit delay between Itaku API requests
 
+# ── Bluesky settings ──
+BSKY_REQUEST_DELAY_SECONDS = 1.0  # Bluesky AT Protocol — generous rate limits
+
+# ── X/Twitter settings ──
+TW_REQUEST_DELAY_SECONDS = 2.0  # X GraphQL — aggressive rate limiting, needs higher delay
+
 # ── App metadata ──
 APP_VERSION = "1.5.0"
 

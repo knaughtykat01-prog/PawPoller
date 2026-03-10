@@ -67,6 +67,11 @@ _ENV_TO_SETTINGS = {
     "DA_TARGET_USER":   "da_target_user",
     "WP_TARGET_USER":   "wp_target_user",
     "IK_TARGET_USER":   "ik_target_user",
+    "BSKY_IDENTIFIER":    "bsky_identifier",
+    "BSKY_APP_PASSWORD":  "bsky_app_password",
+    "TW_AUTH_TOKEN":      "tw_auth_token",
+    "TW_CT0":             "tw_ct0",
+    "TW_TARGET_USER":     "tw_target_user",
     "TELEGRAM_BOT_TOKEN": "telegram_bot_token",
     "TELEGRAM_CHAT_ID":   "telegram_chat_id",
     "TELEGRAM_ENABLED":   "telegram_enabled",
@@ -397,6 +402,72 @@ def _start_ik_poller():
         logger.debug("IK poller thread exiting: %s", e)  # Daemon teardown
 
 
+def _start_bsky_poller():
+    """Run Bluesky poller in its own daemon thread with a dynamic interval."""
+    import asyncio
+    from polling.bsky_poller import run_bsky_poll_cycle
+
+    async def _scheduled_bsky_poll():
+        settings = config.get_settings()
+        if not settings.get("bsky_identifier") or not settings.get("bsky_app_password"):
+            logger.info("Scheduled BSKY poll skipped -- no Bluesky credentials configured")
+            return
+        try:
+            await run_bsky_poll_cycle()
+        except Exception as e:
+            logger.error("Scheduled BSKY poll failed: %s", e)
+
+    async def _run():
+        logger.info("BSKY poller loop started")
+        await _scheduled_bsky_poll()
+        while True:
+            settings = config.get_settings()
+            interval = settings.get("bsky_poll_interval_minutes", 60)
+            logger.info("Next BSKY poll in %d minutes", interval)
+            await asyncio.sleep(interval * 60)
+            await _scheduled_bsky_poll()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run())
+    except Exception as e:
+        logger.debug("BSKY poller thread exiting: %s", e)  # Daemon teardown
+
+
+def _start_tw_poller():
+    """Run X/Twitter poller in its own daemon thread with a dynamic interval."""
+    import asyncio
+    from polling.tw_poller import run_tw_poll_cycle
+
+    async def _scheduled_tw_poll():
+        settings = config.get_settings()
+        if not settings.get("tw_auth_token") or not settings.get("tw_target_user"):
+            logger.info("Scheduled TW poll skipped -- no X/Twitter credentials configured")
+            return
+        try:
+            await run_tw_poll_cycle()
+        except Exception as e:
+            logger.error("Scheduled TW poll failed: %s", e)
+
+    async def _run():
+        logger.info("TW poller loop started")
+        await _scheduled_tw_poll()
+        while True:
+            settings = config.get_settings()
+            interval = settings.get("tw_poll_interval_minutes", 60)
+            logger.info("Next TW poll in %d minutes", interval)
+            await asyncio.sleep(interval * 60)
+            await _scheduled_tw_poll()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run())
+    except Exception as e:
+        logger.debug("TW poller thread exiting: %s", e)  # Daemon teardown
+
+
 def _start_digest_scheduler():
     """Run 6-hourly Telegram digest in its own daemon thread."""
     import asyncio
@@ -483,6 +554,8 @@ def main():
         ("DA poller",          _start_da_poller),
         ("WP poller",          _start_wp_poller),
         ("IK poller",          _start_ik_poller),
+        ("BSKY poller",        _start_bsky_poller),
+        ("TW poller",          _start_tw_poller),
         ("Telegram digest",    _start_digest_scheduler),
         ("Telegram bot",       _start_telegram_bot),
     ]
