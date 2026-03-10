@@ -191,17 +191,24 @@ def _get_or_create_client(settings: dict) -> SoFurryClient:
     sf_display = settings.get("sf_display_name", "")
     sf_totp = settings.get("sf_totp_code", "")
 
+    cf_url = settings.get("cf_worker_url", "")
+    cf_key = settings.get("cf_worker_key", "")
+
     if _sf_client is None:
         _sf_client = SoFurryClient(
             username=sf_user,
             password=sf_pass,
             display_name=sf_display,
             totp_code=sf_totp,
+            proxy_url=cf_url,
+            proxy_key=cf_key,
         )
-        # Restore saved session cookies (if any) to skip login
-        saved_cookies = settings.get("sf_session_cookies")
-        if saved_cookies:
-            _sf_client.import_cookies(saved_cookies)
+        # Restore saved session cookies (if any) to skip login.
+        # Only useful when NOT using the CF proxy (direct login).
+        if not cf_url:
+            saved_cookies = settings.get("sf_session_cookies")
+            if saved_cookies:
+                _sf_client.import_cookies(saved_cookies)
     else:
         changed = _sf_client.update_credentials(sf_user, sf_pass, sf_display, sf_totp)
         if changed:
@@ -257,11 +264,12 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
         logger.info("SF: Found %d submissions", len(submission_ids))
 
         # Persist session cookies after a successful authenticated gallery fetch.
-        # Gallery success is the definitive proof the session works.
-        cookie_data = client.export_cookies()
-        if cookie_data:
-            config.save_settings({"sf_session_cookies": cookie_data})
-            logger.info("SF: Saved session cookies to settings.json")
+        # Only useful for direct login (not CF proxy, which rotates IPs).
+        if not settings.get("cf_worker_url"):
+            cookie_data = client.export_cookies()
+            if cookie_data:
+                config.save_settings({"sf_session_cookies": cookie_data})
+                logger.info("SF: Saved session cookies to settings.json")
 
         if not submission_ids:
             _update_sf_progress("complete", message="No SoFurry submissions found.")
