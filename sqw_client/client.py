@@ -81,14 +81,15 @@ class SquidgeWorldClient:
     # ── Anubis Bot Challenge ─────────────────────────────────────
 
     async def _solve_anubis(self, html: str) -> bool:
-        """Solve the Anubis proof-of-work bot challenge.
+        """Solve the Anubis bot challenge.
 
         Anubis (by Xe Iaso / Techaro) protects SquidgeWorld with a SHA-256
-        challenge.  The "preact" algorithm:
-          1. Extract the challenge string from the page's preact_info JSON
-          2. Compute SHA-256 of the challenge string
-          3. GET the pass-challenge endpoint with result=<sha256hex>
-          4. Receive an auth cookie for subsequent requests
+        challenge.  The server-side "preact" validation:
+          1. Extract the challenge randomData from preact_info JSON
+          2. Compute result = SHA256(randomData) — no nonce needed
+          3. Wait at least difficulty * 80ms (server-side time gate)
+          4. GET the pass-challenge endpoint with result=<sha256hex>
+          5. Receive a JWT auth cookie for subsequent requests
         """
         # Extract preact_info JSON from the challenge page
         m = re.search(
@@ -113,28 +114,19 @@ class SquidgeWorldClient:
             logger.error("SqW: preact_info missing challenge or redir")
             return False
 
-        # Anubis proof-of-work: find a nonce such that
-        # SHA-256(challenge + nonce) has `difficulty` leading zeros.
-        logger.info("SqW: Solving Anubis challenge (difficulty=%d)...", difficulty)
-        nonce = 0
-        prefix = "0" * difficulty
-        while True:
-            attempt = f"{challenge}{nonce}"
-            h = hashlib.sha256(attempt.encode("utf-8")).hexdigest()
-            if h.startswith(prefix):
-                break
-            nonce += 1
-            if nonce % 500000 == 0:
-                logger.debug("SqW: Anubis PoW attempt %d...", nonce)
-                await asyncio.sleep(0)  # yield to event loop
+        # Server validates: result == SHA256(randomData) — no nonce involved.
+        # The client-side PoW is browser-only; the server just checks the hash.
+        result = hashlib.sha256(challenge.encode("utf-8")).hexdigest()
+        logger.info("SqW: Computed Anubis challenge hash (difficulty=%d)", difficulty)
 
-        result = hashlib.sha256(f"{challenge}{nonce}".encode("utf-8")).hexdigest()
-        logger.info("SqW: Solved Anubis challenge (nonce=%d)", nonce)
+        # Server enforces a time gate: difficulty * 80ms minimum elapsed.
+        wait_seconds = max(difficulty * 0.1, 0.2)
+        await asyncio.sleep(wait_seconds)
 
         # Submit the solution
         pass_url = f"{_BASE}{redir}"
         separator = "&" if "?" in pass_url else "?"
-        pass_url = f"{pass_url}{separator}result={result}&nonce={nonce}"
+        pass_url = f"{pass_url}{separator}result={result}&nonce=0"
 
         try:
             resp = await self._http.get(pass_url)
