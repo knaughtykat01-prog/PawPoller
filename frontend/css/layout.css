@@ -228,8 +228,9 @@
 
 /* ── Sidebar Footer ──────────────────────────────────────── */
 .sidebar-footer {
-    padding: 12px;
+    padding: 8px;
     border-top: 1px solid var(--border);
+    overflow: hidden;
 }
 
 .poll-badge {
@@ -239,18 +240,29 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    opacity: 0;
+    height: 0;
+    transition: opacity 0.15s ease, height 0.15s ease;
+}
+
+.sidebar:hover .poll-badge,
+.sidebar.expanded .poll-badge {
+    opacity: 1;
+    height: auto;
 }
 
 .btn-logout {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
-    margin-top: 8px;
+    margin-top: 4px;
     padding: 6px 0;
     background: none;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 14px;
     cursor: pointer;
     transition: all 0.15s;
     white-space: nowrap;
@@ -260,15 +272,17 @@
 .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
 
 .btn-theme-toggle {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
-    margin-top: 6px;
+    margin-top: 4px;
     padding: 5px 0;
     background: none;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 14px;
     cursor: pointer;
     transition: all 0.15s;
     white-space: nowrap;
@@ -278,12 +292,21 @@
 .btn-theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
 
 .sidebar-version {
-    margin-top: 10px;
+    margin-top: 6px;
     text-align: center;
     font-size: 11px;
     color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
+    opacity: 0;
+    height: 0;
+    transition: opacity 0.15s ease, height 0.15s ease;
+}
+
+.sidebar:hover .sidebar-version,
+.sidebar.expanded .sidebar-version {
+    opacity: 1;
+    height: auto;
 }
 
 .sidebar-version .version-text { display: block; margin-bottom: 4px; }
@@ -432,6 +455,10 @@
         opacity: 1;
         height: auto;
         padding: 16px 12px 4px;
+    }
+    .poll-badge, .sidebar-version {
+        opacity: 1;
+        height: auto;
     }
 
     .nav-group-links {
