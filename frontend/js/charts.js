@@ -194,7 +194,7 @@ const Charts = {
         const c = this._getThemeColors();
         return {
             type: 'time',
-            ticks: { color: c.muted, font: { size: 10 }, maxTicksLimit: 12 },
+            ticks: { color: c.muted, font: { size: 10 }, maxTicksLimit: 8, maxRotation: 45, minRotation: 25 },
             grid: { color: c.border },
             time: {
                 tooltipFormat: 'dd MMM yyyy HH:mm',
