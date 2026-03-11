@@ -4592,6 +4592,7 @@ const App = {
                 <div class="page-header">
                     <h2>Settings</h2>
                     <div style="display:flex;gap:8px">
+                        <button class="btn btn-success" id="save-all-settings-btn" title="Save all settings on this page">Save Settings</button>
                         <button class="btn btn-primary" id="poll-now-btn">Poll Now</button>
                         <button class="btn btn-secondary" id="full-resync-btn" title="Re-scrape all faves and comments">Full Resync</button>
                         <button class="btn btn-secondary" id="clear-session-btn" title="Clear cached API session">Clear Session</button>
@@ -5720,6 +5721,91 @@ const App = {
                     btn.textContent = 'Error';
                     alert('Failed: ' + err.message);
                     setTimeout(() => this.renderSettings(), 2000);
+                }
+            });
+
+            document.getElementById('save-all-settings-btn').addEventListener('click', async (e) => {
+                const btn = e.target;
+                btn.disabled = true;
+                btn.textContent = 'Saving...';
+                try {
+                    // Collect all preferences from the form
+                    const prefs = {};
+                    const val = (id) => document.getElementById(id)?.value;
+                    const chk = (id) => document.getElementById(id)?.checked;
+
+                    // General toggles
+                    prefs.minimize_to_tray = !!chk('pref-tray');
+                    prefs.run_on_startup = !!chk('pref-startup');
+                    prefs.notifications_enabled = !!chk('pref-notifications');
+                    prefs.watcher_notifications_enabled = !!chk('pref-watcher-notif');
+
+                    // Poll intervals
+                    prefs.poll_interval_minutes = parseInt(val('pref-poll-interval')) || 60;
+                    prefs.fa_poll_interval_minutes = parseInt(val('pref-fa-poll-interval')) || 60;
+                    prefs.ws_poll_interval_minutes = parseInt(val('pref-ws-poll-interval')) || 60;
+                    prefs.sf_poll_interval_minutes = parseInt(val('pref-sf-poll-interval')) || 60;
+                    prefs.sqw_poll_interval_minutes = parseInt(val('pref-sqw-poll-interval')) || 60;
+                    prefs.ao3_poll_interval_minutes = parseInt(val('pref-ao3-poll-interval')) || 60;
+                    prefs.da_poll_interval_minutes = parseInt(val('pref-da-poll-interval')) || 60;
+                    prefs.wp_poll_interval_minutes = parseInt(val('pref-wp-poll-interval')) || 60;
+                    prefs.ik_poll_interval_minutes = parseInt(val('pref-ik-poll-interval')) || 60;
+                    prefs.bsky_poll_interval_minutes = parseInt(val('pref-bsky-poll-interval')) || 60;
+                    prefs.tw_poll_interval_minutes = parseInt(val('pref-tw-poll-interval')) || 60;
+
+                    // Timezone
+                    if (val('pref-timezone')) prefs.display_timezone = val('pref-timezone');
+
+                    // Notification filters
+                    prefs.notification_comments_only = !!chk('pref-notif-comments-only');
+                    prefs.fa_notification_comments_only = !!chk('pref-fa-notif-comments-only');
+                    prefs.ws_notification_comments_only = !!chk('pref-ws-notif-comments-only');
+                    prefs.sf_notification_comments_only = !!chk('pref-sf-notif-comments-only');
+                    prefs.notification_min_views_delta = parseInt(val('pref-min-views-delta')) || 0;
+                    prefs.notification_min_faves_delta = parseInt(val('pref-min-faves-delta')) || 0;
+
+                    // Milestones
+                    const parseList = (id) => (val(id) || '').split(',').map(s => parseInt(s.trim())).filter(n => n > 0);
+                    prefs.milestone_views = parseList('pref-milestone-views');
+                    prefs.milestone_faves = parseList('pref-milestone-faves');
+                    prefs.milestone_comments = parseList('pref-milestone-comments');
+
+                    // Platform notification toggles
+                    if (document.getElementById('pref-fa-notifications')) prefs.fa_notifications_enabled = !!chk('pref-fa-notifications');
+                    if (document.getElementById('pref-fa-watcher-notif')) prefs.fa_watcher_notifications_enabled = !!chk('pref-fa-watcher-notif');
+                    if (document.getElementById('pref-ws-notifications')) prefs.ws_notifications_enabled = !!chk('pref-ws-notifications');
+                    if (document.getElementById('pref-sf-notifications')) prefs.sf_notifications_enabled = !!chk('pref-sf-notifications');
+                    if (document.getElementById('pref-sqw-notifications')) prefs.sqw_notifications_enabled = !!chk('pref-sqw-notifications');
+                    if (document.getElementById('pref-ao3-notifications')) prefs.ao3_notifications_enabled = !!chk('pref-ao3-notifications');
+                    if (document.getElementById('pref-da-notifications')) prefs.da_notifications_enabled = !!chk('pref-da-notifications');
+                    if (document.getElementById('pref-wp-notifications')) prefs.wp_notifications_enabled = !!chk('pref-wp-notifications');
+                    if (document.getElementById('pref-ik-notifications')) prefs.ik_notifications_enabled = !!chk('pref-ik-notifications');
+                    if (document.getElementById('pref-bsky-notifications')) prefs.bsky_notifications_enabled = !!chk('pref-bsky-notifications');
+                    if (document.getElementById('pref-tw-notifications')) prefs.tw_notifications_enabled = !!chk('pref-tw-notifications');
+
+                    await API.savePreferences(prefs);
+
+                    // Save credentials if username field has a value
+                    const username = val('cred-username');
+                    const password = document.getElementById('cred-password')?.value;
+                    if (username && password) {
+                        await API.saveCredentials({ username, password });
+                    }
+
+                    btn.textContent = 'Saved!';
+                    btn.style.background = 'var(--success)';
+                    setTimeout(() => {
+                        btn.textContent = 'Save Settings';
+                        btn.style.background = '';
+                        btn.disabled = false;
+                    }, 2000);
+                } catch (err) {
+                    btn.textContent = 'Error';
+                    alert('Save failed: ' + err.message);
+                    setTimeout(() => {
+                        btn.textContent = 'Save Settings';
+                        btn.disabled = false;
+                    }, 2000);
                 }
             });
 

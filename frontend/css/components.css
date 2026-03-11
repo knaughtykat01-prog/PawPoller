@@ -463,6 +463,9 @@ body {
 .btn-danger { border-color: var(--danger); color: var(--danger); }
 .btn-danger:hover { background: var(--danger); color: #fff; }
 
+.btn-success { background: var(--success); color: #fff; border-color: var(--success); }
+.btn-success:hover { opacity: 0.9; }
+
 .btn-pill { border-radius: var(--radius-pill); }
 
 /* ── Tags / Keywords ─────────────────────────────────────── */
