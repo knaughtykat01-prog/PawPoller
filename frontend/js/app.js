@@ -279,12 +279,10 @@ const App = {
                 (hash === '/' && link.getAttribute('href') === '#/'));
         });
 
-        /* Auto-expand the nav-group containing the active link (mobile accordion) */
+        /* Auto-expand the nav-group containing the active link, collapse others */
         document.querySelectorAll('.nav-group').forEach(group => {
             const hasActive = group.querySelector('.nav-link.active');
-            if (hasActive) {
-                group.classList.add('expanded');
-            }
+            group.classList.toggle('expanded', !!hasActive);
         });
 
         /* Update bottom nav active state */

@@ -141,16 +141,14 @@
 
 .nav-chevron {
     font-size: 14px;
-    transition: transform 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.15s ease;
     color: var(--text-muted);
     opacity: 0;
 }
 
-@media (min-width: 769px) {
-    .sidebar:hover .nav-chevron,
-    .sidebar.expanded .nav-chevron {
-        opacity: 1;
-    }
+.sidebar:hover .nav-chevron,
+.sidebar.expanded .nav-chevron {
+    opacity: 1;
 }
 
 .nav-group.expanded .nav-chevron { transform: rotate(90deg); }
@@ -158,6 +156,13 @@
 .nav-group-links {
     list-style: none;
     padding: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+}
+
+.nav-group.expanded .nav-group-links {
+    max-height: 200px;
 }
 
 .nav-section-divider {
