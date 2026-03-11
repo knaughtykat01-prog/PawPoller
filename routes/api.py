@@ -473,22 +473,33 @@ async def full_resync():
 
 
 @router.post("/poll/pause")
-def pause_polling():
+async def pause_polling():
     """Pause all scheduled background polling across all platforms.
 
     Sets the polling_paused flag in settings.json.  Poller loops check this
     flag each cycle and skip when paused.  Manual Poll Now still works.
+    Sends a Telegram notification.
     """
     config.save_settings({"polling_paused": True})
     logger.info("Polling PAUSED by user")
+    try:
+        from polling.telegram import send_telegram
+        await send_telegram("⏸ <b>Polling paused</b>\nAll scheduled background polls are now skipped.\nManual polls still work.")
+    except Exception:
+        pass
     return {"status": "success", "polling_paused": True}
 
 
 @router.post("/poll/resume")
-def resume_polling():
+async def resume_polling():
     """Resume scheduled background polling across all platforms."""
     config.save_settings({"polling_paused": False})
     logger.info("Polling RESUMED by user")
+    try:
+        from polling.telegram import send_telegram
+        await send_telegram("▶️ <b>Polling resumed</b>\nScheduled background polls will run on their normal intervals.")
+    except Exception:
+        pass
     return {"status": "success", "polling_paused": False}
 
 

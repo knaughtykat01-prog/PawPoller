@@ -4,15 +4,17 @@ Polls Telegram's getUpdates API for incoming commands and dispatches them
 to query functions, poll triggers, and settings mutators.
 
 Commands:
-  /help                     — list all commands
-  /stats                    — cross-platform totals
-  /top [platform]           — top 5 submissions by views
-  /trending                 — spike detection results
+  /help                     — list all commands with descriptions
+  /stats                    — cross-platform totals (all 11 platforms)
+  /top [platform]           — top 5 submissions by views/likes
+  /trending                 — spike detection results (z-score)
   /digest                   — trigger a digest report now
   /fans                     — top fans leaderboard
-  /poll [ib|fa|ws|sf|all]   — force a poll cycle
-  /status                   — poll status and last poll times
-  /interval [platform] [min]— change poll interval
+  /poll [platform|all]      — force a poll cycle (works even when paused)
+  /pause                    — pause all scheduled background polling
+  /resume                   — resume scheduled background polling
+  /status                   — poll status, last poll times, scheduler state
+  /interval [platform] [min]— change poll interval (min: 15)
   /notify                   — show notification toggle states
   /notify [type] [on|off]   — toggle specific notification types
 """
@@ -73,33 +75,38 @@ async def _poll_updates(token: str) -> list[dict]:
 # ── Command handlers ─────────────────────────────────────────
 
 async def _cmd_help(token: str, chat_id: str, args: str) -> None:
-    text = """<b>PawPoller Commands</b>
+    settings = config.get_settings()
+    paused = settings.get("polling_paused", False)
+    text = f"""<b>🐾 PawPoller Commands</b>
 
-<b>Queries</b>
-/stats — Cross-platform totals
-/top [ib|fa|ws|sf|sqw|ao3|da|wp|ik] — Top 5 by views
-/trending — Spike detection
-/digest — Send digest report
-/fans — Top fans leaderboard
+<b>📊 Data Queries</b>
+/stats — Cross-platform totals (subs, views, faves, comments across all 11 platforms)
+/top [platform] — Top 5 submissions by views/likes (default: ib)
+/trending — Submissions with unusual activity spikes (z-score detection)
+/fans — Top fans leaderboard by fave + comment score
+/digest — Trigger a full digest report now
 
-<b>Control</b>
-/poll [ib|fa|ws|sf|sqw|ao3|da|wp|ik|all] — Force poll
-/status — Last poll times
-/interval [ib|fa|ws|sf|sqw|ao3|da|wp|ik] [mins] — Set poll interval
+<b>⚙️ Polling Control</b>
+/poll [platform|all] — Force an immediate poll cycle (works even when paused)
+/pause — Pause all scheduled background polling
+/resume — Resume scheduled background polling
+/status — Last poll times, intervals, and scheduler state
+/interval [platform] [mins] — Change poll interval (min: 15)
 
-<b>Notifications</b>
-/notify — Show all toggle states
-/notify summaries [on|off]
-/notify errors [on|off]
-/notify milestones [on|off]
-/notify digest [on|off]
-/notify faves [on|off]
-/notify comments [on|off]
-/notify watchers [on|off]
-/notify ib [on|off]
-/notify fa [on|off]
-/notify ws [on|off]
-/notify sf [on|off]"""
+<b>🔔 Notifications</b>
+/notify — Show all notification toggle states
+/notify [type] [on|off] — Toggle a notification type
+
+  <b>Telegram features:</b> summaries, errors, milestones, digest
+  <b>Platform alerts:</b> ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw
+  <b>Filters:</b> faves, comments, watchers
+
+<b>📎 Platform Codes</b>
+ib=Inkbunny  fa=FurAffinity  ws=Weasyl  sf=SoFurry
+sqw=SquidgeWorld  ao3=AO3  da=DeviantArt  wp=Wattpad
+ik=Itaku  bsky=Bluesky  tw=X/Twitter
+
+<b>Scheduler:</b> {'⏸ Paused' if paused else '▶️ Active'}"""
     await _send(token, chat_id, text)
 
 
@@ -390,10 +397,11 @@ async def _cmd_poll(token: str, chat_id: str, args: str) -> None:
 async def _cmd_status(token: str, chat_id: str, args: str) -> None:
     conn = get_connection()
     try:
-        lines = ["<b>📋 Poll Status</b>", ""]
+        settings = config.get_settings()
+        paused = settings.get("polling_paused", False)
+        lines = [f"<b>📋 Poll Status</b> {'⏸ PAUSED' if paused else '▶️ Active'}", ""]
 
         # Resolve display timezone
-        settings = config.get_settings()
         tz_name = settings.get("display_timezone", "UTC")
         try:
             tz = ZoneInfo(tz_name)
@@ -445,7 +453,6 @@ async def _cmd_status(token: str, chat_id: str, args: str) -> None:
                 lines.append(f"<b>{name}</b>: No data")
 
         # Show poll intervals
-        settings = config.get_settings()
         lines.append("")
         lines.append("<b>Intervals</b>")
         lines.append(f"  IB: {settings.get('poll_interval_minutes', 60)} min")
@@ -502,6 +509,26 @@ async def _cmd_interval(token: str, chat_id: str, args: str) -> None:
 
     config.save_settings({key_map[platform]: minutes})
     await _send(token, chat_id, f"{name_map[platform]} poll interval set to {minutes} minutes.")
+
+
+async def _cmd_pause(token: str, chat_id: str, args: str) -> None:
+    settings = config.get_settings()
+    if settings.get("polling_paused", False):
+        await _send(token, chat_id, "⏸ Polling is already paused.")
+        return
+    config.save_settings({"polling_paused": True})
+    logger.info("Polling PAUSED via Telegram")
+    await _send(token, chat_id, "⏸ <b>Polling paused.</b>\nAll scheduled background polls are now skipped.\nManual /poll commands still work.\nUse /resume to restart.")
+
+
+async def _cmd_resume(token: str, chat_id: str, args: str) -> None:
+    settings = config.get_settings()
+    if not settings.get("polling_paused", False):
+        await _send(token, chat_id, "▶️ Polling is already active.")
+        return
+    config.save_settings({"polling_paused": False})
+    logger.info("Polling RESUMED via Telegram")
+    await _send(token, chat_id, "▶️ <b>Polling resumed.</b>\nScheduled background polls will run on their normal intervals.")
 
 
 async def _cmd_notify(token: str, chat_id: str, args: str) -> None:
@@ -599,6 +626,8 @@ COMMANDS = {
     "/digest": _cmd_digest,
     "/fans": _cmd_fans,
     "/poll": _cmd_poll,
+    "/pause": _cmd_pause,
+    "/resume": _cmd_resume,
     "/status": _cmd_status,
     "/interval": _cmd_interval,
     "/notify": _cmd_notify,
