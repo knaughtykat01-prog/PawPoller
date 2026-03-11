@@ -122,7 +122,10 @@ def _start_poller():
 
     async def _run():
         logger.info("IB poller loop started")
-        await _scheduled_poll()
+        if not config.get_settings().get("polling_paused"):
+            await _scheduled_poll()
+        else:
+            logger.info("IB initial poll skipped -- polling is paused")
         while True:
             settings = config.get_settings()
             interval = settings.get("poll_interval_minutes", 60)
@@ -158,7 +161,10 @@ def _start_fa_poller():
 
     async def _run():
         logger.info("FA poller loop started")
-        await _scheduled_fa_poll()
+        if not config.get_settings().get("polling_paused"):
+            await _scheduled_fa_poll()
+        else:
+            logger.info("FA initial poll skipped -- polling is paused")
         while True:
             settings = config.get_settings()
             interval = settings.get("fa_poll_interval_minutes", 60)
@@ -194,7 +200,10 @@ def _start_ws_poller():
 
     async def _run():
         logger.info("WS poller loop started")
-        await _scheduled_ws_poll()
+        if not config.get_settings().get("polling_paused"):
+            await _scheduled_ws_poll()
+        else:
+            logger.info("WS initial poll skipped -- polling is paused")
         while True:
             settings = config.get_settings()
             interval = settings.get("ws_poll_interval_minutes", 60)
@@ -230,7 +239,10 @@ def _start_sf_poller():
 
     async def _run():
         logger.info("SF poller loop started")
-        await _scheduled_sf_poll()
+        if not config.get_settings().get("polling_paused"):
+            await _scheduled_sf_poll()
+        else:
+            logger.info("SF initial poll skipped -- polling is paused")
         while True:
             settings = config.get_settings()
             interval = settings.get("sf_poll_interval_minutes", 60)
@@ -266,7 +278,10 @@ def _start_sqw_poller():
 
     async def _run():
         logger.info("SqW poller loop started")
-        await _scheduled_sqw_poll()
+        if not config.get_settings().get("polling_paused"):
+            await _scheduled_sqw_poll()
+        else:
+            logger.info("SqW initial poll skipped -- polling is paused")
         while True:
             settings = config.get_settings()
             interval = settings.get("sqw_poll_interval_minutes", 60)
@@ -302,7 +317,10 @@ def _start_ao3_poller():
 
     async def _run():
         logger.info("AO3 poller loop started")
-        await _scheduled_ao3_poll()
+        if not config.get_settings().get("polling_paused"):
+            await _scheduled_ao3_poll()
+        else:
+            logger.info("AO3 initial poll skipped -- polling is paused")
         while True:
             settings = config.get_settings()
             interval = settings.get("ao3_poll_interval_minutes", 60)
@@ -338,7 +356,10 @@ def _start_da_poller():
 
     async def _run():
         logger.info("DA poller loop started")
-        await _scheduled_da_poll()
+        if not config.get_settings().get("polling_paused"):
+            await _scheduled_da_poll()
+        else:
+            logger.info("DA initial poll skipped -- polling is paused")
         while True:
             settings = config.get_settings()
             interval = settings.get("da_poll_interval_minutes", 60)
@@ -374,7 +395,10 @@ def _start_wp_poller():
 
     async def _run():
         logger.info("WP poller loop started")
-        await _scheduled_wp_poll()
+        if not config.get_settings().get("polling_paused"):
+            await _scheduled_wp_poll()
+        else:
+            logger.info("WP initial poll skipped -- polling is paused")
         while True:
             settings = config.get_settings()
             interval = settings.get("wp_poll_interval_minutes", 60)
@@ -410,7 +434,10 @@ def _start_ik_poller():
 
     async def _run():
         logger.info("IK poller loop started")
-        await _scheduled_ik_poll()
+        if not config.get_settings().get("polling_paused"):
+            await _scheduled_ik_poll()
+        else:
+            logger.info("IK initial poll skipped -- polling is paused")
         while True:
             settings = config.get_settings()
             interval = settings.get("ik_poll_interval_minutes", 60)
@@ -446,7 +473,10 @@ def _start_bsky_poller():
 
     async def _run():
         logger.info("BSKY poller loop started")
-        await _scheduled_bsky_poll()
+        if not config.get_settings().get("polling_paused"):
+            await _scheduled_bsky_poll()
+        else:
+            logger.info("BSKY initial poll skipped -- polling is paused")
         while True:
             settings = config.get_settings()
             interval = settings.get("bsky_poll_interval_minutes", 60)
@@ -482,7 +512,10 @@ def _start_tw_poller():
 
     async def _run():
         logger.info("TW poller loop started")
-        await _scheduled_tw_poll()
+        if not config.get_settings().get("polling_paused"):
+            await _scheduled_tw_poll()
+        else:
+            logger.info("TW initial poll skipped -- polling is paused")
         while True:
             settings = config.get_settings()
             interval = settings.get("tw_poll_interval_minutes", 60)
