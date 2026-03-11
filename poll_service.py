@@ -114,6 +114,9 @@ def do_continuous():
     # Wrapper that catches exceptions so a single failed poll doesn't crash the
     # scheduler. APScheduler would remove the job on unhandled exceptions.
     async def scheduled_poll():
+        if config.get_settings().get("polling_paused"):
+            logger.info("Scheduled poll skipped -- polling is paused")
+            return
         try:
             await run_poll_cycle()
         except Exception as e:

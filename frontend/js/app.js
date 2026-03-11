@@ -4544,12 +4544,13 @@ const App = {
         this._loading();
         try {
             // Parallel-fetch all 15 settings endpoints; FA/WS/SF use .catch() fallbacks
-            const [status, pollLog, creds, prefs, telegram, faAuth, faStatus, faPollLog, wsAuth, wsStatus, wsPollLog, sfAuth, sfStatus, sfPollLog, sqwAuth, sqwStatus, sqwPollLog, ao3Auth, ao3Status, ao3PollLog, daAuth, daStatus, daPollLog, wpAuth, wpStatus, wpPollLog, ikAuth, ikStatus, ikPollLog, bskyAuth, bskyStatus, bskyPollLog, twAuth, twStatus, twPollLog, updateInfo] = await Promise.all([
+            const [status, pollLog, creds, prefs, telegram, pollPausedState, faAuth, faStatus, faPollLog, wsAuth, wsStatus, wsPollLog, sfAuth, sfStatus, sfPollLog, sqwAuth, sqwStatus, sqwPollLog, ao3Auth, ao3Status, ao3PollLog, daAuth, daStatus, daPollLog, wpAuth, wpStatus, wpPollLog, ikAuth, ikStatus, ikPollLog, bskyAuth, bskyStatus, bskyPollLog, twAuth, twStatus, twPollLog, updateInfo] = await Promise.all([
                 API.getStatus(),
                 API.getPollLog(20),
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
+                API.getPollPaused().catch(() => ({ polling_paused: false })),
                 API.getFAAuthStatus().catch(() => ({ has_cookies: false })),
                 API.getFAStatus().catch(() => ({})),
                 API.getFAPollLog(20).catch(() => ({ polls: [] })),
@@ -5416,6 +5417,27 @@ const App = {
                 <div class="settings-tab-content" data-tab-content="polling" ${_settingsTab !== 'polling' ? 'style="display:none"' : ''}>
 
                 <div class="settings-section">
+                    <h3>Polling Control</h3>
+                    <div class="settings-row">
+                        <span class="settings-label">Background polling</span>
+                        <span class="settings-value">
+                            <span id="poll-pause-status" style="color:${pollPausedState.polling_paused ? 'var(--warning, #f0a050)' : 'var(--success)'}; font-weight:600;">
+                                ${pollPausedState.polling_paused ? 'Paused' : 'Active'}
+                            </span>
+                        </span>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-label">${pollPausedState.polling_paused ? 'Resume scheduled polling for all platforms' : 'Pause scheduled polling for all platforms'}</span>
+                        <button class="btn ${pollPausedState.polling_paused ? 'btn-primary' : 'btn-danger'}" id="poll-pause-btn">
+                            ${pollPausedState.polling_paused ? 'Resume Polling' : 'Pause Polling'}
+                        </button>
+                    </div>
+                    <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">
+                        When paused, scheduled background polls are skipped. Manual "Poll Now" buttons still work.
+                    </p>
+                </div>
+
+                <div class="settings-section">
                     <h3>Inkbunny Polling Status</h3>
                     <div class="settings-row">
                         <span class="settings-label">Submissions tracked</span>
@@ -5682,6 +5704,25 @@ const App = {
             // the settings page after completion via setTimeout.
 
             // Poll Now: triggers an IB poll, shows progress, re-renders on complete
+            document.getElementById('poll-pause-btn')?.addEventListener('click', async (e) => {
+                const btn = e.target;
+                btn.disabled = true;
+                const isPaused = btn.textContent.trim() === 'Resume Polling';
+                btn.textContent = isPaused ? 'Resuming...' : 'Pausing...';
+                try {
+                    if (isPaused) {
+                        await API.resumePolling();
+                    } else {
+                        await API.pausePolling();
+                    }
+                    setTimeout(() => this.renderSettings(), 500);
+                } catch (err) {
+                    btn.textContent = 'Error';
+                    alert('Failed: ' + err.message);
+                    setTimeout(() => this.renderSettings(), 2000);
+                }
+            });
+
             document.getElementById('poll-now-btn').addEventListener('click', async (e) => {
                 const btn = e.target;
                 btn.disabled = true;
@@ -7818,10 +7859,19 @@ const App = {
     // silently ignored since this is purely cosmetic.
     async _updatePollStatus() {
         try {
-            const status = await API.getStatus();
+            const [status, pauseState] = await Promise.all([
+                API.getStatus(),
+                API.getPollPaused().catch(() => ({ polling_paused: false })),
+            ]);
             const el = document.getElementById('poll-status-mini');
-            if (el && status.last_poll) {
-                el.textContent = `Last poll: ${Utils.timeAgo(status.last_poll.started_at)}`;
+            if (el) {
+                if (pauseState.polling_paused) {
+                    el.textContent = 'Polling paused';
+                    el.style.color = 'var(--warning, #f0a050)';
+                } else if (status.last_poll) {
+                    el.textContent = `Last poll: ${Utils.timeAgo(status.last_poll.started_at)}`;
+                    el.style.color = '';
+                }
             }
         } catch { /* ignore */ }
     },

@@ -69,11 +69,18 @@ else:
 DATA_DIR = APPDATA_DIR / "data"         # SQLite database and JSON caches
 LOGS_DIR = APPDATA_DIR / "logs"         # Rotating log files
 DB_PATH = DATA_DIR / "pawpoller.db"     # Main SQLite database
-SETTINGS_PATH = APPDATA_DIR / "settings.json"  # User preferences and credentials
+SETTINGS_PATH = DATA_DIR / "settings.json"      # User preferences and credentials
 
 # Create data/log directories on first run (no-op if they already exist)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Migrate settings.json from old location (APPDATA_DIR) to new (DATA_DIR)
+# so it lives on the persistent Docker volume and survives container rebuilds.
+_old_settings = APPDATA_DIR / "settings.json"
+if _old_settings.exists() and not SETTINGS_PATH.exists():
+    import shutil
+    shutil.copy2(_old_settings, SETTINGS_PATH)
 
 
 # ── Settings.json helpers ─────────────────────────────────────

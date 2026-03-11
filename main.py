@@ -102,6 +102,9 @@ def _start_poller():
             interval = max(1, int(settings.get("poll_interval_minutes", 60)))
             logger.info("Next IB poll in %d minutes", interval)
             await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("IB poll skipped -- polling is paused")
+                continue
             await _scheduled_poll()
 
     # Each poller thread needs its own event loop (asyncio loops are single-threaded)
@@ -141,6 +144,9 @@ def _start_fa_poller():
             interval = settings.get("fa_poll_interval_minutes", 60)
             logger.info("Next FA poll in %d minutes", interval)
             await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("FA poll skipped -- polling is paused")
+                continue
             await _scheduled_fa_poll()
 
     loop = asyncio.new_event_loop()
@@ -177,6 +183,9 @@ def _start_ws_poller():
             interval = settings.get("ws_poll_interval_minutes", 60)
             logger.info("Next WS poll in %d minutes", interval)
             await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("WS poll skipped -- polling is paused")
+                continue
             await _scheduled_ws_poll()
 
     loop = asyncio.new_event_loop()
@@ -213,6 +222,9 @@ def _start_sf_poller():
             interval = settings.get("sf_poll_interval_minutes", 60)
             logger.info("Next SF poll in %d minutes", interval)
             await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("SF poll skipped -- polling is paused")
+                continue
             await _scheduled_sf_poll()
 
     loop = asyncio.new_event_loop()
@@ -249,6 +261,9 @@ def _start_sqw_poller():
             interval = settings.get("sqw_poll_interval_minutes", 60)
             logger.info("Next SqW poll in %d minutes", interval)
             await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("SqW poll skipped -- polling is paused")
+                continue
             await _scheduled_sqw_poll()
 
     loop = asyncio.new_event_loop()
@@ -285,6 +300,9 @@ def _start_ao3_poller():
             interval = settings.get("ao3_poll_interval_minutes", 60)
             logger.info("Next AO3 poll in %d minutes", interval)
             await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("AO3 poll skipped -- polling is paused")
+                continue
             await _scheduled_ao3_poll()
 
     loop = asyncio.new_event_loop()
@@ -321,6 +339,9 @@ def _start_da_poller():
             interval = settings.get("da_poll_interval_minutes", 60)
             logger.info("Next DA poll in %d minutes", interval)
             await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("DA poll skipped -- polling is paused")
+                continue
             await _scheduled_da_poll()
 
     loop = asyncio.new_event_loop()
@@ -357,6 +378,9 @@ def _start_wp_poller():
             interval = settings.get("wp_poll_interval_minutes", 60)
             logger.info("Next WP poll in %d minutes", interval)
             await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("WP poll skipped -- polling is paused")
+                continue
             await _scheduled_wp_poll()
 
     loop = asyncio.new_event_loop()
@@ -393,6 +417,9 @@ def _start_ik_poller():
             interval = settings.get("ik_poll_interval_minutes", 60)
             logger.info("Next IK poll in %d minutes", interval)
             await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("IK poll skipped -- polling is paused")
+                continue
             await _scheduled_ik_poll()
 
     loop = asyncio.new_event_loop()
@@ -429,6 +456,9 @@ def _start_bsky_poller():
             interval = settings.get("bsky_poll_interval_minutes", 60)
             logger.info("Next BSKY poll in %d minutes", interval)
             await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("BSKY poll skipped -- polling is paused")
+                continue
             await _scheduled_bsky_poll()
 
     loop = asyncio.new_event_loop()
@@ -465,6 +495,9 @@ def _start_tw_poller():
             interval = settings.get("tw_poll_interval_minutes", 60)
             logger.info("Next TW poll in %d minutes", interval)
             await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("TW poll skipped -- polling is paused")
+                continue
             await _scheduled_tw_poll()
 
     loop = asyncio.new_event_loop()

@@ -291,6 +291,18 @@
 
 .btn-theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
 
+/* Hide label text inside theme toggle when sidebar is collapsed */
+.btn-theme-toggle .nav-label {
+    width: 0;
+    overflow: hidden;
+    display: inline-block;
+}
+
+.sidebar:hover .btn-theme-toggle .nav-label,
+.sidebar.expanded .btn-theme-toggle .nav-label {
+    width: auto;
+}
+
 .sidebar-version {
     margin-top: 6px;
     text-align: center;
@@ -459,6 +471,9 @@
     .poll-badge, .sidebar-version {
         opacity: 1;
         height: auto;
+    }
+    .btn-theme-toggle .nav-label {
+        width: auto;
     }
 
     .nav-group-links {

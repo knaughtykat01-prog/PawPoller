@@ -472,6 +472,33 @@ async def full_resync():
         raise HTTPException(500, detail=str(e))
 
 
+@router.post("/poll/pause")
+def pause_polling():
+    """Pause all scheduled background polling across all platforms.
+
+    Sets the polling_paused flag in settings.json.  Poller loops check this
+    flag each cycle and skip when paused.  Manual Poll Now still works.
+    """
+    config.save_settings({"polling_paused": True})
+    logger.info("Polling PAUSED by user")
+    return {"status": "success", "polling_paused": True}
+
+
+@router.post("/poll/resume")
+def resume_polling():
+    """Resume scheduled background polling across all platforms."""
+    config.save_settings({"polling_paused": False})
+    logger.info("Polling RESUMED by user")
+    return {"status": "success", "polling_paused": False}
+
+
+@router.get("/poll/paused")
+def get_poll_paused():
+    """Return current polling pause state."""
+    settings = config.get_settings()
+    return {"polling_paused": settings.get("polling_paused", False)}
+
+
 @router.post("/session/clear")
 def clear_session():
     """Clear the cached Inkbunny API session (SID) from the database.
