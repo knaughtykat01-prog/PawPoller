@@ -439,6 +439,93 @@ const App = {
         }
     },
 
+    /* _loadPollingTab() — Lazy-load platform polling status and logs when
+     * the Polling settings tab is activated. Fetches IB status + poll log,
+     * plus each connected platform's status + poll log in parallel. */
+    async _loadPollingTab() {
+        const container = document.getElementById('polling-platforms-container');
+        if (!container) return;
+        if (this._pollingTabLoaded) return; // already loaded this render
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">Loading polling data...</div>';
+        try {
+            const auth = this._pollingAuth || {};
+            const platforms = [
+                { key: 'fa', auth: auth.faAuth?.has_cookies, name: 'FurAffinity', statusFn: 'getFAStatus', logFn: 'getFAPollLog', tableFn: 'faPollLogTable' },
+                { key: 'ws', auth: auth.wsAuth?.has_key, name: 'Weasyl', statusFn: 'getWSStatus', logFn: 'getWSPollLog', tableFn: 'wsPollLogTable' },
+                { key: 'sf', auth: auth.sfAuth?.has_credentials, name: 'SoFurry', statusFn: 'getSFStatus', logFn: 'getSFPollLog', tableFn: 'sfPollLogTable' },
+                { key: 'sqw', auth: auth.sqwAuth?.has_credentials, name: 'SquidgeWorld', statusFn: 'getSQWStatus', logFn: 'getSQWPollLog', tableFn: 'sqwPollLogTable' },
+                { key: 'ao3', auth: auth.ao3Auth?.has_credentials, name: 'AO3', statusFn: 'getAO3Status', logFn: 'getAO3PollLog', tableFn: 'ao3PollLogTable' },
+                { key: 'da', auth: auth.daAuth?.has_credentials, name: 'DeviantArt', statusFn: 'getDAStatus', logFn: 'getDAPollLog', tableFn: 'daPollLogTable' },
+                { key: 'wp', auth: auth.wpAuth?.has_credentials, name: 'Wattpad', statusFn: 'getWPStatus', logFn: 'getWPPollLog', tableFn: 'wpPollLogTable' },
+                { key: 'ik', auth: auth.ikAuth?.has_credentials, name: 'Itaku', statusFn: 'getIKStatus', logFn: 'getIKPollLog', tableFn: 'ikPollLogTable' },
+                { key: 'bsky', auth: auth.bskyAuth?.has_credentials, name: 'Bluesky', statusFn: 'getBSKYStatus', logFn: 'getBSKYPollLog', tableFn: 'bskyPollLogTable' },
+                { key: 'tw', auth: auth.twAuth?.has_credentials, name: 'Twitter', statusFn: 'getTWStatus', logFn: 'getTWPollLog', tableFn: 'twPollLogTable' },
+            ];
+            const connected = platforms.filter(p => p.auth);
+
+            // Build fetch array: IB status + log, then each connected platform's status + log
+            const fetches = [
+                API.getStatus().catch(() => ({ total_submissions: 0, total_snapshots: 0, last_poll: null })),
+                API.getPollLog(20).catch(() => ({ polls: [] })),
+            ];
+            for (const p of connected) {
+                fetches.push(API[p.statusFn]().catch(() => ({})));
+                fetches.push(API[p.logFn](20).catch(() => ({ polls: [] })));
+            }
+
+            const results = await Promise.all(fetches);
+            const ibStatus = results[0];
+            const ibPollLog = results[1];
+            const lastPoll = ibPollLog.polls?.[0] || null;
+
+            // Map platform results
+            const pData = {};
+            let idx = 2;
+            for (const p of connected) {
+                pData[p.key] = { status: results[idx], pollLog: results[idx + 1] };
+                idx += 2;
+            }
+
+            // Build Inkbunny accordion
+            let html = `
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${lastPoll?.status === 'success' ? 'connected' : 'disconnected'}"></span>Inkbunny <span class="summary-meta">— ${lastPoll ? lastPoll.status + ' \u00b7 ' + Utils.formatDateTime(lastPoll.started_at) : 'Never polled'}</span></summary>
+                    <div class="accordion-body">
+                    <div class="settings-row"><span class="settings-label">Submissions tracked</span><span class="settings-value">${ibStatus.total_submissions}</span></div>
+                    <div class="settings-row"><span class="settings-label">Snapshots stored</span><span class="settings-value">${Utils.formatNumber(ibStatus.total_snapshots)}</span></div>
+                    <div class="settings-row"><span class="settings-label">Last poll</span><span class="settings-value">${lastPoll ? Utils.formatDateTime(lastPoll.started_at) : 'Never'}</span></div>
+                    <div class="settings-row"><span class="settings-label">Last poll status</span><span class="settings-value" style="color:${lastPoll?.status === 'success' ? 'var(--success)' : lastPoll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">${lastPoll?.status || '--'}</span></div>
+                    ${lastPoll?.error_message ? `<div class="settings-row"><span class="settings-label">Last error</span><span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(lastPoll.error_message)}</span></div>` : ''}
+                    <div style="margin-top:12px">${Components.pollLogTable(ibPollLog.polls)}</div>
+                    </div>
+                </details>`;
+
+            // Build each connected platform accordion
+            for (const p of connected) {
+                const ps = pData[p.key].status;
+                const pl = pData[p.key].pollLog;
+                const lp = ps.last_poll || null;
+                html += `
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${lp?.status === 'success' ? 'connected' : 'disconnected'}"></span>${p.name} <span class="summary-meta">— ${lp ? lp.status + ' \u00b7 ' + Utils.formatDateTime(lp.started_at) : 'Never polled'}</span></summary>
+                    <div class="accordion-body">
+                    <div class="settings-row"><span class="settings-label">Submissions tracked</span><span class="settings-value">${ps.total_submissions || 0}</span></div>
+                    <div class="settings-row"><span class="settings-label">Snapshots stored</span><span class="settings-value">${Utils.formatNumber(ps.total_snapshots || 0)}</span></div>
+                    <div class="settings-row"><span class="settings-label">Last poll</span><span class="settings-value">${lp ? Utils.formatDateTime(lp.started_at) : 'Never'}</span></div>
+                    <div class="settings-row"><span class="settings-label">Last poll status</span><span class="settings-value" style="color:${lp?.status === 'success' ? 'var(--success)' : lp?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">${lp?.status || '--'}</span></div>
+                    ${lp?.error_message ? `<div class="settings-row"><span class="settings-label">Last error</span><span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(lp.error_message)}</span></div>` : ''}
+                    <div style="margin-top:12px">${Components[p.tableFn](pl.polls)}</div>
+                    </div>
+                </details>`;
+            }
+
+            container.innerHTML = html;
+            this._pollingTabLoaded = true;
+        } catch (err) {
+            container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger)">Failed to load polling data: ${err.message}</div>`;
+        }
+    },
+
     /* ── Login Screen ──────────────────────────────────────────
      * renderLogin() — Full-screen login form with username, password, and
      * remember-me checkbox. The submit handler calls API.authLogin, strips
@@ -4567,48 +4654,28 @@ const App = {
     async renderSettings() {
         this._loading();
         try {
-            // Parallel-fetch all 15 settings endpoints; FA/WS/SF use .catch() fallbacks
-            const [status, pollLog, creds, prefs, telegram, pollPausedState, faAuth, faStatus, faPollLog, wsAuth, wsStatus, wsPollLog, sfAuth, sfStatus, sfPollLog, sqwAuth, sqwStatus, sqwPollLog, ao3Auth, ao3Status, ao3PollLog, daAuth, daStatus, daPollLog, wpAuth, wpStatus, wpPollLog, ikAuth, ikStatus, ikPollLog, bskyAuth, bskyStatus, bskyPollLog, twAuth, twStatus, twPollLog, updateInfo] = await Promise.all([
-                API.getStatus(),
-                API.getPollLog(20),
+            // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
+            // Polling tab data is loaded lazily when the user clicks into it.
+            const [creds, prefs, telegram, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, updateInfo] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
                 API.getPollPaused().catch(() => ({ polling_paused: false })),
                 API.getFAAuthStatus().catch(() => ({ has_cookies: false })),
-                API.getFAStatus().catch(() => ({})),
-                API.getFAPollLog(20).catch(() => ({ polls: [] })),
                 API.getWSAuthStatus().catch(() => ({ has_key: false })),
-                API.getWSStatus().catch(() => ({})),
-                API.getWSPollLog(20).catch(() => ({ polls: [] })),
                 API.getSFAuthStatus().catch(() => ({ has_credentials: false })),
-                API.getSFStatus().catch(() => ({})),
-                API.getSFPollLog(20).catch(() => ({ polls: [] })),
                 API.getSQWAuthStatus().catch(() => ({ has_credentials: false })),
-                API.getSQWStatus().catch(() => ({})),
-                API.getSQWPollLog(20).catch(() => ({ polls: [] })),
                 API.getAO3AuthStatus().catch(() => ({ has_credentials: false })),
-                API.getAO3Status().catch(() => ({})),
-                API.getAO3PollLog(20).catch(() => ({ polls: [] })),
                 API.getDAAuthStatus().catch(() => ({ has_credentials: false })),
-                API.getDAStatus().catch(() => ({})),
-                API.getDAPollLog(20).catch(() => ({ polls: [] })),
                 API.getWPAuthStatus().catch(() => ({ has_credentials: false })),
-                API.getWPStatus().catch(() => ({})),
-                API.getWPPollLog(20).catch(() => ({ polls: [] })),
                 API.getIKAuthStatus().catch(() => ({ has_credentials: false })),
-                API.getIKStatus().catch(() => ({})),
-                API.getIKPollLog(20).catch(() => ({ polls: [] })),
                 API.getBSKYAuthStatus().catch(() => ({ has_credentials: false })),
-                API.getBSKYStatus().catch(() => ({})),
-                API.getBSKYPollLog(20).catch(() => ({ polls: [] })),
                 API.getTWAuthStatus().catch(() => ({ has_credentials: false })),
-                API.getTWStatus().catch(() => ({})),
-                API.getTWPollLog(20).catch(() => ({ polls: [] })),
                 API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' })),
             ]);
 
-            const lastPoll = status.last_poll;
+            // Store auth state for lazy-loaded polling tab
+            this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth };
 
             const _settingsTab = (window.location.hash.match(/^#\/settings\/(\w+)/) || [])[1] || 'general';
 
@@ -5519,227 +5586,9 @@ const App = {
                     </div>
                 </details>
 
-                <details class="settings-accordion">
-                    <summary><span class="status-dot ${lastPoll?.status === 'success' ? 'connected' : lastPoll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>Inkbunny <span class="summary-meta">— ${lastPoll ? lastPoll.status + ' · ' + Utils.formatDateTime(lastPoll.started_at) : 'Never polled'}</span></summary>
-                    <div class="accordion-body">
-                    <div class="settings-row">
-                        <span class="settings-label">Submissions tracked</span>
-                        <span class="settings-value">${status.total_submissions}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Snapshots stored</span>
-                        <span class="settings-value">${Utils.formatNumber(status.total_snapshots)}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll</span>
-                        <span class="settings-value">${lastPoll ? Utils.formatDateTime(lastPoll.started_at) : 'Never'}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll status</span>
-                        <span class="settings-value" style="color:${lastPoll?.status === 'success' ? 'var(--success)' : lastPoll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
-                            ${lastPoll?.status || '--'}
-                        </span>
-                    </div>
-                    ${lastPoll?.error_message ? `
-                    <div class="settings-row">
-                        <span class="settings-label">Last error</span>
-                        <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(lastPoll.error_message)}</span>
-                    </div>` : ''}
-                    <div style="margin-top:12px">${Components.pollLogTable(pollLog.polls)}</div>
-                    </div>
-                </details>
-
-                ${faAuth.has_cookies ? `
-                <details class="settings-accordion">
-                    <summary><span class="status-dot ${faStatus.last_poll?.status === 'success' ? 'connected' : faStatus.last_poll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>FurAffinity <span class="summary-meta">— ${faStatus.last_poll ? faStatus.last_poll.status + ' · ' + Utils.formatDateTime(faStatus.last_poll.started_at) : 'Never polled'}</span></summary>
-                    <div class="accordion-body">
-                    <div class="settings-row">
-                        <span class="settings-label">Submissions tracked</span>
-                        <span class="settings-value">${faStatus.total_submissions || 0}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Snapshots stored</span>
-                        <span class="settings-value">${Utils.formatNumber(faStatus.total_snapshots || 0)}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll</span>
-                        <span class="settings-value">${faStatus.last_poll ? Utils.formatDateTime(faStatus.last_poll.started_at) : 'Never'}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll status</span>
-                        <span class="settings-value" style="color:${faStatus.last_poll?.status === 'success' ? 'var(--success)' : faStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
-                            ${faStatus.last_poll?.status || '--'}
-                        </span>
-                    </div>
-                    ${faStatus.last_poll?.error_message ? `
-                    <div class="settings-row">
-                        <span class="settings-label">Last error</span>
-                        <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(faStatus.last_poll.error_message)}</span>
-                    </div>` : ''}
-                    <div style="margin-top:12px">${Components.faPollLogTable(faPollLog.polls)}</div>
-                    </div>
-                </details>
-                ` : ''}
-
-                ${wsAuth.has_key ? `
-                <details class="settings-accordion">
-                    <summary><span class="status-dot ${wsStatus.last_poll?.status === 'success' ? 'connected' : wsStatus.last_poll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>Weasyl <span class="summary-meta">— ${wsStatus.last_poll ? wsStatus.last_poll.status + ' · ' + Utils.formatDateTime(wsStatus.last_poll.started_at) : 'Never polled'}</span></summary>
-                    <div class="accordion-body">
-                    <div class="settings-row">
-                        <span class="settings-label">Submissions tracked</span>
-                        <span class="settings-value">${wsStatus.total_submissions || 0}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Snapshots stored</span>
-                        <span class="settings-value">${Utils.formatNumber(wsStatus.total_snapshots || 0)}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll</span>
-                        <span class="settings-value">${wsStatus.last_poll ? Utils.formatDateTime(wsStatus.last_poll.started_at) : 'Never'}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll status</span>
-                        <span class="settings-value" style="color:${wsStatus.last_poll?.status === 'success' ? 'var(--success)' : wsStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
-                            ${wsStatus.last_poll?.status || '--'}
-                        </span>
-                    </div>
-                    ${wsStatus.last_poll?.error_message ? `
-                    <div class="settings-row">
-                        <span class="settings-label">Last error</span>
-                        <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(wsStatus.last_poll.error_message)}</span>
-                    </div>` : ''}
-                    <div style="margin-top:12px">${Components.wsPollLogTable(wsPollLog.polls)}</div>
-                    </div>
-                </details>
-                ` : ''}
-
-                ${sfAuth.has_credentials ? `
-                <details class="settings-accordion">
-                    <summary><span class="status-dot ${sfStatus.last_poll?.status === 'success' ? 'connected' : sfStatus.last_poll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>SoFurry <span class="summary-meta">— ${sfStatus.last_poll ? sfStatus.last_poll.status + ' · ' + Utils.formatDateTime(sfStatus.last_poll.started_at) : 'Never polled'}</span></summary>
-                    <div class="accordion-body">
-                    <div class="settings-row">
-                        <span class="settings-label">Submissions tracked</span>
-                        <span class="settings-value">${sfStatus.total_submissions || 0}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Snapshots stored</span>
-                        <span class="settings-value">${Utils.formatNumber(sfStatus.total_snapshots || 0)}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll</span>
-                        <span class="settings-value">${sfStatus.last_poll ? Utils.formatDateTime(sfStatus.last_poll.started_at) : 'Never'}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll status</span>
-                        <span class="settings-value" style="color:${sfStatus.last_poll?.status === 'success' ? 'var(--success)' : sfStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
-                            ${sfStatus.last_poll?.status || '--'}
-                        </span>
-                    </div>
-                    ${sfStatus.last_poll?.error_message ? `
-                    <div class="settings-row">
-                        <span class="settings-label">Last error</span>
-                        <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(sfStatus.last_poll.error_message)}</span>
-                    </div>` : ''}
-                    <div style="margin-top:12px">${Components.sfPollLogTable(sfPollLog.polls)}</div>
-                    </div>
-                </details>
-                ` : ''}
-
-                ${daAuth.has_credentials ? `
-                <details class="settings-accordion">
-                    <summary><span class="status-dot ${daStatus.last_poll?.status === 'success' ? 'connected' : daStatus.last_poll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>DeviantArt <span class="summary-meta">— ${daStatus.last_poll ? daStatus.last_poll.status + ' · ' + Utils.formatDateTime(daStatus.last_poll.started_at) : 'Never polled'}</span></summary>
-                    <div class="accordion-body">
-                    <div class="settings-row">
-                        <span class="settings-label">Submissions tracked</span>
-                        <span class="settings-value">${daStatus.total_submissions || 0}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Snapshots stored</span>
-                        <span class="settings-value">${Utils.formatNumber(daStatus.total_snapshots || 0)}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll</span>
-                        <span class="settings-value">${daStatus.last_poll ? Utils.formatDateTime(daStatus.last_poll.started_at) : 'Never'}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll status</span>
-                        <span class="settings-value" style="color:${daStatus.last_poll?.status === 'success' ? 'var(--success)' : daStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
-                            ${daStatus.last_poll?.status || '--'}
-                        </span>
-                    </div>
-                    ${daStatus.last_poll?.error_message ? `
-                    <div class="settings-row">
-                        <span class="settings-label">Last error</span>
-                        <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(daStatus.last_poll.error_message)}</span>
-                    </div>` : ''}
-                    <div style="margin-top:12px">${Components.daPollLogTable(daPollLog.polls)}</div>
-                    </div>
-                </details>
-                ` : ''}
-
-                ${wpAuth.has_credentials ? `
-                <details class="settings-accordion">
-                    <summary><span class="status-dot ${wpStatus.last_poll?.status === 'success' ? 'connected' : wpStatus.last_poll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>Wattpad <span class="summary-meta">— ${wpStatus.last_poll ? wpStatus.last_poll.status + ' · ' + Utils.formatDateTime(wpStatus.last_poll.started_at) : 'Never polled'}</span></summary>
-                    <div class="accordion-body">
-                    <div class="settings-row">
-                        <span class="settings-label">Submissions tracked</span>
-                        <span class="settings-value">${wpStatus.total_submissions || 0}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Snapshots stored</span>
-                        <span class="settings-value">${Utils.formatNumber(wpStatus.total_snapshots || 0)}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll</span>
-                        <span class="settings-value">${wpStatus.last_poll ? Utils.formatDateTime(wpStatus.last_poll.started_at) : 'Never'}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll status</span>
-                        <span class="settings-value" style="color:${wpStatus.last_poll?.status === 'success' ? 'var(--success)' : wpStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
-                            ${wpStatus.last_poll?.status || '--'}
-                        </span>
-                    </div>
-                    ${wpStatus.last_poll?.error_message ? `
-                    <div class="settings-row">
-                        <span class="settings-label">Last error</span>
-                        <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(wpStatus.last_poll.error_message)}</span>
-                    </div>` : ''}
-                    <div style="margin-top:12px">${Components.wpPollLogTable(wpPollLog.polls)}</div>
-                    </div>
-                </details>
-                ` : ''}
-
-                ${ikAuth.has_credentials ? `
-                <details class="settings-accordion">
-                    <summary><span class="status-dot ${ikStatus.last_poll?.status === 'success' ? 'connected' : ikStatus.last_poll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>Itaku <span class="summary-meta">— ${ikStatus.last_poll ? ikStatus.last_poll.status + ' · ' + Utils.formatDateTime(ikStatus.last_poll.started_at) : 'Never polled'}</span></summary>
-                    <div class="accordion-body">
-                    <div class="settings-row">
-                        <span class="settings-label">Submissions tracked</span>
-                        <span class="settings-value">${ikStatus.total_submissions || 0}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Snapshots stored</span>
-                        <span class="settings-value">${Utils.formatNumber(ikStatus.total_snapshots || 0)}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll</span>
-                        <span class="settings-value">${ikStatus.last_poll ? Utils.formatDateTime(ikStatus.last_poll.started_at) : 'Never'}</span>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">Last poll status</span>
-                        <span class="settings-value" style="color:${ikStatus.last_poll?.status === 'success' ? 'var(--success)' : ikStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
-                            ${ikStatus.last_poll?.status || '--'}
-                        </span>
-                    </div>
-                    ${ikStatus.last_poll?.error_message ? `
-                    <div class="settings-row">
-                        <span class="settings-label">Last error</span>
-                        <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(ikStatus.last_poll.error_message)}</span>
-                    </div>` : ''}
-                    <div style="margin-top:12px">${Components.ikPollLogTable(ikPollLog.polls)}</div>
-                    </div>
-                </details>
-                ` : ''}
+                <div id="polling-platforms-container">
+                    <div style="text-align:center;padding:40px;color:var(--text-muted)">Loading polling data...</div>
+                </div>
 
                 </div><!-- /tab:polling -->
             `;
@@ -5763,13 +5612,16 @@ const App = {
                     // Update URL hash without re-rendering
                     const newHash = tab === 'general' ? '#/settings' : `#/settings/${tab}`;
                     history.replaceState(null, '', newHash);
-                    // Auto-load logs when switching to logs tab
+                    // Auto-load lazy tabs when switching
                     if (tab === 'logs') this._loadLogs();
+                    if (tab === 'polling') this._loadPollingTab();
                 });
             }
 
-            // Load logs on initial render if logs tab is active
+            // Load lazy tabs on initial render if active
+            this._pollingTabLoaded = false;
             if (_settingsTab === 'logs') this._loadLogs();
+            if (_settingsTab === 'polling') this._loadPollingTab();
 
             // Log tab event handlers
             document.getElementById('log-refresh-btn')?.addEventListener('click', () => this._loadLogs());
