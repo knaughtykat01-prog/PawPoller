@@ -51,6 +51,8 @@ const Charts = {
      * when the SPA navigates between pages without full page reloads.
      */
     _instances: {},
+    /** Stored chart configs for re-rendering in the expand modal. */
+    _configs: {},
 
     /**
      * Configurable thresholds for milestone marker detection, keyed by metric
@@ -328,6 +330,8 @@ const Charts = {
         opts.scales.x = this._timeXAxis();
         opts.scales.y.beginAtZero = false;
 
+        const chartCfg = { type: 'line', data: { datasets }, datasets, options: opts };
+        this._configs[canvasId] = chartCfg;
         this._instances[canvasId] = new Chart(ctx, {
             type: 'line',
             data: { datasets },
@@ -434,6 +438,7 @@ const Charts = {
             }
         });
 
+        this._configs[canvasId] = { type: 'line', data: { datasets }, datasets, options: opts };
         this._instances[canvasId] = new Chart(ctx, {
             type: 'line',
             data: { datasets },
@@ -558,6 +563,7 @@ const Charts = {
             opts.plugins.annotation = { annotations };
         }
 
+        this._configs[canvasId] = { type: 'line', data: { datasets }, datasets, options: opts };
         this._instances[canvasId] = new Chart(ctx, {
             type: 'line',
             data: { datasets },
@@ -589,6 +595,92 @@ const Charts = {
                 ],
             },
             options: opts,
+        });
+    },
+
+    /**
+     * Open a chart in the expand modal, re-rendered at full size with more detail.
+     * @param {string} canvasId - The original canvas ID to expand.
+     * @param {string} title    - Chart title for the modal header.
+     */
+    expand(canvasId, title) {
+        const cfg = this._configs[canvasId];
+        if (!cfg) return;
+
+        const overlay = document.getElementById('chart-modal-overlay');
+        const modalTitle = document.getElementById('chart-modal-title');
+        const modalCanvas = document.getElementById('chart-modal-canvas');
+        if (!overlay || !modalCanvas) return;
+
+        modalTitle.textContent = title || 'Chart';
+        overlay.classList.add('open');
+        document.body.style.overflow = 'hidden';
+
+        // Destroy any previous modal chart
+        this.destroy('chart-modal-canvas');
+
+        // Build fresh options for expanded view (more ticks, relaxed rotation)
+        const opts = this._baseOptions();
+        opts.scales.x = this._timeXAxis();
+        opts.scales.x.ticks.maxTicksLimit = 20;
+        opts.scales.x.ticks.maxRotation = 35;
+        opts.scales.x.ticks.minRotation = 0;
+        opts.scales.y.beginAtZero = false;
+
+        // Copy over dual-axis config if the original had it
+        if (cfg.options.scales?.y1) {
+            opts.scales.y = { ...cfg.options.scales.y };
+            opts.scales.y1 = { ...cfg.options.scales.y1 };
+        }
+
+        // Copy annotation config if present
+        if (cfg.options.plugins?.annotation) {
+            opts.plugins.annotation = cfg.options.plugins.annotation;
+        }
+
+        // Show data points on all datasets at expanded size
+        const datasets = cfg.datasets.map(ds => ({
+            ...ds,
+            pointRadius: ds.borderDash ? 0 : 3,
+            pointHoverRadius: ds.borderDash ? 0 : 6,
+        }));
+
+        this._instances['chart-modal-canvas'] = new Chart(modalCanvas, {
+            type: cfg.type,
+            data: { datasets },
+            options: opts,
+        });
+    },
+
+    /** Close the expand modal. */
+    closeModal() {
+        const overlay = document.getElementById('chart-modal-overlay');
+        if (overlay) overlay.classList.remove('open');
+        document.body.style.overflow = '';
+        this.destroy('chart-modal-canvas');
+    },
+
+    /** Wire click handlers on all .chart-container elements to open the expand modal. */
+    bindExpandHandlers() {
+        // Use event delegation on the main content area
+        document.addEventListener('click', (e) => {
+            const container = e.target.closest('.chart-container');
+            if (!container) return;
+            const canvas = container.querySelector('canvas');
+            if (!canvas || !this._configs[canvas.id]) return;
+            const title = container.querySelector('h3')?.textContent || 'Chart';
+            this.expand(canvas.id, title);
+        });
+
+        // Close modal handlers
+        const overlay = document.getElementById('chart-modal-overlay');
+        const closeBtn = document.getElementById('chart-modal-close');
+        if (closeBtn) closeBtn.addEventListener('click', () => this.closeModal());
+        if (overlay) overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) this.closeModal();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') this.closeModal();
         });
     },
 };

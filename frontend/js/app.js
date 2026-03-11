@@ -160,6 +160,9 @@ const App = {
             if (e.target.closest('.platform-grid-item')) closePlatformGrid();
         });
 
+        /* Chart expand modal — click any chart to view full-size */
+        Charts.bindExpandHandlers();
+
         /* Accordion nav groups — toggle .expanded on click (mobile).
            On desktop the groups are always visible via CSS. */
         document.querySelectorAll('[data-nav-toggle]').forEach(toggle => {
