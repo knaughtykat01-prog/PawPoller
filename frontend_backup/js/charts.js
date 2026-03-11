@@ -102,7 +102,7 @@ const Charts = {
      */
     _milestoneAnnotations(snapshots, metrics) {
         const prefixes = { views: 'V', favorites_count: 'F', comments_count: 'C', reads: 'R', votes: 'Vo', num_lists: 'L', likes: 'Lk', reshares: 'Rs', kudos_count: 'K', hits: 'H', bookmarks_count: 'B' };
-        const colors = { views: '#9b7dff', favorites_count: '#f0a050', comments_count: '#5ae0a0', reads: '#9b7dff', votes: '#f0a050', num_lists: '#fbc050', likes: '#9b7dff', reshares: '#fbc050', kudos_count: '#f0a050', hits: '#9b7dff', bookmarks_count: '#fbc050' };
+        const colors = { views: '#6c8cff', favorites_count: '#f87171', comments_count: '#4ade80', reads: '#6c8cff', votes: '#f87171', num_lists: '#fbbf24', likes: '#6c8cff', reshares: '#fbbf24', kudos_count: '#f87171', hits: '#6c8cff', bookmarks_count: '#fbbf24' };
         const annotations = {};
         let idx = 0;
         for (const metric of metrics) {
@@ -113,14 +113,14 @@ const Charts = {
                     type: 'line',
                     xMin: _toDate(m.timestamp),
                     xMax: _toDate(m.timestamp),
-                    borderColor: colors[metric] || '#9b7dff',
+                    borderColor: colors[metric] || '#6c8cff',
                     borderWidth: 1,
                     borderDash: [6, 4],
                     label: {
                         display: true,
                         content: `${prefixes[metric]}:${m.threshold >= 1000 ? (m.threshold / 1000) + 'K' : m.threshold}`,
                         position: 'start',
-                        backgroundColor: colors[metric] || '#9b7dff',
+                        backgroundColor: colors[metric] || '#6c8cff',
                         color: '#fff',
                         font: { size: 9, weight: 'bold' },
                         padding: { top: 2, bottom: 2, left: 4, right: 4 },
@@ -254,9 +254,9 @@ const Charts = {
 
         // Metric-to-colour mapping (consistent across all chart types)
         const colors = {
-            views: '#9b7dff',            // blue
-            favorites_count: '#f0a050',  // red
-            comments_count: '#5ae0a0',   // green
+            views: '#6c8cff',            // blue
+            favorites_count: '#f87171',  // red
+            comments_count: '#4ade80',   // green
         };
         // Human-readable legend labels
         const labels = {
@@ -269,8 +269,8 @@ const Charts = {
         const datasets = metrics.map(m => ({
             label: labels[m] || m,
             data: snapshots.map(s => ({ x: _toDate(s.polled_at), y: s[m] })),
-            borderColor: colors[m] || '#9b7dff',
-            backgroundColor: (colors[m] || '#9b7dff') + '20', // 12.5% opacity fill
+            borderColor: colors[m] || '#6c8cff',
+            backgroundColor: (colors[m] || '#6c8cff') + '20', // 12.5% opacity fill
             borderWidth: 2,
             pointRadius: snapshots.length > 50 ? 0 : 3, // hide dots on dense data
             tension: 0.3,  // slight curve smoothing
@@ -310,24 +310,24 @@ const Charts = {
 
         // Metric configuration: first metric goes on left Y axis, rest on right
         const metricConfig = {
-            views:           { label: 'Views',      color: '#9b7dff' },
-            favorites_count: { label: 'Favorites',  color: '#f0a050' },
-            comments_count:  { label: 'Comments',   color: '#5ae0a0' },
-            reads:           { label: 'Reads',      color: '#9b7dff' },
-            votes:           { label: 'Votes',      color: '#f0a050' },
-            num_lists:       { label: 'Lists',      color: '#fbc050' },
-            likes:           { label: 'Likes',      color: '#9b7dff' },
-            reshares:        { label: 'Reshares',   color: '#fbc050' },
-            kudos_count:     { label: 'Kudos',      color: '#f0a050' },
-            hits:            { label: 'Hits',       color: '#9b7dff' },
-            bookmarks_count: { label: 'Bookmarks',  color: '#fbc050' },
+            views:           { label: 'Views',      color: '#6c8cff' },
+            favorites_count: { label: 'Favorites',  color: '#f87171' },
+            comments_count:  { label: 'Comments',   color: '#4ade80' },
+            reads:           { label: 'Reads',      color: '#6c8cff' },
+            votes:           { label: 'Votes',      color: '#f87171' },
+            num_lists:       { label: 'Lists',      color: '#fbbf24' },
+            likes:           { label: 'Likes',      color: '#6c8cff' },
+            reshares:        { label: 'Reshares',   color: '#fbbf24' },
+            kudos_count:     { label: 'Kudos',      color: '#f87171' },
+            hits:            { label: 'Hits',       color: '#6c8cff' },
+            bookmarks_count: { label: 'Bookmarks',  color: '#fbbf24' },
         };
 
         const leftMetric = metrics[0];
         const rightMetrics = metrics.slice(1);
-        const leftCfg = metricConfig[leftMetric] || { label: leftMetric, color: '#9b7dff' };
+        const leftCfg = metricConfig[leftMetric] || { label: leftMetric, color: '#6c8cff' };
         const rightLabel = rightMetrics.map(m => (metricConfig[m] || { label: m }).label).join(' / ');
-        const rightColor = (metricConfig[rightMetrics[0]] || { color: '#f0a050' }).color;
+        const rightColor = (metricConfig[rightMetrics[0]] || { color: '#f87171' }).color;
 
         const opts = this._baseOptions();
         opts.scales.x = this._timeXAxis();
@@ -357,7 +357,7 @@ const Charts = {
 
         // Build datasets: first metric on left axis, rest on right
         const datasets = metrics.map((m, i) => {
-            const cfg = metricConfig[m] || { label: m, color: '#9b7dff' };
+            const cfg = metricConfig[m] || { label: m, color: '#6c8cff' };
             return {
                 label: cfg.label,
                 data: snapshots.map(s => ({ x: _toDate(s.polled_at), y: s[m] })),
@@ -409,8 +409,8 @@ const Charts = {
                 labels,
                 datasets: [{
                     data: values,
-                    backgroundColor: '#9b7dff40', // purple at 25% opacity for bar fill
-                    borderColor: '#9b7dff',       // solid purple border
+                    backgroundColor: '#6c8cff40', // blue at 25% opacity for bar fill
+                    borderColor: '#6c8cff',       // solid blue border
                     borderWidth: 1,
                 }]
             },
@@ -441,7 +441,7 @@ const Charts = {
         if (!ctx) return;
 
         // 10-colour palette -- wraps via modulo for >10 submissions
-        const palette = ['#9b7dff', '#f0a050', '#5ae0a0', '#fbc050', '#a78bfa', '#e879f9', '#70d4c0', '#d08030', '#70a0ff', '#c07dff'];
+        const palette = ['#6c8cff', '#f87171', '#4ade80', '#fbbf24', '#a78bfa', '#f472b6', '#34d399', '#fb923c', '#60a5fa', '#e879f9'];
 
         // Build one dataset per submission, each assigned a palette colour
         const datasets = Object.entries(seriesData).map(([id, snaps], i) => ({
@@ -517,9 +517,9 @@ const Charts = {
             data: {
                 labels,
                 datasets: [
-                    { label: 'Views', data: weeklyData.map(w => w.views_delta), backgroundColor: '#9b7dff80', borderColor: '#9b7dff', borderWidth: 1 },
-                    { label: 'Faves', data: weeklyData.map(w => w.faves_delta), backgroundColor: '#f0a05080', borderColor: '#f0a050', borderWidth: 1 },
-                    { label: 'Comments', data: weeklyData.map(w => w.comments_delta), backgroundColor: '#5ae0a080', borderColor: '#5ae0a0', borderWidth: 1 },
+                    { label: 'Views', data: weeklyData.map(w => w.views_delta), backgroundColor: '#6c8cff80', borderColor: '#6c8cff', borderWidth: 1 },
+                    { label: 'Faves', data: weeklyData.map(w => w.faves_delta), backgroundColor: '#f8717180', borderColor: '#f87171', borderWidth: 1 },
+                    { label: 'Comments', data: weeklyData.map(w => w.comments_delta), backgroundColor: '#4ade8080', borderColor: '#4ade80', borderWidth: 1 },
                 ],
             },
             options: opts,

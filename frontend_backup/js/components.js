@@ -92,47 +92,6 @@ const Components = {
     },
 
     /**
-     * Generic submission card grid. Renders submissions as glass cards in a CSS grid.
-     * @param {Array} submissions - Array of submission objects
-     * @param {Object} opts - Configuration:
-     *   idKey: object key for ID (e.g. 'submission_id')
-     *   titleKey: object key for title (e.g. 'title')
-     *   thumbKey: object key for thumbnail URL (e.g. 'thumb_url'), null if none
-     *   detailRoute: route prefix (e.g. '/submission') — full route = #${detailRoute}/${id}
-     *   stats: array of {key, deltaKey, label} objects for stat display
-     *   dateKey: object key for date (e.g. 'create_datetime')
-     *   proxyThumb: whether to run thumb through Utils.thumbUrl (default true)
-     */
-    submissionCardGrid(submissions, opts) {
-        if (!submissions || submissions.length === 0) {
-            return '<div class="empty-state"><p>No submissions yet.</p></div>';
-        }
-        const cards = submissions.map(s => {
-            const id = s[opts.idKey];
-            const title = s[opts.titleKey] || '(untitled)';
-            const thumbUrl = opts.thumbKey && s[opts.thumbKey]
-                ? (opts.proxyThumb !== false ? Utils.thumbUrl(s[opts.thumbKey]) : s[opts.thumbKey])
-                : null;
-            const statsHtml = (opts.stats || []).map(st => {
-                const val = Utils.formatCompact(s[st.key] || 0);
-                const delta = st.deltaKey ? Utils.formatDelta(s[st.deltaKey]) : '';
-                return `<span class="submission-card-stat">${val}${delta ? ' ' + delta : ''} <small>${st.label}</small></span>`;
-            }).join('');
-            const date = opts.dateKey && s[opts.dateKey] ? Utils.formatDate(s[opts.dateKey]) : '';
-            return `
-                <a href="#${opts.detailRoute}/${id}" class="submission-card">
-                    ${thumbUrl ? `<div class="submission-card-thumb"><img src="${thumbUrl}" loading="lazy" alt=""></div>` : ''}
-                    <div class="submission-card-body">
-                        <div class="submission-card-title">${Utils.escapeHtml(title)}</div>
-                        <div class="submission-card-stats">${statsHtml}</div>
-                        ${date ? `<div class="submission-card-date">${date}</div>` : ''}
-                    </div>
-                </a>`;
-        }).join('');
-        return `<div class="submission-card-grid">${cards}</div>`;
-    },
-
-    /**
      * Full IB submissions table with sortable headers, thumbnails, deltas, and links
      * to detail pages. Thumbnails are proxied via Utils.thumbUrl() to avoid CORS issues.
      * Sortable column headers use data-sort attributes; sorting logic is handled in app.js.

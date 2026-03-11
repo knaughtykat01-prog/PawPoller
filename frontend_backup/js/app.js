@@ -141,20 +141,8 @@ const App = {
             link.addEventListener('click', closeSidebar);
         });
 
-        /* Platform grid popover — opens from both nav button and bottom nav */
-        const platformOverlay = document.getElementById('platform-grid-overlay');
-        const openPlatformGrid = () => platformOverlay?.classList.add('open');
-        const closePlatformGrid = () => platformOverlay?.classList.remove('open');
-
-        document.getElementById('nav-platform-btn')?.addEventListener('click', openPlatformGrid);
-        document.getElementById('bottom-nav-menu')?.addEventListener('click', () => {
-            /* On mobile, open the platform grid popover instead of the sidebar */
-            openPlatformGrid();
-        });
-        document.getElementById('platform-grid-close')?.addEventListener('click', closePlatformGrid);
-        platformOverlay?.addEventListener('click', (e) => {
-            if (e.target === platformOverlay) closePlatformGrid();
-        });
+        /* Bottom nav "Platforms" button opens the sidebar */
+        document.getElementById('bottom-nav-menu')?.addEventListener('click', openSidebar);
 
         /* Accordion nav groups — toggle .expanded on click (mobile).
            On desktop the groups are always visible via CSS. */
@@ -194,7 +182,7 @@ const App = {
     _updateThemeButton(theme) {
         const btn = document.getElementById('theme-toggle-btn');
         if (btn) {
-            btn.innerHTML = theme === 'dark' ? '&#9788; <span class="nav-label">Light</span>' : '&#9790; <span class="nav-label">Dark</span>';
+            btn.innerHTML = theme === 'dark' ? '&#9788; Light Mode' : '&#9790; Dark Mode';
         }
     },
 
@@ -1051,16 +1039,6 @@ const App = {
                 order: this._sortState.order,
             });
 
-            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumb_url',
-                detailRoute: '/submission', dateKey: 'create_datetime',
-                stats: [
-                    { key: 'views', deltaKey: 'views_delta', label: 'views' },
-                    { key: 'favorites_count', deltaKey: 'faves_delta', label: 'faves' },
-                    { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
-                ],
-            });
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>Submissions</h2></div>
@@ -1078,19 +1056,13 @@ const App = {
                         <option value="Writing - Document">Writing</option>
                         <option value="Music - Single Track">Music</option>
                     </select>
-                    <div class="view-toggle">
-                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
-                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
-                    </div>
                 </div>
-                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
-                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                <div id="table-container" class="table-scroll">
                     ${Components.submissionsTable(data.submissions)}
                 </div>
             `;
 
             this._setContent(html);
-            this._bindViewToggle();
             this._bindTableSort();
             this._bindSearch(data.submissions);
 
@@ -1383,18 +1355,6 @@ const App = {
                 order: this._faSortState.order,
             });
 
-            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const _faSubs = data.submissions.map(s => ({ ...s, _thumb: s.thumbnail_url ? Utils.faThumbUrl(s.thumbnail_url) : null }));
-            const gridHtml = Components.submissionCardGrid(_faSubs, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: '_thumb',
-                detailRoute: '/fa/submission', dateKey: 'posted_at',
-                proxyThumb: false,
-                stats: [
-                    { key: 'views', deltaKey: 'views_delta', label: 'views' },
-                    { key: 'favorites_count', deltaKey: 'faves_delta', label: 'faves' },
-                    { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
-                ],
-            });
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>FA Submissions</h2></div>
@@ -1406,20 +1366,16 @@ const App = {
                         <option value="Mature">Mature</option>
                         <option value="Adult">Adult</option>
                     </select>
-                    <div class="view-toggle">
-                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
-                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
-                    </div>
                 </div>
-                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
-                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                <div id="table-container" class="table-scroll">
                     ${Components.faSubmissionsTable(data.submissions)}
                 </div>
             `;
 
             this._setContent(html);
-            this._bindViewToggle();
+            // Bind column header click handlers for table sorting
             this._bindFATableSort();
+            // Bind text input and rating dropdown for client-side filtering
             this._bindFASearch(data.submissions);
             this._startAutoRefresh(() => this.renderFASubmissions());
         } catch (err) {
@@ -1715,16 +1671,6 @@ const App = {
                 order: this._wsSortState.order,
             });
 
-            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumbnail_url',
-                detailRoute: '/ws/submission', dateKey: 'posted_at', proxyThumb: false,
-                stats: [
-                    { key: 'views', deltaKey: 'views_delta', label: 'views' },
-                    { key: 'favorites_count', deltaKey: 'faves_delta', label: 'faves' },
-                    { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
-                ],
-            });
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>Weasyl Submissions</h2></div>
@@ -1736,21 +1682,15 @@ const App = {
                         <option value="Mature">Mature</option>
                         <option value="Explicit">Explicit</option>
                     </select>
-                    <div class="view-toggle">
-                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
-                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
-                    </div>
                 </div>
-                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
-                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                <div id="table-container" class="table-scroll">
                     ${Components.wsSubmissionsTable(data.submissions)}
                 </div>
             `;
 
             this._setContent(html);
-            this._bindViewToggle();
-            this._bindWSTableSort();
-            this._bindWSSearch(data.submissions);
+            this._bindWSTableSort();   // Column header sort click handlers
+            this._bindWSSearch(data.submissions);  // Client-side text/rating filter
             this._startAutoRefresh(() => this.renderWSSubmissions());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading WS submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -2017,16 +1957,6 @@ const App = {
                 order: this._sfSortState.order,
             });
 
-            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumbnail_url',
-                detailRoute: '/sf/submission', dateKey: 'posted_at', proxyThumb: false,
-                stats: [
-                    { key: 'views', deltaKey: 'views_delta', label: 'views' },
-                    { key: 'favorites_count', deltaKey: 'faves_delta', label: 'likes' },
-                    { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
-                ],
-            });
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>SoFurry Submissions</h2></div>
@@ -2038,19 +1968,13 @@ const App = {
                         <option value="Mature">Mature</option>
                         <option value="Adult">Adult</option>
                     </select>
-                    <div class="view-toggle">
-                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
-                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
-                    </div>
                 </div>
-                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
-                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                <div id="table-container" class="table-scroll">
                     ${Components.sfSubmissionsTable(data.submissions)}
                 </div>
             `;
 
             this._setContent(html);
-            this._bindViewToggle();
             this._bindSFTableSort();
             this._bindSFSearch(data.submissions);
             this._startAutoRefresh(() => this.renderSFSubmissions());
@@ -2301,16 +2225,6 @@ const App = {
                 order: this._sqwSortState.order,
             });
 
-            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: null,
-                detailRoute: '/sqw/submission', dateKey: 'posted_at',
-                stats: [
-                    { key: 'views', deltaKey: 'views_delta', label: 'hits' },
-                    { key: 'favorites_count', deltaKey: 'faves_delta', label: 'kudos' },
-                    { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
-                ],
-            });
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>SquidgeWorld Works</h2></div>
@@ -2323,19 +2237,13 @@ const App = {
                         <option value="Mature">Mature</option>
                         <option value="Explicit">Explicit</option>
                     </select>
-                    <div class="view-toggle">
-                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
-                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
-                    </div>
                 </div>
-                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
-                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                <div id="table-container" class="table-scroll">
                     ${Components.sqwSubmissionsTable(data.submissions)}
                 </div>
             `;
 
             this._setContent(html);
-            this._bindViewToggle();
             this._bindSQWTableSort();
             this._bindSQWSearch(data.submissions);
             this._startAutoRefresh(() => this.renderSQWSubmissions());
@@ -2586,16 +2494,6 @@ const App = {
                 order: this._ao3SortState.order,
             });
 
-            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: null,
-                detailRoute: '/ao3/submission', dateKey: 'posted_at',
-                stats: [
-                    { key: 'views', deltaKey: 'views_delta', label: 'hits' },
-                    { key: 'favorites_count', deltaKey: 'faves_delta', label: 'kudos' },
-                    { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
-                ],
-            });
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>AO3 Works</h2></div>
@@ -2608,19 +2506,13 @@ const App = {
                         <option value="Mature">Mature</option>
                         <option value="Explicit">Explicit</option>
                     </select>
-                    <div class="view-toggle">
-                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
-                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
-                    </div>
                 </div>
-                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
-                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                <div id="table-container" class="table-scroll">
                     ${Components.ao3SubmissionsTable(data.submissions)}
                 </div>
             `;
 
             this._setContent(html);
-            this._bindViewToggle();
             this._bindAO3TableSort();
             this._bindAO3Search(data.submissions);
             this._startAutoRefresh(() => this.renderAO3Submissions());
@@ -2883,16 +2775,6 @@ const App = {
                 order: this._daSortState.order,
             });
 
-            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: null,
-                detailRoute: '/da/submission', dateKey: 'posted_at',
-                stats: [
-                    { key: 'views', deltaKey: 'views_delta', label: 'views' },
-                    { key: 'favorites_count', deltaKey: 'faves_delta', label: 'faves' },
-                    { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
-                ],
-            });
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>DA Submissions</h2></div>
@@ -2903,19 +2785,13 @@ const App = {
                         <option value="General">General</option>
                         <option value="Mature">Mature</option>
                     </select>
-                    <div class="view-toggle">
-                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
-                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
-                    </div>
                 </div>
-                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
-                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                <div id="table-container" class="table-scroll">
                     ${Components.daSubmissionsTable(data.submissions)}
                 </div>
             `;
 
             this._setContent(html);
-            this._bindViewToggle();
             this._bindDATableSort();
             this._bindDASearch(data.submissions);
             this._startAutoRefresh(() => this.renderDASubmissions());
@@ -3185,34 +3061,18 @@ const App = {
                 order: this._wpSortState.order,
             });
 
-            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: null,
-                detailRoute: '/wp/submission', dateKey: 'posted_at',
-                stats: [
-                    { key: 'reads', deltaKey: 'reads_delta', label: 'reads' },
-                    { key: 'votes', deltaKey: 'votes_delta', label: 'votes' },
-                    { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
-                ],
-            });
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>WP Submissions</h2></div>
                 <div class="toolbar">
                     <input type="text" class="search-input" id="search-input" placeholder="Search titles...">
-                    <div class="view-toggle">
-                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
-                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
-                    </div>
                 </div>
-                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
-                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                <div id="table-container" class="table-scroll">
                     ${Components.wpSubmissionsTable(data.submissions)}
                 </div>
             `;
 
             this._setContent(html);
-            this._bindViewToggle();
             this._bindWPTableSort();
             this._bindWPSearch(data.submissions);
             this._startAutoRefresh(() => this.renderWPSubmissions());
@@ -3475,34 +3335,18 @@ const App = {
                 order: this._ikSortState.order,
             });
 
-            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: null,
-                detailRoute: '/ik/submission', dateKey: 'posted_at',
-                stats: [
-                    { key: 'likes', deltaKey: 'likes_delta', label: 'likes' },
-                    { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
-                    { key: 'reshares', deltaKey: 'reshares_delta', label: 'reshares' },
-                ],
-            });
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>IK Submissions</h2></div>
                 <div class="toolbar">
                     <input type="text" class="search-input" id="search-input" placeholder="Search titles...">
-                    <div class="view-toggle">
-                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
-                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
-                    </div>
                 </div>
-                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
-                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                <div id="table-container" class="table-scroll">
                     ${Components.ikSubmissionsTable(data.submissions)}
                 </div>
             `;
 
             this._setContent(html);
-            this._bindViewToggle();
             this._bindIKTableSort();
             this._bindIKSearch(data.submissions);
             this._startAutoRefresh(() => this.renderIKSubmissions());
@@ -3763,38 +3607,18 @@ const App = {
                 order: this._bskySortState.order,
             });
 
-            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            // BSKY uses rkey (last segment of submission_id URI) for routing
-            const bskyGridSubs = data.submissions.map(s => ({
-                ...s, _rkey: String(s.submission_id).split('/').pop()
-            }));
-            const gridHtml = Components.submissionCardGrid(bskyGridSubs, {
-                idKey: '_rkey', titleKey: 'title', thumbKey: null,
-                detailRoute: '/bsky/submission', dateKey: 'posted_at',
-                stats: [
-                    { key: 'likes', deltaKey: 'likes_delta', label: 'likes' },
-                    { key: 'reposts', deltaKey: 'reposts_delta', label: 'reposts' },
-                    { key: 'replies', deltaKey: 'replies_delta', label: 'replies' },
-                ],
-            });
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>Bluesky Posts</h2></div>
                 <div class="toolbar">
                     <input type="text" class="search-input" id="search-input" placeholder="Search posts...">
-                    <div class="view-toggle">
-                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
-                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
-                    </div>
                 </div>
-                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
-                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                <div id="table-container" class="table-scroll">
                     ${Components.bskySubmissionsTable(data.submissions)}
                 </div>
             `;
 
             this._setContent(html);
-            this._bindViewToggle();
             this._bindBSKYTableSort();
             this._bindBSKYSearch(data.submissions);
             this._startAutoRefresh(() => this.renderBSKYSubmissions());
@@ -4065,34 +3889,18 @@ const App = {
                 order: this._twSortState.order,
             });
 
-            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: null,
-                detailRoute: '/tw/submission', dateKey: 'posted_at',
-                stats: [
-                    { key: 'views', deltaKey: 'views_delta', label: 'views' },
-                    { key: 'likes', deltaKey: 'likes_delta', label: 'likes' },
-                    { key: 'retweets', deltaKey: 'retweets_delta', label: 'retweets' },
-                ],
-            });
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>X/Twitter Tweets</h2></div>
                 <div class="toolbar">
                     <input type="text" class="search-input" id="search-input" placeholder="Search tweets...">
-                    <div class="view-toggle">
-                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
-                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
-                    </div>
                 </div>
-                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
-                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                <div id="table-container" class="table-scroll">
                     ${Components.twSubmissionsTable(data.submissions)}
                 </div>
             `;
 
             this._setContent(html);
-            this._bindViewToggle();
             this._bindTWTableSort();
             this._bindTWSearch(data.submissions);
             this._startAutoRefresh(() => this.renderTWSubmissions());
@@ -4587,8 +4395,6 @@ const App = {
 
             const lastPoll = status.last_poll;
 
-            const _settingsTab = (window.location.hash.match(/^#\/settings\/(\w+)/) || [])[1] || 'general';
-
             const html = `
                 <div class="page-header">
                     <h2>Settings</h2>
@@ -4598,18 +4404,6 @@ const App = {
                         <button class="btn btn-secondary" id="clear-session-btn" title="Clear cached API session">Clear Session</button>
                     </div>
                 </div>
-
-                <div class="settings-tabs" id="settings-tabs">
-                    <button class="settings-tab ${_settingsTab === 'general' ? 'active' : ''}" data-stab="general">General</button>
-                    <button class="settings-tab ${_settingsTab === 'platforms' ? 'active' : ''}" data-stab="platforms">Platforms</button>
-                    <button class="settings-tab ${_settingsTab === 'polling' ? 'active' : ''}" data-stab="polling">Polling</button>
-                    <button class="settings-tab ${_settingsTab === 'telegram' ? 'active' : ''}" data-stab="telegram">Telegram</button>
-                    <button class="settings-tab ${_settingsTab === 'data' ? 'active' : ''}" data-stab="data">Data</button>
-                    <button class="settings-tab ${_settingsTab === 'about' ? 'active' : ''}" data-stab="about">About</button>
-                </div>
-
-                <!-- ═══ TAB: General ═══ -->
-                <div class="settings-tab-content" data-tab-content="general" ${_settingsTab !== 'general' ? 'style="display:none"' : ''}>
 
                 <div class="settings-section">
                     <h3>Inkbunny Credentials</h3>
@@ -4924,11 +4718,6 @@ const App = {
                     </div>
                 </div>
 
-                </div><!-- /tab:general -->
-
-                <!-- ═══ TAB: Data ═══ -->
-                <div class="settings-tab-content" data-tab-content="data" ${_settingsTab !== 'data' ? 'style="display:none"' : ''}>
-
                 <div class="settings-section">
                     <h3>Backup &amp; Restore</h3>
                     <div class="settings-row">
@@ -4951,11 +4740,6 @@ const App = {
                     <span id="backup-msg" style="font-size:13px;margin-top:8px;display:block"></span>
                 </div>
 
-                </div><!-- /tab:data -->
-
-                <!-- ═══ TAB: About ═══ -->
-                <div class="settings-tab-content" data-tab-content="about" ${_settingsTab !== 'about' ? 'style="display:none"' : ''}>
-
                 ${updateInfo.available ? `
                 <div class="settings-section" style="border-color:var(--success)">
                     <h3>Update Available</h3>
@@ -4976,11 +4760,6 @@ const App = {
                         </div>
                     </div>
                 </div>`}
-
-                </div><!-- /tab:about -->
-
-                <!-- ═══ TAB: Telegram ═══ -->
-                <div class="settings-tab-content" data-tab-content="telegram" ${_settingsTab !== 'telegram' ? 'style="display:none"' : ''}>
 
                 <div class="settings-section">
                     <h3>Telegram Notifications</h3>
@@ -5015,11 +4794,6 @@ const App = {
                     <div id="telegram-msg" style="font-size:13px;margin-top:8px"></div>
                     `}
                 </div>
-
-                </div><!-- /tab:telegram -->
-
-                <!-- ═══ TAB: Platforms ═══ -->
-                <div class="settings-tab-content" data-tab-content="platforms" ${_settingsTab !== 'platforms' ? 'style="display:none"' : ''}>
 
                 <div class="settings-section">
                     <h3>FurAffinity</h3>
@@ -5412,11 +5186,6 @@ const App = {
                     `}
                 </div>
 
-                </div><!-- /tab:platforms -->
-
-                <!-- ═══ TAB: Polling ═══ -->
-                <div class="settings-tab-content" data-tab-content="polling" ${_settingsTab !== 'polling' ? 'style="display:none"' : ''}>
-
                 <div class="settings-section">
                     <h3>Inkbunny Polling Status</h3>
                     <div class="settings-row">
@@ -5652,31 +5421,9 @@ const App = {
                     ${Components.ikPollLogTable(ikPollLog.polls)}
                 </div>
                 ` : ''}
-
-                </div><!-- /tab:polling -->
             `;
 
             this._setContent(html);
-
-            // ── Settings Tab Switching ───────────────────────────────
-            const tabBar = document.getElementById('settings-tabs');
-            if (tabBar) {
-                tabBar.addEventListener('click', (e) => {
-                    const btn = e.target.closest('.settings-tab');
-                    if (!btn) return;
-                    const tab = btn.dataset.stab;
-                    // Update active tab button
-                    tabBar.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
-                    btn.classList.add('active');
-                    // Show/hide tab content panels
-                    document.querySelectorAll('.settings-tab-content').forEach(panel => {
-                        panel.style.display = panel.dataset.tabContent === tab ? '' : 'none';
-                    });
-                    // Update URL hash without re-rendering
-                    const newHash = tab === 'general' ? '#/settings' : `#/settings/${tab}`;
-                    history.replaceState(null, '', newHash);
-                });
-            }
 
             // ── Settings Event Handlers ──────────────────────────────
             // All controls save immediately on interaction (no "Save All" button).
@@ -7168,22 +6915,6 @@ const App = {
                 bar.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 callback();
-            });
-        });
-    },
-
-    // View toggle: grid ↔ list. Stores preference in localStorage, swaps visibility.
-    _bindViewToggle() {
-        document.querySelectorAll('.view-toggle-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const mode = btn.dataset.view;
-                localStorage.setItem('pp-view-mode', mode);
-                document.querySelectorAll('.view-toggle-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                const grid = document.getElementById('grid-container');
-                const table = document.getElementById('table-container');
-                if (grid) grid.style.display = mode === 'grid' ? '' : 'none';
-                if (table) table.style.display = mode === 'list' ? '' : 'none';
             });
         });
     },

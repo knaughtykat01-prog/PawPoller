@@ -1,0 +1,121 @@
+/* ── PawPoller Design Tokens ──────────────────────────────────
+   Warm Fandom + Glass Minimal hybrid design system.
+   All colours, spacing, and styling values defined here.
+   ──────────────────────────────────────────────────────────── */
+
+:root {
+    /* ── Backgrounds ─────────────────────────────────────── */
+    --bg-primary:    #13111a;
+    --bg-secondary:  #1c1926;
+    --bg-card:       #241f30;
+    --bg-tertiary:   #2d2840;
+    --bg-hover:      #352f48;
+    --bg-glass:      rgba(36, 31, 48, 0.65);
+
+    /* ── Borders & Dividers ──────────────────────────────── */
+    --border:        #3d3556;
+
+    /* ── Text ────────────────────────────────────────────── */
+    --text-primary:  #f0edf5;
+    --text-secondary:#a99fc0;
+    --text-muted:    #6e6488;
+
+    /* ── Accents ─────────────────────────────────────────── */
+    --accent:        #9b7dff;
+    --accent-dim:    #7c5cd6;
+    --accent-warm:   #f0a050;
+
+    /* ── Semantic ────────────────────────────────────────── */
+    --success:       #5ae0a0;
+    --warning:       #fbc050;
+    --danger:        #f07070;
+    --info:          #70a0ff;
+
+    /* ── Layout ──────────────────────────────────────────── */
+    --sidebar-w:     60px;
+    --sidebar-w-expanded: 220px;
+    --bottom-nav-h:  56px;
+
+    /* ── Radii ───────────────────────────────────────────── */
+    --radius:        12px;
+    --radius-lg:     16px;
+    --radius-sm:     8px;
+    --radius-pill:   999px;
+
+    /* ── Shadows ─────────────────────────────────────────── */
+    --shadow:        0 4px 20px rgba(0, 0, 0, 0.25);
+    --shadow-glass:  0 8px 32px rgba(0, 0, 0, 0.20);
+
+    /* ── Glass ───────────────────────────────────────────── */
+    --blur:          12px;
+
+    /* ── Motion ──────────────────────────────────────────── */
+    --transition:    0.2s ease;
+    --transition-slow: 0.3s ease;
+
+    /* ── Platform brand colours ──────────────────────────── */
+    --platform-ib:   #6c8cff;
+    --platform-fa:   #faaf3a;
+    --platform-ws:   #89c33f;
+    --platform-sf:   #5c4a9e;
+    --platform-sqw:  #a78bfa;
+    --platform-ao3:  #990000;
+    --platform-da:   #00c853;
+    --platform-wp:   #f47315;
+    --platform-ik:   #009688;
+    --platform-bsky: #0085ff;
+    --platform-tw:   #1d9bf0;
+}
+
+/* ── Light Theme ─────────────────────────────────────────── */
+[data-theme="light"] {
+    --bg-primary:    #f8f6fb;
+    --bg-secondary:  #ffffff;
+    --bg-card:       #ffffff;
+    --bg-tertiary:   #f0ecf5;
+    --bg-hover:      #e8e2f0;
+    --bg-glass:      rgba(255, 255, 255, 0.70);
+    --border:        #ddd5e8;
+    --text-primary:  #1c1926;
+    --text-secondary:#5a4f70;
+    --text-muted:    #8a80a0;
+    --accent:        #7c5cd6;
+    --accent-dim:    #6a48c0;
+    --accent-warm:   #d08030;
+    --success:       #16a34a;
+    --warning:       #d97706;
+    --danger:        #dc2626;
+    --info:          #2563eb;
+    --shadow:        0 4px 20px rgba(100, 80, 150, 0.08);
+    --shadow-glass:  0 8px 32px rgba(100, 80, 150, 0.06);
+}
+
+/* ── Glass Utility ───────────────────────────────────────── */
+.glass {
+    background: var(--bg-glass);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: var(--shadow-glass);
+}
+
+[data-theme="light"] .glass {
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+/* ── Theme Transition Smoothing ──────────────────────────── */
+body,
+.sidebar,
+.main-content,
+.stat-card,
+.card-glass,
+.chart-container,
+.settings-section,
+.data-table,
+.bottom-nav,
+.login-card,
+.loading-card {
+    transition: background-color var(--transition-slow),
+                color var(--transition-slow),
+                border-color var(--transition-slow);
+}
