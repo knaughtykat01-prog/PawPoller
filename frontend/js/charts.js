@@ -14,6 +14,35 @@ function _toDate(ts) {
     return new Date(s.endsWith('Z') || s.includes('+') ? s : s + 'Z');
 }
 
+/**
+ * Compute a simple linear regression trendline from {x: Date, y: number} points.
+ * Returns just the first and last projected points (a straight line).
+ */
+function _trendline(points) {
+    const valid = points.filter(p => p.x instanceof Date && !isNaN(p.x) && p.y != null);
+    if (valid.length < 2) return null;
+    const n = valid.length;
+    const t0 = valid[0].x.getTime();
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+    for (const p of valid) {
+        const x = (p.x.getTime() - t0) / 3600000; // hours from first point
+        sumX += x;
+        sumY += p.y;
+        sumXY += x * p.y;
+        sumX2 += x * x;
+    }
+    const denom = n * sumX2 - sumX * sumX;
+    if (denom === 0) return null;
+    const slope = (n * sumXY - sumX * sumY) / denom;
+    const intercept = (sumY - slope * sumX) / n;
+    const xFirst = (valid[0].x.getTime() - t0) / 3600000;
+    const xLast = (valid[valid.length - 1].x.getTime() - t0) / 3600000;
+    return [
+        { x: valid[0].x, y: intercept + slope * xFirst },
+        { x: valid[valid.length - 1].x, y: intercept + slope * xLast },
+    ];
+}
+
 const Charts = {
     /**
      * Map of canvasId -> Chart instance.
@@ -265,17 +294,35 @@ const Charts = {
             comments_count: 'Comments',
         };
 
-        // Build one dataset per requested metric
-        const datasets = metrics.map(m => ({
-            label: labels[m] || m,
-            data: snapshots.map(s => ({ x: _toDate(s.polled_at), y: s[m] })),
-            borderColor: colors[m] || '#9b7dff',
-            backgroundColor: (colors[m] || '#9b7dff') + '20', // 12.5% opacity fill
-            borderWidth: 2,
-            pointRadius: snapshots.length > 50 ? 0 : 3, // hide dots on dense data
-            tension: 0.3,  // slight curve smoothing
-            fill: false,
-        }));
+        // Build one dataset per requested metric, plus a trendline for each
+        const datasets = [];
+        metrics.forEach(m => {
+            const data = snapshots.map(s => ({ x: _toDate(s.polled_at), y: s[m] }));
+            const color = colors[m] || '#9b7dff';
+            datasets.push({
+                label: labels[m] || m,
+                data,
+                borderColor: color,
+                backgroundColor: color + '20',
+                borderWidth: 2,
+                pointRadius: snapshots.length > 50 ? 0 : 3,
+                tension: 0.3,
+                fill: false,
+            });
+            const trend = _trendline(data);
+            if (trend) {
+                datasets.push({
+                    label: (labels[m] || m) + ' Trend',
+                    data: trend,
+                    borderColor: color + '80',  // 50% opacity
+                    borderWidth: 1.5,
+                    borderDash: [6, 4],
+                    pointRadius: 0,
+                    tension: 0,
+                    fill: false,
+                });
+            }
+        });
 
         const opts = this._baseOptions();
         opts.scales.x = this._timeXAxis();
@@ -356,18 +403,35 @@ const Charts = {
         const annotations = this._milestoneAnnotations(snapshots, metrics);
         opts.plugins.annotation = { annotations };
 
-        // Build datasets: first metric on left axis, rest on right
-        const datasets = metrics.map((m, i) => {
+        // Build datasets: first metric on left axis, rest on right, plus trendlines
+        const datasets = [];
+        metrics.forEach((m, i) => {
             const cfg = metricConfig[m] || { label: m, color: '#9b7dff' };
-            return {
+            const data = snapshots.map(s => ({ x: _toDate(s.polled_at), y: s[m] }));
+            const axisID = i === 0 ? 'y' : 'y1';
+            datasets.push({
                 label: cfg.label,
-                data: snapshots.map(s => ({ x: _toDate(s.polled_at), y: s[m] })),
+                data,
                 borderColor: cfg.color,
                 borderWidth: 2,
                 pointRadius: snapshots.length > 50 ? 0 : 3,
                 tension: 0.3,
-                yAxisID: i === 0 ? 'y' : 'y1',
-            };
+                yAxisID: axisID,
+            });
+            const trend = _trendline(data);
+            if (trend) {
+                datasets.push({
+                    label: cfg.label + ' Trend',
+                    data: trend,
+                    borderColor: cfg.color + '80',
+                    borderWidth: 1.5,
+                    borderDash: [6, 4],
+                    pointRadius: 0,
+                    tension: 0,
+                    fill: false,
+                    yAxisID: axisID,
+                });
+            }
         });
 
         this._instances[canvasId] = new Chart(ctx, {
