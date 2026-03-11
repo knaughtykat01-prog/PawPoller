@@ -524,6 +524,9 @@ async def send_digest_report() -> None:
 
         await send_telegram("\n".join(lines))
 
+        # Persist timestamp so restarts don't re-send within the 6h window
+        config.save_settings({"last_digest_sent_at": datetime.now(timezone.utc).isoformat()})
+
         # Piggyback: send FA watcher daily digest if in "daily" mode
         try:
             from polling.fa_poller import send_fa_watcher_digest
