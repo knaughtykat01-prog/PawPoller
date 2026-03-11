@@ -107,12 +107,12 @@ const App = {
             console.warn('[App] Auth status check failed:', err);
         }
 
-        /* Render the initial page and kick off the poll-status ticker */
+        /* Render the initial page and kick off the status check ticker */
         this.route();
-        this._updatePollStatus();
-        if (this._pollStatusInterval) clearInterval(this._pollStatusInterval);
-        this._pollStatusInterval = setInterval(() => this._updatePollStatus(), 60000);
-        this._initPollProgressBar();
+        this._updateStatusCheck();
+        if (this._statusCheckInterval) clearInterval(this._statusCheckInterval);
+        this._statusCheckInterval = setInterval(() => this._updateStatusCheck(), 60000);
+        this._initProgressCheckBar();
 
         /* Hamburger menu — overlay is now in HTML, just query it */
         const sidebar = document.querySelector('.sidebar');
@@ -534,13 +534,13 @@ const App = {
      * Enter on password triggers submit. Auto-focuses the username field. */
 
     renderLogin() {
-        if (this._pollStatusInterval) {
-            clearInterval(this._pollStatusInterval);
-            this._pollStatusInterval = null;
+        if (this._statusCheckInterval) {
+            clearInterval(this._statusCheckInterval);
+            this._statusCheckInterval = null;
         }
-        if (this._pollProgressTimer) {
-            clearInterval(this._pollProgressTimer);
-            this._pollProgressTimer = null;
+        if (this._progressCheckTimer) {
+            clearInterval(this._progressCheckTimer);
+            this._progressCheckTimer = null;
         }
         this._setContent(`
             <div class="login-screen">
@@ -613,7 +613,7 @@ const App = {
      * submission data exists yet. Displays a progress bar and phase label.
      *
      * Flow: triggers an initial poll via API.triggerPoll() (fire-and-forget),
-     * then polls /api/poll/progress every 1.5 seconds to update the progress
+     * then checks /api/poll/progress every 1.5 seconds to update the progress
      * bar percentage and human-readable phase labels (idle -> starting ->
      * logging_in -> searching -> fetching_details -> processing -> complete).
      * During the "processing" phase, progress is interpolated from 40-95%
@@ -7868,11 +7868,11 @@ const App = {
         }
     },
 
-    // Sidebar footer poll status ticker. Called on a 60-second interval set up
+    // Sidebar footer status check. Called on a 60-second interval set up
     // in init(). Fetches the latest poll log entry and updates the small
     // "Last poll: X ago" badge at the bottom of the sidebar. Failures are
     // silently ignored since this is purely cosmetic.
-    async _updatePollStatus() {
+    async _updateStatusCheck() {
         try {
             const [status, pauseState] = await Promise.all([
                 API.getStatus(),
@@ -7891,21 +7891,21 @@ const App = {
         } catch { /* ignore */ }
     },
 
-    // ── Global Poll Progress Bar ──────────────────────────────
-    // Polls all 4 platform progress endpoints on a timer. When any platform
-    // is actively polling, shows a thin progress bar at the top of the page.
+    // ── Global Sync Progress Bar ─────────────────────────────
+    // Checks all platform progress endpoints on a timer. When any platform
+    // is actively syncing, shows a thin progress bar at the top of the page.
     // Uses a fast interval (1.5s) when active, slow (10s) when idle.
 
-    _pollProgressActive: false,
-    _pollProgressTimer: null,
+    _progressCheckActive: false,
+    _progressCheckTimer: null,
 
-    _initPollProgressBar() {
-        this._pollProgressTick();
-        if (this._pollProgressTimer) clearInterval(this._pollProgressTimer);
-        this._pollProgressTimer = setInterval(() => this._pollProgressTick(), 10000);
+    _initProgressCheckBar() {
+        this._progressCheckTick();
+        if (this._progressCheckTimer) clearInterval(this._progressCheckTimer);
+        this._progressCheckTimer = setInterval(() => this._progressCheckTick(), 10000);
     },
 
-    async _pollProgressTick() {
+    async _progressCheckTick() {
         const bar = document.getElementById('poll-progress-bar');
         const fill = document.getElementById('poll-progress-fill');
         const label = document.getElementById('poll-progress-label');
@@ -7940,19 +7940,19 @@ const App = {
 
             if (active.length === 0) {
                 bar.style.display = 'none';
-                if (this._pollProgressActive) {
-                    this._pollProgressActive = false;
-                    clearInterval(this._pollProgressTimer);
-                    this._pollProgressTimer = setInterval(() => this._pollProgressTick(), 10000);
+                if (this._progressCheckActive) {
+                    this._progressCheckActive = false;
+                    clearInterval(this._progressCheckTimer);
+                    this._progressCheckTimer = setInterval(() => this._progressCheckTick(), 10000);
                 }
                 return;
             }
 
-            // Switch to fast polling when active
-            if (!this._pollProgressActive) {
-                this._pollProgressActive = true;
-                clearInterval(this._pollProgressTimer);
-                this._pollProgressTimer = setInterval(() => this._pollProgressTick(), 1500);
+            // Switch to fast checking when active
+            if (!this._progressCheckActive) {
+                this._progressCheckActive = true;
+                clearInterval(this._progressCheckTimer);
+                this._progressCheckTimer = setInterval(() => this._progressCheckTick(), 1500);
             }
 
             bar.style.display = 'block';
