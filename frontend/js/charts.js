@@ -199,7 +199,7 @@ const Charts = {
             time: {
                 tooltipFormat: 'dd MMM yyyy HH:mm',
                 displayFormats: {
-                    hour: 'HH:mm',
+                    hour: 'dd MMM HH:mm',
                     day: 'dd MMM',
                     week: 'dd MMM',
                     month: 'MMM yyyy',
