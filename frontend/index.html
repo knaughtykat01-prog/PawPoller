@@ -26,7 +26,7 @@
 
         <ul class="nav-links">
             <!-- Overview -->
-            <li><a href="#/overview" class="nav-link" data-page="overview">
+            <li><a href="#/" class="nav-link active" data-page="overview">
                 <span class="nav-icon">&#9632;</span>
                 <span class="nav-label">Overview</span>
             </a></li>
@@ -38,10 +38,10 @@
             </button></li>
 
             <!-- Inkbunny: collapsible group -->
-            <li class="nav-group expanded">
+            <li class="nav-group">
                 <div class="nav-section" data-nav-toggle>Inkbunny <span class="nav-chevron">&#8250;</span></div>
                 <ul class="nav-group-links">
-                    <li><a href="#/" class="nav-link active" data-page="dashboard">
+                    <li><a href="#/ib" class="nav-link" data-page="dashboard">
                         <span class="nav-icon">&#9632;</span>
                         <span class="nav-label">Dashboard</span>
                     </a></li>
@@ -293,7 +293,7 @@
                 <button id="platform-grid-close" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;padding:4px 8px;">&times;</button>
             </div>
             <div class="platform-grid" id="platform-grid">
-                <a href="#/" class="platform-grid-item" data-platform="ib" onclick="document.getElementById('platform-grid-overlay').classList.remove('open')">
+                <a href="#/ib" class="platform-grid-item" data-platform="ib" onclick="document.getElementById('platform-grid-overlay').classList.remove('open')">
                     <span class="platform-grid-emoji">&#128062;</span>
                     <span class="platform-grid-name">Inkbunny</span>
                     <span class="platform-grid-status" id="pg-status-ib"></span>
@@ -369,7 +369,7 @@
          BOTTOM NAVIGATION BAR (mobile only, hidden on desktop)
          ============================================================ -->
     <nav class="bottom-nav" id="bottom-nav">
-        <a href="#/overview" class="bottom-nav-item" data-page="overview">
+        <a href="#/" class="bottom-nav-item" data-page="overview">
             <span class="bottom-nav-icon">&#9632;</span>
             <span class="bottom-nav-label">Overview</span>
         </a>

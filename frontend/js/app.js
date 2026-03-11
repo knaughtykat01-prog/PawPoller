@@ -301,9 +301,9 @@ const App = {
             this.renderLogin();
         } else if (parts[0] === 'loading') {
             this.renderLoading();
-        } else if (parts[0] === 'overview') {
+        } else if (hash === '/' || hash === '' || parts[0] === 'overview') {
             this.renderOverview();
-        } else if (hash === '/' || hash === '') {
+        } else if (parts[0] === 'ib' && !parts[1]) {
             this.renderDashboard();
         } else if (parts[0] === 'submissions' && !parts[1]) {
             this.renderSubmissions();
