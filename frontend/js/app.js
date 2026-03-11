@@ -5504,16 +5504,9 @@ const App = {
                 <!-- ═══ TAB: Polling ═══ -->
                 <div class="settings-tab-content" data-tab-content="polling" ${_settingsTab !== 'polling' ? 'style="display:none"' : ''}>
 
-                <div class="settings-section">
-                    <h3>Polling Control</h3>
-                    <div class="settings-row">
-                        <span class="settings-label">Background polling</span>
-                        <span class="settings-value">
-                            <span id="poll-pause-status" style="color:${pollPausedState.polling_paused ? 'var(--warning, #f0a050)' : 'var(--success)'}; font-weight:600;">
-                                ${pollPausedState.polling_paused ? 'Paused' : 'Active'}
-                            </span>
-                        </span>
-                    </div>
+                <details class="settings-accordion" open>
+                    <summary><span class="status-dot ${pollPausedState.polling_paused ? 'disconnected' : 'connected'}"></span>Polling Control <span class="summary-meta">— ${pollPausedState.polling_paused ? 'Paused' : 'Active'}</span></summary>
+                    <div class="accordion-body">
                     <div class="settings-row">
                         <span class="settings-label">${pollPausedState.polling_paused ? 'Resume scheduled polling for all platforms' : 'Pause scheduled polling for all platforms'}</span>
                         <button class="btn ${pollPausedState.polling_paused ? 'btn-primary' : 'btn-danger'}" id="poll-pause-btn">
@@ -5523,10 +5516,12 @@ const App = {
                     <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">
                         When paused, scheduled background polls are skipped. Manual "Poll Now" buttons still work.
                     </p>
-                </div>
+                    </div>
+                </details>
 
-                <div class="settings-section">
-                    <h3>Inkbunny Polling Status</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${lastPoll?.status === 'success' ? 'connected' : lastPoll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>Inkbunny <span class="summary-meta">— ${lastPoll ? lastPoll.status + ' · ' + Utils.formatDateTime(lastPoll.started_at) : 'Never polled'}</span></summary>
+                    <div class="accordion-body">
                     <div class="settings-row">
                         <span class="settings-label">Submissions tracked</span>
                         <span class="settings-value">${status.total_submissions}</span>
@@ -5550,215 +5545,200 @@ const App = {
                         <span class="settings-label">Last error</span>
                         <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(lastPoll.error_message)}</span>
                     </div>` : ''}
-                </div>
-
-                <div class="settings-section">
-                    <h3>Poll History</h3>
-                    ${Components.pollLogTable(pollLog.polls)}
-                </div>
+                    <div style="margin-top:12px">${Components.pollLogTable(pollLog.polls)}</div>
+                    </div>
+                </details>
 
                 ${faAuth.has_cookies ? `
-                <div class="settings-section">
-                    <h3>FA Polling Status</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${faStatus.last_poll?.status === 'success' ? 'connected' : faStatus.last_poll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>FurAffinity <span class="summary-meta">— ${faStatus.last_poll ? faStatus.last_poll.status + ' · ' + Utils.formatDateTime(faStatus.last_poll.started_at) : 'Never polled'}</span></summary>
+                    <div class="accordion-body">
                     <div class="settings-row">
-                        <span class="settings-label">FA submissions tracked</span>
+                        <span class="settings-label">Submissions tracked</span>
                         <span class="settings-value">${faStatus.total_submissions || 0}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">FA snapshots stored</span>
+                        <span class="settings-label">Snapshots stored</span>
                         <span class="settings-value">${Utils.formatNumber(faStatus.total_snapshots || 0)}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">Last FA poll</span>
+                        <span class="settings-label">Last poll</span>
                         <span class="settings-value">${faStatus.last_poll ? Utils.formatDateTime(faStatus.last_poll.started_at) : 'Never'}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">Last FA poll status</span>
+                        <span class="settings-label">Last poll status</span>
                         <span class="settings-value" style="color:${faStatus.last_poll?.status === 'success' ? 'var(--success)' : faStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
                             ${faStatus.last_poll?.status || '--'}
                         </span>
                     </div>
                     ${faStatus.last_poll?.error_message ? `
                     <div class="settings-row">
-                        <span class="settings-label">Last FA error</span>
+                        <span class="settings-label">Last error</span>
                         <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(faStatus.last_poll.error_message)}</span>
                     </div>` : ''}
-                </div>
-
-                <div class="settings-section">
-                    <h3>FA Poll History</h3>
-                    ${Components.faPollLogTable(faPollLog.polls)}
-                </div>
+                    <div style="margin-top:12px">${Components.faPollLogTable(faPollLog.polls)}</div>
+                    </div>
+                </details>
                 ` : ''}
 
                 ${wsAuth.has_key ? `
-                <div class="settings-section">
-                    <h3>WS Polling Status</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${wsStatus.last_poll?.status === 'success' ? 'connected' : wsStatus.last_poll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>Weasyl <span class="summary-meta">— ${wsStatus.last_poll ? wsStatus.last_poll.status + ' · ' + Utils.formatDateTime(wsStatus.last_poll.started_at) : 'Never polled'}</span></summary>
+                    <div class="accordion-body">
                     <div class="settings-row">
-                        <span class="settings-label">WS submissions tracked</span>
+                        <span class="settings-label">Submissions tracked</span>
                         <span class="settings-value">${wsStatus.total_submissions || 0}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">WS snapshots stored</span>
+                        <span class="settings-label">Snapshots stored</span>
                         <span class="settings-value">${Utils.formatNumber(wsStatus.total_snapshots || 0)}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">Last WS poll</span>
+                        <span class="settings-label">Last poll</span>
                         <span class="settings-value">${wsStatus.last_poll ? Utils.formatDateTime(wsStatus.last_poll.started_at) : 'Never'}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">Last WS poll status</span>
+                        <span class="settings-label">Last poll status</span>
                         <span class="settings-value" style="color:${wsStatus.last_poll?.status === 'success' ? 'var(--success)' : wsStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
                             ${wsStatus.last_poll?.status || '--'}
                         </span>
                     </div>
                     ${wsStatus.last_poll?.error_message ? `
                     <div class="settings-row">
-                        <span class="settings-label">Last WS error</span>
+                        <span class="settings-label">Last error</span>
                         <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(wsStatus.last_poll.error_message)}</span>
                     </div>` : ''}
-                </div>
-
-                <div class="settings-section">
-                    <h3>WS Poll History</h3>
-                    ${Components.wsPollLogTable(wsPollLog.polls)}
-                </div>
+                    <div style="margin-top:12px">${Components.wsPollLogTable(wsPollLog.polls)}</div>
+                    </div>
+                </details>
                 ` : ''}
 
                 ${sfAuth.has_credentials ? `
-                <div class="settings-section">
-                    <h3>SF Polling Status</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${sfStatus.last_poll?.status === 'success' ? 'connected' : sfStatus.last_poll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>SoFurry <span class="summary-meta">— ${sfStatus.last_poll ? sfStatus.last_poll.status + ' · ' + Utils.formatDateTime(sfStatus.last_poll.started_at) : 'Never polled'}</span></summary>
+                    <div class="accordion-body">
                     <div class="settings-row">
-                        <span class="settings-label">SF submissions tracked</span>
+                        <span class="settings-label">Submissions tracked</span>
                         <span class="settings-value">${sfStatus.total_submissions || 0}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">SF snapshots stored</span>
+                        <span class="settings-label">Snapshots stored</span>
                         <span class="settings-value">${Utils.formatNumber(sfStatus.total_snapshots || 0)}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">Last SF poll</span>
+                        <span class="settings-label">Last poll</span>
                         <span class="settings-value">${sfStatus.last_poll ? Utils.formatDateTime(sfStatus.last_poll.started_at) : 'Never'}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">Last SF poll status</span>
+                        <span class="settings-label">Last poll status</span>
                         <span class="settings-value" style="color:${sfStatus.last_poll?.status === 'success' ? 'var(--success)' : sfStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
                             ${sfStatus.last_poll?.status || '--'}
                         </span>
                     </div>
                     ${sfStatus.last_poll?.error_message ? `
                     <div class="settings-row">
-                        <span class="settings-label">Last SF error</span>
+                        <span class="settings-label">Last error</span>
                         <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(sfStatus.last_poll.error_message)}</span>
                     </div>` : ''}
-                </div>
-
-                <div class="settings-section">
-                    <h3>SF Poll History</h3>
-                    ${Components.sfPollLogTable(sfPollLog.polls)}
-                </div>
+                    <div style="margin-top:12px">${Components.sfPollLogTable(sfPollLog.polls)}</div>
+                    </div>
+                </details>
                 ` : ''}
 
                 ${daAuth.has_credentials ? `
-                <div class="settings-section">
-                    <h3>DA Polling Status</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${daStatus.last_poll?.status === 'success' ? 'connected' : daStatus.last_poll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>DeviantArt <span class="summary-meta">— ${daStatus.last_poll ? daStatus.last_poll.status + ' · ' + Utils.formatDateTime(daStatus.last_poll.started_at) : 'Never polled'}</span></summary>
+                    <div class="accordion-body">
                     <div class="settings-row">
-                        <span class="settings-label">DA submissions tracked</span>
+                        <span class="settings-label">Submissions tracked</span>
                         <span class="settings-value">${daStatus.total_submissions || 0}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">DA snapshots stored</span>
+                        <span class="settings-label">Snapshots stored</span>
                         <span class="settings-value">${Utils.formatNumber(daStatus.total_snapshots || 0)}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">Last DA poll</span>
+                        <span class="settings-label">Last poll</span>
                         <span class="settings-value">${daStatus.last_poll ? Utils.formatDateTime(daStatus.last_poll.started_at) : 'Never'}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">Last DA poll status</span>
+                        <span class="settings-label">Last poll status</span>
                         <span class="settings-value" style="color:${daStatus.last_poll?.status === 'success' ? 'var(--success)' : daStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
                             ${daStatus.last_poll?.status || '--'}
                         </span>
                     </div>
                     ${daStatus.last_poll?.error_message ? `
                     <div class="settings-row">
-                        <span class="settings-label">Last DA error</span>
+                        <span class="settings-label">Last error</span>
                         <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(daStatus.last_poll.error_message)}</span>
                     </div>` : ''}
-                </div>
-
-                <div class="settings-section">
-                    <h3>DA Poll History</h3>
-                    ${Components.daPollLogTable(daPollLog.polls)}
-                </div>
+                    <div style="margin-top:12px">${Components.daPollLogTable(daPollLog.polls)}</div>
+                    </div>
+                </details>
                 ` : ''}
 
                 ${wpAuth.has_credentials ? `
-                <div class="settings-section">
-                    <h3>WP Polling Status</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${wpStatus.last_poll?.status === 'success' ? 'connected' : wpStatus.last_poll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>Wattpad <span class="summary-meta">— ${wpStatus.last_poll ? wpStatus.last_poll.status + ' · ' + Utils.formatDateTime(wpStatus.last_poll.started_at) : 'Never polled'}</span></summary>
+                    <div class="accordion-body">
                     <div class="settings-row">
-                        <span class="settings-label">WP submissions tracked</span>
+                        <span class="settings-label">Submissions tracked</span>
                         <span class="settings-value">${wpStatus.total_submissions || 0}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">WP snapshots stored</span>
+                        <span class="settings-label">Snapshots stored</span>
                         <span class="settings-value">${Utils.formatNumber(wpStatus.total_snapshots || 0)}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">Last WP poll</span>
+                        <span class="settings-label">Last poll</span>
                         <span class="settings-value">${wpStatus.last_poll ? Utils.formatDateTime(wpStatus.last_poll.started_at) : 'Never'}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">Last WP poll status</span>
+                        <span class="settings-label">Last poll status</span>
                         <span class="settings-value" style="color:${wpStatus.last_poll?.status === 'success' ? 'var(--success)' : wpStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
                             ${wpStatus.last_poll?.status || '--'}
                         </span>
                     </div>
                     ${wpStatus.last_poll?.error_message ? `
                     <div class="settings-row">
-                        <span class="settings-label">Last WP error</span>
+                        <span class="settings-label">Last error</span>
                         <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(wpStatus.last_poll.error_message)}</span>
                     </div>` : ''}
-                </div>
-
-                <div class="settings-section">
-                    <h3>WP Poll History</h3>
-                    ${Components.wpPollLogTable(wpPollLog.polls)}
-                </div>
+                    <div style="margin-top:12px">${Components.wpPollLogTable(wpPollLog.polls)}</div>
+                    </div>
+                </details>
                 ` : ''}
 
                 ${ikAuth.has_credentials ? `
-                <div class="settings-section">
-                    <h3>IK Polling Status</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${ikStatus.last_poll?.status === 'success' ? 'connected' : ikStatus.last_poll?.status === 'error' ? 'disconnected' : 'disconnected'}"></span>Itaku <span class="summary-meta">— ${ikStatus.last_poll ? ikStatus.last_poll.status + ' · ' + Utils.formatDateTime(ikStatus.last_poll.started_at) : 'Never polled'}</span></summary>
+                    <div class="accordion-body">
                     <div class="settings-row">
-                        <span class="settings-label">IK submissions tracked</span>
+                        <span class="settings-label">Submissions tracked</span>
                         <span class="settings-value">${ikStatus.total_submissions || 0}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">IK snapshots stored</span>
+                        <span class="settings-label">Snapshots stored</span>
                         <span class="settings-value">${Utils.formatNumber(ikStatus.total_snapshots || 0)}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">Last IK poll</span>
+                        <span class="settings-label">Last poll</span>
                         <span class="settings-value">${ikStatus.last_poll ? Utils.formatDateTime(ikStatus.last_poll.started_at) : 'Never'}</span>
                     </div>
                     <div class="settings-row">
-                        <span class="settings-label">Last IK poll status</span>
+                        <span class="settings-label">Last poll status</span>
                         <span class="settings-value" style="color:${ikStatus.last_poll?.status === 'success' ? 'var(--success)' : ikStatus.last_poll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">
                             ${ikStatus.last_poll?.status || '--'}
                         </span>
                     </div>
                     ${ikStatus.last_poll?.error_message ? `
                     <div class="settings-row">
-                        <span class="settings-label">Last IK error</span>
+                        <span class="settings-label">Last error</span>
                         <span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(ikStatus.last_poll.error_message)}</span>
                     </div>` : ''}
-                </div>
-
-                <div class="settings-section">
-                    <h3>IK Poll History</h3>
-                    ${Components.ikPollLogTable(ikPollLog.polls)}
-                </div>
+                    <div style="margin-top:12px">${Components.ikPollLogTable(ikPollLog.polls)}</div>
+                    </div>
+                </details>
                 ` : ''}
 
                 </div><!-- /tab:polling -->
