@@ -106,6 +106,11 @@ const App = {
                 this.route();
                 return;  // Don't proceed with Inkbunny auth or status ticker
             }
+            // Authenticated — redirect away from login/setup screens
+            const h = window.location.hash.replace('#/', '');
+            if (h === 'dashboard-login' || h === 'dashboard-setup') {
+                window.location.hash = '#/';
+            }
         } catch (err) {
             console.warn('[App] Dashboard status check failed:', err);
         }
