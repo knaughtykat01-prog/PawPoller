@@ -279,6 +279,7 @@ const Charts = {
 
         const opts = this._baseOptions();
         opts.scales.x = this._timeXAxis();
+        opts.scales.y.beginAtZero = false;
 
         this._instances[canvasId] = new Chart(ctx, {
             type: 'line',
@@ -338,7 +339,7 @@ const Charts = {
             position: 'left',
             ticks: { color: leftCfg.color, font: { size: 10 } },
             grid: { color: '#2e3140' },
-            beginAtZero: true,
+            beginAtZero: false,
             title: { display: true, text: leftCfg.label, color: leftCfg.color },
         };
         // Right Y axis -- secondary metrics
@@ -347,7 +348,7 @@ const Charts = {
             position: 'right',
             ticks: { color: rightColor, font: { size: 10 } },
             grid: { drawOnChartArea: false },
-            beginAtZero: true,
+            beginAtZero: false,
             title: { display: true, text: rightLabel, color: rightColor },
         };
 
@@ -487,6 +488,7 @@ const Charts = {
 
         const opts = this._baseOptions();
         opts.scales.x = this._timeXAxis();
+        opts.scales.y.beginAtZero = false;
         // Only attach annotation plugin config if there are milestones to show
         if (Object.keys(annotations).length > 0) {
             opts.plugins.annotation = { annotations };
