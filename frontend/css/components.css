@@ -48,6 +48,10 @@ body {
     box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
 }
 
+a.stat-card:hover {
+    box-shadow: 0 0 0 1px var(--primary), 0 8px 40px rgba(0, 0, 0, 0.3);
+}
+
 [data-theme="light"] .stat-card {
     border-color: rgba(0, 0, 0, 0.06);
     border-left-color: var(--accent);

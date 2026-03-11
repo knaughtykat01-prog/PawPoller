@@ -829,33 +829,20 @@ const App = {
             recentActivity.sort((a, b) => new Date(b.first_seen_at || 0) - new Date(a.first_seen_at || 0));
 
             /* Per-platform mini stat card showing views, faves, subs with a coloured badge */
-            const platformCard = (badge, label, data) => `
-                <div class="stat-card">
+            const platformCard = (badge, label, data, route) => `
+                <a href="#/${route}" class="stat-card" style="text-decoration:none;color:inherit;cursor:pointer;transition:box-shadow 0.2s">
                     <div class="label">${badge} ${label}</div>
                     <div style="display:flex;gap:16px;margin-top:6px">
                         <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(data.total_views || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">views</span></div>
                         <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(data.total_favorites || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">faves</span></div>
                         <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(data.total_submissions || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">subs</span></div>
                     </div>
-                </div>`;
+                </a>`;
 
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
                     <h2>Overview</h2>
-                    <div style="display:flex;gap:8px">
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ib')" title="Export IB CSV">Export IB</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('fa')" title="Export FA CSV">Export FA</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ws')" title="Export WS CSV">Export WS</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('sf')" title="Export SF CSV">Export SF</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('sqw')" title="Export SqW CSV">Export SqW</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ao3')" title="Export AO3 CSV">Export AO3</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('da')" title="Export DA CSV">Export DA</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('wp')" title="Export WP CSV">Export WP</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ik')" title="Export IK CSV">Export IK</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('bsky')" title="Export BSKY CSV">Export BSKY</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('tw')" title="Export TW CSV">Export TW</button>
-                    </div>
                 </div>
 
                 <div class="stats-grid">
@@ -867,16 +854,16 @@ const App = {
                 </div>
 
                 <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-top:0">
-                    ${platformCard('<span class="platform-badge ib">IB</span>', 'Inkbunny', ib)}
-                    ${platformCard('<span class="platform-badge fa">FA</span>', 'FurAffinity', fa)}
-                    ${platformCard('<span class="platform-badge ws">WS</span>', 'Weasyl', ws)}
-                    ${platformCard('<span class="platform-badge sf">SF</span>', 'SoFurry', sf)}
-                    ${platformCard('<span class="platform-badge sqw">SqW</span>', 'SquidgeWorld', sqw)}
-                    ${platformCard('<span class="platform-badge ao3">AO3</span>', 'AO3', ao3)}
-                    ${platformCard('<span class="platform-badge da">\u{1F3A8} DA</span>', 'DeviantArt', da)}
-                    ${platformCard('<span class="platform-badge wp">\u{1F4D9} WP</span>', 'Wattpad', { total_views: wp.total_reads || wp.total_views || 0, total_favorites: wp.total_votes || wp.total_favorites || 0, total_submissions: wp.total_submissions || 0 })}
+                    ${platformCard('<span class="platform-badge ib">IB</span>', 'Inkbunny', ib, 'ib')}
+                    ${platformCard('<span class="platform-badge fa">FA</span>', 'FurAffinity', fa, 'fa')}
+                    ${platformCard('<span class="platform-badge ws">WS</span>', 'Weasyl', ws, 'ws')}
+                    ${platformCard('<span class="platform-badge sf">SF</span>', 'SoFurry', sf, 'sf')}
+                    ${platformCard('<span class="platform-badge sqw">SqW</span>', 'SquidgeWorld', sqw, 'sqw')}
+                    ${platformCard('<span class="platform-badge ao3">AO3</span>', 'AO3', ao3, 'ao3')}
+                    ${platformCard('<span class="platform-badge da">\u{1F3A8} DA</span>', 'DeviantArt', da, 'da')}
+                    ${platformCard('<span class="platform-badge wp">\u{1F4D9} WP</span>', 'Wattpad', { total_views: wp.total_reads || wp.total_views || 0, total_favorites: wp.total_votes || wp.total_favorites || 0, total_submissions: wp.total_submissions || 0 }, 'wp')}
                     ${ ik.total_submissions ? `
-                    <div class="stat-card">
+                    <a href="#/ik" class="stat-card" style="text-decoration:none;color:inherit;cursor:pointer;transition:box-shadow 0.2s">
                         <div class="label"><span class="platform-badge ik">\u{1F3AF} IK</span> Itaku</div>
                         <div style="display:flex;gap:16px;margin-top:6px">
                             <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(ik.total_likes || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">likes</span></div>
@@ -884,9 +871,9 @@ const App = {
                             <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(ik.total_reshares || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">reshares</span></div>
                             <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(ik.total_submissions || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">subs</span></div>
                         </div>
-                    </div>` : platformCard('<span class="platform-badge ik">\u{1F3AF} IK</span>', 'Itaku', ik) }
+                    </a>` : platformCard('<span class="platform-badge ik">\u{1F3AF} IK</span>', 'Itaku', ik, 'ik') }
                     ${ bsky.total_submissions ? `
-                    <div class="stat-card">
+                    <a href="#/bsky" class="stat-card" style="text-decoration:none;color:inherit;cursor:pointer;transition:box-shadow 0.2s">
                         <div class="label"><span class="platform-badge bsky">\u{1F98B} BSKY</span> Bluesky</div>
                         <div style="display:flex;gap:16px;margin-top:6px">
                             <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(bsky.total_likes || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">likes</span></div>
@@ -894,9 +881,9 @@ const App = {
                             <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(bsky.total_reposts || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">reposts</span></div>
                             <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(bsky.total_submissions || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">posts</span></div>
                         </div>
-                    </div>` : platformCard('<span class="platform-badge bsky">\u{1F98B} BSKY</span>', 'Bluesky', bsky) }
+                    </a>` : platformCard('<span class="platform-badge bsky">\u{1F98B} BSKY</span>', 'Bluesky', bsky, 'bsky') }
                     ${ tw.total_submissions ? `
-                    <div class="stat-card">
+                    <a href="#/tw" class="stat-card" style="text-decoration:none;color:inherit;cursor:pointer;transition:box-shadow 0.2s">
                         <div class="label"><span class="platform-badge tw">\u{1F426} TW</span> X/Twitter</div>
                         <div style="display:flex;gap:16px;margin-top:6px">
                             <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(tw.total_views || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">views</span></div>
@@ -904,7 +891,7 @@ const App = {
                             <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(tw.total_comments || tw.total_replies || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">replies</span></div>
                             <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(tw.total_submissions || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">tweets</span></div>
                         </div>
-                    </div>` : platformCard('<span class="platform-badge tw">\u{1F426} TW</span>', 'X/Twitter', tw) }
+                    </a>` : platformCard('<span class="platform-badge tw">\u{1F426} TW</span>', 'X/Twitter', tw, 'tw') }
                 </div>
 
                 ${(trending.trending || []).length > 0 ? `
@@ -5041,6 +5028,24 @@ const App = {
 
                 <!-- ═══ TAB: Data ═══ -->
                 <div class="settings-tab-content" data-tab-content="data" ${_settingsTab !== 'data' ? 'style="display:none"' : ''}>
+
+                <div class="settings-section">
+                    <h3>Export Data</h3>
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Download submission data as CSV files for each platform.</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ib')">Export IB</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('fa')">Export FA</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ws')">Export WS</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('sf')">Export SF</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('sqw')">Export SqW</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ao3')">Export AO3</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('da')">Export DA</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('wp')">Export WP</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ik')">Export IK</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('bsky')">Export BSKY</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('tw')">Export TW</button>
+                    </div>
+                </div>
 
                 <div class="settings-section">
                     <h3>Backup &amp; Restore</h3>
