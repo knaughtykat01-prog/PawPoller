@@ -410,4 +410,26 @@ const API = {
      * Best periods, fastest growing, weekly growth reports.
      */
     getHistoricalAnalytics(params) { return this.get('/api/analytics/historical', params); },
+    /* ── Dashboard Auth methods ─────────────────────────────────
+     * Self-hosted session auth: login, logout, setup, password change,
+     * TOTP 2FA, API keys, and Cloudflare Turnstile config.
+     * Separate from Inkbunny platform auth (authLogin/authLogout above).
+     */
+    getDashboardStatus() { return this.get('/api/auth/dashboard-status'); },
+    dashboardLogin(data) { return this.post('/api/auth/dashboard-login', data); },
+    dashboardSetup(data) { return this.post('/api/auth/dashboard-setup', data); },
+    dashboardLogout() { return this.post('/api/auth/dashboard-logout'); },
+    dashboardChangePassword(data) { return this.post('/api/auth/dashboard-change-password', data); },
+    totpSetup() { return this.post('/api/auth/totp-setup'); },
+    totpEnable(data) { return this.post('/api/auth/totp-enable', data); },
+    totpDisable(data) { return this.post('/api/auth/totp-disable', data); },
+    getApiKeys() { return this.get('/api/auth/api-keys'); },
+    createApiKey(data) { return this.post('/api/auth/api-keys', data); },
+    revokeApiKey(prefix) {
+        return fetch(`/api/auth/api-keys/${prefix}`, { method: 'DELETE' }).then(r => {
+            if (!r.ok) throw new Error(`Revoke failed: ${r.status}`);
+            return r.json();
+        });
+    },
+    saveTurnstileConfig(data) { return this.post('/api/auth/turnstile-config', data); },
 };

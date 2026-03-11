@@ -5,11 +5,7 @@ Usage:
     Open http://127.0.0.1:8420
 """
 
-import base64
-import binascii
 import logging
-import os
-import secrets
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -32,6 +28,7 @@ from routes.wp_api import wp_router
 from routes.ik_api import ik_router
 from routes.bsky_api import bsky_router
 from routes.tw_api import tw_router
+from routes.dashboard_auth import dashboard_auth_router
 
 # Logging
 logging.basicConfig(
@@ -49,6 +46,7 @@ logger = logging.getLogger("dashboard")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    config.migrate_dashboard_auth()
     logger.info("Dashboard started at http://%s:%d", config.DASHBOARD_HOST, config.DASHBOARD_PORT)
     yield
     logger.info("Dashboard shutting down")
@@ -91,49 +89,63 @@ async def global_exception_handler(request: Request, exc: Exception):
 #     img-src 'self' https:      : local proxy + platform CDN thumbnails
 #     connect-src 'self'         : all API calls are same-origin
 #     frame-ancestors 'none'     : no embedding allowed (supercedes X-Frame-Options)
+#   When Turnstile is configured, script-src and frame-src include cloudflare.
 
-_SECURITY_HEADERS = {
+_BASE_SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Content-Security-Policy": (
+}
+
+
+_cached_csp: str | None = None
+
+
+def _build_csp() -> str:
+    """Build Content-Security-Policy, adding Turnstile origins when configured.
+
+    Result is cached; call ``invalidate_csp_cache()`` when Turnstile config changes.
+    """
+    global _cached_csp
+    if _cached_csp is not None:
+        return _cached_csp
+    settings = config.get_settings()
+    has_turnstile = bool(settings.get("turnstile_site_key"))
+    cf = " https://challenges.cloudflare.com" if has_turnstile else ""
+    frame_src = f"frame-src 'self'{cf}; " if has_turnstile else ""
+    _cached_csp = (
         "default-src 'self'; "
-        "script-src 'self'; "
+        f"script-src 'self'{cf}; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' https:; "
         "connect-src 'self'; "
+        f"{frame_src}"
         "frame-ancestors 'none'"
-    ),
-}
+    )
+    return _cached_csp
+
+
+def invalidate_csp_cache() -> None:
+    """Clear the cached CSP so it's rebuilt on the next request."""
+    global _cached_csp
+    _cached_csp = None
 
 
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
-    for header, value in _SECURITY_HEADERS.items():
+    for header, value in _BASE_SECURITY_HEADERS.items():
         response.headers[header] = value
+    response.headers["Content-Security-Policy"] = _build_csp()
     return response
-
-
-# ── Optional Basic Auth for Server Deployments ─────────────────
-# When DASHBOARD_PASSWORD is set (via environment variable or settings.json),
-# all requests require HTTP Basic Auth. This protects server/Docker deployments
-# where the dashboard is exposed on 0.0.0.0. Desktop mode (127.0.0.1) typically
-# doesn't need this, so it's opt-in.
-
-def _get_dashboard_password() -> str:
-    """Resolve dashboard password from env or settings (checked on every request)."""
-    return os.environ.get("DASHBOARD_PASSWORD") or config.get_settings().get("dashboard_password") or ""
-
-
-def _get_dashboard_user() -> str:
-    return os.environ.get("DASHBOARD_USER", "admin")
 
 
 # ── Brute-Force Rate Limiting ─────────────────────────────────
 # Simple in-memory tracker: after 10 failed auth attempts from the same IP
 # within 5 minutes, all further requests from that IP get 429 Too Many Requests.
 # Single-process server so in-memory state is sufficient.  Clears on restart.
+# Used by both the session auth middleware below and the login endpoint in
+# routes/dashboard_auth.py (which imports _record_auth_failure / _is_rate_limited).
 _AUTH_FAIL_WINDOW = 300      # seconds (5 minutes)
 _AUTH_FAIL_MAX = 10          # max failures before lockout
 _auth_failures: dict[str, list[float]] = {}   # IP -> list of failure timestamps
@@ -144,7 +156,6 @@ def _record_auth_failure(ip: str) -> None:
     now = time.monotonic()
     attempts = _auth_failures.setdefault(ip, [])
     attempts.append(now)
-    # Prune entries older than the window
     cutoff = now - _AUTH_FAIL_WINDOW
     _auth_failures[ip] = [t for t in attempts if t > cutoff]
 
@@ -156,53 +167,73 @@ def _is_rate_limited(ip: str) -> bool:
         return False
     cutoff = time.monotonic() - _AUTH_FAIL_WINDOW
     recent = [t for t in attempts if t > cutoff]
-    _auth_failures[ip] = recent  # Lazy prune
+    if recent:
+        _auth_failures[ip] = recent
+    else:
+        _auth_failures.pop(ip, None)  # Free memory for expired IPs
     return len(recent) >= _AUTH_FAIL_MAX
 
 
+# ── Session-Based Dashboard Auth ──────────────────────────────
+# Replaces the old HTTP Basic Auth popup with session cookies.  When auth is
+# configured (bcrypt hash or legacy password exists), all API requests require
+# either a valid pp_session cookie or a Bearer API key.  Static assets (/, /css/*,
+# /js/*) are always exempt so the SPA can load and show its own login form.
+
+_AUTH_EXEMPT_PATHS = frozenset({
+    "/api/health",
+    "/api/auth/dashboard-status",
+    "/api/auth/dashboard-login",
+    "/api/auth/dashboard-setup",
+})
+_AUTH_EXEMPT_PREFIXES = ("/css/", "/js/")
+
+
 @app.middleware("http")
-async def basic_auth_middleware(request: Request, call_next):
-    password = _get_dashboard_password()
-    if not password:
+async def session_auth_middleware(request: Request, call_next):
+    # If no auth is configured, pass through everything
+    if not config.is_dashboard_auth_required():
         return await call_next(request)
 
-    # Exempt the health endpoint so Docker HEALTHCHECK works without credentials
-    if request.url.path == "/api/health":
+    path = request.url.path
+
+    # Let SPA load (index.html) and static assets through unconditionally
+    if path == "/" or path.startswith(_AUTH_EXEMPT_PREFIXES):
+        return await call_next(request)
+
+    # Exempt specific API paths (login, status, setup, health)
+    if path in _AUTH_EXEMPT_PATHS:
         return await call_next(request)
 
     client_ip = request.client.host if request.client else "unknown"
-
-    # Rate-limit check before processing credentials
     if _is_rate_limited(client_ip):
         return Response(status_code=429, content="Too many failed attempts. Try again later.")
 
-    user_expected = _get_dashboard_user()
-    auth = request.headers.get("Authorization")
-    if auth and auth.startswith("Basic "):
-        try:
-            decoded = base64.b64decode(auth[6:]).decode("utf-8")
-            user, passwd = decoded.split(":", 1)
-            user_ok = secrets.compare_digest(user, user_expected)
-            pass_ok = secrets.compare_digest(passwd, password)
-            if user_ok and pass_ok:
-                # Successful auth — clear any failure history for this IP
-                _auth_failures.pop(client_ip, None)
-                return await call_next(request)
-        except (ValueError, UnicodeDecodeError, binascii.Error):
-            pass  # Malformed auth header
+    # Check API key (Authorization: Bearer pp_xxx)
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        if config.validate_api_key(token):
+            return await call_next(request)
 
-    _record_auth_failure(client_ip)
-    return Response(
-        status_code=401,
-        content="Authentication required",
-        headers={"WWW-Authenticate": 'Basic realm="PawPoller"'},
-    )
+    # Check session cookie (verify_session handles short/long expiry internally)
+    cookie = request.cookies.get("pp_session")
+    if cookie:
+        payload = config.verify_session(cookie)
+        if payload:
+            return await call_next(request)
+
+    # Not authenticated — return 401 JSON for API paths so the frontend
+    # can detect it and redirect to the login page
+    return JSONResponse(status_code=401, content={"error": "Authentication required"})
+
 
 
 # Mount API routes BEFORE static file mounts. FastAPI/Starlette matches routes
 # in registration order, so API endpoints (e.g. /api/*, /fa/*, /ws/*) must be
 # registered first. If static file mounts were registered first, a request to
 # /api/stats could be misrouted to the static file handler and 404.
+app.include_router(dashboard_auth_router)  # Dashboard auth routes (/api/auth/dashboard-*)
 app.include_router(router)       # Core REST API routes (/api/*)
 app.include_router(fa_router)    # FurAffinity routes (/api/fa/*)
 app.include_router(ws_router)    # Weasyl routes (/api/ws/*)

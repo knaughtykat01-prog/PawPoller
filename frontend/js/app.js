@@ -95,7 +95,22 @@ const App = {
     async init() {
         /* Listen for hash changes so browser back/forward works */
         window.addEventListener('hashchange', () => this.route());
-        /* Auth gate — decide which screen the user should land on */
+        /* Dashboard auth gate — check if dashboard login is required BEFORE
+         * the Inkbunny auth check.  This is the outer auth layer. */
+        try {
+            const dashStatus = await API.getDashboardStatus();
+            this._dashboardAuthRequired = dashStatus.auth_required;
+            this._dashboardStatus = dashStatus;
+            if (dashStatus.auth_required && !dashStatus.authenticated) {
+                window.location.hash = '#/dashboard-login';
+                this.route();
+                return;  // Don't proceed with Inkbunny auth or status ticker
+            }
+        } catch (err) {
+            console.warn('[App] Dashboard status check failed:', err);
+        }
+
+        /* Inkbunny platform auth gate — decide which screen the user should land on */
         try {
             const auth = await API.getAuthStatus();
             if (!auth.has_credentials) {
@@ -172,12 +187,16 @@ const App = {
             });
         });
 
-        /* Logout button — fire-and-forget the API call, then redirect */
+        /* Logout button — clears dashboard session if dashboard auth is active,
+         * otherwise clears Inkbunny platform session */
         document.getElementById('logout-btn')?.addEventListener('click', async () => {
-            try {
-                await API.authLogout();
-            } catch { /* ignore */ }
-            this.navigate('/login');
+            if (this._dashboardAuthRequired) {
+                try { await API.dashboardLogout(); } catch { /* ignore */ }
+                this.navigate('/dashboard-login');
+            } else {
+                try { await API.authLogout(); } catch { /* ignore */ }
+                this.navigate('/login');
+            }
         });
 
         /* Theme toggle — restore saved theme from localStorage */
@@ -271,8 +290,9 @@ const App = {
         const hash = window.location.hash.slice(1) || '/';
         const parts = hash.split('/').filter(Boolean);
 
-        /* Full-screen pages (login, loading) hide the sidebar, bottom nav, and remove left margin */
-        const isFullScreen = parts[0] === 'login' || parts[0] === 'loading';
+        /* Full-screen pages hide the sidebar, bottom nav, and remove left margin */
+        const isFullScreen = parts[0] === 'login' || parts[0] === 'loading'
+            || parts[0] === 'dashboard-login' || parts[0] === 'dashboard-setup';
         const sidebar = document.querySelector('.sidebar');
         const main = document.getElementById('app');
         const bottomNav = document.getElementById('bottom-nav');
@@ -304,7 +324,11 @@ const App = {
         /* Destroy old Chart.js instances to free canvas memory */
         Charts.destroyAll();
 
-        if (parts[0] === 'login') {
+        if (parts[0] === 'dashboard-login') {
+            this.renderDashboardLogin();
+        } else if (parts[0] === 'dashboard-setup') {
+            this.renderDashboardSetup();
+        } else if (parts[0] === 'login') {
             this.renderLogin();
         } else if (parts[0] === 'loading') {
             this.renderLoading();
@@ -531,6 +555,204 @@ const App = {
         } catch (err) {
             container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger)">Failed to load polling data: ${Utils.escapeHtml(err.message)}</div>`;
         }
+    },
+
+    /* ── Dashboard Login Screen ───────────────────────────────
+     * renderDashboardLogin() — Full-screen login for the self-hosted dashboard
+     * auth system.  Shown when dashboard auth is configured (bcrypt hash exists)
+     * and the user has no valid session cookie.  Supports optional TOTP 2FA
+     * and Cloudflare Turnstile bot protection.  On success, the server sets a
+     * pp_session cookie and we re-init the app. */
+
+    async renderDashboardLogin() {
+        if (this._statusCheckInterval) {
+            clearInterval(this._statusCheckInterval);
+            this._statusCheckInterval = null;
+        }
+
+        // Use cached dashboard status from init(), fall back to fresh fetch
+        let totpEnabled = false, turnstileSiteKey = '';
+        try {
+            const status = this._dashboardStatus || await API.getDashboardStatus();
+            totpEnabled = status.totp_enabled;
+            turnstileSiteKey = status.turnstile_site_key || '';
+        } catch { /* proceed with defaults */ }
+
+        this._setContent(`
+            <div class="login-screen">
+                <div class="login-card">
+                    <h2>PawPoller</h2>
+                    <p style="color:var(--text-muted);margin-bottom:20px;font-size:13px">Sign in to access your dashboard.</p>
+                    <div class="login-field">
+                        <label>Username</label>
+                        <input type="text" id="dash-login-username" class="search-input" placeholder="Username" style="width:100%" autocomplete="username">
+                    </div>
+                    <div class="login-field">
+                        <label>Password</label>
+                        <input type="password" id="dash-login-password" class="search-input" placeholder="Password" style="width:100%" autocomplete="current-password">
+                    </div>
+                    ${totpEnabled ? `
+                    <div class="login-field">
+                        <label>2FA Code</label>
+                        <input type="text" id="dash-login-totp" class="search-input" placeholder="6-digit code" style="width:100%" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+                    </div>` : ''}
+                    <div id="dash-turnstile-container"></div>
+                    <label class="login-remember">
+                        <input type="checkbox" id="dash-login-remember" checked>
+                        <span>Remember me (30 days)</span>
+                    </label>
+                    <button class="btn btn-primary login-btn" id="dash-login-submit">Sign In</button>
+                    <div class="login-error" id="dash-login-error"></div>
+                </div>
+            </div>
+        `);
+
+        // Load Turnstile widget if configured
+        let turnstileWidgetId = null;
+        if (turnstileSiteKey) {
+            const container = document.getElementById('dash-turnstile-container');
+            container.style.cssText = 'margin:12px 0;display:flex;justify-content:center';
+            const tsUrl = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=_ppTurnstileReady';
+            window._ppTurnstileReady = () => {
+                turnstileWidgetId = window.turnstile.render('#dash-turnstile-container', {
+                    sitekey: turnstileSiteKey,
+                    theme: document.documentElement.dataset.theme || 'dark',
+                });
+            };
+            // Avoid injecting duplicate script tags on repeat visits
+            if (!document.querySelector(`script[src^="https://challenges.cloudflare.com/turnstile"]`)) {
+                const script = document.createElement('script');
+                script.src = tsUrl;
+                script.async = true;
+                document.head.appendChild(script);
+            } else if (window.turnstile) {
+                // Script already loaded — render widget directly
+                window._ppTurnstileReady();
+            }
+        }
+
+        const submit = async () => {
+            const btn = document.getElementById('dash-login-submit');
+            const errEl = document.getElementById('dash-login-error');
+            const username = document.getElementById('dash-login-username').value.trim();
+            const password = document.getElementById('dash-login-password').value;
+            const remember = document.getElementById('dash-login-remember').checked;
+            const totpCode = document.getElementById('dash-login-totp')?.value.trim() || '';
+
+            if (!username || !password) {
+                errEl.textContent = 'Username and password are required.';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Signing in...';
+            errEl.textContent = '';
+
+            const payload = { username, password, remember };
+            if (totpCode) payload.totp_code = totpCode;
+
+            // Get Turnstile token if widget is active
+            if (turnstileSiteKey && window.turnstile) {
+                try {
+                    payload.turnstile_token = window.turnstile.getResponse(turnstileWidgetId);
+                } catch { /* no token */ }
+            }
+
+            try {
+                await API.dashboardLogin(payload);
+                // Re-init the app — session cookie is now set
+                this.init();
+            } catch (err) {
+                let msg = err.message.replace(/^API \d+:\s*/, '');
+                try { msg = JSON.parse(msg).detail || msg; } catch {}
+                errEl.textContent = msg;
+                btn.textContent = 'Sign In';
+                btn.disabled = false;
+                // Reset Turnstile widget on failure
+                if (turnstileSiteKey && window.turnstile) {
+                    try { window.turnstile.reset(turnstileWidgetId); } catch {}
+                }
+            }
+        };
+
+        document.getElementById('dash-login-submit').addEventListener('click', submit);
+        document.getElementById('dash-login-password').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const totpInput = document.getElementById('dash-login-totp');
+                if (totpInput) totpInput.focus();
+                else submit();
+            }
+        });
+        document.getElementById('dash-login-totp')?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') submit();
+        });
+        document.getElementById('dash-login-username').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('dash-login-password').focus();
+        });
+        document.getElementById('dash-login-username').focus();
+    },
+
+    /* ── Dashboard Setup Screen ───────────────────────────────
+     * renderDashboardSetup() — First-time password setup for dashboard auth.
+     * Only accessible when no auth is configured.  Creates a new admin user
+     * with a bcrypt-hashed password.  Redirects to login on success. */
+
+    renderDashboardSetup() {
+        this._setContent(`
+            <div class="login-screen">
+                <div class="login-card">
+                    <h2>PawPoller Setup</h2>
+                    <p style="color:var(--text-muted);margin-bottom:20px;font-size:13px">Set up dashboard authentication. This is optional for desktop use.</p>
+                    <div class="login-field">
+                        <label>Username</label>
+                        <input type="text" id="setup-username" class="search-input" placeholder="admin" value="admin" style="width:100%">
+                    </div>
+                    <div class="login-field">
+                        <label>Password</label>
+                        <input type="password" id="setup-password" class="search-input" placeholder="Minimum 8 characters" style="width:100%">
+                    </div>
+                    <div class="login-field">
+                        <label>Confirm Password</label>
+                        <input type="password" id="setup-confirm" class="search-input" placeholder="Confirm password" style="width:100%">
+                    </div>
+                    <button class="btn btn-primary login-btn" id="setup-submit">Create Account</button>
+                    <div class="login-error" id="setup-error"></div>
+                </div>
+            </div>
+        `);
+
+        const submit = async () => {
+            const btn = document.getElementById('setup-submit');
+            const errEl = document.getElementById('setup-error');
+            const username = document.getElementById('setup-username').value.trim() || 'admin';
+            const password = document.getElementById('setup-password').value;
+            const confirm = document.getElementById('setup-confirm').value;
+
+            if (!password) { errEl.textContent = 'Password is required.'; return; }
+            if (password.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; return; }
+            if (password !== confirm) { errEl.textContent = 'Passwords do not match.'; return; }
+
+            btn.disabled = true;
+            btn.textContent = 'Creating...';
+            errEl.textContent = '';
+
+            try {
+                await API.dashboardSetup({ username, password, confirm });
+                this.navigate('/dashboard-login');
+            } catch (err) {
+                let msg = err.message.replace(/^API \d+:\s*/, '');
+                try { msg = JSON.parse(msg).detail || msg; } catch {}
+                errEl.textContent = msg;
+                btn.textContent = 'Create Account';
+                btn.disabled = false;
+            }
+        };
+
+        document.getElementById('setup-submit').addEventListener('click', submit);
+        document.getElementById('setup-confirm').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') submit();
+        });
+        document.getElementById('setup-username').focus();
     },
 
     /* ── Login Screen ──────────────────────────────────────────
@@ -4692,6 +4914,7 @@ const App = {
                     <button class="settings-tab ${_settingsTab === 'data' ? 'active' : ''}" data-stab="data">Data</button>
                     <button class="settings-tab ${_settingsTab === 'logs' ? 'active' : ''}" data-stab="logs">Logs</button>
                     <button class="settings-tab ${_settingsTab === 'about' ? 'active' : ''}" data-stab="about">About</button>
+                    <button class="settings-tab ${_settingsTab === 'security' ? 'active' : ''}" data-stab="security">Security</button>
                 </div>
 
                 <!-- ═══ TAB: General ═══ -->
@@ -5124,6 +5347,66 @@ const App = {
                 </div>`}
 
                 </div><!-- /tab:about -->
+
+                <!-- ═══ TAB: Security ═══ -->
+                <div class="settings-tab-content" data-tab-content="security" ${_settingsTab !== 'security' ? 'style="display:none"' : ''}>
+
+                <details class="settings-accordion" open>
+                    <summary>Change Password</summary>
+                    <div class="accordion-body">
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Current Password</label>
+                        <input type="password" id="sec-current-pw" class="search-input" placeholder="Current password" style="max-width:300px" autocomplete="current-password">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">New Password</label>
+                        <input type="password" id="sec-new-pw" class="search-input" placeholder="Minimum 8 characters" style="max-width:300px" autocomplete="new-password">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Confirm New Password</label>
+                        <input type="password" id="sec-confirm-pw" class="search-input" placeholder="Confirm password" style="max-width:300px" autocomplete="new-password">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
+                        <button class="btn btn-primary" id="sec-change-pw-btn">Update Password</button>
+                        <span id="sec-pw-msg" style="font-size:13px"></span>
+                    </div>
+                    </div>
+                </details>
+
+                <details class="settings-accordion">
+                    <summary>Two-Factor Authentication <span id="sec-totp-badge" class="summary-meta"></span></summary>
+                    <div class="accordion-body" id="sec-totp-body">
+                        <p style="color:var(--text-muted);font-size:13px">Loading 2FA status...</p>
+                    </div>
+                </details>
+
+                <details class="settings-accordion">
+                    <summary>API Keys</summary>
+                    <div class="accordion-body" id="sec-apikeys-body">
+                        <p style="color:var(--text-muted);font-size:13px">Loading API keys...</p>
+                    </div>
+                </details>
+
+                <details class="settings-accordion">
+                    <summary>Cloudflare Turnstile</summary>
+                    <div class="accordion-body">
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Add bot protection to the login page. Get keys from the <a href="https://dash.cloudflare.com" target="_blank" rel="noopener" style="color:var(--accent)">Cloudflare dashboard</a> &rarr; Turnstile.</p>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Site Key</label>
+                        <input type="text" id="sec-ts-sitekey" class="search-input" placeholder="0x..." style="max-width:400px">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Secret Key</label>
+                        <input type="password" id="sec-ts-secret" class="search-input" placeholder="0x..." style="max-width:400px">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
+                        <button class="btn btn-primary" id="sec-ts-save-btn">Save Turnstile Config</button>
+                        <span id="sec-ts-msg" style="font-size:13px"></span>
+                    </div>
+                    </div>
+                </details>
+
+                </div><!-- /tab:security -->
 
                 <!-- ═══ TAB: Telegram ═══ -->
                 <div class="settings-tab-content" data-tab-content="telegram" ${_settingsTab !== 'telegram' ? 'style="display:none"' : ''}>
@@ -7167,8 +7450,284 @@ const App = {
                     }
                 });
             }
+
+            // ── Security tab event handlers ──────────────────────────
+
+            // Change Password
+            document.getElementById('sec-change-pw-btn')?.addEventListener('click', async () => {
+                const btn = document.getElementById('sec-change-pw-btn');
+                const msg = document.getElementById('sec-pw-msg');
+                const current = document.getElementById('sec-current-pw').value;
+                const newPw = document.getElementById('sec-new-pw').value;
+                const confirm = document.getElementById('sec-confirm-pw').value;
+                if (!current || !newPw) { msg.textContent = 'All fields are required.'; msg.style.color = 'var(--danger)'; return; }
+                btn.disabled = true;
+                msg.textContent = '';
+                try {
+                    await API.dashboardChangePassword({ current_password: current, new_password: newPw, confirm });
+                    msg.textContent = 'Password updated.';
+                    msg.style.color = 'var(--success)';
+                    document.getElementById('sec-current-pw').value = '';
+                    document.getElementById('sec-new-pw').value = '';
+                    document.getElementById('sec-confirm-pw').value = '';
+                } catch (err) {
+                    let m = err.message.replace(/^API \d+:\s*/, '');
+                    try { m = JSON.parse(m).detail || m; } catch {}
+                    msg.textContent = m;
+                    msg.style.color = 'var(--danger)';
+                }
+                btn.disabled = false;
+            });
+
+            // TOTP 2FA — load status and render appropriate UI
+            this._loadTotpSection();
+
+            // API Keys — load and render
+            this._loadApiKeysSection();
+
+            // Turnstile config — populate from settings
+            (async () => {
+                try {
+                    const ds = await API.getDashboardStatus();
+                    const siteKeyEl = document.getElementById('sec-ts-sitekey');
+                    if (siteKeyEl && ds.turnstile_site_key) siteKeyEl.value = ds.turnstile_site_key;
+                } catch {}
+            })();
+
+            document.getElementById('sec-ts-save-btn')?.addEventListener('click', async () => {
+                const btn = document.getElementById('sec-ts-save-btn');
+                const msg = document.getElementById('sec-ts-msg');
+                const siteKey = document.getElementById('sec-ts-sitekey').value.trim();
+                const secretKey = document.getElementById('sec-ts-secret').value.trim();
+                btn.disabled = true;
+                msg.textContent = '';
+                try {
+                    const result = await API.saveTurnstileConfig({ site_key: siteKey, secret_key: secretKey });
+                    msg.textContent = result.message;
+                    msg.style.color = 'var(--success)';
+                } catch (err) {
+                    let m = err.message.replace(/^API \d+:\s*/, '');
+                    try { m = JSON.parse(m).detail || m; } catch {}
+                    msg.textContent = m;
+                    msg.style.color = 'var(--danger)';
+                }
+                btn.disabled = false;
+            });
+
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    /* ── Security Tab Helpers ─────────────────────────────────
+     * Lazy-loaded sections for TOTP and API keys within the Security tab. */
+
+    async _loadTotpSection() {
+        const body = document.getElementById('sec-totp-body');
+        const badge = document.getElementById('sec-totp-badge');
+        if (!body) return;
+
+        try {
+            const status = await API.getDashboardStatus();
+            const enabled = status.totp_enabled;
+            if (badge) badge.textContent = enabled ? '-- Enabled' : '-- Disabled';
+
+            if (enabled) {
+                body.innerHTML = `
+                    <p style="color:var(--success);font-size:13px;margin-bottom:12px">Two-factor authentication is <strong>enabled</strong>.</p>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">To disable, enter your password and a current 2FA code.</p>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
+                        <input type="password" id="totp-disable-pw" class="search-input" placeholder="Password" style="max-width:300px">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
+                        <input type="text" id="totp-disable-code" class="search-input" placeholder="6-digit code" style="max-width:200px" inputmode="numeric" maxlength="6">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
+                        <button class="btn btn-danger" id="totp-disable-btn">Disable 2FA</button>
+                        <span id="totp-msg" style="font-size:13px"></span>
+                    </div>
+                `;
+                document.getElementById('totp-disable-btn')?.addEventListener('click', async () => {
+                    const btn = document.getElementById('totp-disable-btn');
+                    const msg = document.getElementById('totp-msg');
+                    const password = document.getElementById('totp-disable-pw').value;
+                    const code = document.getElementById('totp-disable-code').value.trim();
+                    if (!password || !code) { msg.textContent = 'Both fields required.'; msg.style.color = 'var(--danger)'; return; }
+                    btn.disabled = true;
+                    try {
+                        await API.totpDisable({ password, code });
+                        msg.textContent = '2FA disabled.';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this._loadTotpSection(), 1000);
+                    } catch (err) {
+                        let m = err.message.replace(/^API \d+:\s*/, '');
+                        try { m = JSON.parse(m).detail || m; } catch {}
+                        msg.textContent = m;
+                        msg.style.color = 'var(--danger)';
+                        btn.disabled = false;
+                    }
+                });
+            } else {
+                body.innerHTML = `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Add an extra layer of security with a TOTP authenticator app (Google Authenticator, Authy, etc).</p>
+                    <button class="btn btn-primary" id="totp-setup-btn">Set Up 2FA</button>
+                    <div id="totp-setup-area" style="display:none;margin-top:16px">
+                        <p style="color:var(--text-muted);font-size:13px">Scan this QR code with your authenticator app, then enter the 6-digit code to verify:</p>
+                        <div id="totp-qr" style="margin:16px 0;text-align:center"></div>
+                        <div style="margin:8px 0">
+                            <label style="font-size:12px;color:var(--text-muted)">Manual entry key:</label>
+                            <code id="totp-secret" style="display:block;margin-top:4px;font-size:13px;word-break:break-all;color:var(--text-primary)"></code>
+                        </div>
+                        <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:12px">
+                            <input type="text" id="totp-verify-code" class="search-input" placeholder="6-digit code" style="max-width:200px" inputmode="numeric" maxlength="6">
+                        </div>
+                        <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
+                            <button class="btn btn-success" id="totp-verify-btn">Verify & Enable</button>
+                            <span id="totp-msg" style="font-size:13px"></span>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('totp-setup-btn')?.addEventListener('click', async () => {
+                    const btn = document.getElementById('totp-setup-btn');
+                    btn.disabled = true;
+                    btn.textContent = 'Generating...';
+                    try {
+                        const result = await API.totpSetup();
+                        document.getElementById('totp-setup-area').style.display = 'block';
+                        document.getElementById('totp-secret').textContent = result.secret;
+                        btn.style.display = 'none';
+
+                        // Generate QR code using simple text representation
+                        const qrDiv = document.getElementById('totp-qr');
+                        if (window.QRCode) {
+                            new window.QRCode(qrDiv, { text: result.uri, width: 200, height: 200, colorDark: '#ffffff', colorLight: '#1a1a2e' });
+                        } else {
+                            // Fallback: show the URI as copyable text
+                            qrDiv.innerHTML = `<p style="font-size:12px;color:var(--text-muted)">QR library not loaded. Copy the manual key above into your authenticator app.</p>`;
+                        }
+                    } catch (err) {
+                        btn.textContent = 'Set Up 2FA';
+                        btn.disabled = false;
+                    }
+                });
+
+                // Delegate verify button (created dynamically)
+                body.addEventListener('click', async (e) => {
+                    if (!e.target.matches('#totp-verify-btn')) return;
+                    const btn = e.target;
+                    const msg = document.getElementById('totp-msg');
+                    const code = document.getElementById('totp-verify-code').value.trim();
+                    if (!code) { msg.textContent = 'Enter the 6-digit code.'; msg.style.color = 'var(--danger)'; return; }
+                    btn.disabled = true;
+                    try {
+                        await API.totpEnable({ code });
+                        msg.textContent = '2FA enabled!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this._loadTotpSection(), 1000);
+                    } catch (err) {
+                        let m = err.message.replace(/^API \d+:\s*/, '');
+                        try { m = JSON.parse(m).detail || m; } catch {}
+                        msg.textContent = m;
+                        msg.style.color = 'var(--danger)';
+                        btn.disabled = false;
+                    }
+                });
+            }
+        } catch (err) {
+            body.innerHTML = `<p style="color:var(--danger);font-size:13px">Failed to load 2FA status.</p>`;
+        }
+    },
+
+    async _loadApiKeysSection() {
+        const body = document.getElementById('sec-apikeys-body');
+        if (!body) return;
+
+        try {
+            const data = await API.getApiKeys();
+            const keys = data.keys || [];
+
+            let html = `
+                <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">API keys allow programmatic access (e.g. from scripts or Claude). Keys are shown once on creation.</p>
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+                    <input type="text" id="apikey-name" class="search-input" placeholder="Key name (e.g. 'Claude', 'Curl')" style="max-width:250px">
+                    <button class="btn btn-primary" id="apikey-create-btn">Generate Key</button>
+                </div>
+                <div id="apikey-created-area" style="display:none;margin-bottom:16px;padding:12px;background:var(--bg-primary);border-radius:8px;border:1px solid var(--success)">
+                    <p style="font-size:13px;color:var(--success);margin-bottom:8px"><strong>Key created!</strong> Copy it now — it won't be shown again.</p>
+                    <code id="apikey-created-value" style="display:block;font-size:13px;word-break:break-all;color:var(--text-primary);user-select:all"></code>
+                    <button class="btn btn-secondary" id="apikey-copy-btn" style="margin-top:8px;padding:4px 12px;font-size:12px">Copy</button>
+                </div>
+            `;
+
+            if (keys.length > 0) {
+                html += `<table class="submissions-table" style="width:100%;font-size:13px">
+                    <thead><tr><th>Name</th><th>Prefix</th><th>Created</th><th></th></tr></thead>
+                    <tbody>`;
+                for (const k of keys) {
+                    html += `<tr>
+                        <td>${Utils.escapeHtml(k.name)}</td>
+                        <td><code>${Utils.escapeHtml(k.prefix)}...</code></td>
+                        <td>${k.created ? new Date(k.created).toLocaleDateString() : '—'}</td>
+                        <td><button class="btn btn-danger" data-revoke-prefix="${Utils.escapeHtml(k.prefix)}" style="padding:2px 10px;font-size:12px">Revoke</button></td>
+                    </tr>`;
+                }
+                html += `</tbody></table>`;
+            } else {
+                html += `<p style="color:var(--text-muted);font-size:13px">No API keys configured.</p>`;
+            }
+
+            body.innerHTML = html;
+
+            // Create key
+            document.getElementById('apikey-create-btn')?.addEventListener('click', async () => {
+                const btn = document.getElementById('apikey-create-btn');
+                const name = document.getElementById('apikey-name').value.trim();
+                if (!name) { alert('Key name is required.'); return; }
+                btn.disabled = true;
+                try {
+                    const result = await API.createApiKey({ name });
+                    const area = document.getElementById('apikey-created-area');
+                    area.style.display = 'block';
+                    document.getElementById('apikey-created-value').textContent = result.key;
+                    document.getElementById('apikey-name').value = '';
+                    // Refresh the table
+                    setTimeout(() => this._loadApiKeysSection(), 500);
+                } catch (err) {
+                    alert('Failed to create key: ' + err.message);
+                }
+                btn.disabled = false;
+            });
+
+            // Copy button
+            body.addEventListener('click', (e) => {
+                if (e.target.matches('#apikey-copy-btn')) {
+                    const val = document.getElementById('apikey-created-value')?.textContent;
+                    if (val) {
+                        navigator.clipboard.writeText(val).then(() => {
+                            e.target.textContent = 'Copied!';
+                            setTimeout(() => { e.target.textContent = 'Copy'; }, 2000);
+                        });
+                    }
+                }
+            });
+
+            // Revoke buttons
+            body.querySelectorAll('[data-revoke-prefix]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const prefix = btn.dataset.revokePrefix;
+                    if (!confirm(`Revoke API key ${prefix}...? This cannot be undone.`)) return;
+                    btn.disabled = true;
+                    try {
+                        await API.revokeApiKey(prefix);
+                        this._loadApiKeysSection();
+                    } catch (err) {
+                        alert('Failed to revoke: ' + err.message);
+                        btn.disabled = false;
+                    }
+                });
+            });
+        } catch (err) {
+            body.innerHTML = `<p style="color:var(--danger);font-size:13px">Failed to load API keys.</p>`;
         }
     },
 

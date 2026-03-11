@@ -101,6 +101,9 @@ def _seed_settings_from_env():
                      len(updates), ", ".join(updates.keys()))
 
 
+# ── Auth Migration ────────────────────────────────────────────
+
+
 # ── Poller threads ────────────────────────────────────────────
 # Identical async-loop-per-thread pattern from main.py.
 
@@ -629,6 +632,9 @@ def main():
 
     # Step 2: Seed credentials from environment variables
     _seed_settings_from_env()
+
+    # Step 2b: Migrate legacy plaintext password to bcrypt hash
+    config.migrate_dashboard_auth()
 
     # Step 3: Launch daemon threads
     threads = [

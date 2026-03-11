@@ -11,9 +11,11 @@ supported:
 
 from pathlib import Path
 from dotenv import load_dotenv
+import hashlib
 import json
 import logging
 import os
+import secrets
 import stat
 import sys
 import threading
@@ -288,6 +290,169 @@ DASHBOARD_PORT = 8420          # Arbitrary high port unlikely to conflict
 VIEWS_OFFSET = 301
 FAVORITES_OFFSET = 0
 COMMENTS_OFFSET = 0
+
+
+# ── Dashboard Auth Helpers ────────────────────────────────────
+# Bcrypt password hashing, session cookie signing, and API key validation
+# for the self-hosted dashboard authentication system.  These are used by
+# routes/dashboard_auth.py and the session middleware in dashboard.py.
+
+def hash_password(password: str) -> str:
+    """Hash a password with bcrypt.  Returns the hash as a UTF-8 string."""
+    import bcrypt
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Check a plaintext password against a bcrypt hash."""
+    import bcrypt
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
+
+
+_session_secret_cache: str | None = None
+
+
+def get_or_create_session_secret() -> str:
+    """Return the session signing secret, creating one on first call.
+
+    The secret is a 32-byte hex string stored in settings.json.  It is
+    generated once and reused across restarts so that existing session
+    cookies remain valid.  Regenerating it would log out all users.
+    Cached in memory since it never changes after creation.
+    """
+    global _session_secret_cache
+    if _session_secret_cache is not None:
+        return _session_secret_cache
+    settings = get_settings()
+    secret = settings.get("auth_session_secret")
+    if not secret:
+        secret = secrets.token_hex(32)
+        save_settings({"auth_session_secret": secret})
+    _session_secret_cache = secret
+    return secret
+
+
+_SESSION_MAX_AGE_SHORT = 86400        # 24 hours (default)
+_SESSION_MAX_AGE_LONG = 30 * 86400   # 30 days ("remember me")
+
+
+def sign_session(payload: dict) -> str:
+    """Sign a session payload and return the cookie value.
+
+    The payload should include a ``"r": True`` flag for "remember me"
+    sessions so verify_session() can apply the correct max_age.
+    """
+    from itsdangerous import URLSafeTimedSerializer
+    s = URLSafeTimedSerializer(get_or_create_session_secret())
+    return s.dumps(payload)
+
+
+def verify_session(cookie: str) -> dict | None:
+    """Verify a signed session cookie.  Returns the payload dict or None.
+
+    Tries the short max_age first, then the long max_age.  The ``"r"``
+    (remember) flag in the payload determines which expiry applies:
+    sessions without ``"r": True`` expire after 24 hours; sessions with
+    it expire after 30 days.
+    """
+    from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+    s = URLSafeTimedSerializer(get_or_create_session_secret())
+    # First try with the long max_age (universal upper bound)
+    try:
+        payload = s.loads(cookie, max_age=_SESSION_MAX_AGE_LONG)
+    except (BadSignature, SignatureExpired):
+        return None
+    # If not a "remember me" session, enforce the short max_age
+    if not payload.get("r"):
+        try:
+            s.loads(cookie, max_age=_SESSION_MAX_AGE_SHORT)
+        except SignatureExpired:
+            return None
+        except BadSignature:
+            return None
+    return payload
+
+
+_auth_required_cache: bool | None = None
+
+
+def is_dashboard_auth_required() -> bool:
+    """Return True if dashboard authentication is configured.
+
+    Auth is required when either:
+      - A bcrypt password hash exists (new system), or
+      - A legacy plaintext dashboard_password is set (pre-migration)
+
+    Result is cached; call ``invalidate_auth_required_cache()`` after
+    dashboard-setup or migration changes the auth state.
+    """
+    global _auth_required_cache
+    if _auth_required_cache is not None:
+        return _auth_required_cache
+    settings = get_settings()
+    if settings.get("auth_password_hash"):
+        _auth_required_cache = True
+        return True
+    if settings.get("dashboard_password"):
+        _auth_required_cache = True
+        return True
+    if os.environ.get("DASHBOARD_PASSWORD"):
+        _auth_required_cache = True
+        return True
+    _auth_required_cache = False
+    return False
+
+
+def invalidate_auth_required_cache() -> None:
+    """Clear the cached auth-required flag so it's re-evaluated."""
+    global _auth_required_cache
+    _auth_required_cache = None
+
+
+def validate_api_key(key: str) -> bool:
+    """Check an API key against stored SHA-256 hashes in settings.json.
+
+    API keys are stored as a list of {hash, name, prefix, created} dicts.
+    The key format is ``pp_`` + 48 hex chars.  We hash the full key with
+    SHA-256 and compare against stored hashes.  SHA-256 is sufficient here
+    because API keys are high-entropy random tokens (not user passwords).
+    """
+    if not key or not key.startswith("pp_"):
+        return False
+    key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    settings = get_settings()
+    api_keys = settings.get("auth_api_keys", [])
+    return any(k.get("hash") == key_hash for k in api_keys)
+
+
+def migrate_dashboard_auth() -> None:
+    """Hash legacy plaintext dashboard_password to bcrypt if not already migrated.
+
+    Called on startup from both server.py (headless) and dashboard.py (desktop).
+    Safe to call multiple times — no-ops if already migrated or no auth configured.
+    """
+    settings = get_settings()
+    if settings.get("auth_password_hash"):
+        return  # Already migrated
+
+    legacy_pw = settings.get("dashboard_password") or os.environ.get("DASHBOARD_PASSWORD", "")
+    if not legacy_pw:
+        return  # No auth configured
+
+    legacy_user = settings.get("dashboard_user") or os.environ.get("DASHBOARD_USER", "admin")
+    hashed = hash_password(legacy_pw)
+    save_settings({
+        "auth_username": legacy_user,
+        "auth_password_hash": hashed,
+    })
+    # Remove plaintext password from settings (env var remains but is ignored
+    # once the hash exists)
+    delete_settings_keys(["dashboard_password", "dashboard_user"])
+    invalidate_auth_required_cache()
+    logger.info("Migrated dashboard password to bcrypt hash for user '%s'", legacy_user)
 
 
 # ── Run-on-startup (Windows registry) ────────────────────────

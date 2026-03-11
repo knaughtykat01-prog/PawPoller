@@ -95,7 +95,7 @@ PawPoller/
 ├── server.py                # Headless entry point (Docker / server)
 ├── poll_service.py          # Legacy/alternative (APScheduler, --once, --status)
 ├── config.py                # Paths, credentials, settings.json helpers
-├── dashboard.py             # FastAPI app factory, auth + rate limiting + security headers, SPA serving
+├── dashboard.py             # FastAPI app factory, session auth middleware, rate limiting, security headers, SPA serving
 ├── updater.py               # Auto-update (desktop only)
 ├── test_sf_proxy.py         # SoFurry proxy diagnostic tool
 ├── test_sf_direct.py        # SoFurry direct login + cookie persistence test
@@ -177,7 +177,8 @@ PawPoller/
 │   ├── wp_api.py            # Wattpad API endpoints
 │   ├── ik_api.py            # Itaku API endpoints
 │   ├── bsky_api.py          # Bluesky API endpoints
-│   └── tw_api.py            # X/Twitter API endpoints
+│   ├── tw_api.py            # X/Twitter API endpoints
+│   └── dashboard_auth.py    # Dashboard auth endpoints (login, 2FA, API keys, Turnstile)
 │
 ├── frontend/
 │   ├── index.html           # SPA shell (collapsible nav groups, bottom nav bar, sidebar overlay)
@@ -191,7 +192,7 @@ PawPoller/
 │       ├── components.js    # UI components (~25: tables with mobile card transformation, cards, charts, modals)
 │       ├── charts.js        # Chart.js time-series and comparison chart factories
 │       ├── utils.js         # Formatting helpers (numbers, dates, relative time)
-│       └── vendor/          # Third-party libraries (Chart.js)
+│       └── vendor/          # Third-party libraries (Chart.js, QRCode.js)
 │
 ├── deploy/
 │   ├── cf-worker.js         # Cloudflare Worker proxy (3 modes: normal, chain, login)
@@ -205,7 +206,7 @@ PawPoller/
 ├── docker-compose.yml       # Single service, 2 named volumes, .env file
 ├── .env.example             # 25+ environment variable template
 ├── requirements.txt         # Desktop dependencies (pywebview, pystray, Pillow, winotify, etc.)
-├── requirements-server.txt  # Headless/Docker dependencies (no GUI)
+├── requirements-server.txt  # Headless/Docker dependencies (no GUI): fastapi, uvicorn, httpx, bcrypt, pyotp, itsdangerous
 ├── inkbunny_analytics.spec  # PyInstaller build spec
 ├── build.bat                # Windows build script
 ├── settings.json            # Runtime user settings (gitignored)
@@ -1472,27 +1473,86 @@ Platform-specific extras:
 
 Poll interval values outside the allowed set {15, 30, 60, 120, 240} are silently rejected. All other fields are individually optional — only keys present in the request body are updated.
 
-### Authentication Middleware
+### Dashboard Authentication
 
-Optional HTTP Basic Auth for server deployments (`dashboard.py`):
+Self-hosted session-based auth system (`dashboard.py` + `routes/dashboard_auth.py`). Replaces the old HTTP Basic Auth popup with proper login forms, session cookies, optional 2FA, API keys, and bot protection.
 
-```python
-@app.middleware("http")
-async def basic_auth_middleware(request, call_next):
-    password = _get_dashboard_password()  # From env or settings.json
-    if not password:
-        return await call_next(request)   # No password = no auth required
-    # Rate-limit check: 10 failures in 5 min from same IP → 429
-    if _is_rate_limited(client_ip):
-        return Response(status_code=429, ...)
-    # Decode Basic auth header, compare with secrets.compare_digest()
-    # On success: clear failure history for this IP
-    # On failure: record attempt, return 401 with WWW-Authenticate header
+**Two separate auth systems** — do not confuse:
+- **Dashboard auth** (this section): Controls who can access PawPoller itself. Session cookies + API keys.
+- **Platform auth** (`routes/api.py` `/api/auth/*`): Validates Inkbunny credentials for polling. Unchanged.
+
+**Auth flow**:
+1. SPA loads (/, /css/*, /js/* exempt from auth)
+2. `App.init()` calls `GET /api/auth/dashboard-status` (exempt)
+3. If `auth_required && !authenticated` → show `#/dashboard-login`
+4. User submits credentials → `POST /api/auth/dashboard-login`
+5. Server validates bcrypt hash + optional TOTP + optional Turnstile
+6. Success → `pp_session` cookie set → app re-initializes
+
+**Session cookies**:
+- Signed with `itsdangerous.URLSafeTimedSerializer` using a server-side secret
+- Payload: `{"u": username}` (minimal — single user, no roles)
+- Cookie: `pp_session`, httponly, samesite=Strict, secure when HTTPS
+- Max age: 24h default, 30 days with "remember me"
+- Secret auto-generated (32-byte hex) on first use, stored in settings.json
+
+**API keys** for programmatic access (scripts, Claude, curl):
+- Format: `pp_` + 48 hex chars = 51 chars total
+- Storage: SHA-256 hash in settings.json (fast lookup, secure for random tokens)
+- Usage: `Authorization: Bearer pp_xxx` header
+- Managed via Settings > Security > API Keys
+
+**Optional TOTP 2FA** (`pyotp`):
+- Standard TOTP with 30-second windows, ±1 window tolerance
+- QR code generated client-side via `qrcode.min.js` vendor lib
+- Enable flow: `/totp-setup` → show QR → `/totp-enable` with verification code
+- Disable requires both password and valid TOTP code
+
+**Optional Cloudflare Turnstile** bot protection:
+- Site key + secret key configured in Settings > Security > Turnstile
+- Widget loaded on login form when configured
+- Server-side token verification via Cloudflare API
+- CSP automatically updated to allow `challenges.cloudflare.com`
+
+**Middleware** (`session_auth_middleware`):
+```
+1. If no auth configured (no hash + no legacy password) → pass through
+2. If path is / or /css/* or /js/* → pass through (let SPA load)
+3. If path in exempt set (health, dashboard-status, login, setup) → pass through
+4. If rate limited → 429
+5. If Authorization: Bearer pp_xxx → validate API key hash
+6. If pp_session cookie → validate signed cookie + max_age
+7. Otherwise → 401 JSON
 ```
 
-- Uses `secrets.compare_digest()` for constant-time comparison (prevents timing attacks)
-- Dashboard user defaults to `"admin"` but is configurable via `DASHBOARD_USER` env var
-- **Brute-force protection**: In-memory rate limiter tracks failed attempts per client IP. After 10 failures within a 5-minute window, all further requests from that IP receive HTTP 429. Clears on successful auth. Resets on container restart.
+**Migration**: On first startup after upgrade, `_migrate_dashboard_auth()` runs:
+- If `auth_password_hash` exists → skip (already migrated)
+- If `dashboard_password` in settings or `DASHBOARD_PASSWORD` env → hash with bcrypt → save as `auth_password_hash` → delete plaintext
+- Same migration in both `server.py` (headless) and `dashboard.py` (desktop)
+
+**Dashboard auth API endpoints** (`routes/dashboard_auth.py`):
+| Method | Path | Auth Exempt | Purpose |
+|--------|------|:-----------:|---------|
+| GET | `/api/auth/dashboard-status` | Yes | Auth state (required, authenticated, totp, turnstile key) |
+| POST | `/api/auth/dashboard-login` | Yes | Validate creds, set session cookie |
+| POST | `/api/auth/dashboard-setup` | Yes* | First-time password setup (*only when no hash exists) |
+| POST | `/api/auth/dashboard-logout` | No | Clear session cookie |
+| POST | `/api/auth/dashboard-change-password` | No | Current + new password |
+| POST | `/api/auth/totp-setup` | No | Generate TOTP secret + otpauth URI |
+| POST | `/api/auth/totp-enable` | No | Verify code, activate 2FA |
+| POST | `/api/auth/totp-disable` | No | Requires password + TOTP code |
+| GET | `/api/auth/api-keys` | No | List keys (prefix + name only) |
+| POST | `/api/auth/api-keys` | No | Generate new key (returns full key once) |
+| DELETE | `/api/auth/api-keys/{prefix}` | No | Revoke a key |
+| POST | `/api/auth/turnstile-config` | No | Save Turnstile site key + secret key |
+
+**Brute-force protection**: In-memory rate limiter tracks failed attempts per client IP. After 10 failures within a 5-minute window, all further requests from that IP receive HTTP 429. Clears on successful auth. Resets on container restart. Shared between middleware and login endpoint.
+
+**Programmatic access with API keys** (replaces old Basic Auth curl commands):
+```bash
+# Generate a key in Settings > Security > API Keys, then:
+curl -H "Authorization: Bearer pp_xxxx..." http://localhost:8420/api/status
+```
 
 ### Security Hardening
 
@@ -1506,7 +1566,7 @@ The following security measures are applied in `dashboard.py` and across the cod
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | Limit referrer leakage |
 | `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https:; connect-src 'self'; frame-ancestors 'none'` | Restrict resource loading |
 
-CSP rationale: All JS loaded via `<script src=...>` (zero inline scripts). Inline `style=` attributes require `'unsafe-inline'`. Platform CDN thumbnails need `https:`. All API calls are same-origin.
+CSP rationale: All JS loaded via `<script src=...>` (zero inline scripts). Inline `style=` attributes require `'unsafe-inline'`. Platform CDN thumbnails need `https:`. All API calls are same-origin. When Cloudflare Turnstile is configured, `script-src` and `frame-src` automatically include `https://challenges.cloudflare.com`.
 
 **CORS** — Configured via FastAPI `CORSMiddleware` with `allow_origins=[]` (no cross-origin requests). The SPA and API are same-origin, so no legitimate cross-origin requests should occur.
 
