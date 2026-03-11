@@ -6041,10 +6041,24 @@ const App = {
             document.getElementById('poll-now-btn').addEventListener('click', async (e) => {
                 const btn = e.target;
                 btn.disabled = true;
-                btn.textContent = 'Polling...';
+                btn.textContent = 'Polling all...';
                 try {
-                    await API.triggerPoll();
-                    btn.textContent = 'Done!';
+                    // Trigger IB + all connected platforms in parallel
+                    const triggers = [API.triggerPoll()];
+                    const auth = this._pollingAuth || {};
+                    if (auth.faAuth?.has_cookies) triggers.push(API.triggerFAPoll());
+                    if (auth.wsAuth?.has_key) triggers.push(API.triggerWSPoll());
+                    if (auth.sfAuth?.has_credentials) triggers.push(API.triggerSFPoll());
+                    if (auth.sqwAuth?.has_credentials) triggers.push(API.triggerSQWPoll());
+                    if (auth.ao3Auth?.has_credentials) triggers.push(API.triggerAO3Poll());
+                    if (auth.daAuth?.has_credentials) triggers.push(API.triggerDAPoll());
+                    if (auth.wpAuth?.has_credentials) triggers.push(API.triggerWPPoll());
+                    if (auth.ikAuth?.has_credentials) triggers.push(API.triggerIKPoll());
+                    if (auth.bskyAuth?.has_credentials) triggers.push(API.triggerBSKYPoll());
+                    if (auth.twAuth?.has_credentials) triggers.push(API.triggerTWPoll());
+                    const results = await Promise.allSettled(triggers);
+                    const failed = results.filter(r => r.status === 'rejected');
+                    btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';
                     setTimeout(() => this.renderSettings(), 1500);
                 } catch (err) {
                     btn.textContent = 'Error';
@@ -6053,17 +6067,29 @@ const App = {
                 }
             });
 
-            // Full Resync: re-scrapes all faves and comments for every IB submission.
+            // Full Resync: re-scrapes all data for every submission across all platforms.
             // Confirms with the user first since this is a long operation.
             document.getElementById('full-resync-btn').addEventListener('click', async (e) => {
                 const btn = e.target;
-                if (!confirm('Full resync will re-scrape all faves and comments for every submission. This may take a while. Continue?')) return;
+                if (!confirm('Full resync will re-scrape all data for every submission across all connected platforms. This may take a while. Continue?')) return;
                 btn.disabled = true;
-                btn.textContent = 'Syncing...';
+                btn.textContent = 'Syncing all...';
                 try {
-                    const result = await API.fullResync();
-                    btn.textContent = 'Done!';
-                    alert(`Resync complete: ${result.stats.new_faves_found} new faves, ${result.stats.new_comments_found} new comments`);
+                    const resyncs = [API.fullResync()];
+                    const auth = this._pollingAuth || {};
+                    if (auth.faAuth?.has_cookies) resyncs.push(API.fullFAResync());
+                    if (auth.wsAuth?.has_key) resyncs.push(API.fullWSResync());
+                    if (auth.sfAuth?.has_credentials) resyncs.push(API.fullSFResync());
+                    if (auth.sqwAuth?.has_credentials) resyncs.push(API.fullSQWResync());
+                    if (auth.ao3Auth?.has_credentials) resyncs.push(API.fullAO3Resync());
+                    if (auth.daAuth?.has_credentials) resyncs.push(API.fullDAResync());
+                    if (auth.wpAuth?.has_credentials) resyncs.push(API.fullWPResync());
+                    if (auth.ikAuth?.has_credentials) resyncs.push(API.fullIKResync());
+                    if (auth.bskyAuth?.has_credentials) resyncs.push(API.fullBSKYResync());
+                    if (auth.twAuth?.has_credentials) resyncs.push(API.fullTWResync());
+                    const results = await Promise.allSettled(resyncs);
+                    const failed = results.filter(r => r.status === 'rejected');
+                    btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';
                     setTimeout(() => this.renderSettings(), 1500);
                 } catch (err) {
                     btn.textContent = 'Error';
