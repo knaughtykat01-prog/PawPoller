@@ -11,9 +11,11 @@ import logging
 import os
 import secrets
 import sys
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response
 
@@ -54,6 +56,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="PawPoller", version="1.0.0", lifespan=lifespan)
 
+# ── CORS — Block All Cross-Origin Requests ────────────────────
+# PawPoller is a self-contained SPA where frontend and API are same-origin.
+# No legitimate cross-origin requests should ever occur.  Empty allow_origins
+# means all CORS preflight requests are denied, preventing external sites from
+# making API calls to PawPoller even if a user has it open in another tab.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
 
 # Global exception handler — catches any unhandled exception that escapes a route
 # handler and returns a clean JSON 500 instead of letting uvicorn emit a bare
@@ -63,6 +78,41 @@ app = FastAPI(title="PawPoller", version="1.0.0", lifespan=lifespan)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled error on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
     return JSONResponse(status_code=500, content={"error": "Internal server error"})
+
+
+# ── HTTP Security Headers ──────────────────────────────────────
+# Applied to every response.  These are defence-in-depth measures:
+#   X-Content-Type-Options  — prevents MIME-sniffing (IE/Edge attack vector)
+#   X-Frame-Options         — blocks embedding in iframes (clickjacking)
+#   Referrer-Policy         — limits referrer leakage to external sites
+#   Content-Security-Policy — restricts script/style/image/connect sources
+#     script-src 'self'          : all JS loaded via <script src=...>, zero inline
+#     style-src 'self' 'unsafe-inline' : CSS files + inline style= attributes
+#     img-src 'self' https:      : local proxy + platform CDN thumbnails
+#     connect-src 'self'         : all API calls are same-origin
+#     frame-ancestors 'none'     : no embedding allowed (supercedes X-Frame-Options)
+
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' https:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'"
+    ),
+}
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    for header, value in _SECURITY_HEADERS.items():
+        response.headers[header] = value
+    return response
 
 
 # ── Optional Basic Auth for Server Deployments ─────────────────
@@ -80,11 +130,48 @@ def _get_dashboard_user() -> str:
     return os.environ.get("DASHBOARD_USER", "admin")
 
 
+# ── Brute-Force Rate Limiting ─────────────────────────────────
+# Simple in-memory tracker: after 10 failed auth attempts from the same IP
+# within 5 minutes, all further requests from that IP get 429 Too Many Requests.
+# Single-process server so in-memory state is sufficient.  Clears on restart.
+_AUTH_FAIL_WINDOW = 300      # seconds (5 minutes)
+_AUTH_FAIL_MAX = 10          # max failures before lockout
+_auth_failures: dict[str, list[float]] = {}   # IP -> list of failure timestamps
+
+
+def _record_auth_failure(ip: str) -> None:
+    """Record a failed auth attempt from *ip*."""
+    now = time.monotonic()
+    attempts = _auth_failures.setdefault(ip, [])
+    attempts.append(now)
+    # Prune entries older than the window
+    cutoff = now - _AUTH_FAIL_WINDOW
+    _auth_failures[ip] = [t for t in attempts if t > cutoff]
+
+
+def _is_rate_limited(ip: str) -> bool:
+    """Return True if *ip* has exceeded the failure threshold."""
+    attempts = _auth_failures.get(ip)
+    if not attempts:
+        return False
+    cutoff = time.monotonic() - _AUTH_FAIL_WINDOW
+    recent = [t for t in attempts if t > cutoff]
+    _auth_failures[ip] = recent  # Lazy prune
+    return len(recent) >= _AUTH_FAIL_MAX
+
+
 @app.middleware("http")
 async def basic_auth_middleware(request: Request, call_next):
     password = _get_dashboard_password()
     if not password:
         return await call_next(request)
+
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Rate-limit check before processing credentials
+    if _is_rate_limited(client_ip):
+        return Response(status_code=429, content="Too many failed attempts. Try again later.")
+
     user_expected = _get_dashboard_user()
     auth = request.headers.get("Authorization")
     if auth and auth.startswith("Basic "):
@@ -94,9 +181,13 @@ async def basic_auth_middleware(request: Request, call_next):
             user_ok = secrets.compare_digest(user, user_expected)
             pass_ok = secrets.compare_digest(passwd, password)
             if user_ok and pass_ok:
+                # Successful auth — clear any failure history for this IP
+                _auth_failures.pop(client_ip, None)
                 return await call_next(request)
         except (ValueError, UnicodeDecodeError, binascii.Error):
             pass  # Malformed auth header
+
+    _record_auth_failure(client_ip)
     return Response(
         status_code=401,
         content="Authentication required",

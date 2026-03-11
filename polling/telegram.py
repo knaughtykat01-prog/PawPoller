@@ -252,12 +252,9 @@ async def check_goals() -> None:
     if not settings.get("telegram_enabled", False):
         return
 
-    # All valid metric column names across all platforms
-    ALLOWED_METRICS = {
-        "views", "favorites_count", "comments_count",
-        "reads", "votes", "likes", "reshares", "downloads", "num_lists",
-        "reposts", "retweets", "bookmarks", "quotes",
-    }
+    # Use the shared whitelist from config — single source of truth for
+    # valid metric column names that are safe to interpolate into SQL.
+    ALLOWED_METRICS = config.ALLOWED_GOAL_METRICS
     conn = get_connection()
     try:
         goals = conn.execute("SELECT * FROM goals WHERE completed_at IS NULL").fetchall()

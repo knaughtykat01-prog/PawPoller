@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 import json
 import logging
 import os
+import stat
 import sys
 import threading
 
@@ -83,6 +84,32 @@ if _old_settings.exists() and not SETTINGS_PATH.exists():
     shutil.copy2(_old_settings, SETTINGS_PATH)
 
 
+# ── Goal Metrics Whitelist ─────────────────────────────────────
+# Single source of truth for valid metric column names used in SQL queries
+# for goal tracking.  Referenced by routes/api.py (create + read) and
+# polling/telegram.py (goal completion notifications).  Any metric name
+# interpolated into SQL MUST be validated against this set first.
+ALLOWED_GOAL_METRICS = frozenset({
+    "views", "favorites_count", "comments_count", "watchers",
+    "reads", "votes", "likes", "reshares", "downloads", "num_lists",
+    "reposts", "retweets", "bookmarks", "quotes", "replies",
+})
+
+
+def _secure_file_permissions(path) -> None:
+    """Set file to owner-read/write only (0600) on Unix/Linux.
+
+    No-op on Windows where POSIX permissions don't apply.
+    Protects settings.json (which contains credentials) from being
+    readable by other users/processes in the Docker container.
+    """
+    if sys.platform != "win32":
+        try:
+            os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass  # Best-effort — don't crash if permissions can't be set
+
+
 # ── Settings.json helpers ─────────────────────────────────────
 # settings.json is the single source of truth for user preferences and
 # credentials once the app has been configured through the UI.  It uses a
@@ -131,6 +158,7 @@ def save_settings(data: dict) -> None:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(current, f, indent=2)
             os.replace(tmp_path, SETTINGS_PATH)
+            _secure_file_permissions(SETTINGS_PATH)
         except BaseException:
             # Clean up temp file on any failure (including KeyboardInterrupt)
             try:
@@ -157,6 +185,7 @@ def delete_settings_keys(keys: list[str]) -> None:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(current, f, indent=2)
             os.replace(tmp_path, SETTINGS_PATH)
+            _secure_file_permissions(SETTINGS_PATH)
         except BaseException:
             try:
                 os.unlink(tmp_path)

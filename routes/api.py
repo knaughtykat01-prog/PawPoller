@@ -940,11 +940,25 @@ async def send_digest_now():
 # This avoids loading the entire CSV into memory as a string before
 # sending, though for practical dataset sizes it would not matter.
 
+def _sanitize_csv_value(val):
+    """Prevent CSV formula injection (OWASP recommendation).
+
+    Excel/LibreOffice treat cells starting with =, +, -, @, \\t, \\r as
+    formulas.  A malicious submission title like '=CMD("calc")' would
+    execute when the exported CSV is opened.  Prefixing with a single
+    quote neutralises the formula while remaining human-readable.
+    """
+    if isinstance(val, str) and val and val[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + val
+    return val
+
+
 def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
     """Generate a CSV StreamingResponse from a list of dicts.
 
     Uses csv.DictWriter to auto-generate the header row from dict keys,
-    then writes all rows. The result is wrapped in a StreamingResponse
+    then writes all rows.  String values are sanitised against CSV formula
+    injection before writing.  The result is wrapped in a StreamingResponse
     with a Content-Disposition attachment header so browsers trigger a download.
     """
     if not rows:
@@ -953,7 +967,7 @@ def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=rows[0].keys())
     writer.writeheader()
-    writer.writerows(rows)
+    writer.writerows({k: _sanitize_csv_value(v) for k, v in r.items()} for r in rows)
     output.seek(0)
     return StreamingResponse(iter([output.getvalue()]), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="{filename}"'})
@@ -1362,17 +1376,13 @@ def get_goals():
         rows = conn.execute("SELECT * FROM goals ORDER BY created_at DESC").fetchall()
         result = []
         table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions"}
-        allowed_metrics = {
-            "views", "favorites_count", "comments_count",
-            "reads", "votes", "likes", "reshares", "downloads", "num_lists",
-            "reposts", "retweets", "bookmarks", "quotes", "replies",
-        }
         for row in rows:
             g = dict(row)
             metric = g["metric"]
             current = 0
             title = None
-            if metric not in allowed_metrics:
+            # Validate metric against the shared whitelist before SQL interpolation
+            if metric not in config.ALLOWED_GOAL_METRICS:
                 g["current_value"] = 0
                 g["submission_title"] = None
                 g["progress_pct"] = 0
@@ -1424,8 +1434,7 @@ def create_goal(body: dict):
     sub_id = body.get("submission_id")
     metric = body.get("metric", "views")
     target = int(body.get("target_value", 0))
-    if metric not in ("views", "favorites_count", "comments_count", "watchers",
-                       "reads", "votes", "likes", "reshares", "downloads", "num_lists"):
+    if metric not in config.ALLOWED_GOAL_METRICS:
         raise HTTPException(400, "Invalid metric")
     if target <= 0:
         raise HTTPException(400, "Target must be positive")

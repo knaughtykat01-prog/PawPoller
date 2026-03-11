@@ -380,10 +380,18 @@ def get_ws_poll_log(limit: int = Query(50, ge=1, le=200)):
 # No thumbnail proxy is needed for Weasyl because Weasyl's CDN serves
 # images with proper CORS headers, unlike IB (metapix.net) and FA (facdn.net).
 
+def _sanitize_csv_value(val):
+    """Prevent CSV formula injection — prefix dangerous chars with single quote."""
+    if isinstance(val, str) and val and val[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + val
+    return val
+
+
 def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
     """Generate a CSV StreamingResponse from a list of dicts.
 
     Same DictWriter -> StreamingResponse pattern as the IB and FA modules.
+    Values are sanitised against CSV formula injection before writing.
     """
     if not rows:
         return StreamingResponse(iter(["No data"]), media_type="text/csv",
@@ -391,7 +399,7 @@ def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=rows[0].keys())
     writer.writeheader()
-    writer.writerows(rows)
+    writer.writerows({k: _sanitize_csv_value(v) for k, v in r.items()} for r in rows)
     output.seek(0)
     return StreamingResponse(iter([output.getvalue()]), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="{filename}"'})

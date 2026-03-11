@@ -95,7 +95,7 @@ PawPoller/
 ├── server.py                # Headless entry point (Docker / server)
 ├── poll_service.py          # Legacy/alternative (APScheduler, --once, --status)
 ├── config.py                # Paths, credentials, settings.json helpers
-├── dashboard.py             # FastAPI app factory, auth middleware, SPA serving
+├── dashboard.py             # FastAPI app factory, auth + rate limiting + security headers, SPA serving
 ├── updater.py               # Auto-update (desktop only)
 ├── test_sf_proxy.py         # SoFurry proxy diagnostic tool
 ├── test_sf_direct.py        # SoFurry direct login + cookie persistence test
@@ -1474,7 +1474,7 @@ Poll interval values outside the allowed set {15, 30, 60, 120, 240} are silently
 
 ### Authentication Middleware
 
-Optional HTTP Basic Auth for server deployments (`dashboard.py` lines ~70-99):
+Optional HTTP Basic Auth for server deployments (`dashboard.py`):
 
 ```python
 @app.middleware("http")
@@ -1482,11 +1482,59 @@ async def basic_auth_middleware(request, call_next):
     password = _get_dashboard_password()  # From env or settings.json
     if not password:
         return await call_next(request)   # No password = no auth required
+    # Rate-limit check: 10 failures in 5 min from same IP → 429
+    if _is_rate_limited(client_ip):
+        return Response(status_code=429, ...)
     # Decode Basic auth header, compare with secrets.compare_digest()
-    # Return 401 with WWW-Authenticate header on failure
+    # On success: clear failure history for this IP
+    # On failure: record attempt, return 401 with WWW-Authenticate header
 ```
 
-Uses `secrets.compare_digest()` for constant-time comparison (prevents timing attacks). Dashboard user defaults to `"admin"` but is configurable via `DASHBOARD_USER` env var.
+- Uses `secrets.compare_digest()` for constant-time comparison (prevents timing attacks)
+- Dashboard user defaults to `"admin"` but is configurable via `DASHBOARD_USER` env var
+- **Brute-force protection**: In-memory rate limiter tracks failed attempts per client IP. After 10 failures within a 5-minute window, all further requests from that IP receive HTTP 429. Clears on successful auth. Resets on container restart.
+
+### Security Hardening
+
+The following security measures are applied in `dashboard.py` and across the codebase:
+
+**HTTP Security Headers** — Applied to every response via middleware:
+| Header | Value | Purpose |
+|--------|-------|---------|
+| `X-Content-Type-Options` | `nosniff` | Prevent MIME-sniffing |
+| `X-Frame-Options` | `DENY` | Block iframe embedding (clickjacking) |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Limit referrer leakage |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https:; connect-src 'self'; frame-ancestors 'none'` | Restrict resource loading |
+
+CSP rationale: All JS loaded via `<script src=...>` (zero inline scripts). Inline `style=` attributes require `'unsafe-inline'`. Platform CDN thumbnails need `https:`. All API calls are same-origin.
+
+**CORS** — Configured via FastAPI `CORSMiddleware` with `allow_origins=[]` (no cross-origin requests). The SPA and API are same-origin, so no legitimate cross-origin requests should occur.
+
+**Docker Container Security**:
+- Container runs as non-root user `pawpoller` (UID 1001) — not as root
+- Data/log directories are pre-created and owned by the `pawpoller` user
+- Port 8420 is above 1024 (no root needed to bind)
+
+**Settings.json Protection**:
+- File permissions set to `0600` (owner read/write only) on Unix/Linux after every write
+- Atomic writes via temp file + `os.replace()` prevent corruption
+
+**SQL Injection Prevention**:
+- All user-supplied values use parameterised queries (`?` placeholders)
+- Goal metrics validated against `config.ALLOWED_GOAL_METRICS` frozenset before SQL interpolation — single source of truth shared by `routes/api.py` and `polling/telegram.py`
+
+**CSV Export Security**:
+- All string values sanitised against formula injection before CSV write
+- Cells starting with `=`, `+`, `-`, `@`, `\t`, `\r` are prefixed with `'` (OWASP recommendation)
+
+**Dependency Pinning**:
+- `requirements-server.txt` uses compatible release (`~=`) specifiers to pin dependencies
+- Allows patch updates but blocks minor/major version bumps that could introduce breaking changes
+
+**Frontend XSS Prevention**:
+- `Utils.escapeHtml()` used for all user-supplied data rendered as HTML
+- No `eval()` or dynamic code execution
+- Error messages escaped before innerHTML insertion
 
 ---
 
@@ -2259,7 +2307,7 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 
 **Architectural**:
 - **No connection pooling**: Each poll cycle creates new HTTP client instances rather than reusing connections. This adds TLS handshake overhead but simplifies credential rotation.
-- **No dashboard rate limiting**: The REST API has no request throttling beyond the optional Basic Auth. A denial-of-service against the dashboard is possible on exposed servers.
+- **No dashboard request rate limiting**: The REST API has brute-force protection on auth (10 attempts/5min lockout) but no per-endpoint request throttling. A denial-of-service against the dashboard is possible on exposed servers.
 - **Daemon threads don't await shutdown**: Pollers are killed mid-execution when the app exits. WAL mode mitigates database corruption risk, but in-progress API calls are abandoned without cleanup.
 - **No websocket push for dashboard**: The frontend polls `GET /api/poll/progress` on a timer. Real-time updates would require WebSocket support.
 

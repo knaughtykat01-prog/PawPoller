@@ -529,7 +529,7 @@ const App = {
             container.innerHTML = html;
             this._pollingTabLoaded = true;
         } catch (err) {
-            container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger)">Failed to load polling data: ${err.message}</div>`;
+            container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger)">Failed to load polling data: ${Utils.escapeHtml(err.message)}</div>`;
         }
     },
 

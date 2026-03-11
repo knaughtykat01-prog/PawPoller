@@ -291,6 +291,13 @@ def get_wp_poll_log(limit: int = Query(50, ge=1, le=200)):
 
 # -- WP CSV Export ---------------------------------------------------------
 
+def _sanitize_csv_value(val):
+    """Prevent CSV formula injection — prefix dangerous chars with single quote."""
+    if isinstance(val, str) and val and val[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + val
+    return val
+
+
 def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
     if not rows:
         return StreamingResponse(iter(["No data"]), media_type="text/csv",
@@ -298,7 +305,7 @@ def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=rows[0].keys())
     writer.writeheader()
-    writer.writerows(rows)
+    writer.writerows({k: _sanitize_csv_value(v) for k, v in r.items()} for r in rows)
     output.seek(0)
     return StreamingResponse(iter([output.getvalue()]), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="{filename}"'})
