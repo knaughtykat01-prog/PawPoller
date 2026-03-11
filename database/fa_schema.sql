@@ -155,3 +155,17 @@ CREATE INDEX IF NOT EXISTS idx_fa_watchers_seen ON fa_watchers(first_seen_at);
 -- NOTE: idx_fa_watchers_pending is created in db.py _run_migrations() because
 -- existing databases may not have the confirmed/notified columns yet when this
 -- schema file runs (the columns are added by migration).
+
+-- ── fa_profile_stats ──────────────────────────────────────────────────────
+-- Time-series tracking of the authenticated user's FA profile pageviews.
+-- FAExport's /user/{name}.json returns a top-level "pageviews" field that
+-- represents how many times the user's profile page has been visited.
+-- One row per poll cycle captures this value for historical charting.
+CREATE TABLE IF NOT EXISTS fa_profile_stats (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    polled_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    pageviews   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_fa_profile_stats_polled
+    ON fa_profile_stats(polled_at);

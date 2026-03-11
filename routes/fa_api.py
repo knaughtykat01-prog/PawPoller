@@ -230,6 +230,9 @@ def get_fa_summary():
         summary["growth_rates"] = fa_queries.get_fa_growth_rates(conn)
         summary["total_watchers"] = fa_queries.get_fa_watchers_count(conn)
         summary["recent_watchers"] = fa_queries.get_fa_recent_watchers(conn, limit=10)
+        # Profile pageviews from FAExport (latest snapshot)
+        profile_stats = fa_queries.get_fa_latest_profile_stats(conn)
+        summary["profile_pageviews"] = profile_stats["pageviews"] if profile_stats else 0
         return summary
     except Exception as e:
         logger.error("Error in /api/fa/summary: %s", e, exc_info=True)

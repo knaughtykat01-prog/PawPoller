@@ -1305,6 +1305,7 @@ const App = {
                     ${Components.statCard('Total Favorites', summary.total_favorites)}
                     ${Components.statCard('Total Comments', summary.total_comments)}
                     ${Components.statCard('Total Watchers', summary.total_watchers || 0)}
+                    ${Components.statCard('Profile Views', summary.profile_pageviews || 0)}
                 </div>
 
                 ${Components.growthRateCards(summary.growth_rates)}

@@ -518,3 +518,39 @@ def get_fa_recent_watchers(conn: sqlite3.Connection, limit: int = 20) -> list[di
         (limit,),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ── FA Profile Stats ─────────────────────────────────────────
+
+def insert_fa_profile_stats(conn: sqlite3.Connection, pageviews: int, polled_at: str | None = None) -> None:
+    """Record a profile pageviews snapshot. One row per poll cycle."""
+    ts = polled_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute(
+        "INSERT INTO fa_profile_stats (polled_at, pageviews) VALUES (?, ?)",
+        (ts, pageviews),
+    )
+
+
+def get_fa_latest_profile_stats(conn: sqlite3.Connection) -> dict | None:
+    """Get the most recent profile stats row."""
+    row = conn.execute(
+        "SELECT * FROM fa_profile_stats ORDER BY polled_at DESC LIMIT 1"
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_fa_profile_stats_history(conn: sqlite3.Connection, start: str | None = None, end: str | None = None) -> list[dict]:
+    """Time-series of profile pageviews with optional date range."""
+    sql = "SELECT polled_at, pageviews FROM fa_profile_stats"
+    params: list[Any] = []
+    conditions = []
+    if start:
+        conditions.append("polled_at >= ?")
+        params.append(start)
+    if end:
+        conditions.append("polled_at <= ?")
+        params.append(end)
+    if conditions:
+        sql += " WHERE " + " AND ".join(conditions)
+    sql += " ORDER BY polled_at ASC"
+    return [dict(r) for r in conn.execute(sql, params).fetchall()]

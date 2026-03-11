@@ -413,6 +413,22 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
         except Exception as we:
             logger.warning("Failed to fetch FA watchers: %s", we)
 
+        # ── Step 6: Fetch profile pageviews ───────────────────────
+        # FAExport's /user/{name}.json returns a "pageviews" field representing
+        # how many times the user's profile page has been visited. We snapshot
+        # this value each poll cycle for historical charting.
+        try:
+            _update_fa_progress("fetching_profile", message="Fetching profile stats...")
+            profile = await client.get_user_profile(client.username)
+            if profile and "pageviews" in profile:
+                from fa_client.client import _safe_int
+                pv = _safe_int(profile["pageviews"])
+                fa_queries.insert_fa_profile_stats(conn, pv, polled_at=poll_timestamp)
+                conn.commit()
+                logger.info("FA: Profile pageviews recorded: %d", pv)
+        except Exception as pe:
+            logger.warning("Failed to fetch FA profile stats: %s", pe)
+
         # ── Notifications (comments + confirmed watchers) ───────────
         # Skip on first poll after startup (silent baseline).
         # Watcher notifications respect fa_watcher_notification_mode:
