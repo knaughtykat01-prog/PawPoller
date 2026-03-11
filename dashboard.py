@@ -166,6 +166,10 @@ async def basic_auth_middleware(request: Request, call_next):
     if not password:
         return await call_next(request)
 
+    # Exempt the health endpoint so Docker HEALTHCHECK works without credentials
+    if request.url.path == "/api/health":
+        return await call_next(request)
+
     client_ip = request.client.host if request.client else "unknown"
 
     # Rate-limit check before processing credentials
