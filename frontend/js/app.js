@@ -416,6 +416,29 @@ const App = {
         this._setContent('<div class="loading-spinner">Loading...</div>');
     },
 
+    /* _loadLogs() — Fetch and display application log file in the Logs settings tab. */
+    async _loadLogs() {
+        const output = document.getElementById('log-output');
+        const info = document.getElementById('log-info');
+        if (!output) return;
+        const file = document.getElementById('log-file-select')?.value || 'server';
+        const lines = document.getElementById('log-lines-select')?.value || '200';
+        const autoScroll = document.getElementById('log-auto-scroll')?.checked !== false;
+        output.textContent = 'Loading...';
+        try {
+            const data = await API.getLogs({ file, lines });
+            if (data.lines && data.lines.length > 0) {
+                output.textContent = data.lines.join('\n');
+            } else {
+                output.textContent = '(no log entries)';
+            }
+            if (info) info.textContent = `Showing ${data.lines?.length || 0} of ${data.total_lines || 0} lines from ${file}.log`;
+            if (autoScroll) output.scrollTop = output.scrollHeight;
+        } catch (err) {
+            output.textContent = `Error loading logs: ${err.message}`;
+        }
+    },
+
     /* ── Login Screen ──────────────────────────────────────────
      * renderLogin() — Full-screen login form with username, password, and
      * remember-me checkbox. The submit handler calls API.authLogin, strips
@@ -4606,6 +4629,7 @@ const App = {
                     <button class="settings-tab ${_settingsTab === 'polling' ? 'active' : ''}" data-stab="polling">Polling</button>
                     <button class="settings-tab ${_settingsTab === 'telegram' ? 'active' : ''}" data-stab="telegram">Telegram</button>
                     <button class="settings-tab ${_settingsTab === 'data' ? 'active' : ''}" data-stab="data">Data</button>
+                    <button class="settings-tab ${_settingsTab === 'logs' ? 'active' : ''}" data-stab="logs">Logs</button>
                     <button class="settings-tab ${_settingsTab === 'about' ? 'active' : ''}" data-stab="about">About</button>
                 </div>
 
@@ -4953,6 +4977,34 @@ const App = {
                 </div>
 
                 </div><!-- /tab:data -->
+
+                <!-- ═══ TAB: Logs ═══ -->
+                <div class="settings-tab-content" data-tab-content="logs" ${_settingsTab !== 'logs' ? 'style="display:none"' : ''}>
+
+                <div class="settings-section">
+                    <h3>Application Logs</h3>
+                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+                        <select id="log-file-select" class="filter-select" style="max-width:160px">
+                            <option value="server">server.log</option>
+                            <option value="polling">polling.log</option>
+                            <option value="app">app.log</option>
+                        </select>
+                        <select id="log-lines-select" class="filter-select" style="max-width:130px">
+                            <option value="100">Last 100 lines</option>
+                            <option value="200" selected>Last 200 lines</option>
+                            <option value="500">Last 500 lines</option>
+                            <option value="1000">Last 1000 lines</option>
+                        </select>
+                        <button class="btn btn-secondary" id="log-refresh-btn" style="padding:4px 12px;font-size:12px">Refresh</button>
+                        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted);margin-left:auto">
+                            <input type="checkbox" id="log-auto-scroll" checked> Auto-scroll
+                        </label>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px" id="log-info"></div>
+                    <pre id="log-output" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-size:11px;line-height:1.5;max-height:500px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--text-secondary);font-family:'Cascadia Code','Fira Code','Consolas',monospace"></pre>
+                </div>
+
+                </div><!-- /tab:logs -->
 
                 <!-- ═══ TAB: About ═══ -->
                 <div class="settings-tab-content" data-tab-content="about" ${_settingsTab !== 'about' ? 'style="display:none"' : ''}>
@@ -5697,8 +5749,18 @@ const App = {
                     // Update URL hash without re-rendering
                     const newHash = tab === 'general' ? '#/settings' : `#/settings/${tab}`;
                     history.replaceState(null, '', newHash);
+                    // Auto-load logs when switching to logs tab
+                    if (tab === 'logs') this._loadLogs();
                 });
             }
+
+            // Load logs on initial render if logs tab is active
+            if (_settingsTab === 'logs') this._loadLogs();
+
+            // Log tab event handlers
+            document.getElementById('log-refresh-btn')?.addEventListener('click', () => this._loadLogs());
+            document.getElementById('log-file-select')?.addEventListener('change', () => this._loadLogs());
+            document.getElementById('log-lines-select')?.addEventListener('change', () => this._loadLogs());
 
             // ── Settings Event Handlers ──────────────────────────────
             // All controls save immediately on interaction (no "Save All" button).

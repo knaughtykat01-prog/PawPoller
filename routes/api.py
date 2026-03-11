@@ -1660,6 +1660,30 @@ async def restore_backup(file: UploadFile = File(...)):
             pass
 
 
+# ── Application Logs ─────────────────────────────────────────
+
+@router.get("/logs")
+def get_logs(lines: int = Query(200, ge=10, le=2000), file: str = Query("server")):
+    """Return the last N lines of a log file.
+
+    Reads from LOGS_DIR/{file}.log.  Only whitelisted filenames are allowed
+    to prevent path traversal.  Returns newest lines last (natural log order).
+    """
+    allowed = {"server", "app", "polling"}
+    if file not in allowed:
+        raise HTTPException(400, f"Invalid log file. Allowed: {', '.join(sorted(allowed))}")
+    log_path = config.LOGS_DIR / f"{file}.log"
+    if not log_path.exists():
+        return {"lines": [], "file": file, "total_lines": 0}
+    try:
+        # Read the file and return the tail
+        all_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        tail = all_lines[-lines:] if len(all_lines) > lines else all_lines
+        return {"lines": tail, "file": file, "total_lines": len(all_lines)}
+    except OSError as e:
+        raise HTTPException(500, f"Failed to read log file: {e}")
+
+
 # ── Historical Analytics ──────────────────────────────────────
 
 @router.get("/analytics/historical")

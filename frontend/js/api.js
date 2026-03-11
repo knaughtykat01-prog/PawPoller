@@ -87,6 +87,7 @@ const API = {
     pausePolling() { return this.post('/api/poll/pause'); },
     resumePolling() { return this.post('/api/poll/resume'); },
     getPollPaused() { return this.get('/api/poll/paused'); },
+    getLogs(params = {}) { return this.get('/api/logs', params); },
     clearSession() { return this.post('/api/session/clear'); },
     getAuthStatus() { return this.get('/api/auth/status'); },
     authLogin(data) { return this.post('/api/auth/login', data); },
