@@ -6,6 +6,7 @@ Usage:
 """
 
 import base64
+import binascii
 import logging
 import os
 import secrets
@@ -94,8 +95,8 @@ async def basic_auth_middleware(request: Request, call_next):
             pass_ok = secrets.compare_digest(passwd, password)
             if user_ok and pass_ok:
                 return await call_next(request)
-        except Exception:
-            pass
+        except (ValueError, UnicodeDecodeError, binascii.Error):
+            pass  # Malformed auth header
     return Response(
         status_code=401,
         content="Authentication required",

@@ -63,7 +63,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,  # show console window for logs
+    console=False,  # hide console window in release build
     icon=None,
 )
 

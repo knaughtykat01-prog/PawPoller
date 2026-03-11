@@ -11,7 +11,7 @@ import argparse
 import asyncio
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 import config
 from database.db import init_db, get_connection
@@ -130,7 +130,7 @@ def do_continuous():
         trigger=IntervalTrigger(hours=config.POLL_INTERVAL_HOURS),
         id="pawpoller_poll",
         name="PawPoller hourly poll",
-        next_run_time=datetime.now(),
+        next_run_time=datetime.now(timezone.utc),
     )
 
     # asyncio.run() creates a new event loop and runs until the coroutine

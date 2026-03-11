@@ -155,6 +155,10 @@ const App = {
         platformOverlay?.addEventListener('click', (e) => {
             if (e.target === platformOverlay) closePlatformGrid();
         });
+        // Close platform grid when any platform item is clicked (event delegation)
+        document.getElementById('platform-grid')?.addEventListener('click', (e) => {
+            if (e.target.closest('.platform-grid-item')) closePlatformGrid();
+        });
 
         /* Accordion nav groups — toggle .expanded on click (mobile).
            On desktop the groups are always visible via CSS. */

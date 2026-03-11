@@ -6,7 +6,7 @@ Comprehensive technical reference for the PawPoller codebase. Covers architectur
 
 ## 1. Overview & Architecture
 
-PawPoller is a multi-platform furry art analytics dashboard. It periodically polls 9 art/writing platforms, stores submission statistics in SQLite, and serves a real-time analytics dashboard. The tech stack is FastAPI + SQLite (WAL mode) + Vanilla JS SPA + pywebview + pystray.
+PawPoller is a multi-platform furry art analytics dashboard. It periodically polls 11 art/writing platforms, stores submission statistics in SQLite, and serves a real-time analytics dashboard. The tech stack is FastAPI + SQLite (WAL mode) + Vanilla JS SPA + pywebview + pystray.
 
 ### Supported Platforms
 
@@ -40,7 +40,7 @@ PawPoller is a multi-platform furry art analytics dashboard. It periodically pol
                                  │ spawns daemon threads
                     ┌────────────┴────────────────────────┐
            ┌────────┤         Thread Pool                  ├────────┐
-           │        │  9 pollers + uvicorn + telegram(2)   │        │
+           │        │  11 pollers + uvicorn + telegram(2)  │        │
            │        └─────────────────────────────────────┘        │
            ▼                         ▼                              ▼
     ┌──────────┐           ┌────────────────┐              ┌──────────────┐
@@ -162,7 +162,7 @@ PawPoller/
 │   ├── ao3_schema.sql       # AO3 tables
 │   ├── da_schema.sql        # DeviantArt tables
 │   ├── wp_schema.sql        # Wattpad tables
-│   └── ik_schema.sql        # Itaku tables
+│   ├── ik_schema.sql        # Itaku tables
 │   ├── bsky_schema.sql      # Bluesky tables
 │   └── tw_schema.sql        # X/Twitter tables
 │
@@ -175,13 +175,16 @@ PawPoller/
 │   ├── ao3_api.py           # AO3 API endpoints
 │   ├── da_api.py            # DeviantArt API endpoints
 │   ├── wp_api.py            # Wattpad API endpoints
-│   └── ik_api.py            # Itaku API endpoints
+│   ├── ik_api.py            # Itaku API endpoints
 │   ├── bsky_api.py          # Bluesky API endpoints
 │   └── tw_api.py            # X/Twitter API endpoints
 │
 ├── frontend/
 │   ├── index.html           # SPA shell (collapsible nav groups, bottom nav bar, sidebar overlay)
-│   ├── css/styles.css       # Dark theme + responsive mobile-first breakpoints (768px/480px)
+│   ├── css/
+│   │   ├── tokens.css      # Design tokens (dark + light theme custom properties)
+│   │   ├── components.css  # UI components (cards, buttons, tables, accordions, charts)
+│   │   └── layout.css      # Page layout, sidebar, responsive breakpoints, bottom nav
 │   └── js/
 │       ├── app.js           # Hash-based SPA router, accordion nav, bottom nav, auto-refresh
 │       ├── api.js           # API client wrapper (~50 methods, get/post transport)
@@ -218,17 +221,17 @@ PawPoller/
 
 Startup sequence in detail:
 
-**Step 1: Database initialisation** (line ~607)
+**Step 1: Database initialisation**
 ```python
 init_db()  # Creates tables/schema if the DB file does not exist yet
 ```
 
-**Step 2: Launch 12 daemon threads** (lines ~613-659)
+**Step 2: Launch 14 daemon threads**
 All threads are `daemon=True` so they terminate automatically when the main thread (pywebview) exits. No explicit shutdown signalling is needed. Each thread is named for debugging (`threading.Thread(name="FA poller")`).
 
-Thread launch order: Uvicorn → IB poller → FA poller → WS poller → SF poller → SqW poller → AO3 poller → DA poller → WP poller → IK poller → Telegram digest → Telegram bot.
+Thread launch order: Uvicorn → IB poller → FA poller → WS poller → SF poller → SqW poller → AO3 poller → DA poller → WP poller → IK poller → BSKY poller → TW poller → Telegram digest → Telegram bot.
 
-**Step 3: System tray icon** (lines ~662-672)
+**Step 3: System tray icon**
 ```python
 _tray_icon = _create_tray_icon()
 # pystray's default setup sets visible=True, showing the icon immediately.
@@ -246,7 +249,7 @@ The tray icon supports a "minimize to tray" workflow:
 - If disabled: returns `True` (allows close), app exits normally
 - Tray menu: "Show" (restore window + hide tray, `default=True` for double-click) and "Quit" (destroy window + stop tray)
 
-**Step 4: Wait for server readiness** (lines ~681-699)
+**Step 4: Wait for server readiness**
 ```python
 deadline = time.time() + 15  # 15-second timeout
 while time.time() < deadline:
@@ -258,7 +261,7 @@ while time.time() < deadline:
 ```
 This prevents pywebview from opening a window to a server that hasn't finished binding its port, which would show a blank or error page.
 
-**Step 5: Open native window** (lines ~705-719)
+**Step 5: Open native window**
 ```python
 _window = webview.create_window("PawPoller", url=url, width=1200, height=800, min_size=(800, 500))
 _window.events.closing += _on_closing  # Intercept close for tray minimize
@@ -291,7 +294,7 @@ _ENV_TO_SETTINGS = {
 ```
 `_seed_settings_from_env()` reads each env var, compares with existing settings.json values, and only writes if the value is new or different. Special handling for `telegram_enabled` which is parsed as a boolean (`"true"/"1"/"yes"` → `True`). Logs which credentials were seeded.
 
-**Step 3: Launch daemon threads** — Same 12 threads as desktop, but launched from a list of `(name, target)` tuples and iterated:
+**Step 3: Launch daemon threads** — Same 14 threads as desktop (11 pollers + uvicorn + telegram digest + telegram bot), but launched from a list of `(name, target)` tuples and iterated:
 ```python
 threads = [
     ("Uvicorn",         lambda: _start_server(args.host, args.port)),
@@ -375,13 +378,19 @@ def _start_XX_poller():
 
     async def _run():
         logger.info("XX poller loop started")
-        await _scheduled_XX_poll()       # Immediate first poll on startup
+        if not config.get_settings().get("polling_paused"):
+            await _scheduled_XX_poll()       # Immediate first poll on startup
+        else:
+            logger.info("XX initial poll skipped -- polling is paused")
         while True:
             # 3. Dynamic interval — re-read from settings each cycle
             settings = config.get_settings()
             interval = settings.get("XX_poll_interval_minutes", 60)
             logger.info("Next XX poll in %d minutes", interval)
             await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("XX poll skipped -- polling is paused")
+                continue
             await _scheduled_XX_poll()
 
     # 4. Isolated event loop per thread
@@ -395,7 +404,7 @@ def _start_XX_poller():
 
 Key design decisions:
 1. **Own asyncio event loop**: asyncio loops are bound to a single thread. `new_event_loop()` + `set_event_loop()` gives each poller its own isolated async runtime. The main thread's loop (if any) cannot be reused.
-2. **Immediate first poll**: So the dashboard has data right away without waiting for the first interval to elapse.
+2. **Immediate first poll**: So the dashboard has data right away without waiting for the first interval to elapse. Respects the `polling_paused` setting — if paused, the initial poll is skipped and every subsequent cycle also checks the flag before executing.
 3. **Dynamic interval**: Users can change the polling frequency in the UI and it takes effect on the very next cycle without restarting the app.
 4. **Credential gating**: If the user hasn't configured a platform yet, the cycle is silently skipped rather than erroring.
 
@@ -929,7 +938,7 @@ fa_poll_progress = {
 
 **Phases** (in order): `"starting"` → `"searching"` → `"fetching_details"` → `"processing"` (per-submission loop with current/total) → `"fetching_watchers"` → `"sniffing_profiles"` → `"complete"` or `"error"`
 
-The frontend polls `GET /api/{platform}/poll/progress` and renders a progress bar with the message text.
+The frontend periodically checks `GET /api/{platform}/poll/progress` and renders a loading bar with the message text. Note the terminology distinction: "polling" refers to the backend syncing data from external platforms, while "progress checks" refers to the frontend's periodic HTTP requests to check whether a backend poll is in progress and display its status in the loading bar.
 
 ### Concurrency Guard
 
@@ -1318,6 +1327,23 @@ Platform-specific labels are used (e.g. "Hits"/"Kudos" for SqW/AO3, "Reads"/"Vot
 **Responsive breakpoints** (CSS `@media`):
 - **768px** (tablet/phone): sidebar as overlay (280px width), bottom nav visible, accordion nav, table-to-card, stat cards single-column layout, chart heights reduced to 220px, settings form inputs stack vertically, date range buttons flex-fill
 - **480px** (small phone): stat cards 10px gap, pinned card flex-basis reduced to 140px, chart heights 200px, growth rate values smaller font (14px), top list titles truncate at 60vw
+
+### Settings Page
+
+The Settings page (`#/settings`) uses a tabbed layout with 7 tabs: **General**, **Platforms**, **Polling**, **Telegram**, **Data**, **Logs**, **About**.
+
+**Tab switching** — Clicking a tab activates its panel via `data-settings-tab` / `data-settings-panel` attributes. Only one panel is visible at a time.
+
+**Lazy loading** — The Polling and Logs tabs use deferred data fetching to reduce API calls on initial settings load:
+- On first load, only General/Platforms/Telegram/Data/About tabs fetch their data (~15 API calls)
+- The **Polling tab** fetches its data only when the user clicks on it. This loads IB poll status + poll log, plus each connected platform's poll status and poll log in parallel (~22 API calls). A `_pollingTabLoaded` flag prevents re-fetching on subsequent tab switches.
+- The **Logs tab** fetches server.log, polling.log, and app.log on demand when opened.
+
+**Collapsible accordion sections** — Within each tab, related settings are grouped in native `<details>/<summary>` HTML elements, providing expand/collapse functionality without JavaScript. Each platform's configuration section is an independent accordion.
+
+**Platform connection status** — Each platform section in the Platforms tab shows connection status, credential fields, and a test/connect button. Connected platforms display a green indicator.
+
+**FA profile pageviews** — The FurAffinity section includes a stat card showing the user's profile page view count, fetched from the FA API.
 
 ### REST API Endpoints — Complete Reference
 

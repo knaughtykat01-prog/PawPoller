@@ -295,20 +295,20 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("Migrating fa_watchers: adding confirmed/last_seen_at/is_spam/notified columns")
         try:
             conn.execute("ALTER TABLE fa_watchers ADD COLUMN confirmed INTEGER DEFAULT 1")
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.OperationalError as e:
+            logger.debug("ALTER TABLE fa_watchers (confirmed): %s", e)
         try:
             conn.execute("ALTER TABLE fa_watchers ADD COLUMN last_seen_at TEXT DEFAULT (datetime('now'))")
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.OperationalError as e:
+            logger.debug("ALTER TABLE fa_watchers (last_seen_at): %s", e)
         try:
             conn.execute("ALTER TABLE fa_watchers ADD COLUMN is_spam INTEGER DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.OperationalError as e:
+            logger.debug("ALTER TABLE fa_watchers (is_spam): %s", e)
         try:
             conn.execute("ALTER TABLE fa_watchers ADD COLUMN notified INTEGER DEFAULT 1")
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.OperationalError as e:
+            logger.debug("ALTER TABLE fa_watchers (notified): %s", e)
         # Mark all existing watchers as confirmed+notified (they're from before this feature)
         conn.execute("UPDATE fa_watchers SET confirmed = 1, notified = 1, last_seen_at = first_seen_at WHERE confirmed IS NULL OR confirmed = 1")
     # Ensure the pending-watchers index exists (created here rather than in fa_schema.sql

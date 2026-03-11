@@ -11,6 +11,9 @@
  * Usage:  const data = await API.getSubmissions({ page: 1, limit: 20 });
  */
 
+// Debug logging — enable via: localStorage.setItem('pawpoller_debug', '1')
+const _API_DEBUG = localStorage.getItem('pawpoller_debug') === '1';
+
 const API = {
 
     /* ── Core transport: GET ────────────────────────────────────
@@ -24,7 +27,7 @@ const API = {
         Object.entries(params).forEach(([k, v]) => {
             if (v != null && v !== '') url.searchParams.set(k, v);
         });
-        console.log('[API] GET', url.toString());
+        if (_API_DEBUG) console.log('[API] GET', url.toString());
         let resp;
         try {
             resp = await fetch(url);
@@ -38,7 +41,7 @@ const API = {
             throw new Error(`API ${resp.status}: ${text}`);
         }
         const data = await resp.json();
-        console.log('[API] Response:', path, data);
+        if (_API_DEBUG) console.log('[API] Response:', path, data);
         return data;
     },
 
@@ -48,7 +51,7 @@ const API = {
      * throws on network failure or non-OK HTTP status.
      */
     async post(path, body = {}) {
-        console.log('[API] POST', path, body);
+        if (_API_DEBUG) console.log('[API] POST', path, body);
         let resp;
         try {
             resp = await fetch(path, {
