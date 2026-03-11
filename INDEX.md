@@ -807,7 +807,39 @@ Same pattern as queries.py with `ws_` prefix. Key differences:
 | `telegram_chat_id` | string | "" | Telegram chat/user ID |
 | `notification_comments_only` | bool | false | IB: only notify on comments |
 | `fa_notification_comments_only` | bool | false | FA: only notify on comments |
-| `ws_notification_comments_only` | bool | false | WS: only notify on comments |
+| `ws_notification_comments_only` | bool | false | WS: suppress fave-triggered activity alerts |
+| `watcher_notifications_enabled` | bool | true | IB watcher toast + Telegram alerts |
+| `fa_watcher_notifications_enabled` | bool | true | FA watcher toast + Telegram alerts |
+| `sf_username` | string | "" | SF login email |
+| `sf_password` | string | "" | SF password |
+| `sf_display_name` | string | "" | SF display name |
+| `sf_notifications_enabled` | bool | true | SF desktop notifications |
+| `sf_poll_interval_minutes` | int | 60 | SF poll frequency |
+| `sf_notification_comments_only` | bool | false | SF: suppress generic activity alerts |
+| `sqw_username` | string | "" | SqW login username |
+| `sqw_password` | string | "" | SqW password |
+| `sqw_target_user` | string | "" | SqW target username to track |
+| `sqw_notifications_enabled` | bool | true | SqW desktop notifications |
+| `sqw_poll_interval_minutes` | int | 60 | SqW poll frequency |
+| `ao3_username` | string | "" | AO3 login username |
+| `ao3_password` | string | "" | AO3 password |
+| `ao3_target_user` | string | "" | AO3 target username to track |
+| `ao3_notifications_enabled` | bool | true | AO3 desktop notifications |
+| `ao3_poll_interval_minutes` | int | 60 | AO3 poll frequency |
+| `da_cookie` | string | "" | DA auth cookie string |
+| `da_target_user` | string | "" | DA username to track |
+| `da_notifications_enabled` | bool | true | DA desktop notifications |
+| `da_poll_interval_minutes` | int | 60 | DA poll frequency |
+| `wp_target_user` | string | "" | WP username/story URL to track |
+| `wp_notifications_enabled` | bool | true | WP desktop notifications |
+| `wp_poll_interval_minutes` | int | 60 | WP poll frequency |
+| `ik_target_user` | string | "" | IK username to track |
+| `ik_notifications_enabled` | bool | true | IK desktop notifications |
+| `ik_poll_interval_minutes` | int | 60 | IK poll frequency |
+| `display_timezone` | string | "UTC" | Timezone for Telegram messages and timestamps |
+| `milestone_views` | int[] | [100,250,...,100000] | View milestone thresholds for Telegram alerts |
+| `milestone_faves` | int[] | [10,25,...,5000] | Fave milestone thresholds for Telegram alerts |
+| `milestone_comments` | int[] | [10,25,...,1000] | Comment milestone thresholds for Telegram alerts |
 | `bsky_identifier` | string | "" | Bluesky handle or DID |
 | `bsky_app_password` | string | "" | Bluesky app password |
 | `bsky_notifications_enabled` | bool | true | BSKY desktop notifications |
@@ -817,8 +849,8 @@ Same pattern as queries.py with `ws_` prefix. Key differences:
 | `tw_target_user` | string | "" | X/Twitter username to track |
 | `tw_notifications_enabled` | bool | true | TW desktop notifications |
 | `tw_poll_interval_minutes` | int | 60 | TW poll frequency |
-| `notification_min_views_delta` | int | 0 | Min view change to trigger notification |
-| `notification_min_faves_delta` | int | 0 | Min fave change to trigger notification |
+| `notification_min_views_delta` | int | 0 | Stored for future use (no view-based notifications yet) |
+| `notification_min_faves_delta` | int | 0 | Min new-fave count per cycle to trigger IB fave notifications |
 | `views_offset` | int | 0 | IB stat correction offset |
 | `faves_offset` | int | 0 | IB stat correction offset |
 | `comments_offset` | int | 0 | IB stat correction offset |

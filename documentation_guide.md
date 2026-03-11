@@ -98,6 +98,7 @@ PawPoller/
 ├── dashboard.py             # FastAPI app factory, auth middleware, SPA serving
 ├── updater.py               # Auto-update (desktop only)
 ├── test_sf_proxy.py         # SoFurry proxy diagnostic tool
+├── test_sf_direct.py        # SoFurry direct login + cookie persistence test
 │
 ├── api_client/              # Inkbunny API client
 │   └── client.py            #   InkbunnyClient class with SID caching
@@ -566,17 +567,41 @@ detail["media_url"] = data.get("media", {}).get("submission", [{}])[0].get("url"
 **Authentication flow** (Laravel CSRF):
 ```
 1. GET /login → extract CSRF _token from hidden form field
-2. POST /login with {_token, email, password}
+2. POST /login with {_token, email, password, remember: "on"}
 3. If 2FA enabled → redirects to /auth/2fa → submit TOTP code
-4. On success → session cookies set, redirect to /
+4. On success → session cookies set (including remember_web_* 30-day cookie), redirect to /
 ```
 
 **Critical: Login must use email address, not display name.** The `sf_username` setting should contain the user's email. The `sf_display_name` is the public profile handle (e.g. "KnaughtyKat") used for gallery URLs.
 
-**CF Worker proxy integration**: When `proxy_url` and `proxy_key` are provided, the client swaps `httpx.AsyncHTTPTransport` for `CloudflareProxyTransport`. In proxy mode, the client uses `login_and_fetch_gallery()` which performs GET/POST login + gallery fetch in a single Worker invocation. This is required because:
-1. CF Workers rotate egress IPs between invocations
-2. SoFurry pins sessions to the IP that performed login
-3. A session cookie obtained in one Worker invocation becomes invalid in the next (different IP)
+**Two authentication modes**:
+
+1. **Direct login** (default for local/desktop): The client authenticates directly with SoFurry using `"remember": "on"` in the login POST, which triggers a `remember_web_*` cookie lasting ~30 days. Session cookies can be persisted to `settings.json` and restored on restart, allowing the app to skip re-login for the cookie's lifetime.
+
+2. **CF Worker proxy** (required for server/datacenter IPs): When `proxy_url` and `proxy_key` are provided, the client swaps `httpx.AsyncHTTPTransport` for `CloudflareProxyTransport`. In proxy mode, the client uses `login_and_fetch_gallery()` which performs GET/POST login + gallery fetch in a single Worker invocation. Cookie persistence is disabled in proxy mode because CF Workers rotate egress IPs between invocations and SoFurry pins sessions to the login IP.
+
+**Session cookie persistence** (`export_cookies()` / `import_cookies()`):
+- After a successful gallery fetch, the poller calls `export_cookies()` to serialize the httpx cookie jar (cookie names, values, domains, paths) plus metadata (`saved_at`, `saved_for_user`) into a dict stored as `sf_session_cookies` in `settings.json`.
+- On startup, the poller calls `import_cookies()` to restore cookies from `settings.json`. Validates that `saved_for_user` matches the current username (rejects stale cookies from a different account).
+- `ensure_logged_in()` handles the restored-cookies case: if cookies exist in the jar but `_logged_in` is False, it temporarily sets the flag and calls `check_session()` to test them. If valid, login is skipped entirely. If invalid (expired/corrupt), falls back to fresh login.
+- Cookie persistence is only used in direct login mode (not through CF proxy).
+- Cookies are automatically cleared when credentials change (`update_credentials()` returns `True`).
+- The `/auth/connect` endpoint also saves cookies after successful validation.
+- The `/auth/disconnect` endpoint clears `sf_session_cookies` along with credentials.
+
+**Stored cookie structure** (in `settings.json`):
+```json
+"sf_session_cookies": {
+  "cookies": {
+    "XSRF-TOKEN": {"value": "...", "domain": ".sofurry.com", "path": "/"},
+    "sofurry_session": {"value": "...", "domain": ".sofurry.com", "path": "/"},
+    "remember_web_...": {"value": "...", "domain": ".sofurry.com", "path": "/"},
+    "sfxlogin": {"value": "...", "domain": ".sofurry.com", "path": "/"}
+  },
+  "saved_at": "2026-03-10T12:00:00+00:00",
+  "saved_for_user": "user@example.com"
+}
+```
 
 **Data collection** (hybrid approach):
 - Gallery listing: scrape `/u/{display_name}/gallery` HTML for submission IDs (regex: `href="/s/{id}?ref=glr"`)
@@ -732,7 +757,7 @@ Every poller follows the same 4-6 step pattern, varying by platform capabilities
 Step 1: Authenticate (if needed)
     │  IB: restore cached SID or login
     │  FA: validate cookies
-    │  SF: login via CSRF flow (or proxy login_and_fetch)
+    │  SF: restore saved cookies or login via CSRF (direct or proxy)
     │  AO3/SqW: Rails form login with CSRF
     │  WS: validate API key
     │  DA: validate cookie string
@@ -1318,13 +1343,17 @@ Platform-specific labels are used (e.g. "Hits"/"Kudos" for SqW/AO3, "Reads"/"Vot
 | GET | `/api/poll_log` | IB poll audit trail |
 | GET | `/api/top-fans` | Cross-platform fan leaderboard |
 | GET | `/api/trending` | Submissions with unusual growth (spike detection) |
-| GET | `/api/credentials` | Get configured credentials (masked) |
-| POST | `/api/credentials` | Save credentials to settings.json |
-| GET | `/api/preferences` | Get user preferences |
-| POST | `/api/preferences` | Save preferences |
-| POST | `/api/telegram/connect` | Configure Telegram bot |
-| POST | `/api/telegram/test` | Send test Telegram message |
-| POST | `/api/telegram/disconnect` | Remove Telegram configuration |
+| GET | `/api/settings/credentials` | Get IB credential status (username + has_password flag) |
+| POST | `/api/settings/credentials` | Save IB credentials (partial updates OK) |
+| GET | `/api/settings/preferences` | Get all preferences with defaults (see below) |
+| POST | `/api/settings/preferences` | Save preferences (see below) |
+| GET | `/api/settings/telegram` | Telegram connection status |
+| POST | `/api/settings/telegram` | Connect Telegram bot (validates via getUpdates) |
+| POST | `/api/settings/telegram/test` | Send test Telegram message |
+| POST | `/api/settings/telegram/disconnect` | Remove Telegram configuration |
+| GET | `/api/settings/telegram/features` | Telegram feature toggles |
+| POST | `/api/settings/telegram/features` | Update Telegram feature toggles |
+| POST | `/api/settings/telegram/digest` | Manually trigger Telegram digest |
 | GET | `/api/groups` | List submission groups |
 | POST | `/api/groups` | Create a new group |
 | GET | `/api/groups/{id}` | Group detail with members |
@@ -1370,6 +1399,53 @@ Platform-specific extras:
 - `/api/fa/watchers/{username}` — Individual watcher detail
 - `/api/sf/followers` — SF follower list
 
+### Preferences Endpoint — Accepted Keys
+
+`GET /api/settings/preferences` returns all keys below with their defaults.
+`POST /api/settings/preferences` accepts any subset — only provided keys are updated.
+
+| Key | Type | Default | Validation | Effect |
+|-----|------|---------|------------|--------|
+| `minimize_to_tray` | bool | false | — | Hide to tray on close (desktop) |
+| `run_on_startup` | bool | false | — | Windows registry entry (desktop) |
+| `display_timezone` | string | "UTC" | — | Timezone for Telegram messages |
+| `notifications_enabled` | bool | true | — | IB master notification toggle |
+| `fa_notifications_enabled` | bool | true | — | FA master notification toggle |
+| `ws_notifications_enabled` | bool | true | — | WS master notification toggle |
+| `sf_notifications_enabled` | bool | true | — | SF master notification toggle |
+| `sqw_notifications_enabled` | bool | true | — | SqW master notification toggle |
+| `ao3_notifications_enabled` | bool | true | — | AO3 master notification toggle |
+| `da_notifications_enabled` | bool | true | — | DA master notification toggle |
+| `wp_notifications_enabled` | bool | true | — | WP master notification toggle |
+| `ik_notifications_enabled` | bool | true | — | IK master notification toggle |
+| `bsky_notifications_enabled` | bool | true | — | BSKY master notification toggle |
+| `tw_notifications_enabled` | bool | true | — | TW master notification toggle |
+| `watcher_notifications_enabled` | bool | true | — | IB watcher alerts |
+| `fa_watcher_notifications_enabled` | bool | true | — | FA watcher alerts |
+| `poll_interval_minutes` | int | 60 | {15,30,60,120,240} | IB poll frequency |
+| `fa_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | FA poll frequency |
+| `ws_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | WS poll frequency |
+| `sf_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | SF poll frequency |
+| `sqw_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | SqW poll frequency |
+| `ao3_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | AO3 poll frequency |
+| `da_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | DA poll frequency |
+| `wp_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | WP poll frequency |
+| `ik_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | IK poll frequency |
+| `bsky_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | BSKY poll frequency |
+| `tw_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | TW poll frequency |
+| `notification_comments_only` | bool | false | — | IB: suppress fave alerts |
+| `fa_notification_comments_only` | bool | false | — | FA: stored, no-op (FA only alerts on comments) |
+| `ws_notification_comments_only` | bool | false | — | WS: suppress fave-triggered activity alerts |
+| `sf_notification_comments_only` | bool | false | — | SF: suppress generic activity alerts |
+| `notification_min_faves_delta` | int | 0 | ≥ 0 | IB: min new-fave count to notify (0 = off) |
+| `notification_min_views_delta` | int | 0 | ≥ 0 | Stored, not yet consumed |
+| `telegram_enabled` | bool | false | — | Telegram notification master toggle |
+| `milestone_views` | int[] | [100..100000] | sorted, >0 | View milestone thresholds |
+| `milestone_faves` | int[] | [10..5000] | sorted, >0 | Fave milestone thresholds |
+| `milestone_comments` | int[] | [10..1000] | sorted, >0 | Comment milestone thresholds |
+
+Poll interval values outside the allowed set {15, 30, 60, 120, 240} are silently rejected. All other fields are individually optional — only keys present in the request body are updated.
+
 ### Authentication Middleware
 
 Optional HTTP Basic Auth for server deployments (`dashboard.py` lines ~70-99):
@@ -1410,10 +1486,23 @@ This means the server/Docker deployment silently skips toasts without any error.
 - Platform prefix (IB:/FA:/WS:/SF: etc.) for visual distinction at a glance
 
 **Settings filters**:
-- `notification_comments_only` — suppress fave notifications (IB)
-- `fa_notifications_enabled` — master toggle for FA notifications
-- `fa_watcher_notifications_enabled` — toggle for FA watcher notifications
-- Each platform has similar toggles
+
+*Per-platform notification master toggles* — each platform has a `{prefix}_notifications_enabled` key that acts as a master on/off switch for all toast + Telegram alerts from that platform:
+- `notifications_enabled` (IB), `fa_notifications_enabled`, `ws_notifications_enabled`, `sf_notifications_enabled`, `sqw_notifications_enabled`, `ao3_notifications_enabled`, `da_notifications_enabled`, `wp_notifications_enabled`, `ik_notifications_enabled`, `bsky_notifications_enabled`, `tw_notifications_enabled`
+
+*Watcher / follower notification toggles* — separate from the master toggle so users can receive submission alerts without watcher alerts (or vice versa):
+- `watcher_notifications_enabled` (IB) — toggles IB watcher toast + Telegram alerts
+- `fa_watcher_notifications_enabled` — toggles FA watcher toast + Telegram alerts
+
+*Comments-only filters* — when enabled, suppress fave/activity notifications and only alert on new comments:
+- `notification_comments_only` (IB) — suppresses fave notifications in both toast and Telegram
+- `fa_notification_comments_only` — stored but currently a no-op (FA only notifies on comments/watchers, no fave notifications to suppress)
+- `ws_notification_comments_only` — suppresses WS activity notifications (which are triggered by fave-count increases)
+- `sf_notification_comments_only` — suppresses SF activity notifications (generic stat-change alerts); follower notifications are unaffected
+
+*Minimum delta thresholds* (IB only):
+- `notification_min_faves_delta` — suppress fave notifications unless the number of new faves in a cycle meets or exceeds this value (0 = no minimum, notify on any new fave)
+- `notification_min_views_delta` — stored for future use; no platform currently generates view-change-based notifications
 
 ### Telegram Notifications (`polling/telegram.py`)
 
@@ -1726,6 +1815,8 @@ DeviantArt and SoFurry block requests from datacenter IP ranges (cloud VMs, Dock
 
 Without the proxy, server deployments would get 403 Forbidden responses from DA and SF. The proxy is only needed for these two platforms — all others work from any IP.
 
+**SoFurry dual-mode**: SF supports both direct login (with cookie persistence) and CF proxy. The poller auto-selects based on whether `cf_worker_url` is configured in settings. Desktop/local deployments use direct login with 30-day cookie persistence. Server/GCP deployments use the CF proxy (cookie persistence disabled since CF Workers rotate IPs). All proxy code in `client.py` is preserved as fallback — re-enabling is a one-line change in `sf_poller.py`.
+
 ### Architecture
 
 ```
@@ -1924,13 +2015,58 @@ docker compose logs -f pawpoller
 
 ### GCP (Google Cloud Platform)
 
-`deploy/setup-gcloud.sh` automates:
+**Initial setup** — `deploy/setup-gcloud.sh` automates:
 1. Create a Compute Engine instance (e2-micro or similar)
 2. Install Docker + Docker Compose
 3. Clone PawPoller repository
 4. Copy `.env.example` to `.env` (user must edit with credentials)
 5. Run `docker compose up -d --build`
 6. Print the dashboard URL: `http://{PUBLIC_IP}:8420`
+
+**Current GCP instance**:
+- Instance name: `pawpoller`
+- Zone: `us-east1-c`
+- Machine type: `e2-micro`
+- Repo location on VM: `/home/kithetiger/PawPoller`
+- Git user on VM: `kithetiger` (owns the repo clone; `sudo -u kithetiger git pull` required)
+
+**Updating the server (pawupdate workflow)**:
+
+After making code changes locally, the deployment cycle is:
+
+```bash
+# 1. Commit and push from local machine
+cd PawPoller
+git add <changed files>
+git commit -m "description of changes"
+git push origin master
+
+# 2. SSH into GCP VM, pull changes, rebuild Docker container
+gcloud compute ssh pawpoller --zone=us-east1-c --command="cd /home/kithetiger/PawPoller && sudo -u kithetiger git pull && sudo docker compose up -d --build"
+
+# 3. Verify deployment (check logs)
+gcloud compute ssh pawpoller --zone=us-east1-c --command="sudo docker compose -f /home/kithetiger/PawPoller/docker-compose.yml logs --tail=30"
+```
+
+**Important notes**:
+- `git pull` must run as `kithetiger` (repo owner): `sudo -u kithetiger git pull`. Running `git pull` as root fails with permission errors on `.git/FETCH_HEAD`. Running `sudo git pull` fails because root has no GitHub credentials.
+- `docker compose` commands require `sudo` because Docker runs as root on the VM.
+- The `--build` flag ensures the Docker image is rebuilt with the new code. Without it, Docker would restart the old image.
+- The VM's external IP may change on restart (ephemeral IP). Use `gcloud compute instances list` to find the current IP.
+- The `gcloud compute ssh` command uses the SSH key at `~/.ssh/google_compute_engine` (managed by gcloud).
+- Build is fast (usually <5s) because Docker layer caching means only the `COPY . .` layer is rebuilt when only Python code changes.
+
+**Checking instance status**:
+```bash
+# List instances with IPs
+gcloud compute instances list
+
+# Check container health
+gcloud compute ssh pawpoller --zone=us-east1-c --command="sudo docker compose -f /home/kithetiger/PawPoller/docker-compose.yml ps"
+
+# Check specific platform logs
+gcloud compute ssh pawpoller --zone=us-east1-c --command="sudo docker compose -f /home/kithetiger/PawPoller/docker-compose.yml logs 2>&1 | grep -i 'SF\|sofurry' | tail -15"
+```
 
 ### Oracle Cloud
 
@@ -2047,6 +2183,8 @@ CF_WORKER_KEY=your-secret-key
 ```
 Run: `python test_sf_proxy.py`
 
+**`test_sf_direct.py`** — SoFurry direct login + cookie persistence test. Tests direct login (no proxy) and validates that session cookies can be exported, persisted, and restored. Confirms the `remember_web_*` cookie is set with `"remember": "on"`. Reads credentials from `settings.json`. Run: `python test_sf_direct.py`
+
 **Debug proxy logging** — Set `PAWPOLLER_DEBUG_PROXY=1` to enable verbose logging in `polling.cf_proxy` logger:
 ```bash
 # Docker
@@ -2070,7 +2208,8 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 | Problem | Cause | Solution |
 |---------|-------|----------|
 | SF login fails | Using username instead of email | SoFurry login requires the **email address**, not the display name. Set `sf_username` to your email. |
-| SF login works locally but fails on server | Datacenter IP blocked | Configure CF Worker proxy (`CF_WORKER_URL`, `CF_WORKER_KEY`). SF blocks non-residential IPs. |
+| SF login works locally but fails on server | Datacenter IP blocked | Configure CF Worker proxy (`CF_WORKER_URL`, `CF_WORKER_KEY`). SF blocks non-residential IPs. The poller auto-detects: if `cf_worker_url` is set, it uses the proxy; otherwise it uses direct login with cookie persistence. |
+| SF "restored session is valid" then fails | Saved cookies expired | The `remember_web_*` cookie lasts ~30 days. After expiry, `check_session()` fails and the app does a fresh login automatically. No manual action needed. |
 | FA polls return no data | Cookies expired | FA cookies (`cookie_a`, `cookie_b`) expire periodically. Re-export them from browser DevTools → Application → Cookies. |
 | FA polls return 403 | Cookies incomplete | Both `cookie_a` AND `cookie_b` are required. Check both are set. |
 | DA polls fail on server | Datacenter IP blocked | Configure CF Worker proxy. DA aggressively blocks cloud/datacenter IP ranges. |

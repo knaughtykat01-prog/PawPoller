@@ -66,9 +66,21 @@ def _update_sf_progress(phase: str, current: int = 0, total: int = 0, message: s
 
 
 def _send_sf_notifications(new_details: list[dict]) -> None:
-    """Send Windows toast notifications for SoFurry activity."""
+    """Send Windows toast notifications for SoFurry activity.
+
+    When ``sf_notification_comments_only`` is True, these generic activity
+    notifications are suppressed.  SF tracks aggregate stat changes (views,
+    faves, comments combined) without distinguishing the change type, so
+    comments_only suppresses all activity alerts.  Follower notifications
+    are unaffected -- they use a separate code path.
+    """
     settings = config.get_settings()
     if not settings.get("sf_notifications_enabled", True):
+        return
+    # SF activity notifications are generic stat-change alerts (views/faves/
+    # comments combined), so comments_only suppresses them entirely.
+    # Follower notifications go through _send_sf_follower_notifications().
+    if settings.get("sf_notification_comments_only", False):
         return
     if not new_details:
         return
@@ -92,13 +104,20 @@ def _send_sf_notifications(new_details: list[dict]) -> None:
 
 
 async def _send_sf_telegram(new_details: list[dict]) -> None:
-    """Send Telegram notification for SoFurry activity."""
+    """Send Telegram notification for SoFurry activity.
+
+    Same ``sf_notification_comments_only`` filter as the toast path.
+    """
     settings = config.get_settings()
     if not settings.get("telegram_enabled", False):
         return
     token = settings.get("telegram_bot_token")
     chat_id = settings.get("telegram_chat_id")
     if not token or not chat_id:
+        return
+    # Same comments_only filter as _send_sf_notifications -- suppress
+    # generic activity alerts when the user only wants comment notifications.
+    if settings.get("sf_notification_comments_only", False):
         return
     if not new_details:
         return

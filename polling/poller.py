@@ -97,6 +97,13 @@ def _send_notifications(new_fave_details: list[dict], new_comment_details: list[
     if settings.get("notification_comments_only", False):
         new_fave_details = []
 
+    # notification_min_faves_delta: suppress fave notifications unless the
+    # number of new faves in this cycle meets or exceeds the threshold.
+    # A value of 0 (default) means no minimum -- all faves are notified.
+    min_faves = settings.get("notification_min_faves_delta", 0)
+    if min_faves > 0 and len(new_fave_details) < min_faves:
+        new_fave_details = []
+
     if not new_fave_details and not new_comment_details and not new_watcher_details:
         return
 
@@ -172,6 +179,12 @@ async def _send_telegram(new_fave_details: list[dict], new_comment_details: list
     # Same comments_only filter as _send_notifications -- suppress fave
     # lines if the user only wants comment alerts.
     if settings.get("notification_comments_only", False):
+        new_fave_details = []
+
+    # Same min_faves_delta filter as _send_notifications -- suppress fave
+    # section if the new-fave count is below the user's threshold.
+    min_faves = settings.get("notification_min_faves_delta", 0)
+    if min_faves > 0 and len(new_fave_details) < min_faves:
         new_fave_details = []
 
     if not new_fave_details and not new_comment_details and not new_watcher_details:

@@ -547,11 +547,20 @@ async def _cmd_notify(token: str, chat_id: str, args: str) -> None:
         lines.append(f"  FA: {'on' if settings.get('fa_notifications_enabled', True) else 'off'}")
         lines.append(f"  WS: {'on' if settings.get('ws_notifications_enabled', True) else 'off'}")
         lines.append(f"  SF: {'on' if settings.get('sf_notifications_enabled', True) else 'off'}")
+        lines.append(f"  SqW: {'on' if settings.get('sqw_notifications_enabled', True) else 'off'}")
+        lines.append(f"  AO3: {'on' if settings.get('ao3_notifications_enabled', True) else 'off'}")
+        lines.append(f"  DA: {'on' if settings.get('da_notifications_enabled', True) else 'off'}")
+        lines.append(f"  WP: {'on' if settings.get('wp_notifications_enabled', True) else 'off'}")
+        lines.append(f"  IK: {'on' if settings.get('ik_notifications_enabled', True) else 'off'}")
+        lines.append(f"  BSKY: {'on' if settings.get('bsky_notifications_enabled', True) else 'off'}")
+        lines.append(f"  TW: {'on' if settings.get('tw_notifications_enabled', True) else 'off'}")
 
         lines.append("")
         lines.append("<b>Filters</b>")
         lines.append(f"  Comments only (IB): {'on' if settings.get('notification_comments_only', False) else 'off'}")
         lines.append(f"  Watcher alerts: {'on' if settings.get('watcher_notifications_enabled', True) else 'off'}")
+        min_faves = settings.get('notification_min_faves_delta', 0)
+        lines.append(f"  Min faves delta: {min_faves if min_faves > 0 else 'off'}")
 
         await _send(token, chat_id, "\n".join(lines))
         return

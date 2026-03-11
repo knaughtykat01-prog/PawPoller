@@ -70,9 +70,17 @@ def _send_ws_notifications(new_details: list[dict], detail_type: str = "activity
     notifications are generic "submission gained activity" alerts rather
     than the per-user breakdowns that IB and FA provide.  Still truncated
     to 3 items and prefixed with "WS:" for platform distinction.
+
+    When ``ws_notification_comments_only`` is True, these activity
+    notifications (which are triggered by fave-count increases) are
+    suppressed entirely.
     """
     settings = config.get_settings()
     if not settings.get("ws_notifications_enabled", True):
+        return
+    # WS activity notifications fire on fave-count increases, so
+    # comments_only suppresses them (WS has no separate comment alerts).
+    if settings.get("ws_notification_comments_only", False):
         return
     if not new_details:
         return
@@ -102,6 +110,10 @@ async def _send_ws_telegram(new_details: list[dict]) -> None:
     without usernames (since WS API doesn't tell us *who* interacted).
     Uses a lizard emoji header to distinguish from IB/FA alerts.
     Truncated to 5 items like the other pollers.
+
+    Same ``ws_notification_comments_only`` filter as the toast path --
+    suppress fave-triggered activity alerts when the user only wants
+    comment notifications.
     """
     settings = config.get_settings()
     if not settings.get("telegram_enabled", False):
@@ -109,6 +121,10 @@ async def _send_ws_telegram(new_details: list[dict]) -> None:
     token = settings.get("telegram_bot_token")
     chat_id = settings.get("telegram_chat_id")
     if not token or not chat_id:
+        return
+    # WS activity notifications fire on fave-count increases, so
+    # comments_only suppresses them (WS has no separate comment alerts).
+    if settings.get("ws_notification_comments_only", False):
         return
     if not new_details:
         return

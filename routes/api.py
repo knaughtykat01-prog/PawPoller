@@ -550,34 +550,63 @@ def save_credentials(body: dict):
 def get_preferences():
     """Return all application preferences with sensible defaults.
 
-    Includes per-platform settings for IB, FA, and WS:
-      - notifications_enabled / fa_ / ws_ : master toggle per platform
-      - poll_interval_minutes / fa_ / ws_ : how often to poll (from allowed set)
-      - notification_comments_only / fa_ / ws_ : only notify on new comments
-      - notification_min_views_delta : minimum view increase to trigger notification
-      - notification_min_faves_delta : minimum fave increase to trigger notification
+    Covers every user-configurable preference across all 11 platforms:
+      - notifications_enabled / {platform}_ : master toggle per platform
+      - poll_interval_minutes / {platform}_ : how often to poll (from allowed set)
+      - notification_comments_only / {platform}_ : only notify on new comments
+      - watcher_notifications_enabled / fa_ : toggle watcher alerts per platform
+      - notification_min_faves_delta : minimum new-fave count to trigger notification
+      - notification_min_views_delta : stored for future use (no view-based notifications yet)
+      - display_timezone : timezone for Telegram messages and UI timestamps
+      - milestone_* : threshold arrays for Telegram milestone alerts
     """
     settings = config.get_settings()
     return {
+        # ── Application ────────────────────────────────────────────
         "minimize_to_tray": settings.get("minimize_to_tray", False),
         "run_on_startup": config.get_run_on_startup(),
+        "display_timezone": settings.get("display_timezone", "UTC"),
+        # ── Per-platform notification master toggles ───────────────
         "notifications_enabled": settings.get("notifications_enabled", True),
         "fa_notifications_enabled": settings.get("fa_notifications_enabled", True),
         "ws_notifications_enabled": settings.get("ws_notifications_enabled", True),
+        "sf_notifications_enabled": settings.get("sf_notifications_enabled", True),
+        "sqw_notifications_enabled": settings.get("sqw_notifications_enabled", True),
+        "ao3_notifications_enabled": settings.get("ao3_notifications_enabled", True),
+        "da_notifications_enabled": settings.get("da_notifications_enabled", True),
+        "wp_notifications_enabled": settings.get("wp_notifications_enabled", True),
+        "ik_notifications_enabled": settings.get("ik_notifications_enabled", True),
+        "bsky_notifications_enabled": settings.get("bsky_notifications_enabled", True),
+        "tw_notifications_enabled": settings.get("tw_notifications_enabled", True),
+        # ── Watcher / follower notification toggles ────────────────
+        "watcher_notifications_enabled": settings.get("watcher_notifications_enabled", True),
+        "fa_watcher_notifications_enabled": settings.get("fa_watcher_notifications_enabled", True),
+        # ── Per-platform poll intervals (minutes) ──────────────────
         "poll_interval_minutes": settings.get("poll_interval_minutes", 60),
         "fa_poll_interval_minutes": settings.get("fa_poll_interval_minutes", 60),
         "ws_poll_interval_minutes": settings.get("ws_poll_interval_minutes", 60),
-        # Notification filter preferences: when enabled, notifications are only
-        # sent for new comments (ignoring view/fave changes)
+        "sf_poll_interval_minutes": settings.get("sf_poll_interval_minutes", 60),
+        "sqw_poll_interval_minutes": settings.get("sqw_poll_interval_minutes", 60),
+        "ao3_poll_interval_minutes": settings.get("ao3_poll_interval_minutes", 60),
+        "da_poll_interval_minutes": settings.get("da_poll_interval_minutes", 60),
+        "wp_poll_interval_minutes": settings.get("wp_poll_interval_minutes", 60),
+        "ik_poll_interval_minutes": settings.get("ik_poll_interval_minutes", 60),
+        "bsky_poll_interval_minutes": settings.get("bsky_poll_interval_minutes", 60),
+        "tw_poll_interval_minutes": settings.get("tw_poll_interval_minutes", 60),
+        # ── Notification filter preferences ────────────────────────
+        # When enabled, notifications are only sent for new comments
+        # (suppressing fave/activity alerts for that platform).
         "notification_comments_only": settings.get("notification_comments_only", False),
-        # Minimum delta thresholds: notification is suppressed unless the
-        # views/faves increase meets or exceeds these values
-        "notification_min_views_delta": settings.get("notification_min_views_delta", 0),
-        "notification_min_faves_delta": settings.get("notification_min_faves_delta", 0),
         "fa_notification_comments_only": settings.get("fa_notification_comments_only", False),
         "ws_notification_comments_only": settings.get("ws_notification_comments_only", False),
-        "sf_poll_interval_minutes": settings.get("sf_poll_interval_minutes", 60),
-        "display_timezone": settings.get("display_timezone", "UTC"),
+        "sf_notification_comments_only": settings.get("sf_notification_comments_only", False),
+        # Minimum delta thresholds: fave notifications are suppressed unless
+        # the new-fave count in a cycle meets or exceeds this value.
+        # notification_min_views_delta is stored but not yet consumed -- no
+        # platform currently generates view-change-based notifications.
+        "notification_min_views_delta": settings.get("notification_min_views_delta", 0),
+        "notification_min_faves_delta": settings.get("notification_min_faves_delta", 0),
+        # ── Milestone thresholds (Telegram) ────────────────────────
         "milestone_views": settings.get("milestone_views", [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000]),
         "milestone_faves": settings.get("milestone_faves", [10, 25, 50, 100, 250, 500, 1000, 2500, 5000]),
         "milestone_comments": settings.get("milestone_comments", [10, 25, 50, 100, 250, 500, 1000]),
@@ -591,56 +620,93 @@ def save_preferences(body: dict):
     Each field is individually optional -- only provided keys are updated.
     Special handling:
       - run_on_startup: modifies the Windows registry (or equivalent) via config
-      - poll_interval_minutes: validated against the allowed set {15, 30, 60, 120, 240}
+      - *_poll_interval_minutes: validated against the allowed set {15, 30, 60, 120, 240}
         to prevent abuse or unreasonably fast polling that could get the user
-        rate-limited by the Inkbunny API. Invalid values are silently ignored.
+        rate-limited by platform APIs. Invalid values are silently ignored.
     """
     update = {}
+
+    # ── Application toggles ────────────────────────────────────
     if "minimize_to_tray" in body:
         update["minimize_to_tray"] = bool(body["minimize_to_tray"])
-    if "notifications_enabled" in body:
-        update["notifications_enabled"] = bool(body["notifications_enabled"])
     if "telegram_enabled" in body:
         update["telegram_enabled"] = bool(body["telegram_enabled"])
-    if "fa_notifications_enabled" in body:
-        update["fa_notifications_enabled"] = bool(body["fa_notifications_enabled"])
-    if "ws_notifications_enabled" in body:
-        update["ws_notifications_enabled"] = bool(body["ws_notifications_enabled"])
-    # Notification filter preferences (IB-specific)
-    if "notification_comments_only" in body:
-        update["notification_comments_only"] = bool(body["notification_comments_only"])
+
+    # ── Per-platform notification master toggles ───────────────
+    # Each platform poller checks its own *_notifications_enabled flag
+    # before sending Windows toasts or Telegram alerts.
+    for key in (
+        "notifications_enabled",         # IB
+        "fa_notifications_enabled",
+        "ws_notifications_enabled",
+        "sf_notifications_enabled",
+        "sqw_notifications_enabled",
+        "ao3_notifications_enabled",
+        "da_notifications_enabled",
+        "wp_notifications_enabled",
+        "ik_notifications_enabled",
+        "bsky_notifications_enabled",
+        "tw_notifications_enabled",
+    ):
+        if key in body:
+            update[key] = bool(body[key])
+
+    # ── Watcher / follower notification toggles ────────────────
+    # Separate from the master toggle so users can get submission alerts
+    # without watcher alerts (or vice versa).
+    if "watcher_notifications_enabled" in body:
+        update["watcher_notifications_enabled"] = bool(body["watcher_notifications_enabled"])
+    if "fa_watcher_notifications_enabled" in body:
+        update["fa_watcher_notifications_enabled"] = bool(body["fa_watcher_notifications_enabled"])
+
+    # ── Notification filter preferences ────────────────────────
+    # When enabled, suppress fave/activity notifications and only alert
+    # on new comments.  Each platform's poller applies its own filter.
+    for key in (
+        "notification_comments_only",     # IB
+        "fa_notification_comments_only",
+        "ws_notification_comments_only",
+        "sf_notification_comments_only",
+    ):
+        if key in body:
+            update[key] = bool(body[key])
+
+    # Minimum delta thresholds: fave notifications are suppressed unless
+    # the new-fave count in a cycle meets or exceeds this value.
     if "notification_min_views_delta" in body:
         update["notification_min_views_delta"] = max(0, int(body["notification_min_views_delta"]))
     if "notification_min_faves_delta" in body:
         update["notification_min_faves_delta"] = max(0, int(body["notification_min_faves_delta"]))
-    # FA and WS notification filter preferences
-    if "fa_notification_comments_only" in body:
-        update["fa_notification_comments_only"] = bool(body["fa_notification_comments_only"])
-    if "ws_notification_comments_only" in body:
-        update["ws_notification_comments_only"] = bool(body["ws_notification_comments_only"])
-    # Poll interval validation: only accept values from the allowed set.
+
+    # ── Per-platform poll intervals ────────────────────────────
     # The allowed set {15, 30, 60, 120, 240} minutes is chosen to balance
     # data freshness against API rate limits. Values outside this set are
     # silently rejected to prevent misconfiguration.
-    if "poll_interval_minutes" in body:
-        val = int(body["poll_interval_minutes"])
-        if val in (15, 30, 60, 120, 240):
-            update["poll_interval_minutes"] = val
-    if "fa_poll_interval_minutes" in body:
-        val = int(body["fa_poll_interval_minutes"])
-        if val in (15, 30, 60, 120, 240):
-            update["fa_poll_interval_minutes"] = val
-    if "ws_poll_interval_minutes" in body:
-        val = int(body["ws_poll_interval_minutes"])
-        if val in (15, 30, 60, 120, 240):
-            update["ws_poll_interval_minutes"] = val
-    if "sf_poll_interval_minutes" in body:
-        val = int(body["sf_poll_interval_minutes"])
-        if val in (15, 30, 60, 120, 240):
-            update["sf_poll_interval_minutes"] = val
+    _ALLOWED_INTERVALS = (15, 30, 60, 120, 240)
+    for key in (
+        "poll_interval_minutes",          # IB
+        "fa_poll_interval_minutes",
+        "ws_poll_interval_minutes",
+        "sf_poll_interval_minutes",
+        "sqw_poll_interval_minutes",
+        "ao3_poll_interval_minutes",
+        "da_poll_interval_minutes",
+        "wp_poll_interval_minutes",
+        "ik_poll_interval_minutes",
+        "bsky_poll_interval_minutes",
+        "tw_poll_interval_minutes",
+    ):
+        if key in body:
+            val = int(body[key])
+            if val in _ALLOWED_INTERVALS:
+                update[key] = val
+
+    # ── Timezone ───────────────────────────────────────────────
     if "display_timezone" in body:
         update["display_timezone"] = str(body["display_timezone"])
-    # Milestone threshold arrays: validate as sorted positive integer lists
+
+    # ── Milestone threshold arrays ─────────────────────────────
+    # Validate as sorted positive integer lists
     for ms_key in ("milestone_views", "milestone_faves", "milestone_comments"):
         if ms_key in body:
             try:
@@ -649,8 +715,10 @@ def save_preferences(body: dict):
                     update[ms_key] = vals
             except (TypeError, ValueError):
                 pass
-    # run_on_startup is handled separately because it modifies the system
-    # registry (Windows) or launch agents (macOS) rather than settings.json
+
+    # ── Windows startup registry ───────────────────────────────
+    # Handled separately because it modifies the system registry
+    # (Windows) or launch agents (macOS) rather than settings.json
     if "run_on_startup" in body:
         enabled = bool(body["run_on_startup"])
         config.set_run_on_startup(enabled)
