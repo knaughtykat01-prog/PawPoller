@@ -4636,8 +4636,9 @@ const App = {
                 <!-- ═══ TAB: General ═══ -->
                 <div class="settings-tab-content" data-tab-content="general" ${_settingsTab !== 'general' ? 'style="display:none"' : ''}>
 
-                <div class="settings-section">
-                    <h3>Inkbunny Credentials</h3>
+                <details class="settings-accordion" open>
+                    <summary>Inkbunny Credentials <span class="summary-meta">${creds.username ? '— ' + Utils.escapeHtml(creds.username) : ''}</span></summary>
+                    <div class="accordion-body">
                     <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
                         <label style="font-size:13px;color:var(--text-muted)">Username</label>
                         <input type="text" id="cred-username" class="search-input" value="${Utils.escapeHtml(creds.username || '')}" placeholder="Inkbunny username" style="max-width:300px">
@@ -4651,10 +4652,12 @@ const App = {
                         <button class="btn btn-danger" id="settings-logout-btn">Sign Out</button>
                         <span id="creds-msg" style="font-size:13px"></span>
                     </div>
-                </div>
+                    </div>
+                </details>
 
-                <div class="settings-section">
-                    <h3>Application</h3>
+                <details class="settings-accordion" open>
+                    <summary>App Preferences</summary>
+                    <div class="accordion-body">
                     <div class="settings-row">
                         <div>
                             <span class="settings-label">Minimize to system tray on close</span>
@@ -4695,6 +4698,12 @@ const App = {
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
+                    </div>
+                </details>
+
+                <details class="settings-accordion">
+                    <summary>Poll Intervals <span class="summary-meta">— controls how often each platform is checked</span></summary>
+                    <div class="accordion-body">
                     <div class="settings-row">
                         <div>
                             <span class="settings-label">IB poll interval</span>
@@ -4868,10 +4877,12 @@ const App = {
                             ].map(([val, label]) => `<option value="${val}" ${prefs.display_timezone === val ? 'selected' : ''}>${label}</option>`).join('')}
                         </select>
                     </div>
-                </div>
+                    </div>
+                </details>
 
-                <div class="settings-section">
-                    <h3>Notification Filters</h3>
+                <details class="settings-accordion">
+                    <summary>Notification Filters</summary>
+                    <div class="accordion-body">
                     <div class="settings-row">
                         <div>
                             <span class="settings-label">IB: Comments only</span>
@@ -4926,10 +4937,12 @@ const App = {
                         </div>
                         <input type="number" class="search-input" id="pref-min-faves-delta" value="${prefs.notification_min_faves_delta || 0}" min="0" style="width:80px;text-align:center">
                     </div>
-                </div>
+                    </div>
+                </details>
 
-                <div class="settings-section">
-                    <h3>Milestone Thresholds</h3>
+                <details class="settings-accordion">
+                    <summary>Milestone Thresholds</summary>
+                    <div class="accordion-body">
                     <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Comma-separated numbers. Telegram will notify when a submission crosses any of these thresholds.</p>
                     <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
                         <label style="font-size:13px;color:var(--text-muted)">View milestones</label>
@@ -4947,7 +4960,8 @@ const App = {
                         <button class="btn btn-primary" id="save-milestones-btn">Save Milestones</button>
                         <span id="milestones-msg" style="font-size:13px"></span>
                     </div>
-                </div>
+                    </div>
+                </details>
 
                 </div><!-- /tab:general -->
 
@@ -5074,8 +5088,9 @@ const App = {
                 <!-- ═══ TAB: Platforms ═══ -->
                 <div class="settings-tab-content" data-tab-content="platforms" ${_settingsTab !== 'platforms' ? 'style="display:none"' : ''}>
 
-                <div class="settings-section">
-                    <h3>FurAffinity</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${faAuth.has_cookies ? 'connected' : 'disconnected'}"></span>FurAffinity${faAuth.has_cookies ? ` <span class="summary-meta">— ${Utils.escapeHtml(faAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
                     ${faAuth.has_cookies ? `
                     <div class="settings-row">
                         <div>
@@ -5121,10 +5136,12 @@ const App = {
                         <span id="fa-msg" style="font-size:13px"></span>
                     </div>
                     `}
-                </div>
+                    </div>
+                </details>
 
-                <div class="settings-section">
-                    <h3>Weasyl</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${wsAuth.has_key ? 'connected' : 'disconnected'}"></span>Weasyl${wsAuth.has_key ? ` <span class="summary-meta">— ${Utils.escapeHtml(wsAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
                     ${wsAuth.has_key ? `
                     <div class="settings-row">
                         <div>
@@ -5156,10 +5173,12 @@ const App = {
                     </div>
                     <div id="ws-msg" style="font-size:13px;margin-top:8px"></div>
                     `}
-                </div>
+                    </div>
+                </details>
 
-                <div class="settings-section">
-                    <h3>SoFurry</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${sfAuth.has_credentials ? 'connected' : 'disconnected'}"></span>SoFurry${sfAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(sfAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
                     ${sfAuth.has_credentials ? `
                     <div class="settings-row">
                         <div>
@@ -5196,10 +5215,12 @@ const App = {
                         <span id="sf-msg" style="font-size:13px"></span>
                     </div>
                     `}
-                </div>
+                    </div>
+                </details>
 
-                <div class="settings-section">
-                    <h3>SquidgeWorld</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${sqwAuth.has_credentials ? 'connected' : 'disconnected'}"></span>SquidgeWorld${sqwAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(sqwAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
                     ${sqwAuth.has_credentials ? `
                     <div class="settings-row">
                         <div>
@@ -5235,10 +5256,12 @@ const App = {
                         <span id="sqw-msg" style="font-size:13px"></span>
                     </div>
                     `}
-                </div>
+                    </div>
+                </details>
 
-                <div class="settings-section">
-                    <h3>AO3</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${ao3Auth.has_credentials ? 'connected' : 'disconnected'}"></span>AO3${ao3Auth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(ao3Auth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
                     ${ao3Auth.has_credentials ? `
                     <div class="settings-row">
                         <div>
@@ -5274,10 +5297,12 @@ const App = {
                         <span id="ao3-msg" style="font-size:13px"></span>
                     </div>
                     `}
-                </div>
+                    </div>
+                </details>
 
-                <div class="settings-section">
-                    <h3>DeviantArt</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${daAuth.has_credentials ? 'connected' : 'disconnected'}"></span>DeviantArt${daAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(daAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
                     ${daAuth.has_credentials ? `
                     <div class="settings-row">
                         <div>
@@ -5312,10 +5337,12 @@ const App = {
                         <span id="da-msg" style="font-size:13px"></span>
                     </div>
                     `}
-                </div>
+                    </div>
+                </details>
 
-                <div class="settings-section">
-                    <h3>Wattpad</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${wpAuth.has_credentials ? 'connected' : 'disconnected'}"></span>Wattpad${wpAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(wpAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
                     ${wpAuth.has_credentials ? `
                     <div class="settings-row">
                         <div>
@@ -5349,10 +5376,12 @@ const App = {
                         <span id="wp-msg" style="font-size:13px"></span>
                     </div>
                     `}
-                </div>
+                    </div>
+                </details>
 
-                <div class="settings-section">
-                    <h3>Itaku</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${ikAuth.has_credentials ? 'connected' : 'disconnected'}"></span>Itaku${ikAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(ikAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
                     ${ikAuth.has_credentials ? `
                     <div class="settings-row">
                         <div>
@@ -5386,10 +5415,12 @@ const App = {
                         <span id="ik-msg" style="font-size:13px"></span>
                     </div>
                     `}
-                </div>
+                    </div>
+                </details>
 
-                <div class="settings-section">
-                    <h3>Bluesky</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${bskyAuth.has_credentials ? 'connected' : 'disconnected'}"></span>Bluesky${bskyAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(bskyAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
                     ${bskyAuth.has_credentials ? `
                     <div class="settings-row">
                         <div>
@@ -5424,10 +5455,12 @@ const App = {
                         <span id="bsky-msg" style="font-size:13px"></span>
                     </div>
                     `}
-                </div>
+                    </div>
+                </details>
 
-                <div class="settings-section">
-                    <h3>X / Twitter</h3>
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${twAuth.has_credentials ? 'connected' : 'disconnected'}"></span>X / Twitter${twAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(twAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
                     ${twAuth.has_credentials ? `
                     <div class="settings-row">
                         <div>
@@ -5463,7 +5496,8 @@ const App = {
                         <span id="tw-msg" style="font-size:13px"></span>
                     </div>
                     `}
-                </div>
+                    </div>
+                </details>
 
                 </div><!-- /tab:platforms -->
 

@@ -576,6 +576,72 @@ body {
 .settings-label { color: var(--text-muted); }
 .settings-value { color: var(--text-primary); font-weight: 500; }
 
+/* ── Settings Accordion ─────────────────────────────────── */
+.settings-accordion {
+    background: var(--bg-glass);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius);
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-glass);
+    overflow: hidden;
+}
+[data-theme="light"] .settings-accordion {
+    border-color: rgba(0, 0, 0, 0.06);
+}
+.settings-accordion summary {
+    padding: 14px 20px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    list-style: none;
+    user-select: none;
+    transition: background var(--transition);
+}
+.settings-accordion summary::-webkit-details-marker { display: none; }
+.settings-accordion summary::after {
+    content: '\25B8';
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+.settings-accordion[open] summary::after {
+    transform: rotate(90deg);
+}
+.settings-accordion summary:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+[data-theme="light"] .settings-accordion summary:hover {
+    background: rgba(0, 0, 0, 0.02);
+}
+.settings-accordion .accordion-body {
+    padding: 4px 20px 20px;
+    border-top: 1px solid var(--border);
+}
+.settings-accordion .summary-meta {
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-left: 8px;
+}
+.settings-accordion .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+.status-dot.connected { background: var(--success); }
+.status-dot.disconnected { background: var(--text-muted); opacity: 0.5; }
+
 /* ── Settings Tabs ───────────────────────────────────────── */
 .settings-tabs {
     display: flex;
