@@ -532,6 +532,10 @@ const App = {
                     <div class="settings-row"><span class="settings-label">Last poll</span><span class="settings-value">${lastPoll ? Utils.formatDateTime(lastPoll.started_at) : 'Never'}</span></div>
                     <div class="settings-row"><span class="settings-label">Last poll status</span><span class="settings-value" style="color:${lastPoll?.status === 'success' ? 'var(--success)' : lastPoll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">${lastPoll?.status || '--'}</span></div>
                     ${lastPoll?.error_message ? `<div class="settings-row"><span class="settings-label">Last error</span><span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(lastPoll.error_message)}</span></div>` : ''}
+                    <div style="margin-top:12px;display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'ib')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'ib')">Full Resync</button>
+                    </div>
                     <div style="margin-top:12px">${Components.pollLogTable(ibPollLog.polls)}</div>
                     </div>
                 </details>`;
@@ -550,6 +554,10 @@ const App = {
                     <div class="settings-row"><span class="settings-label">Last poll</span><span class="settings-value">${lp ? Utils.formatDateTime(lp.started_at) : 'Never'}</span></div>
                     <div class="settings-row"><span class="settings-label">Last poll status</span><span class="settings-value" style="color:${lp?.status === 'success' ? 'var(--success)' : lp?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">${lp?.status || '--'}</span></div>
                     ${lp?.error_message ? `<div class="settings-row"><span class="settings-label">Last error</span><span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(lp.error_message)}</span></div>` : ''}
+                    <div style="margin-top:12px;display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'${p.key}')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'${p.key}')">Full Resync</button>
+                    </div>
                     <div style="margin-top:12px">${Components[p.tableFn](pl.polls)}</div>
                     </div>
                 </details>`;
@@ -559,6 +567,36 @@ const App = {
             this._pollingTabLoaded = true;
         } catch (err) {
             container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger)">Failed to load polling data: ${Utils.escapeHtml(err.message)}</div>`;
+        }
+    },
+
+    /* ── Per-Platform Poll/Resync helpers (used by dashboard headers + polling tab) */
+    async _dashPoll(btn, platform) {
+        btn.disabled = true;
+        btn.textContent = 'Polling...';
+        const fns = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll', sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll', wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll' };
+        try {
+            await API[fns[platform]]();
+            btn.textContent = 'Done!';
+            setTimeout(() => this.route(), 1500);
+        } catch (err) {
+            btn.textContent = 'Error';
+            setTimeout(() => { btn.textContent = 'Poll Now'; btn.disabled = false; }, 2000);
+        }
+    },
+
+    async _dashResync(btn, platform) {
+        if (!confirm('Full resync will re-fetch all data. This may take a while. Continue?')) return;
+        btn.disabled = true;
+        btn.textContent = 'Syncing...';
+        const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync' };
+        try {
+            await API[fns[platform]]();
+            btn.textContent = 'Done!';
+            setTimeout(() => this.route(), 1500);
+        } catch (err) {
+            btn.textContent = 'Error';
+            setTimeout(() => { btn.textContent = 'Full Resync'; btn.disabled = false; }, 2000);
         }
     },
 
@@ -1287,7 +1325,13 @@ const App = {
 
             const html = `
                 ${this._refreshIndicatorHtml()}
-                <div class="page-header"><h2>Dashboard</h2></div>
+                <div class="page-header">
+                    <h2>Dashboard</h2>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'ib')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'ib')">Full Resync</button>
+                    </div>
+                </div>
 
                 ${ibPins.length ? Components.pinnedSubmissions(ibPins, 'ib') : ''}
                 ${ibGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(ibGoals)}</div>` : ''}
@@ -1625,7 +1669,13 @@ const App = {
 
             const html = `
                 ${this._refreshIndicatorHtml()}
-                <div class="page-header"><h2>FurAffinity Dashboard</h2></div>
+                <div class="page-header">
+                    <h2>FurAffinity Dashboard</h2>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'fa')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'fa')">Full Resync</button>
+                    </div>
+                </div>
 
                 ${faPins.length ? Components.pinnedSubmissions(faPins, 'fa') : ''}
                 ${faGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(faGoals)}</div>` : ''}
@@ -1968,7 +2018,11 @@ const App = {
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
                     <h2>Weasyl Dashboard</h2>
-                    <button class="btn btn-secondary" onclick="API.exportSubmissions('ws')">Export CSV</button>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'ws')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'ws')">Full Resync</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ws')">Export CSV</button>
+                    </div>
                 </div>
 
                 ${wsPins.length ? Components.pinnedSubmissions(wsPins, 'ws') : ''}
@@ -2276,7 +2330,11 @@ const App = {
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
                     <h2>SoFurry Dashboard</h2>
-                    <button class="btn btn-secondary" onclick="API.exportSubmissions('sf')">Export CSV</button>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'sf')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'sf')">Full Resync</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('sf')">Export CSV</button>
+                    </div>
                 </div>
 
                 ${sfPins.length ? Components.pinnedSubmissions(sfPins, 'sf') : ''}
@@ -2565,7 +2623,11 @@ const App = {
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
                     <h2>SquidgeWorld Dashboard</h2>
-                    <button class="btn btn-secondary" onclick="API.exportSubmissions('sqw')">Export CSV</button>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'sqw')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'sqw')">Full Resync</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('sqw')">Export CSV</button>
+                    </div>
                 </div>
 
                 ${sqwPins.length ? Components.pinnedSubmissions(sqwPins, 'sqw') : ''}
@@ -2850,7 +2912,11 @@ const App = {
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
                     <h2>AO3 Dashboard</h2>
-                    <button class="btn btn-secondary" onclick="API.exportSubmissions('ao3')">Export CSV</button>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'ao3')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'ao3')">Full Resync</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ao3')">Export CSV</button>
+                    </div>
                 </div>
 
                 ${ao3Pins.length ? Components.pinnedSubmissions(ao3Pins, 'ao3') : ''}
@@ -3137,7 +3203,11 @@ const App = {
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
                     <h2>DeviantArt Dashboard</h2>
-                    <button class="btn btn-secondary" onclick="API.exportSubmissions('da')">Export CSV</button>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'da')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'da')">Full Resync</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('da')">Export CSV</button>
+                    </div>
                 </div>
 
                 ${daPins.length ? Components.pinnedSubmissions(daPins, 'da') : ''}
@@ -3435,7 +3505,11 @@ const App = {
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
                     <h2>Wattpad Dashboard</h2>
-                    <button class="btn btn-secondary" onclick="API.exportSubmissions('wp')">Export CSV</button>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'wp')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'wp')">Full Resync</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('wp')">Export CSV</button>
+                    </div>
                 </div>
 
                 ${wpPins.length ? Components.pinnedSubmissions(wpPins, 'wp') : ''}
@@ -3731,7 +3805,11 @@ const App = {
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
                     <h2>Itaku Dashboard</h2>
-                    <button class="btn btn-secondary" onclick="API.exportSubmissions('ik')">Export CSV</button>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'ik')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'ik')">Full Resync</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ik')">Export CSV</button>
+                    </div>
                 </div>
 
                 ${ikPins.length ? Components.pinnedSubmissions(ikPins, 'ik') : ''}
@@ -4019,7 +4097,11 @@ const App = {
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
                     <h2>Bluesky Dashboard</h2>
-                    <button class="btn btn-secondary" onclick="API.exportSubmissions('bsky')">Export CSV</button>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'bsky')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'bsky')">Full Resync</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('bsky')">Export CSV</button>
+                    </div>
                 </div>
 
                 ${bskyPins.length ? Components.pinnedSubmissions(bskyPins, 'bsky') : ''}
@@ -4315,7 +4397,11 @@ const App = {
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
                     <h2>X/Twitter Dashboard</h2>
-                    <button class="btn btn-secondary" onclick="API.exportSubmissions('tw')">Export CSV</button>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'tw')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'tw')">Full Resync</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('tw')">Export CSV</button>
+                    </div>
                 </div>
 
                 ${twPins.length ? Components.pinnedSubmissions(twPins, 'tw') : ''}
