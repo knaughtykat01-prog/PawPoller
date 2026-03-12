@@ -335,6 +335,11 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
                 if is_new:
                     stats["new_watchers_found"] += 1
                     new_follower_names.append(username)
+            # Prune followers no longer on the live list
+            if followers:
+                removed = sf_queries.remove_stale_sf_watchers(conn, followers)
+                if removed:
+                    logger.info("SF: pruned %d stale followers from DB", removed)
             conn.commit()
         except Exception as we:
             logger.warning("Failed to scrape SF followers: %s", we)

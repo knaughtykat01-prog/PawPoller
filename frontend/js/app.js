@@ -2287,6 +2287,7 @@ const App = {
                     ${Components.statCard('Total Views', summary.total_views)}
                     ${Components.statCard('Total Likes', summary.total_favorites)}
                     ${Components.statCard('Total Comments', summary.total_comments)}
+                    ${Components.statCard('Total Followers', summary.total_watchers || 0)}
                 </div>
 
                 ${Components.growthRateCards(summary.growth_rates)}
@@ -2310,9 +2311,13 @@ const App = {
                 </div>
 
                 <div class="chart-row">
-                    <div class="chart-container" style="grid-column: 1 / -1">
+                    <div class="chart-container">
                         <h3>Fastest Growing (24h)</h3>
                         ${Components.sfTopList(summary.fastest_growing, 'views_gained')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Recent Followers</h3>
+                        ${Components.recentWatchers(summary.recent_watchers)}
                     </div>
                 </div>
             `;

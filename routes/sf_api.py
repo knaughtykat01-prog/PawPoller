@@ -165,10 +165,24 @@ def get_sf_summary():
     try:
         summary = sf_queries.get_sf_summary(conn)
         summary["growth_rates"] = sf_queries.get_sf_growth_rates(conn)
+        summary["total_watchers"] = sf_queries.get_sf_watchers_count(conn)
+        summary["recent_watchers"] = sf_queries.get_sf_recent_watchers(conn, limit=10)
         return summary
     except Exception as e:
         logger.error("Error in /api/sf/summary: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@sf_router.get("/watchers")
+def get_sf_watchers():
+    """Recent SF followers list with total count."""
+    conn = get_connection()
+    try:
+        watchers = sf_queries.get_sf_recent_watchers(conn, limit=50)
+        count = sf_queries.get_sf_watchers_count(conn)
+        return {"watchers": watchers, "total": count}
     finally:
         conn.close()
 

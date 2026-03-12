@@ -162,6 +162,7 @@ const API = {
     triggerSFPoll() { return this.post('/api/sf/poll/trigger'); },
     fullSFResync() { return this.post('/api/sf/poll/full-resync'); },
     getSFPollProgress() { return this.get('/api/sf/poll/progress'); },
+    getSFWatchers() { return this.get('/api/sf/watchers'); },
     /* ── SQW (SquidgeWorld) convenience methods ──────────────────
      * Mirror of the SF methods, namespaced under /api/sqw/.
      * SquidgeWorld uses username/password auth to track a target user.

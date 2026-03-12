@@ -153,7 +153,7 @@ def get_sf_poll_log(conn: sqlite3.Connection, limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-# -- SF Watchers -------------------------------------------------------
+# -- SF Watchers/Followers ---------------------------------------------
 
 def upsert_sf_watcher(conn: sqlite3.Connection, username: str) -> bool:
     """Insert a watcher if not already known. Returns True if new."""
@@ -164,8 +164,35 @@ def upsert_sf_watcher(conn: sqlite3.Connection, username: str) -> bool:
     return True
 
 
+def remove_stale_sf_watchers(conn: sqlite3.Connection, current_usernames: list[str]) -> int:
+    """Remove followers no longer on the live list. Returns rows deleted."""
+    if not current_usernames:
+        return 0
+    placeholders = ",".join("?" for _ in current_usernames)
+    cur = conn.execute(
+        f"DELETE FROM sf_watchers WHERE username NOT IN ({placeholders})",
+        current_usernames,
+    )
+    return cur.rowcount
+
+
 def get_sf_watchers(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute("SELECT * FROM sf_watchers ORDER BY first_seen_at DESC").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_sf_watchers_count(conn: sqlite3.Connection) -> int:
+    """Total number of tracked SF followers."""
+    row = conn.execute("SELECT COUNT(*) as c FROM sf_watchers").fetchone()
+    return row["c"] if row else 0
+
+
+def get_sf_recent_watchers(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
+    """Most recent SF followers, newest first."""
+    rows = conn.execute(
+        "SELECT * FROM sf_watchers ORDER BY first_seen_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
     return [dict(r) for r in rows]
 
 
