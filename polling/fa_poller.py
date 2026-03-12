@@ -374,6 +374,11 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                 if is_new:
                     stats["new_watchers_found"] += 1
                     new_watcher_names.append(username)
+            # Remove watchers no longer on the live list (banned/deleted/unwatched)
+            if watchers:
+                removed = fa_queries.remove_stale_fa_watchers(conn, watchers)
+                if removed:
+                    logger.info("FA: pruned %d stale watchers from DB", removed)
             conn.commit()
 
             if new_watcher_names:

@@ -432,6 +432,11 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
                 if is_new:
                     stats["new_watchers_found"] += 1
                     new_watcher_details.append({"username": username})
+            # Remove watchers no longer on the live list (banned/deleted/unwatched)
+            if watchers:
+                removed = queries.remove_stale_watchers(conn, watchers)
+                if removed:
+                    logger.info("Pruned %d stale watchers from DB", removed)
             conn.commit()
         except Exception as we:
             logger.warning("Failed to scrape watchers: %s", we)

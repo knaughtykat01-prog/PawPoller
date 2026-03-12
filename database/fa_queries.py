@@ -505,6 +505,22 @@ def mark_watchers_notified(conn: sqlite3.Connection, usernames: list[str]) -> No
     )
 
 
+def remove_stale_fa_watchers(conn: sqlite3.Connection, current_usernames: list[str]) -> int:
+    """Remove FA watchers no longer on the live watcher list.
+
+    Accounts that get banned, deleted, or unwatch disappear from FAExport.
+    This prunes the DB to match reality. Returns the number of rows deleted.
+    """
+    if not current_usernames:
+        return 0
+    placeholders = ",".join("?" for _ in current_usernames)
+    cur = conn.execute(
+        f"DELETE FROM fa_watchers WHERE username NOT IN ({placeholders})",
+        current_usernames,
+    )
+    return cur.rowcount
+
+
 def get_fa_watchers_count(conn: sqlite3.Connection) -> int:
     """Total number of tracked FA watchers (confirmed only)."""
     row = conn.execute("SELECT COUNT(*) as c FROM fa_watchers WHERE confirmed = 1").fetchone()

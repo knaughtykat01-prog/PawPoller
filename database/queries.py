@@ -602,6 +602,23 @@ def upsert_watcher(conn: sqlite3.Connection, username: str) -> bool:
     return True
 
 
+def remove_stale_watchers(conn: sqlite3.Connection, current_usernames: list[str]) -> int:
+    """Remove watchers no longer on the live watcher list.
+
+    Inkbunny's watched_by page only shows active watchers — banned, deleted,
+    and unwatched accounts disappear. This prunes the DB to match reality.
+    Returns the number of rows deleted.
+    """
+    if not current_usernames:
+        return 0
+    placeholders = ",".join("?" for _ in current_usernames)
+    cur = conn.execute(
+        f"DELETE FROM watchers WHERE username NOT IN ({placeholders})",
+        current_usernames,
+    )
+    return cur.rowcount
+
+
 def get_watchers_count(conn: sqlite3.Connection) -> int:
     """Total number of tracked watchers."""
     row = conn.execute("SELECT COUNT(*) as c FROM watchers").fetchone()
