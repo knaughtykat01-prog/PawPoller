@@ -901,6 +901,7 @@ def get_telegram_features():
         "error_alerts": settings.get("telegram_error_alerts", True),
         "milestones": settings.get("telegram_milestones", True),
         "digest": settings.get("telegram_digest", True),
+        "digest_interval_hours": settings.get("telegram_digest_interval_hours", 6),
     }
 
 
@@ -913,6 +914,9 @@ def set_telegram_features(body: dict):
         short = key.replace("telegram_", "")
         if short in body:
             update[key] = bool(body[short])
+    if "digest_interval_hours" in body:
+        val = int(body["digest_interval_hours"])
+        update["telegram_digest_interval_hours"] = max(1, min(val, 168))
     if update:
         config.save_settings(update)
     return {"status": "success"}

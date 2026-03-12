@@ -4968,10 +4968,11 @@ const App = {
         try {
             // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
             // Polling tab data is loaded lazily when the user clicks into it.
-            const [creds, prefs, telegram, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, updateInfo] = await Promise.all([
+            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, updateInfo] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
+                API.getTelegramFeatures().catch(() => ({ poll_summaries: true, error_alerts: true, milestones: true, digest: true, digest_interval_hours: 6 })),
                 API.getPollPaused().catch(() => ({ polling_paused: false })),
                 API.getFAAuthStatus().catch(() => ({ has_cookies: false })),
                 API.getWSAuthStatus().catch(() => ({ has_key: false })),
@@ -5530,6 +5531,31 @@ const App = {
                         <button class="btn btn-secondary" id="telegram-test-btn">Test</button>
                         <button class="btn btn-danger" id="telegram-disconnect-btn">Disconnect</button>
                         <span id="telegram-msg" style="font-size:13px"></span>
+                    </div>
+
+                    <h3 style="margin-top:24px">Notification Features</h3>
+                    <div class="settings-row">
+                        <div><span class="settings-label">Poll summaries</span><div style="font-size:11px;color:var(--text-muted);margin-top:2px">Send a message after each poll cycle</div></div>
+                        <label class="toggle-switch"><input type="checkbox" id="tg-feat-summaries" ${tgFeatures.poll_summaries ? 'checked' : ''}><span class="toggle-slider"></span></label>
+                    </div>
+                    <div class="settings-row">
+                        <div><span class="settings-label">Error alerts</span><div style="font-size:11px;color:var(--text-muted);margin-top:2px">Send a message when a poll fails</div></div>
+                        <label class="toggle-switch"><input type="checkbox" id="tg-feat-errors" ${tgFeatures.error_alerts ? 'checked' : ''}><span class="toggle-slider"></span></label>
+                    </div>
+                    <div class="settings-row">
+                        <div><span class="settings-label">Milestones</span><div style="font-size:11px;color:var(--text-muted);margin-top:2px">Alert when submissions hit view/fave milestones</div></div>
+                        <label class="toggle-switch"><input type="checkbox" id="tg-feat-milestones" ${tgFeatures.milestones ? 'checked' : ''}><span class="toggle-slider"></span></label>
+                    </div>
+                    <div class="settings-row">
+                        <div><span class="settings-label">Periodic digest</span><div style="font-size:11px;color:var(--text-muted);margin-top:2px">Cross-platform summary sent on a timer</div></div>
+                        <label class="toggle-switch"><input type="checkbox" id="tg-feat-digest" ${tgFeatures.digest ? 'checked' : ''}><span class="toggle-slider"></span></label>
+                    </div>
+                    <div class="settings-row">
+                        <div><span class="settings-label">Digest interval</span><div style="font-size:11px;color:var(--text-muted);margin-top:2px">Hours between digest reports (1–168)</div></div>
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <input type="number" id="tg-digest-interval" class="search-input" style="width:80px" min="1" max="168" value="${tgFeatures.digest_interval_hours}">
+                            <span style="font-size:13px;color:var(--text-muted)">hours</span>
+                        </div>
                     </div>
                     ` : `
                     <p class="telegram-instructions">Paste your bot token (from <a href="https://t.me/BotFather" target="_blank" style="color:var(--accent)">@BotFather</a>), send <code>/start</code> to your bot on Telegram, then click Connect.</p>
@@ -6364,6 +6390,28 @@ const App = {
                         e.target.checked = !e.target.checked;
                         alert('Failed to save preference: ' + err.message);
                     }
+                });
+            }
+
+            // Telegram feature toggles: save immediately on change
+            for (const [elId, key] of [['tg-feat-summaries','poll_summaries'],['tg-feat-errors','error_alerts'],['tg-feat-milestones','milestones'],['tg-feat-digest','digest']]) {
+                const el = document.getElementById(elId);
+                if (el) el.addEventListener('change', async (e) => {
+                    try { await API.setTelegramFeatures({ [key]: e.target.checked }); }
+                    catch (err) { e.target.checked = !e.target.checked; alert('Failed: ' + err.message); }
+                });
+            }
+
+            // Digest interval: save on change with debounce
+            const digestIntervalInput = document.getElementById('tg-digest-interval');
+            if (digestIntervalInput) {
+                let _digestTimeout;
+                digestIntervalInput.addEventListener('change', async () => {
+                    clearTimeout(_digestTimeout);
+                    const val = Math.max(1, Math.min(168, parseInt(digestIntervalInput.value) || 6));
+                    digestIntervalInput.value = val;
+                    try { await API.setTelegramFeatures({ digest_interval_hours: val }); }
+                    catch (err) { alert('Failed: ' + err.message); }
                 });
             }
 

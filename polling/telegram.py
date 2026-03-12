@@ -4,7 +4,7 @@ Provides reusable send function and higher-level notification builders:
   - Poll cycle summaries (per-platform)
   - Poll error alerts
   - Milestone alerts (view/fave/comment thresholds)
-  - 6-hourly cross-platform digest reports
+  - Periodic cross-platform digest reports (configurable interval)
 """
 
 from __future__ import annotations
@@ -324,10 +324,10 @@ async def check_goals() -> None:
         conn.close()
 
 
-# ── 6-Hourly Digest Report ──────────────────────────────────
+# ── Periodic Digest Report ───────────────────────────────────
 
-def _get_6h_deltas(conn, snap_table: str, sub_table: str, platform: str) -> dict:
-    """Compute aggregate stat deltas over the last 6 hours for a platform.
+def _get_digest_deltas(conn, snap_table: str, sub_table: str, platform: str, hours: int = 6) -> dict:
+    """Compute aggregate stat deltas over the last *hours* for a platform.
 
     Returns dict with total_views_delta, total_faves_delta, total_comments_delta,
     top_gainers (up to 3 submissions with biggest view/fave gains), and submission count.
@@ -368,10 +368,11 @@ def _get_6h_deltas(conn, snap_table: str, sub_table: str, platform: str) -> dict
                 INNER JOIN (
                     SELECT submission_id, MAX(polled_at) as max_polled
                     FROM {snap_table}
-                    WHERE polled_at <= datetime('now', '-6 hours')
+                    WHERE polled_at <= datetime('now', '-' || ? || ' hours')
                     GROUP BY submission_id
                 ) s2 ON s1.submission_id = s2.submission_id AND s1.polled_at = s2.max_polled
-            ) old ON s.submission_id = old.submission_id"""
+            ) old ON s.submission_id = old.submission_id""",
+        (str(hours),),
     ).fetchall()
 
     total_views_delta = 0
@@ -428,16 +429,18 @@ def _get_platform_totals(conn, sub_table: str, platform: str) -> dict:
 
 
 async def send_digest_report() -> None:
-    """Build and send the 6-hourly cross-platform digest report."""
+    """Build and send the periodic cross-platform digest report."""
     settings = config.get_settings()
     if not settings.get("telegram_enabled", False):
         return
     if not settings.get("telegram_digest", True):
         return
 
+    digest_hours = settings.get("telegram_digest_interval_hours", 6)
+
     conn = get_connection()
     try:
-        lines = [f"<b>📊 PawPoller 6-Hour Digest</b>"]
+        lines = [f"<b>📊 PawPoller {digest_hours}-Hour Digest</b>"]
         lines.append(f"<i>{format_tz()}</i>")
         lines.append("")
 
@@ -475,7 +478,7 @@ async def send_digest_report() -> None:
                 continue
 
             totals = _get_platform_totals(conn, sub_t, plat)
-            deltas = _get_6h_deltas(conn, snap_t, sub_t, plat)
+            deltas = _get_digest_deltas(conn, snap_t, sub_t, plat, digest_hours)
 
             grand_views += deltas["views_delta"]
             grand_faves += deltas["faves_delta"]

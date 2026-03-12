@@ -538,14 +538,19 @@ def _start_tw_poller():
 
 
 def _start_digest_scheduler():
-    """Run 6-hourly Telegram digest in its own daemon thread."""
+    """Run periodic Telegram digest in its own daemon thread."""
     import asyncio
     from datetime import datetime, timezone
     from polling.telegram import send_digest_report
 
+    def _get_digest_interval() -> int:
+        """Read digest interval from settings (in seconds)."""
+        hours = config.get_settings().get("telegram_digest_interval_hours", 6)
+        return max(int(hours), 1) * 60 * 60
+
     def _seconds_until_next_digest() -> float:
         """Calculate seconds until next digest is due, respecting last sent time."""
-        DIGEST_INTERVAL = 6 * 60 * 60  # 6 hours in seconds
+        digest_interval = _get_digest_interval()
         MIN_STARTUP_DELAY = 300         # 5 minutes minimum after startup
         last = config.get_settings().get("last_digest_sent_at")
         if last:
@@ -554,10 +559,9 @@ def _start_digest_scheduler():
                 if last_dt.tzinfo is None:
                     last_dt = last_dt.replace(tzinfo=timezone.utc)
                 elapsed = (datetime.now(timezone.utc) - last_dt).total_seconds()
-                remaining = DIGEST_INTERVAL - elapsed
+                remaining = digest_interval - elapsed
                 if remaining > MIN_STARTUP_DELAY:
                     return remaining
-                # If it's overdue or nearly due, still wait the minimum startup delay
                 return MIN_STARTUP_DELAY
             except (ValueError, TypeError):
                 pass
@@ -572,7 +576,7 @@ def _start_digest_scheduler():
                 await send_digest_report()
             except Exception as e:
                 logger.error("Digest report failed: %s", e)
-            await asyncio.sleep(6 * 60 * 60)
+            await asyncio.sleep(_get_digest_interval())
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

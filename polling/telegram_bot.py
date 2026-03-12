@@ -85,6 +85,7 @@ async def _cmd_help(token: str, chat_id: str, args: str) -> None:
 /trending — Submissions with unusual activity spikes (z-score detection)
 /fans — Top fans leaderboard by fave + comment score
 /digest — Trigger a full digest report now
+/digest interval [hours] — Change digest interval (1-168h, default 6)
 
 <b>⚙️ Polling Control</b>
 /poll [platform|all] — Force an immediate poll cycle (works even when paused)
@@ -325,6 +326,28 @@ async def _cmd_trending(token: str, chat_id: str, args: str) -> None:
 
 
 async def _cmd_digest(token: str, chat_id: str, args: str) -> None:
+    parts = args.strip().split()
+
+    # /digest interval <hours> — change digest interval
+    if len(parts) == 2 and parts[0] == "interval":
+        try:
+            hours = int(parts[1])
+            if hours < 1 or hours > 168:
+                await _send(token, chat_id, "Interval must be between 1 and 168 hours.")
+                return
+            config.save_settings({"telegram_digest_interval_hours": hours})
+            await _send(token, chat_id, f"✅ Digest interval set to <b>{hours}h</b>. Takes effect next cycle.")
+        except ValueError:
+            await _send(token, chat_id, "Usage: /digest interval [hours]  (1-168)")
+        return
+
+    # /digest interval — show current interval
+    if len(parts) == 1 and parts[0] == "interval":
+        hours = config.get_settings().get("telegram_digest_interval_hours", 6)
+        await _send(token, chat_id, f"Current digest interval: <b>{hours}h</b>\nUsage: /digest interval [hours]")
+        return
+
+    # /digest — trigger immediately
     from polling.telegram import send_digest_report
     try:
         await send_digest_report()
@@ -566,7 +589,8 @@ async def _cmd_notify(token: str, chat_id: str, args: str) -> None:
         lines.append(f"  Summaries: {'on' if settings.get('telegram_poll_summaries', True) else 'off'}")
         lines.append(f"  Errors: {'on' if settings.get('telegram_error_alerts', True) else 'off'}")
         lines.append(f"  Milestones: {'on' if settings.get('telegram_milestones', True) else 'off'}")
-        lines.append(f"  Digest: {'on' if settings.get('telegram_digest', True) else 'off'}")
+        digest_hours = settings.get('telegram_digest_interval_hours', 6)
+        lines.append(f"  Digest: {'on' if settings.get('telegram_digest', True) else 'off'} (every {digest_hours}h)")
 
         lines.append("")
         lines.append("<b>Platform Notifications</b>")
