@@ -308,20 +308,28 @@ class FAClient:
     async def get_all_watchers(self) -> list[str]:
         """Paginate through all watcher pages and return the complete list.
 
-        Walks pages sequentially until FAExport returns an empty list (indicating
-        we've gone past the last page). Rate-limited between pages to be polite
-        to the FAExport server.
+        Walks pages sequentially until FAExport returns an empty list or
+        repeats the previous page (FAExport returns the last page's data
+        indefinitely instead of an empty list for some accounts).
+        Rate-limited between pages to be polite to the FAExport server.
 
-        Returns a flat list of all watcher usernames.
+        Returns a deduplicated list of all watcher usernames.
         """
         all_watchers: list[str] = []
+        seen: set[str] = set()
         page = 1
         for _page_safety in range(1000):
             items = await self.get_watchers_page(page)
             # Empty list = no more pages
             if not items:
                 break
-            all_watchers.extend(items)
+            # FAExport repeats the last page forever instead of returning
+            # empty — stop when we see no new usernames
+            new_items = [u for u in items if u not in seen]
+            if not new_items:
+                break
+            seen.update(new_items)
+            all_watchers.extend(new_items)
             page += 1
             # Rate-limit between pages to avoid overloading FAExport
             await asyncio.sleep(config.FA_REQUEST_DELAY_SECONDS)
