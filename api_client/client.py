@@ -290,7 +290,7 @@ class InkbunnyClient:
             # Quick session check — verify existing session is still valid
             try:
                 probe = await self._web_http.get(f"{config.INKBUNNY_API_BASE}/")
-                if "logout.php" in probe.text:
+                if "logout" in probe.text:
                     return  # Session still good
                 # Session expired — close and re-create
                 await self._web_http.aclose()
@@ -325,7 +325,7 @@ class InkbunnyClient:
             },
         )
         # Presence of "logout.php" link in the response body indicates successful login
-        if "logout.php" in resp.text:
+        if "logout" in resp.text:
             logger.info("Web session established for comment scraping")
         else:
             logger.warning("Web login may have failed (status %d) — closing web client", resp.status_code)
