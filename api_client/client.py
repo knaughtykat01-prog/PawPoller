@@ -473,7 +473,7 @@ class InkbunnyClient:
                 resp = await self._web_http.get(
                     f"{config.INKBUNNY_API_BASE}/usersviewall.php",
                     params={
-                        "mode": "watched_by",
+                        "mode": "watchedby",
                         "user_id": str(self.user_id),
                         "page": str(page),
                     },

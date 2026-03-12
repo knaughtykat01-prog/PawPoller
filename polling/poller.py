@@ -301,8 +301,11 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         _update_progress("logging_in", message="Authenticating with Inkbunny...")
         cached = queries.get_cached_session(conn)
         cached_sid = cached["sid"] if cached else None
+        cached_uid = cached.get("user_id", 0) if cached else 0
+        if cached_uid:
+            client.user_id = cached_uid
         sid = await client.ensure_session(cached_sid)
-        queries.save_session(conn, sid, client.username)
+        queries.save_session(conn, sid, client.username, client.user_id)
 
         # ── Step 2: Search for all user submissions ────────────
         _update_progress("searching", message="Searching for submissions...")

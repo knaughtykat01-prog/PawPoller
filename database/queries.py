@@ -26,19 +26,29 @@ from typing import Any
 
 def get_cached_session(conn: sqlite3.Connection) -> dict | None:
     # Always fetches id=1 -- there is at most one cached session at any time.
-    row = conn.execute("SELECT sid, username, created_at FROM session_cache WHERE id = 1").fetchone()
+    # Try to read user_id; older DBs may not have the column yet.
+    try:
+        row = conn.execute("SELECT sid, username, user_id, created_at FROM session_cache WHERE id = 1").fetchone()
+    except Exception:
+        row = conn.execute("SELECT sid, username, created_at FROM session_cache WHERE id = 1").fetchone()
     return dict(row) if row else None
 
 
-def save_session(conn: sqlite3.Connection, sid: str, username: str) -> None:
+def save_session(conn: sqlite3.Connection, sid: str, username: str, user_id: int = 0) -> None:
     # Upsert pattern: INSERT with a hardcoded id=1 and ON CONFLICT UPDATE.
     # If no session exists yet, a new row is inserted. If one already exists
     # (id=1 triggers the UNIQUE conflict), the existing row is updated in place.
     # This guarantees exactly one session row at all times -- a singleton cache.
+    # Migrate: add user_id column if missing (older DBs).
+    try:
+        conn.execute("ALTER TABLE session_cache ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+    except Exception:
+        pass  # Column already exists
     conn.execute(
-        "INSERT INTO session_cache (id, sid, username, created_at) VALUES (1, ?, ?, datetime('now'))"
-        " ON CONFLICT(id) DO UPDATE SET sid=excluded.sid, username=excluded.username, created_at=excluded.created_at",
-        (sid, username),
+        "INSERT INTO session_cache (id, sid, username, user_id, created_at) VALUES (1, ?, ?, ?, datetime('now'))"
+        " ON CONFLICT(id) DO UPDATE SET sid=excluded.sid, username=excluded.username, user_id=excluded.user_id, created_at=excluded.created_at",
+        (sid, username, user_id),
     )
     conn.commit()
 

@@ -171,5 +171,6 @@ CREATE TABLE IF NOT EXISTS session_cache (
     id              INTEGER PRIMARY KEY CHECK (id = 1),  -- Singleton: only id=1 is allowed
     sid             TEXT NOT NULL,           -- Inkbunny session ID (API auth token)
     username        TEXT NOT NULL,           -- Authenticated Inkbunny username
+    user_id         INTEGER NOT NULL DEFAULT 0,  -- Inkbunny numeric user ID (for web scraping)
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))  -- When this session was cached
 );
