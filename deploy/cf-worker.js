@@ -4,6 +4,7 @@
 //
 // Paste this into the Cloudflare Workers online editor.
 // Set PROXY_SECRET as an environment variable in Worker Settings.
+// Bind a KV namespace called SF_SESSIONS in Worker Settings → Variables.
 //
 // Key features:
 //   1. Follows redirects internally with cookie forwarding (same egress IP)
@@ -12,6 +13,8 @@
 //   3. Supports x-proxy-login: JSON with {url, email, password, then}
 //      Performs GET login page → extract CSRF → POST login → GET 'then' URL
 //      all in one invocation.  Critical for SoFurry IP-pinned sessions.
+//   4. Session persistence via KV: stores session cookies after login and
+//      reuses them on subsequent requests to avoid re-logging in every poll.
 
 export default {
   async fetch(request, env) {
@@ -112,7 +115,7 @@ export default {
     }
 
     // Helper: build final response with cookies
-    function buildResponse(resp, finalUrl) {
+    function buildResponse(resp, finalUrl, extraHeaders) {
       const responseHeaders = new Headers();
       for (const [key, value] of resp.headers) {
         if (key.toLowerCase() !== 'set-cookie') {
@@ -127,6 +130,11 @@ export default {
       if (cookieStr) {
         responseHeaders.set('X-Session-Cookies', cookieStr);
       }
+      if (extraHeaders) {
+        for (const [k, v] of Object.entries(extraHeaders)) {
+          responseHeaders.set(k, v);
+        }
+      }
       return new Response(resp.body, {
         status: resp.status,
         statusText: resp.statusText,
@@ -134,9 +142,34 @@ export default {
       });
     }
 
+    // Helper: save session cookies to KV (if KV is bound)
+    async function saveSessionToKV(key, cookieObj) {
+      if (!env.SF_SESSIONS) return;
+      try {
+        await env.SF_SESSIONS.put(key, JSON.stringify({
+          cookies: cookieObj,
+          saved_at: new Date().toISOString(),
+        }), { expirationTtl: 86400 }); // 24h TTL
+      } catch (e) {
+        // KV write failures are non-fatal
+      }
+    }
+
+    // Helper: load session cookies from KV
+    async function loadSessionFromKV(key) {
+      if (!env.SF_SESSIONS) return null;
+      try {
+        const data = await env.SF_SESSIONS.get(key, { type: 'json' });
+        return data;
+      } catch (e) {
+        return null;
+      }
+    }
+
     // ─── Login sequence mode ───────────────────────────────────
     // x-proxy-login: {"url":"https://sofurry.com/login","email":"...","password":"...","then":"https://sofurry.com/u/X/gallery"}
-    // Does GET login → extract CSRF → POST login → GET 'then' URL, all same IP.
+    // Does GET login page → extract CSRF → POST login → GET 'then' URL, all same IP.
+    // With KV: tries stored session first, only re-logins if session expired.
     const loginHeader = request.headers.get('x-proxy-login');
     if (loginHeader) {
       try {
@@ -145,6 +178,45 @@ export default {
           return new Response('x-proxy-login requires url, email, password', { status: 400 });
         }
 
+        const kvKey = `sf_session_${login.email}`;
+
+        // ── Try stored session first ──────────────────────────
+        const stored = await loadSessionFromKV(kvKey);
+        if (stored && stored.cookies && login.then) {
+          // Inject stored cookies into our jar
+          for (const [k, v] of Object.entries(stored.cookies)) {
+            cookies[k] = v;
+          }
+
+          // Try fetching the 'then' URL with stored cookies
+          const { resp: tryResp, finalUrl: tryUrl } =
+            await fetchWithRedirects(login.then, 'GET', null);
+          const tryHtml = await tryResp.text();
+
+          // Check if session is still valid (not redirected to login, has content)
+          const isLoggedIn = !tryUrl.includes('/login') &&
+            (tryHtml.includes('logout') || tryHtml.includes('/s/'));
+
+          if (isLoggedIn) {
+            // Session reused — save updated cookies back to KV
+            await saveSessionToKV(kvKey, { ...cookies });
+            // Rebuild response from the HTML we already consumed
+            const reusedResp = new Response(tryHtml, {
+              status: 200,
+              headers: tryResp.headers,
+            });
+            return buildResponse(reusedResp, tryUrl, { 'X-Session-Reused': 'true' });
+          }
+
+          // Session expired — fall through to fresh login
+          // Clear stale cookies
+          for (const k of Object.keys(cookies)) {
+            delete cookies[k];
+          }
+          allSetCookies.length = 0;
+        }
+
+        // ── Fresh login ───────────────────────────────────────
         // Step 1: GET login page to extract CSRF token
         const { resp: loginPageResp, finalUrl: loginPageUrl } =
           await fetchWithRedirects(login.url, 'GET', null);
@@ -156,7 +228,7 @@ export default {
         const csrfToken = csrfMatch[1];
 
         // Step 2: POST login with CSRF token + credentials
-        const formBody = `_token=${encodeURIComponent(csrfToken)}&email=${encodeURIComponent(login.email)}&password=${encodeURIComponent(login.password)}`;
+        const formBody = `_token=${encodeURIComponent(csrfToken)}&email=${encodeURIComponent(login.email)}&password=${encodeURIComponent(login.password)}&remember=on`;
         const { resp: postResp, finalUrl: postFinalUrl } =
           await fetchWithRedirects(login.url, 'POST', formBody, {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -166,17 +238,24 @@ export default {
 
         // Check if login failed (still on /login page)
         if (postFinalUrl.includes('/login')) {
-          return buildResponse(postResp, postFinalUrl);
+          return buildResponse(postResp, postFinalUrl, { 'X-Session-Reused': 'false' });
         }
 
         // Step 3: Fetch the 'then' URL (e.g. gallery) if provided
         if (login.then) {
           const { resp: thenResp, finalUrl: thenUrl } =
             await fetchWithRedirects(login.then, 'GET', null);
-          return buildResponse(thenResp, thenUrl);
+
+          // Save session cookies to KV for next time
+          await saveSessionToKV(kvKey, { ...cookies });
+
+          return buildResponse(thenResp, thenUrl, { 'X-Session-Reused': 'false' });
         }
 
-        return buildResponse(postResp, postFinalUrl);
+        // Save session cookies to KV
+        await saveSessionToKV(kvKey, { ...cookies });
+
+        return buildResponse(postResp, postFinalUrl, { 'X-Session-Reused': 'false' });
       } catch (err) {
         return new Response(`Login sequence error: ${err.message}`, { status: 502 });
       }

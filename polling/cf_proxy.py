@@ -87,9 +87,11 @@ class CloudflareProxyTransport(httpx.AsyncBaseTransport):
 
         self._update_cookies_from_response(response)
 
-        logger.debug("CF proxy: login_and_fetch status=%d final=%s",
-                      response.status_code,
-                      response.headers.get("x-final-url", ""))
+        reused = response.headers.get("x-session-reused", "unknown")
+        logger.info("CF proxy: login_and_fetch status=%d final=%s session_reused=%s",
+                     response.status_code,
+                     response.headers.get("x-final-url", ""),
+                     reused)
 
         return response
 
