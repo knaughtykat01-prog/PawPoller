@@ -51,18 +51,35 @@ async def _send(token: str, chat_id: str, text: str) -> None:
         logger.warning("Bot reply failed: %s", e)
 
 
+_CONFLICT_BACKOFF = 0  # seconds to sleep before next poll (0 = normal)
+
+
 async def _poll_updates(token: str) -> list[dict]:
-    """Fetch new messages from Telegram using long polling."""
-    global _last_update_id
+    """Fetch new messages from Telegram using long polling.
+
+    Returns an empty list on error.  On 409 Conflict (another instance is
+    polling the same bot token), sets an exponential backoff so the main
+    loop sleeps instead of hammering the API every few seconds.
+    """
+    global _last_update_id, _CONFLICT_BACKOFF
     try:
         async with httpx.AsyncClient(timeout=35.0) as client:
             resp = await client.get(
                 f"https://api.telegram.org/bot{token}/getUpdates",
                 params={"offset": _last_update_id + 1, "timeout": 30},
             )
+            # 409 Conflict = another bot instance is polling the same token.
+            # Back off exponentially (30s → 60s → 120s, cap 300s) to avoid
+            # flooding the logs.  Resets to 0 on a successful poll.
+            if resp.status_code == 409:
+                _CONFLICT_BACKOFF = min(max(_CONFLICT_BACKOFF * 2, 30), 300)
+                logger.warning("Bot getUpdates 409 Conflict — another instance is polling this token. "
+                               "Backing off %ds.", _CONFLICT_BACKOFF)
+                return []
             data = resp.json()
             if not data.get("ok"):
                 return []
+            _CONFLICT_BACKOFF = 0  # Successful poll — reset backoff
             results = data.get("result", [])
             if results:
                 _last_update_id = results[-1]["update_id"]
@@ -725,6 +742,12 @@ async def run_bot() -> None:
         if not token:
             await asyncio.sleep(30)
             continue
+
+        # If another bot instance is contending for this token, back off
+        # instead of hammering the API.  _CONFLICT_BACKOFF is set by
+        # _poll_updates() on 409 responses and reset on success.
+        if _CONFLICT_BACKOFF > 0:
+            await asyncio.sleep(_CONFLICT_BACKOFF)
 
         updates = await _poll_updates(token)
         for update in updates:

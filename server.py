@@ -572,6 +572,15 @@ def _start_digest_scheduler():
         logger.info("Telegram digest scheduler started (next digest in %.0f min)", initial_delay / 60)
         await asyncio.sleep(initial_delay)
         while True:
+            # Re-check last_digest_sent_at before each send.  A manual /digest
+            # command (or a container restart that already sent one) updates
+            # this timestamp.  Without this check, the scheduler would fire on
+            # its own blind timer regardless of recent manual digests.
+            remaining = _seconds_until_next_digest()
+            if remaining > 60:
+                logger.info("Digest deferred — last digest was recent (next in %.0f min)", remaining / 60)
+                await asyncio.sleep(remaining)
+                continue
             try:
                 await send_digest_report()
             except Exception as e:
