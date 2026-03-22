@@ -14,7 +14,7 @@ Commands:
   /pause                    — pause all scheduled background polling
   /resume                   — resume scheduled background polling
   /status                   — poll status, last poll times, scheduler state
-  /interval [platform] [min]— change poll interval (min: 15)
+  /interval [minutes]       — change unified poll interval (min: 15)
   /notify                   — show notification toggle states
   /notify [type] [on|off]   — toggle specific notification types
 """
@@ -103,6 +103,8 @@ async def _cmd_help(token: str, chat_id: str, args: str) -> None:
 /fans — Top fans leaderboard by fave + comment score
 /digest — Trigger a full digest report now
 /digest interval [hours] — Change digest interval (1-168h, default 6)
+/digest weekly — Trigger weekly digest now
+/digest weekly [on|off] — Toggle weekly digest (default: on)
 
 <b>⚙️ Polling Control</b>
 /poll [platform|all] — Force an immediate poll cycle (works even when paused)
@@ -364,6 +366,24 @@ async def _cmd_digest(token: str, chat_id: str, args: str) -> None:
         await _send(token, chat_id, f"Current digest interval: <b>{hours}h</b>\nUsage: /digest interval [hours]")
         return
 
+    # /digest weekly — trigger weekly digest now
+    if len(parts) == 1 and parts[0] == "weekly":
+        from polling.telegram import send_weekly_digest_report
+        try:
+            await send_weekly_digest_report()
+            await _send(token, chat_id, "Weekly digest sent.")
+        except Exception as e:
+            await _send(token, chat_id, f"Weekly digest failed: {_esc(str(e)[:200])}")
+        return
+
+    # /digest weekly on|off — toggle weekly digest
+    if len(parts) == 2 and parts[0] == "weekly":
+        if parts[1] in ("on", "off"):
+            enabled = parts[1] == "on"
+            config.save_settings({"telegram_weekly_digest": enabled})
+            await _send(token, chat_id, f"Weekly digest: <b>{'on' if enabled else 'off'}</b>")
+            return
+
     # /digest — trigger immediately
     from polling.telegram import send_digest_report
     try:
@@ -492,20 +512,11 @@ async def _cmd_status(token: str, chat_id: str, args: str) -> None:
             except Exception:
                 lines.append(f"<b>{name}</b>: No data")
 
-        # Show poll intervals
+        # Show unified poll interval
+        interval = settings.get("poll_interval_minutes", 60)
         lines.append("")
-        lines.append("<b>Intervals</b>")
-        lines.append(f"  IB: {settings.get('poll_interval_minutes', 60)} min")
-        lines.append(f"  FA: {settings.get('fa_poll_interval_minutes', 60)} min")
-        lines.append(f"  WS: {settings.get('ws_poll_interval_minutes', 60)} min")
-        lines.append(f"  SF: {settings.get('sf_poll_interval_minutes', 60)} min")
-        lines.append(f"  SqW: {settings.get('sqw_poll_interval_minutes', 60)} min")
-        lines.append(f"  AO3: {settings.get('ao3_poll_interval_minutes', 60)} min")
-        lines.append(f"  DA: {settings.get('da_poll_interval_minutes', 60)} min")
-        lines.append(f"  WP: {settings.get('wp_poll_interval_minutes', 60)} min")
-        lines.append(f"  IK: {settings.get('ik_poll_interval_minutes', 60)} min")
-        lines.append(f"  BSKY: {settings.get('bsky_poll_interval_minutes', 60)} min")
-        lines.append(f"  TW: {settings.get('tw_poll_interval_minutes', 60)} min")
+        lines.append(f"<b>Poll Interval:</b> {interval} min (all platforms)")
+        lines.append("All 11 platforms poll together in a single cycle.")
 
         await _send(token, chat_id, "\n".join(lines))
     finally:
@@ -514,32 +525,32 @@ async def _cmd_status(token: str, chat_id: str, args: str) -> None:
 
 async def _cmd_interval(token: str, chat_id: str, args: str) -> None:
     parts = args.strip().lower().split()
-    if len(parts) != 2:
-        await _send(token, chat_id, "Usage: /interval [ib|fa|ws|sf|sqw|ao3|da|wp|ik|bsky|tw] [minutes]")
+
+    if len(parts) == 0:
+        current = config.get_settings().get("poll_interval_minutes", 60)
+        await _send(token, chat_id, f"Current poll interval: {current} min\nUsage: /interval [minutes]")
         return
 
-    platform, minutes_str = parts
-    key_map = {
-        "ib": "poll_interval_minutes",
-        "fa": "fa_poll_interval_minutes",
-        "ws": "ws_poll_interval_minutes",
-        "sf": "sf_poll_interval_minutes",
-        "sqw": "sqw_poll_interval_minutes",
-        "ao3": "ao3_poll_interval_minutes",
-        "da": "da_poll_interval_minutes",
-        "wp": "wp_poll_interval_minutes",
-        "ik": "ik_poll_interval_minutes",
-        "bsky": "bsky_poll_interval_minutes",
-        "tw": "tw_poll_interval_minutes",
-    }
-    name_map = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter"}
+    # Backward compat: if someone sends the old "/interval fa 60" format,
+    # explain that per-platform intervals are no longer used.
+    if len(parts) == 2:
+        first, second = parts
+        platform_keys = {"ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik", "bsky", "tw"}
+        if first in platform_keys:
+            await _send(
+                token, chat_id,
+                "Per-platform intervals are no longer used. "
+                "All 11 platforms now poll together in a single unified cycle.\n\n"
+                f"Usage: <code>/interval {second}</code> to set the interval to {second} min for all platforms.",
+            )
+            return
 
-    if platform not in key_map:
-        await _send(token, chat_id, "Platform must be: ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw")
+    if len(parts) != 1:
+        await _send(token, chat_id, "Usage: /interval [minutes]\nSets the unified poll interval for all platforms.")
         return
 
     try:
-        minutes = int(minutes_str)
+        minutes = int(parts[0])
         if minutes < 15:
             await _send(token, chat_id, "Minimum interval is 15 minutes.")
             return
@@ -547,8 +558,8 @@ async def _cmd_interval(token: str, chat_id: str, args: str) -> None:
         await _send(token, chat_id, "Minutes must be a number.")
         return
 
-    config.save_settings({key_map[platform]: minutes})
-    await _send(token, chat_id, f"{name_map[platform]} poll interval set to {minutes} minutes.")
+    config.save_settings({"poll_interval_minutes": minutes})
+    await _send(token, chat_id, f"Poll interval set to {minutes} minutes for all platforms.")
 
 
 async def _cmd_pause(token: str, chat_id: str, args: str) -> None:

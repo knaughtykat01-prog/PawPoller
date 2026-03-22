@@ -102,9 +102,21 @@ async def send_telegram(text: str) -> bool:
 PLATFORM_EMOJI = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺", "sqw": "🦑", "ao3": "📖", "da": "🎨", "wp": "📙", "ik": "🎯", "bsky": "🦋", "tw": "🐦"}
 PLATFORM_NAME = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter"}
 
+# When True, individual per-platform summaries and error alerts are
+# suppressed.  Set by the unified poll orchestrator in server.py so it
+# can send ONE consolidated message instead of 7+ individual ones.
+# Manual /poll commands leave this False so you still get per-platform output.
+orchestrated_poll_active = False
+
 
 async def send_poll_summary(platform: str, stats: dict, duration: float) -> None:
-    """Send a compact poll cycle summary for a single platform."""
+    """Send a compact poll cycle summary for a single platform.
+
+    Suppressed during orchestrated polls (server.py sends a consolidated
+    summary instead).  Still fires for manual /poll commands.
+    """
+    if orchestrated_poll_active:
+        return
     settings = config.get_settings()
     if not settings.get("telegram_poll_summaries", True):
         return
@@ -117,7 +129,6 @@ async def send_poll_summary(platform: str, stats: dict, duration: float) -> None
     lines = [f"<b>{emoji} {name} Poll Complete</b>"]
     lines.append(f"  {subs} submissions, {snaps} snapshots in {duration:.1f}s")
 
-    # IB-specific fields
     new_faves = stats.get("new_faves_found", 0)
     new_comments = stats.get("new_comments_found", 0)
     new_watchers = stats.get("new_watchers_found", 0)
@@ -137,7 +148,13 @@ async def send_poll_summary(platform: str, stats: dict, duration: float) -> None
 # ── Poll error alert ─────────────────────────────────────────
 
 async def send_poll_error(platform: str, error: Exception) -> None:
-    """Send an alert when a poll cycle fails."""
+    """Send an alert when a poll cycle fails.
+
+    Suppressed during orchestrated polls — errors are included in the
+    consolidated summary instead.
+    """
+    if orchestrated_poll_active:
+        return
     settings = config.get_settings()
     if not settings.get("telegram_error_alerts", True):
         return
@@ -147,6 +164,68 @@ async def send_poll_error(platform: str, error: Exception) -> None:
     err_msg = _esc(str(error)[:200])  # Truncate long errors, escape HTML
     text = f"<b>{emoji} {name} Poll Failed</b>\n  {err_msg}"
     await send_telegram(text)
+
+
+# ── Consolidated poll summary (used by orchestrator) ─────────
+
+async def send_consolidated_poll_summary(results: list[dict], duration: float) -> None:
+    """Send ONE summary message for an orchestrated poll cycle.
+
+    *results* is a list of dicts, each with:
+      - platform: short code (e.g. "ib")
+      - stats: poll stats dict (on success), OR
+      - error: error message string (on failure)
+
+    Format:
+      All OK  → "✅ All 6 Polls Complete (25s) ..."
+      Partial → "⚠️ 5/6 Polls Complete (18s) ... ❌ FA: error"
+    """
+    settings = config.get_settings()
+    if not settings.get("telegram_poll_summaries", True):
+        return
+    if not results:
+        return
+
+    ok = [r for r in results if "stats" in r]
+    failed = [r for r in results if "error" in r]
+
+    if not failed:
+        header = f"✅ All {len(ok)} Polls Complete ({duration:.0f}s)"
+    else:
+        header = f"⚠️ {len(ok)}/{len(results)} Polls Complete ({duration:.0f}s)"
+
+    lines = [f"<b>{header}</b>"]
+
+    # Platform summary line: "🐾 IB: 9  🦊 FA: 7  🐺 SF: 8"
+    parts = []
+    for r in ok:
+        emoji = PLATFORM_EMOJI.get(r["platform"], "")
+        subs = r["stats"].get("submissions_found", 0)
+        parts.append(f"{emoji}{subs}")
+    if parts:
+        lines.append("  " + "  ".join(parts))
+
+    # Aggregate new activity across all platforms
+    total_faves = sum(r["stats"].get("new_faves_found", 0) for r in ok)
+    total_comments = sum(r["stats"].get("new_comments_found", 0) for r in ok)
+    total_watchers = sum(r["stats"].get("new_watchers_found", 0) for r in ok)
+    activity = []
+    if total_faves:
+        activity.append(f"+{total_faves} fave{'s' if total_faves != 1 else ''}")
+    if total_comments:
+        activity.append(f"+{total_comments} comment{'s' if total_comments != 1 else ''}")
+    if total_watchers:
+        activity.append(f"+{total_watchers} watcher{'s' if total_watchers != 1 else ''}")
+    if activity:
+        lines.append(f"  {', '.join(activity)}")
+
+    # Failed platforms
+    for r in failed:
+        emoji = PLATFORM_EMOJI.get(r["platform"], "")
+        name = PLATFORM_NAME.get(r["platform"], r["platform"].upper())
+        lines.append(f"  ❌ {emoji} {name}: {_esc(r['error'][:100])}")
+
+    await send_telegram("\n".join(lines))
 
 
 # ── Milestone alerts ─────────────────────────────────────────
@@ -247,7 +326,13 @@ async def check_milestones_batch(platform: str, snap_table: str, sub_table: str)
 # ── Goal Completion Check ─────────────────────────────────────
 
 async def check_goals() -> None:
-    """Check all active goals and send notifications for newly completed ones."""
+    """Check all active goals and send notifications for newly completed ones.
+
+    Suppressed during orchestrated polls — the orchestrator calls this once
+    after all platforms finish so we avoid 11 redundant DB scans.
+    """
+    if orchestrated_poll_active:
+        return
     settings = config.get_settings()
     if not settings.get("telegram_enabled", False):
         return
@@ -533,6 +618,174 @@ async def send_digest_report() -> None:
             await send_fa_watcher_digest()
         except Exception as e:
             logger.warning("FA watcher digest failed: %s", e)
+
+    finally:
+        conn.close()
+
+
+# ── Weekly Digest Report ────────────────────────────────────
+
+# Watcher/follower tables per platform (table_name, count_filter).
+# Only platforms with watcher tracking are listed.
+_WATCHER_TABLES = {
+    "ib":  ("watchers", "1=1"),
+    "fa":  ("fa_watchers", "confirmed=1 AND is_spam=0"),
+    "sf":  ("sf_watchers", "1=1"),
+}
+
+
+def _get_watcher_stats(conn, platform: str, days: int = 7) -> dict | None:
+    """Return total and new watcher/follower counts for a platform.
+
+    Returns None if the platform has no watcher table or no data.
+    """
+    entry = _WATCHER_TABLES.get(platform)
+    if not entry:
+        return None
+    table, where = entry
+    try:
+        total = conn.execute(
+            f"SELECT COUNT(*) as c FROM {table} WHERE {where}"
+        ).fetchone()["c"]
+        new = conn.execute(
+            f"SELECT COUNT(*) as c FROM {table} "
+            f"WHERE {where} AND first_seen_at >= datetime('now', '-' || ? || ' days')",
+            (str(days),),
+        ).fetchone()["c"]
+        return {"total": total, "new": new}
+    except Exception:
+        return None
+
+
+async def send_weekly_digest_report() -> None:
+    """Build and send the weekly cross-platform digest report.
+
+    Uses 7-day deltas, includes watcher/follower counts, and shows the
+    top 5 gainers across all platforms.  Stores ``last_weekly_digest_sent_at``
+    to prevent duplicates across restarts and manual triggers.
+    """
+    settings = config.get_settings()
+    if not settings.get("telegram_enabled", False):
+        return
+    if not settings.get("telegram_weekly_digest", True):
+        return
+
+    conn = get_connection()
+    try:
+        now = datetime.now(timezone.utc)
+        # Build "week of" header in the user's display timezone
+        tz_name = settings.get("display_timezone", "UTC")
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = timezone.utc
+        local_now = now.astimezone(tz)
+        from datetime import timedelta
+        week_start = (local_now - timedelta(days=7)).strftime("%b %d")
+        week_end = local_now.strftime("%b %d, %Y")
+
+        lines = [f"<b>📅 PawPoller Weekly Digest</b>"]
+        lines.append(f"<i>Week of {week_start} — {week_end}</i>")
+        lines.append("")
+
+        grand_views = 0
+        grand_faves = 0
+        grand_comments = 0
+        grand_total_views = 0
+        grand_total_faves = 0
+        grand_total_comments = 0
+        all_gainers = []
+
+        platforms = [
+            ("ib", "snapshots", "submissions"),
+            ("fa", "fa_snapshots", "fa_submissions"),
+            ("ws", "ws_snapshots", "ws_submissions"),
+            ("sf", "sf_snapshots", "sf_submissions"),
+            ("sqw", "sqw_snapshots", "sqw_submissions"),
+            ("ao3", "ao3_snapshots", "ao3_submissions"),
+            ("da", "da_snapshots", "da_submissions"),
+            ("wp", "wp_snapshots", "wp_submissions"),
+            ("ik", "ik_snapshots", "ik_submissions"),
+            ("bsky", "bsky_snapshots", "bsky_submissions"),
+            ("tw", "tw_snapshots", "tw_submissions"),
+        ]
+
+        for plat, snap_t, sub_t in platforms:
+            emoji = PLATFORM_EMOJI[plat]
+            name = PLATFORM_NAME[plat]
+
+            try:
+                count = conn.execute(f"SELECT COUNT(*) as c FROM {sub_t}").fetchone()["c"]
+            except Exception:
+                continue
+            if count == 0:
+                continue
+
+            totals = _get_platform_totals(conn, sub_t, plat)
+            deltas = _get_digest_deltas(conn, snap_t, sub_t, plat, hours=168)
+
+            grand_views += deltas["views_delta"]
+            grand_faves += deltas["faves_delta"]
+            grand_comments += deltas["comments_delta"]
+            grand_total_views += totals["views"]
+            grand_total_faves += totals["faves"]
+            grand_total_comments += totals["comments"]
+
+            lines.append(f"<b>{emoji} {name}</b> ({totals['subs']} subs)")
+            lines.append(
+                f"  Views: {totals['views']:,} (+{deltas['views_delta']:,})"
+                f"  Faves: {totals['faves']:,} (+{deltas['faves_delta']:,})"
+            )
+            lines.append(
+                f"  Comments: {totals['comments']:,} (+{deltas['comments_delta']:,})"
+            )
+
+            # Watcher/follower stats
+            watcher = _get_watcher_stats(conn, plat)
+            if watcher:
+                label = "Followers" if plat == "sf" else "Watchers"
+                new_str = f" (+{watcher['new']})" if watcher["new"] > 0 else ""
+                lines.append(f"  {label}: {watcher['total']:,}{new_str}")
+
+            # Collect gainers for cross-platform top 5
+            for g in deltas["top_gainers"]:
+                g["platform"] = plat
+                g["emoji"] = emoji
+                all_gainers.append(g)
+
+            lines.append("")
+
+        # Skip if no platforms had data
+        if grand_total_views == 0 and grand_total_faves == 0 and grand_total_comments == 0:
+            return
+
+        # Top 5 gainers across all platforms
+        all_gainers.sort(key=lambda x: x["views"] + x["faves"] * 10, reverse=True)
+        if all_gainers:
+            lines.append("<b>🏆 Top Gainers This Week</b>")
+            for g in all_gainers[:5]:
+                parts = []
+                if g["views"] > 0:
+                    parts.append(f"+{g['views']:,} views")
+                if g["faves"] > 0:
+                    parts.append(f"+{g['faves']:,} faves")
+                if parts:
+                    lines.append(f"  {g['emoji']} {_esc(g['title'][:35])}: {', '.join(parts)}")
+            lines.append("")
+
+        # Grand totals
+        lines.append("<b>📈 Weekly Combined</b>")
+        lines.append(
+            f"  Views: {grand_total_views:,} (+{grand_views:,})"
+            f"  Faves: {grand_total_faves:,} (+{grand_faves:,})"
+        )
+        lines.append(
+            f"  Comments: {grand_total_comments:,} (+{grand_comments:,})"
+        )
+
+        await send_telegram("\n".join(lines))
+
+        config.save_settings({"last_weekly_digest_sent_at": datetime.now(timezone.utc).isoformat()})
 
     finally:
         conn.close()

@@ -40,7 +40,10 @@ PawPoller is a multi-platform furry art analytics dashboard. It periodically pol
                                  │ spawns daemon threads
                     ┌────────────┴────────────────────────┐
            ┌────────┤         Thread Pool                  ├────────┐
-           │        │  11 pollers + uvicorn + telegram(2)  │        │
+           │        │  main.py: 11 pollers + uvicorn +     │        │
+           │        │           digest + telegram bot      │        │
+           │        │  server.py: orchestrator + uvicorn + │        │
+           │        │             telegram bot (3 threads)  │        │
            │        └─────────────────────────────────────┘        │
            ▼                         ▼                              ▼
     ┌──────────┐           ┌────────────────┐              ┌──────────────┐
@@ -92,7 +95,7 @@ User's browser (pywebview on desktop, regular browser on server)
 ```
 PawPoller/
 ├── main.py                  # Desktop entry point (pywebview + pystray)
-├── server.py                # Headless entry point (Docker / server)
+├── server.py                # Headless entry point (Docker / server, unified poll orchestrator)
 ├── poll_service.py          # Legacy/alternative (APScheduler, --once, --status)
 ├── config.py                # Paths, credentials, settings.json helpers
 ├── dashboard.py             # FastAPI app factory, session auth middleware, rate limiting, security headers, SPA serving
@@ -295,18 +298,32 @@ _ENV_TO_SETTINGS = {
 ```
 `_seed_settings_from_env()` reads each env var, compares with existing settings.json values, and only writes if the value is new or different. Special handling for `telegram_enabled` which is parsed as a boolean (`"true"/"1"/"yes"` → `True`). Logs which credentials were seeded.
 
-**Step 3: Launch daemon threads** — Same 14 threads as desktop (11 pollers + uvicorn + telegram digest + telegram bot), but launched from a list of `(name, target)` tuples and iterated:
+**Step 2b: Migrate legacy plaintext password** — `config.migrate_dashboard_auth()` converts any plaintext `dashboard_password` in settings.json to a bcrypt hash if not already hashed.
+
+**Step 3: Launch 3 daemon threads** — Unlike `main.py` which spawns 14 threads (11 per-platform pollers + uvicorn + digest scheduler + telegram bot), `server.py` uses a unified poll orchestrator that replaces the 11 individual poller threads and digest scheduler with a single thread:
 ```python
 threads = [
-    ("Uvicorn",         lambda: _start_server(args.host, args.port)),
-    ("IB poller",       _start_poller),
-    ("FA poller",       _start_fa_poller),
-    # ...
+    ("Uvicorn",             lambda: _start_server(args.host, args.port)),
+    ("Poll orchestrator",   _start_poll_orchestrator),
+    ("Telegram bot",        _start_telegram_bot),
 ]
 for name, target in threads:
     t = threading.Thread(target=target, daemon=True, name=name)
     t.start()
 ```
+
+The **poll orchestrator** (`_start_poll_orchestrator()`) runs a single loop that each cycle:
+1. **Polls all configured platforms concurrently** via `asyncio.gather()` — all 11 platform poll functions run in parallel within one async event loop
+2. **Sends one consolidated Telegram summary** covering all platform results (individual per-platform notifications are suppressed via `orchestrated_poll_active` flag)
+3. **Checks if the regular digest is due** — fires `send_digest_report()` when the elapsed time since `last_digest_sent_at` exceeds `telegram_digest_interval_hours`
+4. **Checks if the weekly digest is due** — fires `send_weekly_digest_report()` when 7 days have elapsed since `last_weekly_digest_sent_at`
+5. **Sleeps for `poll_interval_minutes`** (default 240 minutes, minimum 15), then repeats
+
+The orchestrator uses a single `poll_interval_minutes` setting (not per-platform intervals). The poll interval is intended to be a divisor of the digest interval (e.g. poll every 4h, digest every 12h = digest fires every 3rd cycle), guaranteeing fresh data for every digest without double-polling.
+
+First-poll notification suppression: the orchestrator tracks `_first_cycle = True` and suppresses the consolidated Telegram summary on the first cycle. Data is collected normally to establish a baseline.
+
+The orchestrator respects `polling_paused`: when paused, polling is skipped but the sleep/schedule loop continues so that the cycle resumes immediately when unpaused. Manual `/poll` commands via the Telegram bot still work by calling individual poll functions directly.
 
 **Step 4: Block until signal** — Uses `threading.Event` + signal handler:
 ```python
@@ -317,6 +334,9 @@ shutdown_event.wait()  # Blocks until SIGINT/SIGTERM
 ```
 
 Key differences from `main.py`:
+- **3 threads instead of 14** — unified poll orchestrator replaces 11 per-platform pollers + digest scheduler
+- **Single poll interval** — `poll_interval_minutes` controls all platforms (not per-platform intervals)
+- **Consolidated notifications** — one Telegram message per cycle instead of per-platform messages
 - Binds `0.0.0.0` by default (not `127.0.0.1`) — accessible from the network
 - `--port` and `--host` argparse arguments for customisation
 - Signal handler for graceful shutdown (SIGINT/SIGTERM)
@@ -337,7 +357,11 @@ Three modes via argparse:
 
 ## 3. Threading Model
 
-Both `main.py` and `server.py` spawn 14 daemon threads plus the main thread:
+`main.py` and `server.py` use different threading architectures:
+
+### `main.py` — 14-Thread Model (Desktop)
+
+`main.py` spawns 14 daemon threads plus the main thread (pywebview). Each platform gets its own poller thread with an independent poll interval:
 
 | Thread | Purpose | Interval Source | Default |
 |--------|---------|----------------|---------|
@@ -356,9 +380,19 @@ Both `main.py` and `server.py` spawn 14 daemon threads plus the main thread:
 | Telegram digest | 6-hourly cross-platform summary | Fixed 6 hours | — |
 | Telegram bot | Command listener (long-poll) | Continuous | — |
 
-### Per-Thread Design Pattern
+### `server.py` — 3-Thread Model (Headless/Docker)
 
-Every poller function (`_start_poller()`, `_start_fa_poller()`, etc.) follows the exact same pattern:
+`server.py` replaces the 11 per-platform poller threads and the digest scheduler with a single unified poll orchestrator thread:
+
+| Thread | Purpose | Interval Source | Default |
+|--------|---------|----------------|---------|
+| Uvicorn | FastAPI dashboard server | N/A (always-on) | — |
+| Poll orchestrator | Polls all platforms, sends consolidated summary, fires digests | `poll_interval_minutes` | 240 min |
+| Telegram bot | Command listener (long-poll) | Continuous | — |
+
+### Per-Platform Thread Pattern (`main.py` only)
+
+In the desktop 14-thread model, every poller function (`_start_poller()`, `_start_fa_poller()`, etc.) follows the exact same pattern:
 
 ```python
 def _start_XX_poller():
@@ -403,34 +437,46 @@ def _start_XX_poller():
         logger.debug("XX poller thread exiting: %s", e)  # Daemon teardown
 ```
 
-Key design decisions:
+Key design decisions (applies to `main.py` per-platform threads):
 1. **Own asyncio event loop**: asyncio loops are bound to a single thread. `new_event_loop()` + `set_event_loop()` gives each poller its own isolated async runtime. The main thread's loop (if any) cannot be reused.
 2. **Immediate first poll**: So the dashboard has data right away without waiting for the first interval to elapse. Respects the `polling_paused` setting — if paused, the initial poll is skipped and every subsequent cycle also checks the flag before executing.
 3. **Dynamic interval**: Users can change the polling frequency in the UI and it takes effect on the very next cycle without restarting the app.
 4. **Credential gating**: If the user hasn't configured a platform yet, the cycle is silently skipped rather than erroring.
 
+### Unified Poll Orchestrator Pattern (`server.py` only)
+
+The poll orchestrator (`_start_poll_orchestrator()`) consolidates all polling and digest scheduling into a single thread with its own asyncio event loop. Each cycle:
+
+1. **Credential check**: Reads `settings.json` and builds a list of configured platforms (skips unconfigured ones)
+2. **Concurrent polling**: Calls all configured platform poll functions via `asyncio.gather()`, running them in parallel within a single event loop
+3. **Consolidated notification**: Sends one Telegram message summarising all platform results, suppressing individual per-platform notifications via the `orchestrated_poll_active` flag on the `polling.telegram` module
+4. **Digest check**: If elapsed time since `last_digest_sent_at` exceeds `telegram_digest_interval_hours`, fires `send_digest_report()`
+5. **Weekly digest check**: If elapsed time since `last_weekly_digest_sent_at` exceeds 7 days, fires `send_weekly_digest_report()`
+6. **Sleep**: Waits `poll_interval_minutes` (re-read from settings each cycle), then repeats
+
+The orchestrator uses a single `poll_interval_minutes` setting for all platforms (default 240 minutes, minimum 15). Per-platform interval settings (`fa_poll_interval_minutes`, etc.) are ignored by `server.py` but still used by `main.py`.
+
+A 5-second startup delay ensures uvicorn is ready and settings are seeded before the first poll cycle begins. Digests no longer need a separate startup delay because they are checked after each poll cycle, which inherently means poll data is available.
+
 ### First-Poll Notification Suppression
 
-Each poller tracks a `_XX_first_poll = True` flag. On the first poll after startup:
-- All data is collected normally (gallery discovery, detail fetch, upsert + snapshot)
-- But notifications are suppressed — no Windows toasts, no Telegram messages
-- This establishes a baseline. Without it, every existing comment, fave, and watcher would trigger an alert on startup.
+Both architectures suppress notifications on the first poll after startup to establish a baseline. Without this, every existing comment, fave, and watcher would trigger an alert on startup.
 
-After the first poll completes (success or failure), the flag is set to `False` and subsequent polls notify normally.
+**`main.py` (per-platform threads)**: Each poller tracks a `_XX_first_poll = True` flag. On the first poll, all data is collected normally but notifications are suppressed. After the first poll completes (success or failure), the flag is set to `False` and subsequent polls notify normally.
+
+**`server.py` (orchestrator)**: The orchestrator tracks `_first_cycle = True`. On the first cycle, all platforms are polled and data is collected, but the consolidated Telegram summary is skipped. Subsequent cycles send summaries normally.
 
 ### Daemon Thread Behaviour
 
-All threads are `daemon=True`, meaning they are killed automatically when the main thread exits. This avoids zombie processes but means pollers don't get a graceful shutdown signal — they simply stop mid-execution.
+All threads in both `main.py` and `server.py` are `daemon=True`, meaning they are killed automatically when the main thread exits. This avoids zombie processes but means pollers don't get a graceful shutdown signal — they simply stop mid-execution.
 
-The `except Exception` blocks around each thread's `loop.run_until_complete()` catch the resulting teardown exceptions and log them at `logger.debug()` level. During normal shutdown, Python raises exceptions in daemon threads as the interpreter shuts down. These are harmless but would be invisible without the debug logging — if a poller crashes for a real reason (import error, bug), the debug log captures it.
+The `except Exception` blocks around each thread's `loop.run_until_complete()` catch the resulting teardown exceptions and log them at `logger.debug()` level. During normal shutdown, Python raises exceptions in daemon threads as the interpreter shuts down. These are harmless but would be invisible without the debug logging — if a poller or the orchestrator crashes for a real reason (import error, bug), the debug log captures it.
 
-### Telegram Digest Scheduler
+### Telegram Digest Scheduling
 
-The digest thread has a unique startup delay:
-```python
-await asyncio.sleep(300)  # Wait 5 minutes for pollers to populate data
-```
-This ensures pollers have completed their initial cycles before the first digest is generated. Otherwise the digest would report empty or incomplete data.
+**`main.py`**: The digest runs in its own dedicated thread with a 5-minute startup delay (`await asyncio.sleep(300)`) to ensure pollers have completed their initial cycles before the first digest is generated.
+
+**`server.py`**: There is no separate digest thread. Digests are integrated into the poll orchestrator and fire after a poll cycle completes when the configured digest interval has elapsed. Because digests are checked after every poll cycle, data is always fresh. The `poll_interval_minutes` should be a divisor of the digest interval (e.g. poll every 4h, digest every 12h) to ensure predictable timing.
 
 ---
 
@@ -1449,17 +1495,17 @@ Platform-specific extras:
 | `tw_notifications_enabled` | bool | true | — | TW master notification toggle |
 | `watcher_notifications_enabled` | bool | true | — | IB watcher alerts |
 | `fa_watcher_notifications_enabled` | bool | true | — | FA watcher alerts |
-| `poll_interval_minutes` | int | 60 | {15,30,60,120,240} | IB poll frequency |
-| `fa_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | FA poll frequency |
-| `ws_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | WS poll frequency |
-| `sf_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | SF poll frequency |
-| `sqw_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | SqW poll frequency |
-| `ao3_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | AO3 poll frequency |
-| `da_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | DA poll frequency |
-| `wp_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | WP poll frequency |
-| `ik_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | IK poll frequency |
-| `bsky_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | BSKY poll frequency |
-| `tw_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | TW poll frequency |
+| `poll_interval_minutes` | int | 60 (main.py) / 240 (server.py) | {15,30,60,120,240} | IB poll frequency (main.py); unified poll interval for all platforms (server.py) |
+| `fa_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | FA poll frequency (main.py only; ignored by server.py orchestrator) |
+| `ws_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | WS poll frequency (main.py only) |
+| `sf_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | SF poll frequency (main.py only) |
+| `sqw_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | SqW poll frequency (main.py only) |
+| `ao3_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | AO3 poll frequency (main.py only) |
+| `da_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | DA poll frequency (main.py only) |
+| `wp_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | WP poll frequency (main.py only) |
+| `ik_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | IK poll frequency (main.py only) |
+| `bsky_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | BSKY poll frequency (main.py only) |
+| `tw_poll_interval_minutes` | int | 60 | {15,30,60,120,240} | TW poll frequency (main.py only) |
 | `notification_comments_only` | bool | false | — | IB: suppress fave alerts |
 | `fa_notification_comments_only` | bool | false | — | FA: stored, no-op (FA only alerts on comments) |
 | `ws_notification_comments_only` | bool | false | — | WS: suppress fave-triggered activity alerts |
@@ -1688,7 +1734,7 @@ Different platforms call their stats different things:
 - Bluesky: `likes`, `replies`, `reposts`, `quotes` (no views metric)
 - X/Twitter: `views`, `likes`, `replies`, `retweets`, `quotes`, `bookmarks` (6 metrics — most of any platform)
 
-**6-Hour Digest Report** (sent by digest scheduler thread):
+**6-Hour Digest Report** (sent by digest scheduler thread in `main.py`, or by poll orchestrator in `server.py`):
 ```
 <b>📊 PawPoller 6-Hour Digest</b>
 
@@ -2348,7 +2394,7 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 | FA polls return 403 | Cookies incomplete | Both `cookie_a` AND `cookie_b` are required. Check both are set. |
 | DA polls fail on server | Datacenter IP blocked | Configure CF Worker proxy. DA aggressively blocks cloud/datacenter IP ranges. |
 | DA cookie format wrong | Partial cookie string | Export the **full** cookie string from DevTools (Network tab → copy as cURL → extract Cookie header), not individual cookie values. |
-| AO3 rate limited (429) | Polling too fast | Increase `ao3_poll_interval_minutes`. AO3 is volunteer-run with limited infrastructure. Default 60 minutes is usually fine. |
+| AO3 rate limited (429) | Polling too fast | Increase poll interval. In `main.py`, increase `ao3_poll_interval_minutes`. In `server.py`, increase `poll_interval_minutes` (applies to all platforms). AO3 is volunteer-run with limited infrastructure. Default 60 minutes is usually fine. |
 | WS API returns 401 | Invalid API key | Generate a new key at weasyl.com/control/apikeys. Keys don't expire but can be revoked. |
 | Settings file corrupt/empty | Previously: crash during write | **Fixed**: atomic writes (temp file + `os.replace()`) now prevent this. If corrupt, delete `settings.json` to reset — it will be recreated with empty defaults on next startup. |
 | Poller thread silently stops | Previously: swallowed exception | **Fixed**: exceptions now logged at `logger.debug()` level. Run with `logging.basicConfig(level=logging.DEBUG)` or check the log file to see the actual error. |
@@ -2360,7 +2406,7 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 | BSKY login fails | Wrong credential type | Use an **App Password** (Settings → App Passwords on bsky.app), not your main account password. |
 | BSKY no posts found | Wrong identifier | `bsky_identifier` should be your handle (e.g. `user.bsky.social`) or DID (`did:plc:...`). |
 | TW polls return 403 | Cookies expired/invalid | Re-export `auth_token` and `ct0` cookies from browser DevTools → Application → Cookies on x.com. |
-| TW rate limited (429) | Polling too fast | X is aggressive about rate limiting. Increase `tw_poll_interval_minutes`. Default 2s inter-request delay + 60s backoff. |
+| TW rate limited (429) | Polling too fast | X is aggressive about rate limiting. In `main.py`, increase `tw_poll_interval_minutes`. In `server.py`, increase `poll_interval_minutes`. Default 2s inter-request delay + 60s backoff. |
 | TW GraphQL fails | Query IDs rotated | X may update GraphQL query IDs when they deploy new frontend code. Check logs for 404s and update hardcoded IDs in `tw_client/client.py`. |
 
 ### Known Limitations (Not Fixed)

@@ -104,495 +104,208 @@ def _seed_settings_from_env():
 # ── Auth Migration ────────────────────────────────────────────
 
 
-# ── Poller threads ────────────────────────────────────────────
-# Identical async-loop-per-thread pattern from main.py.
+def _start_poll_orchestrator():
+    """Unified poll + digest scheduler.  One thread, one clock.
 
-def _start_poller():
-    """Run IB poller in its own daemon thread with a dynamic interval."""
+    Replaces the 11 separate per-platform poller threads AND the digest
+    scheduler.  Every cycle:
+      1. Poll all configured platforms concurrently
+      2. Send ONE consolidated Telegram summary
+      3. If regular digest is due → send digest
+      4. If weekly digest is due → send weekly digest
+      5. Sleep for poll_interval_minutes
+
+    The poll interval is intended to be a divisor of the digest interval
+    (e.g. poll every 4h, digest every 12h = digest fires every 3rd cycle).
+    This guarantees fresh data for every digest without double-polling.
+
+    Runs regardless of polling_paused for the sleep/schedule logic, but
+    skips actual polling when paused.  Manual /poll commands still work
+    via the bot thread calling the individual poll functions directly.
+    """
     import asyncio
-    from polling.poller import run_poll_cycle
-
-    async def _scheduled_poll():
-        from routes.api import get_effective_credentials
-        username, password = get_effective_credentials()
-        if not username or not password:
-            logger.info("Scheduled IB poll skipped -- no credentials configured")
-            return
-        try:
-            await run_poll_cycle()
-        except Exception as e:
-            logger.error("Scheduled IB poll failed: %s", e)
-
-    async def _run():
-        logger.info("IB poller loop started")
-        if not config.get_settings().get("polling_paused"):
-            await _scheduled_poll()
-        else:
-            logger.info("IB initial poll skipped -- polling is paused")
-        while True:
-            settings = config.get_settings()
-            interval = settings.get("poll_interval_minutes", 60)
-            logger.info("Next IB poll in %d minutes", interval)
-            await asyncio.sleep(interval * 60)
-            if config.get_settings().get("polling_paused"):
-                logger.info("IB poll skipped -- polling is paused")
-                continue
-            await _scheduled_poll()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_run())
-    except Exception as e:
-        logger.debug("IB poller thread exiting: %s", e)  # Daemon teardown
-
-
-def _start_fa_poller():
-    """Run FA poller in its own daemon thread with a dynamic interval."""
-    import asyncio
-    from polling.fa_poller import run_fa_poll_cycle
-
-    async def _scheduled_fa_poll():
-        settings = config.get_settings()
-        if not settings.get("fa_username") or not settings.get("fa_cookie_a"):
-            logger.info("Scheduled FA poll skipped -- no FA credentials configured")
-            return
-        try:
-            await run_fa_poll_cycle()
-        except Exception as e:
-            logger.error("Scheduled FA poll failed: %s", e)
-
-    async def _run():
-        logger.info("FA poller loop started")
-        if not config.get_settings().get("polling_paused"):
-            await _scheduled_fa_poll()
-        else:
-            logger.info("FA initial poll skipped -- polling is paused")
-        while True:
-            settings = config.get_settings()
-            interval = settings.get("fa_poll_interval_minutes", 60)
-            logger.info("Next FA poll in %d minutes", interval)
-            await asyncio.sleep(interval * 60)
-            if config.get_settings().get("polling_paused"):
-                logger.info("FA poll skipped -- polling is paused")
-                continue
-            await _scheduled_fa_poll()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_run())
-    except Exception as e:
-        logger.debug("FA poller thread exiting: %s", e)  # Daemon teardown
-
-
-def _start_ws_poller():
-    """Run Weasyl poller in its own daemon thread with a dynamic interval."""
-    import asyncio
-    from polling.ws_poller import run_ws_poll_cycle
-
-    async def _scheduled_ws_poll():
-        settings = config.get_settings()
-        if not settings.get("ws_api_key"):
-            logger.info("Scheduled WS poll skipped -- no Weasyl API key configured")
-            return
-        try:
-            await run_ws_poll_cycle()
-        except Exception as e:
-            logger.error("Scheduled WS poll failed: %s", e)
-
-    async def _run():
-        logger.info("WS poller loop started")
-        if not config.get_settings().get("polling_paused"):
-            await _scheduled_ws_poll()
-        else:
-            logger.info("WS initial poll skipped -- polling is paused")
-        while True:
-            settings = config.get_settings()
-            interval = settings.get("ws_poll_interval_minutes", 60)
-            logger.info("Next WS poll in %d minutes", interval)
-            await asyncio.sleep(interval * 60)
-            if config.get_settings().get("polling_paused"):
-                logger.info("WS poll skipped -- polling is paused")
-                continue
-            await _scheduled_ws_poll()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_run())
-    except Exception as e:
-        logger.debug("WS poller thread exiting: %s", e)  # Daemon teardown
-
-
-def _start_sf_poller():
-    """Run SoFurry poller in its own daemon thread with a dynamic interval."""
-    import asyncio
-    from polling.sf_poller import run_sf_poll_cycle
-
-    async def _scheduled_sf_poll():
-        settings = config.get_settings()
-        if not settings.get("sf_username") or not settings.get("sf_password"):
-            logger.info("Scheduled SF poll skipped -- no SoFurry credentials configured")
-            return
-        try:
-            await run_sf_poll_cycle()
-        except Exception as e:
-            logger.error("Scheduled SF poll failed: %s", e)
-
-    async def _run():
-        logger.info("SF poller loop started")
-        if not config.get_settings().get("polling_paused"):
-            await _scheduled_sf_poll()
-        else:
-            logger.info("SF initial poll skipped -- polling is paused")
-        while True:
-            settings = config.get_settings()
-            interval = settings.get("sf_poll_interval_minutes", 60)
-            logger.info("Next SF poll in %d minutes", interval)
-            await asyncio.sleep(interval * 60)
-            if config.get_settings().get("polling_paused"):
-                logger.info("SF poll skipped -- polling is paused")
-                continue
-            await _scheduled_sf_poll()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_run())
-    except Exception as e:
-        logger.debug("SF poller thread exiting: %s", e)  # Daemon teardown
-
-
-def _start_sqw_poller():
-    """Run SquidgeWorld poller in its own daemon thread with a dynamic interval."""
-    import asyncio
-    from polling.sqw_poller import run_sqw_poll_cycle
-
-    async def _scheduled_sqw_poll():
-        settings = config.get_settings()
-        if not settings.get("sqw_username") or not settings.get("sqw_password"):
-            logger.info("Scheduled SqW poll skipped -- no SquidgeWorld credentials configured")
-            return
-        try:
-            await run_sqw_poll_cycle()
-        except Exception as e:
-            logger.error("Scheduled SqW poll failed: %s", e)
-
-    async def _run():
-        logger.info("SqW poller loop started")
-        if not config.get_settings().get("polling_paused"):
-            await _scheduled_sqw_poll()
-        else:
-            logger.info("SqW initial poll skipped -- polling is paused")
-        while True:
-            settings = config.get_settings()
-            interval = settings.get("sqw_poll_interval_minutes", 60)
-            logger.info("Next SqW poll in %d minutes", interval)
-            await asyncio.sleep(interval * 60)
-            if config.get_settings().get("polling_paused"):
-                logger.info("SqW poll skipped -- polling is paused")
-                continue
-            await _scheduled_sqw_poll()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_run())
-    except Exception as e:
-        logger.debug("SqW poller thread exiting: %s", e)  # Daemon teardown
-
-
-def _start_ao3_poller():
-    """Run AO3 poller in its own daemon thread with a dynamic interval."""
-    import asyncio
-    from polling.ao3_poller import run_ao3_poll_cycle
-
-    async def _scheduled_ao3_poll():
-        settings = config.get_settings()
-        if not settings.get("ao3_username") or not settings.get("ao3_password"):
-            logger.info("Scheduled AO3 poll skipped -- no AO3 credentials configured")
-            return
-        try:
-            await run_ao3_poll_cycle()
-        except Exception as e:
-            logger.error("Scheduled AO3 poll failed: %s", e)
-
-    async def _run():
-        logger.info("AO3 poller loop started")
-        if not config.get_settings().get("polling_paused"):
-            await _scheduled_ao3_poll()
-        else:
-            logger.info("AO3 initial poll skipped -- polling is paused")
-        while True:
-            settings = config.get_settings()
-            interval = settings.get("ao3_poll_interval_minutes", 60)
-            logger.info("Next AO3 poll in %d minutes", interval)
-            await asyncio.sleep(interval * 60)
-            if config.get_settings().get("polling_paused"):
-                logger.info("AO3 poll skipped -- polling is paused")
-                continue
-            await _scheduled_ao3_poll()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_run())
-    except Exception as e:
-        logger.debug("AO3 poller thread exiting: %s", e)  # Daemon teardown
-
-
-def _start_da_poller():
-    """Run DeviantArt poller in its own daemon thread with a dynamic interval."""
-    import asyncio
-    from polling.da_poller import run_da_poll_cycle
-
-    async def _scheduled_da_poll():
-        settings = config.get_settings()
-        if not settings.get("da_cookie") or not settings.get("da_target_user"):
-            logger.info("Scheduled DA poll skipped -- no DeviantArt credentials configured")
-            return
-        try:
-            await run_da_poll_cycle()
-        except Exception as e:
-            logger.error("Scheduled DA poll failed: %s", e)
-
-    async def _run():
-        logger.info("DA poller loop started")
-        if not config.get_settings().get("polling_paused"):
-            await _scheduled_da_poll()
-        else:
-            logger.info("DA initial poll skipped -- polling is paused")
-        while True:
-            settings = config.get_settings()
-            interval = settings.get("da_poll_interval_minutes", 60)
-            logger.info("Next DA poll in %d minutes", interval)
-            await asyncio.sleep(interval * 60)
-            if config.get_settings().get("polling_paused"):
-                logger.info("DA poll skipped -- polling is paused")
-                continue
-            await _scheduled_da_poll()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_run())
-    except Exception as e:
-        logger.debug("DA poller thread exiting: %s", e)  # Daemon teardown
-
-
-def _start_wp_poller():
-    """Run Wattpad poller in its own daemon thread with a dynamic interval."""
-    import asyncio
-    from polling.wp_poller import run_wp_poll_cycle
-
-    async def _scheduled_wp_poll():
-        settings = config.get_settings()
-        if not settings.get("wp_target_user"):
-            logger.info("Scheduled WP poll skipped -- no Wattpad username configured")
-            return
-        try:
-            await run_wp_poll_cycle()
-        except Exception as e:
-            logger.error("Scheduled WP poll failed: %s", e)
-
-    async def _run():
-        logger.info("WP poller loop started")
-        if not config.get_settings().get("polling_paused"):
-            await _scheduled_wp_poll()
-        else:
-            logger.info("WP initial poll skipped -- polling is paused")
-        while True:
-            settings = config.get_settings()
-            interval = settings.get("wp_poll_interval_minutes", 60)
-            logger.info("Next WP poll in %d minutes", interval)
-            await asyncio.sleep(interval * 60)
-            if config.get_settings().get("polling_paused"):
-                logger.info("WP poll skipped -- polling is paused")
-                continue
-            await _scheduled_wp_poll()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_run())
-    except Exception as e:
-        logger.debug("WP poller thread exiting: %s", e)  # Daemon teardown
-
-
-def _start_ik_poller():
-    """Run Itaku poller in its own daemon thread with a dynamic interval."""
-    import asyncio
-    from polling.ik_poller import run_ik_poll_cycle
-
-    async def _scheduled_ik_poll():
-        settings = config.get_settings()
-        if not settings.get("ik_target_user"):
-            logger.info("Scheduled IK poll skipped -- no Itaku username configured")
-            return
-        try:
-            await run_ik_poll_cycle()
-        except Exception as e:
-            logger.error("Scheduled IK poll failed: %s", e)
-
-    async def _run():
-        logger.info("IK poller loop started")
-        if not config.get_settings().get("polling_paused"):
-            await _scheduled_ik_poll()
-        else:
-            logger.info("IK initial poll skipped -- polling is paused")
-        while True:
-            settings = config.get_settings()
-            interval = settings.get("ik_poll_interval_minutes", 60)
-            logger.info("Next IK poll in %d minutes", interval)
-            await asyncio.sleep(interval * 60)
-            if config.get_settings().get("polling_paused"):
-                logger.info("IK poll skipped -- polling is paused")
-                continue
-            await _scheduled_ik_poll()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_run())
-    except Exception as e:
-        logger.debug("IK poller thread exiting: %s", e)  # Daemon teardown
-
-
-def _start_bsky_poller():
-    """Run Bluesky poller in its own daemon thread with a dynamic interval."""
-    import asyncio
-    from polling.bsky_poller import run_bsky_poll_cycle
-
-    async def _scheduled_bsky_poll():
-        settings = config.get_settings()
-        if not settings.get("bsky_identifier") or not settings.get("bsky_app_password"):
-            logger.info("Scheduled BSKY poll skipped -- no Bluesky credentials configured")
-            return
-        try:
-            await run_bsky_poll_cycle()
-        except Exception as e:
-            logger.error("Scheduled BSKY poll failed: %s", e)
-
-    async def _run():
-        logger.info("BSKY poller loop started")
-        if not config.get_settings().get("polling_paused"):
-            await _scheduled_bsky_poll()
-        else:
-            logger.info("BSKY initial poll skipped -- polling is paused")
-        while True:
-            settings = config.get_settings()
-            interval = settings.get("bsky_poll_interval_minutes", 60)
-            logger.info("Next BSKY poll in %d minutes", interval)
-            await asyncio.sleep(interval * 60)
-            if config.get_settings().get("polling_paused"):
-                logger.info("BSKY poll skipped -- polling is paused")
-                continue
-            await _scheduled_bsky_poll()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_run())
-    except Exception as e:
-        logger.debug("BSKY poller thread exiting: %s", e)  # Daemon teardown
-
-
-def _start_tw_poller():
-    """Run X/Twitter poller in its own daemon thread with a dynamic interval."""
-    import asyncio
-    from polling.tw_poller import run_tw_poll_cycle
-
-    async def _scheduled_tw_poll():
-        settings = config.get_settings()
-        if not settings.get("tw_auth_token") or not settings.get("tw_target_user"):
-            logger.info("Scheduled TW poll skipped -- no X/Twitter credentials configured")
-            return
-        try:
-            await run_tw_poll_cycle()
-        except Exception as e:
-            logger.error("Scheduled TW poll failed: %s", e)
-
-    async def _run():
-        logger.info("TW poller loop started")
-        if not config.get_settings().get("polling_paused"):
-            await _scheduled_tw_poll()
-        else:
-            logger.info("TW initial poll skipped -- polling is paused")
-        while True:
-            settings = config.get_settings()
-            interval = settings.get("tw_poll_interval_minutes", 60)
-            logger.info("Next TW poll in %d minutes", interval)
-            await asyncio.sleep(interval * 60)
-            if config.get_settings().get("polling_paused"):
-                logger.info("TW poll skipped -- polling is paused")
-                continue
-            await _scheduled_tw_poll()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_run())
-    except Exception as e:
-        logger.debug("TW poller thread exiting: %s", e)  # Daemon teardown
-
-
-def _start_digest_scheduler():
-    """Run periodic Telegram digest in its own daemon thread."""
-    import asyncio
+    import time as _time
     from datetime import datetime, timezone
-    from polling.telegram import send_digest_report
+    from polling.telegram import (
+        send_digest_report, send_weekly_digest_report,
+        send_consolidated_poll_summary, check_goals,
+    )
+    import polling.telegram as _tg
+
+    def _get_poll_interval() -> int:
+        """Read unified poll interval from settings (in seconds)."""
+        minutes = config.get_settings().get("poll_interval_minutes", 240)
+        return max(int(minutes), 15) * 60
 
     def _get_digest_interval() -> int:
-        """Read digest interval from settings (in seconds)."""
         hours = config.get_settings().get("telegram_digest_interval_hours", 6)
         return max(int(hours), 1) * 60 * 60
 
-    def _seconds_until_next_digest() -> float:
-        """Calculate seconds until next digest is due, respecting last sent time."""
-        digest_interval = _get_digest_interval()
-        MIN_STARTUP_DELAY = 300         # 5 minutes minimum after startup
-        last = config.get_settings().get("last_digest_sent_at")
+    def _seconds_until_next(key: str, interval_seconds: int) -> float:
+        MIN_STARTUP_DELAY = 300
+        last = config.get_settings().get(key)
         if last:
             try:
                 last_dt = datetime.fromisoformat(last)
                 if last_dt.tzinfo is None:
                     last_dt = last_dt.replace(tzinfo=timezone.utc)
                 elapsed = (datetime.now(timezone.utc) - last_dt).total_seconds()
-                remaining = digest_interval - elapsed
+                remaining = interval_seconds - elapsed
                 if remaining > MIN_STARTUP_DELAY:
                     return remaining
-                return MIN_STARTUP_DELAY
+                return 0  # Due now (or overdue)
             except (ValueError, TypeError):
                 pass
-        return MIN_STARTUP_DELAY  # First ever digest — wait 5 min for pollers
+        return 0  # No record — due now
+
+    def _digest_due() -> bool:
+        return _seconds_until_next("last_digest_sent_at", _get_digest_interval()) <= 60
+
+    def _weekly_digest_due() -> bool:
+        settings = config.get_settings()
+        if not settings.get("telegram_weekly_digest", True):
+            return False
+        return _seconds_until_next("last_weekly_digest_sent_at", 7 * 24 * 60 * 60) <= 60
+
+    async def _poll_all() -> list[dict]:
+        """Poll all configured platforms concurrently.
+
+        Returns a list of result dicts, each with 'platform' and either
+        'stats' (success) or 'error' (failure).
+        """
+        from polling.poller import run_poll_cycle
+        from polling.fa_poller import run_fa_poll_cycle
+        from polling.ws_poller import run_ws_poll_cycle
+        from polling.sf_poller import run_sf_poll_cycle
+        from polling.sqw_poller import run_sqw_poll_cycle
+        from polling.ao3_poller import run_ao3_poll_cycle
+        from polling.da_poller import run_da_poll_cycle
+        from polling.wp_poller import run_wp_poll_cycle
+        from polling.ik_poller import run_ik_poll_cycle
+        from polling.bsky_poller import run_bsky_poll_cycle
+        from polling.tw_poller import run_tw_poll_cycle
+
+        settings = config.get_settings()
+        checks = [
+            (settings.get("username") and settings.get("password"),
+             "ib", run_poll_cycle),
+            (settings.get("fa_username") and settings.get("fa_cookie_a"),
+             "fa", run_fa_poll_cycle),
+            (settings.get("ws_api_key"),
+             "ws", run_ws_poll_cycle),
+            (settings.get("sf_username") and settings.get("sf_password"),
+             "sf", run_sf_poll_cycle),
+            (settings.get("sqw_username") and settings.get("sqw_password"),
+             "sqw", run_sqw_poll_cycle),
+            (settings.get("ao3_username") and settings.get("ao3_password"),
+             "ao3", run_ao3_poll_cycle),
+            (settings.get("da_cookie") and settings.get("da_target_user"),
+             "da", run_da_poll_cycle),
+            (settings.get("wp_target_user"),
+             "wp", run_wp_poll_cycle),
+            (settings.get("ik_target_user"),
+             "ik", run_ik_poll_cycle),
+            (settings.get("bsky_identifier") and settings.get("bsky_app_password"),
+             "bsky", run_bsky_poll_cycle),
+            (settings.get("tw_auth_token") and settings.get("tw_target_user"),
+             "tw", run_tw_poll_cycle),
+        ]
+
+        targets = [(plat, fn) for creds_ok, plat, fn in checks if creds_ok]
+        if not targets:
+            logger.info("No platforms configured — skipping poll cycle")
+            return []
+
+        names = [p for p, _ in targets]
+        logger.info("Polling %d platforms (%s)...", len(targets), ", ".join(names))
+
+        # Suppress individual per-platform Telegram summaries/errors —
+        # we send one consolidated message after all polls complete.
+        _tg.orchestrated_poll_active = True
+        try:
+            raw = await asyncio.gather(
+                *(fn() for _, fn in targets), return_exceptions=True,
+            )
+        finally:
+            _tg.orchestrated_poll_active = False
+
+        results = []
+        for plat, result in zip(names, raw):
+            if isinstance(result, Exception):
+                logger.warning("Poll %s failed: %s", plat, result)
+                results.append({"platform": plat, "error": str(result)})
+            else:
+                results.append({"platform": plat, "stats": result or {}})
+        return results
 
     async def _run():
-        initial_delay = _seconds_until_next_digest()
-        logger.info("Telegram digest scheduler started (next digest in %.0f min)", initial_delay / 60)
-        await asyncio.sleep(initial_delay)
+        # Brief startup delay so uvicorn is ready and settings are seeded.
+        await asyncio.sleep(5)
+        _first_cycle = True
+        logger.info("Poll orchestrator started (interval: %d min)",
+                     _get_poll_interval() // 60)
+
         while True:
-            # Re-check last_digest_sent_at before each send.  A manual /digest
-            # command (or a container restart that already sent one) updates
-            # this timestamp.  Without this check, the scheduler would fire on
-            # its own blind timer regardless of recent manual digests.
-            remaining = _seconds_until_next_digest()
-            if remaining > 60:
-                logger.info("Digest deferred — last digest was recent (next in %.0f min)", remaining / 60)
-                await asyncio.sleep(remaining)
-                continue
-            try:
-                await send_digest_report()
-            except Exception as e:
-                logger.error("Digest report failed: %s", e)
-            await asyncio.sleep(_get_digest_interval())
+            paused = config.get_settings().get("polling_paused", False)
+
+            if not paused:
+                start = _time.time()
+                results = await _poll_all()
+                duration = _time.time() - start
+
+                if _first_cycle:
+                    logger.info("First poll cycle complete — notifications suppressed "
+                                "(%d platforms in %.1fs)", len(results), duration)
+                    _first_cycle = False
+                else:
+                    # Consolidated Telegram summary
+                    try:
+                        await send_consolidated_poll_summary(results, duration)
+                    except Exception as e:
+                        logger.warning("Consolidated summary failed: %s", e)
+
+                    # Single goal check for all platforms (replaces 11
+                    # per-poller check_goals calls suppressed during
+                    # orchestrated polls).
+                    try:
+                        await check_goals()
+                    except Exception as e:
+                        logger.warning("Goal check failed: %s", e)
+
+                    # Check if regular digest is due
+                    if _digest_due():
+                        try:
+                            await send_digest_report()
+                        except Exception as e:
+                            logger.error("Digest report failed: %s", e)
+
+                    # Weekly digest piggy-backs on the regular cycle
+                    if _weekly_digest_due():
+                        try:
+                            await send_weekly_digest_report()
+                        except Exception as e:
+                            logger.error("Weekly digest report failed: %s", e)
+            else:
+                logger.info("Poll cycle skipped — polling is paused")
+
+            interval_min = _get_poll_interval() // 60
+            logger.info("Next poll cycle in %d minutes", interval_min)
+            await asyncio.sleep(_get_poll_interval())
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(_run())
     except Exception as e:
-        logger.debug("Digest scheduler thread exiting: %s", e)  # Daemon teardown
+        logger.debug("Poll orchestrator thread exiting: %s", e)
+
+
+# ── Legacy per-platform starters (removed) ───────────────────
+# The 11 individual _start_XX_poller() functions and _start_digest_scheduler()
+# have been replaced by _start_poll_orchestrator() above.  The poll cycle
+# functions themselves (polling/*.py) are unchanged and still callable by
+# the /poll bot command for manual single-platform triggers.
+
 
 
 def _start_telegram_bot():
@@ -650,21 +363,12 @@ def main():
     config.migrate_dashboard_auth()
 
     # Step 3: Launch daemon threads
+    # The poll orchestrator replaces the old 11 per-platform poller threads
+    # and the digest scheduler with a single unified clock thread.
     threads = [
-        ("Uvicorn",            lambda: _start_server(args.host, args.port)),
-        ("IB poller",          _start_poller),
-        ("FA poller",          _start_fa_poller),
-        ("WS poller",          _start_ws_poller),
-        ("SF poller",          _start_sf_poller),
-        ("SqW poller",         _start_sqw_poller),
-        ("AO3 poller",         _start_ao3_poller),
-        ("DA poller",          _start_da_poller),
-        ("WP poller",          _start_wp_poller),
-        ("IK poller",          _start_ik_poller),
-        ("BSKY poller",        _start_bsky_poller),
-        ("TW poller",          _start_tw_poller),
-        ("Telegram digest",    _start_digest_scheduler),
-        ("Telegram bot",       _start_telegram_bot),
+        ("Uvicorn",             lambda: _start_server(args.host, args.port)),
+        ("Poll orchestrator",   _start_poll_orchestrator),
+        ("Telegram bot",        _start_telegram_bot),
     ]
 
     for name, target in threads:
