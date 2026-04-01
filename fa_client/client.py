@@ -477,9 +477,18 @@ class FAClient:
         if resp.status_code != 200:
             raise RuntimeError(f"FA: GET /submit/ failed — status {resp.status_code}")
 
-        key_match = re.search(r'name="key"\s*value="([^"]+)"', resp.text)
+        # Extract the key from the upload form specifically (not the logout form)
+        upload_form = re.search(
+            r'<form[^>]*action="/submit/upload/"[^>]*>(.*?)</form>', resp.text, re.DOTALL
+        )
+        if upload_form:
+            key_match = re.search(r'name="key"\s*value="([^"]+)"', upload_form.group(1))
+        else:
+            # Fallback: try id="myform"
+            myform = re.search(r'id="myform"(.*?)</form>', resp.text, re.DOTALL)
+            key_match = re.search(r'name="key"\s*value="([^"]+)"', myform.group(1)) if myform else None
+
         if not key_match:
-            # Check for CAPTCHA requirement
             if "captcha" in resp.text.lower():
                 raise RuntimeError("FA: CAPTCHA required — account needs 11+ posts")
             raise RuntimeError("FA: Could not find form key on /submit/")
@@ -502,7 +511,7 @@ class FAClient:
         }
 
         resp = await client.post(
-            f"{config.FA_BASE}/submit/upload",
+            f"{config.FA_BASE}/submit/upload/",
             data=upload_data,
             files=upload_files,
             headers={"Referer": f"{config.FA_BASE}/submit/"},
@@ -510,9 +519,24 @@ class FAClient:
         )
 
         # Scrape the new key from the finalize form
-        key2_match = re.search(r'name="key"\s*value="([^"]+)"', resp.text)
+        # Look for the form that posts to /submit/finalize/
+        finalize_form = re.search(
+            r'<form[^>]*action="/submit/finalize/"[^>]*>(.*?)</form>', resp.text, re.DOTALL
+        )
+        if finalize_form:
+            key2_match = re.search(r'name="key"\s*value="([^"]+)"', finalize_form.group(1))
+        else:
+            # Fallback: last key on the page (skip the logout form key)
+            all_keys = re.findall(r'name="key"\s*value="([^"]+)"', resp.text)
+            key2_match = None
+            if all_keys:
+                # The finalize key is typically the last one on the page
+                class _M:
+                    def group(self, n): return all_keys[-1]
+                key2_match = _M()
         if not key2_match:
-            raise RuntimeError(f"FA: Could not find finalize key — upload may have failed. Status: {resp.status_code}")
+            errors = re.findall(r'(?:error|Error)[^>]*>([^<]+)', resp.text)
+            raise RuntimeError(f"FA: Could not find finalize key — upload may have failed. Errors: {errors[:2]}")
         key2 = key2_match.group(1)
         logger.info("FA: File uploaded, got finalize key")
 
@@ -532,11 +556,10 @@ class FAClient:
             finalize_data["scrap"] = "1"
 
         resp = await client.post(
-            f"{config.FA_BASE}/submit/finalize",
+            f"{config.FA_BASE}/submit/finalize/",
             data=finalize_data,
             headers={
-                "Referer": f"{config.FA_BASE}/submit/",
-                "Content-Type": "application/x-www-form-urlencoded",
+                "Referer": f"{config.FA_BASE}/submit/upload/",
             },
             timeout=30.0,
         )
@@ -564,13 +587,19 @@ class FAClient:
     ) -> dict:
         """Edit an existing FurAffinity submission.
 
-        Scrapes the edit form at /controls/submissions/changesubmission/{id}/
+        Scrapes the edit form at /controls/submissions/changeinfo/{id}/
         to get the key and existing field values, merges in the caller's changes,
         and posts the complete form back. This avoids blanking fields that the
         caller didn't provide.
+
+        FA has separate edit pages:
+          changeinfo/{id}/   — title, description, keywords, rating, category
+          changethumbnail/   — thumbnail image
+          changesubmission/  — replace the source file
+          changestory/       — story text content
         """
         client = await self._get_fa_http()
-        edit_url = f"{config.FA_BASE}/controls/submissions/changesubmission/{submission_id}/"
+        edit_url = f"{config.FA_BASE}/controls/submissions/changeinfo/{submission_id}/"
 
         # GET the edit page
         resp = await client.get(edit_url)
@@ -578,32 +607,44 @@ class FAClient:
             raise RuntimeError(f"FA: GET edit page failed — status {resp.status_code}")
         page = resp.text
 
-        # Scrape the key
-        key_match = re.search(r'name="key"\s*value="([^"]+)"', page)
+        # Extract the changeinfo form and its key (not the logout form key)
+        changeinfo_form = re.search(
+            r'<form[^>]*action="/controls/submissions/changeinfo/[^"]*"[^>]*>(.*?)</form>',
+            page, re.DOTALL,
+        )
+        if not changeinfo_form:
+            raise RuntimeError("FA: Could not find changeinfo form on edit page")
+        form_html = changeinfo_form.group(1)
+
+        key_match = re.search(r'name="key"\s*value="([^"]+)"', form_html)
         if not key_match:
-            raise RuntimeError("FA: Could not find key on edit page")
+            raise RuntimeError("FA: Could not find key in changeinfo form")
         key = key_match.group(1)
 
-        # Scrape existing values to preserve fields the caller didn't provide
+        # Scrape existing values from the form to preserve fields the caller didn't provide
         def _scrape_input(name: str) -> str:
-            m = re.search(rf'name="{name}"[^>]*value="([^"]*)"', page)
+            m = re.search(rf'name="{name}"[^>]*value="([^"]*)"', form_html)
             return m.group(1) if m else ""
 
         def _scrape_textarea(name: str) -> str:
-            m = re.search(rf'name="{name}"[^>]*>(.*?)</textarea>', page, re.DOTALL)
+            m = re.search(rf'name="{name}"[^>]*>(.*?)</textarea>', form_html, re.DOTALL)
             return m.group(1).strip() if m else ""
 
         def _scrape_select(name: str) -> str:
-            m = re.search(rf'name="{name}".*?<option[^>]*selected[^>]*value="([^"]*)"', page, re.DOTALL)
+            m = re.search(rf'name="{name}".*?<option[^>]*selected[^>]*value="([^"]*)"', form_html, re.DOTALL)
             return m.group(1) if m else ""
 
-        # Build form data: start with existing values, overlay caller's changes
+        # Build complete form data: current values as base, overlay caller's changes
         form_data: dict[str, str] = {
             "key": key,
+            "update": "yes",
             "title": title[:60] if title else _scrape_input("title"),
             "message": description if description else _scrape_textarea("message"),
-            "keywords": keywords if keywords else _scrape_input("keywords"),
+            "keywords": keywords if keywords else _scrape_textarea("keywords"),
             "rating": rating if rating is not None else _scrape_select("rating"),
+            "cat": _scrape_input("cat") or "13",
+            "atype": _scrape_select("atype") or "1",
+            "species": _scrape_select("species") or "1",
         }
 
         resp = await client.post(
