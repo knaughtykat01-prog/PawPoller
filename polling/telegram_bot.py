@@ -126,6 +126,8 @@ async def _cmd_help(token: str, chat_id: str, args: str) -> None:
 /upload &lt;story&gt; [platforms] — Post story to platforms (e.g. /upload Extra_Credit ib,sf)
 /update &lt;story&gt; [platforms] — Push updates to already-posted submissions
 /posted [story] — Show publication registry
+/sync — Show archive status (published vs unpublished)
+/sync push — Push local archive to remote server
 
 <b>📎 Platform Codes</b>
 ib=Inkbunny  fa=FurAffinity  ws=Weasyl  sf=SoFurry
@@ -795,6 +797,90 @@ async def _cmd_stories(token: str, chat_id: str, args: str) -> None:
         await _send(token, chat_id, f"❌ Error: {_esc(str(e)[:200])}")
 
 
+async def _cmd_sync(token: str, chat_id: str, args: str) -> None:
+    """Handle /sync [story] — check archive status or push to server."""
+    story_filter = args.strip() or None
+
+    if story_filter and story_filter.lower() == "push":
+        # Push local archive to server
+        await _send(token, chat_id, "🔄 Syncing stories to server...")
+        try:
+            from posting import story_reader
+            import io, tarfile, httpx as _httpx
+
+            archive_path = story_reader.get_archive_path()
+            if not archive_path.is_dir():
+                await _send(token, chat_id, f"❌ Archive not found at {archive_path}")
+                return
+
+            settings = config.get_settings()
+            server_url = settings.get("posting_server_url", "")
+            api_key = settings.get("posting_server_api_key", "")
+            if not server_url:
+                await _send(token, chat_id, "❌ No server URL configured (posting_server_url)")
+                return
+
+            # Tar + push
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+                for entry in sorted(archive_path.iterdir()):
+                    if entry.is_dir() and not entry.name.startswith("."):
+                        tar.add(str(entry), arcname=entry.name)
+            buf.seek(0)
+
+            headers = {}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            async with _httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(
+                    f"{server_url.rstrip('/')}/api/posting/sync/upload",
+                    files={"file": ("archive.tar.gz", buf.getvalue(), "application/gzip")},
+                    headers=headers,
+                )
+            if resp.status_code == 200:
+                data = resp.json()
+                await _send(token, chat_id, f"✅ Synced {data.get('stories', '?')} stories ({data.get('bytes_received', 0) // 1024}KB)")
+            else:
+                await _send(token, chat_id, f"❌ Sync failed: {resp.status_code} — {_esc(resp.text[:150])}")
+        except Exception as e:
+            await _send(token, chat_id, f"❌ Sync failed: {_esc(str(e)[:200])}")
+        return
+
+    # Default: show sync status
+    try:
+        from posting import story_reader
+        from routes.posting_api import _hash_story
+
+        archive_path = story_reader.get_archive_path()
+        if not archive_path.is_dir():
+            await _send(token, chat_id, f"❌ Archive not found at {archive_path}")
+            return
+
+        conn = get_connection()
+        try:
+            from database import posting_queries
+            pubs = posting_queries.get_publications(conn, status="posted")
+        finally:
+            conn.close()
+
+        pub_stories = set(p["story_name"] for p in pubs)
+        lines = ["<b>📂 Archive Status</b>", ""]
+
+        for entry in sorted(archive_path.iterdir()):
+            if not entry.is_dir() or entry.name.startswith(".") or entry.name == "Reference_Guides":
+                continue
+            name = entry.name
+            published = name in pub_stories
+            status = "📤" if published else "📝"
+            lines.append(f"  {status} {_esc(name.replace('_', ' '))}")
+
+        lines.append(f"\n📤=published  📝=not published")
+        lines.append(f"\n<b>Usage:</b> /sync push — push archive to server")
+        await _send(token, chat_id, "\n".join(lines))
+    except Exception as e:
+        await _send(token, chat_id, f"❌ Error: {_esc(str(e)[:200])}")
+
+
 # ── Command dispatcher ───────────────────────────────────────
 
 COMMANDS = {
@@ -815,6 +901,7 @@ COMMANDS = {
     "/update": _cmd_update,
     "/posted": _cmd_posted,
     "/stories": _cmd_stories,
+    "/sync": _cmd_sync,
 }
 
 

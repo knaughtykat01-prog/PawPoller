@@ -454,4 +454,6 @@ const API = {
     getPostingLog(params = {}) { return this.get('/api/posting/log', params); },
     getPostingSettings() { return this.get('/api/posting/settings'); },
     savePostingSettings(data) { return this.post('/api/posting/settings', data); },
+    syncPush(data = {}) { return this.post('/api/posting/sync/push', data); },
+    getSyncStatus() { return this.get('/api/posting/sync/status'); },
 };

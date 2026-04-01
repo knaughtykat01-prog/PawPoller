@@ -6,7 +6,7 @@ services:
     volumes:
       - pawpoller-data:/app/data
       - pawpoller-logs:/app/logs
-      - /home/kithetiger/story-archive:/app/story-archive:ro
+      - /home/kithetiger/story-archive:/app/story-archive
     restart: unless-stopped
     env_file: .env
 

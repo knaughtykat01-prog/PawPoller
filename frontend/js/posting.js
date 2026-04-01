@@ -23,11 +23,45 @@ const Posting = {
         App._setContent('<div class="page-header"><h2>Upload Story</h2></div><div class="loading">Loading stories...</div>');
 
         try {
-            const { stories } = await API.getPostingStories();
+            // Load stories and sync status in parallel
+            const [storiesData, syncData] = await Promise.all([
+                API.getPostingStories(),
+                API.getSyncStatus().catch(() => ({ stories: [] })),
+            ]);
+            const { stories } = storiesData;
+            const syncStories = syncData.stories || [];
+
+            // Build sync status lookup
+            const syncMap = {};
+            syncStories.forEach(s => { syncMap[s.name] = s; });
+
+            let syncHtml = '';
+            if (syncStories.length > 0) {
+                const changed = syncStories.filter(s => s.changed);
+                const unpublished = syncStories.filter(s => s.status === 'not published');
+                syncHtml = `
+                    <div class="card sync-status-card" style="margin-bottom: 1rem">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem">
+                            <div>
+                                <strong>Archive Status</strong> —
+                                ${syncStories.length} stories,
+                                ${changed.length > 0 ? `<span class="status-badge status-pending">${changed.length} changed</span>` : '<span class="status-badge status-posted">all up to date</span>'}
+                                ${unpublished.length > 0 ? `, ${unpublished.length} unpublished` : ''}
+                            </div>
+                            <div style="display: flex; gap: 0.5rem">
+                                <button id="sync-push-btn" class="btn btn-sm btn-secondary" title="Push local stories to server">Sync to Server</button>
+                                <button id="sync-refresh-btn" class="btn btn-sm btn-secondary" title="Refresh status">Refresh</button>
+                            </div>
+                        </div>
+                        <div id="sync-result" style="margin-top: 0.5rem"></div>
+                    </div>`;
+            }
+
             let html = `
                 <div class="page-header"><h2>Upload Story</h2>
                     <p class="page-subtitle">Select a story and platforms to publish to</p>
                 </div>
+                ${syncHtml}
                 <div class="posting-form card">
                     <div class="form-group">
                         <label>Story</label>
@@ -74,6 +108,25 @@ const Posting = {
             previewBtn.addEventListener('click', () => this._loadPreview(select.value));
             submitBtn.addEventListener('click', () => this._doUpload(select.value));
 
+            // Sync buttons
+            const syncPushBtn = document.getElementById('sync-push-btn');
+            const syncRefreshBtn = document.getElementById('sync-refresh-btn');
+            if (syncPushBtn) {
+                syncPushBtn.addEventListener('click', () => this._doSyncPush());
+            }
+            if (syncRefreshBtn) {
+                syncRefreshBtn.addEventListener('click', () => this.renderUpload());
+            }
+
+            // Add sync status indicators to story dropdown
+            const options = select.querySelectorAll('option[value]');
+            options.forEach(opt => {
+                const info = syncMap[opt.value];
+                if (info && info.changed) {
+                    opt.textContent += ' (changed)';
+                }
+            });
+
         } catch (err) {
             App._setContent(`<div class="error-state"><h3>Error loading stories</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
         }
@@ -108,6 +161,24 @@ const Posting = {
                 </div>`;
         } catch (err) {
             preview.innerHTML = `<div class="error-inline">${Utils.escapeHtml(err.message)}</div>`;
+        }
+    },
+
+    async _doSyncPush() {
+        const resultDiv = document.getElementById('sync-result');
+        const btn = document.getElementById('sync-push-btn');
+        if (!resultDiv || !btn) return;
+        btn.disabled = true;
+        btn.textContent = 'Syncing...';
+        resultDiv.innerHTML = '<span class="loading">Pushing stories to server...</span>';
+        try {
+            const data = await API.syncPush();
+            resultDiv.innerHTML = `<span class="result-success">Synced ${data.stories || '?'} stories (${((data.bytes_sent || 0) / 1024).toFixed(0)}KB sent)</span>`;
+        } catch (err) {
+            resultDiv.innerHTML = `<span class="result-failure">${Utils.escapeHtml(err.message)}</span>`;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Sync to Server';
         }
     },
 

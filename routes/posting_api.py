@@ -6,9 +6,14 @@ queue, viewing publication history, and browsing the story archive.
 
 from __future__ import annotations
 
+import hashlib
+import io
 import logging
+import os
+import tarfile
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 
 import config
 from database.db import get_connection
@@ -269,7 +274,235 @@ def save_posting_settings(body: dict):
     allowed_keys = {
         "posting_enabled", "posting_story_archive_path",
         "posting_default_platforms", "posting_default_rating",
+        "posting_server_url", "posting_server_api_key",
     }
     filtered = {k: v for k, v in body.items() if k in allowed_keys}
     config.save_settings(filtered)
     return {"status": "saved"}
+
+
+# ── Sync: Server receives archive uploads ─────────────────────
+
+@posting_router.post("/sync/upload")
+async def sync_upload(file: UploadFile = File(...)):
+    """Receive a .tar.gz archive and extract to the story archive directory.
+
+    Called by the desktop instance to push updated story files to the server.
+    The archive is extracted in-place, overwriting existing files.
+    """
+    from posting.story_reader import get_archive_path
+
+    archive_path = get_archive_path()
+    if not archive_path.is_dir():
+        try:
+            archive_path.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise HTTPException(500, detail=f"Cannot create archive directory: {e}")
+
+    try:
+        contents = await file.read()
+        buf = io.BytesIO(contents)
+        with tarfile.open(fileobj=buf, mode="r:gz") as tar:
+            # Security: reject paths that escape the archive directory
+            for member in tar.getmembers():
+                if member.name.startswith("/") or ".." in member.name:
+                    raise HTTPException(400, detail=f"Unsafe path in archive: {member.name}")
+            tar.extractall(path=str(archive_path))
+
+        # Count what was extracted
+        story_dirs = [d for d in archive_path.iterdir() if d.is_dir() and not d.name.startswith(".")]
+        return {
+            "status": "synced",
+            "archive_path": str(archive_path),
+            "stories": len(story_dirs),
+            "bytes_received": len(contents),
+        }
+    except tarfile.TarError as e:
+        raise HTTPException(400, detail=f"Invalid tar.gz archive: {e}")
+    except Exception as e:
+        logger.error("Sync upload failed: %s", e, exc_info=True)
+        raise HTTPException(500, detail=str(e))
+
+
+@posting_router.post("/sync/push")
+async def sync_push(body: dict):
+    """Push the local story archive to a remote PawPoller server.
+
+    Called from the desktop instance. Tars the local archive and POSTs it
+    to the remote server's /api/posting/sync/upload endpoint.
+
+    Body: {
+        "server_url": "http://34.xx.xx.xx:8420",  // optional, uses setting if omitted
+        "api_key": "pp_xxxx",                      // optional, uses setting if omitted
+        "story_name": "Extra_Credit"               // optional, sync one story only
+    }
+    """
+    import httpx as _httpx
+    from posting.story_reader import get_archive_path
+
+    settings = config.get_settings()
+    server_url = body.get("server_url") or settings.get("posting_server_url", "")
+    api_key = body.get("api_key") or settings.get("posting_server_api_key", "")
+
+    if not server_url:
+        raise HTTPException(400, detail="No server URL configured. Set posting_server_url in settings.")
+
+    archive_path = get_archive_path()
+    if not archive_path.is_dir():
+        raise HTTPException(404, detail=f"Local archive not found at {archive_path}")
+
+    story_filter = body.get("story_name")
+
+    try:
+        # Create tarball in memory
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            if story_filter:
+                story_path = archive_path / story_filter
+                if not story_path.is_dir():
+                    raise HTTPException(404, detail=f"Story not found: {story_filter}")
+                tar.add(str(story_path), arcname=story_filter)
+            else:
+                for entry in sorted(archive_path.iterdir()):
+                    if entry.is_dir() and not entry.name.startswith("."):
+                        tar.add(str(entry), arcname=entry.name)
+        buf.seek(0)
+        tar_bytes = buf.getvalue()
+
+        # POST to remote server
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        async with _httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{server_url.rstrip('/')}/api/posting/sync/upload",
+                files={"file": ("story-archive.tar.gz", tar_bytes, "application/gzip")},
+                headers=headers,
+            )
+
+        if resp.status_code != 200:
+            raise HTTPException(502, detail=f"Remote server returned {resp.status_code}: {resp.text[:200]}")
+
+        result = resp.json()
+        result["bytes_sent"] = len(tar_bytes)
+        result["synced_from"] = str(archive_path)
+        if story_filter:
+            result["story_filter"] = story_filter
+        return result
+
+    except _httpx.HTTPError as e:
+        raise HTTPException(502, detail=f"Failed to reach remote server: {e}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Sync push failed: %s", e, exc_info=True)
+        raise HTTPException(500, detail=str(e))
+
+
+# ── Change Detection ──────────────────────────────────────────
+
+def _hash_file(path: str) -> str:
+    """SHA256 hash of a file."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()[:16]  # Short hash for display
+
+
+def _hash_story(story_path: Path) -> dict:
+    """Hash all posting-relevant files in a story folder."""
+    hashes = {}
+    for pattern in ["Markdown/MASTER.md", "Tags/tags_upload.txt", "Chapters/split_manifest.json"]:
+        f = story_path / pattern
+        if f.is_file():
+            hashes[pattern] = _hash_file(str(f))
+    # Hash chapter format files
+    for subdir in ["Chapters/BBCode", "Chapters/SoFurry_HTML", "BBCode", "PDF"]:
+        d = story_path / subdir
+        if d.is_dir():
+            for f in sorted(d.iterdir()):
+                if f.is_file():
+                    rel = f"{subdir}/{f.name}"
+                    hashes[rel] = _hash_file(str(f))
+    return hashes
+
+
+@posting_router.get("/sync/status")
+def get_sync_status():
+    """Check which stories have changed since they were last posted.
+
+    Compares current file hashes against the format_file hash stored
+    in publications when the story was last posted/updated.
+    """
+    from posting.story_reader import get_archive_path
+
+    archive_path = get_archive_path()
+    if not archive_path.is_dir():
+        return {"stories": [], "archive_path": str(archive_path), "error": "Archive not found"}
+
+    conn = get_connection()
+    try:
+        pubs = posting_queries.get_publications(conn, status="posted")
+    finally:
+        conn.close()
+
+    # Group publications by story
+    pub_by_story: dict[str, list] = {}
+    for p in pubs:
+        pub_by_story.setdefault(p["story_name"], []).append(p)
+
+    stories = []
+    for entry in sorted(archive_path.iterdir()):
+        if not entry.is_dir() or entry.name.startswith(".") or entry.name == "Reference_Guides":
+            continue
+
+        story_name = entry.name
+        current_hashes = _hash_story(entry)
+        master_hash = current_hashes.get("Markdown/MASTER.md", "")
+
+        story_pubs = pub_by_story.get(story_name, [])
+        published_platforms = [p["platform"] for p in story_pubs]
+        last_posted = max((p["first_posted_at"] or "" for p in story_pubs), default="")
+        last_updated = max((p["last_updated_at"] or "" for p in story_pubs), default="")
+
+        # Detect changes: compare current MASTER hash against what was last posted
+        # We store the hash of the format file used, but MASTER.md is the source of truth
+        changed = False
+        if story_pubs:
+            # Check if any posted format file has changed
+            for p in story_pubs:
+                fmt_file = p.get("format_file", "")
+                if fmt_file:
+                    # Get relative path within story folder
+                    try:
+                        full_path = entry / fmt_file if not os.path.isabs(fmt_file) else Path(fmt_file)
+                        if full_path.is_file():
+                            current = _hash_file(str(full_path))
+                            # We don't have the old hash stored yet, so compare against pub timestamp
+                            # If the file's mtime is newer than last_updated, it's changed
+                            import datetime
+                            mtime = datetime.datetime.fromtimestamp(full_path.stat().st_mtime)
+                            if last_updated:
+                                try:
+                                    posted_dt = datetime.datetime.fromisoformat(last_updated.replace("Z", "+00:00"))
+                                    if mtime.replace(tzinfo=None) > posted_dt.replace(tzinfo=None):
+                                        changed = True
+                                except (ValueError, TypeError):
+                                    pass
+                    except (OSError, ValueError):
+                        pass
+
+        stories.append({
+            "name": story_name,
+            "master_hash": master_hash,
+            "file_count": len(current_hashes),
+            "published_to": published_platforms,
+            "last_posted": last_posted,
+            "last_updated": last_updated,
+            "changed": changed,
+            "status": "changed" if changed else ("published" if story_pubs else "not published"),
+        })
+
+    return {"stories": stories, "archive_path": str(archive_path)}
