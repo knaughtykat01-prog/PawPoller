@@ -4976,7 +4976,7 @@ const App = {
         try {
             // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
             // Polling tab data is loaded lazily when the user clicks into it.
-            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, updateInfo] = await Promise.all([
+            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, updateInfo, postingSettings] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
@@ -4993,6 +4993,7 @@ const App = {
                 API.getBSKYAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getTWAuthStatus().catch(() => ({ has_credentials: false })),
                 API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' })),
+                API.getPostingSettings().catch(() => ({ posting_enabled: false, posting_default_platforms: [], posting_default_rating: 'adult', posting_server_url: '', posting_server_api_key: '', posting_story_archive_path: '' })),
             ]);
 
             // Store auth state for lazy-loaded polling tab
@@ -5020,6 +5021,7 @@ const App = {
                     <button class="settings-tab ${_settingsTab === 'logs' ? 'active' : ''}" data-stab="logs">Logs</button>
                     <button class="settings-tab ${_settingsTab === 'about' ? 'active' : ''}" data-stab="about">About</button>
                     <button class="settings-tab ${_settingsTab === 'security' ? 'active' : ''}" data-stab="security">Security</button>
+                    <button class="settings-tab ${_settingsTab === 'publishing' ? 'active' : ''}" data-stab="publishing">Publishing</button>
                 </div>
 
                 <!-- ═══ TAB: General ═══ -->
@@ -5452,6 +5454,62 @@ const App = {
                 </div>`}
 
                 </div><!-- /tab:about -->
+
+                <!-- ═══ TAB: Publishing ═══ -->
+                <div class="settings-tab-content" data-tab-content="publishing" ${_settingsTab !== 'publishing' ? 'style="display:none"' : ''}>
+
+                <details class="settings-accordion" open>
+                    <summary>Publishing Settings</summary>
+                    <div class="accordion-body">
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
+                        <label class="settings-toggle-row">
+                            <span>Enable Posting Module</span>
+                            <input type="checkbox" id="posting-enabled-toggle" ${postingSettings.posting_enabled ? 'checked' : ''}>
+                        </label>
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:12px">
+                        <label style="font-size:13px;color:var(--text-muted)">Default Rating</label>
+                        <select id="posting-default-rating" class="search-input" style="max-width:200px">
+                            <option value="general" ${postingSettings.posting_default_rating === 'general' ? 'selected' : ''}>General</option>
+                            <option value="mature" ${postingSettings.posting_default_rating === 'mature' ? 'selected' : ''}>Mature</option>
+                            <option value="adult" ${postingSettings.posting_default_rating === 'adult' ? 'selected' : ''}>Adult</option>
+                        </select>
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:12px">
+                        <label style="font-size:13px;color:var(--text-muted)">Default Platforms (comma-separated: ib,fa,ws,sf,bsky)</label>
+                        <input type="text" id="posting-default-platforms" class="search-input" value="${Utils.escapeHtml((postingSettings.posting_default_platforms || []).join(','))}" placeholder="ib,fa,sf" style="max-width:300px">
+                    </div>
+                    </div>
+                </details>
+
+                <details class="settings-accordion">
+                    <summary>Server Sync</summary>
+                    <div class="accordion-body">
+                    <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
+                        Configure these to enable the "Sync to Server" button on the Upload page.
+                        The desktop app pushes your local story archive to the remote server.
+                    </p>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Remote Server URL</label>
+                        <input type="text" id="posting-server-url" class="search-input" value="${Utils.escapeHtml(postingSettings.posting_server_url || '')}" placeholder="http://34.xx.xx.xx:8420" style="max-width:400px">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Remote Server API Key</label>
+                        <input type="text" id="posting-server-api-key" class="search-input" value="${Utils.escapeHtml(postingSettings.posting_server_api_key || '')}" placeholder="pp_xxxx..." style="max-width:400px">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Local Archive Path (auto-detected if blank)</label>
+                        <input type="text" id="posting-archive-path" class="search-input" value="${Utils.escapeHtml(postingSettings.posting_story_archive_path || '')}" placeholder="Auto-detect" style="max-width:500px">
+                    </div>
+                    </div>
+                </details>
+
+                <div style="margin-top:16px;display:flex;gap:12px">
+                    <button class="btn btn-primary" id="save-posting-settings-btn">Save Publishing Settings</button>
+                    <span id="posting-settings-status" style="font-size:13px;color:var(--text-muted);align-self:center"></span>
+                </div>
+
+                </div><!-- /tab:publishing -->
 
                 <!-- ═══ TAB: Security ═══ -->
                 <div class="settings-tab-content" data-tab-content="security" ${_settingsTab !== 'security' ? 'style="display:none"' : ''}>
@@ -7688,6 +7746,33 @@ const App = {
                     try { m = JSON.parse(m).detail || m; } catch {}
                     msg.textContent = m;
                     msg.style.color = 'var(--danger)';
+                }
+                btn.disabled = false;
+            });
+
+            // ── Publishing tab event handlers ─────────────────────────
+            document.getElementById('save-posting-settings-btn')?.addEventListener('click', async () => {
+                const btn = document.getElementById('save-posting-settings-btn');
+                const status = document.getElementById('posting-settings-status');
+                btn.disabled = true;
+                status.textContent = 'Saving...';
+                status.style.color = 'var(--text-muted)';
+                try {
+                    const platformsStr = document.getElementById('posting-default-platforms')?.value || '';
+                    const platforms = platformsStr.split(',').map(s => s.trim()).filter(Boolean);
+                    await API.savePostingSettings({
+                        posting_enabled: document.getElementById('posting-enabled-toggle')?.checked || false,
+                        posting_default_rating: document.getElementById('posting-default-rating')?.value || 'adult',
+                        posting_default_platforms: platforms,
+                        posting_server_url: document.getElementById('posting-server-url')?.value || '',
+                        posting_server_api_key: document.getElementById('posting-server-api-key')?.value || '',
+                        posting_story_archive_path: document.getElementById('posting-archive-path')?.value || '',
+                    });
+                    status.textContent = 'Saved!';
+                    status.style.color = 'var(--success)';
+                } catch (err) {
+                    status.textContent = 'Error: ' + err.message;
+                    status.style.color = 'var(--danger)';
                 }
                 btn.disabled = false;
             });
