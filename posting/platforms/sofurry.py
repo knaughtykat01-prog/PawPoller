@@ -86,6 +86,7 @@ class SoFurryPoster(PlatformPoster):
                 category=20,  # Writing
                 sub_type=21,  # Short story
                 rating=rating,
+                thumbnail_path=package.thumbnail_path,
             )
 
             return PostResult(

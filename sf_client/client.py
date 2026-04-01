@@ -761,6 +761,7 @@ class SoFurryClient:
         sub_type: int = 21,
         rating: int = 20,
         privacy: int = 3,
+        thumbnail_path: str | None = None,
     ) -> dict:
         """Create and publish a new SoFurry submission.
 
@@ -863,6 +864,29 @@ class SoFurryClient:
         )
         if resp.status_code not in (200, 201):
             raise RuntimeError(f"SF: Metadata/publish failed — status {resp.status_code}: {resp.text[:200]}")
+
+        # Step 4 (optional): Upload thumbnail
+        if thumbnail_path and os.path.isfile(thumbnail_path):
+            with open(thumbnail_path, "rb") as tf:
+                thumb_data = tf.read()
+            if len(thumb_data) >= 1024:  # SF requires min 1KB for thumbnails
+                thumb_headers = {
+                    "X-CSRF-TOKEN": csrf,
+                    "Origin": SOFURRY_BASE,
+                    "Referer": f"{SOFURRY_BASE}/",
+                    "Accept": "application/json",
+                    "X-Requested-With": "XMLHttpRequest",
+                }
+                thumb_resp = await self._http.post(
+                    f"{SOFURRY_BASE}/ui/submission/{submission_id}/thumbnail",
+                    headers=thumb_headers,
+                    files={"file": (os.path.basename(thumbnail_path), thumb_data, "image/png")},
+                    timeout=30.0,
+                )
+                if thumb_resp.status_code == 200:
+                    logger.info("SF: Thumbnail uploaded for submission %s", submission_id)
+                else:
+                    logger.warning("SF: Thumbnail upload failed — status %d", thumb_resp.status_code)
 
         url = f"{SOFURRY_BASE}/s/{submission_id}"
         logger.info("SF: Published submission %s — %s", submission_id, url)

@@ -61,6 +61,12 @@ class StoryInfo:
     tags_by_platform: dict[str, list[str]]          # platform → tag list
     chapter_tags_by_platform: dict[int, dict[str, list[str]]]  # chapter_index → platform → tags
     chapter_descriptions: dict[int, str]             # chapter_index → description
+    thumbnail_path: str | None = None                 # full-series thumbnail
+    chapter_thumbnails: dict[int, str] = None         # chapter_index → thumbnail path
+
+    def __post_init__(self):
+        if self.chapter_thumbnails is None:
+            self.chapter_thumbnails = {}
 
 
 @dataclass
@@ -161,6 +167,25 @@ def load_story(story_name: str) -> StoryInfo:
             tags_text, total_chapters
         )
 
+    # Discover thumbnails
+    # Pattern: {story_name_lower}_thumbnail_full_series.png at story root
+    # Per-chapter: {story_name_lower}_thumbnail_part_N.png
+    thumbnail_path = None
+    chapter_thumbnails: dict[int, str] = {}
+    name_lower = story_name.lower()
+    for f in story_path.iterdir():
+        if not f.is_file() or f.suffix.lower() not in (".png", ".jpg", ".jpeg", ".gif"):
+            continue
+        fname = f.name.lower()
+        if "thumbnail" in fname and ("full" in fname or "series" in fname or "cover" in fname):
+            thumbnail_path = str(f)
+        elif "thumbnail" in fname:
+            # Try to extract part number
+            import re as _re
+            part_match = _re.search(r'part[_\s]*(\d+)', fname)
+            if part_match:
+                chapter_thumbnails[int(part_match.group(1))] = str(f)
+
     return StoryInfo(
         name=story_name,
         path=story_path,
@@ -172,6 +197,8 @@ def load_story(story_name: str) -> StoryInfo:
         tags_by_platform=tags_by_platform,
         chapter_tags_by_platform=chapter_tags,
         chapter_descriptions=chapter_descriptions,
+        thumbnail_path=thumbnail_path,
+        chapter_thumbnails=chapter_thumbnails,
     )
 
 
@@ -235,6 +262,13 @@ def build_package(
     if not file_path:
         file_path, file_type = _resolve_format_file(story, chapter_index, platform)
 
+    # Thumbnail: per-chapter thumbnail takes priority over full-series
+    thumbnail = None
+    if chapter_index > 0 and chapter_index in story.chapter_thumbnails:
+        thumbnail = story.chapter_thumbnails[chapter_index]
+    elif story.thumbnail_path:
+        thumbnail = story.thumbnail_path
+
     return StoryUploadPackage(
         story_name=story.name,
         chapter_index=chapter_index,
@@ -247,6 +281,7 @@ def build_package(
         file_path=file_path,
         file_type=file_type,
         word_count=word_count,
+        thumbnail_path=thumbnail,
     )
 
 

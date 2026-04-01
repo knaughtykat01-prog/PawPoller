@@ -85,9 +85,10 @@ class InkbunnyPoster(PlatformPoster):
             if package.file_type in ("png", "jpg", "gif"):
                 sub_type = "1"  # picture
 
-            # Step 1: Upload file
+            # Step 1: Upload file (+ thumbnail if available)
             submission_id = await client.upload_submission(
-                package.file_path, submission_type=sub_type
+                package.file_path, submission_type=sub_type,
+                thumbnail_path=package.thumbnail_path,
             )
 
             # Step 2: Set metadata and make visible

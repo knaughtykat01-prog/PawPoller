@@ -536,6 +536,7 @@ class InkbunnyClient:
         file_path: str,
         *,
         submission_type: str = "4",
+        thumbnail_path: str | None = None,
     ) -> int:
         """Upload a file to Inkbunny and return the new submission_id.
 
@@ -545,6 +546,7 @@ class InkbunnyClient:
         Args:
             file_path: Absolute path to the file to upload.
             submission_type: IB type code ("1"=picture, "2"=flash, "3"=music, "4"=writing).
+            thumbnail_path: Optional path to a thumbnail image (PNG/JPG, max 300x300).
 
         Returns:
             The new submission_id as an integer.
@@ -559,10 +561,16 @@ class InkbunnyClient:
             file_data = f.read()
 
         filename = os.path.basename(file_path)
+        files = {"uploadedfile[0]": (filename, file_data)}
+        if thumbnail_path and os.path.isfile(thumbnail_path):
+            with open(thumbnail_path, "rb") as tf:
+                thumb_data = tf.read()
+            files["uploadedthumbnail[0]"] = (os.path.basename(thumbnail_path), thumb_data, "image/png")
+
         resp = await self._http.post(
             f"{config.INKBUNNY_API_BASE}/api_upload.php",
             data={"sid": self.sid, "submission_type": submission_type},
-            files={"uploadedfile[0]": (filename, file_data)},
+            files=files,
             timeout=120.0,
         )
         resp.raise_for_status()
