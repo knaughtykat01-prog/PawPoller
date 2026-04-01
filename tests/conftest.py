@@ -136,16 +136,16 @@ furry, anthro, test, story, fiction
 INKBUNNY TAGS (Categorized):
 
 Sex/Gender:
-male, female
+male, female, mf, heterosexual
 
 Species:
-anthro, furry
+anthro, furry, wolf, canine
 
 Themes/Kinks:
-test, fiction
+test, fiction, romance, drama
 
 Other Keywords:
-story
+story, original, complete
 
 WATTPAD TAGS (5 max):
 furry anthro test story fiction

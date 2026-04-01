@@ -581,67 +581,93 @@ class InkbunnyClient:
         self,
         submission_id: int,
         *,
-        title: str = "",
-        description: str = "",
-        keywords: str = "",
-        rating_tag_2: str = "no",
-        rating_tag_3: str = "no",
-        rating_tag_4: str = "no",
-        rating_tag_5: str = "no",
-        visibility: str = "yes",
-        scraps: str = "no",
-        friends_only: str = "no",
-        guest_block: str = "no",
+        title: str | None = None,
+        description: str | None = None,
+        keywords: str | None = None,
+        rating_tag_2: str | None = None,
+        rating_tag_3: str | None = None,
+        rating_tag_4: str | None = None,
+        rating_tag_5: str | None = None,
+        visibility: str | None = None,
+        scraps: str | None = None,
+        friends_only: str | None = None,
+        guest_block: str | None = None,
     ) -> dict:
         """Edit an existing Inkbunny submission's metadata.
 
+        Only fields that are explicitly provided (not None) are sent to the API.
+        IB's API blanks any field included in the request, so omitting a field
+        preserves its current value on the server.
+
         Can be called on a freshly uploaded submission (to set its initial metadata
         and make it visible) or on a previously posted submission (to update it).
-
-        Args:
-            submission_id: The IB submission ID to edit.
-            title: Submission title.
-            description: BBCode-formatted description/body text.
-            keywords: Comma-separated tag list.
-            rating_tag_2: "yes" for Nudity — Nonsexual.
-            rating_tag_3: "yes" for Violence — Mild.
-            rating_tag_4: "yes" for Sexual Situations — Strong.
-            rating_tag_5: "yes" for Violence — Strong and/or Blood.
-            visibility: "yes" to make publicly visible, "no" for draft.
-            scraps: "yes" to post to scraps.
-            friends_only: "yes" for friends-only.
-            guest_block: "yes" to block guest viewing.
-
-        Returns:
-            The API response dict.
+        For initial setup after upload, pass ALL fields. For partial updates, pass
+        only the fields you want to change.
         """
         if not self.sid:
             raise RuntimeError("Not logged in — call ensure_session() first")
 
-        data = {
+        data: dict[str, str] = {
             "sid": self.sid,
             "submission_id": str(submission_id),
-            "title": title,
-            "desc": description,
-            "keywords": keywords,
-            "tag[2]": rating_tag_2,
-            "tag[3]": rating_tag_3,
-            "tag[4]": rating_tag_4,
-            "tag[5]": rating_tag_5,
-            "visibility": visibility,
-            "scraps": scraps,
-            "friends_only": friends_only,
-            "guest_block": guest_block,
         }
+        if title is not None:
+            data["title"] = title
+        if description is not None:
+            data["desc"] = description
+        if keywords is not None:
+            data["keywords"] = keywords
+        if rating_tag_2 is not None:
+            data["tag[2]"] = rating_tag_2
+        if rating_tag_3 is not None:
+            data["tag[3]"] = rating_tag_3
+        if rating_tag_4 is not None:
+            data["tag[4]"] = rating_tag_4
+        if rating_tag_5 is not None:
+            data["tag[5]"] = rating_tag_5
+        if visibility is not None:
+            data["visibility"] = visibility
+        if scraps is not None:
+            data["scraps"] = scraps
+        if friends_only is not None:
+            data["friends_only"] = friends_only
+        if guest_block is not None:
+            data["guest_block"] = guest_block
 
         resp = await self._http.post(
             f"{config.INKBUNNY_API_BASE}/api_editsubmission.php",
             data=data,
         )
         resp.raise_for_status()
+        result = {}
+        body = resp.content.strip()
+        if body:
+            try:
+                result = resp.json()
+            except Exception:
+                logger.debug("IB edit returned non-JSON response (%d bytes)", len(body))
+            if "error_code" in result:
+                raise RuntimeError(f"Edit failed: {result.get('error_message', result)}")
+
+        logger.info("Edited IB submission %d — fields sent: %s", submission_id,
+                     [k for k in data if k not in ("sid", "submission_id")])
+        return result
+
+    async def delete_submission(self, submission_id: int) -> dict:
+        """Delete an Inkbunny submission.
+
+        Uses api_delsubmission.php to permanently remove a submission.
+        """
+        if not self.sid:
+            raise RuntimeError("Not logged in — call ensure_session() first")
+
+        resp = await self._http.post(
+            f"{config.INKBUNNY_API_BASE}/api_delsubmission.php",
+            data={"sid": self.sid, "submission_id": str(submission_id)},
+        )
+        resp.raise_for_status()
         result = resp.json()
         if "error_code" in result:
-            raise RuntimeError(f"Edit failed: {result.get('error_message', result)}")
-
-        logger.info("Edited IB submission %d — title=%r", submission_id, title[:40])
+            raise RuntimeError(f"Delete failed: {result.get('error_message', result)}")
+        logger.info("Deleted IB submission %d", submission_id)
         return result

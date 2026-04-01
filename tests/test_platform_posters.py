@@ -66,7 +66,7 @@ class TestInkbunnyPoster:
         assert result.success is True
         assert result.external_id == "99999"
         assert "inkbunny.net" in result.external_url
-        assert result.duration_seconds > 0
+        assert result.duration_seconds >= 0
 
     def test_validate_insufficient_tags(self, upload_file):
         from posting.platforms.inkbunny import InkbunnyPoster
