@@ -82,7 +82,7 @@ async def main():
 
         # Step 3: Verify via the JSON API
         print("\n--- Step 3: Verify submission exists ---")
-        detail = await client.get_submission_detail(int(submission_id))
+        detail = await client.get_submission_detail(submission_id)
         if detail:
             print(f"  Title: {detail.get('title', '?')}")
             print(f"  Type: {detail.get('type', '?')}")
@@ -104,7 +104,7 @@ async def main():
 
         # Step 5: Verify edit
         print("\n--- Step 5: Verify edit ---")
-        detail2 = await client.get_submission_detail(int(submission_id))
+        detail2 = await client.get_submission_detail(submission_id)
         if detail2:
             print(f"  Title: {detail2.get('title', '?')}")
             print("  VERIFIED: Edit applied!")

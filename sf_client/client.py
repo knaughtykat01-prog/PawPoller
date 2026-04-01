@@ -39,6 +39,16 @@ SOFURRY_BASE = "https://sofurry.com"
 
 # SoFurry rating codes (from /ui/submission JSON)
 _RATING_MAP = {10: "Clean", 20: "Adult"}
+_RATING_REVERSE = {"clean": 0, "mature": 10, "adult": 20}
+
+
+def _normalize_rating(val) -> int:
+    """Convert a rating value (int, str, or label) to SF's numeric code."""
+    if isinstance(val, int):
+        return val
+    if isinstance(val, str):
+        return _RATING_REVERSE.get(val.lower().strip(), 0)
+    return 0
 
 
 class SoFurryClient:
@@ -828,17 +838,22 @@ class SoFurryClient:
         logger.info("SF: Uploaded content to submission %s", submission_id)
 
         # Step 3: Set metadata and publish
-        tag_string = ", ".join(t.replace("_", " ") for t in (tags or []))
+        tag_list = [t.replace("_", " ") for t in (tags or [])]
         metadata = {
             "title": title,
             "description": description,
-            "artistTags": tag_string,
+            "artistTags": tag_list,
             "category": category,
             "type": sub_type,
             "rating": rating,
             "privacy": privacy,
             "allowComments": True,
             "allowDownloads": True,
+            "isWip": False,
+            "optimize": False,
+            "pixelPerfect": False,
+            "isAdvert": False,
+            "contentOrder": [],
         }
         resp = await self._http.post(
             f"{SOFURRY_BASE}/ui/submission/{submission_id}",
@@ -857,15 +872,23 @@ class SoFurryClient:
         self,
         submission_id: str,
         *,
-        title: str = "",
-        description: str = "",
+        title: str | None = None,
+        description: str | None = None,
         tags: list[str] | None = None,
         rating: int | None = None,
     ) -> dict:
-        """Edit metadata on an existing SoFurry submission."""
+        """Edit metadata on an existing SoFurry submission.
+
+        SF's API requires ALL fields on every update (partial sends return 422).
+        This method fetches the current submission data first, merges in the
+        caller's changes, and sends the complete payload.
+        """
         if not self._logged_in:
             if not await self.ensure_logged_in():
                 raise RuntimeError("SoFurry: Not logged in")
+
+        # Fetch current metadata so we can merge (SF needs all fields)
+        current = await self.get_submission_detail(submission_id) or {}
 
         csrf = await self._get_csrf_meta()
         if not csrf:
@@ -878,15 +901,23 @@ class SoFurryClient:
             "Accept": "application/json",
         }
 
-        metadata: dict = {}
-        if title:
-            metadata["title"] = title
-        if description:
-            metadata["description"] = description
-        if tags is not None:
-            metadata["artistTags"] = ", ".join(t.replace("_", " ") for t in tags)
-        if rating is not None:
-            metadata["rating"] = rating
+        # Build complete metadata: current values as base, overlay caller's changes
+        metadata = {
+            "title": title if title is not None else current.get("title", ""),
+            "description": description if description is not None else current.get("description", ""),
+            "artistTags": [t.replace("_", " ") for t in tags] if tags is not None else current.get("artistTags", []),
+            "category": current.get("category", 20),
+            "type": current.get("type", 21),
+            "rating": rating if rating is not None else _normalize_rating(current.get("rating", 0)),
+            "privacy": current.get("privacy", 1),
+            "allowComments": current.get("allowComments", True),
+            "allowDownloads": current.get("allowDownloads", True),
+            "isWip": current.get("isWip", False),
+            "optimize": current.get("optimize", False),
+            "pixelPerfect": current.get("pixelPerfect", False),
+            "isAdvert": current.get("isAdvert", False),
+            "contentOrder": current.get("contentOrder", []),
+        }
 
         resp = await self._http.post(
             f"{SOFURRY_BASE}/ui/submission/{submission_id}",
@@ -899,7 +930,8 @@ class SoFurryClient:
             raise RuntimeError(f"SF: Edit failed — status {resp.status_code}: {resp.text[:200]}")
 
         url = f"{SOFURRY_BASE}/s/{submission_id}"
-        logger.info("SF: Edited submission %s — title=%r", submission_id, title[:40] if title else "(unchanged)")
+        logger.info("SF: Edited submission %s — title=%r", submission_id,
+                     (title or current.get("title", ""))[:40])
         return {"submission_id": submission_id, "url": url}
 
 
