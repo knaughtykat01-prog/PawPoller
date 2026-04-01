@@ -7953,8 +7953,8 @@ const App = {
                     area.style.display = 'block';
                     document.getElementById('apikey-created-value').textContent = result.key;
                     document.getElementById('apikey-name').value = '';
-                    // Refresh the table
-                    setTimeout(() => this._loadApiKeysSection(), 500);
+                    // Don't auto-refresh — let the user copy the key first.
+                    // The table refreshes on next page load or manual refresh.
                 } catch (err) {
                     alert('Failed to create key: ' + err.message);
                 }
