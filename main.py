@@ -828,6 +828,11 @@ def main():
     bot_thread = threading.Thread(target=_start_telegram_bot, daemon=True)
     bot_thread.start()
 
+    logger.info("Starting posting scheduler...")
+    from posting.scheduler import start_posting_scheduler
+    posting_thread = threading.Thread(target=start_posting_scheduler, daemon=True, name="Posting scheduler")
+    posting_thread.start()
+
     # --- Step 3: System tray icon (initially hidden) ---
     _tray_icon = _create_tray_icon()
     # pystray's default setup callback sets visible=True, which would show

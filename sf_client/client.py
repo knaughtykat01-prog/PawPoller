@@ -25,6 +25,7 @@ Do NOT call GET /sfw — that toggles SFW mode ON, hiding Adult submissions.
 from __future__ import annotations
 import asyncio
 import logging
+import os
 import re
 from typing import Any
 
@@ -716,6 +717,190 @@ class SoFurryClient:
 
         logger.info("Total SF followers scraped: %d", len(all_followers))
         return all_followers
+
+
+    # ── Posting / Upload ────────────────────────────────────────
+
+    async def _get_csrf_meta(self) -> str | None:
+        """Extract CSRF token from <meta name="csrf-token"> on the homepage.
+
+        SoFurry's Laravel backend puts a CSRF token in a meta tag on every page.
+        The /ui/submission REST API requires this token in an X-CSRF-TOKEN header.
+        """
+        try:
+            resp = await self._http.get(f"{SOFURRY_BASE}/")
+            match = re.search(r'<meta\s+name="csrf-token"\s+content="([^"]+)"', resp.text)
+            if match:
+                return match.group(1)
+            # Fallback: try the _token hidden input pattern
+            match = re.search(r'name="_token"\s*value="([^"]+)"', resp.text)
+            if match:
+                return match.group(1)
+        except Exception as e:
+            logger.warning("SF: CSRF token extraction failed: %s", e)
+        return None
+
+    async def create_submission(
+        self,
+        file_path: str,
+        *,
+        title: str = "",
+        description: str = "",
+        tags: list[str] | None = None,
+        category: int = 20,
+        sub_type: int = 21,
+        rating: int = 20,
+        privacy: int = 3,
+    ) -> dict:
+        """Create and publish a new SoFurry submission.
+
+        Three-step flow:
+          1. PUT /ui/submission → create empty submission, get ID
+          2. POST /ui/submission/{id}/content → upload file
+          3. POST /ui/submission/{id} → set metadata and publish
+
+        Args:
+            file_path: Path to file to upload.
+            title: Submission title.
+            description: Plaintext description.
+            tags: List of tags (underscores replaced with spaces by SF).
+            category: 10=artwork, 20=writing, 30=photography, 40=music.
+            sub_type: 21=short story, 22=book/novel, 11=drawing, etc.
+            rating: 0=Clean, 10=Mature, 20=Adult.
+            privacy: 1=Private, 2=Unlisted, 3=Public.
+
+        Returns:
+            Dict with 'submission_id' and 'url'.
+        """
+        if not self._logged_in:
+            if not await self.ensure_logged_in():
+                raise RuntimeError("SoFurry: Not logged in")
+
+        csrf = await self._get_csrf_meta()
+        if not csrf:
+            raise RuntimeError("SoFurry: Could not get CSRF token")
+
+        api_headers = {
+            "X-CSRF-TOKEN": csrf,
+            "Origin": SOFURRY_BASE,
+            "Referer": f"{SOFURRY_BASE}/",
+            "Accept": "application/json",
+        }
+
+        # Step 1: Create empty submission
+        resp = await self._http.request(
+            "PUT",
+            f"{SOFURRY_BASE}/ui/submission",
+            headers=api_headers,
+            json={},
+            timeout=30.0,
+        )
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(f"SF: Create submission failed — status {resp.status_code}: {resp.text[:200]}")
+
+        data = resp.json()
+        submission_id = data.get("id") or data.get("submission_id")
+        if not submission_id:
+            raise RuntimeError(f"SF: Create response missing ID: {data}")
+
+        logger.info("SF: Created empty submission %s", submission_id)
+
+        # Step 2: Upload content file
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+        filename = os.path.basename(file_path)
+
+        upload_headers = {
+            "X-CSRF-TOKEN": csrf,
+            "Origin": SOFURRY_BASE,
+            "Referer": f"{SOFURRY_BASE}/",
+        }
+        resp = await self._http.post(
+            f"{SOFURRY_BASE}/ui/submission/{submission_id}/content",
+            headers=upload_headers,
+            files={"file": (filename, file_data)},
+            timeout=60.0,
+        )
+        if resp.status_code not in (200, 201):
+            logger.error("SF: Content upload failed — status %d: %s", resp.status_code, resp.text[:200])
+            raise RuntimeError(f"SF: Content upload failed — status {resp.status_code}")
+
+        logger.info("SF: Uploaded content to submission %s", submission_id)
+
+        # Step 3: Set metadata and publish
+        tag_string = ", ".join(t.replace("_", " ") for t in (tags or []))
+        metadata = {
+            "title": title,
+            "description": description,
+            "artistTags": tag_string,
+            "category": category,
+            "type": sub_type,
+            "rating": rating,
+            "privacy": privacy,
+            "allowComments": True,
+            "allowDownloads": True,
+        }
+        resp = await self._http.post(
+            f"{SOFURRY_BASE}/ui/submission/{submission_id}",
+            headers=api_headers,
+            json=metadata,
+            timeout=30.0,
+        )
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(f"SF: Metadata/publish failed — status {resp.status_code}: {resp.text[:200]}")
+
+        url = f"{SOFURRY_BASE}/s/{submission_id}"
+        logger.info("SF: Published submission %s — %s", submission_id, url)
+        return {"submission_id": str(submission_id), "url": url}
+
+    async def edit_submission(
+        self,
+        submission_id: str,
+        *,
+        title: str = "",
+        description: str = "",
+        tags: list[str] | None = None,
+        rating: int | None = None,
+    ) -> dict:
+        """Edit metadata on an existing SoFurry submission."""
+        if not self._logged_in:
+            if not await self.ensure_logged_in():
+                raise RuntimeError("SoFurry: Not logged in")
+
+        csrf = await self._get_csrf_meta()
+        if not csrf:
+            raise RuntimeError("SoFurry: Could not get CSRF token")
+
+        api_headers = {
+            "X-CSRF-TOKEN": csrf,
+            "Origin": SOFURRY_BASE,
+            "Referer": f"{SOFURRY_BASE}/",
+            "Accept": "application/json",
+        }
+
+        metadata: dict = {}
+        if title:
+            metadata["title"] = title
+        if description:
+            metadata["description"] = description
+        if tags is not None:
+            metadata["artistTags"] = ", ".join(t.replace("_", " ") for t in tags)
+        if rating is not None:
+            metadata["rating"] = rating
+
+        resp = await self._http.post(
+            f"{SOFURRY_BASE}/ui/submission/{submission_id}",
+            headers=api_headers,
+            json=metadata,
+            timeout=30.0,
+        )
+
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(f"SF: Edit failed — status {resp.status_code}: {resp.text[:200]}")
+
+        url = f"{SOFURRY_BASE}/s/{submission_id}"
+        logger.info("SF: Edited submission %s — title=%r", submission_id, title[:40] if title else "(unchanged)")
+        return {"submission_id": submission_id, "url": url}
 
 
 def _safe_int(val: Any) -> int:

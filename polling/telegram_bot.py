@@ -121,6 +121,12 @@ async def _cmd_help(token: str, chat_id: str, args: str) -> None:
   <b>Platform alerts:</b> ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw
   <b>Filters:</b> faves, comments, watchers
 
+<b>📤 Publishing</b>
+/stories — List available stories in archive
+/upload &lt;story&gt; [platforms] — Post story to platforms (e.g. /upload Extra_Credit ib,sf)
+/update &lt;story&gt; [platforms] — Push updates to already-posted submissions
+/posted [story] — Show publication registry
+
 <b>📎 Platform Codes</b>
 ib=Inkbunny  fa=FurAffinity  ws=Weasyl  sf=SoFurry
 sqw=SquidgeWorld  ao3=AO3  da=DeviantArt  wp=Wattpad
@@ -667,6 +673,128 @@ async def _cmd_notify(token: str, chat_id: str, args: str) -> None:
     await _send(token, chat_id, f"{ntype.capitalize()} notifications: {'on' if enabled else 'off'}")
 
 
+# ── Posting commands ─────────────────────────────────────────
+
+
+async def _cmd_upload(token: str, chat_id: str, args: str) -> None:
+    """Handle /upload <story> [platforms] — post story to platforms."""
+    parts = args.strip().split()
+    if not parts:
+        await _send(token, chat_id, "<b>Usage:</b> /upload &lt;story_name&gt; [platforms]\nExample: /upload Extra_Credit ib,sf")
+        return
+
+    story_name = parts[0]
+    platforms = parts[1].split(",") if len(parts) > 1 else None
+
+    if not platforms:
+        settings = config.get_settings()
+        platforms = settings.get("posting_default_platforms", ["ib"])
+
+    await _send(token, chat_id, f"📤 Uploading <b>{_esc(story_name.replace('_', ' '))}</b> to {_esc(', '.join(platforms))}...")
+
+    try:
+        from posting import manager
+        results = await manager.post_story(story_name, platforms)
+
+        lines = []
+        for r in results:
+            emoji = manager.PLATFORM_EMOJIS.get(r["platform"], "📦")
+            ch_label = f'Ch{r["chapter_index"]} "{_esc(r["chapter_title"])}"' if r.get("chapter_title") else "Full"
+            if r["success"]:
+                lines.append(f'{emoji} {r["platform"].upper()} {ch_label} — posted ✅')
+            else:
+                lines.append(f'{emoji} {r["platform"].upper()} {ch_label} — failed ❌ {_esc(r.get("error", "")[:80])}')
+
+        successes = sum(1 for r in results if r["success"])
+        lines.append(f"\n✅ {successes}/{len(results)} uploads complete")
+        await _send(token, chat_id, "\n".join(lines))
+    except Exception as e:
+        await _send(token, chat_id, f"❌ Upload failed: {_esc(str(e)[:200])}")
+
+
+async def _cmd_update(token: str, chat_id: str, args: str) -> None:
+    """Handle /update <story> [platforms] — push updates to posted submissions."""
+    parts = args.strip().split()
+    if not parts:
+        await _send(token, chat_id, "<b>Usage:</b> /update &lt;story_name&gt; [platforms]\nExample: /update Extra_Credit ib")
+        return
+
+    story_name = parts[0]
+    platforms = parts[1].split(",") if len(parts) > 1 else None
+
+    await _send(token, chat_id, f"🔄 Updating <b>{_esc(story_name.replace('_', ' '))}</b>...")
+
+    try:
+        from posting import manager
+        results = await manager.update_story(story_name, platforms)
+
+        lines = []
+        for r in results:
+            if "error" in r and "success" not in r:
+                lines.append(f"⚠️ {_esc(str(r['error']))}")
+                continue
+            emoji = manager.PLATFORM_EMOJIS.get(r["platform"], "📦")
+            ch_label = f'Ch{r["chapter_index"]}' if r.get("chapter_index") else "Full"
+            if r["success"]:
+                lines.append(f'{emoji} {r["platform"].upper()} {ch_label} — updated ✅')
+            else:
+                lines.append(f'{emoji} {r["platform"].upper()} {ch_label} — failed ❌ {_esc(r.get("error", "")[:80])}')
+
+        await _send(token, chat_id, "\n".join(lines) if lines else "No publications found to update.")
+    except Exception as e:
+        await _send(token, chat_id, f"❌ Update failed: {_esc(str(e)[:200])}")
+
+
+async def _cmd_posted(token: str, chat_id: str, args: str) -> None:
+    """Handle /posted [story] — show publication registry."""
+    story_name = args.strip() or None
+
+    conn = get_connection()
+    try:
+        from database import posting_queries
+        pubs = posting_queries.get_publications(conn, story_name=story_name, status="posted")
+
+        if not pubs:
+            await _send(token, chat_id, "No publications found." + (" Try /posted without a story name." if story_name else ""))
+            return
+
+        from posting.manager import PLATFORM_EMOJIS
+        lines = ["<b>📋 Publications</b>", ""]
+        current_story = ""
+        for p in pubs:
+            if p["story_name"] != current_story:
+                current_story = p["story_name"]
+                lines.append(f"<b>{_esc(current_story.replace('_', ' '))}</b>")
+            emoji = PLATFORM_EMOJIS.get(p["platform"], "📦")
+            ch = f'Ch{p["chapter_index"]}' if p["chapter_index"] > 0 else "Full"
+            ext = _esc(p["external_id"][:15]) if p["external_id"] else "?"
+            updates = f" ({p['update_count']} updates)" if p["update_count"] > 0 else ""
+            lines.append(f"  {emoji} {p['platform'].upper()} {ch} #{ext}{updates}")
+
+        await _send(token, chat_id, "\n".join(lines))
+    finally:
+        conn.close()
+
+
+async def _cmd_stories(token: str, chat_id: str, args: str) -> None:
+    """Handle /stories — list available stories in archive."""
+    try:
+        from posting import story_reader
+        stories = story_reader.list_stories()
+        if not stories:
+            await _send(token, chat_id, "No stories found in archive.")
+            return
+        lines = ["<b>📚 Available Stories</b>", ""]
+        for s in stories:
+            tags = "🏷" if s["has_tags"] else "  "
+            manifest = "📖" if s["has_manifest"] else "  "
+            lines.append(f"  {manifest}{tags} {s['name'].replace('_', ' ')}")
+        lines.append("\n📖=chapters  🏷=tags ready")
+        await _send(token, chat_id, "\n".join(lines))
+    except Exception as e:
+        await _send(token, chat_id, f"❌ Error: {_esc(str(e)[:200])}")
+
+
 # ── Command dispatcher ───────────────────────────────────────
 
 COMMANDS = {
@@ -683,6 +811,10 @@ COMMANDS = {
     "/status": _cmd_status,
     "/interval": _cmd_interval,
     "/notify": _cmd_notify,
+    "/upload": _cmd_upload,
+    "/update": _cmd_update,
+    "/posted": _cmd_posted,
+    "/stories": _cmd_stories,
 }
 
 

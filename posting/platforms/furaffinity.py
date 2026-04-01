@@ -1,0 +1,164 @@
+"""FurAffinity platform poster.
+
+Uses the existing FAClient (fa_client/client.py) with cookie-based auth
+(_fa_http with cookies a+b). FA has no official API — posting uses HTML
+form scraping (same approach as PostyBirb).
+
+Post flow (3-step form scrape):
+  1. GET /submit/ → scrape hidden 'key' input
+  2. POST /submit/upload → multipart: key + submission_type + file
+  3. POST /submit/finalize → urlencoded: key + title + desc + tags + rating
+
+Edit flow:
+  1. GET /controls/submissions/changesubmission/{id}/ → scrape form + key
+  2. POST with updated fields
+
+Rating mapping:
+  General → "0", Mature → "2", Adult → "1" (note: Adult=1, not 2)
+
+Constraints:
+  - 10 MB max file size
+  - 60 char title limit
+  - 3 tag minimum, 500 char max tag string
+  - 70 second minimum between consecutive posts
+  - Account needs 11+ posts (CAPTCHA for new accounts)
+"""
+
+from __future__ import annotations
+
+import logging
+
+import config
+from fa_client.client import FAClient
+from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
+
+logger = logging.getLogger(__name__)
+
+
+class FurAffinityPoster(PlatformPoster):
+
+    platform_id = "fa"
+    platform_name = "FurAffinity"
+    supports_edit = True
+    supports_file_replace = True  # Via the edit page
+    min_post_interval = 70  # FA enforces this
+    max_file_size = 10 * 1024 * 1024  # 10 MB
+    accepted_file_types = ["pdf", "doc", "docx", "rtf", "txt", "odt", "jpg", "png", "gif"]
+
+    def __init__(self):
+        self._client: FAClient | None = None
+
+    async def _ensure_client(self) -> FAClient:
+        if self._client:
+            return self._client
+
+        settings = config.get_settings()
+        username = settings.get("fa_username", "")
+        cookie_a = settings.get("fa_cookie_a", "")
+        cookie_b = settings.get("fa_cookie_b", "")
+        if not cookie_a or not cookie_b:
+            raise RuntimeError("FurAffinity cookies not configured")
+
+        self._client = FAClient(username=username, cookie_a=cookie_a, cookie_b=cookie_b)
+        if not await self._client.validate_cookies():
+            raise RuntimeError("FurAffinity cookies are invalid or expired")
+        return self._client
+
+    async def post(self, package: StoryUploadPackage) -> PostResult:
+        _t = self._start_timer()
+        try:
+            client = await self._ensure_client()
+            if not package.file_path:
+                return PostResult(success=False, error="No file for FA upload", duration_seconds=self._elapsed(_t))
+
+            rating = _rating_to_fa(package.rating)
+            # FA tags are space-separated with underscores for multi-word
+            keywords = " ".join(t.replace(" ", "_") for t in package.tags)
+
+            # Get extra FA-specific fields from package or defaults
+            settings = config.get_settings()
+            cat = package.extra.get("cat", settings.get("posting_fa_category", "13"))
+            atype = package.extra.get("atype", settings.get("posting_fa_theme", "1"))
+            species = package.extra.get("species", settings.get("posting_fa_species", "1"))
+            gender = package.extra.get("gender", settings.get("posting_fa_gender", "0"))
+
+            result = await client.submit_story(
+                package.file_path,
+                title=package.title[:60],
+                description=package.description,
+                keywords=keywords,
+                rating=rating,
+                cat=cat,
+                atype=atype,
+                species=species,
+                gender=gender,
+                thumbnail_path=package.thumbnail_path,
+            )
+
+            return PostResult(
+                success=True,
+                external_id=result.get("submission_id", ""),
+                external_url=result.get("url", ""),
+                duration_seconds=self._elapsed(_t),
+            )
+        except Exception as e:
+            logger.error("FA post failed: %s", e, exc_info=True)
+            return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
+
+    async def edit(self, external_id: str, package: StoryUploadPackage) -> PostResult:
+        _t = self._start_timer()
+        try:
+            client = await self._ensure_client()
+            rating = _rating_to_fa(package.rating)
+            keywords = " ".join(t.replace(" ", "_") for t in package.tags)
+
+            result = await client.edit_submission(
+                external_id,
+                title=package.title[:60],
+                description=package.description,
+                keywords=keywords,
+                rating=rating,
+            )
+
+            return PostResult(
+                success=True,
+                external_id=external_id,
+                external_url=result.get("url", ""),
+                duration_seconds=self._elapsed(_t),
+            )
+        except Exception as e:
+            logger.error("FA edit failed for %s: %s", external_id, e, exc_info=True)
+            return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
+
+    async def replace_file(self, external_id: str, file_path: str) -> PostResult:
+        """FA supports file replacement via the edit page."""
+        # The edit page has a file field — would need to scrape and POST it.
+        # For now, fall back to edit (metadata only).
+        return PostResult(
+            success=False,
+            error="FA file replacement via edit page not yet implemented — use edit for metadata updates",
+        )
+
+    def validate(self, package: StoryUploadPackage) -> list[str]:
+        errors = super().validate(package)
+        if len(package.title) > 60:
+            errors.append(f"FA title max 60 chars (got {len(package.title)})")
+        if len(package.tags) < 3:
+            errors.append(f"FA requires at least 3 tags (got {len(package.tags)})")
+        tag_str = " ".join(package.tags)
+        if len(tag_str) > 500:
+            errors.append(f"FA tag string max 500 chars (got {len(tag_str)})")
+        return errors
+
+
+def _rating_to_fa(rating: str) -> str:
+    """Convert rating string to FA's rating code.
+
+    FA's rating values are unusual: Adult=1, Mature=2, General=0.
+    """
+    r = rating.lower()
+    if r in ("adult", "explicit", "nsfw"):
+        return "1"
+    elif r in ("mature", "questionable"):
+        return "2"
+    return "0"

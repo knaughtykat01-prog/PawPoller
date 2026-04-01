@@ -437,6 +437,14 @@ const App = {
             this.renderAnalytics();
         } else if (parts[0] === 'settings') {
             this.renderSettings();
+        } else if (parts[0] === 'posting' && !parts[1]) {
+            Posting.renderUpload();
+        } else if (parts[0] === 'posting' && parts[1] === 'queue') {
+            Posting.renderQueue();
+        } else if (parts[0] === 'posting' && parts[1] === 'published') {
+            Posting.renderPublished();
+        } else if (parts[0] === 'posting' && parts[1] === 'log') {
+            Posting.renderLog();
         } else {
             this._setContent('<div class="empty-state"><h3>Page not found</h3></div>');
         }

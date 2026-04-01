@@ -365,10 +365,13 @@ def main():
     # Step 3: Launch daemon threads
     # The poll orchestrator replaces the old 11 per-platform poller threads
     # and the digest scheduler with a single unified clock thread.
+    from posting.scheduler import start_posting_scheduler
+
     threads = [
         ("Uvicorn",             lambda: _start_server(args.host, args.port)),
         ("Poll orchestrator",   _start_poll_orchestrator),
         ("Telegram bot",        _start_telegram_bot),
+        ("Posting scheduler",   start_posting_scheduler),
     ]
 
     for name, target in threads:

@@ -1,0 +1,181 @@
+"""Inkbunny platform poster.
+
+Uses the existing InkbunnyClient (api_client/client.py) with the new
+upload_submission() and edit_submission() methods. Inkbunny has a fully
+documented public API for posting, making this the most reliable platform.
+
+Post flow:
+  1. ensure_session(cached_sid)
+  2. upload_submission(file) → submission_id
+  3. edit_submission(submission_id, title, desc, tags, ratings, visibility=yes)
+
+Edit flow:
+  1. edit_submission(existing_id, updated fields)
+
+Rating mapping:
+  General  → all tags "no"
+  Mature   → tag[2]="yes" (Nudity — Nonsexual)
+  Adult    → tag[4]="yes" (Sexual Situations — Strong), tag[5]="yes"
+"""
+
+from __future__ import annotations
+
+import logging
+
+import config
+from api_client.client import InkbunnyClient
+from database.db import get_connection
+from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
+
+logger = logging.getLogger(__name__)
+
+
+class InkbunnyPoster(PlatformPoster):
+
+    platform_id = "ib"
+    platform_name = "Inkbunny"
+    supports_edit = True
+    supports_file_replace = True
+    min_post_interval = 5
+    max_file_size = 200 * 1024 * 1024  # 200 MB
+    accepted_file_types = ["txt", "doc", "rtf", "pdf", "png", "jpg", "gif", "mp3", "mp4"]
+
+    def __init__(self):
+        self._client: InkbunnyClient | None = None
+
+    async def _ensure_client(self) -> InkbunnyClient:
+        """Get or create an authenticated Inkbunny client."""
+        if self._client and self._client.sid:
+            return self._client
+
+        settings = config.get_settings()
+        username = settings.get("username", "")
+        password = settings.get("password", "")
+        if not username or not password:
+            raise RuntimeError("Inkbunny credentials not configured")
+
+        self._client = InkbunnyClient(username=username, password=password)
+
+        # Try to reuse cached SID
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT sid FROM session_cache WHERE id = 1").fetchone()
+            cached_sid = row["sid"] if row else None
+        finally:
+            conn.close()
+
+        await self._client.ensure_session(cached_sid)
+        return self._client
+
+    async def post(self, package: StoryUploadPackage) -> PostResult:
+        """Upload a new submission to Inkbunny."""
+        _t = self._start_timer()
+        try:
+            client = await self._ensure_client()
+
+            if not package.file_path:
+                return PostResult(
+                    success=False,
+                    error="No file path provided for Inkbunny upload",
+                    duration_seconds=self._elapsed(_t),
+                )
+
+            # Determine submission type
+            sub_type = "4"  # writing (default for stories)
+            if package.file_type in ("png", "jpg", "gif"):
+                sub_type = "1"  # picture
+
+            # Step 1: Upload file
+            submission_id = await client.upload_submission(
+                package.file_path, submission_type=sub_type
+            )
+
+            # Step 2: Set metadata and make visible
+            rating_tags = _rating_to_tags(package.rating)
+            keywords = ", ".join(package.tags)
+
+            await client.edit_submission(
+                submission_id,
+                title=package.title[:100],
+                description=package.description,
+                keywords=keywords,
+                **rating_tags,
+                visibility="yes",
+            )
+
+            url = f"https://inkbunny.net/s/{submission_id}"
+            return PostResult(
+                success=True,
+                external_id=str(submission_id),
+                external_url=url,
+                duration_seconds=self._elapsed(_t),
+            )
+
+        except Exception as e:
+            logger.error("IB post failed: %s", e, exc_info=True)
+            return PostResult(
+                success=False,
+                error=str(e),
+                duration_seconds=self._elapsed(_t),
+            )
+
+    async def edit(self, external_id: str, package: StoryUploadPackage) -> PostResult:
+        """Edit metadata on an existing Inkbunny submission."""
+        _t = self._start_timer()
+        try:
+            client = await self._ensure_client()
+            submission_id = int(external_id)
+            rating_tags = _rating_to_tags(package.rating)
+            keywords = ", ".join(package.tags)
+
+            await client.edit_submission(
+                submission_id,
+                title=package.title[:100],
+                description=package.description,
+                keywords=keywords,
+                **rating_tags,
+            )
+
+            url = f"https://inkbunny.net/s/{submission_id}"
+            return PostResult(
+                success=True,
+                external_id=external_id,
+                external_url=url,
+                duration_seconds=self._elapsed(_t),
+            )
+
+        except Exception as e:
+            logger.error("IB edit failed for %s: %s", external_id, e, exc_info=True)
+            return PostResult(
+                success=False,
+                error=str(e),
+                duration_seconds=self._elapsed(_t),
+            )
+
+    async def replace_file(self, external_id: str, file_path: str) -> PostResult:
+        """Replace the file on an existing Inkbunny submission.
+
+        Note: IB's api_upload.php may support a submission_id parameter for
+        replacing files, but this needs testing. For now, returns not-implemented.
+        """
+        return PostResult(
+            success=False,
+            error="Inkbunny file replacement not yet implemented — use edit for metadata updates",
+        )
+
+    def validate(self, package: StoryUploadPackage) -> list[str]:
+        errors = super().validate(package)
+        if len(package.tags) < 4:
+            errors.append(f"Inkbunny requires at least 4 tags (got {len(package.tags)})")
+        return errors
+
+
+def _rating_to_tags(rating: str) -> dict:
+    """Convert a rating string to IB rating tag flags."""
+    r = rating.lower()
+    if r in ("adult", "explicit", "nsfw"):
+        return {"rating_tag_2": "yes", "rating_tag_3": "no", "rating_tag_4": "yes", "rating_tag_5": "yes"}
+    elif r in ("mature", "questionable"):
+        return {"rating_tag_2": "yes", "rating_tag_3": "no", "rating_tag_4": "no", "rating_tag_5": "no"}
+    else:  # general
+        return {"rating_tag_2": "no", "rating_tag_3": "no", "rating_tag_4": "no", "rating_tag_5": "no"}

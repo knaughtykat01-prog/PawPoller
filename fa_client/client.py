@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 from typing import Any
 
@@ -427,6 +428,199 @@ class FAClient:
             # FAExport includes a flag for comments that were deleted by the author/mod
             "is_deleted": raw.get("is_deleted", False),
         }
+
+
+    # ── Posting / Upload ────────────────────────────────────────
+
+    async def submit_story(
+        self,
+        file_path: str,
+        *,
+        title: str = "",
+        description: str = "",
+        keywords: str = "",
+        rating: str = "1",
+        cat: str = "13",
+        atype: str = "1",
+        species: str = "1",
+        gender: str = "0",
+        scrap: bool = False,
+        thumbnail_path: str | None = None,
+    ) -> dict:
+        """Upload a story submission to FurAffinity.
+
+        Three-step form scraping flow (same as PostyBirb):
+          1. GET /submit/ → scrape hidden 'key' input
+          2. POST /submit/upload → multipart with key + file + submission_type
+          3. POST /submit/finalize → urlencoded with new key + all metadata
+
+        Args:
+            file_path: Path to PDF/TXT/DOC file.
+            title: Title (max 60 chars).
+            description: BBCode description.
+            keywords: Space-separated tags (underscores for multi-word).
+            rating: "0"=General, "2"=Mature, "1"=Adult.
+            cat: Category ("13"=Story).
+            atype: Theme ("1"=All).
+            species: Species code ("1"=Unspecified).
+            gender: Gender code ("0"=Any).
+            scrap: Post to scraps if True.
+            thumbnail_path: Optional cover image path.
+
+        Returns:
+            Dict with 'submission_id' and 'url'.
+        """
+        client = await self._get_fa_http()
+
+        # Step 1: GET /submit/ and scrape the key
+        resp = await client.get(f"{config.FA_BASE}/submit/")
+        if resp.status_code != 200:
+            raise RuntimeError(f"FA: GET /submit/ failed — status {resp.status_code}")
+
+        key_match = re.search(r'name="key"\s*value="([^"]+)"', resp.text)
+        if not key_match:
+            # Check for CAPTCHA requirement
+            if "captcha" in resp.text.lower():
+                raise RuntimeError("FA: CAPTCHA required — account needs 11+ posts")
+            raise RuntimeError("FA: Could not find form key on /submit/")
+        key1 = key_match.group(1)
+        logger.info("FA: Got upload form key")
+
+        # Step 2: POST /submit/upload with file
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+        filename = os.path.basename(file_path)
+
+        upload_files = {"submission": (filename, file_data)}
+        if thumbnail_path and os.path.isfile(thumbnail_path):
+            with open(thumbnail_path, "rb") as tf:
+                upload_files["thumbnail"] = (os.path.basename(thumbnail_path), tf.read())
+
+        upload_data = {
+            "key": key1,
+            "submission_type": "story",
+        }
+
+        resp = await client.post(
+            f"{config.FA_BASE}/submit/upload",
+            data=upload_data,
+            files=upload_files,
+            headers={"Referer": f"{config.FA_BASE}/submit/"},
+            timeout=120.0,
+        )
+
+        # Scrape the new key from the finalize form
+        key2_match = re.search(r'name="key"\s*value="([^"]+)"', resp.text)
+        if not key2_match:
+            raise RuntimeError(f"FA: Could not find finalize key — upload may have failed. Status: {resp.status_code}")
+        key2 = key2_match.group(1)
+        logger.info("FA: File uploaded, got finalize key")
+
+        # Step 3: POST /submit/finalize with metadata
+        finalize_data = {
+            "key": key2,
+            "title": title[:60],
+            "message": description,
+            "keywords": keywords,
+            "rating": rating,
+            "cat": cat,
+            "atype": atype,
+            "species": species,
+            "gender": gender,
+        }
+        if scrap:
+            finalize_data["scrap"] = "1"
+
+        resp = await client.post(
+            f"{config.FA_BASE}/submit/finalize",
+            data=finalize_data,
+            headers={
+                "Referer": f"{config.FA_BASE}/submit/",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            timeout=30.0,
+        )
+
+        final_url = str(resp.url)
+        if "upload-successful" not in final_url and "/view/" not in final_url:
+            raise RuntimeError(f"FA: Finalize may have failed — final URL: {final_url}")
+
+        # Extract submission ID from URL
+        clean_url = final_url.split("?")[0]
+        sid_match = re.search(r'/view/(\d+)', clean_url)
+        submission_id = sid_match.group(1) if sid_match else ""
+
+        logger.info("FA: Story submitted — %s (id=%s)", clean_url, submission_id)
+        return {"submission_id": submission_id, "url": clean_url}
+
+    async def edit_submission(
+        self,
+        submission_id: str,
+        *,
+        title: str = "",
+        description: str = "",
+        keywords: str = "",
+        rating: str | None = None,
+    ) -> dict:
+        """Edit an existing FurAffinity submission.
+
+        Scrapes the edit form at /controls/submissions/changesubmission/{id}/
+        to get the key and existing field values, merges in the caller's changes,
+        and posts the complete form back. This avoids blanking fields that the
+        caller didn't provide.
+        """
+        client = await self._get_fa_http()
+        edit_url = f"{config.FA_BASE}/controls/submissions/changesubmission/{submission_id}/"
+
+        # GET the edit page
+        resp = await client.get(edit_url)
+        if resp.status_code != 200:
+            raise RuntimeError(f"FA: GET edit page failed — status {resp.status_code}")
+        page = resp.text
+
+        # Scrape the key
+        key_match = re.search(r'name="key"\s*value="([^"]+)"', page)
+        if not key_match:
+            raise RuntimeError("FA: Could not find key on edit page")
+        key = key_match.group(1)
+
+        # Scrape existing values to preserve fields the caller didn't provide
+        def _scrape_input(name: str) -> str:
+            m = re.search(rf'name="{name}"[^>]*value="([^"]*)"', page)
+            return m.group(1) if m else ""
+
+        def _scrape_textarea(name: str) -> str:
+            m = re.search(rf'name="{name}"[^>]*>(.*?)</textarea>', page, re.DOTALL)
+            return m.group(1).strip() if m else ""
+
+        def _scrape_select(name: str) -> str:
+            m = re.search(rf'name="{name}".*?<option[^>]*selected[^>]*value="([^"]*)"', page, re.DOTALL)
+            return m.group(1) if m else ""
+
+        # Build form data: start with existing values, overlay caller's changes
+        form_data: dict[str, str] = {
+            "key": key,
+            "title": title[:60] if title else _scrape_input("title"),
+            "message": description if description else _scrape_textarea("message"),
+            "keywords": keywords if keywords else _scrape_input("keywords"),
+            "rating": rating if rating is not None else _scrape_select("rating"),
+        }
+
+        resp = await client.post(
+            edit_url,
+            data=form_data,
+            headers={"Referer": edit_url},
+            timeout=30.0,
+        )
+
+        # Check for success
+        final_url = str(resp.url)
+        if resp.status_code >= 400:
+            raise RuntimeError(f"FA: Edit POST failed — status {resp.status_code}")
+
+        url = f"{config.FA_BASE}/view/{submission_id}/"
+        logger.info("FA: Edited submission %s — title=%r", submission_id, title[:40] if title else "(unchanged)")
+        return {"submission_id": submission_id, "url": url}
 
 
 def _safe_int(val: Any) -> int:

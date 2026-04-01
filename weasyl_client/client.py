@@ -15,6 +15,8 @@ ws_comments table in the database schema.
 from __future__ import annotations
 import asyncio
 import logging
+import os
+import re
 from typing import Any
 
 import httpx
@@ -234,6 +236,133 @@ class WeasylClient:
             # This is only a count -- the Weasyl API provides no comment text.
             "comments_count": _safe_int(raw.get("comments", 0)),
         }
+
+
+    # ── Posting / Upload ────────────────────────────────────────
+
+    async def _get_csrf_token(self, url: str) -> str:
+        """Fetch a page and extract the CSRF token from hidden form input."""
+        resp = await self._http.get(url)
+        if resp.status_code != 200:
+            raise RuntimeError(f"WS: Failed to load {url} — status {resp.status_code}")
+        match = re.search(r'name="token"\s*value="([^"]+)"', resp.text)
+        if not match:
+            match = re.search(r'name="csrf_token"\s*value="([^"]+)"', resp.text)
+        if not match:
+            # Weasyl may use API key auth for form posts if the key header is present.
+            # Return empty and try without CSRF — the API key may be sufficient.
+            logger.warning("WS: No CSRF token found on %s — attempting without it", url)
+            return ""
+        return match.group(1)
+
+    async def submit_literary(
+        self,
+        file_path: str,
+        *,
+        title: str = "",
+        description: str = "",
+        tags: str = "",
+        rating: int = 40,
+        subtype: int = 0,
+        folder_id: int | None = None,
+    ) -> dict:
+        """Submit a literary work (story/text) to Weasyl.
+
+        Fetches the submit page first to extract a CSRF token, then POSTs
+        the submission with the token + file + metadata.
+        """
+        # Step 1: Get CSRF token from the submit page
+        csrf = await self._get_csrf_token("https://www.weasyl.com/submit/literary")
+
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+
+        filename = os.path.basename(file_path)
+        form_data = {
+            "title": title,
+            "rating": str(rating),
+            "content": description,
+            "tags": tags,
+            "subtype": str(subtype),
+        }
+        if csrf:
+            form_data["token"] = csrf
+        if folder_id:
+            form_data["folderid"] = str(folder_id)
+
+        files = {"submitfile": (filename, file_data)}
+
+        # Use a client that follows redirects for this request
+        resp = await self._http.post(
+            "https://www.weasyl.com/submit/literary",
+            data=form_data,
+            files=files,
+            timeout=60.0,
+            follow_redirects=True,
+        )
+
+        final_url = str(resp.url)
+        # Check for success: redirected to submission page or got 200 on it
+        sid_match = re.search(r'/submission/(\d+)', final_url)
+        if sid_match:
+            submission_id = sid_match.group(1)
+            logger.info("WS: Submitted literary work — id=%s url=%s", submission_id, final_url)
+            return {"submission_id": submission_id, "url": final_url}
+
+        # Check response body for submission link (some flows don't redirect)
+        body_match = re.search(r'/submission/(\d+)', resp.text[:2000])
+        if body_match:
+            submission_id = body_match.group(1)
+            url = f"https://www.weasyl.com/submission/{submission_id}"
+            logger.info("WS: Submitted literary work (from body) — id=%s", submission_id)
+            return {"submission_id": submission_id, "url": url}
+
+        raise RuntimeError(f"Weasyl submission failed — status {resp.status_code}, url={final_url}")
+
+    async def edit_submission(
+        self,
+        submission_id: str,
+        *,
+        title: str = "",
+        description: str = "",
+        tags: str = "",
+        rating: int | None = None,
+    ) -> dict:
+        """Edit an existing Weasyl submission's metadata.
+
+        Fetches the edit page to get CSRF token and current values, then
+        posts the updated fields back.
+        """
+        edit_url = f"https://www.weasyl.com/edit/submission/{submission_id}"
+
+        # GET edit page for CSRF token
+        csrf = await self._get_csrf_token(edit_url)
+
+        form_data: dict[str, str] = {}
+        if csrf:
+            form_data["token"] = csrf
+        if title:
+            form_data["title"] = title
+        if description:
+            form_data["content"] = description
+        if tags:
+            form_data["tags"] = tags
+        if rating is not None:
+            form_data["rating"] = str(rating)
+
+        resp = await self._http.post(
+            edit_url,
+            data=form_data,
+            timeout=30.0,
+            follow_redirects=True,
+        )
+
+        if resp.status_code >= 400:
+            raise RuntimeError(f"WS: Edit failed — status {resp.status_code}")
+
+        url = f"https://www.weasyl.com/submission/{submission_id}"
+        logger.info("WS: Edited submission %s — title=%r", submission_id, title[:40])
+        return {"submission_id": submission_id, "url": url}
 
 
 def _safe_int(val: Any) -> int:

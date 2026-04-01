@@ -38,6 +38,7 @@ _WP_SCHEMA_PATH = config.resource_path("database/wp_schema.sql")   # Wattpad tab
 _IK_SCHEMA_PATH = config.resource_path("database/ik_schema.sql")   # Itaku tables
 _BSKY_SCHEMA_PATH = config.resource_path("database/bsky_schema.sql")  # Bluesky tables
 _TW_SCHEMA_PATH = config.resource_path("database/tw_schema.sql")      # X/Twitter tables
+_POSTING_SCHEMA_PATH = config.resource_path("database/posting_schema.sql")  # Posting module tables
 
 
 def get_connection() -> sqlite3.Connection:
@@ -98,6 +99,8 @@ def init_db() -> None:
         conn.executescript(bsky_schema_sql)
         tw_schema_sql = _TW_SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(tw_schema_sql)
+        posting_schema_sql = _POSTING_SCHEMA_PATH.read_text(encoding="utf-8")
+        conn.executescript(posting_schema_sql)
         # Apply any migrations for tables added after the original schema release.
         _run_migrations(conn)
         conn.commit()

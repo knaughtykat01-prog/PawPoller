@@ -425,3 +425,180 @@ class BskyClient:
             "has_media": 0,
             "embed_type": "",
         }
+
+    # -- Posting ----------------------------------------------------------------
+
+    async def _post_json(self, url: str, json_data: dict) -> dict | None:
+        """POST a JSON endpoint with auth injection and 401 auto-refresh."""
+        headers = {}
+        if self._access_jwt:
+            headers["Authorization"] = f"Bearer {self._access_jwt}"
+        try:
+            resp = await self._http.post(url, json=json_data, headers=headers)
+            if resp.status_code == 401:
+                logger.info("BSKY: Got 401 on POST, attempting session refresh...")
+                if await self.refresh_session():
+                    headers["Authorization"] = f"Bearer {self._access_jwt}"
+                    resp = await self._http.post(url, json=json_data, headers=headers)
+                else:
+                    logger.error("BSKY: Session refresh failed after 401")
+                    return None
+            if resp.status_code == 429:
+                logger.warning("BSKY: Rate limited (429) on POST, waiting 30s...")
+                await asyncio.sleep(30)
+                resp = await self._http.post(url, json=json_data, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError as e:
+            logger.error("BSKY: POST failed for %s: %s", url, e)
+            return None
+
+    async def upload_blob(self, file_path: str, mime_type: str = "image/jpeg") -> dict | None:
+        """Upload a blob (image/video) and return the blob reference.
+
+        Args:
+            file_path: Absolute path to the file to upload.
+            mime_type: MIME type of the file (e.g. "image/jpeg", "image/png").
+
+        Returns:
+            The blob dict (with 'ref' and 'mimeType') on success, None on failure.
+        """
+        if not await self.ensure_logged_in():
+            logger.error("BSKY: Not logged in, cannot upload blob")
+            return None
+
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+
+        headers = {
+            "Authorization": f"Bearer {self._access_jwt}",
+            "Content-Type": mime_type,
+        }
+        try:
+            resp = await self._http.post(
+                f"{_API_BASE}/com.atproto.repo.uploadBlob",
+                content=file_data,
+                headers=headers,
+                timeout=60.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            blob = data.get("blob")
+            if blob:
+                logger.info("BSKY: Uploaded blob (%d bytes, %s)", len(file_data), mime_type)
+            return blob
+        except Exception as e:
+            logger.error("BSKY: Blob upload failed: %s", e)
+            return None
+
+    async def create_post(
+        self,
+        text: str,
+        *,
+        image_path: str | None = None,
+        image_alt: str = "",
+        labels: list[str] | None = None,
+    ) -> dict | None:
+        """Create a new Bluesky post.
+
+        Args:
+            text: Post text (max 300 graphemes).
+            image_path: Optional path to an image to embed.
+            image_alt: Alt text for the image.
+            labels: Content labels (e.g. ["sexual", "nudity"]).
+
+        Returns:
+            Dict with 'uri' and 'cid' on success, None on failure.
+        """
+        if not await self.ensure_logged_in():
+            logger.error("BSKY: Not logged in, cannot create post")
+            return None
+
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+        record: dict = {
+            "$type": "app.bsky.feed.post",
+            "text": text,
+            "createdAt": now,
+        }
+
+        # Detect links and create facets
+        facets = self._extract_link_facets(text)
+        if facets:
+            record["facets"] = facets
+
+        # Embed image if provided
+        if image_path:
+            import mimetypes
+            mime = mimetypes.guess_type(image_path)[0] or "image/jpeg"
+            blob = await self.upload_blob(image_path, mime)
+            if blob:
+                record["embed"] = {
+                    "$type": "app.bsky.embed.images",
+                    "images": [{
+                        "alt": image_alt,
+                        "image": blob,
+                    }],
+                }
+
+        # Content labels (NSFW self-labelling)
+        if labels:
+            record["labels"] = {
+                "$type": "com.atproto.label.defs#selfLabels",
+                "values": [{"val": lbl} for lbl in labels],
+            }
+
+        data = {
+            "repo": self._did,
+            "collection": "app.bsky.feed.post",
+            "record": record,
+        }
+
+        result = await self._post_json(
+            f"{_API_BASE}/com.atproto.repo.createRecord", data
+        )
+        if result and "uri" in result:
+            rkey = result["uri"].rsplit("/", 1)[-1]
+            url = f"https://bsky.app/profile/{self._handle}/post/{rkey}"
+            logger.info("BSKY: Created post %s — %s", result["uri"][:50], url)
+            result["url"] = url
+            return result
+        logger.error("BSKY: Post creation failed: %s", result)
+        return None
+
+    async def delete_post(self, uri: str) -> bool:
+        """Delete a post by AT URI."""
+        if not await self.ensure_logged_in():
+            return False
+        rkey = uri.rsplit("/", 1)[-1]
+        result = await self._post_json(
+            f"{_API_BASE}/com.atproto.repo.deleteRecord",
+            {
+                "repo": self._did,
+                "collection": "app.bsky.feed.post",
+                "rkey": rkey,
+            },
+        )
+        if result is not None:
+            logger.info("BSKY: Deleted post %s", uri[:50])
+            return True
+        return False
+
+    @staticmethod
+    def _extract_link_facets(text: str) -> list[dict]:
+        """Extract URL facets from post text for AT Protocol rich text."""
+        import re as _re
+        url_pattern = _re.compile(r'https?://\S+')
+        facets = []
+        text_bytes = text.encode("utf-8")
+        for m in url_pattern.finditer(text):
+            url = m.group(0)
+            # Calculate byte offsets
+            start_bytes = len(text[:m.start()].encode("utf-8"))
+            end_bytes = start_bytes + len(url.encode("utf-8"))
+            facets.append({
+                "index": {"byteStart": start_bytes, "byteEnd": end_bytes},
+                "features": [{"$type": "app.bsky.richtext.facet#link", "uri": url}],
+            })
+        return facets

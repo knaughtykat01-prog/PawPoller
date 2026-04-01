@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import os
 import re
 
 import httpx
@@ -527,3 +528,120 @@ class InkbunnyClient:
 
         logger.info("Total watchers scraped: %d", len(all_watchers))
         return all_watchers
+
+    # ── Posting / Upload ────────────────────────────────────────
+
+    async def upload_submission(
+        self,
+        file_path: str,
+        *,
+        submission_type: str = "4",
+    ) -> int:
+        """Upload a file to Inkbunny and return the new submission_id.
+
+        This creates a submission in a draft/pending state. Call edit_submission()
+        afterwards to set title, description, tags, and make it visible.
+
+        Args:
+            file_path: Absolute path to the file to upload.
+            submission_type: IB type code ("1"=picture, "2"=flash, "3"=music, "4"=writing).
+
+        Returns:
+            The new submission_id as an integer.
+
+        Raises:
+            RuntimeError: If the upload fails or returns an error.
+        """
+        if not self.sid:
+            raise RuntimeError("Not logged in — call ensure_session() first")
+
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+
+        filename = os.path.basename(file_path)
+        resp = await self._http.post(
+            f"{config.INKBUNNY_API_BASE}/api_upload.php",
+            data={"sid": self.sid, "submission_type": submission_type},
+            files={"uploadedfile[0]": (filename, file_data)},
+            timeout=120.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if "error_code" in data:
+            raise RuntimeError(f"Upload failed: {data.get('error_message', data)}")
+
+        submission_id = int(data.get("submission_id", 0))
+        if not submission_id:
+            raise RuntimeError(f"Upload response missing submission_id: {data}")
+
+        logger.info("Uploaded file to IB — submission_id=%d", submission_id)
+        return submission_id
+
+    async def edit_submission(
+        self,
+        submission_id: int,
+        *,
+        title: str = "",
+        description: str = "",
+        keywords: str = "",
+        rating_tag_2: str = "no",
+        rating_tag_3: str = "no",
+        rating_tag_4: str = "no",
+        rating_tag_5: str = "no",
+        visibility: str = "yes",
+        scraps: str = "no",
+        friends_only: str = "no",
+        guest_block: str = "no",
+    ) -> dict:
+        """Edit an existing Inkbunny submission's metadata.
+
+        Can be called on a freshly uploaded submission (to set its initial metadata
+        and make it visible) or on a previously posted submission (to update it).
+
+        Args:
+            submission_id: The IB submission ID to edit.
+            title: Submission title.
+            description: BBCode-formatted description/body text.
+            keywords: Comma-separated tag list.
+            rating_tag_2: "yes" for Nudity — Nonsexual.
+            rating_tag_3: "yes" for Violence — Mild.
+            rating_tag_4: "yes" for Sexual Situations — Strong.
+            rating_tag_5: "yes" for Violence — Strong and/or Blood.
+            visibility: "yes" to make publicly visible, "no" for draft.
+            scraps: "yes" to post to scraps.
+            friends_only: "yes" for friends-only.
+            guest_block: "yes" to block guest viewing.
+
+        Returns:
+            The API response dict.
+        """
+        if not self.sid:
+            raise RuntimeError("Not logged in — call ensure_session() first")
+
+        data = {
+            "sid": self.sid,
+            "submission_id": str(submission_id),
+            "title": title,
+            "desc": description,
+            "keywords": keywords,
+            "tag[2]": rating_tag_2,
+            "tag[3]": rating_tag_3,
+            "tag[4]": rating_tag_4,
+            "tag[5]": rating_tag_5,
+            "visibility": visibility,
+            "scraps": scraps,
+            "friends_only": friends_only,
+            "guest_block": guest_block,
+        }
+
+        resp = await self._http.post(
+            f"{config.INKBUNNY_API_BASE}/api_editsubmission.php",
+            data=data,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        if "error_code" in result:
+            raise RuntimeError(f"Edit failed: {result.get('error_message', result)}")
+
+        logger.info("Edited IB submission %d — title=%r", submission_id, title[:40])
+        return result

@@ -435,4 +435,23 @@ const API = {
         });
     },
     saveTurnstileConfig(data) { return this.post('/api/auth/turnstile-config', data); },
+
+    /* ── Posting Module ───────────────────────────────────────── */
+    getPostingStories() { return this.get('/api/posting/stories'); },
+    getPostingStory(name) { return this.get(`/api/posting/stories/${encodeURIComponent(name)}`); },
+    postStory(data) { return this.post('/api/posting/post', data); },
+    updateStory(data) { return this.post('/api/posting/update', data); },
+    getPublications(params = {}) { return this.get('/api/posting/publications', params); },
+    getPublication(pubId) { return this.get(`/api/posting/publications/${pubId}`); },
+    addToPostingQueue(data) { return this.post('/api/posting/queue', data); },
+    getPostingQueue(params = {}) { return this.get('/api/posting/queue', params); },
+    cancelPostingQueue(queueId) {
+        return fetch(`/api/posting/queue/${queueId}`, { method: 'DELETE' }).then(r => {
+            if (!r.ok) throw new Error(`Cancel failed: ${r.status}`);
+            return r.json();
+        });
+    },
+    getPostingLog(params = {}) { return this.get('/api/posting/log', params); },
+    getPostingSettings() { return this.get('/api/posting/settings'); },
+    savePostingSettings(data) { return this.post('/api/posting/settings', data); },
 };

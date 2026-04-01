@@ -22,6 +22,7 @@ a = Analysis(
         ('database/ik_schema.sql', 'database'),
         ('database/bsky_schema.sql', 'database'),
         ('database/tw_schema.sql', 'database'),
+        ('database/posting_schema.sql', 'database'),
         ('assets', 'assets'),
     ],
     hiddenimports=[
