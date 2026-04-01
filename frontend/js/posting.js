@@ -49,11 +49,12 @@ const Posting = {
                                 ${unpublished.length > 0 ? `, ${unpublished.length} unpublished` : ''}
                             </div>
                             <div style="display: flex; gap: 0.5rem">
-                                <button id="sync-push-btn" class="btn btn-sm btn-secondary" title="Push local stories to server">Sync to Server</button>
                                 <button id="sync-refresh-btn" class="btn btn-sm btn-secondary" title="Refresh status">Refresh</button>
                             </div>
                         </div>
-                        <div id="sync-result" style="margin-top: 0.5rem"></div>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0.5rem 0 0">
+                            To sync after revisions, run <code>pawsync.bat</code> from your PC or use <code>/sync push</code> from desktop PawPoller.
+                        </p>
                     </div>`;
             }
 
@@ -108,12 +109,8 @@ const Posting = {
             previewBtn.addEventListener('click', () => this._loadPreview(select.value));
             submitBtn.addEventListener('click', () => this._doUpload(select.value));
 
-            // Sync buttons
-            const syncPushBtn = document.getElementById('sync-push-btn');
+            // Sync refresh button
             const syncRefreshBtn = document.getElementById('sync-refresh-btn');
-            if (syncPushBtn) {
-                syncPushBtn.addEventListener('click', () => this._doSyncPush());
-            }
             if (syncRefreshBtn) {
                 syncRefreshBtn.addEventListener('click', () => this.renderUpload());
             }
@@ -161,24 +158,6 @@ const Posting = {
                 </div>`;
         } catch (err) {
             preview.innerHTML = `<div class="error-inline">${Utils.escapeHtml(err.message)}</div>`;
-        }
-    },
-
-    async _doSyncPush() {
-        const resultDiv = document.getElementById('sync-result');
-        const btn = document.getElementById('sync-push-btn');
-        if (!resultDiv || !btn) return;
-        btn.disabled = true;
-        btn.textContent = 'Syncing...';
-        resultDiv.innerHTML = '<span class="loading">Pushing stories to server...</span>';
-        try {
-            const data = await API.syncPush();
-            resultDiv.innerHTML = `<span class="result-success">Synced ${data.stories || '?'} stories (${((data.bytes_sent || 0) / 1024).toFixed(0)}KB sent)</span>`;
-        } catch (err) {
-            resultDiv.innerHTML = `<span class="result-failure">${Utils.escapeHtml(err.message)}</span>`;
-        } finally {
-            btn.disabled = false;
-            btn.textContent = 'Sync to Server';
         }
     },
 
