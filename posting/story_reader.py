@@ -74,12 +74,22 @@ class ChapterInfo:
 
 
 def get_archive_path() -> Path:
-    """Get the story archive root, configurable via settings."""
+    """Get the story archive root, configurable via settings.
+
+    Resolution order:
+      1. posting_story_archive_path setting (explicit override)
+      2. /app/story-archive (Docker bind mount on GCP server)
+      3. ../m_x/Archives/Complete_Stories/ (relative to PawPoller, for desktop)
+    """
     settings = config.get_settings()
     custom = settings.get("posting_story_archive_path", "")
     if custom and os.path.isdir(custom):
         return Path(custom)
-    # Default: look relative to the PawPoller project's parent
+    # Docker: bind-mounted at /app/story-archive
+    docker_mount = Path("/app/story-archive")
+    if docker_mount.is_dir() and any(docker_mount.iterdir()):
+        return docker_mount
+    # Desktop: relative to PawPoller project
     default = Path(config.resource_path(".")).parent / "m_x" / "Archives" / "Complete_Stories"
     if default.is_dir():
         return default
