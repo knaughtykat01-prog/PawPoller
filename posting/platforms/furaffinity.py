@@ -131,13 +131,39 @@ class FurAffinityPoster(PlatformPoster):
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
     async def replace_file(self, external_id: str, file_path: str) -> PostResult:
-        """FA supports file replacement via the edit page."""
-        # The edit page has a file field — would need to scrape and POST it.
-        # For now, fall back to edit (metadata only).
-        return PostResult(
-            success=False,
-            error="FA file replacement via edit page not yet implemented — use edit for metadata updates",
-        )
+        """Replace the story file via FA's changestory endpoint."""
+        _t = self._start_timer()
+        try:
+            client = await self._ensure_client()
+            fa = await client._get_fa_http()
+
+            import os
+            with open(file_path, "rb") as f:
+                file_data = f.read()
+
+            edit_url = f"https://www.furaffinity.net/controls/submissions/changestory/{external_id}/"
+            resp = await fa.post(
+                edit_url,
+                data={"update": "yes"},
+                files={"newfile": (os.path.basename(file_path), file_data)},
+                headers={"Referer": edit_url},
+                timeout=60.0,
+            )
+
+            if "nocache" in str(resp.url) or "/view/" in str(resp.url):
+                return PostResult(
+                    success=True,
+                    external_id=external_id,
+                    external_url=f"https://www.furaffinity.net/view/{external_id}/",
+                    duration_seconds=self._elapsed(_t),
+                )
+            return PostResult(
+                success=False, error="File replacement returned unexpected URL",
+                duration_seconds=self._elapsed(_t),
+            )
+        except Exception as e:
+            logger.error("FA file replace failed for %s: %s", external_id, e, exc_info=True)
+            return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
     def validate(self, package: StoryUploadPackage) -> list[str]:
         errors = super().validate(package)
