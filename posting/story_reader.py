@@ -44,6 +44,10 @@ PLATFORM_FORMAT_MAP: dict[str, list[tuple[str, str, str]]] = {
         ("HTML", "*_Clean.html", "html"),
         ("HTML", "*_sofurry.html", "html"),
     ],
+    "sqw": [
+        ("SquidgeWorld", "*.html", "html"),
+        ("Chapters/SoFurry_HTML", "*.html", "html"),
+    ],
     "bsky": [],  # Bluesky uses text from description, no file upload
 }
 

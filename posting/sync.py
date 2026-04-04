@@ -15,7 +15,9 @@ Matching strategy:
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
 import re
 from datetime import datetime, timezone
 
@@ -292,7 +294,6 @@ def _find_match(
 
 def _extract_chapter_number(norm_title: str, story_name: str) -> int | None:
     """Try to extract a chapter number from a submission title."""
-    # "story chapter 3" or "story ch 3" or "story - chapter 3: title"
     patterns = [
         r'chapter\s*(\d+)',
         r'ch\s*(\d+)',
@@ -303,3 +304,155 @@ def _extract_chapter_number(norm_title: str, story_name: str) -> int | None:
         if m:
             return int(m.group(1))
     return None
+
+
+# ── Change Detection ──────────────────────────────────────────
+
+
+def hash_file(file_path: str) -> str:
+    """Compute SHA-256 hash of a file. Returns hex digest or empty string if file missing."""
+    if not file_path or not os.path.isfile(file_path):
+        return ""
+    h = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def detect_changes() -> list[dict]:
+    """Compare current archive files against what was last posted.
+
+    For each publication, resolves the current format file, hashes it, and
+    compares against the stored file_hash. Returns a list of change records.
+
+    Returns:
+        List of dicts: {story_name, chapter_index, platform, external_id, status,
+                        current_hash, posted_hash, changed, file_path}
+        Where status is: 'changed', 'unchanged', 'file_missing', 'no_hash' (never posted via PawPoller)
+    """
+    conn = get_connection()
+    results = []
+
+    try:
+        pubs = posting_queries.get_publications(conn, status="posted")
+        if not pubs:
+            return []
+
+        # Group by story to avoid loading the same story repeatedly
+        by_story: dict[str, list[dict]] = {}
+        for pub in pubs:
+            sn = pub["story_name"]
+            if sn not in by_story:
+                by_story[sn] = []
+            by_story[sn].append(pub)
+
+        for story_name, story_pubs in by_story.items():
+            try:
+                story = story_reader.load_story(story_name)
+            except Exception:
+                for pub in story_pubs:
+                    results.append({
+                        "story_name": story_name,
+                        "chapter_index": pub["chapter_index"],
+                        "platform": pub["platform"],
+                        "external_id": pub["external_id"],
+                        "status": "file_missing",
+                        "changed": False,
+                        "current_hash": "",
+                        "posted_hash": pub.get("file_hash", ""),
+                    })
+                continue
+
+            for pub in story_pubs:
+                ch_idx = pub["chapter_index"]
+                platform = pub["platform"]
+                posted_hash = pub.get("file_hash", "")
+
+                # Resolve current file
+                file_path, _ = story_reader._resolve_format_file(story, ch_idx, platform)
+                current_hash = hash_file(file_path) if file_path else ""
+
+                if not posted_hash:
+                    # Never posted through PawPoller (claimed from existing, no hash stored)
+                    status = "no_hash"
+                    changed = True  # Conservative: treat as needing update
+                elif not current_hash:
+                    status = "file_missing"
+                    changed = False
+                elif current_hash != posted_hash:
+                    status = "changed"
+                    changed = True
+                else:
+                    status = "unchanged"
+                    changed = False
+
+                results.append({
+                    "story_name": story_name,
+                    "chapter_index": ch_idx,
+                    "platform": platform,
+                    "external_id": pub["external_id"],
+                    "status": status,
+                    "changed": changed,
+                    "current_hash": current_hash,
+                    "posted_hash": posted_hash,
+                    "file_path": file_path or "",
+                })
+    finally:
+        conn.close()
+
+    return results
+
+
+def get_changed_stories() -> dict[str, list[dict]]:
+    """Get stories with changes, grouped by story name.
+
+    Convenience wrapper around detect_changes() that filters to only changed items
+    and groups them by story.
+    """
+    changes = detect_changes()
+    changed_only = [c for c in changes if c["changed"]]
+
+    by_story: dict[str, list[dict]] = {}
+    for c in changed_only:
+        sn = c["story_name"]
+        if sn not in by_story:
+            by_story[sn] = []
+        by_story[sn].append(c)
+
+    return by_story
+
+
+def get_sync_status_summary() -> list[dict]:
+    """Get per-story sync status for the dashboard.
+
+    Returns a list of story summaries with change counts per platform.
+    """
+    all_changes = detect_changes()
+
+    # Group by story
+    by_story: dict[str, list[dict]] = {}
+    for c in all_changes:
+        sn = c["story_name"]
+        if sn not in by_story:
+            by_story[sn] = []
+        by_story[sn].append(c)
+
+    summaries = []
+    for story_name, items in sorted(by_story.items()):
+        changed_count = sum(1 for i in items if i["changed"])
+        total = len(items)
+        platforms = sorted(set(i["platform"] for i in items))
+        changed_platforms = sorted(set(i["platform"] for i in items if i["changed"]))
+
+        summaries.append({
+            "name": story_name,
+            "total_publications": total,
+            "changed_count": changed_count,
+            "changed": changed_count > 0,
+            "platforms": platforms,
+            "changed_platforms": changed_platforms,
+            "status": "needs update" if changed_count > 0 else "up to date",
+        })
+
+    return summaries

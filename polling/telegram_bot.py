@@ -125,8 +125,10 @@ async def _cmd_help(token: str, chat_id: str, args: str) -> None:
 /stories — List available stories in archive
 /upload &lt;story&gt; [platforms] — Post story to platforms (e.g. /upload Extra_Credit ib,sf)
 /update &lt;story&gt; [platforms] — Push updates to already-posted submissions
+/update all [platforms] — Update all stories with changed files
 /posted [story] — Show publication registry
 /claim [platforms] — Claim existing submissions into publications registry
+/changes — Show which stories have changed since last update
 /sync — Show archive status (published vs unpublished)
 /sync push — Push local archive to remote server
 
@@ -716,19 +718,58 @@ async def _cmd_upload(token: str, chat_id: str, args: str) -> None:
 
 
 async def _cmd_update(token: str, chat_id: str, args: str) -> None:
-    """Handle /update <story> [platforms] — push updates to posted submissions."""
+    """Handle /update <story|all> [platforms] — push updates to posted submissions.
+
+    /update Extra_Credit       — update one story on all platforms
+    /update Extra_Credit ib    — update one story on specific platform
+    /update all                — update all stories with changed files
+    /update all fa             — update all changed stories on FA only
+    """
     parts = args.strip().split()
     if not parts:
-        await _send(token, chat_id, "<b>Usage:</b> /update &lt;story_name&gt; [platforms]\nExample: /update Extra_Credit ib")
+        await _send(token, chat_id,
+            "<b>Usage:</b>\n"
+            "/update &lt;story&gt; [platforms] — update one story\n"
+            "/update all [platforms] — update all changed stories")
         return
 
     story_name = parts[0]
     platforms = parts[1].split(",") if len(parts) > 1 else None
 
+    from posting import manager
+
+    if story_name.lower() == "all":
+        await _send(token, chat_id, "🔄 Checking for changed stories...")
+        try:
+            results = await manager.update_all_changed(platforms)
+
+            if results and results[0].get("status") == "no_changes":
+                await _send(token, chat_id, "✅ All publications are up to date — no changes detected.")
+                return
+
+            lines = []
+            for r in results:
+                if "error" in r and "success" not in r:
+                    lines.append(f"⚠️ {_esc(str(r['error']))}")
+                    continue
+                emoji = manager.PLATFORM_EMOJIS.get(r.get("platform", ""), "📦")
+                story = _esc(r.get("story_name", "?").replace("_", " "))
+                ch_label = f'Ch{r["chapter_index"]}' if r.get("chapter_index") else "Full"
+                if r.get("success"):
+                    lines.append(f'{emoji} {story} {ch_label} — updated ✅')
+                else:
+                    lines.append(f'{emoji} {story} {ch_label} — failed ❌ {_esc(r.get("error", "")[:60])}')
+
+            successes = sum(1 for r in results if r.get("success"))
+            lines.append(f"\n✅ {successes}/{len(results)} updates complete")
+            await _send(token, chat_id, "\n".join(lines))
+        except Exception as e:
+            await _send(token, chat_id, f"❌ Batch update failed: {_esc(str(e)[:200])}")
+        return
+
     await _send(token, chat_id, f"🔄 Updating <b>{_esc(story_name.replace('_', ' '))}</b>...")
 
     try:
-        from posting import manager
         results = await manager.update_story(story_name, platforms)
 
         lines = []
@@ -925,6 +966,38 @@ async def _cmd_claim(token: str, chat_id: str, args: str) -> None:
         await _send(token, chat_id, f"❌ Claim failed: {_esc(str(e)[:200])}")
 
 
+async def _cmd_changes(token: str, chat_id: str, args: str) -> None:
+    """Handle /changes — show which stories have changed since last update."""
+    try:
+        from posting.sync import get_sync_status_summary
+        from posting.manager import PLATFORM_EMOJIS
+
+        summaries = get_sync_status_summary()
+        if not summaries:
+            await _send(token, chat_id, "No publications found. Run /claim first.")
+            return
+
+        changed = [s for s in summaries if s["changed"]]
+        up_to_date = [s for s in summaries if not s["changed"]]
+
+        lines = ["<b>📊 Change Detection</b>", ""]
+
+        if changed:
+            lines.append(f"<b>Changed ({len(changed)}):</b>")
+            for s in changed:
+                plats = " ".join(PLATFORM_EMOJIS.get(p, p) for p in s["changed_platforms"])
+                lines.append(f"  {_esc(s['name'].replace('_', ' '))} — {s['changed_count']} items on {plats}")
+            lines.append("")
+
+        lines.append(f"Up to date: {len(up_to_date)} stories")
+        if changed:
+            lines.append(f"\nRun /update all to push all changes")
+
+        await _send(token, chat_id, "\n".join(lines))
+    except Exception as e:
+        await _send(token, chat_id, f"❌ Error: {_esc(str(e)[:200])}")
+
+
 # ── Command dispatcher ───────────────────────────────────────
 
 COMMANDS = {
@@ -947,6 +1020,7 @@ COMMANDS = {
     "/stories": _cmd_stories,
     "/sync": _cmd_sync,
     "/claim": _cmd_claim,
+    "/changes": _cmd_changes,
 }
 
 

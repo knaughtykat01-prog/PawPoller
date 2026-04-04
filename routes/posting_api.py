@@ -159,6 +159,17 @@ def get_publications(
         conn.close()
 
 
+@posting_router.get("/publications/stats")
+def get_publications_with_stats(story_name: str = Query(None)):
+    """List publications with live stats from polling tables."""
+    conn = get_connection()
+    try:
+        pubs = posting_queries.get_publications_with_stats(conn, story_name=story_name)
+        return {"publications": pubs}
+    finally:
+        conn.close()
+
+
 @posting_router.get("/publications/{pub_id}")
 def get_publication(pub_id: int):
     """Get a single publication by ID."""
@@ -318,6 +329,39 @@ def claim_submissions(body: dict = {}):
         }
     except Exception as e:
         logger.error("Claim failed: %s", e, exc_info=True)
+        raise HTTPException(500, detail=str(e))
+
+
+# ── Change Detection ───────────────────────────────────────────
+
+@posting_router.get("/changes")
+def get_changes():
+    """Detect which publications have changed files since last post/update."""
+    from posting.sync import detect_changes
+    try:
+        changes = detect_changes()
+        changed = [c for c in changes if c["changed"]]
+        unchanged = [c for c in changes if not c["changed"]]
+        return {
+            "total": len(changes),
+            "changed": len(changed),
+            "unchanged": len(unchanged),
+            "items": changes,
+        }
+    except Exception as e:
+        logger.error("Change detection failed: %s", e, exc_info=True)
+        raise HTTPException(500, detail=str(e))
+
+
+@posting_router.get("/sync/status")
+def get_sync_status():
+    """Get per-story sync status summary for the dashboard."""
+    from posting.sync import get_sync_status_summary
+    try:
+        summaries = get_sync_status_summary()
+        return {"stories": summaries}
+    except Exception as e:
+        logger.error("Sync status failed: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
 
 

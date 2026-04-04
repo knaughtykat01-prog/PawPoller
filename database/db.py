@@ -329,10 +329,17 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             raise
 
     # Migration: Add 'requires' column to posting_queue for desktop/server mode
-    # Values: 'any' (default), 'desktop' (needs residential IP/GUI), 'server'
     if "posting_queue" in tables:
         try:
             conn.execute("ALTER TABLE posting_queue ADD COLUMN requires TEXT DEFAULT 'any'")
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+
+    # Migration: Add 'file_hash' column to publications for change detection
+    if "publications" in tables:
+        try:
+            conn.execute("ALTER TABLE publications ADD COLUMN file_hash TEXT DEFAULT ''")
         except sqlite3.OperationalError as e:
             if "duplicate column" not in str(e).lower():
                 raise

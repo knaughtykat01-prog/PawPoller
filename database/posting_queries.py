@@ -28,6 +28,7 @@ def upsert_publication(
     tags_used: list[str] | None = None,
     rating_used: str = "",
     format_file: str = "",
+    file_hash: str = "",
     word_count: int = 0,
     status: str = "posted",
 ) -> int:
@@ -49,11 +50,11 @@ def upsert_publication(
             """UPDATE publications SET
                 external_id = ?, external_url = ?, title_used = ?,
                 description_used = ?, tags_used = ?, rating_used = ?,
-                format_file = ?, word_count = ?, status = ?,
+                format_file = ?, file_hash = ?, word_count = ?, status = ?,
                 last_updated_at = ?, update_count = ?
             WHERE pub_id = ?""",
             (external_id, external_url, title_used, description_used,
-             tags_json, rating_used, format_file, word_count, status,
+             tags_json, rating_used, format_file, file_hash, word_count, status,
              now, update_count, pub_id),
         )
     else:
@@ -61,11 +62,11 @@ def upsert_publication(
             """INSERT INTO publications
                 (story_name, chapter_index, platform, external_id, external_url,
                  title_used, description_used, tags_used, rating_used,
-                 format_file, word_count, status, first_posted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 format_file, file_hash, word_count, status, first_posted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (story_name, chapter_index, platform, external_id, external_url,
              title_used, description_used, tags_json, rating_used,
-             format_file, word_count, status, now),
+             format_file, file_hash, word_count, status, now),
         )
         pub_id = cursor.lastrowid
 
@@ -99,6 +100,53 @@ def get_publication(conn: sqlite3.Connection, pub_id: int) -> dict | None:
     """Get a single publication by ID."""
     row = conn.execute("SELECT * FROM publications WHERE pub_id = ?", (pub_id,)).fetchone()
     return dict(row) if row else None
+
+
+def get_publications_with_stats(
+    conn: sqlite3.Connection,
+    story_name: str | None = None,
+) -> list[dict]:
+    """Get publications enriched with live stats from the polling submission tables.
+
+    Joins each publication's external_id with the platform-specific submission table
+    to pull in current views, faves, comments counts.
+    """
+    pubs = get_publications(conn, story_name=story_name, status="posted")
+
+    # Platform table mapping: platform → (table, id_col, stat_columns)
+    stat_tables = {
+        "ib": ("submissions", "submission_id", ["views", "favorites_count", "comments_count"]),
+        "fa": ("fa_submissions", "submission_id", ["views", "favorites_count", "comments_count"]),
+        "ws": ("ws_submissions", "submission_id", ["views", "favorites_count", "comments_count"]),
+        "sf": ("sf_submissions", "submission_id", ["views", "favorites_count", "comments_count"]),
+        "sqw": ("sqw_submissions", "submission_id", ["hits", "kudos", "comments_count", "bookmarks"]),
+        "ao3": ("ao3_submissions", "submission_id", ["hits", "kudos", "comments_count", "bookmarks"]),
+        "wp": ("wp_submissions", "submission_id", ["reads", "votes", "comments_count"]),
+    }
+
+    enriched = []
+    for pub in pubs:
+        pub_dict = dict(pub) if not isinstance(pub, dict) else pub
+        plat = pub_dict["platform"]
+        ext_id = pub_dict["external_id"]
+
+        pub_dict["stats"] = None
+        if plat in stat_tables and ext_id:
+            table, id_col, cols = stat_tables[plat]
+            col_str = ", ".join(cols)
+            try:
+                row = conn.execute(
+                    f"SELECT {col_str} FROM {table} WHERE {id_col} = ?",
+                    (int(ext_id) if ext_id.isdigit() else ext_id,),
+                ).fetchone()
+                if row:
+                    pub_dict["stats"] = {cols[i]: row[i] for i in range(len(cols))}
+            except Exception:
+                pass  # Table doesn't exist or ID mismatch
+
+        enriched.append(pub_dict)
+
+    return enriched
 
 
 def get_publication_by_story(

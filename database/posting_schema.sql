@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS publications (
 
     -- What was posted (snapshot at time of posting)
     format_file         TEXT DEFAULT '',
+    file_hash           TEXT DEFAULT '',
     tags_used           TEXT DEFAULT '[]',
     title_used          TEXT DEFAULT '',
     description_used    TEXT DEFAULT '',

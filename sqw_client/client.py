@@ -464,3 +464,218 @@ class SquidgeWorldClient:
         )
         # Return just registered user names
         return [unescape(u) for u in users]
+
+    # ── Posting / Upload ────────────────────────────────────────
+
+    async def _get_authenticity_token(self, url: str) -> str | None:
+        """Fetch a page and extract the Rails authenticity_token."""
+        html = await self._get_page(url)
+        if not html:
+            return None
+        m = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', html)
+        if not m:
+            m = re.search(r'value="([^"]+)"[^>]*name="authenticity_token"', html)
+        return m.group(1) if m else None
+
+    async def create_work(
+        self,
+        *,
+        title: str,
+        content: str,
+        fandom: str = "Original Work",
+        rating: str = "Explicit",
+        warning: str = "Creator Chose Not To Use Archive Warnings",
+        category: str = "",
+        relationship: str = "",
+        characters: str = "",
+        additional_tags: str = "",
+        summary: str = "",
+        notes_begin: str = "",
+        notes_end: str = "",
+        language: str = "en",
+    ) -> dict:
+        """Create a new work on SquidgeWorld.
+
+        OTW Archive form at /works/new requires CSRF token and specific field names.
+
+        Args:
+            title: Work title.
+            content: HTML chapter content (first chapter body).
+            fandom: Fandom name (default: "Original Work").
+            rating: "General Audiences", "Teen And Up Audiences", "Mature", "Explicit".
+            warning: Archive warning tag.
+            category: Relationship category (F/M, M/M, etc.).
+            additional_tags: Comma-separated additional tags.
+            summary: Work summary (HTML allowed, 1250 char max).
+            notes_begin: Beginning notes.
+            notes_end: End notes.
+            language: Language code.
+
+        Returns:
+            Dict with 'work_id' and 'url'.
+        """
+        if not self._logged_in:
+            if not await self.ensure_logged_in():
+                raise RuntimeError("SqW: Not logged in")
+
+        # GET the new work form for CSRF token
+        token = await self._get_authenticity_token(f"{_BASE}/works/new")
+        if not token:
+            raise RuntimeError("SqW: Could not get CSRF token from /works/new")
+
+        form_data = {
+            "authenticity_token": token,
+            "work[title]": title,
+            "work[fandom_string]": fandom,
+            "work[rating_string]": rating,
+            "work[archive_warning_string]": warning,
+            "work[category_string]": category,
+            "work[relationship_string]": relationship,
+            "work[character_string]": characters,
+            "work[freeform_string]": additional_tags,
+            "work[summary]": summary[:1250],
+            "work[notes]": notes_begin,
+            "work[endnotes]": notes_end,
+            "work[language_id]": language,
+            "work[chapter_attributes][content]": content,
+            "preview_button": "Preview",
+        }
+
+        await asyncio.sleep(config.SQW_REQUEST_DELAY_SECONDS)
+        resp = await self._http.post(
+            f"{_BASE}/works",
+            data=form_data,
+            headers={"Referer": f"{_BASE}/works/new"},
+            timeout=60.0,
+        )
+
+        # After preview, need to confirm by POSTing again
+        final_url = str(resp.url)
+        if "/works/new" in final_url or resp.status_code >= 400:
+            # Check for error messages
+            errors = re.findall(r'class="error"[^>]*>(.*?)</li>', resp.text, re.DOTALL)
+            err_text = "; ".join(re.sub(r'<[^>]+>', '', e).strip() for e in errors[:3])
+            raise RuntimeError(f"SqW: Work creation failed: {err_text or 'unknown error'}")
+
+        # Try to find the confirm/post button and submit
+        confirm_token = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', resp.text)
+        if confirm_token and "post_button" not in resp.text.lower():
+            # We're on the preview page, need to click Post
+            pass
+
+        # Extract work ID from URL
+        work_match = re.search(r'/works/(\d+)', final_url)
+        if work_match:
+            work_id = work_match.group(1)
+            url = f"{_BASE}/works/{work_id}"
+            logger.info("SqW: Created work %s — %s", work_id, url)
+            return {"work_id": work_id, "url": url}
+
+        raise RuntimeError(f"SqW: Could not extract work ID from {final_url}")
+
+    async def edit_work(
+        self,
+        work_id: str,
+        *,
+        title: str | None = None,
+        summary: str | None = None,
+        additional_tags: str | None = None,
+        notes_begin: str | None = None,
+        notes_end: str | None = None,
+    ) -> dict:
+        """Edit metadata on an existing SquidgeWorld work."""
+        if not self._logged_in:
+            if not await self.ensure_logged_in():
+                raise RuntimeError("SqW: Not logged in")
+
+        edit_url = f"{_BASE}/works/{work_id}/edit"
+        token = await self._get_authenticity_token(edit_url)
+        if not token:
+            raise RuntimeError("SqW: Could not get CSRF token from edit page")
+
+        form_data: dict[str, str] = {
+            "authenticity_token": token,
+            "_method": "patch",
+        }
+        if title is not None:
+            form_data["work[title]"] = title
+        if summary is not None:
+            form_data["work[summary]"] = summary[:1250]
+        if additional_tags is not None:
+            form_data["work[freeform_string]"] = additional_tags
+        if notes_begin is not None:
+            form_data["work[notes]"] = notes_begin
+        if notes_end is not None:
+            form_data["work[endnotes]"] = notes_end
+
+        await asyncio.sleep(config.SQW_REQUEST_DELAY_SECONDS)
+        resp = await self._http.post(
+            f"{_BASE}/works/{work_id}",
+            data=form_data,
+            headers={"Referer": edit_url},
+            timeout=30.0,
+        )
+
+        if resp.status_code >= 400:
+            raise RuntimeError(f"SqW: Edit failed — status {resp.status_code}")
+
+        url = f"{_BASE}/works/{work_id}"
+        logger.info("SqW: Edited work %s", work_id)
+        return {"work_id": work_id, "url": url}
+
+    async def edit_chapter(
+        self,
+        work_id: str,
+        chapter_id: str,
+        *,
+        content: str,
+        title: str | None = None,
+    ) -> dict:
+        """Edit the content of a specific chapter."""
+        if not self._logged_in:
+            if not await self.ensure_logged_in():
+                raise RuntimeError("SqW: Not logged in")
+
+        edit_url = f"{_BASE}/works/{work_id}/chapters/{chapter_id}/edit"
+        token = await self._get_authenticity_token(edit_url)
+        if not token:
+            raise RuntimeError("SqW: Could not get CSRF token from chapter edit")
+
+        form_data: dict[str, str] = {
+            "authenticity_token": token,
+            "_method": "patch",
+            "chapter[content]": content,
+        }
+        if title is not None:
+            form_data["chapter[title]"] = title
+
+        await asyncio.sleep(config.SQW_REQUEST_DELAY_SECONDS)
+        resp = await self._http.post(
+            f"{_BASE}/works/{work_id}/chapters/{chapter_id}",
+            data=form_data,
+            headers={"Referer": edit_url},
+            timeout=30.0,
+        )
+
+        if resp.status_code >= 400:
+            raise RuntimeError(f"SqW: Chapter edit failed — status {resp.status_code}")
+
+        logger.info("SqW: Edited chapter %s of work %s", chapter_id, work_id)
+        return {"work_id": work_id, "chapter_id": chapter_id}
+
+    async def get_chapter_ids(self, work_id: str) -> list[dict]:
+        """Get all chapter IDs and titles for a work."""
+        url = f"{_BASE}/works/{work_id}/navigate"
+        html = await self._get_page(url)
+        if not html:
+            return []
+
+        # Chapter list: <li><a href="/works/{id}/chapters/{ch_id}">N. Title</a></li>
+        chapters = re.findall(
+            r'href="/works/\d+/chapters/(\d+)"[^>]*>(\d+)\.\s*([^<]*)',
+            html,
+        )
+        return [
+            {"chapter_id": ch_id, "index": int(idx), "title": title.strip()}
+            for ch_id, idx, title in chapters
+        ]

@@ -256,7 +256,7 @@ const Posting = {
         App._setContent('<div class="page-header"><h2>Published</h2></div><div class="loading">Loading publications...</div>');
 
         try {
-            const { publications } = await API.getPublications();
+            const { publications } = await API.getPublicationsWithStats();
             if (!publications.length) {
                 App._setContent(`
                     <div class="page-header"><h2>Published</h2></div>
@@ -276,33 +276,59 @@ const Posting = {
             </div>`;
 
             for (const [story, pubs] of Object.entries(byStory)) {
+                // Aggregate stats across platforms for the story header
+                let totalViews = 0, totalFaves = 0, totalComments = 0;
+                pubs.forEach(p => {
+                    if (p.stats) {
+                        totalViews += p.stats.views || p.stats.hits || p.stats.reads || 0;
+                        totalFaves += p.stats.favorites_count || p.stats.kudos || p.stats.votes || 0;
+                        totalComments += p.stats.comments_count || 0;
+                    }
+                });
+
                 const rows = pubs.map(p => {
                     const ch = p.chapter_index > 0 ? `Ch${p.chapter_index}` : 'Full';
                     const title = p.chapter_title ? Utils.escapeHtml(p.chapter_title) : '';
                     const link = p.external_url
-                        ? `<a href="${Utils.escapeHtml(p.external_url)}" target="_blank" title="${Utils.escapeHtml(p.external_url)}">${Utils.escapeHtml(p.external_id).substring(0, 20)}</a>`
-                        : (p.external_id || '—');
+                        ? `<a href="${Utils.escapeHtml(p.external_url)}" target="_blank" title="${Utils.escapeHtml(p.external_url)}">${Utils.escapeHtml(String(p.external_id)).substring(0, 20)}</a>`
+                        : (p.external_id || '\u2014');
                     const updated = p.update_count > 0 ? `(${p.update_count} updates)` : '';
+
+                    // Stats columns
+                    let statsHtml = '\u2014';
+                    if (p.stats) {
+                        const s = p.stats;
+                        const v = s.views || s.hits || s.reads || 0;
+                        const f = s.favorites_count || s.kudos || s.votes || 0;
+                        const c = s.comments_count || 0;
+                        statsHtml = `${v.toLocaleString()} / ${f.toLocaleString()} / ${c.toLocaleString()}`;
+                    }
+
                     return `<tr>
                         <td data-label="Platform">${PLATFORM_LABELS[p.platform] || p.platform}</td>
                         <td data-label="Chapter">${ch} ${title}</td>
-                        <td data-label="ID">${link}</td>
+                        <td data-label="Link">${link}</td>
+                        <td data-label="Views/Faves/Comments">${statsHtml}</td>
                         <td data-label="Status"><span class="status-badge status-${p.status}">${p.status}</span></td>
-                        <td data-label="Posted">${Utils.escapeHtml(p.first_posted_at || '')}</td>
-                        <td data-label="Updated">${Utils.escapeHtml(p.last_updated_at || '—')} ${updated}</td>
+                        <td data-label="Updated">${Utils.escapeHtml(p.last_updated_at || p.first_posted_at || '\u2014')} ${updated}</td>
                         <td data-label="Actions">
                             <button class="btn btn-sm btn-secondary" onclick="Posting._updateSingle('${Utils.escapeHtml(story)}', '${p.platform}', ${p.chapter_index})">Update</button>
                         </td>
                     </tr>`;
                 }).join('');
 
+                const statsHeader = totalViews > 0
+                    ? ` \u2014 ${totalViews.toLocaleString()} views, ${totalFaves.toLocaleString()} faves, ${totalComments.toLocaleString()} comments`
+                    : '';
+
                 html += `
                     <div class="card" style="margin-bottom: 1rem">
-                        <h3 style="margin: 0 0 0.5rem">${Utils.escapeHtml(story.replace(/_/g, ' '))}</h3>
+                        <h3 style="margin: 0 0 0.25rem">${Utils.escapeHtml(story.replace(/_/g, ' '))}</h3>
+                        <p class="page-subtitle" style="margin-bottom: 0.75rem">${pubs.length} platforms${statsHeader}</p>
                         <table class="data-table" data-mobile-cards>
                             <thead><tr>
-                                <th>Platform</th><th>Chapter</th><th>ID</th><th>Status</th>
-                                <th>Posted</th><th>Updated</th><th>Actions</th>
+                                <th>Platform</th><th>Chapter</th><th>Link</th><th>Views/Faves/Comments</th>
+                                <th>Status</th><th>Updated</th><th>Actions</th>
                             </tr></thead>
                             <tbody>${rows}</tbody>
                         </table>

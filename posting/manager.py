@@ -40,6 +40,9 @@ def _get_poster(platform: str) -> PlatformPoster:
         elif platform == "fa":
             from posting.platforms.furaffinity import FurAffinityPoster
             _posters["fa"] = FurAffinityPoster()
+        elif platform == "sqw":
+            from posting.platforms.squidgeworld import SquidgeWorldPoster
+            _posters["sqw"] = SquidgeWorldPoster()
         else:
             raise ValueError(f"Unknown platform: {platform}")
     return _posters[platform]
@@ -113,6 +116,10 @@ async def post_story(
             # Post
             result = await poster.post(package)
 
+            # Compute file hash for change detection
+            from posting.sync import hash_file
+            current_hash = hash_file(package.file_path) if package.file_path else ""
+
             # Record in database
             conn = get_connection()
             try:
@@ -125,6 +132,7 @@ async def post_story(
                     tags_used=package.tags,
                     rating_used=package.rating,
                     format_file=package.file_path or "",
+                    file_hash=current_hash,
                     word_count=package.word_count,
                     status="posted" if result.success else "failed",
                 )
@@ -211,6 +219,9 @@ async def update_story(
             )
         result = await poster.edit(ext_id, package)
 
+        from posting.sync import hash_file
+        current_hash = hash_file(package.file_path) if package.file_path else ""
+
         conn = get_connection()
         try:
             posting_queries.upsert_publication(
@@ -222,6 +233,7 @@ async def update_story(
                 tags_used=package.tags,
                 rating_used=package.rating,
                 format_file=package.file_path or "",
+                file_hash=current_hash,
                 word_count=package.word_count,
                 status="posted" if result.success else "failed",
             )
@@ -252,3 +264,38 @@ async def update_story(
         await poster._rate_limit()
 
     return results
+
+
+async def update_all_changed(
+    platforms: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Push updates to all publications whose archive files have changed.
+
+    Uses change detection to find stories with modified files, then calls
+    update_story() for each changed story.
+
+    Args:
+        platforms: Filter to specific platforms (None = all).
+
+    Returns:
+        Aggregated list of result dicts from all update_story() calls.
+    """
+    from posting.sync import get_changed_stories
+
+    changed = get_changed_stories()
+    if not changed:
+        return [{"status": "no_changes", "message": "All publications are up to date"}]
+
+    all_results: list[dict[str, Any]] = []
+
+    for story_name, items in changed.items():
+        story_platforms = sorted(set(i["platform"] for i in items))
+        if platforms:
+            story_platforms = [p for p in story_platforms if p in platforms]
+        if not story_platforms:
+            continue
+
+        story_results = await update_story(story_name, story_platforms)
+        all_results.extend(story_results)
+
+    return all_results

@@ -442,6 +442,7 @@ const API = {
     postStory(data) { return this.post('/api/posting/post', data); },
     updateStory(data) { return this.post('/api/posting/update', data); },
     getPublications(params = {}) { return this.get('/api/posting/publications', params); },
+    getPublicationsWithStats(params = {}) { return this.get('/api/posting/publications/stats', params); },
     getPublication(pubId) { return this.get(`/api/posting/publications/${pubId}`); },
     addToPostingQueue(data) { return this.post('/api/posting/queue', data); },
     getPostingQueue(params = {}) { return this.get('/api/posting/queue', params); },
@@ -456,4 +457,6 @@ const API = {
     savePostingSettings(data) { return this.post('/api/posting/settings', data); },
     syncPush(data = {}) { return this.post('/api/posting/sync/push', data); },
     getSyncStatus() { return this.get('/api/posting/sync/status'); },
+    getPostingChanges() { return this.get('/api/posting/changes'); },
+    claimSubmissions(data = {}) { return this.post('/api/posting/claim', data); },
 };
