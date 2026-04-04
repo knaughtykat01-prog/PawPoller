@@ -115,17 +115,29 @@ def list_stories() -> list[dict]:
     for entry in sorted(archive.iterdir()):
         if not entry.is_dir() or entry.name.startswith(".") or entry.name == "Reference_Guides":
             continue
-        manifest_exists = (entry / "Chapters" / "split_manifest.json").is_file()
-        tags_exist = (entry / "Tags" / "tags_upload.txt").is_file()
-        master_exists = (entry / "Markdown" / "MASTER.md").is_file()
-        stories.append({
-            "name": entry.name,
-            "path": str(entry),
-            "has_manifest": manifest_exists,
-            "has_tags": tags_exist,
-            "has_master": master_exists,
-        })
+        # Check if this is a direct story folder (has Markdown/MASTER.md or Tags/)
+        if (entry / "Markdown" / "MASTER.md").is_file() or (entry / "Tags").is_dir():
+            stories.append(_story_entry(entry))
+        else:
+            # Check for sub-stories (e.g. The_Abstinent_Bet/Naughty_Version/)
+            for sub in sorted(entry.iterdir()):
+                if sub.is_dir() and (
+                    (sub / "Markdown" / "MASTER.md").is_file() or (sub / "Tags").is_dir()
+                ):
+                    stories.append(_story_entry(sub, parent_name=entry.name))
     return stories
+
+
+def _story_entry(path: Path, parent_name: str = "") -> dict:
+    """Build a story list entry from a folder path."""
+    name = f"{parent_name}/{path.name}" if parent_name else path.name
+    return {
+        "name": name,
+        "path": str(path),
+        "has_manifest": (path / "Chapters" / "split_manifest.json").is_file(),
+        "has_tags": (path / "Tags" / "tags_upload.txt").is_file(),
+        "has_master": (path / "Markdown" / "MASTER.md").is_file(),
+    }
 
 
 def load_story(story_name: str) -> StoryInfo:

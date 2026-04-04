@@ -281,6 +281,43 @@ def save_posting_settings(body: dict):
     return {"status": "saved"}
 
 
+# ── Claim: Retroactive sync ───────────────────────────────────
+
+@posting_router.post("/claim")
+def claim_submissions(body: dict = {}):
+    """Claim existing platform submissions into the publications registry.
+
+    Scans platform submission tables, matches to archive stories, and creates
+    publication records so /update can push revisions to them.
+
+    Body (all optional): {
+        "platforms": ["ib", "fa"],  // null = all with data
+        "dry_run": false            // true = preview matches without writing
+    }
+    """
+    from posting.sync import claim_existing_submissions
+
+    platforms = body.get("platforms")
+    dry_run = body.get("dry_run", False)
+
+    try:
+        results = claim_existing_submissions(platforms=platforms, dry_run=dry_run)
+        claimed = [r for r in results if r["status"] == "claimed"]
+        already = [r for r in results if r["status"] == "already_claimed"]
+        unmatched = [r for r in results if r["status"] == "unmatched"]
+
+        return {
+            "status": "dry_run" if dry_run else "synced",
+            "claimed": len(claimed),
+            "already_claimed": len(already),
+            "unmatched": len(unmatched),
+            "results": results,
+        }
+    except Exception as e:
+        logger.error("Claim failed: %s", e, exc_info=True)
+        raise HTTPException(500, detail=str(e))
+
+
 # ── Sync: Server receives archive uploads ─────────────────────
 
 @posting_router.post("/sync/upload")

@@ -126,6 +126,7 @@ async def _cmd_help(token: str, chat_id: str, args: str) -> None:
 /upload &lt;story&gt; [platforms] — Post story to platforms (e.g. /upload Extra_Credit ib,sf)
 /update &lt;story&gt; [platforms] — Push updates to already-posted submissions
 /posted [story] — Show publication registry
+/claim [platforms] — Claim existing submissions into publications registry
 /sync — Show archive status (published vs unpublished)
 /sync push — Push local archive to remote server
 
@@ -881,6 +882,49 @@ async def _cmd_sync(token: str, chat_id: str, args: str) -> None:
         await _send(token, chat_id, f"❌ Error: {_esc(str(e)[:200])}")
 
 
+async def _cmd_claim(token: str, chat_id: str, args: str) -> None:
+    """Handle /claim [platforms] — claim existing submissions into publications."""
+    platforms = args.strip().split(",") if args.strip() else None
+
+    await _send(token, chat_id, "🔗 Scanning platform submissions and matching to archive stories...")
+
+    try:
+        from posting.sync import claim_existing_submissions
+        from posting.manager import PLATFORM_EMOJIS
+
+        results = claim_existing_submissions(platforms=platforms)
+
+        claimed = [r for r in results if r["status"] == "claimed"]
+        already = [r for r in results if r["status"] == "already_claimed"]
+        unmatched = [r for r in results if r["status"] == "unmatched"]
+
+        lines = [f"<b>🔗 Claim Results</b>", ""]
+
+        if claimed:
+            lines.append(f"<b>Claimed ({len(claimed)}):</b>")
+            for r in claimed:
+                emoji = PLATFORM_EMOJIS.get(r["platform"], "📦")
+                ch = f" Ch{r['chapter_index']}" if r.get("chapter_index") else ""
+                story = _esc((r.get("story_name") or "").replace("_", " "))
+                lines.append(f"  {emoji} {story}{ch} ← {_esc(r['title'][:40])}")
+            lines.append("")
+
+        if already:
+            lines.append(f"Already claimed: {len(already)}")
+        if unmatched:
+            lines.append(f"Unmatched: {len(unmatched)}")
+            for r in unmatched[:5]:
+                emoji = PLATFORM_EMOJIS.get(r["platform"], "📦")
+                lines.append(f"  {emoji} ? ← {_esc(r['title'][:40])}")
+            if len(unmatched) > 5:
+                lines.append(f"  ...and {len(unmatched) - 5} more")
+
+        lines.append(f"\n✅ {len(claimed)} new, {len(already)} existing, {len(unmatched)} unmatched")
+        await _send(token, chat_id, "\n".join(lines))
+    except Exception as e:
+        await _send(token, chat_id, f"❌ Claim failed: {_esc(str(e)[:200])}")
+
+
 # ── Command dispatcher ───────────────────────────────────────
 
 COMMANDS = {
@@ -902,6 +946,7 @@ COMMANDS = {
     "/posted": _cmd_posted,
     "/stories": _cmd_stories,
     "/sync": _cmd_sync,
+    "/claim": _cmd_claim,
 }
 
 
