@@ -27,6 +27,35 @@ logger = logging.getLogger(__name__)
 
 _BASE = "https://squidgeworld.org"
 
+
+def _collapse_html_whitespace(html: str) -> str:
+    """Collapse multi-line HTML so each element is on a single line.
+
+    OTW Archive's chapter editor converts internal newlines within HTML tags
+    to <br /> tags, causing unwanted line breaks. This function:
+      1. Joins lines within <p>...</p> tags into single lines
+      2. Joins lines within <div>...</div> tags into single lines
+      3. Collapses runs of whitespace (but preserves single spaces)
+    """
+    import re as _re
+    # Collapse newlines + indentation within tags to single spaces
+    # Match opening tag through closing tag, collapsing internal whitespace
+    def _collapse_tag(match: _re.Match) -> str:
+        text = match.group(0)
+        # Replace newline + optional whitespace with a single space
+        collapsed = _re.sub(r'\n\s*', ' ', text)
+        # Collapse multiple spaces into one
+        collapsed = _re.sub(r'  +', ' ', collapsed)
+        return collapsed
+
+    # Process <p>...</p> tags
+    result = _re.sub(r'<p[^>]*>.*?</p>', _collapse_tag, html, flags=_re.DOTALL)
+    # Process <div>...</div> tags (non-greedy, innermost first)
+    result = _re.sub(r'<div[^>]*>.*?</div>', _collapse_tag, result, flags=_re.DOTALL)
+    # Remove blank lines that were left behind
+    result = _re.sub(r'\n{3,}', '\n\n', result)
+    return result
+
 # Realistic browser headers to avoid bot detection
 _HEADERS = {
     "User-Agent": (
@@ -631,36 +660,70 @@ class SquidgeWorldClient:
         content: str,
         title: str | None = None,
     ) -> dict:
-        """Edit the content of a specific chapter."""
+        """Edit the content of a specific chapter.
+
+        Pre-processes the HTML to collapse internal whitespace within tags,
+        because OTW Archive converts newlines inside HTML elements to <br /> tags.
+        """
         if not self._logged_in:
             if not await self.ensure_logged_in():
                 raise RuntimeError("SqW: Not logged in")
 
+        # Collapse multi-line HTML: SQW converts internal newlines to <br />
+        # so we need each <p>, <div>, etc. on a single line
+        clean_content = _collapse_html_whitespace(content)
+
         edit_url = f"{_BASE}/works/{work_id}/chapters/{chapter_id}/edit"
-        token = await self._get_authenticity_token(edit_url)
+
+        # GET the edit page to find the form action and all hidden fields
+        page = await self._get_page(edit_url)
+        if not page:
+            raise RuntimeError("SqW: Could not load chapter edit page")
+
+        token = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', page)
+        if not token:
+            token = re.search(r'value="([^"]+)"[^>]*name="authenticity_token"', page)
         if not token:
             raise RuntimeError("SqW: Could not get CSRF token from chapter edit")
 
         form_data: dict[str, str] = {
-            "authenticity_token": token,
+            "authenticity_token": token.group(1),
             "_method": "patch",
-            "chapter[content]": content,
+            "chapter[content]": clean_content,
         }
         if title is not None:
             form_data["chapter[title]"] = title
+
+        # Also extract and include any other required hidden fields
+        # (OTW forms sometimes need utf8, commit, etc.)
+        utf8 = re.search(r'name="utf8"[^>]*value="([^"]*)"', page)
+        if utf8:
+            form_data["utf8"] = utf8.group(1)
+        commit = re.search(r'name="commit"[^>]*value="([^"]*)"', page)
+        if commit:
+            form_data["commit"] = commit.group(1)
+        else:
+            form_data["commit"] = "Update"
 
         await asyncio.sleep(config.SQW_REQUEST_DELAY_SECONDS)
         resp = await self._http.post(
             f"{_BASE}/works/{work_id}/chapters/{chapter_id}",
             data=form_data,
             headers={"Referer": edit_url},
-            timeout=30.0,
+            timeout=60.0,
         )
 
+        final_url = str(resp.url)
         if resp.status_code >= 400:
             raise RuntimeError(f"SqW: Chapter edit failed — status {resp.status_code}")
 
-        logger.info("SqW: Edited chapter %s of work %s", chapter_id, work_id)
+        # Check for error messages in response
+        errors = re.findall(r'class="error"[^>]*>(.*?)</li>', resp.text[:3000], re.DOTALL)
+        if errors:
+            err_text = "; ".join(re.sub(r'<[^>]+>', '', e).strip() for e in errors[:3])
+            raise RuntimeError(f"SqW: Chapter edit errors: {err_text}")
+
+        logger.info("SqW: Edited chapter %s of work %s (url=%s)", chapter_id, work_id, final_url[:80])
         return {"work_id": work_id, "chapter_id": chapter_id}
 
     async def get_chapter_ids(self, work_id: str) -> list[dict]:
