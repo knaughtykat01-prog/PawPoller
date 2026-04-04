@@ -443,6 +443,10 @@ class TestErrorHandling:
         poster._client = client
         manager._posters["ib"] = poster
 
+        # Set desktop mode so the auto-queue fallback doesn't kick in
+        from posting import scheduler as _sched
+        _sched._runtime_mode = "desktop"
+
         results = await manager.post_story("Test_Story", ["ib"], chapters=[1])
 
         assert len(results) == 1

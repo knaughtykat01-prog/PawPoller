@@ -120,6 +120,25 @@ async def post_story(
             from posting.sync import hash_file
             current_hash = hash_file(package.file_path) if package.file_path else ""
 
+            # If the post failed on the server, auto-queue for desktop
+            queued_for_desktop = False
+            if not result.success:
+                from posting.scheduler import _runtime_mode
+                if _runtime_mode == "server":
+                    conn = get_connection()
+                    try:
+                        posting_queries.add_to_queue(
+                            conn, story_name, ch_idx, platform, "post",
+                            requires="desktop",
+                        )
+                        queued_for_desktop = True
+                        logger.info(
+                            "Auto-queued %s ch%d on %s for desktop (server post failed: %s)",
+                            story_name, ch_idx, platform, result.error,
+                        )
+                    finally:
+                        conn.close()
+
             # Record in database
             conn = get_connection()
             try:
@@ -139,7 +158,7 @@ async def post_story(
                 posting_queries.log_posting_action(
                     conn, platform, story_name, ch_idx,
                     action="post",
-                    status="success" if result.success else "failed",
+                    status="success" if result.success else ("queued_desktop" if queued_for_desktop else "failed"),
                     pub_id=pub_id,
                     external_id=result.external_id,
                     external_url=result.external_url,
@@ -154,6 +173,7 @@ async def post_story(
                 "chapter_index": ch_idx,
                 "chapter_title": package.chapter_title,
                 "success": result.success,
+                "queued_desktop": queued_for_desktop,
                 "external_id": result.external_id,
                 "external_url": result.external_url,
                 "error": result.error,
@@ -222,25 +242,45 @@ async def update_story(
         from posting.sync import hash_file
         current_hash = hash_file(package.file_path) if package.file_path else ""
 
+        # If the edit failed on the server, auto-queue for desktop as a fallback
+        queued_for_desktop = False
+        if not result.success:
+            from posting.scheduler import _runtime_mode
+            if _runtime_mode == "server":
+                conn = get_connection()
+                try:
+                    posting_queries.add_to_queue(
+                        conn, story_name, ch_idx, plat, "update",
+                        requires="desktop",
+                    )
+                    queued_for_desktop = True
+                    logger.info(
+                        "Auto-queued %s ch%d on %s for desktop (server edit failed: %s)",
+                        story_name, ch_idx, plat, result.error,
+                    )
+                finally:
+                    conn.close()
+
         conn = get_connection()
         try:
-            posting_queries.upsert_publication(
-                conn, story_name, ch_idx, plat,
-                external_id=result.external_id or ext_id,
-                external_url=result.external_url or pub["external_url"],
-                title_used=package.title,
-                description_used=package.description[:500],
-                tags_used=package.tags,
-                rating_used=package.rating,
-                format_file=package.file_path or "",
-                file_hash=current_hash,
-                word_count=package.word_count,
-                status="posted" if result.success else "failed",
-            )
+            if result.success:
+                posting_queries.upsert_publication(
+                    conn, story_name, ch_idx, plat,
+                    external_id=result.external_id or ext_id,
+                    external_url=result.external_url or pub["external_url"],
+                    title_used=package.title,
+                    description_used=package.description[:500],
+                    tags_used=package.tags,
+                    rating_used=package.rating,
+                    format_file=package.file_path or "",
+                    file_hash=current_hash,
+                    word_count=package.word_count,
+                    status="posted",
+                )
             posting_queries.log_posting_action(
                 conn, plat, story_name, ch_idx,
                 action="update",
-                status="success" if result.success else "failed",
+                status="success" if result.success else ("queued_desktop" if queued_for_desktop else "failed"),
                 pub_id=pub["pub_id"],
                 external_id=result.external_id or ext_id,
                 external_url=result.external_url,
@@ -255,6 +295,7 @@ async def update_story(
             "chapter_index": ch_idx,
             "chapter_title": package.chapter_title,
             "success": result.success,
+            "queued_desktop": queued_for_desktop,
             "external_id": result.external_id or ext_id,
             "external_url": result.external_url or pub["external_url"],
             "error": result.error,

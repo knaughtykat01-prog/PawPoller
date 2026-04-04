@@ -757,11 +757,17 @@ async def _cmd_update(token: str, chat_id: str, args: str) -> None:
                 ch_label = f'Ch{r["chapter_index"]}' if r.get("chapter_index") else "Full"
                 if r.get("success"):
                     lines.append(f'{emoji} {story} {ch_label} — updated ✅')
+                elif r.get("queued_desktop"):
+                    lines.append(f'{emoji} {story} {ch_label} — queued for desktop 🖥')
                 else:
                     lines.append(f'{emoji} {story} {ch_label} — failed ❌ {_esc(r.get("error", "")[:60])}')
 
             successes = sum(1 for r in results if r.get("success"))
-            lines.append(f"\n✅ {successes}/{len(results)} updates complete")
+            queued = sum(1 for r in results if r.get("queued_desktop"))
+            summary = f"✅ {successes}/{len(results)} updated"
+            if queued:
+                summary += f", {queued} queued for desktop"
+            lines.append(f"\n{summary}")
             await _send(token, chat_id, "\n".join(lines))
         except Exception as e:
             await _send(token, chat_id, f"❌ Batch update failed: {_esc(str(e)[:200])}")
@@ -781,6 +787,8 @@ async def _cmd_update(token: str, chat_id: str, args: str) -> None:
             ch_label = f'Ch{r["chapter_index"]}' if r.get("chapter_index") else "Full"
             if r["success"]:
                 lines.append(f'{emoji} {r["platform"].upper()} {ch_label} — updated ✅')
+            elif r.get("queued_desktop"):
+                lines.append(f'{emoji} {r["platform"].upper()} {ch_label} — queued for desktop 🖥')
             else:
                 lines.append(f'{emoji} {r["platform"].upper()} {ch_label} — failed ❌ {_esc(r.get("error", "")[:80])}')
 
