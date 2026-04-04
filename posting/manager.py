@@ -209,7 +209,17 @@ async def update_story(
 
     conn = get_connection()
     try:
-        pubs = posting_queries.get_publications(conn, story_name=story_name, status="posted")
+        # Include both posted and failed publications (failed ones may need retrying)
+        posted = posting_queries.get_publications(conn, story_name=story_name, status="posted")
+        failed = posting_queries.get_publications(conn, story_name=story_name, status="failed")
+        # Deduplicate by (story, chapter, platform) — prefer posted over failed
+        seen = set()
+        pubs = []
+        for p in posted + failed:
+            key = (p["story_name"], p["chapter_index"], p["platform"])
+            if key not in seen:
+                seen.add(key)
+                pubs.append(p)
     finally:
         conn.close()
 
