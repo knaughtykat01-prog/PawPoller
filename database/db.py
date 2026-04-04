@@ -58,10 +58,11 @@ def get_connection() -> sqlite3.Connection:
       This ensures referential integrity (e.g. snapshots cannot reference a
       non-existent submission_id).
     """
-    conn = sqlite3.connect(str(config.DB_PATH), timeout=10)
+    conn = sqlite3.connect(str(config.DB_PATH), timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=30000")  # 30s retry on lock contention
     return conn
 
 
