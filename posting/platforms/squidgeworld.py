@@ -98,23 +98,53 @@ class SquidgeWorldPoster(PlatformPoster):
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
     async def edit(self, external_id: str, package: StoryUploadPackage) -> PostResult:
-        """Edit metadata on an existing SquidgeWorld work."""
+        """Edit metadata AND chapter content on an existing SquidgeWorld work.
+
+        Two-step update:
+          1. Update work metadata (title, summary, tags) via edit_work()
+          2. Update chapter content by matching archive chapters to SQW chapter IDs
+        """
         _t = self._start_timer()
         try:
             client = await self._ensure_client()
             tags = ", ".join(package.tags)
 
-            result = await client.edit_work(
+            # Step 1: Update work metadata
+            await client.edit_work(
                 external_id,
                 title=package.title,
                 summary=package.description[:1250],
                 additional_tags=tags,
             )
+            logger.info("SqW: Updated work %s metadata", external_id)
+
+            # Step 2: Update chapter content if we have chapter files
+            from posting import story_reader
+            try:
+                story = story_reader.load_story(package.story_name)
+                sqw_chapters = await client.get_chapter_ids(external_id)
+
+                if sqw_chapters and story.chapters:
+                    for sqw_ch in sqw_chapters:
+                        ch_idx = sqw_ch["index"]
+                        ch_id = sqw_ch["chapter_id"]
+
+                        # Find the matching archive file for this chapter
+                        file_path, _ = story_reader._resolve_format_file(story, ch_idx, "sqw")
+                        if file_path:
+                            with open(file_path, "r", encoding="utf-8") as f:
+                                content = f.read()
+                            await client.edit_chapter(external_id, ch_id, content=content)
+                            logger.info("SqW: Updated chapter %d (id=%s) content", ch_idx, ch_id)
+                        else:
+                            logger.warning("SqW: No file for chapter %d of %s", ch_idx, package.story_name)
+            except Exception as ch_err:
+                logger.warning("SqW: Chapter content update failed (metadata still updated): %s", ch_err)
 
             return PostResult(
                 success=True,
                 external_id=external_id,
-                external_url=result.get("url", ""),
+                external_url=f"https://squidgeworld.org/works/{external_id}",
                 duration_seconds=self._elapsed(_t),
             )
         except Exception as e:
