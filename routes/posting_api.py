@@ -28,39 +28,100 @@ posting_router = APIRouter(prefix="/api/posting")
 
 @posting_router.get("/stories")
 def list_stories():
-    """List all available stories in the archive."""
+    """List all available stories with publication status per platform."""
     from posting import story_reader
     try:
         stories = story_reader.list_stories()
+
+        # Enrich with publication status
+        conn = get_connection()
+        try:
+            pubs = posting_queries.get_publications(conn)
+        finally:
+            conn.close()
+
+        # Group publications by story
+        pub_map: dict[str, list[dict]] = {}
+        for p in pubs:
+            sn = p["story_name"]
+            if sn not in pub_map:
+                pub_map[sn] = []
+            pub_map[sn].append(p)
+
+        for story in stories:
+            name = story["name"]
+            story_pubs = pub_map.get(name, [])
+            story["published_platforms"] = sorted(set(
+                p["platform"] for p in story_pubs if p["status"] == "posted"
+            ))
+            story["publication_count"] = len(story_pubs)
+
         return {"stories": stories}
     except Exception as e:
         logger.error("Error listing stories: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
 
 
-@posting_router.get("/stories/{story_name}")
+@posting_router.get("/stories/{story_name:path}")
 def get_story_detail(story_name: str):
-    """Get detailed info for a story (manifest, tags, available formats)."""
+    """Get full story detail including publications, stats, and metadata."""
     from posting import story_reader
+    import json as _json
     try:
         story = story_reader.load_story(story_name)
+        story_path = story.path
+
+        # Read story.json for full metadata
+        story_json_data = {}
+        sjp = story_path / "story.json"
+        if sjp.is_file():
+            story_json_data = _json.loads(sjp.read_text(encoding="utf-8"))
+
+        # Get publications with stats
+        conn = get_connection()
+        try:
+            pubs = posting_queries.get_publications_with_stats(conn, story_name=story_name)
+        finally:
+            conn.close()
+
+        published_platforms = sorted(set(p["platform"] for p in pubs if p["status"] == "posted"))
+        all_platforms = list(story_json_data.get("platforms", {}).keys())
+        # Map platform names to IDs
+        plat_map = {"inkbunny": "ib", "furaffinity": "fa", "weasyl": "ws",
+                    "sofurry": "sf", "squidgeworld": "sqw", "bluesky": "bsky", "wattpad": "wp"}
+        all_platform_ids = [plat_map.get(p, p) for p in all_platforms]
+        unpublished = [p for p in all_platform_ids if p not in published_platforms]
+
         return {
             "name": story.name,
-            "path": str(story.path),
-            "total_chapters": story.total_chapters,
-            "total_words": story.total_words,
+            "title": story_json_data.get("title", story.name.replace("_", " ")),
             "author": story.author,
             "description": story.description,
+            "summary": story.summary,
+            "rating": story_json_data.get("rating", ""),
+            "category": story_json_data.get("category", ""),
+            "warnings": story_json_data.get("warnings", []),
+            "fandom": story_json_data.get("fandom", ""),
+            "characters": story_json_data.get("characters", []),
+            "relationships": story_json_data.get("relationships", []),
+            "total_chapters": story.total_chapters,
+            "total_words": story.total_words,
             "chapters": [
                 {
                     "index": ch.index,
                     "title": ch.title,
                     "word_count": ch.word_count,
-                    "files": ch.files,
+                    "description": story.chapter_descriptions.get(ch.index, ""),
                 }
                 for ch in story.chapters
             ],
             "tags_by_platform": story.tags_by_platform,
+            "formats": story_json_data.get("formats", {}),
+            "images": story_json_data.get("images", {}),
+            "platforms": story_json_data.get("platforms", {}),
+            "published_platforms": published_platforms,
+            "unpublished_platforms": unpublished,
+            "publications": pubs,
         }
     except FileNotFoundError:
         raise HTTPException(404, detail=f"Story not found: {story_name}")

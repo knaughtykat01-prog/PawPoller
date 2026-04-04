@@ -439,6 +439,9 @@ const App = {
             this.renderSettings();
         } else if (parts[0] === 'posting' && !parts[1]) {
             Posting.renderUpload();
+        } else if (parts[0] === 'posting' && parts[1] === 'story' && parts[2]) {
+            // Story name may contain slashes (e.g. The_Abstinent_Bet/Naughty_Version)
+            Posting.renderStoryDetail(parts.slice(2).join('/'));
         } else if (parts[0] === 'posting' && parts[1] === 'queue') {
             Posting.renderQueue();
         } else if (parts[0] === 'posting' && parts[1] === 'published') {

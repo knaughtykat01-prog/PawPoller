@@ -110,7 +110,8 @@ def get_archive_path() -> Path:
 def list_stories() -> list[dict]:
     """List all available stories in the archive.
 
-    Returns a list of dicts with 'name', 'path', 'has_manifest', 'has_tags' keys.
+    Returns a list of dicts with story metadata from story.json (if available),
+    plus file inventory and format availability.
     """
     archive = get_archive_path()
     if not archive.is_dir():
@@ -120,38 +121,142 @@ def list_stories() -> list[dict]:
     for entry in sorted(archive.iterdir()):
         if not entry.is_dir() or entry.name.startswith(".") or entry.name == "Reference_Guides":
             continue
-        # Check if this is a direct story folder (has Markdown/MASTER.md or Tags/)
-        if (entry / "Markdown" / "MASTER.md").is_file() or (entry / "Tags").is_dir():
+        # Check if this is a direct story folder
+        if (entry / "Markdown" / "MASTER.md").is_file() or (entry / "Tags").is_dir() or (entry / "story.json").is_file():
             stories.append(_story_entry(entry))
         else:
             # Check for sub-stories (e.g. The_Abstinent_Bet/Naughty_Version/)
             for sub in sorted(entry.iterdir()):
                 if sub.is_dir() and (
-                    (sub / "Markdown" / "MASTER.md").is_file() or (sub / "Tags").is_dir()
+                    (sub / "Markdown" / "MASTER.md").is_file() or (sub / "story.json").is_file()
                 ):
                     stories.append(_story_entry(sub, parent_name=entry.name))
     return stories
 
 
 def _story_entry(path: Path, parent_name: str = "") -> dict:
-    """Build a story list entry from a folder path."""
+    """Build a story list entry from a folder path.
+
+    If story.json exists, uses it for rich metadata. Otherwise falls back
+    to basic folder inspection.
+    """
     name = f"{parent_name}/{path.name}" if parent_name else path.name
-    return {
+    story_json = path / "story.json"
+
+    entry = {
         "name": name,
         "path": str(path),
         "has_manifest": (path / "Chapters" / "split_manifest.json").is_file(),
         "has_tags": (path / "Tags" / "tags_upload.txt").is_file(),
         "has_master": (path / "Markdown" / "MASTER.md").is_file(),
+        "has_story_json": story_json.is_file(),
     }
+
+    if story_json.is_file():
+        try:
+            data = json.loads(story_json.read_text(encoding="utf-8"))
+            entry["title"] = data.get("title", name.replace("_", " "))
+            entry["author"] = data.get("author", "")
+            entry["description"] = data.get("description", "")
+            entry["word_count"] = data.get("word_count", 0)
+            entry["chapters"] = data.get("chapters", 0)
+            entry["rating"] = data.get("rating", "")
+            entry["category"] = data.get("category", "")
+            entry["formats"] = data.get("formats", {})
+            entry["platforms"] = list(data.get("platforms", {}).keys())
+            entry["images"] = data.get("images", {})
+            entry["warnings"] = data.get("warnings", [])
+        except Exception as e:
+            logger.warning("Failed to read story.json for %s: %s", name, e)
+
+    return entry
 
 
 def load_story(story_name: str) -> StoryInfo:
-    """Load full story metadata from the archive."""
+    """Load full story metadata from the archive.
+
+    Reads from story.json if available (preferred), falling back to
+    tags_upload.txt + split_manifest.json parsing.
+    """
     archive = get_archive_path()
     story_path = archive / story_name
     if not story_path.is_dir():
         raise FileNotFoundError(f"Story folder not found: {story_path}")
 
+    story_json_path = story_path / "story.json"
+    if story_json_path.is_file():
+        return _load_from_story_json(story_name, story_path, story_json_path)
+    return _load_from_legacy(story_name, story_path)
+
+
+def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) -> StoryInfo:
+    """Load story metadata from story.json."""
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+
+    # Build chapter list from story.json (merge with manifest for file paths)
+    chapters = []
+    manifest_chapters = {}
+    manifest_path = story_path / "Chapters" / "split_manifest.json"
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for ch in manifest.get("chapters", []):
+            manifest_chapters[ch.get("index", 0)] = ch
+
+    for ch_data in data.get("chapter_info", []):
+        idx = ch_data.get("index", 0)
+        manifest_ch = manifest_chapters.get(idx, {})
+        chapters.append(ChapterInfo(
+            index=idx,
+            title=ch_data.get("title", ""),
+            filename=manifest_ch.get("filename", ""),
+            word_count=ch_data.get("words", manifest_ch.get("word_count", 0)),
+            files=manifest_ch.get("files", {}),
+        ))
+
+    # Build tags_by_platform from story.json tags
+    tags = data.get("tags", {})
+    tags_by_platform = {}
+    for plat_key, tag_list in tags.items():
+        # Map platform names to IDs
+        plat_map = {"inkbunny": "ib", "furaffinity": "fa", "weasyl": "ws",
+                    "sofurry": "sf", "squidgeworld": "sqw", "wattpad": "wp"}
+        plat_id = plat_map.get(plat_key, plat_key)
+        tags_by_platform[plat_id] = tag_list
+
+    # Chapter descriptions
+    chapter_descriptions = {}
+    for ch_data in data.get("chapter_info", []):
+        if ch_data.get("description"):
+            chapter_descriptions[ch_data["index"]] = ch_data["description"]
+
+    # Images
+    images = data.get("images", {})
+    thumbnail_path = None
+    chapter_thumbnails = {}
+    if images.get("cover"):
+        thumbnail_path = str(story_path / images["cover"])
+    for ch_idx, ch_path in images.get("chapter_thumbnails", {}).items():
+        chapter_thumbnails[int(ch_idx)] = str(story_path / ch_path)
+
+    return StoryInfo(
+        name=story_name,
+        path=story_path,
+        total_chapters=data.get("chapters", len(chapters)),
+        total_words=data.get("word_count", 0),
+        author=data.get("author", "KnaughtyKat"),
+        chapters=chapters,
+        description=data.get("description", ""),
+        tags_by_platform=tags_by_platform,
+        chapter_tags_by_platform={},  # Per-chapter tags not in story.json yet
+        chapter_descriptions=chapter_descriptions,
+        summary=data.get("summary", ""),
+        thumbnail_path=thumbnail_path,
+        chapter_thumbnails=chapter_thumbnails,
+    )
+
+
+def _load_from_legacy(story_name: str, story_path: Path) -> StoryInfo:
+    """Load story metadata from tags_upload.txt + split_manifest.json (fallback)."""
     # Parse manifest
     chapters = []
     total_chapters = 0
@@ -174,6 +279,7 @@ def load_story(story_name: str) -> StoryInfo:
 
     # Parse tags_upload.txt
     description = ""
+    summary = ""
     tags_by_platform: dict[str, list[str]] = {}
     chapter_tags: dict[int, dict[str, list[str]]] = {}
     chapter_descriptions: dict[int, str] = {}
@@ -185,11 +291,8 @@ def load_story(story_name: str) -> StoryInfo:
         )
 
     # Discover thumbnails
-    # Pattern: {story_name_lower}_thumbnail_full_series.png at story root
-    # Per-chapter: {story_name_lower}_thumbnail_part_N.png
     thumbnail_path = None
     chapter_thumbnails: dict[int, str] = {}
-    name_lower = story_name.lower()
     for f in story_path.iterdir():
         if not f.is_file() or f.suffix.lower() not in (".png", ".jpg", ".jpeg", ".gif"):
             continue
@@ -197,9 +300,7 @@ def load_story(story_name: str) -> StoryInfo:
         if "thumbnail" in fname and ("full" in fname or "series" in fname or "cover" in fname):
             thumbnail_path = str(f)
         elif "thumbnail" in fname:
-            # Try to extract part number
-            import re as _re
-            part_match = _re.search(r'part[_\s]*(\d+)', fname)
+            part_match = re.search(r'part[_\s]*(\d+)', fname)
             if part_match:
                 chapter_thumbnails[int(part_match.group(1))] = str(f)
 
