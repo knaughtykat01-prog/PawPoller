@@ -28,13 +28,37 @@ logger = logging.getLogger(__name__)
 # How often to check the queue (seconds)
 SCHEDULER_CHECK_INTERVAL = 60
 
+# Runtime mode: set by the calling entry point (main.py or server.py)
+_runtime_mode: str = "server"
+
+
+def detect_runtime_mode() -> str:
+    """Detect whether we're running as desktop (main.py) or server (server.py).
+
+    Desktop mode: pywebview is importable (main.py installs it).
+    Server mode: pywebview is NOT available (requirements-server.txt excludes it).
+    """
+    try:
+        import webview  # noqa: F401 — pywebview, desktop-only dependency
+        return "desktop"
+    except ImportError:
+        return "server"
+
 
 def start_posting_scheduler() -> None:
     """Entry point for the posting scheduler daemon thread.
 
     Creates its own asyncio event loop (standard pattern for PawPoller threads).
     Runs indefinitely, checking the queue on each iteration.
+
+    Detects runtime mode (desktop/server) and only processes queue items whose
+    'requires' field matches. Items requiring 'desktop' are skipped on the server
+    and vice versa. Items with requires='any' are processed everywhere.
     """
+    global _runtime_mode
+    _runtime_mode = detect_runtime_mode()
+    logger.info("Posting scheduler starting in %s mode", _runtime_mode)
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -45,7 +69,7 @@ def start_posting_scheduler() -> None:
 
 async def _scheduler_loop() -> None:
     """Main scheduler loop."""
-    logger.info("Posting scheduler started")
+    logger.info("Posting scheduler started (mode=%s)", _runtime_mode)
 
     # Brief startup delay to let other services initialize
     await asyncio.sleep(5)
@@ -57,16 +81,21 @@ async def _scheduler_loop() -> None:
                 await asyncio.sleep(SCHEDULER_CHECK_INTERVAL)
                 continue
 
-            # Get next pending item
+            # Get next pending item that's compatible with our runtime mode
             conn = get_connection()
             try:
-                items = posting_queries.get_pending_queue(conn, limit=1)
+                items = posting_queries.get_pending_queue(conn, limit=5)
             finally:
                 conn.close()
 
-            if items:
-                item = items[0]
-                await _process_queue_item(item)
+            # Filter by runtime mode compatibility
+            compatible = [
+                item for item in items
+                if _is_compatible(item.get("requires", "any"))
+            ]
+
+            if compatible:
+                await _process_queue_item(compatible[0])
                 # Brief pause between queue items to avoid busy-looping
                 await asyncio.sleep(5)
             else:
@@ -75,6 +104,13 @@ async def _scheduler_loop() -> None:
         except Exception as e:
             logger.error("Posting scheduler error: %s", e, exc_info=True)
             await asyncio.sleep(SCHEDULER_CHECK_INTERVAL)
+
+
+def _is_compatible(requires: str) -> bool:
+    """Check if a queue item's 'requires' mode is compatible with our runtime."""
+    if requires == "any":
+        return True
+    return requires == _runtime_mode
 
 
 async def _process_queue_item(item: dict) -> None:

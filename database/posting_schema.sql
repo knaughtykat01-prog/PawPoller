@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS posting_queue (
     -- Scheduling
     scheduled_at        TEXT,
     priority            INTEGER DEFAULT 0,
+    requires            TEXT DEFAULT 'any',
 
     -- State
     status              TEXT NOT NULL DEFAULT 'pending',

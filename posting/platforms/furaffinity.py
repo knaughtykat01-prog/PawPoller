@@ -42,6 +42,7 @@ class FurAffinityPoster(PlatformPoster):
     supports_edit = True
     supports_file_replace = True  # Via the edit page
     min_post_interval = 70  # FA enforces this
+    requires_mode = "desktop"  # FA blocks datacenter IPs, needs residential + browser cookies
     max_file_size = 10 * 1024 * 1024  # 10 MB
     accepted_file_types = ["pdf", "doc", "docx", "rtf", "txt", "odt", "jpg", "png", "gif"]
 

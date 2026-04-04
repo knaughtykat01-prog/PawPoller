@@ -45,6 +45,15 @@ def _get_poster(platform: str) -> PlatformPoster:
     return _posters[platform]
 
 
+def get_platform_requires(platform: str) -> str:
+    """Get the runtime mode requirement for a platform."""
+    try:
+        poster = _get_poster(platform)
+        return poster.requires_mode
+    except ValueError:
+        return "any"
+
+
 PLATFORM_EMOJIS = {
     "ib": "🐾",
     "fa": "🦊",

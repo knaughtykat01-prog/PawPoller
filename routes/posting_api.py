@@ -199,12 +199,15 @@ def add_to_queue(body: dict):
 
     conn = get_connection()
     try:
+        from posting.manager import get_platform_requires
         queue_ids = []
         for platform in platforms:
+            requires = get_platform_requires(platform)
             for ch_idx in chapters:
                 qid = posting_queries.add_to_queue(
                     conn, story_name, ch_idx, platform, action,
                     scheduled_at=scheduled_at,
+                    requires=requires,
                 )
                 queue_ids.append(qid)
         return {"status": "queued", "queue_ids": queue_ids}

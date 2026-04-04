@@ -131,17 +131,24 @@ def add_to_queue(
     rating_override: str | None = None,
     file_path_override: str | None = None,
     priority: int = 0,
+    requires: str = "any",
 ) -> int:
-    """Add an item to the posting queue. Returns queue_id."""
+    """Add an item to the posting queue. Returns queue_id.
+
+    Args:
+        requires: Runtime mode needed — 'any', 'desktop', or 'server'.
+            Desktop-only platforms (FA) should be queued with 'desktop' so the
+            server scheduler skips them and they're picked up when the desktop app opens.
+    """
     cursor = conn.execute(
         """INSERT INTO posting_queue
             (story_name, chapter_index, platform, action, scheduled_at,
              title_override, description_override, tags_override,
-             rating_override, file_path_override, priority)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             rating_override, file_path_override, priority, requires)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (story_name, chapter_index, platform, action, scheduled_at,
          title_override, description_override, tags_override,
-         rating_override, file_path_override, priority),
+         rating_override, file_path_override, priority, requires),
     )
     conn.commit()
     return cursor.lastrowid

@@ -50,6 +50,7 @@ class PlatformPoster(ABC):
     min_post_interval: int = 5      # Seconds between consecutive posts
     max_file_size: int = 0          # Bytes (0 = no limit)
     accepted_file_types: list[str] = []
+    requires_mode: str = "any"      # "any", "desktop", or "server"
 
     @abstractmethod
     async def post(self, package: StoryUploadPackage) -> PostResult:
