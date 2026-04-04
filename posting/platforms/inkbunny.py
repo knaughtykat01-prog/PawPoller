@@ -91,7 +91,14 @@ class InkbunnyPoster(PlatformPoster):
                 thumbnail_path=package.thumbnail_path,
             )
 
-            # Step 2: Set metadata and make visible
+            # Step 2: Read story content from BBCode file for the story text field
+            story_text = None
+            if package.file_path and package.file_type == "bbcode":
+                with open(package.file_path, "r", encoding="utf-8") as f:
+                    story_text = f.read()
+
+            # Step 3: Set metadata and make visible
+            # description = short summary, story = full reading panel content
             rating_tags = _rating_to_tags(package.rating)
             keywords = ", ".join(package.tags)
 
@@ -99,6 +106,7 @@ class InkbunnyPoster(PlatformPoster):
                 submission_id,
                 title=package.title[:100],
                 description=package.description,
+                story=story_text,
                 keywords=keywords,
                 **rating_tags,
                 visibility="yes",
@@ -121,7 +129,7 @@ class InkbunnyPoster(PlatformPoster):
             )
 
     async def edit(self, external_id: str, package: StoryUploadPackage) -> PostResult:
-        """Edit metadata on an existing Inkbunny submission."""
+        """Edit metadata and story text on an existing Inkbunny submission."""
         _t = self._start_timer()
         try:
             client = await self._ensure_client()
@@ -129,10 +137,17 @@ class InkbunnyPoster(PlatformPoster):
             rating_tags = _rating_to_tags(package.rating)
             keywords = ", ".join(package.tags)
 
+            # Read updated story content from BBCode file
+            story_text = None
+            if package.file_path and package.file_type == "bbcode":
+                with open(package.file_path, "r", encoding="utf-8") as f:
+                    story_text = f.read()
+
             await client.edit_submission(
                 submission_id,
                 title=package.title[:100],
                 description=package.description,
+                story=story_text,
                 keywords=keywords,
                 **rating_tags,
             )

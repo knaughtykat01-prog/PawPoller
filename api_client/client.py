@@ -591,6 +591,7 @@ class InkbunnyClient:
         *,
         title: str | None = None,
         description: str | None = None,
+        story: str | None = None,
         keywords: str | None = None,
         rating_tag_2: str | None = None,
         rating_tag_3: str | None = None,
@@ -601,16 +602,16 @@ class InkbunnyClient:
         friends_only: str | None = None,
         guest_block: str | None = None,
     ) -> dict:
-        """Edit an existing Inkbunny submission's metadata.
+        """Edit an existing Inkbunny submission's metadata and/or story text.
 
         Only fields that are explicitly provided (not None) are sent to the API.
         IB's API blanks any field included in the request, so omitting a field
         preserves its current value on the server.
 
-        Can be called on a freshly uploaded submission (to set its initial metadata
-        and make it visible) or on a previously posted submission (to update it).
-        For initial setup after upload, pass ALL fields. For partial updates, pass
-        only the fields you want to change.
+        Args:
+            description: Short summary/blurb shown on the submission page (BBCode).
+            story: Full story text displayed in the reading panel (BBCode).
+                   These are SEPARATE fields — don't put the story in description.
         """
         if not self.sid:
             raise RuntimeError("Not logged in — call ensure_session() first")
@@ -623,6 +624,8 @@ class InkbunnyClient:
             data["title"] = title
         if description is not None:
             data["desc"] = description
+        if story is not None:
+            data["story"] = story
         if keywords is not None:
             data["keywords"] = keywords
         if rating_tag_2 is not None:
