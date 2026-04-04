@@ -43,15 +43,22 @@ class SquidgeWorldPoster(PlatformPoster):
         self._client: SquidgeWorldClient | None = None
 
     async def _ensure_client(self) -> SquidgeWorldClient:
+        """Get or create an authenticated SQW client using AUTHOR credentials.
+
+        The posting module needs to log in as the work author (KnaughtyKat),
+        not the polling account (PawPoller). Uses sqw_author_username/password
+        settings, falling back to sqw_username/password if author creds aren't set.
+        """
         if self._client and self._client._logged_in:
             return self._client
 
         settings = config.get_settings()
-        username = settings.get("sqw_username", "")
-        password = settings.get("sqw_password", "")
+        # Prefer author credentials for posting (needs edit permissions)
+        username = settings.get("sqw_author_username", "") or settings.get("sqw_username", "")
+        password = settings.get("sqw_author_password", "") or settings.get("sqw_password", "")
         target_user = settings.get("sqw_target_user", "")
         if not username or not password:
-            raise RuntimeError("SquidgeWorld credentials not configured")
+            raise RuntimeError("SquidgeWorld author credentials not configured")
 
         self._client = SquidgeWorldClient(username, password, target_user)
         if not await self._client.ensure_logged_in():
