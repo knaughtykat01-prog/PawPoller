@@ -1,6 +1,14 @@
 """CRUD operations for the posting module tables.
 
-Tables: publications, posting_queue, posting_log.
+Three tables:
+    publications    Registry of what has been posted where. One row per
+                    (story_name, chapter_index, platform) combination.
+                    Stores the external submission ID so updates can target it.
+    posting_queue   Pending uploads and updates with scheduling support.
+                    Items carry a 'requires' field (desktop/server/any) so the
+                    scheduler only processes items valid for the current runtime.
+    posting_log     Immutable audit trail. Every post, edit, or failure is
+                    recorded here for debugging and history display.
 """
 
 from __future__ import annotations

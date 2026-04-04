@@ -41,9 +41,9 @@ PawPoller is a multi-platform furry art analytics dashboard. It periodically pol
                     ┌────────────┴────────────────────────┐
            ┌────────┤         Thread Pool                  ├────────┐
            │        │  main.py: 11 pollers + uvicorn +     │        │
-           │        │           digest + telegram bot      │        │
-           │        │  server.py: orchestrator + uvicorn + │        │
-           │        │             telegram bot (3 threads)  │        │
+           │        │    digest + telegram + posting (15)   │        │
+           │        │  server.py: orchestrator + uvicorn +  │        │
+           │        │    telegram + posting (4 threads)     │        │
            │        └─────────────────────────────────────┘        │
            ▼                         ▼                              ▼
     ┌──────────┐           ┌────────────────┐              ┌──────────────┐
@@ -197,10 +197,27 @@ PawPoller/
 │       ├── utils.js         # Formatting helpers (numbers, dates, relative time)
 │       └── vendor/          # Third-party libraries (Chart.js, QRCode.js)
 │
+├── posting/
+│   ├── __init__.py          # Package docstring
+│   ├── manager.py           # Posting orchestrator: resolve → post → record
+│   ├── scheduler.py         # Daemon thread — processes posting_queue every 60s
+│   ├── story_reader.py      # Reads story archives → StoryUploadPackage
+│   ├── sync.py              # Retroactive claim + change detection
+│   ├── generate_story_json.py # CLI: generate story.json from legacy data
+│   └── platforms/
+│       ├── base.py          # PlatformPoster ABC, PostResult, StoryUploadPackage
+│       ├── inkbunny.py      # IB poster (official API upload)
+│       ├── furaffinity.py   # FA poster (form scraping, desktop-only)
+│       ├── weasyl.py        # WS poster (CSRF form + API key)
+│       ├── sofurry.py       # SF poster (REST + CSRF)
+│       ├── squidgeworld.py  # SqW poster (OTW Rails form)
+│       └── bluesky.py       # BSKY poster (AT Protocol announcements)
+│
 ├── deploy/
 │   ├── cf-worker.js         # Cloudflare Worker proxy (3 modes: normal, chain, login)
 │   ├── setup-gcloud.sh      # GCP VM deployment automation
-│   └── setup-oracle.sh      # Oracle Cloud Always Free deployment automation
+│   ├── setup-oracle.sh      # Oracle Cloud Always Free deployment
+│   └── pawsync.bat          # Story archive sync to GCP server automation
 │
 ├── assets/
 │   └── tray_icon.png        # System tray icon (fallback: procedurally generated)
@@ -230,10 +247,10 @@ Startup sequence in detail:
 init_db()  # Creates tables/schema if the DB file does not exist yet
 ```
 
-**Step 2: Launch 14 daemon threads**
+**Step 2: Launch 15 daemon threads**
 All threads are `daemon=True` so they terminate automatically when the main thread (pywebview) exits. No explicit shutdown signalling is needed. Each thread is named for debugging (`threading.Thread(name="FA poller")`).
 
-Thread launch order: Uvicorn → IB poller → FA poller → WS poller → SF poller → SqW poller → AO3 poller → DA poller → WP poller → IK poller → BSKY poller → TW poller → Telegram digest → Telegram bot.
+Thread launch order: Uvicorn → IB poller → FA poller → WS poller → SF poller → SqW poller → AO3 poller → DA poller → WP poller → IK poller → BSKY poller → TW poller → Telegram digest → Telegram bot → Posting scheduler.
 
 **Step 3: System tray icon**
 ```python
@@ -300,12 +317,13 @@ _ENV_TO_SETTINGS = {
 
 **Step 2b: Migrate legacy plaintext password** — `config.migrate_dashboard_auth()` converts any plaintext `dashboard_password` in settings.json to a bcrypt hash if not already hashed.
 
-**Step 3: Launch 3 daemon threads** — Unlike `main.py` which spawns 14 threads (11 per-platform pollers + uvicorn + digest scheduler + telegram bot), `server.py` uses a unified poll orchestrator that replaces the 11 individual poller threads and digest scheduler with a single thread:
+**Step 3: Launch 4 daemon threads** — Unlike `main.py` which spawns 15 threads (11 per-platform pollers + uvicorn + digest scheduler + telegram bot + posting scheduler), `server.py` uses a unified poll orchestrator that replaces the 11 individual poller threads and digest scheduler with a single thread:
 ```python
 threads = [
     ("Uvicorn",             lambda: _start_server(args.host, args.port)),
     ("Poll orchestrator",   _start_poll_orchestrator),
     ("Telegram bot",        _start_telegram_bot),
+    ("Posting scheduler",   start_posting_scheduler),
 ]
 for name, target in threads:
     t = threading.Thread(target=target, daemon=True, name=name)
@@ -334,7 +352,7 @@ shutdown_event.wait()  # Blocks until SIGINT/SIGTERM
 ```
 
 Key differences from `main.py`:
-- **3 threads instead of 14** — unified poll orchestrator replaces 11 per-platform pollers + digest scheduler
+- **4 threads instead of 15** — unified poll orchestrator replaces 11 per-platform pollers + digest scheduler; posting scheduler is the same in both modes
 - **Single poll interval** — `poll_interval_minutes` controls all platforms (not per-platform intervals)
 - **Consolidated notifications** — one Telegram message per cycle instead of per-platform messages
 - Binds `0.0.0.0` by default (not `127.0.0.1`) — accessible from the network
@@ -359,9 +377,9 @@ Three modes via argparse:
 
 `main.py` and `server.py` use different threading architectures:
 
-### `main.py` — 14-Thread Model (Desktop)
+### `main.py` — 15-Thread Model (Desktop)
 
-`main.py` spawns 14 daemon threads plus the main thread (pywebview). Each platform gets its own poller thread with an independent poll interval:
+`main.py` spawns 15 daemon threads plus the main thread (pywebview). Each platform gets its own poller thread with an independent poll interval:
 
 | Thread | Purpose | Interval Source | Default |
 |--------|---------|----------------|---------|
@@ -379,20 +397,22 @@ Three modes via argparse:
 | TW poller | X/Twitter stat collection | `tw_poll_interval_minutes` | 60 min |
 | Telegram digest | 6-hourly cross-platform summary | Fixed 6 hours | — |
 | Telegram bot | Command listener (long-poll) | Continuous | — |
+| Posting scheduler | Processes posting_queue table | Fixed 60 seconds | — |
 
-### `server.py` — 3-Thread Model (Headless/Docker)
+### `server.py` — 4-Thread Model (Headless/Docker)
 
-`server.py` replaces the 11 per-platform poller threads and the digest scheduler with a single unified poll orchestrator thread:
+`server.py` replaces the 11 per-platform poller threads and the digest scheduler with a single unified poll orchestrator thread, and adds a posting scheduler:
 
 | Thread | Purpose | Interval Source | Default |
 |--------|---------|----------------|---------|
 | Uvicorn | FastAPI dashboard server | N/A (always-on) | — |
 | Poll orchestrator | Polls all platforms, sends consolidated summary, fires digests | `poll_interval_minutes` | 240 min |
 | Telegram bot | Command listener (long-poll) | Continuous | — |
+| Posting scheduler | Processes posting_queue table | Fixed 60 seconds | — |
 
 ### Per-Platform Thread Pattern (`main.py` only)
 
-In the desktop 14-thread model, every poller function (`_start_poller()`, `_start_fa_poller()`, etc.) follows the exact same pattern:
+In the desktop 15-thread model, every poller function (`_start_poller()`, `_start_fa_poller()`, etc.) follows the exact same pattern:
 
 ```python
 def _start_XX_poller():
@@ -2469,3 +2489,514 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 | | `/bot{token}/sendMessage` | `polling/telegram.py` | Send notifications |
 | GitHub | `/repos/{owner}/{repo}/releases/latest` | `updater.py` | Version check |
 | CF Worker | `/{worker-url}` | `polling/cf_proxy.py` | Proxy transport |
+| **Posting Module — Upload/Edit Endpoints** | | | |
+| Inkbunny API | `/api_upload.php` | `posting/platforms/inkbunny.py` | File upload (multipart) |
+| | `/api_editsubmission.php` | | Edit metadata, tags, ratings, visibility |
+| FurAffinity | `/submit/` | `posting/platforms/furaffinity.py` | Step 1: scrape hidden key |
+| | `/submit/upload` | | Step 2: multipart file + key upload |
+| | `/submit/finalize` | | Step 3: title, desc, tags, rating |
+| | `/controls/submissions/changeinfo/{id}/` | | Edit metadata |
+| | `/controls/submissions/changestory/{id}/` | | Replace file |
+| Weasyl | `/submit/literary` | `posting/platforms/weasyl.py` | Literary submission (multipart) |
+| | `/edit/submission/{id}` | | Edit existing submission |
+| SoFurry | `/ui/submission` (PUT) | `posting/platforms/sofurry.py` | Create empty submission |
+| | `/ui/submission/{id}/content` (POST) | | Upload file content |
+| | `/ui/submission/{id}` (POST) | | Set metadata + publish |
+| SquidgeWorld | `/works` (POST) | `posting/platforms/squidgeworld.py` | Create new work |
+| | `/works/{id}` (PATCH) | | Edit work metadata |
+| | `/works/{id}/chapters/{ch}` (PATCH) | | Edit chapter content |
+| Bluesky AT Proto | `com.repo.createRecord` | `posting/platforms/bluesky.py` | Create post record |
+| | `com.repo.uploadBlob` | | Upload image blob |
+
+---
+
+## 14. Posting Module
+
+### Overview
+
+The posting module enables PawPoller to upload stories to 6 platforms, edit existing submissions, track what has been posted where, and detect when local story files have changed since the last upload. It is the reverse complement to the polling system: polling reads stats *from* platforms, posting pushes content *to* them.
+
+Supported platforms for posting:
+
+| Platform | Poster | Auth Method | Post | Edit | File Replace | Requires |
+|----------|--------|------------|:----:|:----:|:------------:|----------|
+| Inkbunny | `InkbunnyPoster` | Username/password → SID | Yes | Yes | Yes | any |
+| FurAffinity | `FurAffinityPoster` | Cookie a + Cookie b | Yes | Yes | Yes | desktop |
+| Weasyl | `WeasylPoster` | API key | Yes | Yes | No | any |
+| SoFurry | `SoFurryPoster` | Email/password + CSRF | Yes | Yes | Yes | any |
+| SquidgeWorld | `SquidgeWorldPoster` | Author user/pass + CSRF | Yes | Yes | Yes | any |
+| Bluesky | `BlueskyPoster` | App password → JWT | Yes | No* | No | any |
+
+*Bluesky does not support in-place editing. The only option is delete + repost, which loses engagement.
+
+FurAffinity requires `desktop` mode because FA blocks datacenter IP ranges. When a server-mode post to FA fails, the scheduler automatically queues it for desktop pickup.
+
+### Architecture
+
+The posting module lives in the `posting/` directory alongside the existing `polling/`, `database/`, and `routes/` directories. It reuses the existing platform API clients (e.g. `InkbunnyClient`, `FAClient`) by adding upload/edit methods.
+
+```
+posting/
+├── manager.py              Orchestrator: story_reader → poster → publications DB
+├── scheduler.py            Daemon thread: checks posting_queue every 60s
+├── story_reader.py         Reads archive → builds StoryUploadPackage objects
+├── sync.py                 Retroactive claim + change detection
+├── generate_story_json.py  CLI: generates story.json from legacy data
+└── platforms/
+    ├── base.py             PlatformPoster ABC + data classes
+    ├── inkbunny.py         InkbunnyPoster
+    ├── furaffinity.py      FurAffinityPoster
+    ├── weasyl.py           WeasylPoster
+    ├── sofurry.py          SoFurryPoster
+    ├── squidgeworld.py     SquidgeWorldPoster
+    └── bluesky.py          BlueskyPoster
+```
+
+**Data flow**:
+```
+User (Dashboard/Telegram/API)
+    │  "Upload Extra_Credit to IB + SF"
+    ▼
+PostingManager (manager.py)
+    │  1. story_reader.load_story("Extra_Credit")
+    │  2. story_reader.build_package(story, chapter, platform)
+    │  3. poster.validate(package)
+    │  4. poster.post(package)
+    ▼
+Platform Poster (platforms/inkbunny.py, etc.)
+    │  HTTP upload to platform API
+    ▼
+PostingManager
+    │  5. posting_queries.upsert_publication(...)
+    │  6. posting_queries.log_posting_action(...)
+    ▼
+Publications table (database)
+```
+
+**Thread model**: The posting scheduler runs as Thread 15 in `main.py` (desktop) and as the 4th thread in `server.py` (headless). It creates its own asyncio event loop following the same pattern as the pollers. On startup it detects the runtime mode (desktop/server) by checking whether `pywebview` is importable — this determines which queue items it can process.
+
+### Story Archive
+
+Stories are read from the `m_x/Archives/Complete_Stories/` directory (configurable via `posting_story_archive_path` setting). Each story folder has this structure:
+
+```
+Extra_Credit/
+├── story.json                    # Story metadata (preferred source)
+├── Markdown/MASTER.md            # Canonical source text
+├── Tags/tags_upload.txt          # Per-platform tag lists
+├── Chapters/
+│   ├── split_manifest.json       # Chapter structure + file map
+│   ├── BBCode/                   # Chapter files for IB/WS
+│   ├── SoFurry_HTML/             # Chapter files for SF
+│   └── PDF/                      # Chapter files for FA
+├── BBCode/                       # Full-story BBCode
+├── HTML/                         # Full-story HTML variants
+├── PDF/                          # Full-story PDF
+├── SquidgeWorld/                  # SqW-specific HTML
+└── Images/                       # Cover art, thumbnails
+```
+
+**story.json schema**: The preferred metadata source (generated by `generate_story_json.py`). Contains:
+```json
+{
+    "title": "Extra Credit",
+    "author": "KnaughtyKat",
+    "description": "Short blurb for listings...",
+    "summary": "Detailed summary for AO3/SqW...",
+    "rating": "adult",
+    "category": "M/M",
+    "fandom": "Original Work",
+    "word_count": 18500,
+    "chapters": 5,
+    "warnings": ["No Archive Warnings Apply"],
+    "characters": ["Callum", "Drew"],
+    "relationships": ["Callum/Drew"],
+    "formats": {
+        "bbcode": "BBCode/Extra_Credit_bbcode.txt",
+        "html": "HTML/Extra_Credit_Clean.html",
+        "pdf": "PDF/Extra_Credit.pdf"
+    },
+    "platforms": {
+        "inkbunny": {"tags": ["furry", "wolf", "college"], "rating": "adult"},
+        "sofurry": {"tags": ["furry", "wolf", "college"], "rating": "adult"},
+        "weasyl": {"tags": ["furry", "wolf", "college"], "rating": "adult"}
+    },
+    "images": {
+        "thumbnail": "Images/cover_thumb.png",
+        "cover": "Images/cover.png"
+    }
+}
+```
+
+**Format file resolution** (`PLATFORM_FORMAT_MAP` in `story_reader.py`): Each platform has a priority-ordered list of format directories and glob patterns. The reader checks each in order and uses the first match:
+
+| Platform | Priority 1 | Priority 2 | Priority 3 |
+|----------|-----------|-----------|-----------|
+| Inkbunny | `Chapters/BBCode/*.txt` | `BBCode/*_bbcode.txt` | — |
+| FurAffinity | `PDF/*.pdf` | `Chapters/PDF/*.pdf` | — |
+| Weasyl | `Chapters/BBCode/*.txt` | `BBCode/*_bbcode.txt` | `Markdown/MASTER.md` |
+| SoFurry | `Chapters/SoFurry_HTML/*.html` | `HTML/*_Clean.html` | `HTML/*_sofurry.html` |
+| SquidgeWorld | `SquidgeWorld/*.html` | `Chapters/SoFurry_HTML/*.html` | — |
+| Bluesky | *(no file upload — uses description text)* | — | — |
+
+**tags_upload.txt** (legacy fallback when story.json is missing): Multi-platform tag file parsed by `story_reader.py`. Format:
+```
+=== INKBUNNY ===
+furry, wolf, college, romance
+
+=== SOFURRY ===
+furry, wolf, college, romance
+
+=== PER-CHAPTER TAGS ===
+Chapter 1: meeting, classroom
+Chapter 2: tension, library
+```
+
+### Platform Posters
+
+All posters extend the `PlatformPoster` abstract base class, which enforces a consistent interface: `post()`, `edit()`, `replace_file()`, `validate()`. The manager treats all platforms identically.
+
+**`PostResult` dataclass**: Every operation returns:
+```python
+@dataclass
+class PostResult:
+    success: bool
+    external_id: str = ""       # Platform's submission/post ID
+    external_url: str = ""      # Direct URL to the submission
+    error: str | None = None
+    duration_seconds: float = 0.0
+```
+
+**`StoryUploadPackage` dataclass**: Everything needed to post one chapter to one platform:
+```python
+@dataclass
+class StoryUploadPackage:
+    story_name: str             # "Extra_Credit"
+    chapter_index: int          # 0 = full story, 1+ = chapter number
+    chapter_title: str          # "Chapter 1: First Day"
+    platform: str               # "ib", "fa", "ws", "sf", "sqw", "bsky"
+    title: str                  # Submission title
+    description: str            # Body text / description
+    tags: list[str]             # Platform-specific tag list
+    rating: str                 # Platform-specific rating value
+    file_path: str | None       # Absolute path to format file
+    file_type: str              # "bbcode", "pdf", "html", "text"
+    word_count: int
+    thumbnail_path: str | None  # Cover image path
+    extra: dict                 # Platform-specific overrides
+```
+
+#### Inkbunny (`posting/platforms/inkbunny.py`)
+
+**Auth**: Reuses `InkbunnyClient` with SID session caching (same as polling).
+
+**Post flow**:
+1. `ensure_session(cached_sid)` — restore or re-login
+2. `upload_submission(file)` via `/api_upload.php` — multipart file upload, returns `submission_id`
+3. `edit_submission(submission_id, title, desc, tags, ratings, visibility=yes)` via `/api_editsubmission.php` — sets metadata and makes visible
+
+**Edit flow**: `edit_submission(existing_id, updated_fields)` — same endpoint, just updates.
+
+**File replace**: Re-upload via `api_upload.php` targeting the existing submission.
+
+**Rating mapping**: General → all rating tags "no"; Mature → `tag[2]="yes"` (Nudity - Nonsexual); Adult → `tag[4]="yes"` (Sexual Situations - Strong) + `tag[5]="yes"`.
+
+**File type**: `story` field for the IB reading panel (BBCode text displayed in-browser).
+
+**Rate limit**: 5 seconds minimum between consecutive posts.
+
+#### FurAffinity (`posting/platforms/furaffinity.py`)
+
+**Auth**: Reuses `FAClient` with cookie a + cookie b. Validates cookies before every upload.
+
+**Post flow** (3-step form scrape, same approach as PostyBirb):
+1. `GET /submit/` — scrape hidden `key` input from form
+2. `POST /submit/upload` — multipart: key + `submission_type` + file
+3. `POST /submit/finalize` — urlencoded: key + title + description + tags + rating
+
+**Edit flow**: `GET /controls/submissions/changeinfo/{id}/` — scrape form + key, then POST with updated fields.
+
+**File replace**: `POST /controls/submissions/changestory/{id}/` — re-upload the file.
+
+**Rating mapping**: General → `"0"`, Adult → `"1"`, Mature → `"2"` (note: Adult=1, not 2 — counterintuitive).
+
+**Constraints**: 10 MB max file size. 60-character title limit. 3 tag minimum, 500-character max tag string. **70-second minimum between consecutive posts** (enforced server-side). Accounts need 11+ posts or CAPTCHA blocks.
+
+**Requires `desktop` mode**: FA blocks datacenter IPs. When a server-mode post fails, the manager auto-queues for desktop pickup.
+
+#### SoFurry (`posting/platforms/sofurry.py`)
+
+**Auth**: Reuses `SoFurryClient` with email/password + CSRF token. Supports CF proxy for server deployments.
+
+**Post flow** (3-step REST):
+1. `PUT /ui/submission` — create empty submission, returns `submission_id`
+2. `POST /ui/submission/{id}/content` — upload file content
+3. `POST /ui/submission/{id}` — set metadata (title, tags, rating) + publish
+
+**Edit flow**: `POST /ui/submission/{id}` — update metadata fields.
+
+**File replace**: `POST /ui/submission/{id}/content` — re-upload content.
+
+**Rating mapping**: General → 0 (Clean), Mature → 10, Adult → 20.
+
+**Max file size**: 512 KB for text content.
+
+#### Weasyl (`posting/platforms/weasyl.py`)
+
+**Auth**: Reuses `WeasylClient` with API key in `X-Weasyl-API-Key` header.
+
+**Post flow**: `POST /submit/literary` — multipart with file + metadata (title, description, tags, rating).
+
+**Edit flow**: `GET /edit/submission/{id}` to scrape form, then `POST` with updated fields.
+
+**File replace**: Not supported — Weasyl has no file-replace endpoint.
+
+**Rating mapping**: General → 10, Mature → 30, Adult → 40.
+
+**Max file size**: 10 MB.
+
+#### SquidgeWorld (`posting/platforms/squidgeworld.py`)
+
+**Auth**: Uses `SquidgeWorldClient` with **author credentials** (`sqw_author_username`/`sqw_author_password`), falling back to `sqw_username`/`sqw_password` if author credentials are not set. The posting module needs to log in as the work author (who has edit permissions), not the polling account.
+
+**Post flow** (OTW Rails form):
+1. Login + extract CSRF `authenticity_token`
+2. `POST /works` with form data (title, fandom, tags, rating, content as HTML)
+3. For multi-chapter works: POST additional chapters
+
+**Edit flow**: `PATCH /works/{id}` for metadata; `PATCH /works/{id}/chapters/{ch_id}` for chapter content.
+
+**HTML whitespace collapse**: SquidgeWorld (OTW software) collapses multiple blank lines into single spacing. Content must be pre-processed to preserve intentional formatting.
+
+**Work Skin preservation**: If a story uses a custom AO3/SqW Work Skin for styled HTML, the poster preserves the `work_skin_id` field during edits.
+
+**No file upload**: Content is pasted as HTML in the form field, not uploaded as a file.
+
+#### Bluesky (`posting/platforms/bluesky.py`)
+
+**Auth**: Reuses `BskyClient` with AT Protocol JWT session.
+
+**Post flow**:
+1. `ensure_logged_in()` — JWT session (login → refresh → check chain)
+2. (Optional) `upload_blob(cover_image)` — upload image, max 1 MB
+3. `create_post(text, embed=image, labels=nsfw)` via `com.repo.createRecord`
+
+**NSFW labels**: Adult/Explicit → `["sexual"]`; Mature/Questionable → `["nudity"]`. Labels are AT Protocol self-labels that trigger content warnings in Bluesky clients.
+
+**Edit flow**: Not supported. Bluesky does not allow in-place editing. The only option is delete + repost (loses all engagement). For story announcements this is acceptable.
+
+**Post limit**: 300 graphemes max per post. Descriptions are truncated with `...` if needed.
+
+**Bluesky is used for announcement posts**, not full story uploads. The poster generates a brief announcement text from the story description and optionally attaches a cover image.
+
+### Publications Registry
+
+The `publications` table is the central record of what has been posted where. One row per `(story_name, chapter_index, platform)` combination.
+
+**Schema** (from `posting_schema.sql`):
+```sql
+CREATE TABLE publications (
+    pub_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    story_name          TEXT NOT NULL,       -- "Extra_Credit"
+    chapter_index       INTEGER DEFAULT 0,   -- 0 = full story, 1+ = chapter
+    chapter_title       TEXT DEFAULT '',
+    platform            TEXT NOT NULL,       -- "ib", "fa", "ws", "sf", "sqw", "bsky"
+    external_id         TEXT NOT NULL DEFAULT '',  -- Platform's submission ID
+    external_url        TEXT DEFAULT '',
+    format_file         TEXT DEFAULT '',     -- Path to file that was uploaded
+    file_hash           TEXT DEFAULT '',     -- SHA256 hash at time of upload
+    tags_used           TEXT DEFAULT '[]',   -- JSON array of tags used
+    title_used          TEXT DEFAULT '',
+    description_used    TEXT DEFAULT '',
+    rating_used         TEXT DEFAULT '',
+    status              TEXT NOT NULL DEFAULT 'draft',  -- draft, posted, failed
+    first_posted_at     TEXT,
+    last_updated_at     TEXT,
+    update_count        INTEGER DEFAULT 0,
+    word_count          INTEGER DEFAULT 0,
+    UNIQUE(story_name, chapter_index, platform)
+);
+```
+
+Publications are enriched with live stats by `get_publications_with_stats()`, which joins each publication's `external_id` against the platform-specific submission table (e.g. `submissions` for IB, `fa_submissions` for FA) to pull current views, faves, and comments.
+
+### Posting Queue
+
+The `posting_queue` table holds pending uploads and updates. Items can be:
+- **Immediate**: `scheduled_at` is NULL — processed on the next scheduler check
+- **Scheduled**: `scheduled_at` is a future datetime — processed when due
+- **Retryable**: Failed items with `attempts < max_attempts` (default 3)
+
+**`requires` field**: Each queue item carries a `requires` value indicating the runtime mode needed:
+- `"any"` — processable by both desktop and server (default for most platforms)
+- `"desktop"` — only processable by the desktop app (used for FA, which blocks datacenter IPs)
+- `"server"` — only processable by the server instance
+
+The scheduler auto-detects its runtime mode on startup and only processes matching items. Items requiring `"desktop"` are skipped by the server scheduler and vice versa.
+
+**Auto-queue fallback**: When a post fails on the server (e.g. FA rejects the datacenter IP), the manager automatically queues the item with `requires="desktop"` so the desktop app picks it up on its next scheduler check.
+
+### Retroactive Sync
+
+The `/claim` command scans each platform's existing submissions table in PawPoller's database and matches them to stories in the local archive by title. This populates the publications table so that `/update` commands can push revisions to already-live submissions.
+
+**Matching strategy** (`sync.py`):
+1. Normalize both story folder names and submission titles (lowercase, strip punctuation, collapse whitespace)
+2. Full-story match: `"Extra Credit"` matches `Extra_Credit`
+3. Chapter match: `"Hypnotic Claim - Chapter 1: The Seduction"` matches `Hypnotic_Claim` chapter 1
+4. Multi-part match: `"Velvet and Vice (Part One)"` matches `Velvet_And_Vice` chapters 1-4
+5. Skip test submissions (titles starting with `[TEST]`)
+
+**Platform submission table configs** (`PLATFORM_TABLES` dict):
+
+| Platform | Table | URL Template |
+|----------|-------|-------------|
+| IB | `submissions` | `https://inkbunny.net/s/{id}` |
+| FA | `fa_submissions` | `https://www.furaffinity.net/view/{id}/` |
+| WS | `ws_submissions` | `https://www.weasyl.com/submission/{id}` |
+| SF | `sf_submissions` | `https://sofurry.com/s/{id}` |
+| SqW | `sqw_submissions` | `https://squidgeworld.org/works/{id}` |
+
+### Change Detection
+
+After initial posting, stories are often revised. The change detection system compares the current state of local files against what was recorded in the publications table at the time of posting.
+
+**`file_hash`**: When a story is posted or updated, the SHA256 hash of the uploaded file is stored in `publications.file_hash`. The `/changes` endpoint (`detect_changes()` in `sync.py`) recomputes hashes for all published stories and compares against stored values.
+
+**Telegram `/changes` command**: Shows which stories have changed since last update, with per-platform breakdown. Users can then run `/update all` to push all changes, or `/update <story>` for a specific story.
+
+**`/update all` command**: Iterates all stories with detected changes and pushes updates to every platform where they are published.
+
+### Desktop Queue Mode
+
+Some platforms (currently FA) require residential IPs and cannot be posted to from a server/datacenter. The posting module handles this through the `requires` field:
+
+1. User requests upload from any interface (dashboard, Telegram, API)
+2. Manager checks `poster.requires_mode` for each target platform
+3. If the platform requires `"desktop"` and the current runtime is `"server"`, the item is queued with `requires="desktop"` instead of attempting a direct upload
+4. Scheduler on the desktop instance picks up desktop-only items on its next 60-second check
+5. If a post fails on the server with an IP-related error, the manager auto-queues for desktop
+
+**Runtime detection**: `scheduler.detect_runtime_mode()` checks whether `pywebview` is importable. Desktop mode = pywebview available (installed via `requirements.txt`). Server mode = pywebview not available (excluded from `requirements-server.txt`).
+
+### REST API Endpoints
+
+Complete list of `/api/posting/*` endpoints (`routes/posting_api.py`):
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/posting/stories` | List all stories with publication status per platform |
+| GET | `/api/posting/stories/{name}` | Full story detail: metadata, chapters, publications, formats, stats |
+| POST | `/api/posting/post` | Post story to platforms immediately |
+| POST | `/api/posting/update` | Push updates to already-posted submissions |
+| GET | `/api/posting/publications` | List publications (filterable by story/platform) |
+| GET | `/api/posting/publications/stats` | Publications enriched with live polling stats |
+| GET | `/api/posting/publications/{pub_id}` | Single publication by ID |
+| POST | `/api/posting/queue` | Add items to posting queue (with scheduling) |
+| GET | `/api/posting/queue` | List pending/processing queue items |
+| DELETE | `/api/posting/queue/{queue_id}` | Cancel a pending queue item |
+| GET | `/api/posting/log` | Posting audit log (filterable by story, with limit) |
+| GET | `/api/posting/settings` | Get posting-related settings |
+| POST | `/api/posting/settings` | Save posting-related settings |
+| POST | `/api/posting/claim` | Retroactive sync: match submissions to stories |
+| GET | `/api/posting/changes` | Detect publications with changed files |
+| GET | `/api/posting/sync/status` | Per-story sync status summary (for dashboard) |
+| POST | `/api/posting/sync/upload` | Receive .tar.gz archive from desktop instance |
+| POST | `/api/posting/sync/push` | Push local archive to remote server |
+
+**POST `/api/posting/post`** body:
+```json
+{
+    "story_name": "Extra_Credit",
+    "platforms": ["ib", "sf"],
+    "chapters": [1, 2, 3]
+}
+```
+`chapters` is optional — `null` or omitted means all chapters.
+
+**POST `/api/posting/queue`** body:
+```json
+{
+    "story_name": "Extra_Credit",
+    "platforms": ["ib", "sf"],
+    "chapters": [1, 2],
+    "action": "post",
+    "scheduled_at": "2026-04-10T18:00:00Z"
+}
+```
+`scheduled_at` is optional — `null` means process immediately on next scheduler check.
+
+**POST `/api/posting/claim`** body:
+```json
+{
+    "platforms": ["ib", "fa"],
+    "dry_run": true
+}
+```
+Both fields are optional. `platforms` defaults to all platforms with data. `dry_run` previews matches without writing.
+
+### Telegram Commands
+
+The Telegram bot (`polling/telegram_bot.py`) includes 6 posting-related commands:
+
+| Command | Purpose |
+|---------|---------|
+| `/stories` | List available stories in the archive with chapter counts and format availability |
+| `/upload <story> [platforms]` | Post a story to platforms (e.g. `/upload Extra_Credit ib,sf`) |
+| `/update <story> [platforms]` | Push updates to already-posted submissions |
+| `/update all [platforms]` | Update all stories with changed files |
+| `/posted [story]` | Show the publication registry (what is posted where) |
+| `/claim [platforms]` | Claim existing submissions into the publications registry |
+| `/changes` | Show which stories have changed since last update |
+
+### Dashboard UI
+
+The posting module adds a "Stories" section to the dashboard sidebar, implemented in `frontend/js/posting.js` with 4 pages:
+
+**1. Stories Hub** (`#/posting`) — Card grid showing all stories in the archive. Each card displays title, author, word count, chapter count, and platform badges for published platforms. Clicking a card navigates to the story detail page.
+
+**2. Story Detail** (`#/posting/story/{name}`) — Full metadata view with:
+- Story info: title, author, description, word count, rating, warnings
+- Chapter list with per-chapter descriptions
+- Per-platform publication status (posted/not posted) with external links
+- Upload controls: select platforms and chapters, post or queue
+- Publication history with live stats from polling tables
+
+**3. Queue** (`#/posting/queue`) — Table of pending, processing, and completed queue items. Shows story, platform, action, status, scheduled time, and error messages. Cancel button for pending items.
+
+**4. History/Log** (`#/posting/log`) — Audit trail of all posting actions (uploads, edits, failures) with timestamps, durations, and error details.
+
+### Story Sync
+
+**`deploy/pawsync.bat`**: Batch script that syncs the local story archive to the GCP server:
+1. `tar -czf` the `Complete_Stories/` directory (excluding `Backups/`, `Drafts/`, `Styled_HTML/`)
+2. `gcloud compute scp` the tarball to the server (`/tmp/story-archive.tar.gz`)
+3. `gcloud compute ssh` to extract on server + set permissions + clean up temp file
+
+**API-based sync** (`/api/posting/sync/push` + `/api/posting/sync/upload`): The dashboard also supports sync via HTTP:
+- Desktop calls `POST /api/posting/sync/push` with an optional `server_url` and `api_key`
+- The endpoint tars the local archive in-memory and POSTs it to the remote server's `POST /api/posting/sync/upload`
+- The upload endpoint extracts the tarball into the server's story archive directory
+- Security: path traversal protection rejects any archive members starting with `/` or containing `..`
+
+**SquidgeWorld exclusion fix**: The `pawsync.bat` script now excludes `Styled_HTML/` directories from the sync. Styled HTML files are large and not needed by any platform poster — they are only used for local rendering. SqW uses `SquidgeWorld/*.html` or `Chapters/SoFurry_HTML/*.html` instead.
+
+### Configuration
+
+The posting module uses these settings in `settings.json`:
+
+| Key | Type | Default | Purpose |
+|-----|------|---------|---------|
+| `posting_enabled` | bool | false | Master toggle — scheduler skips all processing when false |
+| `posting_story_archive_path` | string | "" | Custom archive path (overrides default resolution) |
+| `posting_default_platforms` | list | [] | Default platforms for new uploads |
+| `posting_default_rating` | string | "adult" | Default rating for new uploads |
+| `posting_server_url` | string | "" | Remote server URL for sync push |
+| `posting_server_api_key` | string | "" | API key for authenticating with remote server |
+| `sqw_author_username` | string | "" | SquidgeWorld author account (for posting, distinct from polling account) |
+| `sqw_author_password` | string | "" | SquidgeWorld author password |
+
+**Archive path resolution order** (in `story_reader.get_archive_path()`):
+1. `posting_story_archive_path` setting (explicit override)
+2. `/app/story-archive` (Docker bind mount on GCP server)
+3. `../m_x/Archives/Complete_Stories/` (relative to PawPoller, for desktop)

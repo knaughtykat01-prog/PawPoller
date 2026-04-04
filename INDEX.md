@@ -7,18 +7,20 @@
 
 ## Architecture Overview
 
-PawPoller is a **desktop analytics dashboard** for tracking submission stats across 11 platforms: **Inkbunny (IB)**, **FurAffinity (FA)**, **Weasyl (WS)**, **SoFurry (SF)**, **SquidgeWorld (SqW)**, **AO3**, **DeviantArt (DA)**, **Wattpad (WP)**, **Itaku (IK)**, **Bluesky (BSKY)**, and **X/Twitter (TW)**.
+PawPoller is a **desktop analytics dashboard** for tracking submission stats across 11 platforms: **Inkbunny (IB)**, **FurAffinity (FA)**, **Weasyl (WS)**, **SoFurry (SF)**, **SquidgeWorld (SqW)**, **AO3**, **DeviantArt (DA)**, **Wattpad (WP)**, **Itaku (IK)**, **Bluesky (BSKY)**, and **X/Twitter (TW)**. Also includes a **posting module** that uploads/edits stories on 6 platforms (IB, FA, WS, SF, SqW, BSKY) with publication tracking and change detection.
 
 **Stack**: FastAPI + SQLite (WAL) + Vanilla JS SPA + pywebview + pystray
 
-**Runtime model**: Single process with 14 daemon threads + main thread:
+**Runtime model**: Single process with 15 daemon threads + main thread:
 - Threads 1-11: Platform pollers (IB, FA, WS, SF, SqW, AO3, DA, WP, IK, BSKY, TW)
 - Thread 12: Uvicorn web server (FastAPI dashboard)
 - Thread 13: Telegram digest scheduler
 - Thread 14: Telegram bot command listener
+- Thread 15: Posting scheduler (processes posting_queue every 60s)
 - Main thread: pywebview native desktop window + pystray system tray
 
 **Data flow**: Platform API → Poller → SQLite → REST API → Frontend SPA
+**Posting flow**: Story Archive → story_reader → Platform Poster → Platform API → publications table
 
 ---
 
@@ -59,13 +61,27 @@ PawPoller/
 │   ├── schema.sql             # Inkbunny tables
 │   ├── fa_schema.sql          # FurAffinity tables
 │   ├── ws_schema.sql          # Weasyl tables
+│   ├── sf_schema.sql          # SoFurry tables
+│   ├── sqw_schema.sql         # SquidgeWorld tables
+│   ├── ao3_schema.sql         # AO3 tables
+│   ├── da_schema.sql          # DeviantArt tables
+│   ├── wp_schema.sql          # Wattpad tables
+│   ├── ik_schema.sql          # Itaku tables
 │   ├── bsky_schema.sql        # Bluesky tables
 │   ├── tw_schema.sql          # X/Twitter tables
+│   ├── posting_schema.sql     # Posting module tables (publications, posting_queue, posting_log)
 │   ├── queries.py             # Inkbunny CRUD + analytics
 │   ├── fa_queries.py          # FurAffinity CRUD + analytics
 │   ├── ws_queries.py          # Weasyl CRUD + analytics
+│   ├── sf_queries.py          # SoFurry CRUD + analytics
+│   ├── sqw_queries.py         # SquidgeWorld CRUD + analytics
+│   ├── ao3_queries.py         # AO3 CRUD + analytics
+│   ├── da_queries.py          # DeviantArt CRUD + analytics
+│   ├── wp_queries.py          # Wattpad CRUD + analytics
+│   ├── ik_queries.py          # Itaku CRUD + analytics
 │   ├── bsky_queries.py        # Bluesky CRUD + analytics
 │   ├── tw_queries.py          # X/Twitter CRUD + analytics
+│   ├── posting_queries.py     # Posting module CRUD (publications, queue, log)
 │   ├── group_queries.py       # Cross-platform submission groups
 │   └── analytics_queries.py   # Top fans, trending, cross-platform links
 │
@@ -81,9 +97,17 @@ PawPoller/
 │   ├── __init__.py
 │   ├── api.py                 # /api/* — IB + cross-platform endpoints
 │   ├── fa_api.py              # /api/fa/* — FA endpoints
-│   ├── ws_api.py              # /api/ws/* — WS endpoints
+│   ├── sf_api.py              # /api/sf/* — SF endpoints
+│   ├── sqw_api.py             # /api/sqw/* — SqW endpoints
+│   ├── ao3_api.py             # /api/ao3/* — AO3 endpoints
+│   ├── da_api.py              # /api/da/* — DA endpoints
+│   ├── wp_api.py              # /api/wp/* — WP endpoints
+│   ├── ik_api.py              # /api/ik/* — IK endpoints
 │   ├── bsky_api.py            # /api/bsky/* — Bluesky endpoints
-│   └── tw_api.py              # /api/tw/* — X/Twitter endpoints
+│   ├── tw_api.py              # /api/tw/* — X/Twitter endpoints
+│   ├── ws_api.py              # /api/ws/* — WS endpoints
+│   ├── posting_api.py         # /api/posting/* — Posting module (stories, post, queue, sync)
+│   └── dashboard_auth.py      # Dashboard auth (login, 2FA, API keys, Turnstile)
 │
 ├── frontend/                  # Vanilla JS SPA
 │   ├── index.html             # SPA shell (sidebar + #app container)
@@ -95,7 +119,33 @@ PawPoller/
 │       ├── components.js      # HTML template functions (~25 components)
 │       ├── charts.js          # Chart.js factories (4 chart types)
 │       ├── app.js             # SPA router + page renderers
+│       ├── posting.js         # Posting module pages (stories, detail, queue, log)
 │       └── vendor/            # Chart.js + plugins (not indexed)
+│
+├── posting/                   # Multi-platform story upload module
+│   ├── __init__.py            # Package docstring
+│   ├── manager.py             # Orchestrates uploads: resolve → post → record
+│   ├── scheduler.py           # Daemon thread — processes posting_queue every 60s
+│   ├── story_reader.py        # Reads story archives, builds StoryUploadPackage
+│   ├── sync.py                # Retroactive claim + change detection
+│   ├── generate_story_json.py # CLI: generate story.json from legacy data
+│   ├── platforms/             # Per-platform poster implementations
+│   │   ├── __init__.py
+│   │   ├── base.py            # PlatformPoster ABC, PostResult, StoryUploadPackage
+│   │   ├── inkbunny.py        # IB poster (official API upload)
+│   │   ├── furaffinity.py     # FA poster (form scraping, desktop-only)
+│   │   ├── weasyl.py          # WS poster (CSRF form + API key)
+│   │   ├── sofurry.py         # SF poster (REST + CSRF chapters)
+│   │   ├── squidgeworld.py    # SqW poster (OTW Rails form)
+│   │   └── bluesky.py         # BSKY poster (AT Protocol announcements)
+│   └── references/
+│       └── inkbunny_bbcode_guide.md  # IB BBCode formatting reference
+│
+├── deploy/
+│   ├── cf-worker.js           # Cloudflare Worker proxy
+│   ├── setup-gcloud.sh        # GCP VM deployment automation
+│   ├── setup-oracle.sh        # Oracle Cloud Always Free deployment
+│   └── pawsync.bat            # Story archive sync (tar + gcloud scp to GCP)
 │
 ├── inkbunny_analytics.spec    # PyInstaller build spec
 ├── build.bat                  # Build script
@@ -115,7 +165,7 @@ PawPoller/
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `main.py` | 445 | App entry point — spawns 5 daemon threads + pywebview window |
+| `main.py` | ~850 | App entry point — spawns 15 daemon threads + pywebview window |
 | `poll_service.py` | 178 | Standalone CLI poller: `--once`, `--status`, or continuous (APScheduler) |
 | `dashboard.py` | 87 | FastAPI app factory with lifespan, router mounting, static file serving |
 | `config.py` | 236 | All paths, settings.json CRUD, credentials cascade, constants |
@@ -149,6 +199,27 @@ PawPoller/
 | `database/tw_queries.py` | ~450 | TW CRUD: upsert, snapshots, summary, growth (6 metrics) |
 | `database/group_queries.py` | 114 | Cross-platform groups: CRUD, member management, aggregate stats |
 | `database/analytics_queries.py` | 355 | Top fans, trending/spikes, cross-platform links, auto-suggest |
+| `database/posting_schema.sql` | ~145 | Posting tables: publications, posting_queue, posting_log |
+| `database/posting_queries.py` | ~300 | Posting CRUD: upsert publication, queue management, log entries |
+
+### Posting Module
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `posting/__init__.py` | ~25 | Package docstring — module overview |
+| `posting/manager.py` | ~200 | Orchestrates uploads: resolve files → dispatch to posters → record results |
+| `posting/scheduler.py` | ~120 | Daemon thread — checks posting_queue every 60s, respects requires field |
+| `posting/story_reader.py` | ~300 | Reads story archives (story.json, split_manifest, tags_upload) → StoryUploadPackage |
+| `posting/sync.py` | ~200 | Retroactive claim (title matching) + change detection (file hash comparison) |
+| `posting/generate_story_json.py` | ~200 | CLI tool: generate story.json from legacy tags_upload.txt + split_manifest |
+| `posting/platforms/base.py` | ~100 | PlatformPoster ABC, PostResult dataclass, StoryUploadPackage dataclass |
+| `posting/platforms/inkbunny.py` | ~130 | IB poster — api_upload.php + api_editsubmission.php |
+| `posting/platforms/furaffinity.py` | ~150 | FA poster — 3-step form scrape, desktop-only (70s rate limit) |
+| `posting/platforms/weasyl.py` | ~120 | WS poster — CSRF form submit + API key |
+| `posting/platforms/sofurry.py` | ~130 | SF poster — REST PUT/POST with CSRF token |
+| `posting/platforms/squidgeworld.py` | ~140 | SqW poster — OTW Rails form, author credentials |
+| `posting/platforms/bluesky.py` | ~120 | BSKY poster — AT Protocol createRecord + uploadBlob |
+| `posting/references/inkbunny_bbcode_guide.md` | — | IB BBCode formatting reference for story uploads |
 
 ### Polling
 
@@ -169,6 +240,8 @@ PawPoller/
 | `routes/ws_api.py` | 417 | `/api/ws` | WS endpoints |
 | `routes/bsky_api.py` | ~350 | `/api/bsky` | Bluesky endpoints |
 | `routes/tw_api.py` | ~350 | `/api/tw` | X/Twitter endpoints |
+| `routes/posting_api.py` | ~650 | `/api/posting` | Posting: stories, post, update, queue, publications, claim, changes, sync |
+| `routes/dashboard_auth.py` | ~350 | `/api/auth/dashboard-*` | Dashboard auth: login, 2FA, API keys, Turnstile |
 
 ### Frontend
 
@@ -181,6 +254,16 @@ PawPoller/
 | `frontend/js/components.js` | 697 | ~25 HTML template functions (tables, cards, lists, comments) |
 | `frontend/js/charts.js` | 436 | Chart.js wrappers — aggregate, submission, top bar, comparison |
 | `frontend/js/app.js` | 2524 | SPA router + all page renderers + state management |
+| `frontend/js/posting.js` | ~650 | Posting module pages: stories hub, story detail, queue, log |
+
+### Deploy
+
+| File | Purpose |
+|------|---------|
+| `deploy/cf-worker.js` | Cloudflare Worker proxy (3 modes: normal, chain, login) |
+| `deploy/setup-gcloud.sh` | GCP VM deployment automation |
+| `deploy/setup-oracle.sh` | Oracle Cloud Always Free deployment |
+| `deploy/pawsync.bat` | Story archive sync — tars Complete_Stories, gcloud scp to GCP, extracts on server |
 
 ---
 
@@ -238,6 +321,14 @@ PawPoller/
 | `submission_group_members` | `id` (auto) | Group membership (platform + submission_id) |
 | `submission_links` | `link_id` (auto) | Links between same work on different platforms |
 | `submission_link_members` | `id` (auto) | Link membership (platform + submission_id) |
+
+### Posting Module (posting_schema.sql)
+
+| Table | Primary Key | Purpose |
+|-------|-------------|---------|
+| `publications` | `pub_id` (auto) | Registry of what is posted where — UNIQUE(story_name, chapter_index, platform) |
+| `posting_queue` | `queue_id` (auto) | Pending/scheduled uploads and updates with `requires` field (desktop/server/any) |
+| `posting_log` | `log_id` (auto) | Immutable audit trail of every posting action (success or failure) |
 
 ---
 
@@ -413,6 +504,29 @@ PawPoller/
 | GET | `/api/tw/export/submissions` | TW CSV export |
 | GET | `/api/tw/export/snapshots` | TW snapshots CSV |
 
+### Posting Module — `/api/posting/*` (routes/posting_api.py)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/posting/stories` | List all stories with publication status per platform |
+| GET | `/api/posting/stories/{name}` | Full story detail: metadata, chapters, publications, stats |
+| POST | `/api/posting/post` | Post story to platforms immediately (body: story_name, platforms, chapters) |
+| POST | `/api/posting/update` | Push updates to already-posted submissions |
+| GET | `/api/posting/publications` | List all publications (filterable by story/platform) |
+| GET | `/api/posting/publications/stats` | Publications enriched with live stats from polling tables |
+| GET | `/api/posting/publications/{pub_id}` | Single publication by ID |
+| POST | `/api/posting/queue` | Add items to posting queue (with scheduling) |
+| GET | `/api/posting/queue` | List pending/processing queue items |
+| DELETE | `/api/posting/queue/{queue_id}` | Cancel a pending queue item |
+| GET | `/api/posting/log` | Posting audit log (filterable by story, limit) |
+| GET | `/api/posting/settings` | Get posting-related settings |
+| POST | `/api/posting/settings` | Save posting-related settings |
+| POST | `/api/posting/claim` | Retroactive sync: match submissions to stories |
+| GET | `/api/posting/changes` | Detect publications with changed files |
+| GET | `/api/posting/sync/status` | Per-story sync status summary |
+| POST | `/api/posting/sync/upload` | Receive .tar.gz archive from desktop (server endpoint) |
+| POST | `/api/posting/sync/push` | Push local archive to remote server (desktop endpoint) |
+
 ---
 
 ## Frontend SPA Routes
@@ -445,6 +559,10 @@ PawPoller/
 | `#/groups` | `renderGroups()` | Submission groups list |
 | `#/group/:id` | `renderGroupDetail(id)` | Group detail + members |
 | `#/cross-platform` | `renderCrossPlatform()` | Cross-platform links management |
+| `#/posting` | `Posting.renderUpload()` | Story card hub (browse all stories) |
+| `#/posting/story/:name` | `Posting.renderStoryDetail(name)` | Single story detail with platform controls |
+| `#/posting/queue` | `Posting.renderQueue()` | Posting queue (pending/scheduled items) |
+| `#/posting/log` | `Posting.renderLog()` | Posting audit log |
 | `#/settings` | `renderSettings()` | All settings + poll logs |
 
 ---
