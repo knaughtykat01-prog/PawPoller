@@ -61,10 +61,11 @@ class StoryInfo:
     total_words: int
     author: str
     chapters: list[ChapterInfo]
-    description: str
+    description: str                                  # short blurb (STORY DESCRIPTION)
     tags_by_platform: dict[str, list[str]]          # platform → tag list
     chapter_tags_by_platform: dict[int, dict[str, list[str]]]  # chapter_index → platform → tags
     chapter_descriptions: dict[int, str]             # chapter_index → description
+    summary: str = ""                                 # detailed summary (SUMMARY section, for SQW/AO3)
     thumbnail_path: str | None = None                 # full-series thumbnail
     chapter_thumbnails: dict[int, str] = None         # chapter_index → thumbnail path
 
@@ -179,7 +180,7 @@ def load_story(story_name: str) -> StoryInfo:
     tags_path = story_path / "Tags" / "tags_upload.txt"
     if tags_path.is_file():
         tags_text = tags_path.read_text(encoding="utf-8")
-        description, tags_by_platform, chapter_tags, chapter_descriptions = _parse_tags_upload(
+        description, summary, tags_by_platform, chapter_tags, chapter_descriptions = _parse_tags_upload(
             tags_text, total_chapters
         )
 
@@ -210,6 +211,7 @@ def load_story(story_name: str) -> StoryInfo:
         author=author,
         chapters=chapters,
         description=description,
+        summary=summary,
         tags_by_platform=tags_by_platform,
         chapter_tags_by_platform=chapter_tags,
         chapter_descriptions=chapter_descriptions,
@@ -252,11 +254,16 @@ def build_package(
     else:
         title = story.name.replace("_", " ")
 
-    # Description
+    # Description — platform-specific selection:
+    #   SQW/AO3: use detailed summary (SUMMARY section) for work-level, chapter desc for chapters
+    #   FA: use per-chapter description (DESCRIPTION under each PART section)
+    #   IB/SF/WS/BSKY: use short blurb (STORY DESCRIPTION)
     if description_override:
         description = description_override
     elif chapter_index > 0 and chapter_index in story.chapter_descriptions:
         description = story.chapter_descriptions[chapter_index]
+    elif platform in ("sqw", "ao3") and story.summary:
+        description = story.summary
     else:
         description = story.description
 
@@ -346,18 +353,27 @@ def _resolve_format_file(
 
 def _parse_tags_upload(
     text: str, total_chapters: int
-) -> tuple[str, dict[str, list[str]], dict[int, dict[str, list[str]]], dict[int, str]]:
+) -> tuple[str, str, dict[str, list[str]], dict[int, dict[str, list[str]]], dict[int, str]]:
     """Parse a tags_upload.txt file.
 
     Returns:
-        (story_description, tags_by_platform, chapter_tags, chapter_descriptions)
+        (story_description, summary, tags_by_platform, chapter_tags, chapter_descriptions)
     """
     description = ""
+    summary = ""
     tags_by_platform: dict[str, list[str]] = {}
     chapter_tags: dict[int, dict[str, list[str]]] = {}
     chapter_descriptions: dict[int, str] = {}
 
-    # Extract story-level description
+    # Extract detailed summary (SUMMARY section — used by SQW/AO3)
+    summary_match = re.search(
+        r"^SUMMARY[^:]*:\s*\n(.+?)(?:\nNOTES|\nASSOCIATIONS|\n=====)",
+        text, re.MULTILINE | re.DOTALL
+    )
+    if summary_match:
+        summary = summary_match.group(1).strip()
+
+    # Extract short story description (STORY DESCRIPTION — used by IB/SF/etc.)
     desc_match = re.search(
         r"STORY DESCRIPTION:\s*\n(.+?)(?:\n=====|\nPART \d|\nTAGS|\n$)",
         text, re.DOTALL
@@ -444,4 +460,4 @@ def _parse_tags_upload(
         if ch_tags:
             chapter_tags[ch_idx] = ch_tags
 
-    return description, tags_by_platform, chapter_tags, chapter_descriptions
+    return description, summary, tags_by_platform, chapter_tags, chapter_descriptions
