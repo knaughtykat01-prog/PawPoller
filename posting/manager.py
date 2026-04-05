@@ -49,6 +49,9 @@ def _get_poster(platform: str) -> PlatformPoster:
         elif platform == "ik":
             from posting.platforms.itaku import ItakuPoster
             _posters["ik"] = ItakuPoster()
+        elif platform == "da":
+            from posting.platforms.deviantart import DeviantArtPoster
+            _posters["da"] = DeviantArtPoster()
         else:
             raise ValueError(f"Unknown platform: {platform}")
     return _posters[platform]
@@ -71,6 +74,7 @@ PLATFORM_EMOJIS = {
     "sqw": "🦑",
     "ao3": "📖",
     "ik": "🎯",
+    "da": "🎨",
     "bsky": "🦋",
 }
 

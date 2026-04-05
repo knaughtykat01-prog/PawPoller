@@ -2816,6 +2816,32 @@ class StoryUploadPackage:
 
 **Format files**: Uses SquidgeWorld HTML (`SquidgeWorld/*.html`), falling back to SoFurry HTML. Same format map as SQW since both run OTW Archive.
 
+#### DeviantArt (`posting/platforms/deviantart.py`)
+
+**Auth**: Official OAuth2 API — **not** the undocumented `_napi`/`_puppy` endpoints. Requires registering a DA application at the developer portal to get `client_id` and `client_secret`, then doing a one-time Authorization Code flow in the browser to obtain a refresh token.
+
+**Settings**: `da_client_id`, `da_client_secret`, `da_refresh_token`. Access tokens expire hourly and are auto-refreshed. Refresh tokens last 3 months.
+
+**Post flow**:
+```
+POST /api/v1/oauth2/deviation/literature/create
+```
+Parameters: `title` (max 50 chars), `body` (plain text), `tags[]` (max 30), `is_mature`, `mature_level` ("strict"/"moderate"), `mature_classification[]` ("sexual"/"nudity"/"gore"), `allow_comments`, `galleryids[]`.
+
+**Edit flow**:
+```
+POST /api/v1/oauth2/deviation/literature/update/{deviationid}
+```
+Same parameters — only provided fields are updated. Body replacement replaces the full literature text.
+
+**Rating mapping**: General → `is_mature=false`; Mature → `is_mature=true, mature_level="moderate"`; Adult → `is_mature=true, mature_level="strict", mature_classification=["sexual"]`.
+
+**Format files**: Reads from `Markdown/MASTER.md` or `Chapters/Markdown/*.md`. The OAuth API accepts plain text (not HTML/BBCode).
+
+**IP independence**: Unlike the cookie-based `_napi` endpoints which need residential IPs, the OAuth2 API works from any IP since authentication is token-based.
+
+**Stability**: Official, documented, versioned API — low fragility compared to the `_napi`/`_puppy` approach that PostyBirb uses.
+
 #### Itaku (`posting/platforms/itaku.py`)
 
 **Auth**: Django REST Framework token extracted from browser session. Stored as `ik_auth_token` in settings. No OAuth or API key registration — must be manually obtained from browser DevTools (Network tab → any API call → Authorization header).

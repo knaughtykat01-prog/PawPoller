@@ -141,6 +141,9 @@ def generate_story_json(story_path: Path) -> dict:
     # AO3 uses the same SquidgeWorld HTML format (OTW Archive)
     if formats.get("squidgeworld") or formats.get("sofurry_html"):
         platforms["ao3"] = {"format": "squidgeworld_html"}
+    # DeviantArt — uses OAuth2 literature API, accepts plain text/markdown
+    if formats.get("markdown"):
+        platforms["deviantart"] = {"format": "markdown", "api": "oauth2"}
     platforms["bluesky"] = {"type": "announcement"}
     result["platforms"] = platforms
 

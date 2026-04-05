@@ -378,6 +378,154 @@ class DAClient:
         return details
 
 
+    # ── OAuth2 Posting (Official API) ─────────────────────────────
+
+    async def oauth_create_literature(
+        self,
+        *,
+        title: str,
+        body: str,
+        tags: list[str] | None = None,
+        is_mature: bool = False,
+        mature_level: str = "",
+        mature_classification: list[str] | None = None,
+        allow_comments: bool = True,
+        galleryids: list[str] | None = None,
+        access_token: str = "",
+    ) -> dict:
+        """Create a literature deviation via the official OAuth2 API.
+
+        Requires a valid OAuth2 access token with 'user.manage' scope.
+        Register an app at the DeviantArt developer portal to get
+        client_id/client_secret, then do the Authorization Code flow.
+
+        Args:
+            title: Deviation title (max 50 chars).
+            body: Literature text content (plain text or limited HTML).
+            tags: List of tags.
+            is_mature: Whether content is mature/adult.
+            mature_level: "strict" or "moderate" (required if is_mature).
+            mature_classification: List of: "nudity", "sexual", "gore", "language", "ideology".
+            allow_comments: Allow comments on the deviation.
+            galleryids: Gallery folder UUIDs to add to.
+            access_token: OAuth2 access token.
+
+        Returns:
+            Dict with 'deviationid'.
+        """
+        if not access_token:
+            raise RuntimeError("DA: OAuth2 access token required")
+
+        params = {
+            "title": title[:50],
+            "body": body,
+            "allow_comments": "1" if allow_comments else "0",
+            "access_token": access_token,
+        }
+        if tags:
+            for i, tag in enumerate(tags[:30]):
+                params[f"tags[{i}]"] = tag
+        if is_mature:
+            params["is_mature"] = "1"
+            if mature_level:
+                params["mature_level"] = mature_level
+            if mature_classification:
+                for mc in mature_classification:
+                    params[f"mature_classification[]"] = mc
+        if galleryids:
+            for i, gid in enumerate(galleryids):
+                params[f"galleryids[{i}]"] = gid
+
+        resp = await self._http.post(
+            "https://www.deviantart.com/api/v1/oauth2/deviation/literature/create",
+            data=params,
+            timeout=60.0,
+        )
+
+        if resp.status_code == 401:
+            raise RuntimeError("DA: OAuth token expired or invalid (401)")
+        if resp.status_code != 200:
+            raise RuntimeError(f"DA: Literature create failed — {resp.status_code}: {resp.text[:200]}")
+
+        result = resp.json()
+        dev_id = result.get("deviationid", "")
+        logger.info("DA: Created literature deviation %s — %s", dev_id, title[:40])
+        return {"deviationid": dev_id, "url": f"https://www.deviantart.com/knaughtykat/art/{dev_id}"}
+
+    async def oauth_update_literature(
+        self,
+        deviation_id: str,
+        *,
+        title: str | None = None,
+        body: str | None = None,
+        tags: list[str] | None = None,
+        is_mature: bool | None = None,
+        access_token: str = "",
+    ) -> dict:
+        """Update an existing literature deviation via OAuth2 API.
+
+        Only provided fields are updated.
+        """
+        if not access_token:
+            raise RuntimeError("DA: OAuth2 access token required")
+
+        params: dict[str, str] = {
+            "access_token": access_token,
+        }
+        if title is not None:
+            params["title"] = title[:50]
+        if body is not None:
+            params["body"] = body
+        if tags is not None:
+            for i, tag in enumerate(tags[:30]):
+                params[f"tags[{i}]"] = tag
+        if is_mature is not None:
+            params["is_mature"] = "1" if is_mature else "0"
+
+        resp = await self._http.post(
+            f"https://www.deviantart.com/api/v1/oauth2/deviation/literature/update/{deviation_id}",
+            data=params,
+            timeout=30.0,
+        )
+
+        if resp.status_code == 401:
+            raise RuntimeError("DA: OAuth token expired or invalid (401)")
+        if resp.status_code != 200:
+            raise RuntimeError(f"DA: Literature update failed — {resp.status_code}: {resp.text[:200]}")
+
+        logger.info("DA: Updated literature deviation %s", deviation_id)
+        return resp.json()
+
+    async def oauth_refresh_token(
+        self,
+        client_id: str,
+        client_secret: str,
+        refresh_token: str,
+    ) -> dict:
+        """Refresh an OAuth2 access token.
+
+        Access tokens expire after 1 hour. Refresh tokens last 3 months.
+        Returns new access_token and refresh_token.
+        """
+        resp = await self._http.post(
+            "https://www.deviantart.com/oauth2/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": refresh_token,
+            },
+            timeout=15.0,
+        )
+
+        if resp.status_code != 200:
+            raise RuntimeError(f"DA: Token refresh failed — {resp.status_code}")
+
+        data = resp.json()
+        logger.info("DA: OAuth token refreshed (expires in %ds)", data.get("expires_in", 0))
+        return data
+
+
 def _extract_stat_int(text: str, key: str) -> int:
     """Extract an integer stat value from a JSON-like string."""
     m = re.search(rf'"{key}"\s*:\s*(\d+)', text)

@@ -7,6 +7,15 @@ All notable changes to PawPoller are documented here.
 ## [2.1.0] - 2026-04-05
 
 ### Added
+- **DeviantArt posting support** (platform 9) — via official OAuth2 literature API
+  - `da_client/client.py` — `oauth_create_literature()`, `oauth_update_literature()`, `oauth_refresh_token()`
+  - `posting/platforms/deviantart.py` — DeviantArtPoster with post, edit, replace_file (body content)
+  - Uses official OAuth2 API (not undocumented _napi) — stable, works from any IP
+  - Requires app registration: `da_client_id`, `da_client_secret`, `da_refresh_token` in settings
+  - Auto-refreshes access tokens (1-hour expiry, 3-month refresh tokens)
+  - Title max 50 chars, max 30 tags, mature level/classification support
+  - Format: reads from Markdown (MASTER.md or chapter files)
+
 - **Itaku posting support** (platform 8) — image gallery uploads and text posts
   - `ik_client/client.py` — `upload_image()` (multipart gallery), `create_post()` (JSON text post)
   - `posting/platforms/itaku.py` — ItakuPoster with image upload and text post support
