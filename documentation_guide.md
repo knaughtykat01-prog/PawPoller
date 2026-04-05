@@ -2816,6 +2816,22 @@ class StoryUploadPackage:
 
 **Format files**: Uses SquidgeWorld HTML (`SquidgeWorld/*.html`), falling back to SoFurry HTML. Same format map as SQW since both run OTW Archive.
 
+#### Itaku (`posting/platforms/itaku.py`)
+
+**Auth**: Django REST Framework token extracted from browser session. Stored as `ik_auth_token` in settings. No OAuth or API key registration — must be manually obtained from browser DevTools (Network tab → any API call → Authorization header).
+
+**Image upload**:
+POST `/api/galleries/images/` with multipart form data: `image` (binary), `title`, `description`, `tags` (JSON array of `{name: tag}`), `maturity_rating`, `visibility`, `share_on_feed`.
+
+**Text post** (for announcements, not full stories):
+POST `/api/posts/` with JSON: `title`, `content` (plaintext, max ~5000 chars), `tags`, `maturity_rating`, `gallery_images` (optional image IDs).
+
+**Rating mapping**: General → `"SFW"`, Mature → `"Questionable"`, Adult → `"NSFW"`.
+
+**Limitations**: No edit API, no file replacement, no chapter system, no rich text formatting. Min 5 tags, max 59 chars per tag, max 10MB per image. Text posts are ~5000 chars max (~800 words). Itaku is an art gallery — literature is a second-class citizen.
+
+**Use case**: Image/thumbnail uploads and short announcement posts, not full story publishing.
+
 ### Publications Registry
 
 The `publications` table is the central record of what has been posted where. One row per `(story_name, chapter_index, platform)` combination.

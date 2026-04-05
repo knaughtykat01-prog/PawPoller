@@ -232,3 +232,143 @@ class IKClient:
             except Exception as e:
                 logger.warning("IK: Failed to fetch content %s: %s", item.get("content_id"), e)
         return details
+
+    # ── Posting / Upload ────────────────────────────────────────
+
+    async def upload_image(
+        self,
+        file_path: str,
+        *,
+        title: str = "",
+        description: str = "",
+        tags: list[str] | None = None,
+        maturity_rating: str = "SFW",
+        visibility: str = "PUBLIC",
+        sections: list[int] | None = None,
+        share_on_feed: bool = True,
+        token: str = "",
+    ) -> dict:
+        """Upload an image to Itaku gallery.
+
+        Args:
+            file_path: Path to image file (PNG, JPG, GIF, WEBP).
+            title: Image title.
+            description: Plaintext description (max 5000 chars).
+            tags: List of tag names (min 5 tags).
+            maturity_rating: "SFW", "Questionable", or "NSFW".
+            visibility: "PUBLIC", "FOLLOWERS_ONLY", or "PRIVATE".
+            sections: Gallery folder IDs (optional).
+            share_on_feed: Post to activity feed.
+            token: Auth token (from browser session).
+
+        Returns:
+            Dict with 'id' and 'url'.
+        """
+        import os
+
+        if not token:
+            raise RuntimeError("Itaku auth token required for uploads")
+
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+
+        filename = os.path.basename(file_path)
+        tag_json = [{"name": t} for t in (tags or [])]
+
+        # Build multipart form
+        import json
+        files = {"image": (filename, file_data)}
+        data = {
+            "title": title,
+            "description": description[:5000],
+            "tags": json.dumps(tag_json),
+            "maturity_rating": maturity_rating,
+            "visibility": visibility,
+            "share_on_feed": "true" if share_on_feed else "false",
+        }
+        if sections:
+            data["sections"] = json.dumps(sections)
+
+        resp = await self._http.post(
+            f"{_API_BASE}/galleries/images/",
+            data=data,
+            files=files,
+            headers={"Authorization": f"Token {token}"},
+            timeout=60.0,
+        )
+
+        if resp.status_code == 429:
+            logger.warning("IK: Rate limited on upload, waiting 30s...")
+            await asyncio.sleep(30)
+            resp = await self._http.post(
+                f"{_API_BASE}/galleries/images/",
+                data=data,
+                files=files,
+                headers={"Authorization": f"Token {token}"},
+                timeout=60.0,
+            )
+
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(f"IK: Upload failed — status {resp.status_code}: {resp.text[:200]}")
+
+        result = resp.json()
+        image_id = result.get("id", "")
+        logger.info("IK: Uploaded image %s — %s", image_id, title[:40])
+        return {"id": str(image_id), "url": f"{_WEB_BASE}/image/{image_id}"}
+
+    async def create_post(
+        self,
+        *,
+        title: str = "",
+        content: str = "",
+        tags: list[str] | None = None,
+        maturity_rating: str = "SFW",
+        visibility: str = "PUBLIC",
+        gallery_images: list[int] | None = None,
+        token: str = "",
+    ) -> dict:
+        """Create a text post on Itaku.
+
+        Posts are text/blog-style content. Can optionally reference gallery images.
+        Content is plaintext, max ~5000 chars.
+
+        Args:
+            title: Post title.
+            content: Post body text (plaintext).
+            tags: List of tag names.
+            maturity_rating: "SFW", "Questionable", or "NSFW".
+            visibility: "PUBLIC", "FOLLOWERS_ONLY", or "PRIVATE".
+            gallery_images: List of gallery image IDs to attach.
+            token: Auth token.
+
+        Returns:
+            Dict with 'id' and 'url'.
+        """
+        if not token:
+            raise RuntimeError("Itaku auth token required for posting")
+
+        import json
+        tag_json = [{"name": t} for t in (tags or [])]
+        payload = {
+            "title": title,
+            "content": content[:5000],
+            "tags": tag_json,
+            "maturity_rating": maturity_rating,
+            "visibility": visibility,
+            "gallery_images": gallery_images or [],
+        }
+
+        resp = await self._http.post(
+            f"{_API_BASE}/posts/",
+            json=payload,
+            headers={"Authorization": f"Token {token}"},
+            timeout=30.0,
+        )
+
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(f"IK: Post creation failed — status {resp.status_code}: {resp.text[:200]}")
+
+        result = resp.json()
+        post_id = result.get("id", "")
+        logger.info("IK: Created post %s — %s", post_id, title[:40])
+        return {"id": str(post_id), "url": f"{_WEB_BASE}/post/{post_id}"}

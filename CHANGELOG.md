@@ -7,6 +7,14 @@ All notable changes to PawPoller are documented here.
 ## [2.1.0] - 2026-04-05
 
 ### Added
+- **Itaku posting support** (platform 8) — image gallery uploads and text posts
+  - `ik_client/client.py` — `upload_image()` (multipart gallery), `create_post()` (JSON text post)
+  - `posting/platforms/itaku.py` — ItakuPoster with image upload and text post support
+  - Auth: Django REST Framework token from browser session (`ik_auth_token` setting)
+  - Min 5 tags, max 10MB images, ratings: SFW/Questionable/NSFW
+  - No edit or file replacement support (Itaku API limitation)
+  - Note: Itaku is primarily for art, not literature. Text posts limited to ~5000 chars.
+
 - **AO3 posting support** (platform 7) — same OTW Archive software as SquidgeWorld
   - `ao3_client/client.py` — `create_work()`, `edit_work()`, `edit_chapter()`, `get_chapter_ids()`, HTML whitespace collapse
   - `posting/platforms/ao3.py` — AO3Poster with post, edit (metadata + chapters), replace_file

@@ -52,6 +52,7 @@ PLATFORM_FORMAT_MAP: dict[str, list[tuple[str, str, str]]] = {
         ("SquidgeWorld", "*.html", "html"),  # Same OTW format as SQW
         ("Chapters/SoFurry_HTML", "*.html", "html"),
     ],
+    "ik": [],  # Itaku: images uploaded separately, text posts use description
     "bsky": [],  # Bluesky uses text from description, no file upload
 }
 
