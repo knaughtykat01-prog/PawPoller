@@ -138,6 +138,9 @@ def generate_story_json(story_path: Path) -> dict:
             skin_match = re.search(r"Title:\s*(.+)", css)
             if skin_match:
                 platforms["squidgeworld"]["work_skin"] = skin_match.group(1).strip()
+    # AO3 uses the same SquidgeWorld HTML format (OTW Archive)
+    if formats.get("squidgeworld") or formats.get("sofurry_html"):
+        platforms["ao3"] = {"format": "squidgeworld_html"}
     platforms["bluesky"] = {"type": "announcement"}
     result["platforms"] = platforms
 

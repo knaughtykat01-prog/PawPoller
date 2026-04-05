@@ -43,6 +43,9 @@ def _get_poster(platform: str) -> PlatformPoster:
         elif platform == "sqw":
             from posting.platforms.squidgeworld import SquidgeWorldPoster
             _posters["sqw"] = SquidgeWorldPoster()
+        elif platform == "ao3":
+            from posting.platforms.ao3 import AO3Poster
+            _posters["ao3"] = AO3Poster()
         else:
             raise ValueError(f"Unknown platform: {platform}")
     return _posters[platform]
@@ -62,6 +65,8 @@ PLATFORM_EMOJIS = {
     "fa": "🦊",
     "ws": "🦎",
     "sf": "🐺",
+    "sqw": "🦑",
+    "ao3": "📖",
     "bsky": "🦋",
 }
 

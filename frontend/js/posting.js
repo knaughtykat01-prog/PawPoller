@@ -10,15 +10,15 @@
 
 const PLATFORM_LABELS = {
     ib: '🐾 Inkbunny', fa: '🦊 FurAffinity', ws: '🦎 Weasyl',
-    sf: '🐺 SoFurry', sqw: '🦑 SquidgeWorld', bsky: '🦋 Bluesky', wp: '📙 Wattpad',
+    sf: '🐺 SoFurry', sqw: '🦑 SquidgeWorld', ao3: '📖 AO3', bsky: '🦋 Bluesky', wp: '📙 Wattpad',
     inkbunny: '🐾 Inkbunny', furaffinity: '🦊 FurAffinity', weasyl: '🦎 Weasyl',
-    sofurry: '🐺 SoFurry', squidgeworld: '🦑 SquidgeWorld', bluesky: '🦋 Bluesky', wattpad: '📙 Wattpad',
+    sofurry: '🐺 SoFurry', squidgeworld: '🦑 SquidgeWorld', ao3: '📖 AO3', bluesky: '🦋 Bluesky', wattpad: '📙 Wattpad',
 };
 const PLATFORM_EMOJI = {
-    ib: '🐾', fa: '🦊', ws: '🦎', sf: '🐺', sqw: '🦑', bsky: '🦋', wp: '📙',
-    inkbunny: '🐾', furaffinity: '🦊', weasyl: '🦎', sofurry: '🐺', squidgeworld: '🦑', bluesky: '🦋', wattpad: '📙',
+    ib: '🐾', fa: '🦊', ws: '🦎', sf: '🐺', sqw: '🦑', ao3: '📖', bsky: '🦋', wp: '📙',
+    inkbunny: '🐾', furaffinity: '🦊', weasyl: '🦎', sofurry: '🐺', squidgeworld: '🦑', ao3: '📖', bluesky: '🦋', wattpad: '📙',
 };
-const PLAT_ID = { inkbunny: 'ib', furaffinity: 'fa', weasyl: 'ws', sofurry: 'sf', squidgeworld: 'sqw', bluesky: 'bsky', wattpad: 'wp' };
+const PLAT_ID = { inkbunny: 'ib', furaffinity: 'fa', weasyl: 'ws', sofurry: 'sf', squidgeworld: 'sqw', ao3: 'ao3', bluesky: 'bsky', wattpad: 'wp' };
 
 const Posting = {
 

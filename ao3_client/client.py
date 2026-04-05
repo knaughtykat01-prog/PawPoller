@@ -352,3 +352,234 @@ class AO3Client:
             r'<a\s+href="/users/([^"]+)"', kudos_section.group(1),
         )
         return [unescape(u) for u in users]
+
+    # ── Posting / Upload ────────────────────────────────────────
+
+    async def _get_authenticity_token(self, url: str) -> str | None:
+        """Fetch a page and extract the Rails authenticity_token."""
+        html = await self._get_page(url)
+        if not html:
+            return None
+        m = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', html)
+        if not m:
+            m = re.search(r'value="([^"]+)"[^>]*name="authenticity_token"', html)
+        return m.group(1) if m else None
+
+    async def create_work(
+        self,
+        *,
+        title: str,
+        content: str,
+        fandom: str = "Original Work",
+        rating: str = "Explicit",
+        warning: str = "Creator Chose Not To Use Archive Warnings",
+        category: str = "",
+        relationship: str = "",
+        characters: str = "",
+        additional_tags: str = "",
+        summary: str = "",
+        notes_begin: str = "",
+        notes_end: str = "",
+        language: str = "en",
+    ) -> dict:
+        """Create a new work on AO3.
+
+        Same OTW form as SquidgeWorld. Rate-limited (3s between requests).
+        """
+        if not self._logged_in:
+            if not await self.ensure_logged_in():
+                raise RuntimeError("AO3: Not logged in")
+
+        token = await self._get_authenticity_token(f"{_BASE}/works/new")
+        if not token:
+            raise RuntimeError("AO3: Could not get CSRF token from /works/new")
+
+        # Collapse multi-line HTML
+        clean_content = _collapse_html_whitespace(content)
+
+        form_data = {
+            "authenticity_token": token,
+            "work[title]": title,
+            "work[fandom_string]": fandom,
+            "work[rating_string]": rating,
+            "work[archive_warning_string]": warning,
+            "work[category_string]": category,
+            "work[relationship_string]": relationship,
+            "work[character_string]": characters,
+            "work[freeform_string]": additional_tags,
+            "work[summary]": summary[:1250],
+            "work[notes]": notes_begin,
+            "work[endnotes]": notes_end,
+            "work[language_id]": language,
+            "work[chapter_attributes][content]": clean_content,
+            "preview_button": "Preview",
+        }
+
+        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        resp = await self._http.post(
+            f"{_BASE}/works",
+            data=form_data,
+            headers={"Referer": f"{_BASE}/works/new"},
+            timeout=60.0,
+        )
+
+        final_url = str(resp.url)
+        work_match = re.search(r'/works/(\d+)', final_url)
+        if work_match:
+            work_id = work_match.group(1)
+            url = f"{_BASE}/works/{work_id}"
+            logger.info("AO3: Created work %s — %s", work_id, url)
+            return {"work_id": work_id, "url": url}
+
+        # Check for errors
+        errors = re.findall(r'class="error"[^>]*>(.*?)</li>', resp.text, re.DOTALL)
+        err_text = "; ".join(re.sub(r'<[^>]+>', '', e).strip() for e in errors[:3])
+        raise RuntimeError(f"AO3: Work creation failed: {err_text or 'unknown error'}")
+
+    async def edit_work(
+        self,
+        work_id: str,
+        *,
+        title: str | None = None,
+        summary: str | None = None,
+        additional_tags: str | None = None,
+        notes_begin: str | None = None,
+        notes_end: str | None = None,
+    ) -> dict:
+        """Edit metadata on an existing AO3 work."""
+        if not self._logged_in:
+            if not await self.ensure_logged_in():
+                raise RuntimeError("AO3: Not logged in")
+
+        edit_url = f"{_BASE}/works/{work_id}/edit"
+        token = await self._get_authenticity_token(edit_url)
+        if not token:
+            raise RuntimeError("AO3: Could not get CSRF token from edit page")
+
+        form_data: dict[str, str] = {
+            "authenticity_token": token,
+            "_method": "patch",
+        }
+        if title is not None:
+            form_data["work[title]"] = title
+        if summary is not None:
+            form_data["work[summary]"] = summary[:1250]
+        if additional_tags is not None:
+            form_data["work[freeform_string]"] = additional_tags
+        if notes_begin is not None:
+            form_data["work[notes]"] = notes_begin
+        if notes_end is not None:
+            form_data["work[endnotes]"] = notes_end
+
+        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        resp = await self._http.post(
+            f"{_BASE}/works/{work_id}",
+            data=form_data,
+            headers={"Referer": edit_url},
+            timeout=30.0,
+        )
+
+        if resp.status_code >= 400:
+            raise RuntimeError(f"AO3: Edit failed — status {resp.status_code}")
+
+        logger.info("AO3: Edited work %s", work_id)
+        return {"work_id": work_id, "url": f"{_BASE}/works/{work_id}"}
+
+    async def edit_chapter(
+        self,
+        work_id: str,
+        chapter_id: str,
+        *,
+        content: str,
+        title: str | None = None,
+    ) -> dict:
+        """Edit the content of a specific chapter.
+
+        Collapses HTML whitespace to prevent AO3's auto-formatter from
+        inserting <br /> tags within elements.
+        """
+        if not self._logged_in:
+            if not await self.ensure_logged_in():
+                raise RuntimeError("AO3: Not logged in")
+
+        clean_content = _collapse_html_whitespace(content)
+        edit_url = f"{_BASE}/works/{work_id}/chapters/{chapter_id}/edit"
+
+        page = await self._get_page(edit_url)
+        if not page:
+            raise RuntimeError("AO3: Could not load chapter edit page")
+
+        token = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', page)
+        if not token:
+            token = re.search(r'value="([^"]+)"[^>]*name="authenticity_token"', page)
+        if not token:
+            raise RuntimeError("AO3: Could not get CSRF token from chapter edit")
+
+        form_data: dict[str, str] = {
+            "authenticity_token": token.group(1),
+            "_method": "patch",
+            "chapter[content]": clean_content,
+        }
+        if title is not None:
+            form_data["chapter[title]"] = title
+
+        # Include commit button
+        commit = re.search(r'name="commit"[^>]*value="([^"]*)"', page)
+        form_data["commit"] = commit.group(1) if commit else "Update"
+
+        utf8 = re.search(r'name="utf8"[^>]*value="([^"]*)"', page)
+        if utf8:
+            form_data["utf8"] = utf8.group(1)
+
+        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        resp = await self._http.post(
+            f"{_BASE}/works/{work_id}/chapters/{chapter_id}",
+            data=form_data,
+            headers={"Referer": edit_url},
+            timeout=60.0,
+        )
+
+        if resp.status_code >= 400:
+            raise RuntimeError(f"AO3: Chapter edit failed — status {resp.status_code}")
+
+        errors = re.findall(r'class="error"[^>]*>(.*?)</li>', resp.text[:3000], re.DOTALL)
+        if errors:
+            err_text = "; ".join(re.sub(r'<[^>]+>', '', e).strip() for e in errors[:3])
+            raise RuntimeError(f"AO3: Chapter edit errors: {err_text}")
+
+        logger.info("AO3: Edited chapter %s of work %s", chapter_id, work_id)
+        return {"work_id": work_id, "chapter_id": chapter_id}
+
+    async def get_chapter_ids(self, work_id: str) -> list[dict]:
+        """Get all chapter IDs and titles for a work."""
+        url = f"{_BASE}/works/{work_id}/navigate"
+        html = await self._get_page(url)
+        if not html:
+            return []
+
+        chapters = re.findall(
+            r'href="/works/\d+/chapters/(\d+)"[^>]*>(\d+)\.\s*([^<]*)',
+            html,
+        )
+        return [
+            {"chapter_id": ch_id, "index": int(idx), "title": title.strip()}
+            for ch_id, idx, title in chapters
+        ]
+
+
+def _collapse_html_whitespace(html: str) -> str:
+    """Collapse multi-line HTML so each element is on a single line.
+
+    OTW Archive's chapter editor converts internal newlines within HTML tags
+    to <br /> tags, causing unwanted line breaks.
+    """
+    def _collapse_tag(match: re.Match) -> str:
+        text = match.group(0)
+        collapsed = re.sub(r'\n\s*', ' ', text)
+        collapsed = re.sub(r'  +', ' ', collapsed)
+        return collapsed
+
+    result = re.sub(r'<p[^>]*>.*?</p>', _collapse_tag, html, flags=re.DOTALL)
+    result = re.sub(r'<div[^>]*>.*?</div>', _collapse_tag, result, flags=re.DOTALL)
+    result = re.sub(r'\n{3,}', '\n\n', result)
+    return result
