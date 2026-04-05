@@ -4,6 +4,117 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.1.0] - 2026-04-05
+
+### Added
+- **AO3 posting support** (platform 7) — same OTW Archive software as SquidgeWorld
+  - `ao3_client/client.py` — `create_work()`, `edit_work()`, `edit_chapter()`, `get_chapter_ids()`, HTML whitespace collapse
+  - `posting/platforms/ao3.py` — AO3Poster with post, edit (metadata + chapters), replace_file
+  - Uses existing `ao3_username`/`ao3_password` credentials (same account for polling and posting)
+  - 3-second rate limit between requests (AO3 is volunteer-run)
+  - Registered in manager, story_reader, frontend, story.json generator
+
+### Fixed
+- **SQLite "database is locked" errors** — increased timeout from 10s to 30s + added `PRAGMA busy_timeout=30000` for concurrent poll cycle contention
+
+---
+
+## [2.0.0] - 2026-04-04
+
+### Added — Multi-Platform Posting Module
+Complete story publishing system — upload, edit, and manage stories across 7 platforms from PawPoller.
+
+**Core Infrastructure:**
+- `posting/` module — manager, scheduler, story reader, sync, platform posters
+- `database/posting_schema.sql` — 3 tables: publications, posting_queue, posting_log
+- `database/posting_queries.py` — Full CRUD for all posting tables
+- `routes/posting_api.py` — 12+ REST endpoints for posting operations
+- `posting/scheduler.py` — Background daemon thread processing the posting queue
+- Desktop/server queue mode — FA items auto-queue for desktop when server can't process
+
+**Platform Posters (6 platforms):**
+- **Inkbunny** (`posting/platforms/inkbunny.py`) — API upload + edit via `api_upload.php` / `api_editsubmission.php`. Story text uses `story` field (reading panel), `desc` for summary. BBCode text message styling (coloured, aligned sent/received).
+- **FurAffinity** (`posting/platforms/furaffinity.py`) — 3-step form scrape (GET key → POST upload → POST finalize). Edit via `/controls/submissions/changeinfo/`. File replace via `/controls/submissions/changestory/`. 70s rate limit.
+- **SoFurry** (`posting/platforms/sofurry.py`) — REST + CSRF (PUT create → POST content chapter → POST metadata). Chapter-based story content. Author credentials for editing.
+- **Weasyl** (`posting/platforms/weasyl.py`) — CSRF + form POST to `/submit/literary`. API key auth.
+- **SquidgeWorld** (`posting/platforms/squidgeworld.py`) — OTW Archive form scraping. Author credentials (separate from polling account). HTML whitespace collapse to prevent `<br />` injection. Work Skin CSS classes preserved.
+- **Bluesky** (`posting/platforms/bluesky.py`) — AT Protocol `createRecord` + `uploadBlob`. Announcement posts with NSFW labels. Link facet extraction.
+
+**Story Archive System:**
+- `story.json` per story — standardised metadata (title, author, rating, warnings, tags, chapters, platforms, images)
+- `posting/generate_story_json.py` — generates story.json from existing tags_upload.txt + split_manifest.json
+- `posting/story_reader.py` — reads story.json (preferred) or falls back to legacy tag/manifest parsing
+- Platform-specific description selection (summary for SQW/AO3, short blurb for IB/SF)
+- Format file resolution per platform (BBCode→IB, PDF→FA, SoFurry HTML→SF, SquidgeWorld HTML→SQW)
+
+**Retroactive Sync:**
+- `posting/sync.py` — claim existing submissions into publications registry by title matching
+- 25 publications claimed across IB, FA, SF, SQW, WP
+- Fuzzy matching: full stories, per-chapter (FA), sub-stories (Abstinent Bet), part words
+- `/claim` Telegram command and `/api/posting/claim` endpoint
+
+**Change Detection:**
+- `file_hash` column on publications — SHA-256 of format file at time of posting
+- `detect_changes()` / `get_changed_stories()` / `get_sync_status_summary()`
+- `/changes` Telegram command and `/api/posting/changes` endpoint
+- After `/update`, hashes are refreshed so `/changes` shows stories as up-to-date
+
+**Desktop Queue Mode:**
+- `requires` column on posting_queue: `any`, `desktop`, `server`
+- FA flagged as `requires_mode = "desktop"` (needs residential IP)
+- Scheduler auto-detects runtime mode (pywebview importable = desktop)
+- Failed server posts auto-queue for desktop with `requires=desktop`
+
+**Batch Operations:**
+- `/update all [platforms]` — pushes all changed stories to all platforms
+- `/update all fa` — batch update on single platform
+- Auto-queue fallback: failed server edits queued for desktop processing
+
+**Dashboard UI:**
+- Story card hub (`#/posting`) — grid of cards with title, words, chapters, rating, platform badges
+- Story detail page (`#/posting/story/{name}`) — full metadata, publications with live stats, upload/update buttons, chapter list, format inventory
+- Queue page (`#/posting/queue`) — pending items with cancel
+- History page (`#/posting/log`) — audit trail
+- Published page redirects to Stories hub
+- Mobile responsive: single-column cards, full-width buttons, 44px touch targets
+- Bottom nav: Stories link added
+
+**Telegram Commands:**
+- `/stories` — list archive stories
+- `/upload <story> [platforms]` — post story to platforms
+- `/update <story> [platforms]` — push updates to posted submissions
+- `/update all [platforms]` — batch update all changed stories
+- `/posted [story]` — show publication registry
+- `/claim [platforms]` — claim existing submissions
+- `/changes` — show which stories have changed since last update
+
+**BBCode Converter Fixes:**
+- Title uses `[t]` tag (IB title style) instead of `[b]`
+- Subtitle detection: only `*by Author*` or `*A Something Story*` patterns, window closes on first non-subtitle content
+- Text messages styled: sent (MAYA) right-aligned blue `#4a9eff`, received left-aligned grey `#aab0bc`
+- Phone calls: centred with `📱` emoji and decorative lines
+- No longer centres first italic body paragraph after chapter headings
+
+**Story Sync:**
+- `deploy/pawsync.bat` — syncs story archive to GCP server
+- Fixed: was excluding `*/SquidgeWorld/*` — now includes all format folders
+- PyInstaller spec updated with `posting_schema.sql`
+
+### Changed
+- `api_client/client.py` — added `upload_submission()`, `edit_submission()` with `story` field
+- `bsky_client/client.py` — added `_post_json()`, `upload_blob()`, `create_post()`, `delete_post()`
+- `weasyl_client/client.py` — added `submit_literary()`, `edit_submission()` with CSRF
+- `sf_client/client.py` — added `_get_csrf_meta()`, `create_submission()` (chapter-based), `edit_submission()`
+- `fa_client/client.py` — added `submit_story()` (3-step), `edit_submission()` via `changeinfo`, file replace via `changestory`
+- `sqw_client/client.py` — added `create_work()`, `edit_work()`, `edit_chapter()`, `get_chapter_ids()`, `_collapse_html_whitespace()`
+- `dashboard.py` — registered `posting_router`
+- `database/db.py` — loads `posting_schema.sql`, migrations for `file_hash` and `requires` columns
+- `main.py` + `server.py` — posting scheduler daemon thread added
+- `polling/telegram_bot.py` — 7 new commands + help text updated
+- `inkbunny_analytics.spec` — added `posting_schema.sql` to PyInstaller data files
+
+---
+
 ## [1.6.0] - 2026-03-10
 
 ### Added

@@ -2505,6 +2505,10 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 | SquidgeWorld | `/works` (POST) | `posting/platforms/squidgeworld.py` | Create new work |
 | | `/works/{id}` (PATCH) | | Edit work metadata |
 | | `/works/{id}/chapters/{ch}` (PATCH) | | Edit chapter content |
+| AO3 (OTW posting) | `/works` (POST) | `posting/platforms/ao3.py` | Create new work |
+| | `/works/{id}` (PATCH) | | Edit work metadata |
+| | `/works/{id}/chapters/{ch}` (PATCH) | | Edit chapter content |
+| | `/works/{id}/navigate` (GET) | | Get chapter IDs |
 | Bluesky AT Proto | `com.repo.createRecord` | `posting/platforms/bluesky.py` | Create post record |
 | | `com.repo.uploadBlob` | | Upload image blob |
 
@@ -2788,6 +2792,29 @@ class StoryUploadPackage:
 **Post limit**: 300 graphemes max per post. Descriptions are truncated with `...` if needed.
 
 **Bluesky is used for announcement posts**, not full story uploads. The poster generates a brief announcement text from the story description and optionally attaches a cover image.
+
+#### AO3 (`posting/platforms/ao3.py`)
+
+**Auth**: Reuses `AO3Client` with Rails CSRF form login. Same account for polling and posting (`ao3_username`/`ao3_password` = KnaughtyKat).
+
+**Same OTW Archive software as SquidgeWorld** — identical form structure, HTML handling, and chapter editing.
+
+**Post flow**:
+1. `login()` → Rails CSRF form (authenticity_token)
+2. POST `/works` with chapter content, tags, rating, fandom, summary
+
+**Edit flow** (metadata + chapter content):
+1. PATCH `/works/{id}` — update title, summary, freeform tags
+2. `get_chapter_ids()` — scrape `/works/{id}/navigate` for chapter IDs
+3. PATCH `/works/{id}/chapters/{ch_id}` per chapter — HTML whitespace collapse applied
+
+**HTML whitespace collapse**: Same as SquidgeWorld — `_collapse_html_whitespace()` joins multi-line `<p>` and `<div>` tags onto single lines to prevent OTW's auto-formatter from inserting `<br />` tags.
+
+**Rate limiting**: 3 seconds between requests (`config.AO3_REQUEST_DELAY_SECONDS`). AO3 is volunteer-run with limited infrastructure — aggressive polling or posting will result in 429 rate limits with 30-second backoff.
+
+**Cloudflare**: AO3 uses Cloudflare protection. The `_get_page()` method handles 403 (blocked) and 429 (rate limited) responses. Datacenter IP access may be intermittent.
+
+**Format files**: Uses SquidgeWorld HTML (`SquidgeWorld/*.html`), falling back to SoFurry HTML. Same format map as SQW since both run OTW Archive.
 
 ### Publications Registry
 
