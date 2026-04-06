@@ -4,6 +4,27 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.2.0] - 2026-04-06
+
+### Added
+- **Per-chapter tag support** — story_reader.py now reads `chapter_info[].tags` from story.json and populates `chapter_tags_by_platform`. Per-chapter uploads (FA, SQW) use chapter-specific tags when available, falling back to story-level tags.
+- **Platform tag limits reference** — `posting/references/platform_tag_limits.md` documenting tag limits (SF≤97, WP≤24, DA≤30), SQW/AO3 archive warnings, categories, ratings, and relationship notation.
+- **Complete story.json metadata** for all 11 stories — descriptions, summaries, categories, warnings, characters, relationships, per-platform tags (from Tag_Database), per-chapter tags and descriptions for all 67 chapters.
+- **Itaku posting support** (platform 8) — image gallery uploads and text posts via Django REST Framework token auth.
+- **DeviantArt posting support** (platform 9) — via official OAuth2 literature API with auto-refreshing tokens.
+- **AO3 posting support** (platform 7) — same OTW Archive form structure as SquidgeWorld.
+
+### Changed
+- `posting/story_reader.py` — `_load_from_story_json()` now reads per-chapter tags and populates `chapter_tags_by_platform` dict. `build_package()` tag selection chain: chapter tags → story tags → empty.
+- `posting/generate_story_json.py` — generates AO3 and DeviantArt platform configs in story.json.
+- `database/db.py` — SQLite timeout increased from 10s to 30s + `PRAGMA busy_timeout=30000` for concurrent poll cycle contention.
+
+### Fixed
+- **SQLite "database is locked" errors** during concurrent poll cycles — busy_timeout pragma makes writers queue instead of erroring.
+- **Styled HTML title font-size** standardised to 2.8rem across all stories (was 3rem in Hypnotic Claim and NSES).
+
+---
+
 ## [2.1.0] - 2026-04-05
 
 ### Added

@@ -209,7 +209,7 @@ PawPoller/
 | `posting/__init__.py` | ~25 | Package docstring — module overview |
 | `posting/manager.py` | ~200 | Orchestrates uploads: resolve files → dispatch to posters → record results |
 | `posting/scheduler.py` | ~120 | Daemon thread — checks posting_queue every 60s, respects requires field |
-| `posting/story_reader.py` | ~300 | Reads story archives (story.json, split_manifest, tags_upload) → StoryUploadPackage |
+| `posting/story_reader.py` | ~350 | Reads story archives (story.json with per-chapter tags, split_manifest, tags_upload) → StoryUploadPackage. Tag chain: chapter → story → empty |
 | `posting/sync.py` | ~200 | Retroactive claim (title matching) + change detection (file hash comparison) |
 | `posting/generate_story_json.py` | ~200 | CLI tool: generate story.json from legacy tags_upload.txt + split_manifest |
 | `posting/platforms/base.py` | ~100 | PlatformPoster ABC, PostResult dataclass, StoryUploadPackage dataclass |
