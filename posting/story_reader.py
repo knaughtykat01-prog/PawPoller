@@ -232,11 +232,21 @@ def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) ->
         plat_id = plat_map.get(plat_key, plat_key)
         tags_by_platform[plat_id] = tag_list
 
-    # Chapter descriptions
+    # Chapter descriptions and per-chapter tags
     chapter_descriptions = {}
+    chapter_tags: dict[int, dict[str, list[str]]] = {}
     for ch_data in data.get("chapter_info", []):
+        ch_idx = ch_data.get("index", 0)
         if ch_data.get("description"):
-            chapter_descriptions[ch_data["index"]] = ch_data["description"]
+            chapter_descriptions[ch_idx] = ch_data["description"]
+        # Per-chapter tags (keyed by platform ID)
+        ch_tag_data = ch_data.get("tags", {})
+        if ch_tag_data:
+            ch_plat_tags = {}
+            for plat_key, tag_list in ch_tag_data.items():
+                plat_id = plat_map.get(plat_key, plat_key)
+                ch_plat_tags[plat_id] = tag_list
+            chapter_tags[ch_idx] = ch_plat_tags
 
     # Images
     images = data.get("images", {})
@@ -256,7 +266,7 @@ def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) ->
         chapters=chapters,
         description=data.get("description", ""),
         tags_by_platform=tags_by_platform,
-        chapter_tags_by_platform={},  # Per-chapter tags not in story.json yet
+        chapter_tags_by_platform=chapter_tags,
         chapter_descriptions=chapter_descriptions,
         summary=data.get("summary", ""),
         thumbnail_path=thumbnail_path,
