@@ -900,19 +900,27 @@ class SoFurryClient:
         description: str | None = None,
         tags: list[str] | None = None,
         rating: int | None = None,
+        privacy: int | None = None,
     ) -> dict:
         """Edit metadata on an existing SoFurry submission.
 
         SF's API requires ALL fields on every update (partial sends return 422).
-        This method fetches the current submission data first, merges in the
+        This method fetches the current RAW submission JSON, overlays the
         caller's changes, and sends the complete payload.
+
+        IMPORTANT — privacy preservation:
+        Earlier versions of this method used ``get_submission_detail()`` to
+        fetch the current state, but that helper STRIPS the ``privacy`` field
+        and returns only public-facing fields. The fallback ``current.get(
+        "privacy", 1)`` then defaulted to **1 (Private)** on every edit,
+        silently downgrading every public work to private. Always fetch raw
+        JSON via ``/ui/submission/{id}`` directly so the merge sees every
+        field. Defaults err on the side of caution by mirroring whatever the
+        server returned.
         """
         if not self._logged_in:
             if not await self.ensure_logged_in():
                 raise RuntimeError("SoFurry: Not logged in")
-
-        # Fetch current metadata so we can merge (SF needs all fields)
-        current = await self.get_submission_detail(submission_id) or {}
 
         csrf = await self._get_csrf_meta()
         if not csrf:
@@ -925,15 +933,38 @@ class SoFurryClient:
             "Accept": "application/json",
         }
 
-        # Build complete metadata: current values as base, overlay caller's changes
+        # Fetch the FULL raw submission JSON. Do not use get_submission_detail
+        # — it strips privacy/category/type/etc. The bug it caused (every edit
+        # silently downgrading the work to Private) was painful to discover.
+        raw_resp = await self._http.get(
+            f"{SOFURRY_BASE}/ui/submission/{submission_id}",
+            headers={"Accept": "application/json"},
+        )
+        if raw_resp.status_code != 200:
+            raise RuntimeError(
+                f"SF: Could not fetch current submission {submission_id} for edit "
+                f"(status {raw_resp.status_code})"
+            )
+        try:
+            current = raw_resp.json()
+        except Exception as e:
+            raise RuntimeError(f"SF: edit fetch returned non-JSON: {e}")
+
+        # Build complete metadata: raw current values as base, overlay caller changes.
+        # Every field defaults to whatever the server reported — no hard-coded
+        # defaults that could clobber state.
         metadata = {
             "title": title if title is not None else current.get("title", ""),
             "description": description if description is not None else current.get("description", ""),
-            "artistTags": [t.replace("_", " ") for t in tags] if tags is not None else current.get("artistTags", []),
+            "artistTags": (
+                [t.replace("_", " ") for t in tags]
+                if tags is not None
+                else current.get("artistTags", [])
+            ),
             "category": current.get("category", 20),
             "type": current.get("type", 21),
-            "rating": rating if rating is not None else _normalize_rating(current.get("rating", 0)),
-            "privacy": current.get("privacy", 1),
+            "rating": rating if rating is not None else current.get("rating", 0),
+            "privacy": privacy if privacy is not None else current.get("privacy", 3),
             "allowComments": current.get("allowComments", True),
             "allowDownloads": current.get("allowDownloads", True),
             "isWip": current.get("isWip", False),
@@ -954,8 +985,10 @@ class SoFurryClient:
             raise RuntimeError(f"SF: Edit failed — status {resp.status_code}: {resp.text[:200]}")
 
         url = f"{SOFURRY_BASE}/s/{submission_id}"
-        logger.info("SF: Edited submission %s — title=%r", submission_id,
-                     (title or current.get("title", ""))[:40])
+        logger.info(
+            "SF: Edited submission %s — title=%r privacy=%s",
+            submission_id, (title or current.get("title", ""))[:40], metadata["privacy"],
+        )
         return {"submission_id": submission_id, "url": url}
 
 

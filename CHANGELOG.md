@@ -4,6 +4,67 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.3.7] - 2026-04-08
+
+### Added — SoFurry draft mode + bulk drafting
+
+SoFurry now supports the same draft pattern as IB / SQW / AO3. SF has built-in privacy levels (1=Private, 2=Unlisted, 3=Public) so this is a real first-class draft state — owner-only visibility — not a workaround.
+
+**6 SF drafts** (single-bulk-file convention via `HTML/<Story>_Clean.html`, all Private/owner-only):
+
+| Story | Submission | Words |
+|---|---|---|
+| Tombstone | [nLrR4PBe](https://sofurry.com/s/nLrR4PBe) | 8,414 |
+| Chosen | [m0KjxlKe](https://sofurry.com/s/m0KjxlKe) | 15,958 |
+| Not_So_Efficient_Studying | [ePdyAZ5e](https://sofurry.com/s/ePdyAZ5e) | 13,602 |
+| Overtime | [1xJGPWZm](https://sofurry.com/s/1xJGPWZm) | 11,513 |
+| Ruins_of_Breeding | [nd4Pol7n](https://sofurry.com/s/nd4Pol7n) | 24,457 |
+| The_Haunting_Desires | [mXB73JG1](https://sofurry.com/s/mXB73JG1) | 30,480 |
+
+After this run, every local story is now on SF — 7 live published works + 6 new private drafts. Drafts are recorded in the publications table on the server with `status=draft`.
+
+**SF posting was *fast*** — 2-3 seconds per submission, vs AO3's 20-150 seconds with retries. SoFurry's 3-step REST API (PUT empty → POST file → POST metadata) is much cleaner than OTW Archive's CSRF form scraping.
+
+**`SoFurryPoster.post()` refactor:**
+- New `_normalize_privacy()` helper that accepts ints (1/2/3) or strings ("private"/"unlisted"/"public") and maps to SF's numeric codes
+- `package.extra["draft"] = True` → `privacy=1` (Private, owner-only) — same convention as IB/AO3
+- `package.extra["privacy"] = 1|2|3` for explicit override (wins over draft)
+- Default: `privacy=3` (Public) — preserves the existing behaviour for callers who don't set anything
+- Post-flight verification: hits `/ui/submission/{id}` raw and confirms `privacy=1` server-side after a Private draft. Logs a warning if the server returns something else (defensive — `create_submission` has the privacy parameter wired correctly so this should never fire, but better to know).
+
+### Fixed — `sf_client.edit_submission` was silently downgrading every edited work to Private
+
+A pair of cascading bugs in `sf_client/client.py:edit_submission`:
+
+1. **It used `get_submission_detail()` to fetch current state.** That helper strips the response down to public-facing fields (title, description, rating, etc) and **does not return `privacy`, `category`, `type`, or any of the other write-only metadata fields**. So `current.get("privacy")` always returned `None`.
+
+2. **The fallback default was wrong.** When `current.get("privacy", 1)` returned the fallback, it returned **`1` (Private)** — the *least permissive* option. So every single edit silently overwrote whatever the work's actual privacy was with Private.
+
+**Caught this the hard way:** while retrying the 4-day-old failed `Hypnotic_Claim` edit, the edit went through and reported success — then a follow-up fetch showed `privacy: 1` (Private). Hypnotic Claim had been a public live work for weeks. The script then ran an emergency restoration script that fetched the raw JSON, set `privacy=3` explicitly, and posted back, restoring the live state within 60 seconds of the regression.
+
+**Why no other live works were affected:** the `failed` row in `publications` for Hypnotic_Claim shows the original 2026-04-04 edit failed with `"SoFurry login failed"` — i.e. it errored out at the *auth* step before reaching the metadata POST. So the buggy code path never actually fired in production, and the 7 live works on SF stayed Public. My retry today was the **first time the bug actually executed end-to-end**, and it was caught and rolled back inside the same script run.
+
+**The fix:**
+- `edit_submission` now fetches the **raw** `/ui/submission/{id}` JSON directly (not the stripped helper), so the merge sees every field on the server
+- The fallback for `privacy` is now `current.get("privacy", 3)` — defaulting to Public is the safer choice when the field is somehow missing
+- Added an explicit `privacy: int | None = None` parameter to `edit_submission` so callers can override (used by `SoFurryPoster.edit()` when `extra["draft"]` or `extra["privacy"]` is set)
+- A long docstring on the method warns the next person not to substitute `get_submission_detail()` back in
+
+**Audit confirmed all 13 SF works are in correct state:**
+| 7 live works | privacy=3 (Public) ✓ |
+| 6 new drafts | privacy=1 (Private) ✓ |
+
+### Test files
+- `tests/sf_smoke.py` — login + CSRF read-only check
+- `tests/verify_sf_draft.py` — Tombstone canary draft with raw-JSON privacy verification
+- `tests/bulk_sf_drafts.py` — bulk draft 5 missing stories (Tombstone already drafted)
+- `tests/sf_retry_hypnotic_edit.py` — retry the 4-day-old failed edit
+- `tests/sf_emergency_restore_hypnotic.py` — emergency restoration script (used once to undo the privacy regression)
+- `tests/sf_audit_all_privacy.py` — full audit of expected vs actual privacy state for every known SF submission
+- `tests/sf_mark_hypnotic_posted.py` — mark the publications row from `failed` back to `posted`
+
+---
+
 ## [2.3.6] - 2026-04-08
 
 ### Fixed — `pawsync.bat` rewritten in Python after intermittent batch hang

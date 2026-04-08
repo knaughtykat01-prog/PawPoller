@@ -6,13 +6,28 @@ CSRF token auth. Supports post + edit + file replace.
 Post flow (3-step REST):
   1. PUT /ui/submission → create empty submission
   2. POST /ui/submission/{id}/content → upload file
-  3. POST /ui/submission/{id} → set metadata + publish
+  3. POST /ui/submission/{id} → set metadata + privacy
 
 Edit flow:
   POST /ui/submission/{id} → update metadata
 
 Rating mapping:
   General → 0 (Clean), Mature → 10, Adult → 20
+
+Privacy mapping (SF supports a real draft state):
+  privacy=1  Private    (owner-only — used by extra["draft"] = True)
+  privacy=2  Unlisted   (accessible by direct link, not in feeds/search)
+  privacy=3  Public     (default — listed in feeds/search)
+
+Draft mode:
+  Set ``package.extra["draft"] = True`` to create the submission as
+  Private (privacy=1). The submission is uploaded with full content and
+  metadata but ONLY the owner (logged in) can see it. Switch to public
+  later via the SF UI or by calling ``edit_submission(privacy=3)``.
+
+Visibility override:
+  Set ``package.extra["privacy"] = 1|2|3`` (or "private"/"unlisted"/"public")
+  to explicitly choose. Wins over the draft default.
 """
 
 from __future__ import annotations
@@ -24,6 +39,28 @@ from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackag
 from sf_client.client import SoFurryClient
 
 logger = logging.getLogger(__name__)
+
+
+_PRIVACY_PUBLIC = 3
+_PRIVACY_UNLISTED = 2
+_PRIVACY_PRIVATE = 1
+
+
+def _normalize_privacy(value) -> int | None:
+    """Convert a privacy override (int 1-3 or string) to the SF numeric code."""
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value if value in (1, 2, 3) else None
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in ("private", "1", "draft"):
+            return _PRIVACY_PRIVATE
+        if v in ("unlisted", "2"):
+            return _PRIVACY_UNLISTED
+        if v in ("public", "3"):
+            return _PRIVACY_PUBLIC
+    return None
 
 
 class SoFurryPoster(PlatformPoster):
@@ -71,13 +108,42 @@ class SoFurryPoster(PlatformPoster):
         return self._client
 
     async def post(self, package: StoryUploadPackage) -> PostResult:
+        """Create a new SoFurry submission.
+
+        Visibility behaviour:
+          - Default: privacy=3 (Public) — listed in feeds and search
+          - ``extra["draft"] = True`` → privacy=1 (Private) — owner-only
+          - ``extra["privacy"] = 1|2|3`` → explicit override (wins over draft)
+
+        Returns the submission ID and URL on success.
+        """
         _t = self._start_timer()
         try:
             client = await self._ensure_client()
             if not package.file_path:
-                return PostResult(success=False, error="No file for SoFurry upload", duration_seconds=self._elapsed(_t))
+                return PostResult(
+                    success=False, error="No file for SoFurry upload",
+                    duration_seconds=self._elapsed(_t),
+                )
 
             rating = _rating_to_sf(package.rating)
+
+            # Determine privacy. extra["privacy"] wins over draft default.
+            draft_mode = bool(package.extra.get("draft", False))
+            explicit_privacy = _normalize_privacy(package.extra.get("privacy"))
+            if explicit_privacy is not None:
+                privacy = explicit_privacy
+            elif draft_mode:
+                privacy = _PRIVACY_PRIVATE
+            else:
+                privacy = _PRIVACY_PUBLIC
+
+            privacy_label = {1: "Private", 2: "Unlisted", 3: "Public"}.get(privacy, str(privacy))
+            logger.info(
+                "SF: Posting %r as %s (draft=%s, privacy=%d)",
+                package.title, privacy_label, draft_mode, privacy,
+            )
+
             result = await client.create_submission(
                 package.file_path,
                 title=package.title,
@@ -86,13 +152,58 @@ class SoFurryPoster(PlatformPoster):
                 category=20,  # Writing
                 sub_type=21,  # Short story
                 rating=rating,
+                privacy=privacy,
                 thumbnail_path=package.thumbnail_path,
             )
 
+            submission_id = result.get("submission_id", "")
+            url = result.get("url", "")
+
+            # SAFETY: when posting as draft/private, verify the submission
+            # actually landed Private. The existing get_submission_detail
+            # helper strips the privacy field, so we hit /ui/submission/{id}
+            # raw and look for it ourselves.
+            if privacy == _PRIVACY_PRIVATE and submission_id:
+                try:
+                    raw_resp = await client._http.get(
+                        f"https://sofurry.com/ui/submission/{submission_id}",
+                        headers={"Accept": "application/json"},
+                    )
+                    if raw_resp.status_code == 200:
+                        raw = raw_resp.json()
+                        server_privacy = raw.get("privacy")
+                        if server_privacy is not None and int(server_privacy) != _PRIVACY_PRIVATE:
+                            logger.warning(
+                                "SF: SAFETY WARN — submission %s posted with privacy=%s "
+                                "(expected 1/Private). Inspect at %s",
+                                submission_id, server_privacy, url,
+                            )
+                        elif server_privacy is None:
+                            logger.info(
+                                "SF: post-flight check found no privacy field for %s "
+                                "(API may not expose it); trusting create flow",
+                                submission_id,
+                            )
+                        else:
+                            logger.info(
+                                "SF: verified submission %s is Private (privacy=1)",
+                                submission_id,
+                            )
+                    else:
+                        logger.warning(
+                            "SF: post-flight verify status %d for %s — trusting create flow",
+                            raw_resp.status_code, submission_id,
+                        )
+                except Exception as verify_err:
+                    logger.warning(
+                        "SF: post-flight privacy verification failed for %s: %s",
+                        submission_id, verify_err,
+                    )
+
             return PostResult(
                 success=True,
-                external_id=result.get("submission_id", ""),
-                external_url=result.get("url", ""),
+                external_id=submission_id,
+                external_url=url,
                 duration_seconds=self._elapsed(_t),
             )
         except Exception as e:
@@ -100,10 +211,28 @@ class SoFurryPoster(PlatformPoster):
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
     async def edit(self, external_id: str, package: StoryUploadPackage) -> PostResult:
+        """Edit metadata on an existing SoFurry submission.
+
+        By default this PRESERVES the existing privacy state (whatever the
+        submission is currently set to on the server). To change privacy
+        explicitly, set ``package.extra["privacy"]`` (1=Private, 2=Unlisted,
+        3=Public) or use ``package.extra["draft"] = True`` for Private.
+        """
         _t = self._start_timer()
         try:
             client = await self._ensure_client()
             rating = _rating_to_sf(package.rating)
+
+            # Optional privacy override on edit (defaults: preserve current state)
+            draft_mode = bool(package.extra.get("draft", False))
+            explicit_privacy = _normalize_privacy(package.extra.get("privacy"))
+            privacy: int | None
+            if explicit_privacy is not None:
+                privacy = explicit_privacy
+            elif draft_mode:
+                privacy = _PRIVACY_PRIVATE
+            else:
+                privacy = None  # None = preserve existing state on the server
 
             result = await client.edit_submission(
                 external_id,
@@ -111,6 +240,7 @@ class SoFurryPoster(PlatformPoster):
                 description=package.description,
                 tags=package.tags,
                 rating=rating,
+                privacy=privacy,
             )
 
             return PostResult(

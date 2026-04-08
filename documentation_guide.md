@@ -2792,20 +2792,48 @@ First match wins, restricted to png/jpg/jpeg/gif. The IB poster forwards `packag
 
 #### SoFurry (`posting/platforms/sofurry.py`)
 
-**Auth**: Reuses `SoFurryClient` with email/password + CSRF token. Supports CF proxy for server deployments.
+**Auth**: Reuses `SoFurryClient` with email/password + CSRF token.
 
-**Post flow** (3-step REST):
+**Network mode** — `SoFurryClient` is dual-mode:
+- **Local desktop / residential IP**: direct httpx, with cookie persistence (`sf_session_cookies` saved across runs, ~30 day lifetime via `remember_web_*` cookie). Auto-detects: if `cf_worker_url` is empty in settings, uses direct mode.
+- **GCP server / datacenter IP**: routed through the CloudflareProxyTransport because SF blocks datacenter IPs at the edge. Set `cf_worker_url` + `cf_worker_key` in settings to enable. Cookie persistence is disabled in proxy mode because CF Workers rotate egress IPs and SF pins sessions to the IP that performed login.
+
+**Post flow** (3-step REST, very fast — typically 2-3 seconds end-to-end):
 1. `PUT /ui/submission` — create empty submission, returns `submission_id`
-2. `POST /ui/submission/{id}/content` — upload file content
-3. `POST /ui/submission/{id}` — set metadata (title, tags, rating) + publish
+2. `POST /ui/submission/{id}/content` — upload file content (multipart)
+3. `POST /ui/submission/{id}` — set metadata (title, tags, rating, **privacy**)
 
-**Edit flow**: `POST /ui/submission/{id}` — update metadata fields.
+**Privacy levels** (SF supports a real first-class draft state):
+- `privacy=1` **Private** — owner-only, hidden from feeds and search, only the logged-in author can see it. Used for draft mode.
+- `privacy=2` **Unlisted** — accessible by direct link but not in feeds or search.
+- `privacy=3` **Public** — listed in feeds and search (default).
+
+**Draft mode**:
+- `package.extra["draft"] = True` → posts as `privacy=1` (Private). Same convention as IB / SQW / AO3.
+- `package.extra["privacy"] = 1|2|3` (or `"private"/"unlisted"/"public"`) → explicit override (wins over draft).
+- Default: `privacy=3` (Public). Preserves prior behaviour for callers that don't set anything.
+- Post-flight verification: hits `/ui/submission/{id}` raw and confirms `privacy=1` server-side after a Private draft. Logs a warning on mismatch.
+
+**Edit flow**: `POST /ui/submission/{id}` — update metadata. SF requires the **complete payload** on every edit (partial sends return 422), so the client fetches the **raw current JSON** first and overlays the caller's changes.
+
+> **Critical bug history (fixed 2026-04-08):** an earlier version of `edit_submission` used `get_submission_detail()` to fetch current state. That helper strips `privacy`, `category`, `type`, and other write-only fields, so `current.get("privacy", 1)` always fell back to the default — and the default was **`1` (Private)**. Every edit silently downgraded the work to Private. Caught and rolled back during the SF retry session. The current code fetches raw JSON via `/ui/submission/{id}` directly and defaults to `privacy=3` if the field is somehow missing. Don't substitute `get_submission_detail()` back in.
+
+**`SoFurryPoster.edit()` privacy semantics**:
+- By default `privacy=None` is passed through to the client → preserves whatever the server currently has
+- `extra["draft"] = True` → forces `privacy=1` on edit
+- `extra["privacy"] = 1|2|3` → explicit override
+- Use this to flip a draft to public later: `package.extra["privacy"] = 3` then `poster.edit(submission_id, package)`
 
 **File replace**: `POST /ui/submission/{id}/content` — re-upload content.
 
 **Rating mapping**: General → 0 (Clean), Mature → 10, Adult → 20.
 
-**Max file size**: 512 KB for text content.
+**Max file size**: 512 KB for text content. The full-story `HTML/<Story>_Clean.html` files for all 13 local stories fit comfortably (largest is Velvet & Vice at 444 KB).
+
+**Format files** (`PLATFORM_FORMAT_MAP["sf"]`, in priority order):
+1. `Chapters/SoFurry_HTML/*.html` (per-chapter)
+2. `HTML/*_Clean.html` (full-story body HTML — used for full-story posts after the `Chapters/` skip in `_resolve_format_file`)
+3. `HTML/*_sofurry.html` (legacy)
 
 #### Weasyl (`posting/platforms/weasyl.py`)
 
