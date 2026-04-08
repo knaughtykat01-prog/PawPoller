@@ -68,8 +68,24 @@ class InkbunnyPoster(PlatformPoster):
         return self._client
 
     async def post(self, package: StoryUploadPackage) -> PostResult:
-        """Upload a new submission to Inkbunny."""
+        """Upload a new submission to Inkbunny.
+
+        Visibility behavior:
+          - Default: publishes immediately (visibility="yes" — visible to all
+            and notifies watchers)
+          - Set `package.extra["draft"] = True` → submission stays HIDDEN.
+            The submission is created and metadata is set but it is not
+            visible to the public. Owner can change visibility later in the IB
+            UI or via another edit_submission call with visibility="yes".
+          - Set `package.extra["visibility"] = "yes_nowatch"` → visible but
+            doesn't notify watchers.
+        """
         _t = self._start_timer()
+
+        draft_mode = bool(package.extra.get("draft", False))
+        # Override (e.g. "yes_nowatch") wins over draft default
+        explicit_visibility = package.extra.get("visibility")
+
         try:
             client = await self._ensure_client()
 
@@ -97,22 +113,37 @@ class InkbunnyPoster(PlatformPoster):
                 with open(package.file_path, "r", encoding="utf-8") as f:
                     story_text = f.read()
 
-            # Step 3: Set metadata and make visible
-            # description = short summary, story = full reading panel content
+            # Step 3: Set metadata. Visibility chosen based on draft mode.
+            #  - draft_mode = True  → don't pass visibility (stays hidden)
+            #  - explicit set      → use what the caller asked for
+            #  - default          → "yes" (publish + notify watchers)
             rating_tags = _rating_to_tags(package.rating)
             keywords = ", ".join(package.tags)
 
-            await client.edit_submission(
-                submission_id,
-                title=package.title[:100],
-                description=package.description,
-                story=story_text,
-                keywords=keywords,
+            if explicit_visibility is not None:
+                visibility = explicit_visibility
+            elif draft_mode:
+                visibility = None  # leave hidden — IB defaults to hidden
+            else:
+                visibility = "yes"  # legacy behavior: publish
+
+            edit_kwargs = {
+                "title": package.title[:100],
+                "description": package.description,
+                "story": story_text,
+                "keywords": keywords,
                 **rating_tags,
-                visibility="yes",
-            )
+            }
+            if visibility is not None:
+                edit_kwargs["visibility"] = visibility
+
+            await client.edit_submission(submission_id, **edit_kwargs)
 
             url = f"https://inkbunny.net/s/{submission_id}"
+            logger.info(
+                "IB: Posted submission %d (draft=%s, visibility=%s) — %s",
+                submission_id, draft_mode, visibility or "hidden", url,
+            )
             return PostResult(
                 success=True,
                 external_id=str(submission_id),

@@ -46,12 +46,13 @@ class AO3Client:
         self.target_user = target_user
         transport = httpx.AsyncHTTPTransport(retries=2)
         self._http = httpx.AsyncClient(
-            timeout=30.0,
+            timeout=60.0,
             follow_redirects=True,
             headers=_HEADERS,
             transport=transport,
         )
         self._logged_in = False
+        self._pseud_id: str | None = None  # cached after first form fetch
 
     async def __aenter__(self):
         return self
@@ -71,23 +72,55 @@ class AO3Client:
 
     # ── Page Fetching ────────────────────────────────────────────
 
-    async def _get_page(self, url: str) -> str | None:
-        """Fetch a page, handling Cloudflare errors gracefully."""
-        try:
-            resp = await self._http.get(url)
-            if resp.status_code == 403:
-                logger.error("AO3: Cloudflare blocked request to %s (403 Forbidden)", url)
-                return None
-            if resp.status_code == 429:
-                logger.warning("AO3: Rate limited (429), waiting 30s before retry...")
-                await asyncio.sleep(30)
-                resp = await self._http.get(url)
-            resp.raise_for_status()
-        except httpx.HTTPError as e:
-            logger.error("AO3: Failed to fetch %s: %s", url, e)
-            return None
+    async def _get_page(self, url: str, *, max_attempts: int = 3) -> str | None:
+        """Fetch a page, handling Cloudflare errors and timeouts gracefully.
 
-        return resp.text
+        AO3 from datacenter IPs sees intermittent ReadTimeouts (~1 in 5
+        requests). The transport-level retries=2 in __init__ only helps with
+        connect failures, not read timeouts after the headers arrive. We
+        retry the whole GET up to max_attempts times with a brief pause.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                resp = await self._http.get(url)
+                if resp.status_code == 403:
+                    # Could be a hard CF block OR AO3's "Shields are up!" defensive page
+                    if "Shields are up" in resp.text:
+                        logger.error("AO3: 'Shields are up!' page returned for %s", url)
+                    else:
+                        logger.error("AO3: 403 Forbidden for %s", url)
+                    return None
+                if resp.status_code == 429:
+                    logger.warning("AO3: Rate limited (429), waiting 30s before retry...")
+                    await asyncio.sleep(30)
+                    resp = await self._http.get(url)
+                if resp.status_code == 525:
+                    # CF↔origin SSL handshake fail. Retry-able.
+                    logger.warning("AO3: 525 SSL handshake from origin (attempt %d/%d)", attempt, max_attempts)
+                    last_exc = RuntimeError("525 origin SSL")
+                    await asyncio.sleep(2 * attempt)
+                    continue
+                resp.raise_for_status()
+                return resp.text
+            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.PoolTimeout) as e:
+                last_exc = e
+                logger.warning(
+                    "AO3: timeout fetching %s (attempt %d/%d): %s",
+                    url, attempt, max_attempts, type(e).__name__,
+                )
+                await asyncio.sleep(2 * attempt)
+                continue
+            except httpx.HTTPError as e:
+                last_exc = e
+                logger.error("AO3: HTTPError fetching %s: %s %r", url, type(e).__name__, e)
+                return None
+
+        logger.error(
+            "AO3: failed to fetch %s after %d attempts (last error: %s %r)",
+            url, max_attempts, type(last_exc).__name__ if last_exc else "?", last_exc,
+        )
+        return None
 
     # ── Authentication ──────────────────────────────────────────
 
@@ -372,69 +405,171 @@ class AO3Client:
         content: str,
         fandom: str = "Original Work",
         rating: str = "Explicit",
-        warning: str = "Creator Chose Not To Use Archive Warnings",
-        category: str = "",
+        warnings: list[str] | None = None,
+        categories: list[str] | None = None,
         relationship: str = "",
         characters: str = "",
         additional_tags: str = "",
         summary: str = "",
         notes_begin: str = "",
         notes_end: str = "",
-        language: str = "en",
+        language_id: str = "1",  # AO3 numeric language ID; 1 = English
+        chapter_title: str = "",
+        work_skin_id: str = "",
+        # Backwards-compat single-value parameters
+        warning: str | None = None,
+        category: str | None = None,
     ) -> dict:
-        """Create a new work on AO3.
+        """Create a new work on AO3 as a DRAFT (preview state).
 
-        Same OTW form as SquidgeWorld. Rate-limited (3s between requests).
+        Same OTW form as SquidgeWorld. Uses ``preview_button`` so the work
+        lands in the user's drafts at /works/{id}/preview without being
+        published. Click "Post" on the preview page (or call ``post_work()``)
+        to publish.
+
+        Args:
+            title: Work title.
+            content: HTML chapter content (first chapter body).
+            fandom: Fandom name (default: "Original Work").
+            rating: "General Audiences", "Teen And Up Audiences", "Mature", "Explicit".
+            warnings: List of canonical archive warnings. Defaults to
+                ``["No Archive Warnings Apply"]``. Each must be one of:
+                "Choose Not To Use Archive Warnings", "Graphic Depictions Of Violence",
+                "Major Character Death", "No Archive Warnings Apply",
+                "Rape/Non-Con", "Underage", "Suicide/Suicidal Ideation",
+                "Incest and/or Incestuous Relationship(s)".
+            categories: List of relationship categories (e.g. ["M/M"]).
+            relationship: Comma-separated relationship tags.
+            characters: Comma-separated character tags.
+            additional_tags: Comma-separated freeform tags.
+            summary: Work summary (HTML allowed, 1250 char max).
+            notes_begin: Beginning notes.
+            notes_end: End notes.
+            language_id: Language ID. AO3 uses ISO codes (e.g. "en"); SQW
+                uses numeric IDs ("15"). AO3 form accepts both.
+            chapter_title: Optional title for the first chapter.
+            work_skin_id: Optional Work Skin ID.
+            warning: (deprecated) Single warning string.
+            category: (deprecated) Single category string.
+
+        Returns:
+            Dict with 'work_id' and 'url'.
         """
+        # Backwards compat
+        if warnings is None:
+            warnings = [warning] if warning else ["No Archive Warnings Apply"]
+        if categories is None:
+            categories = [category] if category else []
+
         if not self._logged_in:
             if not await self.ensure_logged_in():
                 raise RuntimeError("AO3: Not logged in")
 
-        token = await self._get_authenticity_token(f"{_BASE}/works/new")
-        if not token:
-            raise RuntimeError("AO3: Could not get CSRF token from /works/new")
+        # GET the new work form to extract CSRF token AND the author pseud ID.
+        # The pseud ID is REQUIRED — every OTW work must have at least one
+        # creator linked via work[author_attributes][ids][]. Without it the
+        # form silently fails validation.
+        form_html = await self._get_page(f"{_BASE}/works/new")
+        if not form_html:
+            raise RuntimeError("AO3: Could not fetch /works/new form")
 
-        # Collapse multi-line HTML
+        token_m = re.search(
+            r'name="authenticity_token"[^>]*value="([^"]+)"', form_html
+        )
+        if not token_m:
+            raise RuntimeError("AO3: Could not get CSRF token from /works/new")
+        token = token_m.group(1)
+
+        pseud_m = re.search(
+            r'<input[^>]*value="(\d+)"[^>]*name="work\[author_attributes\]\[ids\]\[\]"',
+            form_html,
+        ) or re.search(
+            r'<input[^>]*name="work\[author_attributes\]\[ids\]\[\]"[^>]*value="(\d+)"',
+            form_html,
+        )
+        if not pseud_m:
+            raise RuntimeError("AO3: Could not extract author pseud ID from /works/new")
+        pseud_id = pseud_m.group(1)
+        self._pseud_id = pseud_id
+
         clean_content = _collapse_html_whitespace(content)
 
-        form_data = {
-            "authenticity_token": token,
-            "work[title]": title,
-            "work[fandom_string]": fandom,
-            "work[rating_string]": rating,
-            "work[archive_warning_string]": warning,
-            "work[category_string]": category,
-            "work[relationship_string]": relationship,
-            "work[character_string]": characters,
-            "work[freeform_string]": additional_tags,
-            "work[summary]": summary[:1250],
-            "work[notes]": notes_begin,
-            "work[endnotes]": notes_end,
-            "work[language_id]": language,
-            "work[chapter_attributes][content]": clean_content,
-            "preview_button": "Preview",
-        }
+        form_data: list[tuple[str, str]] = [
+            ("authenticity_token", token),
+            ("work[title]", title),
+            ("work[author_attributes][ids][]", pseud_id),
+            ("work[fandom_string]", fandom),
+            ("work[rating_string]", rating),
+        ]
+        # Warnings: array notation. Hidden empty value first, then each warning.
+        form_data.append(("work[archive_warning_strings][]", ""))
+        for w in warnings:
+            form_data.append(("work[archive_warning_strings][]", w))
+        # Categories: array notation. Hidden empty value first, then each category.
+        form_data.append(("work[category_strings][]", ""))
+        for c in categories:
+            form_data.append(("work[category_strings][]", c))
+        form_data.extend([
+            ("work[relationship_string]", relationship),
+            ("work[character_string]", characters),
+            ("work[freeform_string]", additional_tags),
+            ("work[summary]", summary[:1250]),
+            ("work[notes]", notes_begin),
+            ("work[endnotes]", notes_end),
+            ("work[language_id]", language_id),
+            ("work[work_skin_id]", work_skin_id),
+            ("work[wip_length]", "1"),
+            ("work[chapter_attributes][title]", chapter_title),
+            ("work[chapter_attributes][content]", clean_content),
+            ("preview_button", "Preview"),
+        ])
+
+        # Manual urlencode because httpx 0.28.x AsyncClient has a bug with
+        # list-of-tuples data= (raises "sync request with an AsyncClient").
+        from urllib.parse import urlencode
+        body = urlencode(form_data, doseq=True)
 
         await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
         resp = await self._http.post(
             f"{_BASE}/works",
-            data=form_data,
-            headers={"Referer": f"{_BASE}/works/new"},
+            content=body,
+            headers={
+                "Referer": f"{_BASE}/works/new",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
             timeout=60.0,
         )
 
         final_url = str(resp.url)
+        if "/works/new" in final_url or resp.status_code >= 400:
+            errors = re.findall(r'class="error"[^>]*>(.*?)</li>', resp.text, re.DOTALL)
+            err_text = "; ".join(re.sub(r'<[^>]+>', '', e).strip() for e in errors[:5])
+            raise RuntimeError(f"AO3: Work creation failed (status {resp.status_code}): {err_text or 'unknown error'}")
+
         work_match = re.search(r'/works/(\d+)', final_url)
         if work_match:
             work_id = work_match.group(1)
             url = f"{_BASE}/works/{work_id}"
-            logger.info("AO3: Created work %s — %s", work_id, url)
+            logger.info("AO3: Created work %s (preview/draft) — %s", work_id, url)
             return {"work_id": work_id, "url": url}
 
-        # Check for errors
-        errors = re.findall(r'class="error"[^>]*>(.*?)</li>', resp.text, re.DOTALL)
-        err_text = "; ".join(re.sub(r'<[^>]+>', '', e).strip() for e in errors[:3])
-        raise RuntimeError(f"AO3: Work creation failed: {err_text or 'unknown error'}")
+        # Dump body for debugging
+        import time
+        debug_path = f"/tmp/ao3_create_debug_{int(time.time())}.html"
+        try:
+            with open(debug_path, "w", encoding="utf-8") as f:
+                f.write(f"<!-- final_url: {final_url} -->\n")
+                f.write(f"<!-- status: {resp.status_code} -->\n")
+                f.write(resp.text)
+            logger.error("AO3: response body saved to %s", debug_path)
+        except Exception:
+            pass
+        errors = re.findall(r'class="[^"]*error[^"]*"[^>]*>(.*?)</', resp.text, re.DOTALL)
+        err_text = "; ".join(re.sub(r'<[^>]+>', '', e).strip()[:200] for e in errors[:5])
+        raise RuntimeError(
+            f"AO3: Could not extract work ID from {final_url} "
+            f"(status={resp.status_code}, errors={err_text or 'none found'})"
+        )
 
     async def edit_work(
         self,
@@ -565,6 +700,97 @@ class AO3Client:
             {"chapter_id": ch_id, "index": int(idx), "title": title.strip()}
             for ch_id, idx, title in chapters
         ]
+
+    # ── Safety / Cleanup ────────────────────────────────────────
+
+    async def delete_work(self, work_id: str) -> bool:
+        """Delete a work via the OTW confirm_delete flow.
+
+        Returns True on success, raises on failure. USE WITH CARE - destructive.
+        """
+        if not self._logged_in:
+            if not await self.ensure_logged_in():
+                raise RuntimeError("AO3: Not logged in")
+
+        confirm_url = f"{_BASE}/works/{work_id}/confirm_delete"
+        confirm_resp = await self._http.get(confirm_url)
+        if confirm_resp.status_code != 200:
+            raise RuntimeError(
+                f"AO3: Could not load confirm_delete page (status {confirm_resp.status_code})"
+            )
+
+        token_m = re.search(
+            r'name="authenticity_token"[^>]*value="([^"]+)"', confirm_resp.text
+        ) or re.search(
+            r'value="([^"]+)"[^>]*name="authenticity_token"', confirm_resp.text
+        )
+        if not token_m:
+            raise RuntimeError("AO3: Could not get CSRF token from confirm_delete page")
+
+        from urllib.parse import urlencode
+        body = urlencode([
+            ("authenticity_token", token_m.group(1)),
+            ("_method", "delete"),
+            ("commit", "Yes, Delete Work"),
+        ])
+
+        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        resp = await self._http.post(
+            f"{_BASE}/works/{work_id}",
+            content=body,
+            headers={
+                "Referer": confirm_url,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            timeout=60.0,
+        )
+
+        if resp.status_code >= 400:
+            raise RuntimeError(f"AO3: Delete failed — status {resp.status_code}")
+        if "successfully deleted" not in resp.text and "has been deleted" not in resp.text:
+            check = await self._http.get(
+                f"{_BASE}/works/{work_id}", follow_redirects=False
+            )
+            if check.status_code != 404:
+                logger.warning(
+                    "AO3: delete_work returned %s but work %s may still exist",
+                    resp.status_code, work_id,
+                )
+
+        logger.info("AO3: Deleted work %s", work_id)
+        return True
+
+    async def is_work_in_drafts(self, work_id: str) -> bool | None:
+        """Check whether a work is in /users/{user}/works/drafts.
+
+        Returns:
+            True   — work is in the drafts listing
+            False  — drafts page fetched, work not present
+            None   — fetch failed (network/timeout/CF) — caller cannot conclude
+        """
+        if not self._logged_in:
+            await self.ensure_logged_in()
+        url = f"{_BASE}/users/{self.username}/works/drafts"
+        html = await self._get_page(url)
+        if html is None:
+            return None
+        return f"/works/{work_id}" in html
+
+    async def is_work_published(self, work_id: str) -> bool | None:
+        """Check whether a work is in /users/{user}/works (the published listing).
+
+        Returns:
+            True   — work is in the published listing
+            False  — published page fetched, work not present
+            None   — fetch failed (caller cannot conclude)
+        """
+        if not self._logged_in:
+            await self.ensure_logged_in()
+        url = f"{_BASE}/users/{self.username}/works"
+        html = await self._get_page(url)
+        if html is None:
+            return None
+        return f"/works/{work_id}" in html
 
 
 def _collapse_html_whitespace(html: str) -> str:

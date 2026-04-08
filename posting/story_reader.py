@@ -49,7 +49,8 @@ PLATFORM_FORMAT_MAP: dict[str, list[tuple[str, str, str]]] = {
         ("Chapters/SoFurry_HTML", "*.html", "html"),
     ],
     "ao3": [
-        ("SquidgeWorld", "*.html", "html"),  # Same OTW format as SQW
+        ("HTML", "*_Clean.html", "html"),       # Full-story body-only HTML
+        ("SquidgeWorld", "*.html", "html"),     # Same OTW format as SQW (per-chapter)
         ("Chapters/SoFurry_HTML", "*.html", "html"),
     ],
     "da": [
@@ -74,13 +75,31 @@ class StoryInfo:
     tags_by_platform: dict[str, list[str]]          # platform → tag list
     chapter_tags_by_platform: dict[int, dict[str, list[str]]]  # chapter_index → platform → tags
     chapter_descriptions: dict[int, str]             # chapter_index → description
+    title: str = ""                                   # display title from story.json (falls back to name.replace('_', ' '))
     summary: str = ""                                 # detailed summary (SUMMARY section, for SQW/AO3)
     thumbnail_path: str | None = None                 # full-series thumbnail
     chapter_thumbnails: dict[int, str] = None         # chapter_index → thumbnail path
+    # OTW Archive / SQW / AO3 metadata fields (used by SquidgeWorld poster)
+    rating: str = ""                                  # explicit, mature, teen, general
+    fandom: str = ""                                  # e.g. "Original Work", "Kung Fu Panda"
+    category: str = ""                                # legacy single category (e.g. "M/M")
+    categories: list[str] = None                      # list of categories
+    warnings: list[str] = None                        # list of canonical archive warnings
+    characters: list[str] = None                      # list of character tags
+    relationships: list[str] = None                   # list of relationship tags
+    work_skin_path: Path | None = None                # path to Work_Skin.css if present
 
     def __post_init__(self):
         if self.chapter_thumbnails is None:
             self.chapter_thumbnails = {}
+        if self.categories is None:
+            self.categories = [self.category] if self.category else []
+        if self.warnings is None:
+            self.warnings = []
+        if self.characters is None:
+            self.characters = []
+        if self.relationships is None:
+            self.relationships = []
 
 
 @dataclass
@@ -254,8 +273,45 @@ def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) ->
     chapter_thumbnails = {}
     if images.get("cover"):
         thumbnail_path = str(story_path / images["cover"])
+    else:
+        # Auto-detect thumbnail file in story root using common naming patterns
+        # Convention: <story>_thumbnail_full_series.png, cover.png, thumbnail.png
+        thumb_patterns = [
+            "*_thumbnail_full_series.*",
+            "*_thumbnail.*",
+            "*_cover.*",
+            "thumbnail.*",
+            "cover.*",
+        ]
+        for pattern in thumb_patterns:
+            for f in story_path.glob(pattern):
+                if f.is_file() and f.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif"):
+                    thumbnail_path = str(f)
+                    break
+            if thumbnail_path:
+                break
     for ch_idx, ch_path in images.get("chapter_thumbnails", {}).items():
         chapter_thumbnails[int(ch_idx)] = str(story_path / ch_path)
+
+    # OTW Archive metadata fields
+    raw_warnings = data.get("warnings", [])
+    if isinstance(raw_warnings, str):
+        raw_warnings = [raw_warnings]
+    raw_characters = data.get("characters", [])
+    if isinstance(raw_characters, str):
+        raw_characters = [raw_characters]
+    raw_relationships = data.get("relationships", [])
+    if isinstance(raw_relationships, str):
+        raw_relationships = [raw_relationships]
+    raw_categories = data.get("categories", [])
+    if not raw_categories and data.get("category"):
+        raw_categories = [data["category"]]
+    if isinstance(raw_categories, str):
+        raw_categories = [raw_categories]
+
+    # Detect Work_Skin.css if present
+    work_skin = story_path / "SquidgeWorld" / "Work_Skin.css"
+    work_skin_path = work_skin if work_skin.is_file() else None
 
     return StoryInfo(
         name=story_name,
@@ -268,9 +324,18 @@ def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) ->
         tags_by_platform=tags_by_platform,
         chapter_tags_by_platform=chapter_tags,
         chapter_descriptions=chapter_descriptions,
+        title=data.get("title", ""),
         summary=data.get("summary", ""),
         thumbnail_path=thumbnail_path,
         chapter_thumbnails=chapter_thumbnails,
+        rating=data.get("rating", ""),
+        fandom=data.get("fandom", "Original Work"),
+        category=data.get("category", ""),
+        categories=raw_categories,
+        warnings=raw_warnings,
+        characters=raw_characters,
+        relationships=raw_relationships,
+        work_skin_path=work_skin_path,
     )
 
 
@@ -366,13 +431,14 @@ def build_package(
         chapter_title = ch.title
         word_count = ch.word_count
 
-    # Title
+    # Title — prefer story.json title field over folder-name fallback
+    base_title = story.title or story.name.replace("_", " ")
     if title_override:
         title = title_override
     elif chapter_index > 0 and chapter_title:
-        title = f"{story.name.replace('_', ' ')} — {chapter_title}"
+        title = f"{base_title} — {chapter_title}"
     else:
-        title = story.name.replace("_", " ")
+        title = base_title
 
     # Description — platform-specific selection:
     #   SQW/AO3: use detailed summary (SUMMARY section) for work-level, chapter desc for chapters
@@ -459,7 +525,9 @@ def _resolve_format_file(
                 if f.is_file() and f"Chapter_{chapter_index}" in f.name:
                     return str(f), file_type
         else:
-            # Full-story file
+            # Full-story file — skip per-chapter subdirs (Chapters/...)
+            if "Chapters" in subdir.split("/"):
+                continue
             import fnmatch
             for f in sorted(search_dir.iterdir()):
                 if f.is_file() and fnmatch.fnmatch(f.name, pattern):

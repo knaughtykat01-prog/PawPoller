@@ -585,6 +585,85 @@ class InkbunnyClient:
         logger.info("Uploaded file to IB — submission_id=%d", submission_id)
         return submission_id
 
+    async def add_files_to_submission(
+        self,
+        submission_id: int,
+        *,
+        file_paths: list[str] | None = None,
+        thumbnail_path: str | None = None,
+        replace_file_id: int | None = None,
+    ) -> dict:
+        """Add files and/or a thumbnail to an existing submission.
+
+        Calls api_upload.php with submission_id set. Per the IB API docs,
+        only ONE thumbnail can be sent at a time, and it must be paired with
+        either a NEW file at the same index or `replace=<file_id>` to attach
+        to an existing file.
+
+        Args:
+            submission_id: The existing IB submission to update.
+            file_paths: Optional list of new files to add as additional pages.
+                Each becomes uploadedfile[N] in the multipart request.
+            thumbnail_path: Optional thumbnail (PNG/JPG, max 300x300).
+                If `replace_file_id` is set, the thumbnail attaches to that
+                existing file. Otherwise it pairs with the first new file at
+                index 0.
+            replace_file_id: When attaching a thumbnail to an EXISTING file
+                without re-uploading the file, set this to the file's
+                `file_id` (from api_submissions.php with show_writing=yes).
+                The IB API uses `replace=<file_id>` for this.
+
+        Returns:
+            The raw API response dict.
+
+        Raises:
+            RuntimeError: If the upload fails or returns an error.
+        """
+        if not self.sid:
+            raise RuntimeError("Not logged in — call ensure_session() first")
+
+        if not file_paths and not thumbnail_path:
+            raise ValueError("Must provide at least one of file_paths or thumbnail_path")
+
+        files: dict = {}
+        if file_paths:
+            for i, fp in enumerate(file_paths):
+                with open(fp, "rb") as f:
+                    files[f"uploadedfile[{i}]"] = (os.path.basename(fp), f.read())
+
+        if thumbnail_path and os.path.isfile(thumbnail_path):
+            with open(thumbnail_path, "rb") as tf:
+                thumb_data = tf.read()
+            ext = os.path.splitext(thumbnail_path)[1].lower().lstrip(".")
+            mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif"}.get(ext, "image/png")
+            # Index 0: pairs with uploadedfile[0] for new uploads, OR
+            # uses `replace` to target an existing file
+            files["uploadedthumbnail[0]"] = (os.path.basename(thumbnail_path), thumb_data, mime)
+
+        data = {
+            "sid": self.sid,
+            "submission_id": str(submission_id),
+        }
+        if replace_file_id is not None:
+            data["replace"] = str(replace_file_id)
+
+        resp = await self._http.post(
+            f"{config.INKBUNNY_API_BASE}/api_upload.php",
+            data=data,
+            files=files,
+            timeout=120.0,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        if "error_code" in result:
+            raise RuntimeError(f"Add files failed: {result.get('error_message', result)}")
+
+        logger.info(
+            "IB: Added to submission %d — files=%d thumbnail=%s replace=%s",
+            submission_id, len(file_paths or []), bool(thumbnail_path), replace_file_id,
+        )
+        return result
+
     async def edit_submission(
         self,
         submission_id: int,

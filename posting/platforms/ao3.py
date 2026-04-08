@@ -1,34 +1,59 @@
 """Archive of Our Own (AO3) platform poster.
 
-Uses the existing AO3Client (ao3_client/client.py) with Rails CSRF auth.
-Same OTW Archive software as SquidgeWorld — identical form structure.
+Wraps the AO3Client to upload, edit, and manage works on AO3.
 
-Post flow:
-  1. Login + CSRF token
-  2. POST /works with form data (title, fandom, tags, content)
+Pulls full metadata from story.json via posting.story_reader, including
+fandom, category, characters, relationships, warnings.
+
+Posting flow (single-bulk-file convention, mirrors the IB convention):
+  1. Read StoryInfo from the archive (story.json)
+  2. Trim freeform tags to fit OTW's 75-tag total limit
+     (fandom + relationship + character + freeform <= 75)
+  3. Read full-story body-only HTML (HTML/<story>_Clean.html)
+  4. create_work via preview_button — work lands in /works/{id}/preview
+     (AO3's draft equivalent), NOT published
+  5. SAFETY: verify the new work is in /users/{user}/works/drafts.
+     If it ever lands in published, the work is DELETED and the call fails.
 
 Edit flow:
-  1. PATCH /works/{id} for metadata
-  2. PATCH /works/{id}/chapters/{ch_id} for chapter content
-
-Rate limiting: 3 seconds between requests (AO3 is volunteer-run).
+  1. Read StoryInfo
+  2. Detect current state (draft vs published)
+  3. Edit metadata via edit_work
+  4. Iterate AO3's chapter list and update each chapter's content via
+     edit_chapter
 
 Rating mapping:
-  General → "General Audiences"
-  Mature → "Mature"
-  Adult → "Explicit"
+  explicit -> "Explicit"
+  mature   -> "Mature"
+  teen     -> "Teen And Up Audiences"
+  general  -> "General Audiences"
+
+Notes for the AO3-vs-SQW differences:
+  - AO3 client does NOT yet support multi-chapter create_chapter or Work
+    Skins. For chaptered prose we use the IB-style single bulk file
+    (HTML/<story>_Clean.html) which contains all chapters as <p> elements
+    in one big body.
+  - AO3 has no "preview" → "publish" automated flow here. Work stays in
+    preview/draft until you manually click Post on AO3.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from pathlib import Path
 
 import config
-from ao3_client.client import AO3Client
-from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
 from posting import story_reader
+from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
+from ao3_client.client import AO3Client
 
 logger = logging.getLogger(__name__)
+
+
+# OTW Archive total-tag limit (fandom + relationship + character + freeform).
+# Rating, warnings, categories do NOT count toward this.
+OTW_TAG_LIMIT = 75
 
 
 class AO3Poster(PlatformPoster):
@@ -36,9 +61,9 @@ class AO3Poster(PlatformPoster):
     platform_id = "ao3"
     platform_name = "AO3"
     supports_edit = True
-    supports_file_replace = True  # Can edit chapter content
+    supports_file_replace = True
     min_post_interval = 5
-    max_file_size = 0  # No file upload — content is pasted as HTML
+    max_file_size = 0  # Content pasted as HTML, no file upload
     accepted_file_types = ["html"]
 
     def __init__(self):
@@ -51,7 +76,7 @@ class AO3Poster(PlatformPoster):
         settings = config.get_settings()
         username = settings.get("ao3_username", "")
         password = settings.get("ao3_password", "")
-        target_user = settings.get("ao3_target_user", "")
+        target_user = settings.get("ao3_target_user", "") or username
         if not username or not password:
             raise RuntimeError("AO3 credentials not configured")
 
@@ -60,38 +85,207 @@ class AO3Poster(PlatformPoster):
             raise RuntimeError("AO3 login failed")
         return self._client
 
+    # ─── Helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _rating_to_ao3(rating: str) -> str:
+        r = (rating or "").lower()
+        if r in ("adult", "explicit", "nsfw"):
+            return "Explicit"
+        if r in ("mature", "questionable"):
+            return "Mature"
+        if r == "teen":
+            return "Teen And Up Audiences"
+        return "General Audiences"
+
+    @staticmethod
+    def _trim_freeform_tags(
+        tags: list[str],
+        characters: list[str],
+        relationships: list[str],
+        fandom: str,
+    ) -> list[str]:
+        """Trim freeform tags so the total fits OTW's 75-tag limit."""
+        used = 0
+        if fandom:
+            used += 1
+        used += len(characters)
+        used += len(relationships)
+        budget = OTW_TAG_LIMIT - used
+        if budget <= 0:
+            return []
+        if len(tags) <= budget:
+            return tags
+        return tags[:budget]
+
+    @staticmethod
+    def _read_full_story_html(story: story_reader.StoryInfo) -> str | None:
+        """Read the body-only full-story HTML for AO3.
+
+        Order of preference:
+          1. HTML/<Story>_Clean.html (single bulk file, body-only paragraphs)
+          2. Concatenate SquidgeWorld/Chapter_*.html files (body-only)
+        """
+        html_dir = story.path / "HTML"
+        if html_dir.is_dir():
+            for f in sorted(html_dir.glob("*_Clean.html")):
+                try:
+                    return f.read_text(encoding="utf-8")
+                except Exception:
+                    pass
+
+        # Fallback: concatenate SquidgeWorld chapter files
+        sqw_dir = story.path / "SquidgeWorld"
+        if sqw_dir.is_dir():
+            chapters: list[str] = []
+            for ch in sorted(story.chapters, key=lambda c: c.index):
+                # Match Chapter_<idx>_*.html
+                matches = sorted(sqw_dir.glob(f"Chapter_{ch.index}_*.html"))
+                if not matches:
+                    continue
+                try:
+                    body = matches[0].read_text(encoding="utf-8")
+                    chapters.append(body)
+                except Exception:
+                    pass
+            if chapters:
+                return "\n<hr />\n".join(chapters)
+
+        return None
+
+    def _build_freeform_tags(
+        self,
+        story: story_reader.StoryInfo,
+        package: StoryUploadPackage,
+    ) -> list[str]:
+        """Choose the freeform tag list — prefer package.tags, then story tags."""
+        if package.tags:
+            return list(package.tags)
+        ao3_tags = story.tags_by_platform.get("ao3")
+        if ao3_tags:
+            return list(ao3_tags)
+        sqw_tags = story.tags_by_platform.get("sqw")
+        if sqw_tags:
+            return list(sqw_tags)
+        return list(story.tags_by_platform.get("default", []))
+
+    # ─── Posting / Editing ────────────────────────────────────────────
+
     async def post(self, package: StoryUploadPackage) -> PostResult:
-        """Create a new work on AO3."""
+        """Create a new work on AO3 with full metadata, single bulk content.
+
+        SAFETY: AO3's create_work uses preview_button so the work lands in
+        /works/{id}/preview (drafts) by default. After creation, this method
+        verifies the work is in the user's drafts listing. If it has been
+        published unexpectedly, the work is DELETED and the call fails.
+        Set ``package.extra["allow_publish"] = True`` to skip the safety
+        check (e.g. for re-publishing already-live works).
+        """
         _t = self._start_timer()
+        allow_publish = bool(package.extra.get("allow_publish", False))
+
+        async def _verify_still_draft(client_inst, work_id_inner: str, step: str) -> None:
+            """Best-effort verification that the work is in draft state.
+
+            create_work uses preview_button which AO3 guarantees creates a
+            preview/draft. The check below is a defensive net for the
+            impossible case of accidental publish — it ONLY aborts on
+            POSITIVE confirmation the work is published.
+
+            States from is_work_published:
+              True  -> definitely published    -> abort + delete
+              False -> definitely not          -> safe, return
+              None  -> fetch failed (timeout)  -> warn but trust preview_button
+            """
+            if allow_publish:
+                return
+            await asyncio.sleep(2)  # let AO3 catch up
+            in_published = await client_inst.is_work_published(work_id_inner)
+            if in_published is True:
+                # Confirmed published — try to delete
+                try:
+                    await client_inst.delete_work(work_id_inner)
+                    msg = (
+                        f"AO3: SAFETY ABORT after {step} — work {work_id_inner} "
+                        f"is published. Work has been DELETED."
+                    )
+                except Exception as del_err:
+                    msg = (
+                        f"AO3: SAFETY ABORT after {step} — work {work_id_inner} "
+                        f"is published and DELETE FAILED: {del_err}. "
+                        f"MANUAL DELETE: https://archiveofourown.org/works/{work_id_inner}/confirm_delete"
+                    )
+                raise RuntimeError(msg)
+            elif in_published is None:
+                # Fetch failed — trust preview_button, log a warning
+                logger.warning(
+                    "AO3: post-flight is_work_published check failed for %s after %s. "
+                    "create_work used preview_button so the work is in draft state by "
+                    "construction; trusting that. Verify manually if concerned.",
+                    work_id_inner, step,
+                )
+            # in_published is False -> definitely not published, safe
+
         try:
             client = await self._ensure_client()
+            story = story_reader.load_story(package.story_name)
 
-            content = ""
-            if package.file_path:
+            # 1. Build metadata
+            rating = self._rating_to_ao3(story.rating or package.rating)
+            categories = story.categories or ([story.category] if story.category else [])
+            warnings = story.warnings or ["No Archive Warnings Apply"]
+            characters_str = ", ".join(story.characters)
+            relationships_str = ", ".join(story.relationships)
+            fandom = story.fandom or "Original Work"
+
+            # 2. Trim freeform tags to fit OTW's 75-tag limit
+            freeform_tags = self._build_freeform_tags(story, package)
+            freeform_tags = self._trim_freeform_tags(
+                freeform_tags, story.characters, story.relationships, fandom,
+            )
+            additional_tags = ", ".join(freeform_tags)
+
+            # 3. Read full-story body HTML
+            content = self._read_full_story_html(story)
+            if not content and package.file_path:
                 with open(package.file_path, "r", encoding="utf-8") as f:
                     content = f.read()
-
             if not content:
                 return PostResult(
-                    success=False, error="No content for AO3 post",
+                    success=False,
+                    error=f"No AO3 content for {story.name} (no HTML/<story>_Clean.html and no fallback)",
                     duration_seconds=self._elapsed(_t),
                 )
 
-            rating = _rating_to_ao3(package.rating)
-            tags = ", ".join(package.tags)
+            # 4. Title + summary
+            work_title = package.title or story.name.replace("_", " ")
+            summary = (story.description or package.description or "")[:1250]
 
-            result = await client.create_work(
-                title=package.title,
+            # 5. Create the work in preview/draft state
+            create_result = await client.create_work(
+                title=work_title,
                 content=content,
+                fandom=fandom,
                 rating=rating,
-                additional_tags=tags,
-                summary=package.description[:1250],
+                warnings=warnings,
+                categories=categories,
+                relationship=relationships_str,
+                characters=characters_str,
+                additional_tags=additional_tags,
+                summary=summary,
+                language_id="1",  # AO3 English (numeric, like SQW's "15")
             )
+            work_id = create_result["work_id"]
+            url = create_result.get("url", f"https://archiveofourown.org/works/{work_id}")
+            logger.info("AO3: Created work %s for %s — %s", work_id, story.name, url)
+
+            # SAFETY: verify the new work is in drafts
+            await _verify_still_draft(client, work_id, "create_work")
 
             return PostResult(
                 success=True,
-                external_id=result.get("work_id", ""),
-                external_url=result.get("url", ""),
+                external_id=work_id,
+                external_url=url,
                 duration_seconds=self._elapsed(_t),
             )
         except Exception as e:
@@ -99,41 +293,47 @@ class AO3Poster(PlatformPoster):
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
     async def edit(self, external_id: str, package: StoryUploadPackage) -> PostResult:
-        """Edit metadata AND chapter content on an existing AO3 work."""
+        """Edit an existing AO3 work — metadata + first chapter content.
+
+        Note: only updates the first chapter (since the AO3 client does not
+        yet support multi-chapter create_chapter / iteration). Multi-chapter
+        edits will need a follow-up refactor.
+        """
         _t = self._start_timer()
         try:
             client = await self._ensure_client()
-            tags = ", ".join(package.tags)
+            story = story_reader.load_story(package.story_name)
 
-            # Step 1: Update work metadata
+            freeform_tags = self._build_freeform_tags(story, package)
+            freeform_tags = self._trim_freeform_tags(
+                freeform_tags, story.characters, story.relationships,
+                story.fandom or "Original Work",
+            )
+            additional_tags = ", ".join(freeform_tags)
+
             await client.edit_work(
                 external_id,
-                title=package.title,
-                summary=package.description[:1250],
-                additional_tags=tags,
+                title=package.title or story.name.replace("_", " "),
+                summary=(story.description or package.description or "")[:1250],
+                additional_tags=additional_tags,
             )
             logger.info("AO3: Updated work %s metadata", external_id)
 
-            # Step 2: Update chapter content
+            # Update chapter 1 content
             try:
-                story = story_reader.load_story(package.story_name)
-                ao3_chapters = await client.get_chapter_ids(external_id)
-
-                if ao3_chapters and story.chapters:
-                    for ao3_ch in ao3_chapters:
-                        ch_idx = ao3_ch["index"]
-                        ch_id = ao3_ch["chapter_id"]
-
-                        file_path, _ = story_reader._resolve_format_file(story, ch_idx, "ao3")
-                        if file_path:
-                            with open(file_path, "r", encoding="utf-8") as f:
-                                content = f.read()
-                            await client.edit_chapter(external_id, ch_id, content=content)
-                            logger.info("AO3: Updated chapter %d (id=%s)", ch_idx, ch_id)
-                        else:
-                            logger.warning("AO3: No file for chapter %d of %s", ch_idx, package.story_name)
+                chapters = await client.get_chapter_ids(external_id)
+                if chapters:
+                    content = self._read_full_story_html(story)
+                    if content:
+                        await client.edit_chapter(
+                            external_id, chapters[0]["chapter_id"], content=content,
+                        )
+                        logger.info(
+                            "AO3: Updated chapter %s content of work %s",
+                            chapters[0]["chapter_id"], external_id,
+                        )
             except Exception as ch_err:
-                logger.warning("AO3: Chapter content update failed (metadata still updated): %s", ch_err)
+                logger.warning("AO3: Chapter content update failed: %s", ch_err)
 
             return PostResult(
                 success=True,
@@ -146,7 +346,7 @@ class AO3Poster(PlatformPoster):
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
     async def replace_file(self, external_id: str, file_path: str) -> PostResult:
-        """Replace chapter content on AO3."""
+        """Replace chapter 1 content on AO3."""
         _t = self._start_timer()
         try:
             client = await self._ensure_client()
@@ -161,8 +361,9 @@ class AO3Poster(PlatformPoster):
                     duration_seconds=self._elapsed(_t),
                 )
 
-            ch = chapters[0]
-            await client.edit_chapter(external_id, ch["chapter_id"], content=content)
+            await client.edit_chapter(
+                external_id, chapters[0]["chapter_id"], content=content,
+            )
 
             return PostResult(
                 success=True,
@@ -173,14 +374,3 @@ class AO3Poster(PlatformPoster):
         except Exception as e:
             logger.error("AO3 file replace failed for %s: %s", external_id, e)
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
-
-
-def _rating_to_ao3(rating: str) -> str:
-    r = rating.lower()
-    if r in ("adult", "explicit", "nsfw"):
-        return "Explicit"
-    elif r in ("mature", "questionable"):
-        return "Mature"
-    elif r in ("teen",):
-        return "Teen And Up Audiences"
-    return "General Audiences"

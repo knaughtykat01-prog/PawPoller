@@ -2672,6 +2672,8 @@ Extra_Credit/
 | SquidgeWorld | `SquidgeWorld/*.html` | `Chapters/SoFurry_HTML/*.html` | — |
 | Bluesky | *(no file upload — uses description text)* | — | — |
 
+> **Important (fixed 2026-04-08):** When `chapter_index == 0` (full-story request), `_resolve_format_file()` now skips any subdir whose path contains `Chapters/`. Without this guard, the loose `*.txt` glob on `Chapters/BBCode/` would match `Chapter_1_*_bbcode.txt` first and silently return chapter 1 instead of the full bulk file. The bug masqueraded as a successful upload because page-count verification still reported `pages=1`. See CHANGELOG 2.3.4.
+
 **tags_upload.txt** (legacy fallback when story.json is missing): Multi-platform tag file parsed by `story_reader.py`. Format:
 ```
 === INKBUNNY ===
@@ -2715,9 +2717,15 @@ class StoryUploadPackage:
     file_path: str | None       # Absolute path to format file
     file_type: str              # "bbcode", "pdf", "html", "text"
     word_count: int
-    thumbnail_path: str | None  # Cover image path
+    thumbnail_path: str | None  # Cover image path (auto-detected from story root if story.json.images.cover empty)
     extra: dict                 # Platform-specific overrides
 ```
+
+**`extra` dict conventions** (per-platform overrides set by callers, read by posters):
+- `extra["draft"] = True` — Inkbunny: omit visibility on `edit_submission`, leaving the submission hidden. SquidgeWorld: equivalent to leaving the work in `/works/drafts`.
+- `extra["visibility"]` — Inkbunny: explicit override (e.g. `"yes_nowatch"` for visible-without-notify-watchers). Wins over `draft`.
+- `extra["categories"]`, `extra["warnings"]`, `extra["fandoms"]`, `extra["characters"]`, `extra["relationships"]` — SquidgeWorld/AO3 OTW Archive metadata fields.
+- `extra["work_skin_title"]` — SquidgeWorld: title of the Work Skin to apply (auto-resolved by `SquidgeWorldPoster._ensure_work_skin()` from `story.work_skin_path`).
 
 #### Inkbunny (`posting/platforms/inkbunny.py`)
 
@@ -2737,6 +2745,31 @@ class StoryUploadPackage:
 **File type**: `story` field for the IB reading panel (BBCode text displayed in-browser).
 
 **Rate limit**: 5 seconds minimum between consecutive posts.
+
+**Draft mode**: Set `package.extra["draft"] = True` to omit the `visibility` parameter on `edit_submission`. IB defaults newly created submissions to hidden, so omitting visibility leaves them as drafts. You can flip later via the IB UI or another `edit_submission(visibility="yes")` call. `extra["visibility"]` overrides both modes (e.g. `"yes_nowatch"` for visible-without-notify).
+
+**Single-bulk-file convention for chaptered stories**: For prose with multiple chapters, post **one submission with one BBCode file** (the full-story bulk file at `BBCode/<Story>_bbcode.txt`), not one page per chapter. Reasons:
+1. IB's `story` field (the inline reading panel) is a single text blob — it can't show different content per page anyway
+2. Page navigation on IB is for multi-image art, not chaptered prose
+3. Per-page splits cause UI confusion — page 2 still shows chapter 1 in the reading panel
+
+`build_package(story, chapter_index=0, platform="ib")` resolves to the full-story BBCode file automatically (after the 2026-04-08 fix to `_resolve_format_file` — see CHANGELOG 2.3.4).
+
+**Tag limit (empirical, 2026-04-08)**: IB accepts at least **108 keywords** on a single submission. The historical 75-tag fear was wrong — no truncation needed. NSE Studying did see one duplicate silently dropped server-side (58 sent → 57 returned), so don't depend on exact counts being preserved.
+
+**Thumbnail auto-detection**: `story_reader._load_from_story_json()` auto-detects thumbnails by globbing the story root for common patterns when `images.cover` is empty:
+- `*_thumbnail_full_series.*`
+- `*_thumbnail.*`
+- `*_cover.*`
+- `thumbnail.*` / `cover.*`
+
+First match wins, restricted to png/jpg/jpeg/gif. The IB poster forwards `package.thumbnail_path` to `upload_submission(thumbnail_path=...)`, which uses IB's `replace=<file_id>` mechanism to attach the thumbnail to the uploaded file.
+
+**Bulk-draft script**: `tests/bulk_inkbunny_drafts.py` shows the canonical pattern:
+1. Cross-check `client.search_user_submissions()` against local story names — abort on overlap
+2. For each missing story, `build_package(story, 0, "ib")` + `extra["draft"] = True`
+3. `poster.post(package)` then verify via `get_submission_details()`
+4. Record via `upsert_publication(status="draft")`
 
 #### FurAffinity (`posting/platforms/furaffinity.py`)
 
@@ -2826,24 +2859,60 @@ class StoryUploadPackage:
 
 **Auth**: Reuses `AO3Client` with Rails CSRF form login. Same account for polling and posting (`ao3_username`/`ao3_password` = KnaughtyKat).
 
-**Same OTW Archive software as SquidgeWorld** — identical form structure, HTML handling, and chapter editing.
+**Same OTW Archive software as SquidgeWorld** — identical form structure, HTML handling, and chapter editing. The `AO3Poster` is a near-mirror of `SquidgeWorldPoster` after the 2026-04-08 refactor.
 
-**Post flow**:
-1. `login()` → Rails CSRF form (authenticity_token)
-2. POST `/works` with chapter content, tags, rating, fandom, summary
+**Post flow** (single-bulk-file convention, like IB):
+1. Read full StoryInfo from `story.json` (fandom, warnings, categories, characters, relationships)
+2. Trim freeform tags to fit OTW's 75-tag total budget (`fandom + relationships + characters + freeform <= 75`)
+3. Read body-only HTML from `HTML/<Story>_Clean.html`
+4. `client.create_work(...)` with `preview_button` — work lands in `/works/{id}/preview` (drafts), NOT published
+5. SAFETY: post-flight `is_work_published` check — only aborts on POSITIVE confirmation of publish (handles AO3 timeouts gracefully)
+
+**Why single-bulk-file for chaptered prose**: AO3 client doesn't yet support multi-chapter `create_chapter` (deferred refactor). For now, full-story body HTML is uploaded as a single AO3 chapter — same approach as Inkbunny's reading-panel convention. The `HTML/<story>_Clean.html` file is body-only paragraphs with no `<html><head>` wrapper, ideal for AO3's content field.
 
 **Edit flow** (metadata + chapter content):
-1. PATCH `/works/{id}` — update title, summary, freeform tags
+1. `client.edit_work(id, title=, summary=, additional_tags=)` — metadata
 2. `get_chapter_ids()` — scrape `/works/{id}/navigate` for chapter IDs
-3. PATCH `/works/{id}/chapters/{ch_id}` per chapter — HTML whitespace collapse applied
+3. `edit_chapter(work_id, chapter_id, content=)` — replaces chapter 1 content
 
-**HTML whitespace collapse**: Same as SquidgeWorld — `_collapse_html_whitespace()` joins multi-line `<p>` and `<div>` tags onto single lines to prevent OTW's auto-formatter from inserting `<br />` tags.
+**Critical OTW form fields** (any of these missing → silent validation failure):
+- `work[author_attributes][ids][]` — pseud_id, REQUIRED, extracted from `/works/new` HTML on every post
+- `work[archive_warning_strings][]` — plural array, hidden empty value first, then each warning. Default: `"No Archive Warnings Apply"`. Other valid: `"Choose Not To Use Archive Warnings"`, `"Graphic Depictions Of Violence"`, `"Major Character Death"`, `"Rape/Non-Con"`, `"Underage"`, `"Suicide/Suicidal Ideation"`, `"Incest and/or Incestuous Relationship(s)"`
+- `work[category_strings][]` — plural array. Valid: `F/F`, `F/M`, `Gen`, `M/M`, `Multi`, `NB/F`, `NB/M`, `NB/NB`, `Other`, `QPR`
+- `work[language_id]` — **numeric** ID; `1` = English. The previous code passed `"en"` (ISO code) which AO3 silently treated as blank → `"Language cannot be blank."` validation error.
+- `work[wip_length]` — `"1"` for completed works (no WIP)
+- `preview_button` — `"Preview"` lands in drafts; `post_button` would publish (we never use it)
 
-**Rate limiting**: 3 seconds between requests (`config.AO3_REQUEST_DELAY_SECONDS`). AO3 is volunteer-run with limited infrastructure — aggressive polling or posting will result in 429 rate limits with 30-second backoff.
+**Rating mapping**: General → "General Audiences"; Mature → "Mature"; Teen → "Teen And Up Audiences"; Adult/Explicit → "Explicit".
 
-**Cloudflare**: AO3 uses Cloudflare protection. The `_get_page()` method handles 403 (blocked) and 429 (rate limited) responses. Datacenter IP access may be intermittent.
+**HTML whitespace collapse**: `_collapse_html_whitespace()` joins multi-line `<p>` and `<div>` tags onto single lines to prevent OTW's auto-formatter from inserting `<br />` tags.
 
-**Format files**: Uses SquidgeWorld HTML (`SquidgeWorld/*.html`), falling back to SoFurry HTML. Same format map as SQW since both run OTW Archive.
+**Rate limiting**: 3 seconds between requests (`config.AO3_REQUEST_DELAY_SECONDS`). Bulk runs use a 10-second inter-post sleep on top of that — AO3 is volunteer-run with limited infrastructure.
+
+**Network reliability** (the one really painful difference from SQW):
+- **AO3 from datacenter IPs** sees frequent `ReadTimeout` and `525 origin SSL handshake fail` responses — about 1 in 5 requests. The drafts page (`/users/<user>/works/drafts`) is particularly slow and times out the most.
+- `_get_page()` retries 3 times with backoff on timeout/525. Hard 403/404 are not retried.
+- **AO3 from residential IPs** is currently shielded with the "Shields are up!" CF JavaScript challenge — vanilla httpx cannot pass it. All AO3 testing must run from the GCP container.
+- The post-flight safety check uses **tri-state** state checks (`True | False | None`). When `is_work_in_drafts` returns `None` (fetch failed), the check trusts `preview_button` and logs a warning instead of triggering a destructive auto-delete. Without this, AO3 timeouts caused spurious aborts that tried (and failed) to delete healthy drafts.
+
+**Format files** (`PLATFORM_FORMAT_MAP["ao3"]`, in priority order):
+| Priority | Path | Pattern |
+|---|---|---|
+| 1 | `HTML/` | `*_Clean.html` (full-story body HTML, single bulk) |
+| 2 | `SquidgeWorld/` | `*.html` (per-chapter, body-only) |
+| 3 | `Chapters/SoFurry_HTML/` | `*.html` (per-chapter) |
+
+For full-story posting (`chapter_index=0`) priority 3 is skipped automatically because of the `Chapters/` skip in `_resolve_format_file`. Priority 1 wins for any story with a `Clean.html` full-story file (which is all of them after the 2026-04-07 converter regen).
+
+**Safety helpers** (`AO3Client`):
+- `delete_work(work_id)` — confirm_delete flow (`_method=delete`, `commit=Yes, Delete Work`). Use with care.
+- `is_work_in_drafts(work_id)` — tri-state check against `/users/{user}/works/drafts`
+- `is_work_published(work_id)` — tri-state check against `/users/{user}/works`
+
+**Known limitations** (deferred):
+- Multi-chapter `create_chapter` not implemented — chaptered prose goes up as single bulk file
+- Work Skin support not implemented — AO3 won't have custom CSS until ported
+- `edit_work` only updates metadata + chapter 1; multi-chapter edits not supported
 
 #### DeviantArt (`posting/platforms/deviantart.py`)
 
