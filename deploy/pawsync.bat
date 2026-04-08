@@ -1,29 +1,17 @@
 @echo off
-echo === PawPoller Story Sync ===
-echo.
-echo Removing any stale archive...
-del "%TEMP%\story-archive.tar.gz" 2>nul
-echo Packing stories...
-cd /d "C:\Users\rhysc\claude\m_x\Archives\Complete_Stories"
-REM --force-local stops Windows tar from interpreting "C:\..." as a remote SSH host
-tar --force-local -czf "%TEMP%\story-archive.tar.gz" --exclude="*/Backups/*" --exclude="*/Drafts/*" --exclude="*/Styled_HTML/*" .
-if errorlevel 1 (
-    echo ERROR: tar failed, aborting before upload
-    exit /b 1
-)
-if not exist "%TEMP%\story-archive.tar.gz" (
-    echo ERROR: archive file not created, aborting
-    exit /b 1
-)
-echo Uploading to GCP...
-gcloud compute scp --zone=us-east1-c "%TEMP%\story-archive.tar.gz" kithetiger@pawpoller:/tmp/story-archive.tar.gz
-if errorlevel 1 (
-    echo ERROR: scp failed
-    exit /b 1
-)
-echo Extracting on server...
-gcloud compute ssh pawpoller --zone=us-east1-c --command="cd /home/kithetiger/story-archive && tar xzf /tmp/story-archive.tar.gz && sudo chmod -R o+rX /home/kithetiger/story-archive && rm -f /tmp/story-archive.tar.gz"
-echo.
-echo Done! Stories synced to server.
-del "%TEMP%\story-archive.tar.gz" 2>nul
-pause
+REM Thin wrapper around deploy/pawsync.py.
+REM
+REM The original .bat-based pawsync was rewritten in Python on 2026-04-08
+REM after hitting two intermittent bugs that wasted a session of debugging:
+REM   1. Windows tar's "Cannot connect to C:" silent failure
+REM      (interprets C:\... as a remote SSH host without --force-local)
+REM   2. gcloud compute scp/ssh hanging silently when invoked from a .bat
+REM      file context — never returning control to cmd.exe even after the
+REM      upload completed. The same gcloud commands worked fine inline
+REM      via cmd /c "..." but not from inside a .bat. --quiet, < nul, and
+REM      every other workaround failed to dislodge the hang.
+REM
+REM Python's tarfile module + subprocess.run with stdin=DEVNULL is
+REM deterministic and bypasses both gotchas. See deploy/pawsync.py.
+python "%~dp0pawsync.py" %*
+exit /b %errorlevel%
