@@ -64,11 +64,36 @@ export default {
       }
     }
 
-    // Helper: build headers for a follow-up request
+    // Helper: build headers for a forwarded request.
+    //
+    // History note (fixed 2026-04-08): the previous version of this function
+    // ALSO stripped 'content-type'. That broke every POST/PUT with a body
+    // proxied through the worker — the body would arrive at the target
+    // with no Content-Type, so SF/AO3/SQW couldn't parse JSON /
+    // form-urlencoded / multipart bodies. Polling didn't notice because
+    // polling is GET-only. Posting via the proxy was silently broken — we
+    // only caught it when SF/AO3 server-side posting was about to be wired
+    // up.
+    //
+    // We preserve Content-Type because it's a property of the request body,
+    // not the connection. Multipart bodies in particular MUST keep their
+    // boundary= parameter or the body is unparseable.
+    //
+    // We strip Content-Length because Cloudflare Workers' inner fetch()
+    // recomputes the length from the body itself (or uses chunked encoding
+    // for streams). Forwarding the original Content-Length from the
+    // outer client→worker request would set a stale value that may not
+    // match what the worker actually streams to the target.
+    //
+    // We strip Host (we set our own per-target) and Cookie (we manage
+    // cookies in our own jar so domain-matching works).
+    //
+    // The login flow's extraHeaders override still works because
+    // Headers.set() replaces existing values.
     function buildHeaders(url) {
       const h = new Headers();
       for (const [key, value] of headers) {
-        if (!['host', 'cookie', 'content-type', 'content-length'].includes(key.toLowerCase())) {
+        if (!['host', 'cookie', 'content-length'].includes(key.toLowerCase())) {
           h.set(key, value);
         }
       }
@@ -102,9 +127,18 @@ export default {
         if (!location) break;
         finalUrl = new URL(location, finalUrl).toString();
 
+        // The redirect target is fetched as a GET with no body.
+        // Drop content-type and content-length — they relate to the
+        // (now-discarded) original POST/PUT body and would be misleading
+        // on a body-less GET. Some strict servers reject GET requests
+        // that carry a Content-Length header.
+        const redirHeaders = buildHeaders(finalUrl);
+        redirHeaders.delete('content-type');
+        redirHeaders.delete('content-length');
+
         resp = await fetch(finalUrl, {
           method: 'GET',
-          headers: buildHeaders(finalUrl),
+          headers: redirHeaders,
           redirect: 'manual',
         });
         captureCookies(resp);

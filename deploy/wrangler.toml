@@ -1,0 +1,34 @@
+# Cloudflare Worker config for the PawPoller proxy.
+#
+# Worker name MUST match the existing deployment so we update it in place
+# rather than creating a new one. The current deployed worker is at:
+#   https://pawproxy.knaughtykat01.workers.dev
+#
+# Required state on Cloudflare side (preserve when re-deploying):
+#   - Environment variable PROXY_SECRET (the shared secret matching
+#     cf_worker_key in PawPoller settings.json)
+#   - KV namespace binding SF_SESSIONS (used by the SoFurry login flow
+#     to cache session cookies between invocations)
+#
+# These can't be in wrangler.toml without exposing the secret. Set them
+# once via the dashboard (or `wrangler secret put PROXY_SECRET`) and
+# they persist across deploys.
+#
+# Deploy with:
+#   cd PawPoller/deploy
+#   npx wrangler deploy
+#
+# (Cloudflare login is interactive on first run — it opens a browser
+# for OAuth. Subsequent deploys reuse the cached auth.)
+
+name = "pawproxy"
+main = "cf-worker.js"
+compatibility_date = "2024-09-01"
+
+# KV namespace binding — must already exist on Cloudflare side.
+# wrangler will fail to deploy if the namespace ID is wrong.
+# Get the ID with: npx wrangler kv:namespace list
+# (Or just leave commented and bind via dashboard.)
+# [[kv_namespaces]]
+# binding = "SF_SESSIONS"
+# id = "..."

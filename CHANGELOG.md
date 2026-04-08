@@ -4,6 +4,51 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.3.8] - 2026-04-08
+
+### Fixed — CF Worker proxy was stripping Content-Type, silently breaking every body-bearing request
+
+The Cloudflare Worker at `pawproxy.knaughtykat01.workers.dev` had a long-standing bug in `buildHeaders()` that stripped both `Content-Type` and `Content-Length` from every forwarded request. The bug was discovered while wiring up server-side SF posting:
+
+- **Polling never noticed** because polling is GET-only — no request body, no Content-Type to forward, no boundary= parameter to lose.
+- **Posting from local always worked** because the proxy is bypassed when `cf_worker_url` is empty in settings — and PawPoller's local dev settings.json has it empty.
+- **Posting from the GCP server** was the first scenario where the proxy actually had to forward POST/PUT bodies. Every body-bearing request would arrive at the target site with no `Content-Type`, causing JSON / form-urlencoded / multipart bodies to be unparseable. SF/AO3/SQW posting via proxy would have been silently broken.
+
+**Reproduced before fixing** with `tests/cf_proxy_content_type_repro.py` — sent a JSON POST through the proxy to `httpbin.org/post` (which echoes back the headers it received) and confirmed `target received Content-Type: None`.
+
+**Fix in `deploy/cf-worker.js:buildHeaders()`:**
+- Strip ONLY `host` (we set our own per-target) and `cookie` (we manage cookies in our own jar so domain-matching works through the workers.dev → real-target hop)
+- **Preserve `Content-Type`** — it's a property of the request body, not the connection. Multipart bodies in particular MUST keep their `boundary=` parameter or the body is unparseable
+- **Strip `Content-Length`** — Cloudflare Workers' inner `fetch()` recomputes the length from the body itself (or uses chunked encoding for streams). Forwarding the original Content-Length from the outer client→worker request would set a stale value that may not match what the worker actually streams to the target
+- Long history-note comment in the source warning the next person not to add Content-Type back to the strip list
+- Login flow's `extraHeaders: {'Content-Type': 'application/x-www-form-urlencoded'}` override still works because `Headers.set()` replaces existing values
+
+**Also fixed: redirect path stale headers.** When the worker follows a redirect, it converts to GET method. The original Content-Type and Content-Length from a POST/PUT would still be in the headers built by `buildHeaders` and would be misleading (or rejected by strict servers) on a body-less GET. Added an explicit `redirHeaders.delete('content-type'); redirHeaders.delete('content-length')` in the redirect loop.
+
+**Verified end-to-end:**
+1. `tests/cf_proxy_content_type_repro.py` flipped from `[BUG]` to `[OK]` — `Content-Type: application/json` now forwarded correctly
+2. `tests/sf_proxy_post_smoke.py` posted Tombstone as Private through the proxy from inside the GCP container (multipart upload, JSON metadata, full 3-step REST flow). Submission `myw0PxW1` created with `privacy=1 (Private)`, 75 tags, 2.1s end-to-end (basically as fast as direct local posting). Cleaned up afterwards.
+
+**This unblocks server-side posting on every platform that uses bodies:**
+- **SoFurry** — JSON + multipart, both confirmed working through proxy
+- **SquidgeWorld** — form-urlencoded, OTW Archive (uses the same Rails form pattern as AO3, will work through proxy if needed; SQW doesn't strictly need the proxy from GCP but the path is now available)
+- **AO3** — form-urlencoded, currently runs from GCP without the proxy and works most days; the proxy is now a viable fallback if AO3 starts blocking GCP IPs
+- **DeviantArt** — JSON over OAuth2, currently the only platform that NEEDS the proxy from GCP. Bug was definitely affecting any DA POST attempts.
+
+### Deployment
+
+- `deploy/cf-worker.js` — patched `buildHeaders()` (preserve Content-Type, strip Content-Length) + redirect-path Content-Type/Length cleanup + long history-note comment
+- `deploy/wrangler.toml` — added minimal wrangler config so future deploys can use `npx wrangler deploy` from `PawPoller/deploy/`
+- Deployed via `npx wrangler deploy` to the `knaughtykat01@gmail.com` Cloudflare account (the one that owns the `knaughtykat01.workers.dev` subdomain). Initial deploy attempt landed on the wrong account because `wrangler login` had logged into a different identity — fixed by `wrangler logout` + `wrangler login` and picking the right account in the OAuth flow.
+
+### Test files
+- `tests/check_cf_proxy_state.py` — audit `cf_worker_url`/`cf_worker_key` settings and report which mode the SF poster would pick
+- `tests/cf_proxy_content_type_repro.py` — reproduces the bug against `httpbin.org/post` (read-only deterministic regression test)
+- `tests/sf_proxy_post_smoke.py` — server-side SF posting smoke test that exercises multipart upload through the proxy
+- `tests/sf_delete_proxy_test_dup.py` — cleans up the duplicate Tombstone draft created by the smoke test
+
+---
+
 ## [2.3.7] - 2026-04-08
 
 ### Added — SoFurry draft mode + bulk drafting
