@@ -69,8 +69,9 @@ const Editor = {
                         <button id="editor-save-btn" class="btn btn-sm" onclick="Editor.save()">Save</button>
                         <button id="editor-regen-btn" class="btn btn-sm btn-outline" onclick="Editor.regenerate()">Regenerate</button>
                         <select id="editor-format-select">
-                            <option value="clean_html">Clean HTML</option>
-                            <option value="bbcode">BBCode</option>
+                            <option value="clean_html">Clean HTML (AO3)</option>
+                            <option value="sofurry_html">SoFurry HTML</option>
+                            <option value="bbcode">BBCode (IB)</option>
                         </select>
                     </div>
                 </div>
@@ -250,7 +251,8 @@ const Editor = {
                 const sourceData = await sourceResp.json();
                 const raw = sourceData.html || '(empty)';
                 const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const label = sourceData.format === 'bbcode' ? 'BBCode' : 'Clean HTML';
+                const fmtLabels = { 'bbcode': 'BBCode', 'clean_html': 'Clean HTML', 'sofurry_html': 'SoFurry HTML' };
+                const label = fmtLabels[sourceData.format] || sourceData.format;
                 if (sourceHeader) sourceHeader.textContent = `${label} output (${raw.length.toLocaleString()} bytes)`;
                 sourceBody.innerHTML = `<pre class="preview-source">${escaped}</pre>`;
             } else {

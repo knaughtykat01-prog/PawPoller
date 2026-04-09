@@ -314,6 +314,155 @@ def convert_to_clean_html(markdown_text: str) -> ConversionResult:
     return ConversionResult(output=output, format="clean_html", stats=stats, warnings=warnings)
 
 
+def convert_to_sofurry_html(markdown_text: str) -> ConversionResult:
+    """Convert full MASTER.md text to SoFurry-specific HTML.
+
+    Uses SF's supported tags:
+      - <h2> for story title (centred via class)
+      - <h3> for chapter headings (centred)
+      - <p class="text-center"> for centred text (subtitles, POV markers,
+        section breaks, end marker)
+      - <p class="text-right"> for sent text messages
+      - <blockquote> for content warnings (optional)
+      - <em>, <strong>, <s> for inline formatting
+    """
+    lines = markdown_text.split("\n")
+    body_parts: list[str] = []
+    stats = {
+        "title": None, "subtitle": None, "chapters": [],
+        "section_breaks": 0, "paragraphs": 0,
+        "pov_markers": [], "text_messages": 0, "end_marker": False,
+    }
+    warnings: list[str] = []
+
+    title_seen = False
+    subtitle_done = False
+    i = 0
+    current_paragraph: list[str] = []
+
+    def flush():
+        if current_paragraph:
+            text = " ".join(current_paragraph)
+            converted = format_paragraph_html(text)
+            body_parts.append(f"<p>{converted}</p>")
+            stats["paragraphs"] += 1
+            current_paragraph.clear()
+
+    while i < len(lines):
+        stripped = lines[i].strip()
+
+        # --- Section/chapter break ---
+        if stripped == "---":
+            flush()
+            j = i + 1
+            while j < len(lines) and lines[j].strip() == "":
+                j += 1
+            if j < len(lines) and lines[j].strip().startswith("# "):
+                body_parts.append("<hr />")
+            else:
+                body_parts.append('<p class="text-center">* * *</p>')
+                stats["section_breaks"] += 1
+            i += 1
+            continue
+
+        # --- Headings ---
+        if stripped.startswith("# "):
+            flush()
+            heading = _escape_html(stripped[2:].strip())
+            if not title_seen:
+                body_parts.append(f'<h2 class="text-center">{heading}</h2>')
+                title_seen = True
+                stats["title"] = heading
+            else:
+                body_parts.append(f'<h3 class="text-center">{heading}</h3>')
+                stats["chapters"].append(heading)
+                subtitle_done = True
+            i += 1
+            continue
+
+        # --- Subtitle ---
+        if title_seen and not subtitle_done:
+            if stripped == "":
+                flush()
+                i += 1
+                continue
+            if re.match(r"^\*[^*]+\*$", stripped):
+                inner = stripped[1:-1]
+                if not inner.startswith("End of "):
+                    is_sub = (
+                        re.match(r"^by\s+", inner, re.IGNORECASE)
+                        or re.match(r"^An?\s+.+\s+(Story|Tale|Novel|Novella|Horror)$", inner, re.IGNORECASE)
+                    )
+                    if is_sub:
+                        flush()
+                        body_parts.append(f'<p class="text-center"><em>{_escape_html(inner)}</em></p>')
+                        subtitle_done = True
+                        stats["subtitle"] = inner
+                        i += 1
+                        continue
+                    else:
+                        subtitle_done = True
+            else:
+                subtitle_done = True
+
+        # --- End marker ---
+        if re.match(r"^\*End of .+\*$", stripped):
+            flush()
+            body_parts.append('<p class="text-center"><strong>~ End ~</strong></p>')
+            stats["end_marker"] = True
+            i += 1
+            continue
+
+        # --- POV marker ---
+        if is_pov_marker(stripped):
+            flush()
+            inner = stripped[2:-2]
+            body_parts.append(f'<p class="text-center"><strong>{_escape_html(inner)}</strong></p>')
+            stats["pov_markers"].append(inner)
+            i += 1
+            continue
+
+        # --- Phone display ---
+        phone_m = is_phone_display(stripped)
+        if phone_m:
+            flush()
+            caller = phone_m.group(1).strip()
+            body_parts.append(f'<p class="text-center"><strong>{_escape_html(caller)}</strong></p>')
+            stats["text_messages"] += 1
+            i += 1
+            continue
+
+        # --- Text message ---
+        msg_m = is_text_message(stripped)
+        if msg_m:
+            flush()
+            sender = msg_m.group(1).strip()
+            message = msg_m.group(2).strip()
+            is_sent = "MAYA" in sender.upper()
+            align = "text-right" if is_sent else "text-left"
+            body_parts.append(
+                f'<p class="{align}"><strong>{_escape_html(sender)}:</strong> {_escape_html(message)}</p>'
+            )
+            stats["text_messages"] += 1
+            i += 1
+            continue
+
+        # --- Blank line ---
+        if stripped == "":
+            flush()
+            i += 1
+            continue
+
+        # --- Regular text ---
+        current_paragraph.append(stripped)
+        i += 1
+
+    flush()
+
+    output = "\n".join(body_parts)
+    return ConversionResult(output=output, format="sofurry_html", stats=stats, warnings=warnings)
+
+
 def convert_to_bbcode(markdown_text: str) -> ConversionResult:
     """Convert full MASTER.md text to BBCode (Inkbunny)."""
     lines = markdown_text.split("\n")
@@ -446,11 +595,13 @@ def convert_to_bbcode(markdown_text: str) -> ConversionResult:
 def convert(markdown_text: str, target_format: str) -> ConversionResult:
     """Convert markdown to the specified format.
 
-    Supported formats: 'clean_html', 'bbcode'
+    Supported formats: 'clean_html', 'sofurry_html', 'bbcode'
     Future: 'sqw', 'styled_html'
     """
     if target_format == "clean_html":
         return convert_to_clean_html(markdown_text)
+    elif target_format == "sofurry_html":
+        return convert_to_sofurry_html(markdown_text)
     elif target_format == "bbcode":
         return convert_to_bbcode(markdown_text)
     else:
