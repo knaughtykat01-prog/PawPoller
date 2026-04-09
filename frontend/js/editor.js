@@ -79,9 +79,18 @@ const Editor = {
                         <textarea id="editor-textarea" spellcheck="true" placeholder="Loading..."></textarea>
                     </div>
                     <div class="editor-divider" id="editor-divider"></div>
-                    <div class="editor-preview" id="editor-preview">
-                        <div class="editor-preview-content" id="editor-preview-content">
-                            <p style="color:var(--text-secondary)">Loading preview...</p>
+                    <div class="editor-preview-col" id="editor-preview">
+                        <div class="editor-preview-panel" id="editor-preview-rendered">
+                            <div class="preview-panel-header">Rendered Preview</div>
+                            <div class="preview-panel-body" id="editor-preview-rendered-body">
+                                <p style="color:var(--text-secondary)">Loading...</p>
+                            </div>
+                        </div>
+                        <div class="editor-preview-panel" id="editor-preview-source-panel">
+                            <div class="preview-panel-header" id="editor-source-header">Clean HTML output</div>
+                            <div class="preview-panel-body" id="editor-preview-source-body">
+                                <p style="color:var(--text-secondary)">Loading...</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -134,19 +143,19 @@ const Editor = {
                 }
             });
 
-            // Sync scrolling between editor and preview
-            const previewPane = document.getElementById('editor-preview');
+            // Sync scrolling between editor and preview column
+            const previewCol = document.getElementById('editor-preview');
             ta.addEventListener('scroll', () => {
                 if (this._syncingScroll) return;
                 this._syncingScroll = true;
                 const pct = ta.scrollTop / (ta.scrollHeight - ta.clientHeight || 1);
-                previewPane.scrollTop = pct * (previewPane.scrollHeight - previewPane.clientHeight);
+                previewCol.scrollTop = pct * (previewCol.scrollHeight - previewCol.clientHeight);
                 requestAnimationFrame(() => { this._syncingScroll = false; });
             });
-            previewPane.addEventListener('scroll', () => {
+            previewCol.addEventListener('scroll', () => {
                 if (this._syncingScroll) return;
                 this._syncingScroll = true;
-                const pct = previewPane.scrollTop / (previewPane.scrollHeight - previewPane.clientHeight || 1);
+                const pct = previewCol.scrollTop / (previewCol.scrollHeight - previewCol.clientHeight || 1);
                 ta.scrollTop = pct * (ta.scrollHeight - ta.clientHeight);
                 requestAnimationFrame(() => { this._syncingScroll = false; });
             });
@@ -185,12 +194,13 @@ const Editor = {
 
     async _requestPreview() {
         const ta = document.getElementById('editor-textarea');
-        const previewEl = document.getElementById('editor-preview-content');
-        if (!ta || !previewEl) return;
+        const renderedBody = document.getElementById('editor-preview-rendered-body');
+        const sourceBody = document.getElementById('editor-preview-source-body');
+        const sourceHeader = document.getElementById('editor-source-header');
+        if (!ta || !renderedBody || !sourceBody) return;
 
-        // For large stories, only preview the visible portion to keep mobile responsive
         let content = ta.value;
-        const MAX_PREVIEW = 100000; // ~100KB — enough for most chapters
+        const MAX_PREVIEW = 100000;
         if (content.length > MAX_PREVIEW) {
             content = content.substring(0, MAX_PREVIEW) + '\n\n[... truncated for preview ...]';
         }
@@ -198,41 +208,52 @@ const Editor = {
         const thisRequestId = ++this.previewRequestId;
 
         try {
-            previewEl.style.opacity = '0.6';
-            const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: content,
-                    format: this.previewFormat,
+            renderedBody.style.opacity = '0.6';
+            sourceBody.style.opacity = '0.6';
+
+            // Fire both requests in parallel: rendered (always clean_html) + source format
+            const [renderedResp, sourceResp] = await Promise.all([
+                fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content, format: 'clean_html' }),
                 }),
-            });
+                fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content, format: this.previewFormat }),
+                }),
+            ]);
 
-            if (!resp.ok) {
-                const errText = await resp.text();
-                previewEl.innerHTML = `<p style="color:var(--color-error)">Preview failed (${resp.status}): ${errText.substring(0, 200)}</p>`;
-                previewEl.style.opacity = '1';
-                return;
-            }
-
-            // Discard stale response if a newer request was fired
             if (thisRequestId !== this.previewRequestId) return;
 
-            const data = await resp.json();
+            // Rendered preview (always HTML, displayed as formatted text)
+            if (renderedResp.ok) {
+                const renderedData = await renderedResp.json();
+                renderedBody.innerHTML = '<div class="preview-html">' + (renderedData.html || '') + '</div>';
+            } else {
+                renderedBody.innerHTML = `<p style="color:var(--color-error)">Render failed (${renderedResp.status})</p>`;
+            }
 
-            // Show raw format output (source code view) so you can inspect
-            // the actual tags the converter produces
-            const raw = data.html || '(empty)';
-            const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            const label = data.format === 'bbcode' ? 'BBCode' : 'Clean HTML';
-            console.log('[Editor] preview response: format=' + data.format + ', requested=' + this.previewFormat + ', bytes=' + raw.length);
-            previewEl.innerHTML = `
-                <div class="preview-source-header">${label} output (${raw.length.toLocaleString()} bytes) [requested: ${this.previewFormat}, got: ${data.format}]</div>
-                <pre class="preview-source">${escaped}</pre>`;
-            previewEl.style.opacity = '1';
+            // Source output (raw tags visible)
+            if (sourceResp.ok) {
+                const sourceData = await sourceResp.json();
+                const raw = sourceData.html || '(empty)';
+                const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const label = sourceData.format === 'bbcode' ? 'BBCode' : 'Clean HTML';
+                if (sourceHeader) sourceHeader.textContent = `${label} output (${raw.length.toLocaleString()} bytes)`;
+                sourceBody.innerHTML = `<pre class="preview-source">${escaped}</pre>`;
+            } else {
+                sourceBody.innerHTML = `<p style="color:var(--color-error)">Source failed (${sourceResp.status})</p>`;
+            }
+
+            renderedBody.style.opacity = '1';
+            sourceBody.style.opacity = '1';
         } catch (err) {
-            previewEl.innerHTML = `<p style="color:var(--color-error)">Preview error: ${err.message}</p>`;
-            previewEl.style.opacity = '1';
+            renderedBody.innerHTML = `<p style="color:var(--color-error)">Error: ${err.message}</p>`;
+            sourceBody.innerHTML = '';
+            renderedBody.style.opacity = '1';
+            sourceBody.style.opacity = '1';
         }
     },
 
