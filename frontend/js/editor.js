@@ -201,8 +201,9 @@ const Editor = {
             const raw = data.html || '(empty)';
             const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             const label = data.format === 'bbcode' ? 'BBCode' : 'Clean HTML';
+            console.log('[Editor] preview response: format=' + data.format + ', requested=' + this.previewFormat + ', bytes=' + raw.length);
             previewEl.innerHTML = `
-                <div class="preview-source-header">${label} output (${raw.length.toLocaleString()} bytes)</div>
+                <div class="preview-source-header">${label} output (${raw.length.toLocaleString()} bytes) [requested: ${this.previewFormat}, got: ${data.format}]</div>
                 <pre class="preview-source">${escaped}</pre>`;
             previewEl.style.opacity = '1';
         } catch (err) {
@@ -212,6 +213,7 @@ const Editor = {
     },
 
     switchFormat(fmt) {
+        console.log('[Editor] switchFormat called:', fmt);
         this.previewFormat = fmt;
         // Cancel any pending debounce so it doesn't overwrite with stale format
         clearTimeout(this.previewDebounceTimer);
