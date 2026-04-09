@@ -11,6 +11,7 @@ const Editor = {
     lastMtime: 0,
     previewFormat: 'clean_html',
     previewDebounceTimer: null,
+    previewRequestId: 0,
     isDirty: false,
     chapters: [],
 
@@ -170,6 +171,8 @@ const Editor = {
             content = content.substring(0, MAX_PREVIEW) + '\n\n[... truncated for preview ...]';
         }
 
+        const thisRequestId = ++this.previewRequestId;
+
         try {
             previewEl.style.opacity = '0.6';
             const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`, {
@@ -188,13 +191,16 @@ const Editor = {
                 return;
             }
 
+            // Discard stale response if a newer request was fired
+            if (thisRequestId !== this.previewRequestId) return;
+
             const data = await resp.json();
 
             // Show raw format output (source code view) so you can inspect
             // the actual tags the converter produces
             const raw = data.html || '(empty)';
             const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            const label = this.previewFormat === 'bbcode' ? 'BBCode' : 'Clean HTML';
+            const label = data.format === 'bbcode' ? 'BBCode' : 'Clean HTML';
             previewEl.innerHTML = `
                 <div class="preview-source-header">${label} output (${raw.length.toLocaleString()} bytes)</div>
                 <pre class="preview-source">${escaped}</pre>`;
@@ -207,6 +213,8 @@ const Editor = {
 
     switchFormat(fmt) {
         this.previewFormat = fmt;
+        // Cancel any pending debounce so it doesn't overwrite with stale format
+        clearTimeout(this.previewDebounceTimer);
         this._requestPreview();
     },
 
