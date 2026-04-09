@@ -453,6 +453,33 @@ def build_package(
     else:
         description = story.description
 
+    # FA chapter navigation prefix: "Chapter X of N. <description>" or
+    # "Part X of N. <description>" depending on what the chapter is called.
+    # This is a useful nav signal for readers landing on a per-chapter page.
+    # Only applies when we're posting a specific chapter (not a full-story
+    # package) and only for FA (the platform that uses per-chapter
+    # submissions). Other platforms use single-bulk-file or chaptered works
+    # that already display chapter context in their UI.
+    #
+    # We detect "Part" vs "Chapter" from the chapter title itself so that
+    # stories like Hypnotic Claim (which uses "Part 1" / "Part 2") get the
+    # matching word, while normal stories use "Chapter".
+    if (
+        platform == "fa"
+        and chapter_index > 0
+        and story.total_chapters > 0
+        and not description_override
+        and description
+        and not description.lstrip().lower().startswith(("chapter ", "part "))
+    ):
+        # Prefix word matches the chapter's own title prefix
+        ch_title_lower = (chapter_title or "").strip().lower()
+        if ch_title_lower.startswith("part "):
+            prefix_word = "Part"
+        else:
+            prefix_word = "Chapter"
+        description = f"{prefix_word} {chapter_index} of {story.total_chapters}. {description.lstrip()}"
+
     # Tags
     if tags_override:
         tags = tags_override

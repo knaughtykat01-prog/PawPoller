@@ -4,6 +4,107 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.3.10] - 2026-04-09
+
+### Fixed — stray markdown asterisks in styled HTML files (47 across 4 stories)
+
+While verifying the FA Hypnotic + Silk submissions after the metadata + PDF replacement work in [2.3.9], spotted that Silk Chapter 2 was rendering literal `*` characters in the body text on FA. Investigation showed:
+
+- **Bug pattern in styled HTML**: `<em>*Text...</em>` (leading `*` inside an italic opener), `<em>*</em>` (orphan italic with just an asterisk), `*</em>` (trailing `*` before closer). All three are leftover markdown italic markers from an old converter mishandling unmatched `*` in the source.
+- **Root cause in MASTER.md**: 46 lines in Silk Threaded Bonds alone have unmatched asterisk counts — opening `*italic narration*` markers that were never closed (forgotten end-of-paragraph `*`) or stray closing markers left from edits. Other stories have a handful too: Hypnotic (4), Extra Credit (4), Ruins of Breeding (5).
+- **Why this didn't affect BBCode/SoFurry HTML**: those were regenerated using the converter fix from [2.2.1] which correctly handles nested asterisk emphasis. The styled HTML files are manually maintained per workflow rule, so they never got the converter fix re-applied.
+
+**Total bug count fixed**: 47 stray markers across 11 styled HTML files (5 Silk per-chapter + 1 Silk full + 2 Hypnotic + 2 Extra Credit + 2 Ruins = correct on close inspection — Silk full was already clean from yesterday's chapter-heading fix pass).
+
+**Tooling added**: `m_x/Scripts_Utils/strip_stray_em_asterisks.py` — applies the 3-pattern cleanup to a list of styled HTML files. Idempotent. Returns 0 if all files end up clean. Used in this session against all 9 affected files in one batch.
+
+**Plus one manual fix**: Ruins of Breeding `Chapter_2_The_Temple.html` had a standalone `*read*` markdown emphasis in dialogue that the original converter missed entirely (different bug class — bare `*word*` standalone emphasis not wrapped in narration italic). Manually replaced with `<em>read</em>`.
+
+**FA submissions re-pushed after the fix** (5 of the 7 — Silk ch2 was already done in the session's first push, Hypnotic Part 2 wasn't affected):
+- Hypnotic Part 1 (64274343)
+- Silk Ch 1 (64284286)
+- Silk Ch 3 (64284355)
+- Silk Ch 4 (64284453)
+- Silk Ch 5 (64284497)
+
+**Verified live on FA** by downloading each PDF, extracting text via pypdf, counting literal `*` characters across all pages. Result: **0 asterisks across all 7 submissions, 74 pages of story text total.**
+
+### Local-only fixes (not pushed because not on FA yet)
+- Extra Credit: 4 stray asterisks fixed
+- Ruins of Breeding: 4 stray asterisks + 1 standalone `*read*` fixed
+
+These will be uploaded with clean PDFs whenever the stories get drip-posted to FA via the upcoming `bulk_fa_posts.py` flow.
+
+### Documentation
+- Per-story changelog updates for Silk, Hypnotic, Extra Credit, Ruins
+- Note about MASTER.md authoring inconsistency (46 unmatched asterisk lines in Silk alone). The styled HTML files are now in their canonical clean state — the bug only re-emerges if you run the OLD converter against the still-broken MASTER.md. Future Layer 2 fix: clean up MASTER.md so any future regeneration is also clean.
+
+### Not done in this version
+- MASTER.md asterisk cleanup (Layer 2 — author-facing fix). Currently planned as a manual pass requiring careful per-line judgement (italic intent vs stray markers vs nested italic vs bold conventions like `**Dev:**` chat names that are intentional).
+
+---
+
+## [2.3.9] - 2026-04-09
+
+### Added — FurAffinity edit-existing flow + per-chapter description prefix
+
+Two new test scripts and one library improvement, in service of bringing the existing FA submissions for Hypnotic Claim and The Silk-Threaded Bonds in line with the regenerated PDFs and refreshed `story.json` metadata.
+
+**`tests/verify_fa_edit_existing.py`** — verify (and optionally apply) metadata edits + PDF file replacements on existing FA submissions.
+
+- **Default mode is read-only**: fetches the current FA state via FAExport, builds a fresh package via `build_package`, and prints a diff (title, description, tags, rating). Exits without writing anything.
+- **`--apply`** flag: actually performs edits via `FurAffinityPoster.edit()` (changeinfo endpoint).
+- **`--update-file`** flag: ALSO replaces the source PDF via `FurAffinityPoster.replace_file()` (changestory endpoint), 2-second pause between metadata edit and file replacement.
+- **`--skip-tags`** flag: preserve existing FA tags (path A: SEO/act-focused tags work better for FA discovery than the new atmospheric/character set the build_package would produce).
+- **`--skip-rating`** flag: preserve existing rating.
+- **`--story <name>`** filter: substring-match by story name.
+- **`--yes`** flag: skip the typed confirmation prompt (for scripted runs).
+- **Hard typed confirmation prompt** before any write: must type exactly `EDIT N LIVE FA SUBMISSIONS` (with the right N) — no other input proceeds.
+- **Hardcoded fallback list of 7 known FA submissions** (Hypnotic 2 + Silk 5) so the script works locally without needing the server's publications DB.
+- **Inter-edit delay: 3 seconds** (NOT 70). Empirically confirmed FA's 70-second rate limit applies to *new submissions only*, not edits — see "FA edit rate limit" finding below.
+
+**`tests/fa_changestory_canary.py`** — single-submission canary test of the changestory endpoint flow. Reads the current submission state, calls `replace_file()`, re-reads to confirm the download URL changed. Used to validate the existing `FurAffinityPoster.replace_file()` code path before extending the bulk script. Confirmed working end-to-end on Hypnotic Part 1 (FA 64274343).
+
+**`posting/story_reader.py`** — `build_package()` now prepends a `Chapter X of N. ` or `Part X of N. ` navigation prefix to per-chapter FA descriptions. Auto-detects "Part" vs "Chapter" from the chapter title in `story.json` so Hypnotic Claim (which uses "Part 1" / "Part 2") gets `Part 1 of 2. <description>` while normal stories get `Chapter X of N. <description>`. The prefix is only added for FA platform packages with `chapter_index > 0`.
+
+### Empirically confirmed — FA's 70-second rate limit is for new submissions, not edits
+
+The FA poster's `min_post_interval = 70` constant is correctly named — it applies to new uploads (changeinfo endpoints don't have the same throttle). Two batches of edits performed in this session:
+
+- **Hypnotic Claim batch**: 2 metadata edits + 2 file replacements, ~10s total wallclock
+- **Silk Threaded Bonds batch**: 5 metadata edits + 5 file replacements, ~25s total wallclock with 3-second pauses
+
+No 429s, no rate-limit errors. The previous 70s sleeps in `verify_fa_edit_existing.py` were a precautionary copy from the upload constraint and have been removed. New constant: `FA_RATE_LIMIT_SECONDS = 3`.
+
+### FA submissions updated this session (live writes)
+
+| Submission | Story | What changed |
+|---|---|---|
+| 64274343 | Hypnotic Claim Part 1 | title (em-dash + Part), description (rewritten + prefix), PDF (regenerated with proper warning page) |
+| 64274371 | Hypnotic Claim Part 2 | same |
+| 64284286 | Silk Threaded Bonds Ch 1 | same (Chapter prefix) |
+| 64284325 | Silk Threaded Bonds Ch 2 | same |
+| 64284355 | Silk Threaded Bonds Ch 3 | same |
+| 64284453 | Silk Threaded Bonds Ch 4 | same |
+| 64284497 | Silk Threaded Bonds Ch 5 | same |
+
+**Tags + rating preserved on all 7** (path A — kept the existing SEO/act-focused tag sets that work for FA's tag-search). **Thumbnails not touched.**
+
+For Silk specifically, the per-chapter PDFs were regenerated TWICE this session — first as part of the bulk regeneration that landed yesterday, then a second time after a follow-up fix to the per-chapter Styled HTML files (see story-side changelog for The Silk-Threaded Bonds). The second regeneration was triggered by spotting that Silk's per-chapter chapter-heading rendered as default browser h2 instead of the canonical centred Cormorant Garamond small-caps form. The per-chapter Silk Styled HTML files had `<h2 class="chapter-heading">` markup but no CSS rule for it.
+
+### Documentation updates
+- `m_x/Archives/Complete_Stories/Hypnotic_Claim/CHANGELOG.md` — full FA sync entry
+- `m_x/Archives/Complete_Stories/The_Silk_Threaded_Bonds/CHANGELOG.md` — full FA sync entry + the per-chapter Styled HTML follow-up fix
+- `m_x/Archives/Complete_Stories/The_Silk_Threaded_Bonds/CHAPTER_STYLING.md` — addendum documenting the per-chapter `.chapter-heading` rule fix
+- `m_x/Archives/Complete_Stories/Hypnotic_Claim/story.json` — `chapter_info[].title` confirmed as `"Part 1: ..."` / `"Part 2: ..."` (briefly flipped to "Chapter" then reverted — Part is canonical)
+- `m_x/Archives/Complete_Stories/The_Silk_Threaded_Bonds/story.json` — `title` field hyphen restored (`"The Silk Threaded Bonds"` → `"The Silk-Threaded Bonds"`); all 5 `chapter_info[].description` fields rewritten to ~half length
+
+### Not done (intentionally)
+- The 11 stories not yet on FA still need bulk-posting via a `bulk_fa_posts.py` script (not written yet — drip-feed strategy preferred over bulk-and-done)
+- Tags on the 7 existing FA submissions are deliberately stale relative to what `build_package` would produce — the new tag set is more atmospheric/character-driven and would hurt FA discoverability
+
+---
+
 ## [2.3.8] - 2026-04-08
 
 ### Fixed — CF Worker proxy was stripping Content-Type, silently breaking every body-bearing request

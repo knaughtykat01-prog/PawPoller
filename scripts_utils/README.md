@@ -50,3 +50,27 @@ and had to be done manually with content-anchor matching against
 MASTER.md.
 
 The script handles `Chapter|Part|Prelude|Epilogue|Interlude` prefixes.
+
+### `strip_stray_em_asterisks.py`
+
+Cleanup helper for styled HTML files that have stray markdown asterisks
+left inside `<em>` tags from an old converter mishandling unmatched
+italics in MASTER.md. Three bug patterns it fixes:
+
+1. `<em>*</em>` → (deleted entirely) — orphaned italic block from a stray `*`
+2. `<em>*Text...</em>` → `<em>Text...</em>` — leading `*` from an unclosed opener
+3. `*</em>` → `</em>` — trailing `*` from a stray closing marker
+
+```
+python strip_stray_em_asterisks.py <file>...
+python strip_stray_em_asterisks.py story/Chapters/Styled_HTML/*.html
+```
+
+Idempotent. Returns 0 if all files end up with zero bug patterns.
+
+Used during the 2026-04-09 FA push to clean 47 stray asterisks across
+11 files (Silk Threaded Bonds × 5 + Hypnotic × 2 + Extra Credit × 2 +
+Ruins of Breeding × 2 + Silk full-story HTML, which was already clean).
+The standalone `*read*` emphasis case in Ruins ch2 had to be fixed
+manually because that's a different bug class (bare `*word*` standalone
+emphasis the old converter never recognised, not a `<em>*` cleanup case).

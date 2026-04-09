@@ -2780,15 +2780,25 @@ First match wins, restricted to png/jpg/jpeg/gif. The IB poster forwards `packag
 2. `POST /submit/upload` — multipart: key + `submission_type` + file
 3. `POST /submit/finalize` — urlencoded: key + title + description + tags + rating
 
-**Edit flow**: `GET /controls/submissions/changeinfo/{id}/` — scrape form + key, then POST with updated fields.
+**Edit flow** (`changeinfo` endpoint): `GET /controls/submissions/changeinfo/{id}/` — scrape form + key, scrape current values, merge in caller's overrides, POST back. Editable fields: title, description (`message` field), keywords, rating. Category/atype/species are scraped and preserved. **No CSRF key required for the POST** — only the `update=yes` hidden field.
 
-**File replace**: `POST /controls/submissions/changestory/{id}/` — re-upload the file.
+**File replace flow** (`changestory` endpoint): `POST /controls/submissions/changestory/{id}/` with `data={"update":"yes"}` and `files={"newfile": <file>}`. **No CSRF key required.** Optional `MAX_FILE_SIZE` field is browser hint only. Form accepts: `.txt, .doc, .docx, .odt, .rtf, .pdf`. After POST, FA changes the download URL's internal version timestamp (e.g. `/stories/1775693326/...` → `/stories/1775693986/...`) — the filename slug stays the same, but the underlying file is the new one. Use this to confirm the replacement actually happened.
+
+**Other edit endpoints** (not currently wired up but documented for future use):
+- `POST /controls/submissions/changethumbnail/{id}/` — replace the thumbnail/cover image
+- The metadata edit endpoint above (`changeinfo`) does NOT touch the source file or thumbnail — those are separate
 
 **Rating mapping**: General → `"0"`, Adult → `"1"`, Mature → `"2"` (note: Adult=1, not 2 — counterintuitive).
 
-**Constraints**: 10 MB max file size. 60-character title limit. 3 tag minimum, 500-character max tag string. **70-second minimum between consecutive posts** (enforced server-side). Accounts need 11+ posts or CAPTCHA blocks.
+**Constraints**: 10 MB max file size. 60-character title limit. 3 tag minimum, 500-character max tag string. Accounts need 11+ posts or CAPTCHA blocks.
+
+**Rate limit (empirically confirmed 2026-04-09)**: The 70-second minimum applies to **new submissions only** (the upload endpoint), NOT to metadata edits or file replacements. Bulk-editing 7 existing submissions in this session at 3-second pacing produced no rate-limit errors. The `min_post_interval = 70` constant on `FurAffinityPoster` is correct as named — it applies to the post flow, not the edit/replace flows. The bulk edit script `tests/verify_fa_edit_existing.py` uses `FA_RATE_LIMIT_SECONDS = 3` for inter-edit pauses.
 
 **Requires `desktop` mode**: FA blocks datacenter IPs. When a server-mode post fails, the manager auto-queues for desktop pickup.
+
+**Bulk edit + file replacement helper** (`tests/verify_fa_edit_existing.py`): supports verify-only diffing (default) and `--apply` mode for actually performing edits. Optional `--update-file` flag also pushes the regenerated PDF via the changestory endpoint. `--skip-tags` and `--skip-rating` flags preserve existing values (path A — keep working SEO tags rather than overwriting with the build_package's atmospheric/character set). Hardcoded fallback list of known FA submissions so it works locally without needing the server's publications DB.
+
+**Single-submission canary** (`tests/fa_changestory_canary.py`): minimal isolated test of the changestory endpoint flow. Reads current state, calls `replace_file()`, re-reads to confirm the download URL changed. Used to validate the `replace_file()` code path before wiring it into the bulk edit script.
 
 #### SoFurry (`posting/platforms/sofurry.py`)
 
