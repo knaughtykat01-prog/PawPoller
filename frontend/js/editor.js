@@ -163,25 +163,42 @@ const Editor = {
         const previewEl = document.getElementById('editor-preview-content');
         if (!ta || !previewEl) return;
 
+        // For large stories, only preview the visible portion to keep mobile responsive
+        let content = ta.value;
+        const MAX_PREVIEW = 100000; // ~100KB — enough for most chapters
+        if (content.length > MAX_PREVIEW) {
+            content = content.substring(0, MAX_PREVIEW) + '\n\n[... truncated for preview ...]';
+        }
+
         try {
+            previewEl.style.opacity = '0.6';
             const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    content: ta.value,
+                    content: content,
                     format: this.previewFormat,
                 }),
             });
+
+            if (!resp.ok) {
+                const errText = await resp.text();
+                previewEl.innerHTML = `<p style="color:var(--color-error)">Preview failed (${resp.status}): ${errText.substring(0, 200)}</p>`;
+                previewEl.style.opacity = '1';
+                return;
+            }
+
             const data = await resp.json();
 
             if (this.previewFormat === 'bbcode') {
-                // Simple BBCode → HTML approximation for display
-                previewEl.innerHTML = '<div class="preview-bbcode">' + this._bbcodeToHtml(data.html) + '</div>';
+                previewEl.innerHTML = '<div class="preview-bbcode">' + this._bbcodeToHtml(data.html || '') + '</div>';
             } else {
-                previewEl.innerHTML = '<div class="preview-html">' + data.html + '</div>';
+                previewEl.innerHTML = '<div class="preview-html">' + (data.html || '<p>No output</p>') + '</div>';
             }
+            previewEl.style.opacity = '1';
         } catch (err) {
             previewEl.innerHTML = `<p style="color:var(--color-error)">Preview error: ${err.message}</p>`;
+            previewEl.style.opacity = '1';
         }
     },
 
