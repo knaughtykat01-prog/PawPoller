@@ -40,9 +40,9 @@ PLATFORM_FORMAT_MAP: dict[str, list[tuple[str, str, str]]] = {
         ("Markdown", "MASTER.md", "markdown"),
     ],
     "sf": [
+        ("HTML", "*_SoFurry.html", "html"),       # SF-specific HTML (h2/h3/text-center)
         ("Chapters/SoFurry_HTML", "*.html", "html"),
-        ("HTML", "*_Clean.html", "html"),
-        ("HTML", "*_sofurry.html", "html"),
+        ("HTML", "*_Clean.html", "html"),          # fallback: generic body HTML
     ],
     "sqw": [
         ("SquidgeWorld", "*.html", "html"),
