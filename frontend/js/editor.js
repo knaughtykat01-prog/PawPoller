@@ -14,6 +14,7 @@ const Editor = {
     previewRequestId: 0,
     isDirty: false,
     chapters: [],
+    _syncingScroll: false,  // prevents scroll event loops
 
     // ---------------------------------------------------------------------------
     // Story list page
@@ -131,6 +132,23 @@ const Editor = {
                     e.preventDefault();
                     e.returnValue = '';
                 }
+            });
+
+            // Sync scrolling between editor and preview
+            const previewPane = document.getElementById('editor-preview');
+            ta.addEventListener('scroll', () => {
+                if (this._syncingScroll) return;
+                this._syncingScroll = true;
+                const pct = ta.scrollTop / (ta.scrollHeight - ta.clientHeight || 1);
+                previewPane.scrollTop = pct * (previewPane.scrollHeight - previewPane.clientHeight);
+                requestAnimationFrame(() => { this._syncingScroll = false; });
+            });
+            previewPane.addEventListener('scroll', () => {
+                if (this._syncingScroll) return;
+                this._syncingScroll = true;
+                const pct = previewPane.scrollTop / (previewPane.scrollHeight - previewPane.clientHeight || 1);
+                ta.scrollTop = pct * (ta.scrollHeight - ta.clientHeight);
+                requestAnimationFrame(() => { this._syncingScroll = false; });
             });
 
             // Initial preview
