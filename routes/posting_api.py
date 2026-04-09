@@ -14,6 +14,7 @@ import tarfile
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi.responses import FileResponse
 
 import config
 from database.db import get_connection
@@ -128,6 +129,59 @@ def get_story_detail(story_name: str):
     except Exception as e:
         logger.error("Error loading story %s: %s", story_name, e, exc_info=True)
         raise HTTPException(500, detail=str(e))
+
+
+@posting_router.get("/image")
+def get_story_image(story: str = Query(...), file: str = Query(...)):
+    """Serve a cover/thumbnail image from a story folder.
+
+    Query params (not path segments) so sub-stories like
+    ``The_Abstinent_Bet/Nice_Version`` and nested files like
+    ``Images/cover.png`` round-trip cleanly through ``encodeURIComponent``.
+
+    Hardened against path traversal: the resolved file MUST live under the
+    resolved story directory, and only known image extensions are served.
+    """
+    from posting import story_reader
+
+    if not story or not file:
+        raise HTTPException(400, detail="story and file query params are required")
+
+    try:
+        story_obj = story_reader.load_story(story)
+    except FileNotFoundError:
+        raise HTTPException(404, detail=f"Story not found: {story}")
+    except Exception as e:
+        logger.error("Error loading story %s for image fetch: %s", story, e)
+        raise HTTPException(500, detail="Failed to load story")
+
+    story_root = story_obj.path.resolve()
+    requested = (story_root / file).resolve()
+
+    # Path traversal guard: requested file must be inside the story dir.
+    try:
+        requested.relative_to(story_root)
+    except ValueError:
+        raise HTTPException(403, detail="Path escapes story directory")
+
+    if not requested.is_file():
+        raise HTTPException(404, detail="Image not found")
+
+    if requested.suffix.lower() not in story_reader.COVER_EXTENSIONS:
+        raise HTTPException(415, detail="Unsupported image type")
+
+    media_types = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+    }
+    return FileResponse(
+        path=str(requested),
+        media_type=media_types[requested.suffix.lower()],
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 # ── Post / Upload ─────────────────────────────────────────────

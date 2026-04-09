@@ -197,6 +197,15 @@ def _story_entry(path: Path, parent_name: str = "") -> dict:
         except Exception as e:
             logger.warning("Failed to read story.json for %s: %s", name, e)
 
+    # Auto-detect cover when story.json doesn't declare one. Many stories
+    # have a `<name>_thumbnail_full_series.png` in the folder root but no
+    # explicit `images.cover` entry; the listing should still show them.
+    images = entry.setdefault("images", {})
+    if not images.get("cover"):
+        detected = detect_cover_relative(path)
+        if detected:
+            images["cover"] = detected
+
     return entry
 
 
@@ -215,6 +224,39 @@ def load_story(story_name: str) -> StoryInfo:
     if story_json_path.is_file():
         return _load_from_story_json(story_name, story_path, story_json_path)
     return _load_from_legacy(story_name, story_path)
+
+
+# Image file extensions accepted as covers/thumbnails. Shared by the auto-detect
+# helper and the /api/posting/image route's allowlist.
+COVER_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+
+# Glob patterns checked in order. First match wins. Mirrors the convention
+# used across the story archive: `<story>_thumbnail_full_series.png` is the
+# canonical name, but stories vary.
+_COVER_PATTERNS = (
+    "*_thumbnail_full_series.*",
+    "*_thumbnail.*",
+    "*_cover.*",
+    "thumbnail.*",
+    "cover.*",
+)
+
+
+def detect_cover_relative(story_path: Path) -> str:
+    """Find a cover image in the story root and return its name relative to *story_path*.
+
+    Returns an empty string if no cover is found. Used by both the listing
+    endpoint (to populate ``images.cover`` when story.json omits it) and
+    ``_load_from_story_json`` (which currently does its own glob — kept in sync
+    via this helper).
+    """
+    if not story_path.is_dir():
+        return ""
+    for pattern in _COVER_PATTERNS:
+        for f in story_path.glob(pattern):
+            if f.is_file() and f.suffix.lower() in COVER_EXTENSIONS:
+                return f.name
+    return ""
 
 
 def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) -> StoryInfo:
@@ -274,22 +316,11 @@ def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) ->
     if images.get("cover"):
         thumbnail_path = str(story_path / images["cover"])
     else:
-        # Auto-detect thumbnail file in story root using common naming patterns
-        # Convention: <story>_thumbnail_full_series.png, cover.png, thumbnail.png
-        thumb_patterns = [
-            "*_thumbnail_full_series.*",
-            "*_thumbnail.*",
-            "*_cover.*",
-            "thumbnail.*",
-            "cover.*",
-        ]
-        for pattern in thumb_patterns:
-            for f in story_path.glob(pattern):
-                if f.is_file() and f.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif"):
-                    thumbnail_path = str(f)
-                    break
-            if thumbnail_path:
-                break
+        # Auto-detect thumbnail file in story root using common naming patterns.
+        # Shared with the listing endpoint via detect_cover_relative().
+        detected = detect_cover_relative(story_path)
+        if detected:
+            thumbnail_path = str(story_path / detected)
     for ch_idx, ch_path in images.get("chapter_thumbnails", {}).items():
         chapter_thumbnails[int(ch_idx)] = str(story_path / ch_path)
 

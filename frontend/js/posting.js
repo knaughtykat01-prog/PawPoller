@@ -52,8 +52,14 @@ const Posting = {
                     return `<span class="plat-badge ${isPublished ? 'plat-published' : 'plat-available'}" title="${isPublished ? 'Published' : 'Not uploaded'}">${emoji}</span>`;
                 }).join('');
 
-                // Cover image
-                const coverSrc = s.images && s.images.cover ? `/api/posting/image/${Utils.escapeHtml(s.name)}/${Utils.escapeHtml(s.images.cover)}` : '';
+                // Cover image. Sub-story names contain a slash
+                // (e.g. The_Abstinent_Bet/Nice_Version) and image paths can be
+                // nested (Images/cover.png), so both go through encodeURIComponent
+                // and ride as query params on /api/posting/image rather than path
+                // segments — keeps the round-trip unambiguous.
+                const coverSrc = s.images && s.images.cover
+                    ? `/api/posting/image?story=${encodeURIComponent(s.name)}&file=${encodeURIComponent(s.images.cover)}`
+                    : '';
                 const coverHtml = coverSrc ? `<div class="story-card-cover" style="background-image:url('${coverSrc}')"></div>` : '';
 
                 // Description
