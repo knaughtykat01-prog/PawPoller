@@ -145,16 +145,16 @@
     max-width: 680px;
 }
 
-/* Preview styling for Clean HTML */
+/* Preview styling — renders like a finished story */
 .preview-html {
     font-family: Georgia, 'Times New Roman', serif;
-    font-size: 15px;
+    font-size: 14px;
     line-height: 1.85;
     color: var(--text-primary);
 }
 
 .preview-html p {
-    margin-bottom: 1em;
+    margin-bottom: 0.9em;
     text-align: justify;
 }
 
@@ -167,17 +167,63 @@
     font-weight: 700;
 }
 
+/* Title: first <p><strong> — centred, large */
+.preview-html p:first-child {
+    text-align: center;
+    font-size: 1.6em;
+    font-variant: small-caps;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.3em;
+}
+
+/* Subtitle: second element if it's italic-only */
+.preview-html p:first-child + p > em:only-child {
+    display: block;
+    text-align: center;
+    font-size: 0.95em;
+    color: var(--text-tertiary);
+}
+
+/* Chapter headings: <p><strong>Chapter/Part...</strong></p>
+   These are <p> tags whose only child is <strong> containing "Chapter" or "Part" */
+.preview-html p:has(> strong:only-child) {
+    text-align: center;
+    font-size: 1.2em;
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+    margin: 2em 0 1.5em;
+    color: var(--text-primary);
+}
+
+/* But don't over-style POV markers (shorter bold lines) */
+.preview-html p:has(> strong:only-child) strong {
+    font-weight: 600;
+}
+
+/* Chapter separator <hr> */
 .preview-html hr {
     border: none;
     height: 1px;
     background: var(--border-primary);
-    margin: 2em 0;
+    margin: 2.5em auto;
+    width: 120px;
 }
 
+/* Section break */
 .preview-html .section-break {
     text-align: center;
     margin: 2em 0;
-    letter-spacing: 0.4em;
+    letter-spacing: 0.5em;
+    color: var(--text-tertiary);
+    font-size: 0.9em;
+}
+
+/* End marker */
+.preview-html p:last-child:has(> strong:only-child) {
+    text-align: center;
+    font-variant: small-caps;
+    letter-spacing: 0.1em;
+    margin-top: 2.5em;
     color: var(--text-tertiary);
 }
 
