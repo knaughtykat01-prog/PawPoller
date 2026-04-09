@@ -104,38 +104,81 @@ const Posting = {
             const data = await API.getPostingStory(storyName);
             const title = Utils.escapeHtml(data.title || storyName.replace(/_/g, ' '));
 
-            // Info section
+            // ── Cover image ────────────────────────────────────
+            // Same /api/posting/image route + encodeURIComponent dance as the
+            // listing card. Auto-detect fallback now lives on the backend so
+            // stories without images.cover in story.json still render here.
+            const coverSrc = data.images && data.images.cover
+                ? `/api/posting/image?story=${encodeURIComponent(storyName)}&file=${encodeURIComponent(data.images.cover)}`
+                : '';
+            const coverHtml = coverSrc
+                ? `<div class="story-detail-cover" style="background-image:url('${coverSrc}')"></div>`
+                : '';
+
+            // ── Characters & relationships chips ───────────────
+            const chipChars = (data.characters || []).map(c =>
+                `<span class="chip chip-character">${Utils.escapeHtml(c)}</span>`
+            ).join('');
+            const chipRels = (data.relationships || []).map(r =>
+                `<span class="chip chip-relationship">${Utils.escapeHtml(r)}</span>`
+            ).join('');
+            const chipsHtml = (chipChars || chipRels)
+                ? `<div class="story-detail-chips">${chipChars}${chipRels}</div>`
+                : '';
+
+            // ── Summary (longer OTW-style blurb) ───────────────
+            // Only render if it's actually different from the description —
+            // story.json sometimes mirrors them and we don't want a duplicate.
+            const summary = (data.summary || '').trim();
+            const description = (data.description || '').trim();
+            const summaryHtml = (summary && summary !== description)
+                ? `<div class="story-detail-summary"><strong>Summary:</strong> ${Utils.escapeHtml(summary)}</div>`
+                : '';
+
+            // ── Info card ──────────────────────────────────────
             const infoHtml = `
                 <div class="story-detail-info card">
-                    <h2>${title}</h2>
-                    <p class="page-subtitle">by ${Utils.escapeHtml(data.author || 'Unknown')}</p>
-                    <div class="story-detail-meta">
-                        <span>${(data.total_words || 0).toLocaleString()} words</span>
-                        <span>${data.total_chapters || 0} chapters</span>
-                        ${data.rating ? `<span class="story-rating rating-${data.rating}">${data.rating}</span>` : ''}
-                        ${data.category ? `<span>${Utils.escapeHtml(data.category)}</span>` : ''}
-                        ${data.fandom ? `<span>${Utils.escapeHtml(data.fandom)}</span>` : ''}
+                    ${coverHtml}
+                    <div class="story-detail-info-body">
+                        <h2>${title}</h2>
+                        <p class="page-subtitle">by ${Utils.escapeHtml(data.author || 'Unknown')}</p>
+                        <div class="story-detail-meta">
+                            <span>${(data.total_words || 0).toLocaleString()} words</span>
+                            <span>${data.total_chapters || 0} chapters</span>
+                            ${data.rating ? `<span class="story-rating rating-${data.rating}">${data.rating}</span>` : ''}
+                            ${data.category ? `<span>${Utils.escapeHtml(data.category)}</span>` : ''}
+                            ${data.fandom ? `<span>${Utils.escapeHtml(data.fandom)}</span>` : ''}
+                        </div>
+                        ${data.warnings && data.warnings.length ? `<p class="story-warnings">⚠ ${Utils.escapeHtml(data.warnings.join(', '))}</p>` : ''}
+                        ${chipsHtml}
+                        <p class="story-detail-desc">${Utils.escapeHtml(description)}</p>
+                        ${summaryHtml}
                     </div>
-                    ${data.warnings && data.warnings.length ? `<p class="story-warnings">⚠ ${Utils.escapeHtml(data.warnings.join(', '))}</p>` : ''}
-                    <p class="story-detail-desc">${Utils.escapeHtml(data.description || '')}</p>
                 </div>`;
 
-            // Chapters section
-            let chaptersHtml = '';
-            if (data.chapters && data.chapters.length > 0) {
-                const chRows = data.chapters.map(ch => `
-                    <div class="chapter-row">
-                        <span class="chapter-num">Ch${ch.index}</span>
-                        <span class="chapter-title">${Utils.escapeHtml(ch.title)}</span>
-                        <span class="chapter-words">${(ch.word_count || 0).toLocaleString()}w</span>
-                    </div>`).join('');
-                chaptersHtml = `<div class="card"><h3>Chapters</h3>${chRows}</div>`;
-            }
-
-            // Platforms section — published + available
-            const published = data.published_platforms || [];
-            const unpublished = data.unpublished_platforms || [];
+            // ── Cross-platform totals strip ────────────────────
+            // Sum across all publications. Each platform names stats
+            // differently (views/hits/reads, favorites_count/kudos/votes), so
+            // we resolve per-row before summing — same convention used by
+            // the per-pub stats line below.
             const pubs = data.publications || [];
+            let totalViews = 0, totalFaves = 0, totalComments = 0;
+            for (const p of pubs) {
+                if (!p.stats) continue;
+                totalViews    += p.stats.views || p.stats.hits || p.stats.reads || 0;
+                totalFaves    += p.stats.favorites_count || p.stats.kudos || p.stats.votes || 0;
+                totalComments += p.stats.comments_count || 0;
+            }
+            const totalsHtml = pubs.length > 0 ? `
+                <div class="card totals-strip">
+                    <div class="totals-stat"><span class="totals-value">${totalViews.toLocaleString()}</span><span class="totals-label">total views</span></div>
+                    <div class="totals-stat"><span class="totals-value">${totalFaves.toLocaleString()}</span><span class="totals-label">total faves</span></div>
+                    <div class="totals-stat"><span class="totals-value">${totalComments.toLocaleString()}</span><span class="totals-label">total comments</span></div>
+                    <div class="totals-stat"><span class="totals-value">${pubs.length}</span><span class="totals-label">platform${pubs.length === 1 ? '' : 's'}</span></div>
+                </div>` : '';
+
+            // ── Platforms section ──────────────────────────────
+            const unpublished = data.unpublished_platforms || [];
 
             let pubRows = '';
             if (pubs.length > 0) {
@@ -151,13 +194,24 @@ const Posting = {
                         const c = p.stats.comments_count || 0;
                         statsHtml = `<span class="pub-stats">${v.toLocaleString()}v / ${f.toLocaleString()}f / ${c.toLocaleString()}c</span>`;
                     }
+                    // Days-since timestamp with raw value on hover. Falls back
+                    // to first_posted_at if no edit has happened yet.
                     const updated = p.last_updated_at || p.first_posted_at || '';
+                    const updatedAgo = updated ? Utils.timeAgo(updated) : '';
+                    const updatedTitle = updated ? Utils.escapeHtml(updated) : '';
+                    // Update count badge — only render when there's been at
+                    // least one edit since the original post.
+                    const updateCount = p.update_count || 0;
+                    const updateBadge = updateCount > 0
+                        ? `<span class="update-count-badge" title="${updateCount} update${updateCount === 1 ? '' : 's'} since first post">↻ ${updateCount}</span>`
+                        : '';
                     return `
                         <div class="pub-row">
                             <span class="pub-platform">${emoji} ${(PLATFORM_LABELS[p.platform] || p.platform).replace(/^.+\s/, '')}</span>
                             <span class="pub-chapter">${ch}</span>
                             ${statsHtml}
-                            <span class="pub-date">${Utils.escapeHtml(updated)}</span>
+                            <span class="pub-date" title="${updatedTitle}">${updatedAgo}</span>
+                            ${updateBadge}
                             <span class="pub-actions">${link}
                                 <button class="btn btn-sm btn-secondary" onclick="Posting._updateSingle('${Utils.escapeHtml(storyName)}', '${p.platform}', ${p.chapter_index})">Update</button>
                             </span>
@@ -186,6 +240,52 @@ const Posting = {
                     ${uploadHtml}
                 </div>`;
 
+            // ── Chapters section with descriptions ─────────────
+            let chaptersHtml = '';
+            if (data.chapters && data.chapters.length > 0) {
+                const chRows = data.chapters.map(ch => {
+                    const desc = (ch.description || '').trim();
+                    const descHtml = desc
+                        ? `<div class="chapter-desc">${Utils.escapeHtml(desc)}</div>`
+                        : '';
+                    return `
+                    <div class="chapter-entry">
+                        <div class="chapter-row">
+                            <span class="chapter-num">Ch${ch.index}</span>
+                            <span class="chapter-title">${Utils.escapeHtml(ch.title)}</span>
+                            <span class="chapter-words">${(ch.word_count || 0).toLocaleString()}w</span>
+                        </div>
+                        ${descHtml}
+                    </div>`;
+                }).join('');
+                chaptersHtml = `<div class="card"><h3>Chapters</h3>${chRows}</div>`;
+            }
+
+            // ── Per-platform tags accordion ────────────────────
+            // Native <details> elements — collapsed by default since some
+            // platforms (IB, FA) carry 100+ tags and would otherwise dominate
+            // the page. Sorted by tag count desc so the richest list opens first.
+            const tagsByPlatform = data.tags_by_platform || {};
+            const tagPlatformEntries = Object.entries(tagsByPlatform)
+                .filter(([_, tags]) => Array.isArray(tags) && tags.length > 0)
+                .sort((a, b) => b[1].length - a[1].length);
+            let tagsHtml = '';
+            if (tagPlatformEntries.length > 0) {
+                const tagBlocks = tagPlatformEntries.map(([plat, tags]) => {
+                    const emoji = PLATFORM_EMOJI[plat] || '📦';
+                    const label = (PLATFORM_LABELS[plat] || plat).replace(/^.+\s/, '');
+                    const tagSpans = tags.map(t =>
+                        `<span class="tag-pill">${Utils.escapeHtml(t)}</span>`
+                    ).join('');
+                    return `
+                        <details class="tags-platform">
+                            <summary>${emoji} ${Utils.escapeHtml(label)} <span class="tag-count">(${tags.length})</span></summary>
+                            <div class="tag-list">${tagSpans}</div>
+                        </details>`;
+                }).join('');
+                tagsHtml = `<div class="card"><h3>Tags by Platform</h3>${tagBlocks}</div>`;
+            }
+
             // Formats section
             const formats = data.formats || {};
             const formatList = Object.keys(formats).map(f =>
@@ -196,8 +296,10 @@ const Posting = {
             App._setContent(`
                 <a href="#/posting" class="back-link">&larr; All Stories</a>
                 ${infoHtml}
+                ${totalsHtml}
                 ${platformsHtml}
                 ${chaptersHtml}
+                ${tagsHtml}
                 ${formatsHtml}`);
 
         } catch (err) {

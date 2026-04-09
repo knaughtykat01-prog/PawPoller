@@ -85,6 +85,17 @@ def get_story_detail(story_name: str):
         finally:
             conn.close()
 
+        # Enrich images with auto-detected cover when story.json doesn't declare
+        # one — same fallback the listing endpoint applies via _story_entry().
+        # Without this the detail page would show no cover for stories whose
+        # thumbnail file lives in the folder root but isn't recorded in
+        # story.json.images.cover (the common case in this archive).
+        images = dict(story_json_data.get("images", {}))
+        if not images.get("cover"):
+            detected = story_reader.detect_cover_relative(story_path)
+            if detected:
+                images["cover"] = detected
+
         published_platforms = sorted(set(p["platform"] for p in pubs if p["status"] == "posted"))
         all_platforms = list(story_json_data.get("platforms", {}).keys())
         # Map platform names to IDs
@@ -118,7 +129,7 @@ def get_story_detail(story_name: str):
             ],
             "tags_by_platform": story.tags_by_platform,
             "formats": story_json_data.get("formats", {}),
-            "images": story_json_data.get("images", {}),
+            "images": images,
             "platforms": story_json_data.get("platforms", {}),
             "published_platforms": published_platforms,
             "unpublished_platforms": unpublished,

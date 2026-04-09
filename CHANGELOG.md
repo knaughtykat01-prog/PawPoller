@@ -4,6 +4,44 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.3.12] - 2026-04-09
+
+### Added — Story detail page enrichment (Batch 1 of 3)
+
+The Publishing → Stories detail page (`#/posting/story/{name}`) was rendering only a fraction of what the backend already returns. `get_story_detail` was sending `summary`, `characters`, `relationships`, `tags_by_platform`, per-chapter `description` fields, and full `update_count` / `tags_used` / file-hash columns from the publications table — all dropped on the floor by the frontend. This batch wires them up.
+
+**Frontend (`frontend/js/posting.js:renderStoryDetail`):**
+
+1. **Cover image** at the top of the info card. Same `/api/posting/image` route + `encodeURIComponent` shape as the listing cards. Backed by the same `detect_cover_relative()` auto-detect, so stories with a thumbnail file in the folder root but no `images.cover` entry in `story.json` finally render the cover on the detail page too.
+2. **Summary block.** OTW-style longer blurb (`data.summary`) rendered as a callout card below the description, but only when it differs from `data.description` — many stories duplicate the two and we don't want side-by-side identical paragraphs.
+3. **Characters & relationships chips.** Two-tone pill chips (purple-bordered for characters, green for relationships) below the warnings line.
+4. **Per-chapter descriptions** rendered as italic muted text under each chapter row. The data was already returned per `data.chapters[].description` — the JS just had a 3-field render loop that ignored it.
+5. **Per-platform tags accordion.** Native `<details>` blocks (one per platform that has tags), sorted by tag count desc so the densest list opens first. Each platform's full tag list shown as small pills inside the `<details>` body. Collapsed by default — IB carries 100+ tags on some stories and would otherwise dominate the page.
+6. **Update count badge** on each pub row. Renders `↻ N` next to the date when `p.update_count > 0`, hover shows "N updates since first post". Drawn from the existing `update_count` column on `publications` (already on the wire — `get_publications_with_stats` does `SELECT *`).
+7. **Cross-platform totals strip.** New card under the info section: total views, faves, comments summed across all publications, plus a platform count. Computed client-side from `data.publications[]` with platform-aware metric resolution (views/hits/reads, favorites_count/kudos/votes) so SqW kudos and Wattpad reads roll up correctly into the same totals.
+8. **Days-since timestamps.** Pub-row dates now show `Utils.timeAgo()` output ("5d ago") with the raw `last_updated_at` on hover via `title=`. Reads better than `2026-04-04 00:52:59` and survives timezone confusion since timeAgo is relative.
+
+**Backend (`routes/posting_api.py:get_story_detail`):**
+
+- Enriched the `images` dict in the response with `detect_cover_relative()` fallback when `story.json` doesn't declare an `images.cover`. Mirrors the fix from 2.3.11 that added the same fallback to `_story_entry()` for the listing endpoint, so the listing and detail page can never disagree about which file is the cover. Without this, the detail page would have shown no cover for stories like Drumheller Detour where the thumbnail sits in the folder root but isn't recorded in `story.json`.
+
+**CSS (`frontend/css/components.css`):**
+
+- New: `.story-detail-cover` (200px desktop / 140px mobile, edge-to-edge above the info body), `.story-detail-info-body` (16px padding wrapper since `.story-detail-info` is now `padding: 0` for the cover bleed), `.story-detail-summary` (callout block with accent left-border), `.story-detail-chips` + `.chip` / `.chip-character` / `.chip-relationship`, `.totals-strip` + `.totals-stat` / `.totals-value` / `.totals-label`, `.chapter-entry` (wraps the existing `.chapter-row` so the description can sit under it), `.chapter-desc`, `.update-count-badge`, `.tags-platform` + `.tag-count` + `.tag-pill`.
+- Mobile breakpoint extended: detail cover scales to 140px, totals-strip switches to a 2-up grid, pub-row stacks vertically.
+
+**Verified:**
+- `python -m py_compile routes/posting_api.py` clean
+- `node --check frontend/js/posting.js` clean
+- All new fields render conditionally — empty data is never shown as an empty block (covers, summary, chips, tags, totals, update badges all early-return when their source data is absent).
+
+**Not done in this version:**
+- Did NOT add per-pub change-detection badges (item 7 in the original brainstorm) — that lands in batch 2 because it needs an enriched API response or a separate fetch. Same for recent posting log card, pending queue card, and IB top-fans (batch 2). Per-pub sparklines, comparison overlay, and posting cadence timeline are batch 3.
+- Did NOT add an "About" accordion that combines summary + characters + relationships into a single collapsible — opted for inline rendering since the data is short and screen real estate is fine. Reconsider if it gets noisy.
+- BSKY/IK/DA/TW publications still won't have `stats` populated because `get_publications_with_stats` doesn't have entries for those platforms in its `stat_tables` dict — they fall through to `pub_dict["stats"] = None` and contribute 0 to the totals strip. Worth fixing in a separate change but out of scope for this batch.
+
+---
+
 ## [2.3.11] - 2026-04-09
 
 ### Fixed — Story cover images never rendered in the Publishing → Stories hub
