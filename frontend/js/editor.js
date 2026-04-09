@@ -190,11 +190,14 @@ const Editor = {
 
             const data = await resp.json();
 
-            if (this.previewFormat === 'bbcode') {
-                previewEl.innerHTML = '<div class="preview-bbcode">' + this._bbcodeToHtml(data.html || '') + '</div>';
-            } else {
-                previewEl.innerHTML = '<div class="preview-html">' + (data.html || '<p>No output</p>') + '</div>';
-            }
+            // Show raw format output (source code view) so you can inspect
+            // the actual tags the converter produces
+            const raw = data.html || '(empty)';
+            const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const label = this.previewFormat === 'bbcode' ? 'BBCode' : 'Clean HTML';
+            previewEl.innerHTML = `
+                <div class="preview-source-header">${label} output (${raw.length.toLocaleString()} bytes)</div>
+                <pre class="preview-source">${escaped}</pre>`;
             previewEl.style.opacity = '1';
         } catch (err) {
             previewEl.innerHTML = `<p style="color:var(--color-error)">Preview error: ${err.message}</p>`;
