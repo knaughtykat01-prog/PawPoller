@@ -4,6 +4,36 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.3.11] - 2026-04-09
+
+### Fixed — Story cover images never rendered in the Publishing → Stories hub
+
+The card grid in `frontend/js/posting.js:renderUpload` had cover-image markup since the page was first written, but covers never appeared. Two combining bugs:
+
+1. **No backend route.** `posting.js:56` built `/api/posting/image/{name}/{cover}` URLs but no FastAPI handler matched — every cover request 404'd silently (the card just rendered with no `.story-card-cover` div).
+2. **Listing endpoint never auto-detected covers.** `routes/posting_api.py:list_stories` calls `story_reader.list_stories()` → `_story_entry()`, which only surfaced `images.cover` when `story.json` declared one explicitly. The richer auto-detect glob (`*_thumbnail_full_series.*`, `*_thumbnail.*`, `cover.*`, `thumbnail.*`) lived inside `_load_from_story_json` and only ran on the per-story detail endpoint. So stories with a thumbnail file in the folder root but no `images.cover` entry — which is the common case in this archive — silently rendered cover-less in the listing even though the detail page would have found the same file.
+
+**Fix:**
+- New route `GET /api/posting/image?story=&file=` in `routes/posting_api.py:134-185`. Query params (not path segments) so sub-stories like `The_Abstinent_Bet/Nice_Version` and nested files like `Images/cover.png` round-trip cleanly through `encodeURIComponent` without path/segment ambiguity. Hardened with `Path.resolve().relative_to()` traversal guard, image extension allowlist, and a 1-hour `Cache-Control` header.
+- Extracted `detect_cover_relative()` + `COVER_EXTENSIONS` tuple in `posting/story_reader.py:229-262`, and pointed both `_story_entry()` and `_load_from_story_json()` at it. Listing and detail can no longer drift.
+- `frontend/js/posting.js:55-63` now uses the query-param URL with `encodeURIComponent` for both `story` and `file`.
+
+**Verified:**
+- `python -m py_compile posting/story_reader.py routes/posting_api.py` clean
+- Route registration check: `posting_router.routes` shows `/api/posting/image` registered (20 total routes)
+- Path traversal: `(story_root / "../../../etc/passwd").resolve().relative_to(story_root)` raises `ValueError` → caught and returned as HTTP 403
+- Extension allowlist: rejects anything outside `{.png, .jpg, .jpeg, .gif, .webp}` with HTTP 415
+
+**Not done in this version:**
+- Did not add a frontend fallback placeholder image for stories that genuinely have no cover (the card just renders without the `.story-card-cover` div, which is the existing graceful-degradation path).
+- Did not update `documentation_guide.md` to mention the new route — the route is implementation detail rather than architecture, and the existing "Posting Module → Story Detail" section already documents the listing behaviour at the right level.
+
+### Process note (for future me)
+
+This session also surfaced that I'd been merging code changes without a CHANGELOG entry. The CHANGELOG is load-bearing here — `documentation_guide.md` cross-references entries by version (e.g. "see CHANGELOG 2.3.4") to explain *why* code looks the way it does. Going forward: every PawPoller code change ships with a versioned CHANGELOG entry plus the full deploy workflow (build → commit → push → `pawupdate`).
+
+---
+
 ## [2.3.10] - 2026-04-09
 
 ### Fixed — stray markdown asterisks in styled HTML files (47 across 4 stories)
