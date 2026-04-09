@@ -1,0 +1,171 @@
+/* Story Editor — split-pane layout with live preview */
+
+.editor-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 60px);
+    overflow: hidden;
+}
+
+/* Toolbar */
+.editor-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--surface-elevated);
+    border-bottom: 1px solid var(--border-primary);
+    flex-shrink: 0;
+}
+
+.editor-back {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.editor-back:hover {
+    color: var(--text-primary);
+}
+
+.editor-title {
+    font-weight: 600;
+    font-size: 1.1rem;
+    flex: 1;
+}
+
+.editor-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.editor-status {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    min-width: 120px;
+    text-align: right;
+}
+
+.editor-wordcount {
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+    padding: 0 8px;
+    border-left: 1px solid var(--border-primary);
+}
+
+.editor-actions select {
+    background: var(--surface-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.85rem;
+}
+
+/* Split pane */
+.editor-split {
+    display: grid;
+    grid-template-columns: 1fr 4px 1fr;
+    flex: 1;
+    overflow: hidden;
+}
+
+.editor-pane {
+    overflow: hidden;
+    display: flex;
+}
+
+#editor-textarea {
+    width: 100%;
+    height: 100%;
+    resize: none;
+    border: none;
+    outline: none;
+    padding: 16px 20px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.7;
+    background: var(--surface-primary);
+    color: var(--text-primary);
+    tab-size: 2;
+}
+
+#editor-textarea::placeholder {
+    color: var(--text-tertiary);
+}
+
+/* Divider (draggable) */
+.editor-divider {
+    background: var(--border-primary);
+    cursor: col-resize;
+    transition: background 0.15s;
+}
+
+.editor-divider:hover {
+    background: var(--color-accent);
+}
+
+/* Preview pane */
+.editor-preview {
+    overflow-y: auto;
+    background: var(--surface-secondary);
+    padding: 20px 24px;
+}
+
+.editor-preview-content {
+    max-width: 680px;
+    margin: 0 auto;
+}
+
+/* Preview styling for Clean HTML */
+.preview-html {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 15px;
+    line-height: 1.85;
+    color: var(--text-primary);
+}
+
+.preview-html p {
+    margin-bottom: 1em;
+    text-align: justify;
+}
+
+.preview-html em {
+    font-style: italic;
+    color: var(--text-secondary);
+}
+
+.preview-html strong {
+    font-weight: 700;
+}
+
+.preview-html hr {
+    border: none;
+    height: 1px;
+    background: var(--border-primary);
+    margin: 2em 0;
+}
+
+.preview-html .section-break {
+    text-align: center;
+    margin: 2em 0;
+    letter-spacing: 0.4em;
+    color: var(--text-tertiary);
+}
+
+/* BBCode preview */
+.preview-bbcode {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+}
+
+/* Card grid for story list */
+.editor-container .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}

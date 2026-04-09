@@ -448,6 +448,11 @@ const App = {
             Posting.renderPublished();
         } else if (parts[0] === 'posting' && parts[1] === 'log') {
             Posting.renderLog();
+        } else if (parts[0] === 'editor' && !parts[1]) {
+            Editor.renderStoryList();
+        } else if (parts[0] === 'editor' && parts[1]) {
+            // Story name may contain slashes (e.g. The_Abstinent_Bet/Nice_Version)
+            Editor.renderEditor(parts.slice(1).join('/'));
         } else {
             this._setContent('<div class="empty-state"><h3>Page not found</h3></div>');
         }

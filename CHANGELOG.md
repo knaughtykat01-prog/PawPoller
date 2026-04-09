@@ -4,6 +4,179 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.4.0] - 2026-04-09
+
+### Added — Story Editor (Phase 1: Edit + Preview + Regenerate)
+
+New in-app story editor accessible at `#/editor`. Edit MASTER.md directly in the PawPoller web UI with a live format preview and one-click format regeneration.
+
+**Backend** (`editor/` package + `routes/editor_api.py`):
+- `editor/converter.py` — core markdown parser (`parse_markdown_formatting()`) + HTML/BBCode renderers. Same parser used by the standalone CLI converters. Handles `*italic*`, `**bold**`, `***both***`, nested italics, POV markers, text messages, chapter headings, section breaks.
+- `routes/editor_api.py` — 5 endpoints:
+  - `GET /api/editor/stories` — lists all stories in the archive (13 found)
+  - `GET /api/editor/stories/{name}/content` — reads MASTER.md, detects chapters
+  - `PUT /api/editor/stories/{name}/content` — saves with backup + optimistic concurrency
+  - `POST /api/editor/stories/{name}/preview` — live format conversion (clean_html, bbcode)
+  - `POST /api/editor/stories/{name}/regenerate` — writes BBCode + Clean HTML + chapter splits
+
+**Frontend** (`editor.js` + `editor.css`):
+- Story list page (`#/editor`) — card grid of all stories with word counts
+- Split-pane editor (`#/editor/{story}`) — textarea left, live preview right
+- Draggable divider between panes
+- Format switcher (Clean HTML / BBCode dropdown)
+- Ctrl+S keyboard shortcut for save
+- Debounced live preview (400ms after typing stops)
+- Dirty-state tracking with beforeunload warning
+- Word count in toolbar (live)
+- Regenerate button (saves first if dirty, then writes BBCode + HTML + chapter files)
+- Sidebar nav link under new "Editor" section
+
+**File management:**
+- Editor reads/writes directly to the story archive (resolved via `story_reader.get_archive_path()` — works for both desktop and Docker)
+- Save creates a timestamped backup (`MASTER.md.bak.{timestamp}`), keeps last 10
+- Atomic write via temp file + `os.replace()` to prevent corruption
+- Regenerate creates folder structure if missing (`BBCode/`, `HTML/`, `Chapters/`)
+
+**Architecture docs:** `docs/EDITOR_PLAN.md` — full implementation plan covering all 5 phases, file sync model, API design, frontend design, risk assessment.
+
+**What's next (Phases 2-5):**
+- Phase 2: SQW + Styled HTML preview tabs, chapter outline sidebar
+- Phase 3: Live slop score + validation panel
+- Phase 4: CSS theme editor (colour pickers → live styled preview)
+- Phase 5: PDF generation + one-click platform push
+
+---
+
+## [2.3.19] - 2026-04-09
+
+### Fixed — Platform push of regenerated files (SF + IB + AO3 attempt)
+
+Pushed the converter-rewrite output to all accessible platforms:
+
+- **SoFurry**: 13/13 submissions updated via `SoFurryPoster.replace_file()` (Clean HTML body content replaced). Both published and draft works updated. Total time ~16s.
+- **Inkbunny**: 7/7 submissions updated via `InkbunnyPoster.replace_file()` (BBCode story text replaced via `api_editsubmission.php`). All published works updated. Total time ~9s.
+- **AO3**: 0/13 — "Shields are up!" (AO3 rate-limit wall). Script `tests/edit_ao3_after_converter_rewrite.py` ready for retry.
+
+### Changed — Inkbunny `replace_file()` implemented
+
+`posting/platforms/inkbunny.py`: Replaced the "not implemented" stub with a working implementation that reads the BBCode file and pushes via `client.edit_submission(story=text)`. The IB API's `api_editsubmission.php` accepts a `story` field for the reading-panel body text — only that field is sent, so title/description/tags/visibility are preserved.
+
+### New test scripts
+- `tests/edit_sf_after_converter_rewrite.py` — bulk SoFurry content push
+- `tests/edit_ao3_after_converter_rewrite.py` — bulk AO3 content push (ready for retry)
+
+---
+
+## [2.3.18] - 2026-04-09
+
+### Fixed — Converter rewrite: proper `*`/`**` italic/bold parser
+
+**Root cause fix** for the `<em><strong>` / `[i][b]` nested-italic bug class that affected Clean HTML (SoFurry/AO3), BBCode (Inkbunny), and SquidgeWorld body files across the entire catalogue.
+
+Both `convert_md_to_sofurry_html.py` and `convert_md_to_bbcode.py` rewritten with a new `parse_markdown_formatting()` function that scans left-to-right, toggling italic state on `*` and bold state on `**`. Replaces the old pipeline (`split_dialogue_narration` → `apply_narration_italic` → `convert_emphasis` → outer wrapper stripping) which had these bugs:
+- Inner `*word*` inside italic context rendered as `<strong>` (bold) instead of toggling italic OFF (roman)
+- Outer wrapper stripping heuristic was fragile (counted asterisks, broke on mixed-italic lines)
+- Default-italic mode wrapped un-marked paragraphs in italic
+- POV marker regex didn't support Unicode `⟨⟩`
+- HTML converter lacked text message detection (BBCode had it)
+
+**Files regenerated:**
+- 22 full-story files (11 Clean HTML + 11 BBCode)
+- 118 per-chapter files (SoFurry HTML + BBCode per chapter)
+- All from current MASTER.md source
+
+**Verification:** `grep -rl "<em><strong>"` on all Clean HTML returns only legitimate `***bold+italic***` constructions (Extra Credit epilogue title, Velvet story-name references). Zero converter bugs.
+
+---
+
+## [2.3.17] - 2026-04-09
+
+### Fixed — Section break styling + inline emphasis + PDF regen (final clean-up pass)
+
+Continuation of the [2.3.16] standardisation sweep. Targets the remaining validator warnings.
+
+**Fixes:**
+- **67 SQW section breaks styled** — `<p>* * *</p>` → `<p class="section-break">* * *</p>` across 23 files / 8 stories. The CSS accent colour + centering now applies.
+- **108 styled HTML section breaks styled** — same fix applied to per-chapter and full-story styled HTML across 21 files / 6 stories. PDFs now render section breaks with proper spacing.
+- **32 inline `*word*` emphasis converted** — bare markdown emphasis in dialogue that the old converter never processed (e.g. `*looking*`, `*Kristoff*`, `*me*`) → `<em>word</em>` across 9 styled HTML files / 3 stories (Extra Credit, Ruins, Velvet).
+- **1 Ruins ch1 styled HTML fix** — leading literal `*` + `<em><strong>` converter artefact on the "His hooves" paragraph (same bug class as the SQW bolding fix, but in the styled source).
+- **87 PDFs regenerated** from updated styled HTML.
+- **Validator false-positive fix** — `validate_story.py` no longer flags `* * *` inside `<p class="section-break">` as stray asterisks.
+
+**New script:** `fix_sqw_plain_section_breaks.py` — converts standalone `<p>* * *</p>` → `<p class="section-break">* * *</p>` across all SQW chapters.
+
+**Final validator result:** 11 of 12 stories at 0 fails, 0 warnings. Only NSES remains (incomplete folder build — separate scope).
+
+---
+
+## [2.3.16] - 2026-04-09
+
+### Fixed — Full SQW standardisation pass (11 stories) + NSES species fix
+
+Catalogue-wide standardisation sweep against `Reference_Guides/FILE_FORMAT_STANDARDS.md`, then bulk re-push of all 11 SQW drafts. Reduced validator fails from 67 → 9 (the 9 are all structural gaps in Not So Efficient Studying's incomplete folder build).
+
+**Fixes applied (in order of severity):**
+
+| Fix | Files | Stories |
+|---|---|---|
+| Subtitle separator `—` → `:` to match story.json | 58 | 10 |
+| Duplicate section breaks removed (`<p>* * *</p>` + `<p><strong>~ End ~</strong></p>`) | 18 | 9 |
+| Duplicate plain front matter deleted after warning-page div | 6 | 6 |
+| em-strong narrative bolding fixed (Hypnotic text messages + Extra Credit labels) | 14 | 2 |
+| Missing `#workskin em` CSS rule added | 2 | 2 (Chosen + Silk) |
+| **Not So Efficient Studying species fix** — Mack was described as "bull terrier" in story.json description + summary; he's a **rat** (confirmed from MASTER.md) | 1 | 1 |
+
+**New helper scripts** (under `m_x/Scripts_Utils/`):
+- `fix_sqw_subtitle_separator.py` — reads story.json chapter_info titles and replaces mismatched h2 text in SQW chapter files
+- `fix_sqw_duplicate_front_matter.py` — detects and deletes plain-paragraph title/byline/warning blocks that appear after the warning-page div
+- `fix_sqw_duplicate_section_breaks.py` — removes plain `<p>* * *</p>` lines that duplicate a styled `<p class="section-break">`, and plain `<p><strong>~ End ~</strong></p>` that duplicate a styled `<div class="story-end">`
+- `validate_story.py` — validates any story folder against FILE_FORMAT_STANDARDS.md rules (folder structure, MASTER.md asterisk balance, story.json fields, SQW body anti-patterns, CSS selectors, styled HTML chapter headings, div balance). Run `python validate_story.py --all` for a full sweep.
+
+**Standards document**: `Reference_Guides/FILE_FORMAT_STANDARDS.md` — comprehensive rules for all 13 file types with required structure, anti-patterns, cross-story consistency rules, and a validation checklist.
+
+**SQW push**: All 11 stories re-pushed via `tests/edit_sqw_after_fixes.py --apply --yes`. Total edit time ~330s. All draft states preserved (verified by poster safety checks).
+
+---
+
+## [2.3.15] - 2026-04-09
+
+### Fixed — SquidgeWorld bulk re-edit after body normalisation pass (5 stories)
+
+Pushed local SquidgeWorld body fixes live to 5 existing draft works. The fixes covered five distinct bug categories the user surfaced after browsing the drafts:
+
+1. **Velvet and Vice** — chapter labels in all 9 SQW chapter HTML files were `Chapter X — Title` matching the file index, but the canonical labels (per the styled HTML) are `Prelude: Threads Unraveling` then `Chapter 1: Callum`, `Chapter 2: Sierra`, ..., `Chapter 8: Communion` (offset by 1). Plus Velvet's `Work_Skin.css` had no `.chapter-subtitle` selector, so every h2 fell back to default browser styling (left-aligned, plain bold) instead of the canonical centred small-caps Georgia. Plus chapter 1's warning page was missing the `warning-heading`/`warning-body` paragraphs and had a duplicate plain front matter block below the div. Fixed all three.
+
+2. **Drumheller Detour** — chapter 1 warning page had only the disclaimer (no actual content warning text), with the real warning content dumped as plain `<p><em>...</em></p>` paragraphs immediately below the div. Restored the canonical warning-heading/warning-body inside the div, deleted the duplicate plain block.
+
+3. **Ruins of Breeding** — 46 narrative paragraphs across 6 chapters had `<em><strong>X</strong> Y <strong>Z</strong></em>` artefacts from an old converter mishandling nested italics. The script `m_x/Scripts_Utils/fix_sqw_em_strong_bolding.py` parses MASTER.md as ground truth and re-renders each affected line as alternating italic/roman segments using a small Python parser (`parse_italic_alternation` + `md_line_to_html`). Plus deleted Ruins ch1's duplicate plain front matter block.
+
+4. **Overtime** — already fixed locally yesterday (print-container strip + `chapter-heading` → `chapter-subtitle` rename via `normalize_sqw_print_container.py`). Pushed via this pass. Chapter headings now render centred italic in the work skin (the rename made the existing `.chapter-subtitle` rule apply).
+
+5. **Tombstone** — same as Overtime, fixed locally yesterday, pushed in this pass.
+
+### New helper scripts (under `m_x/Scripts_Utils/`)
+
+- **`normalize_sqw_print_container.py`** — strips vestigial `<div class="print-container">` outer wrapper from Overtime + Tombstone SQW chapters and renames `<h2 class="chapter-heading">` → `<h2 class="chapter-subtitle">`. Verifies div balance pre/post. Idempotent. Backups at `*.sqw-bak`.
+- **`fix_sqw_em_strong_bolding.py`** — Ruins-only narrative bolding fix. Reads MASTER.md, finds each `<p>` paragraph in the SQW chapter HTML containing `<em><strong>` patterns, looks up the corresponding MASTER.md line by text signature (HTML tags + `*` markers stripped, whitespace collapsed), then re-renders the line as alternating italic/roman segments. 46 paragraphs fixed across 6 Ruins chapters with 0 no-match. Restricted to Ruins because other stories use `<em><strong>` legitimately for chat-message styling (Drumheller, Hypnotic), POV markers (Velvet `⟨ Sierra ⟩`), and story-title references.
+
+### New test script
+
+- **`tests/edit_sqw_after_fixes.py`** — drives `SquidgeWorldPoster.edit()` for the 5 affected stories. Looks up each work_id by matching the local title against the user's SQW drafts + published lists, then runs `edit()` per story (which auto-detects draft state, preserves it, refreshes the work skin, edits metadata, iterates all chapters, and verifies state didn't flip). Single-story mode via `--story <folder>`, batch via no flag. Dry run by default; `--apply` to push.
+
+### SquidgeWorld results
+
+| Story | work_id | Edit time | Notes |
+|---|---|---|---|
+| Velvet and Vice | [91397](https://squidgeworld.org/works/91397) | 45.5s | CSS rule + 9 chapter labels + ch1 warning rebuild |
+| Drumheller Detour | [91391](https://squidgeworld.org/works/91391) | 39.1s | ch1 warning page rebuilt, duplicate plain block deleted |
+| Ruins of Breeding | [91395](https://squidgeworld.org/works/91395) | 33.0s | 46 narrative paragraphs cleaned, ch1 dup deleted |
+| Overtime | [91394](https://squidgeworld.org/works/91394) | 26.4s | print-container strip + class rename, headings now centred |
+| Tombstone | [91390](https://squidgeworld.org/works/91390) | 22.4s | same as Overtime |
+
+All 5 still in draft state post-edit (verified by `SquidgeWorldPoster.edit()`'s built-in safety check). Total edit time across all 5: 166.4s.
+
+---
+
 ## [2.3.14] - 2026-04-09
 
 ### Added — Story detail page enrichment (Batch 3 of 3): sparklines, comparison chart, timeline, format downloads

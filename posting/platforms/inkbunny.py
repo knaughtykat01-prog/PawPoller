@@ -200,15 +200,31 @@ class InkbunnyPoster(PlatformPoster):
             )
 
     async def replace_file(self, external_id: str, file_path: str) -> PostResult:
-        """Replace the file on an existing Inkbunny submission.
+        """Replace the story text on an existing Inkbunny submission.
 
-        Note: IB's api_upload.php may support a submission_id parameter for
-        replacing files, but this needs testing. For now, returns not-implemented.
+        Reads the BBCode file and pushes it via edit_submission(story=...).
+        Only the story body is updated — title, description, tags, and
+        visibility are preserved (IB API blanks omitted fields, so we don't
+        send them).
         """
-        return PostResult(
-            success=False,
-            error="Inkbunny file replacement not yet implemented — use edit for metadata updates",
-        )
+        _t = self._start_timer()
+        try:
+            client = await self._ensure_client()
+            with open(file_path, "r", encoding="utf-8") as f:
+                story_text = f.read()
+            await client.edit_submission(
+                int(external_id),
+                story=story_text,
+            )
+            return PostResult(
+                success=True,
+                external_id=external_id,
+                external_url=f"https://inkbunny.net/s/{external_id}",
+                duration_seconds=self._elapsed(_t),
+            )
+        except Exception as e:
+            logger.error("IB file replace failed for %s: %s", external_id, e)
+            return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
     def validate(self, package: StoryUploadPackage) -> list[str]:
         errors = super().validate(package)
