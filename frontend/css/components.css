@@ -1641,9 +1641,28 @@ a.stat-card:hover {
 .tag-list { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 12px; }
 .tag-pill { font-size: 0.72rem; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border); }
 
-/* Format badges */
+/* Inline sparkline on pub rows */
+.pub-spark { display: inline-flex; align-items: center; color: var(--accent); opacity: 0.85; min-width: 100px; }
+.pub-spark .sparkline { display: block; }
+
+/* Best-performer crown badge */
+.best-badge { font-size: 0.95rem; margin-right: 4px; cursor: help; }
+
+/* Publication timeline */
+.timeline-list { padding: 4px 0 0; }
+.timeline-event { display: grid; grid-template-columns: 14px 90px 1fr; gap: 8px; align-items: baseline; padding: 6px 0; font-size: 0.85rem; border-left: 2px solid var(--border); padding-left: 12px; margin-left: 6px; position: relative; }
+.timeline-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); position: absolute; left: -5px; top: 11px; }
+.timeline-update .timeline-dot { background: var(--success); }
+.timeline-when { color: var(--text-muted); font-size: 0.78rem; cursor: help; }
+.timeline-label { color: var(--text-secondary); }
+
+/* Format download badges */
 .format-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.format-badge { padding: 3px 10px; border-radius: var(--radius-pill); background: var(--bg-tertiary); color: var(--text-secondary); font-size: 0.8rem; }
+.format-badge { padding: 4px 11px; border-radius: var(--radius-pill); background: var(--bg-tertiary); color: var(--text-secondary); font-size: 0.8rem; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; transition: var(--transition); }
+.format-link:hover { background: var(--bg-card); color: var(--accent); border: 1px solid var(--accent-dim); padding: 3px 10px; }
+.format-empty { opacity: 0.5; cursor: not-allowed; }
+.format-meta { font-size: 0.7rem; color: var(--text-muted); }
+.format-link:hover .format-meta { color: var(--text-secondary); }
 
 /* ── Posting Module: Mobile ──────────────────────────────────── */
 @media (max-width: 768px) {
@@ -1657,8 +1676,12 @@ a.stat-card:hover {
     .pub-actions { margin-left: 0; width: 100%; }
     .pub-actions .btn { flex: 1; min-height: 40px; }
     .pub-fans { margin-left: 0; }
+    .pub-spark { min-width: 0; }
+    .pub-spark .sparkline { width: 100%; max-width: 200px; }
     .log-row { grid-template-columns: 1fr; gap: 2px; }
     .log-status { text-align: left; }
+    .timeline-event { grid-template-columns: 14px 1fr; }
+    .timeline-when { grid-column: 1 / -1; padding-left: 22px; }
     .upload-actions { flex-direction: column; }
     .upload-actions .btn { width: 100%; min-height: 44px; }
     .chapter-row { font-size: 0.85rem; }

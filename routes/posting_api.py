@@ -115,6 +115,54 @@ def get_story_detail(story_name: str):
                     pub["top_fans"] = [dict(r) for r in rows]
                 except (sqlite3.OperationalError, ValueError):
                     pass  # Table missing or non-numeric ID — leave as []
+
+            # Per-publication snapshots (last 30 days, capped at 60 points) for
+            # the sparkline + comparison chart in batch 3. Each platform's
+            # snapshots table has a different name and column set, so we map
+            # platform → (table, id_col, value_col) for the primary metric.
+            # Bluesky/Twitter/Itaku use likes-equivalent metrics; others use
+            # views/hits/reads. The frontend renders whichever value is
+            # present without caring about the source column.
+            _SNAP_TABLES = {
+                "ib":   ("snapshots",     "submission_id", "views"),
+                "fa":   ("fa_snapshots",  "submission_id", "views"),
+                "ws":   ("ws_snapshots",  "submission_id", "views"),
+                "sf":   ("sf_snapshots",  "submission_id", "views"),
+                "sqw":  ("sqw_snapshots", "submission_id", "hits"),
+                "ao3":  ("ao3_snapshots", "submission_id", "hits"),
+                "wp":   ("wp_snapshots",  "submission_id", "reads"),
+                "da":   ("da_snapshots",  "submission_id", "views"),
+                "ik":   ("ik_snapshots",  "submission_id", "likes"),
+                "bsky": ("bsky_snapshots","submission_id", "likes"),
+                "tw":   ("tw_snapshots",  "submission_id", "views"),
+            }
+            for pub in pubs:
+                pub["snapshots"] = []
+                cfg = _SNAP_TABLES.get(pub["platform"])
+                if not cfg or not pub.get("external_id"):
+                    continue
+                table, id_col, value_col = cfg
+                try:
+                    # IDs are stored as TEXT for BSKY/TW/SF (URI-shaped or
+                    # 64-bit), INTEGER for others. Try int first then fall
+                    # back to the raw string.
+                    raw_id = pub["external_id"]
+                    try_id = int(raw_id) if raw_id.isdigit() else raw_id
+                    rows = conn.execute(
+                        f"SELECT polled_at, {value_col} as value FROM {table} "
+                        f"WHERE {id_col} = ? "
+                        f"AND polled_at >= datetime('now', '-30 days') "
+                        f"ORDER BY polled_at DESC LIMIT 60",
+                        (try_id,),
+                    ).fetchall()
+                    # Reverse for chronological order (oldest → newest) so
+                    # the sparkline draws left-to-right naturally.
+                    pub["snapshots"] = [
+                        {"t": r["polled_at"], "v": r["value"] or 0}
+                        for r in reversed(rows)
+                    ]
+                except (sqlite3.OperationalError, AttributeError, ValueError):
+                    pass  # Table missing, ID type mismatch — leave as []
         finally:
             conn.close()
 
@@ -156,6 +204,13 @@ def get_story_detail(story_name: str):
             if detected:
                 images["cover"] = detected
 
+        # Resolve format files: turns the {bbcode: true, html: true} flag dict
+        # from story.json into a richer structure with per-file size + mtime
+        # so the frontend can show "bbcode (24 KB, 2 days ago)" badges and
+        # link them to the /api/posting/file download endpoint.
+        formats_raw = story_json_data.get("formats", {})
+        formats_enriched = story_reader.get_format_files(story_path, formats_raw)
+
         published_platforms = sorted(set(p["platform"] for p in pubs if p["status"] == "posted"))
         all_platforms = list(story_json_data.get("platforms", {}).keys())
         # Map platform names to IDs
@@ -188,7 +243,7 @@ def get_story_detail(story_name: str):
                 for ch in story.chapters
             ],
             "tags_by_platform": story.tags_by_platform,
-            "formats": story_json_data.get("formats", {}),
+            "formats": formats_enriched,
             "images": images,
             "platforms": story_json_data.get("platforms", {}),
             "published_platforms": published_platforms,
@@ -254,6 +309,81 @@ def get_story_image(story: str = Query(...), file: str = Query(...)):
         path=str(requested),
         media_type=media_types[requested.suffix.lower()],
         headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+# Allowlist for /api/posting/file. Wider than the cover allowlist (we want
+# the format-badge download to work for the actual story files: BBCode,
+# HTML, Markdown, PDF, plus the chapter splits and styled HTML used by
+# the converters). Anything outside this set returns 415 — no random
+# binaries from the story folder, no Python scripts.
+_DOWNLOAD_EXTENSIONS = frozenset({
+    ".txt",      # BBCode + chapter BBCode
+    ".html",     # SoFurry HTML / SquidgeWorld HTML / styled HTML / clean HTML
+    ".htm",
+    ".md",       # MASTER.md and chapter Markdown
+    ".pdf",      # FA-format PDFs
+    ".json",     # story.json + split_manifest.json
+})
+
+# Map extensions to media types for the download response. Browsers use
+# Content-Disposition: attachment regardless, but a correct Content-Type
+# helps tools that key off MIME (and is honest).
+_DOWNLOAD_MEDIA_TYPES = {
+    ".txt":  "text/plain; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".htm":  "text/html; charset=utf-8",
+    ".md":   "text/markdown; charset=utf-8",
+    ".pdf":  "application/pdf",
+    ".json": "application/json",
+}
+
+
+@posting_router.get("/file")
+def get_story_file(story: str = Query(...), file: str = Query(...)):
+    """Serve a format file from a story folder as a download.
+
+    Same security model as /api/posting/image: query params, traversal
+    guard, extension allowlist. Sends Content-Disposition: attachment so
+    browsers download rather than render — the format-badge download UX
+    on the story detail page is the only intended caller.
+    """
+    from posting import story_reader
+
+    if not story or not file:
+        raise HTTPException(400, detail="story and file query params are required")
+
+    try:
+        story_obj = story_reader.load_story(story)
+    except FileNotFoundError:
+        raise HTTPException(404, detail=f"Story not found: {story}")
+    except Exception as e:
+        logger.error("Error loading story %s for file fetch: %s", story, e)
+        raise HTTPException(500, detail="Failed to load story")
+
+    story_root = story_obj.path.resolve()
+    requested = (story_root / file).resolve()
+
+    try:
+        requested.relative_to(story_root)
+    except ValueError:
+        raise HTTPException(403, detail="Path escapes story directory")
+
+    if not requested.is_file():
+        raise HTTPException(404, detail="File not found")
+
+    suffix = requested.suffix.lower()
+    if suffix not in _DOWNLOAD_EXTENSIONS:
+        raise HTTPException(415, detail=f"File type not allowed: {suffix}")
+
+    return FileResponse(
+        path=str(requested),
+        media_type=_DOWNLOAD_MEDIA_TYPES.get(suffix, "application/octet-stream"),
+        filename=requested.name,
+        headers={
+            "Content-Disposition": f'attachment; filename="{requested.name}"',
+            "Cache-Control": "no-cache",
+        },
     )
 
 

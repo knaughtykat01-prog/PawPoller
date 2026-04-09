@@ -259,6 +259,85 @@ def detect_cover_relative(story_path: Path) -> str:
     return ""
 
 
+# Map a `formats` key in story.json to the directory + glob pattern that
+# represents that format on disk. Used by get_format_files() to enrich the
+# detail page with file size + last-modified info per format key. Distinct
+# from PLATFORM_FORMAT_MAP because that one is platform-keyed (resolves the
+# file the *poster* uploads), while this is format-key-keyed (the user-facing
+# "Available Formats" badge list).
+_FORMAT_KEY_PATTERNS: dict[str, list[tuple[str, str]]] = {
+    "bbcode": [("BBCode", "*_bbcode.txt")],
+    "chapter_bbcode": [("Chapters/BBCode", "*.txt")],
+    "html": [("HTML", "*_Clean.html"), ("HTML", "*.html")],
+    "sofurry_html": [("HTML", "*_sofurry.html"), ("Chapters/SoFurry_HTML", "*.html")],
+    "squidgeworld": [("SquidgeWorld", "*.html")],
+    "markdown": [("Markdown", "MASTER.md"), ("Markdown", "*.md")],
+    "pdf": [("PDF", "*.pdf"), ("Chapters/PDF", "*.pdf")],
+    "styled_html": [("HTML", "*_Styled.html"), ("Chapters/Styled_HTML", "*.html")],
+}
+
+
+def get_format_files(story_path: Path, formats: dict) -> dict:
+    """Resolve declared format keys to file metadata for the detail page.
+
+    Returns a dict keyed by format name where each value is either:
+        {"available": False}                                   — no files matched
+        {"available": True, "files": [{"path": str (relative
+         to story_path), "size": int, "modified": str (ISO)}]}
+
+    The relative paths are exactly what the /api/posting/file endpoint
+    expects in its `file` query param. Multi-file formats (chapter_bbcode,
+    squidgeworld, etc.) return all matching files sorted by name. Stories
+    using the single-bulk-file convention (most of the archive) return a
+    single-element list.
+    """
+    result = {}
+    if not story_path.is_dir():
+        return {k: {"available": False} for k in formats}
+
+    for fmt_key, declared in formats.items():
+        if not declared:
+            result[fmt_key] = {"available": False}
+            continue
+        patterns = _FORMAT_KEY_PATTERNS.get(fmt_key, [])
+        if not patterns:
+            # Unknown format key — declared in story.json but we have no
+            # pattern for it. Surface as available-but-no-files so the
+            # frontend can at least show the badge.
+            result[fmt_key] = {"available": True, "files": []}
+            continue
+
+        files: list[dict] = []
+        seen: set[Path] = set()
+        for subdir, pattern in patterns:
+            search_dir = story_path / subdir
+            if not search_dir.is_dir():
+                continue
+            for f in sorted(search_dir.glob(pattern)):
+                if not f.is_file() or f in seen:
+                    continue
+                seen.add(f)
+                try:
+                    stat = f.stat()
+                    files.append({
+                        "path": str(f.relative_to(story_path)).replace("\\", "/"),
+                        "size": stat.st_size,
+                        "modified": _iso_mtime(stat.st_mtime),
+                    })
+                except OSError:
+                    continue
+
+        result[fmt_key] = {"available": bool(files), "files": files}
+
+    return result
+
+
+def _iso_mtime(mtime: float) -> str:
+    """Convert a stat mtime float to a UTC ISO 8601 string."""
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) -> StoryInfo:
     """Load story metadata from story.json."""
     data = json.loads(json_path.read_text(encoding="utf-8"))

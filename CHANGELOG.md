@@ -4,6 +4,54 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.3.14] - 2026-04-09
+
+### Added — Story detail page enrichment (Batch 3 of 3): sparklines, comparison chart, timeline, format downloads
+
+Final batch of the story detail page overhaul. Adds the analytics tier: per-pub sparklines, a Chart.js comparison overlay, a publication timeline, format file metadata + direct downloads, and a best-performer badge. Completes the brainstorm from the Drumheller Detour screenshot session.
+
+**Backend:**
+
+- **Per-pub snapshots in `get_story_detail`.** New `_SNAP_TABLES` mapping in the route handler keys each platform to its snapshot table + primary metric (`snapshots.views`, `fa_snapshots.views`, `sqw_snapshots.hits`, `wp_snapshots.reads`, `ik_snapshots.likes`, etc.). For each pub we query the last 30 days of snapshots (capped at 60 points) and attach them as `pub.snapshots = [{t, v}]` in chronological order. Wrapped in try/except for `OperationalError` (table missing on fresh installs) and `ValueError` (TEXT vs INT id mismatch on BSKY/TW). The frontend renders these via inline SVG sparklines + a Chart.js comparison overlay.
+- **`story_reader.get_format_files()` helper.** New function + new `_FORMAT_KEY_PATTERNS` dict that maps each `formats` key in `story.json` (`bbcode`, `chapter_bbcode`, `html`, `sofurry_html`, `squidgeworld`, `markdown`, `pdf`, `styled_html`) to its directory + glob pattern. For each declared format, resolves all matching files, stats them, and returns `{available, files: [{path, size, modified}]}`. The relative `path` is exactly what the new `/api/posting/file` endpoint expects in its `file` query param. `_iso_mtime()` helper converts the float mtime into a UTC ISO timestamp string.
+- **`get_story_detail` now returns `formats` as the enriched dict** instead of the raw `{key: bool}` flag dict from `story.json`. The frontend uses the file metadata to render badge tooltips and download links.
+- **`GET /api/posting/file?story=&file=`** — new download endpoint. Same security model as `/api/posting/image`: query params, `Path.resolve().relative_to()` traversal guard, extension allowlist. The download allowlist is wider than the image one — `.txt, .html, .htm, .md, .pdf, .json` — covering all the format files the badges link to. Sends `Content-Disposition: attachment; filename="..."` so browsers download rather than render. `Cache-Control: no-cache` because format files change frequently and a cached BBCode would be misleading.
+
+**Frontend (`frontend/js/posting.js`):**
+
+- **`buildSparkline(snapshots, w, h)` helper.** Pure inline SVG line chart, no Chart.js per row. SVG was chosen over Chart.js for the per-row sparklines because Chart.js per row means N canvases × N resize observers × N animation loops on the page — too much for what should be a tiny visual cue. SVG is one DOM tree per chart, no JS lifecycle. Renders polyline + a small dot on the most recent point so flat series still have a visual anchor.
+- **`formatFileSize(bytes)` helper.** Bytes → "1.2 KB" / "3.4 MB" for the format download badges.
+- **`PUB_CHART_COLORS`** palette — 11 colours picked to be distinct on a dark background (one per platform, modulo cycling).
+- **Pub row gains a sparkline column** rendered from `p.snapshots`. Empty for fresh pubs with <2 data points (sparkline helper early-returns).
+- **👑 Best-performer badge.** Computed client-side: find the pub with the highest views (or views-equivalent), tag its row. Only renders when there are 2+ pubs — best-of-one is meaningless.
+- **`Posting._renderComparisonChart(pubsWithData)`** — new method that builds a Chart.js line chart in the new `#story-comparison-chart` canvas with one dataset per pub. Reads CSS custom properties (`--text-muted`, `--border`) so the chart matches the active theme. Manages its own canvas lifecycle via `canvas._ppChart` (route() doesn't clean up posting.js charts the way it does for the main app's charts, so the destroy-before-recreate pattern is local). Only renders when there are 2+ pubs with at least 2 snapshot points each.
+- **Publication Timeline card.** Chronological list of post + update events, derived from the existing `first_posted_at` / `last_updated_at` columns on each pub. No new backend data needed — pure client-side aggregation. Sorted newest-first. Update events use a green dot, post events a purple one.
+- **Formats card rebuilt for the enriched dict.** Each format becomes a clickable `<a class="format-link" download>` pointing at `/api/posting/file?story=&file=` with the size shown inline ("bbcode 24 KB") and full file path + modified timestamp on hover. Multi-file formats (chapter_bbcode, squidgeworld) link the first file's download and show "(N files)" instead of a single size. Formats declared in story.json but with no files on disk get rendered as a muted, non-clickable `format-empty` badge.
+
+**CSS (`frontend/css/components.css`):**
+
+- New: `.pub-spark` (sparkline column on pub rows, accent-colored), `.best-badge`, `.timeline-list` + `.timeline-event` + `.timeline-dot` (with `.timeline-update` variant), `.timeline-when`, `.timeline-label`. Format badges revamped: `.format-link` (clickable download with hover state), `.format-empty` (muted no-files-on-disk variant), `.format-meta` (the size span).
+- Mobile breakpoint extended: sparkline scales to row width, timeline collapses the time + label into stacked rows.
+
+**Verified:**
+- `python -m py_compile routes/posting_api.py posting/story_reader.py` clean
+- `node --check frontend/js/posting.js` clean
+- Single round-trip preserved: still one request to `/api/posting/stories/{name}`. The detail page now carries cover, summary, chips, totals, change-detection, top fans, recent log, queue, snapshots, format metadata — all in one response. The format download endpoint is hit only on click.
+- Chart.js lifecycle: `_renderComparisonChart` destroys any existing chart on the canvas before recreating, so navigating away and back doesn't leak.
+- Path traversal: `/api/posting/file` rejects `../etc/passwd` style paths via the same `relative_to()` guard the image endpoint uses, plus the wider extension allowlist still excludes `.py`, `.sh`, `.exe`, etc. — no arbitrary file exfiltration from the story folder.
+
+**Not done in this version:**
+- Did NOT add zoom/pan to the comparison chart. Chart.js zoom is a separate plugin and the 30-day window is small enough that fixed scale is fine.
+- Did NOT add metric selector (views vs faves vs comments) to the comparison chart. Hardcoded to views (or views-equivalent per platform). Adding a metric switch would require either re-querying snapshots with a different value column or fetching all metrics up-front; out of scope for this batch.
+- Did NOT add a "regenerate format files" button next to the download links. The format files are regenerated externally via the `m_x/Scripts_Utils/regenerate_story.py` workflow on the desktop, not by the dashboard. Adding a regen button would require shell-out to that script and runtime mode awareness.
+- BSKY/IK/DA/TW publications: snapshots queries should work for these now since we added them to `_SNAP_TABLES`, but they still don't have stats populated by `get_publications_with_stats` (separate `stat_tables` dict in `posting_queries.py` doesn't have entries for them). Worth aligning the two dicts in a future change.
+
+### Wraps up the story detail page enrichment series
+
+This is the third and final batch of the detail page overhaul started in 2.3.12 and continued in 2.3.13. The Drumheller Detour screenshot from the brainstorm session — a sparse page showing just title/words/chapters/2 pubs/8 chapters/6 format badges — now renders with cover image, summary, characters, relationships, cross-platform totals, sparklines per pub, change-detection badges, top fans, a comparison overlay chart, the publication timeline, recent activity log, per-platform tags accordion, and clickable format downloads. All driven by data the backend was already storing — most of the work was just surfacing it.
+
+---
+
 ## [2.3.13] - 2026-04-09
 
 ### Added — Story detail page enrichment (Batch 2 of 3): change detection, history, queue, top fans

@@ -8,6 +8,58 @@
  *   5. History    (#/posting/log)          — Audit log of all posting actions
  */
 
+/* ── File-size formatter ─────────────────────────────────────
+ * Bytes → human-readable string. Used by the format-download badges.
+ */
+function formatFileSize(bytes) {
+    if (!bytes || bytes < 0) return '0 B';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+/* Comparison chart palette — picked to be distinct on a dark background.
+ * One colour per pub; cycles via modulo if there are more pubs than entries
+ * (which shouldn't happen — at most 11 pubs, one per platform). */
+const PUB_CHART_COLORS = [
+    '#9b7dff', '#5ae0a0', '#f0a050', '#70a0ff', '#f07070',
+    '#fbc050', '#a880ff', '#5ac0e0', '#f580a0', '#80e070', '#e0a0ff',
+];
+
+/* ── Sparkline helper ────────────────────────────────────────
+ * Builds a tiny SVG line chart for a publication's snapshots. We use
+ * inline SVG (not Chart.js) so each pub row stays light — Chart.js per
+ * row would mean N canvases per page, each with its own resize observer
+ * and animation loop. SVG is one DOM tree per chart, no JS lifecycle.
+ *
+ * snapshots: [{t: "2026-04-01 00:00:00", v: 123}, ...] in chronological
+ *            order. Empty/single-point series render as an empty span.
+ * width / height: pixel dimensions of the sparkline.
+ * Returns an HTML string ready for innerHTML insertion.
+ */
+function buildSparkline(snapshots, width = 100, height = 24) {
+    if (!Array.isArray(snapshots) || snapshots.length < 2) return '';
+    const values = snapshots.map(s => s.v || 0);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;     // avoid div-by-zero on flat series
+    const step = width / (snapshots.length - 1);
+    const points = snapshots.map((s, i) => {
+        const x = (i * step).toFixed(1);
+        // SVG y axis grows downward, so invert: high values render high.
+        const y = (height - ((s.v - min) / range) * height).toFixed(1);
+        return `${x},${y}`;
+    }).join(' ');
+    // Last point gets a small dot so even a flat series has a visual cue.
+    const lastX = ((snapshots.length - 1) * step).toFixed(1);
+    const lastY = (height - ((values[values.length - 1] - min) / range) * height).toFixed(1);
+    return `
+        <svg class="sparkline" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+            <polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" />
+            <circle cx="${lastX}" cy="${lastY}" r="1.8" fill="currentColor" />
+        </svg>`;
+}
+
 const PLATFORM_LABELS = {
     ib: '🐾 Inkbunny', fa: '🦊 FurAffinity', ws: '🦎 Weasyl',
     sf: '🐺 SoFurry', sqw: '🦑 SquidgeWorld', ao3: '📖 AO3', da: '🎨 DeviantArt', ik: '🎯 Itaku', bsky: '🦋 Bluesky', wp: '📙 Wattpad',
@@ -202,6 +254,22 @@ const Posting = {
             // ── Platforms section ──────────────────────────────
             const unpublished = data.unpublished_platforms || [];
 
+            // Find the best-performing pub by views (or views-equivalent).
+            // Used to add a 👑 badge to that row. Single-pub stories don't
+            // get a badge — best-of-one is meaningless.
+            let bestPubKey = null;
+            let bestPubViews = -1;
+            if (pubs.length > 1) {
+                for (const p of pubs) {
+                    if (!p.stats) continue;
+                    const v = p.stats.views || p.stats.hits || p.stats.reads || 0;
+                    if (v > bestPubViews) {
+                        bestPubViews = v;
+                        bestPubKey = `${p.platform}-${p.chapter_index}`;
+                    }
+                }
+            }
+
             let pubRows = '';
             if (pubs.length > 0) {
                 pubRows = pubs.map(p => {
@@ -216,6 +284,14 @@ const Posting = {
                         const c = p.stats.comments_count || 0;
                         statsHtml = `<span class="pub-stats">${v.toLocaleString()}v / ${f.toLocaleString()}f / ${c.toLocaleString()}c</span>`;
                     }
+                    // Sparkline from per-pub snapshots fetched server-side.
+                    const sparklineHtml = buildSparkline(p.snapshots || []);
+                    // 👑 best-performer badge (only renders on the row with
+                    // the highest views and only when there are 2+ pubs).
+                    const isBest = `${p.platform}-${p.chapter_index}` === bestPubKey;
+                    const bestBadge = isBest
+                        ? `<span class="best-badge" title="Best performing of ${pubs.length} platforms">👑</span>`
+                        : '';
                     // Days-since timestamp with raw value on hover. Falls back
                     // to first_posted_at if no edit has happened yet.
                     const updated = p.last_updated_at || p.first_posted_at || '';
@@ -250,9 +326,10 @@ const Posting = {
                     return `
                         <div class="pub-row-wrapper">
                             <div class="pub-row">
-                                <span class="pub-platform">${emoji} ${(PLATFORM_LABELS[p.platform] || p.platform).replace(/^.+\s/, '')}</span>
+                                <span class="pub-platform">${bestBadge}${emoji} ${(PLATFORM_LABELS[p.platform] || p.platform).replace(/^.+\s/, '')}</span>
                                 <span class="pub-chapter">${ch}</span>
                                 ${statsHtml}
+                                <span class="pub-spark">${sparklineHtml}</span>
                                 <span class="pub-date" title="${updatedTitle}">${updatedAgo}</span>
                                 ${updateBadge}
                                 ${changeBadge}
@@ -344,6 +421,65 @@ const Posting = {
                 tagsHtml = `<div class="card"><h3>Tags by Platform</h3>${tagBlocks}</div>`;
             }
 
+            // ── Comparison overlay chart ───────────────────────
+            // One Chart.js line chart with all pubs overlaid. Only renders
+            // when there are 2+ pubs AND at least one of them has snapshot
+            // data — single-pub stories already have their growth shown by
+            // the inline sparkline, no point repeating it bigger.
+            const pubsWithData = pubs.filter(p => (p.snapshots || []).length >= 2);
+            let comparisonHtml = '';
+            if (pubsWithData.length >= 2) {
+                comparisonHtml = `
+                    <div class="card">
+                        <h3>Growth Comparison</h3>
+                        <p class="page-subtitle">${pubsWithData.length} platforms over the last 30 days</p>
+                        <div class="chart-wrap" style="height:220px">
+                            <canvas id="story-comparison-chart"></canvas>
+                        </div>
+                    </div>`;
+            }
+
+            // ── Publication timeline ───────────────────────────
+            // Chronological list of post + update events derived from the
+            // existing first_posted_at / last_updated_at columns. No new
+            // backend data needed. Sorted newest-first because that's what
+            // the user generally cares about ("when was the last thing").
+            const timelineEvents = [];
+            for (const p of pubs) {
+                const platLabel = (PLATFORM_LABELS[p.platform] || p.platform).replace(/^.+\s/, '');
+                const emoji = PLATFORM_EMOJI[p.platform] || '📦';
+                const ch = p.chapter_index > 0 ? `Ch${p.chapter_index}` : 'Full story';
+                if (p.first_posted_at) {
+                    timelineEvents.push({
+                        when: p.first_posted_at,
+                        kind: 'post',
+                        label: `Posted ${ch} to ${emoji} ${platLabel}`,
+                    });
+                }
+                if (p.last_updated_at && p.last_updated_at !== p.first_posted_at) {
+                    timelineEvents.push({
+                        when: p.last_updated_at,
+                        kind: 'update',
+                        label: `Updated ${ch} on ${emoji} ${platLabel} (#${p.update_count || '?'})`,
+                    });
+                }
+            }
+            timelineEvents.sort((a, b) => (b.when || '').localeCompare(a.when || ''));
+            let timelineHtml = '';
+            if (timelineEvents.length > 0) {
+                const eventLines = timelineEvents.map(e => {
+                    const ago = e.when ? Utils.timeAgo(e.when) : '';
+                    const title = e.when ? Utils.escapeHtml(e.when) : '';
+                    return `
+                        <div class="timeline-event timeline-${e.kind}">
+                            <span class="timeline-dot"></span>
+                            <span class="timeline-when" title="${title}">${ago}</span>
+                            <span class="timeline-label">${e.label}</span>
+                        </div>`;
+                }).join('');
+                timelineHtml = `<div class="card"><h3>Publication Timeline</h3><div class="timeline-list">${eventLines}</div></div>`;
+            }
+
             // ── Recent posting log card ────────────────────────
             // Last 5 posting actions for this story (server-side filtered).
             // Shows the human-readable history of uploads/updates with their
@@ -377,12 +513,38 @@ const Posting = {
                 recentLogHtml = `<div class="card"><h3>Recent Activity</h3>${logRows}</div>`;
             }
 
-            // Formats section
+            // ── Formats card with file metadata + downloads ────
+            // The backend now returns formats as an enriched dict:
+            //   {key: {available, files: [{path, size, modified}]}}
+            // (rather than the old {key: bool} flag dict). For each format
+            // we show the file count + total size, and link the badge to
+            // /api/posting/file for direct download. Multi-file formats
+            // (chapter_bbcode, squidgeworld) link the FIRST file's download
+            // and show "(N files)" instead of a single size.
             const formats = data.formats || {};
-            const formatList = Object.keys(formats).map(f =>
-                `<span class="format-badge">${f.replace(/_/g, ' ')}</span>`
-            ).join('');
-            const formatsHtml = formatList ? `<div class="card"><h3>Available Formats</h3><div class="format-list">${formatList}</div></div>` : '';
+            const formatBadges = Object.keys(formats).map(fmtKey => {
+                const meta = formats[fmtKey] || {};
+                const label = fmtKey.replace(/_/g, ' ');
+                if (!meta.available || !meta.files || meta.files.length === 0) {
+                    // Declared in story.json but no file resolved on disk —
+                    // render as a muted, non-clickable badge.
+                    return `<span class="format-badge format-empty" title="No files found on disk">${label}</span>`;
+                }
+                const files = meta.files;
+                const first = files[0];
+                const sizeText = files.length === 1
+                    ? formatFileSize(first.size)
+                    : `${files.length} files`;
+                const totalSize = files.reduce((sum, f) => sum + (f.size || 0), 0);
+                const tooltip = files.length === 1
+                    ? `${first.path} · ${formatFileSize(first.size)} · modified ${first.modified}`
+                    : `${files.length} files, ${formatFileSize(totalSize)} total. First: ${first.path}`;
+                const url = `/api/posting/file?story=${encodeURIComponent(storyName)}&file=${encodeURIComponent(first.path)}`;
+                return `<a class="format-badge format-link" href="${url}" title="${Utils.escapeHtml(tooltip)}" download>${label} <span class="format-meta">${sizeText}</span></a>`;
+            }).join('');
+            const formatsHtml = formatBadges
+                ? `<div class="card"><h3>Available Formats</h3><div class="format-list">${formatBadges}</div></div>`
+                : '';
 
             App._setContent(`
                 <a href="#/posting" class="back-link">&larr; All Stories</a>
@@ -390,14 +552,101 @@ const Posting = {
                 ${pendingHtml}
                 ${totalsHtml}
                 ${platformsHtml}
+                ${comparisonHtml}
                 ${chaptersHtml}
                 ${tagsHtml}
+                ${timelineHtml}
                 ${recentLogHtml}
                 ${formatsHtml}`);
+
+            // Comparison chart needs to be initialised AFTER the canvas is
+            // in the DOM. Single deferred call — Chart.js handles the rest.
+            if (pubsWithData.length >= 2) {
+                this._renderComparisonChart(pubsWithData);
+            }
 
         } catch (err) {
             App._setContent(`<div class="error-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
         }
+    },
+
+    /* ── Comparison chart renderer ───────────────────────────
+     * Builds a Chart.js line chart with one dataset per publication.
+     * Uses the per-pub snapshots that get_story_detail now returns
+     * (last 30d). Reuses the global Chart.js instance loaded by
+     * index.html — no need for the existing Charts module wrapper
+     * since this is a one-off and we want full control over the
+     * legend / tooltip shape.
+     */
+    _renderComparisonChart(pubsWithData) {
+        const canvas = document.getElementById('story-comparison-chart');
+        if (!canvas || typeof Chart === 'undefined') return;
+
+        // Destroy any existing chart on this canvas (route() doesn't
+        // clean up posting.js charts the way it does for the rest of
+        // the app, so we manage our own lifecycle).
+        if (canvas._ppChart) {
+            try { canvas._ppChart.destroy(); } catch (e) {}
+        }
+
+        const datasets = pubsWithData.map((p, i) => {
+            const color = PUB_CHART_COLORS[i % PUB_CHART_COLORS.length];
+            const platLabel = (PLATFORM_LABELS[p.platform] || p.platform).replace(/^.+\s/, '');
+            return {
+                label: platLabel,
+                data: (p.snapshots || []).map(s => ({ x: s.t, y: s.v })),
+                borderColor: color,
+                backgroundColor: color + '33',     // ~20% alpha
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                tension: 0.25,
+                fill: false,
+            };
+        });
+
+        // Read CSS custom properties so the chart matches dark/light theme.
+        const styles = getComputedStyle(document.documentElement);
+        const textMuted = styles.getPropertyValue('--text-muted').trim() || '#888';
+        const border = styles.getPropertyValue('--border').trim() || '#333';
+
+        canvas._ppChart = new Chart(canvas, {
+            type: 'line',
+            data: { datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'nearest', intersect: false },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: { color: textMuted, boxWidth: 12, font: { size: 11 } },
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => items[0]?.parsed?.x
+                                ? new Date(items[0].parsed.x).toLocaleString('en-AU')
+                                : '',
+                            label: (item) => `${item.dataset.label}: ${item.parsed.y.toLocaleString()}`,
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: { tooltipFormat: 'dd MMM yyyy HH:mm' },
+                        grid: { color: border, drawBorder: false },
+                        ticks: { color: textMuted, font: { size: 10 }, maxRotation: 0 },
+                    },
+                    y: {
+                        beginAtZero: false,
+                        grid: { color: border, drawBorder: false },
+                        ticks: { color: textMuted, font: { size: 10 } },
+                    },
+                },
+            },
+        });
     },
 
     async _uploadTo(storyName, platform) {
