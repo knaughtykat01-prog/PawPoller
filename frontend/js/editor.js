@@ -67,7 +67,7 @@ const Editor = {
                         <span id="editor-wordcount" class="editor-wordcount"></span>
                         <button id="editor-save-btn" class="btn btn-sm" onclick="Editor.save()">Save</button>
                         <button id="editor-regen-btn" class="btn btn-sm btn-outline" onclick="Editor.regenerate()">Regenerate</button>
-                        <select id="editor-format-select" onchange="Editor.switchFormat(this.value)">
+                        <select id="editor-format-select">
                             <option value="clean_html">Clean HTML</option>
                             <option value="bbcode">BBCode</option>
                         </select>
@@ -103,6 +103,12 @@ const Editor = {
             this._updateStatus('Loaded');
 
             // Bind events
+            const formatSelect = document.getElementById('editor-format-select');
+            if (formatSelect) {
+                formatSelect.addEventListener('change', (e) => {
+                    this.switchFormat(e.target.value);
+                });
+            }
             ta.addEventListener('input', () => this._onInput());
             ta.addEventListener('keydown', (e) => {
                 if ((e.ctrlKey || e.metaKey) && e.key === 's') {
