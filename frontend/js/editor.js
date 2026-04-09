@@ -143,21 +143,31 @@ const Editor = {
                 }
             });
 
-            // Sync scrolling between editor and preview column
-            const previewCol = document.getElementById('editor-preview');
+            // Sync scrolling between editor and both preview panel bodies
+            const renderedPanel = document.getElementById('editor-preview-rendered-body');
+            const sourcePanel = document.getElementById('editor-preview-source-body');
+            const syncTargets = [renderedPanel, sourcePanel].filter(Boolean);
+
             ta.addEventListener('scroll', () => {
                 if (this._syncingScroll) return;
                 this._syncingScroll = true;
                 const pct = ta.scrollTop / (ta.scrollHeight - ta.clientHeight || 1);
-                previewCol.scrollTop = pct * (previewCol.scrollHeight - previewCol.clientHeight);
+                syncTargets.forEach(el => {
+                    el.scrollTop = pct * (el.scrollHeight - el.clientHeight);
+                });
                 requestAnimationFrame(() => { this._syncingScroll = false; });
             });
-            previewCol.addEventListener('scroll', () => {
-                if (this._syncingScroll) return;
-                this._syncingScroll = true;
-                const pct = previewCol.scrollTop / (previewCol.scrollHeight - previewCol.clientHeight || 1);
-                ta.scrollTop = pct * (ta.scrollHeight - ta.clientHeight);
-                requestAnimationFrame(() => { this._syncingScroll = false; });
+            syncTargets.forEach(panel => {
+                panel.addEventListener('scroll', () => {
+                    if (this._syncingScroll) return;
+                    this._syncingScroll = true;
+                    const pct = panel.scrollTop / (panel.scrollHeight - panel.clientHeight || 1);
+                    ta.scrollTop = pct * (ta.scrollHeight - ta.clientHeight);
+                    syncTargets.filter(el => el !== panel).forEach(el => {
+                        el.scrollTop = pct * (el.scrollHeight - el.clientHeight);
+                    });
+                    requestAnimationFrame(() => { this._syncingScroll = false; });
+                });
             });
 
             // Initial preview
