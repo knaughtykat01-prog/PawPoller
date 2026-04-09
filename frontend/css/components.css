@@ -1603,6 +1603,35 @@ a.stat-card:hover {
 .update-count-badge { font-size: 0.7rem; padding: 2px 7px; border-radius: var(--radius-pill); background: rgba(155,125,255,0.12); color: var(--accent); cursor: help; }
 .upload-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
 
+/* Pending queue callout */
+.pending-queue-card { border-left: 3px solid var(--accent); }
+.pending-queue-list { list-style: none; padding: 0; margin: 8px 0 0; }
+.pending-queue-list li { padding: 4px 0; font-size: 0.88rem; color: var(--text-secondary); }
+.pending-queue-list .muted { color: var(--text-muted); font-size: 0.8rem; margin-left: 4px; }
+
+/* Change-detection badges */
+.change-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: var(--radius-pill); cursor: help; font-weight: 500; }
+.change-stale { background: rgba(241,196,15,0.18); color: #f1c40f; border: 1px solid rgba(241,196,15,0.4); }
+.change-missing { background: rgba(231,76,60,0.12); color: var(--danger); }
+.change-unknown { background: rgba(149,165,166,0.15); color: var(--text-muted); }
+
+/* Top fans inline strip on IB pub rows */
+.pub-row-wrapper { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.pub-row-wrapper:last-child { border-bottom: none; }
+.pub-row-wrapper .pub-row { border-bottom: none; padding: 0; }
+.pub-fans { font-size: 0.78rem; color: var(--text-muted); margin: 4px 0 0 110px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.fan-chip { padding: 1px 7px; border-radius: var(--radius-pill); background: var(--bg-tertiary); color: var(--text-secondary); font-size: 0.72rem; }
+
+/* Recent activity log */
+.log-row { padding: 8px 0; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 100px 1fr auto; gap: 10px; align-items: baseline; font-size: 0.85rem; }
+.log-row:last-child { border-bottom: none; }
+.log-when { color: var(--text-muted); font-size: 0.78rem; cursor: help; }
+.log-action { color: var(--text-primary); }
+.log-status { color: var(--text-muted); font-size: 0.78rem; text-align: right; }
+.log-success .log-status { color: var(--success); }
+.log-failed .log-status { color: var(--danger); }
+.log-error { grid-column: 2 / -1; font-size: 0.78rem; color: var(--danger); margin-top: 2px; cursor: help; }
+
 /* Per-platform tags accordion */
 .tags-platform { margin: 8px 0; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
 .tags-platform summary { padding: 8px 12px; background: var(--bg-tertiary); cursor: pointer; font-size: 0.9rem; user-select: none; }
@@ -1627,6 +1656,9 @@ a.stat-card:hover {
     .pub-row { flex-direction: column; gap: 4px; align-items: flex-start; }
     .pub-actions { margin-left: 0; width: 100%; }
     .pub-actions .btn { flex: 1; min-height: 40px; }
+    .pub-fans { margin-left: 0; }
+    .log-row { grid-template-columns: 1fr; gap: 2px; }
+    .log-status { text-align: left; }
     .upload-actions { flex-direction: column; }
     .upload-actions .btn { width: 100%; min-height: 44px; }
     .chapter-row { font-size: 0.85rem; }

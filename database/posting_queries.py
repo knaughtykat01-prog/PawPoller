@@ -223,17 +223,32 @@ def get_pending_queue(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_queue(conn: sqlite3.Connection, include_completed: bool = False) -> list[dict]:
-    """Get all queue items."""
+def get_queue(
+    conn: sqlite3.Connection,
+    include_completed: bool = False,
+    story_name: str | None = None,
+) -> list[dict]:
+    """Get queue items, optionally filtered by story.
+
+    The story_name filter is used by the story detail page to render only
+    that story's pending items as a callout card.
+    """
+    params: list = []
     if include_completed:
-        rows = conn.execute(
-            "SELECT * FROM posting_queue ORDER BY created_at DESC"
-        ).fetchall()
+        query = "SELECT * FROM posting_queue"
+        order = " ORDER BY created_at DESC"
     else:
-        rows = conn.execute(
-            "SELECT * FROM posting_queue WHERE status IN ('pending', 'processing') "
-            "ORDER BY priority DESC, created_at ASC"
-        ).fetchall()
+        query = "SELECT * FROM posting_queue WHERE status IN ('pending', 'processing')"
+        order = " ORDER BY priority DESC, created_at ASC"
+
+    if story_name:
+        if "WHERE" in query:
+            query += " AND story_name = ?"
+        else:
+            query += " WHERE story_name = ?"
+        params.append(story_name)
+
+    rows = conn.execute(query + order, params).fetchall()
     return [dict(r) for r in rows]
 
 

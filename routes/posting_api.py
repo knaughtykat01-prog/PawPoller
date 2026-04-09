@@ -10,6 +10,7 @@ import hashlib
 import io
 import logging
 import os
+import sqlite3
 import tarfile
 from pathlib import Path
 
@@ -78,12 +79,71 @@ def get_story_detail(story_name: str):
         if sjp.is_file():
             story_json_data = _json.loads(sjp.read_text(encoding="utf-8"))
 
-        # Get publications with stats
+        # Get publications with stats + ancillary per-story data (recent log,
+        # pending queue items, and per-IB-pub top fans). All fetched in the
+        # same connection scope so the detail page is a single round-trip.
         conn = get_connection()
         try:
             pubs = posting_queries.get_publications_with_stats(conn, story_name=story_name)
+
+            # Last 5 posting actions for this story (success or failure).
+            recent_log = posting_queries.get_posting_log(
+                conn, story_name=story_name, limit=5,
+            )
+
+            # Pending / processing queue items for this story (callout card).
+            pending_queue = posting_queries.get_queue(
+                conn, include_completed=False, story_name=story_name,
+            )
+
+            # Top fans for IB publications. Each IB pub gets a `top_fans` list
+            # of {username, first_seen_at} populated from faving_users for that
+            # submission_id. Capped at 5 most recent. Other platforms get an
+            # empty list. Skipped silently if the table doesn't exist (e.g.
+            # fresh install before first IB poll).
+            for pub in pubs:
+                pub["top_fans"] = []
+                if pub["platform"] != "ib" or not pub.get("external_id"):
+                    continue
+                try:
+                    rows = conn.execute(
+                        "SELECT username, first_seen_at FROM faving_users "
+                        "WHERE submission_id = ? "
+                        "ORDER BY first_seen_at DESC LIMIT 5",
+                        (int(pub["external_id"]),),
+                    ).fetchall()
+                    pub["top_fans"] = [dict(r) for r in rows]
+                except (sqlite3.OperationalError, ValueError):
+                    pass  # Table missing or non-numeric ID — leave as []
         finally:
             conn.close()
+
+        # Per-publication change detection. Hashes the current local file for
+        # each pub and compares against the stored file_hash. Filtered to this
+        # story so we don't pay the cost of hashing every other story's files
+        # just to render one detail page. Result is merged onto each pub by
+        # (chapter_index, platform) — the unique key.
+        try:
+            from posting import sync as posting_sync
+            change_rows = posting_sync.detect_changes(story_name=story_name)
+            change_map = {
+                (row["chapter_index"], row["platform"]): row
+                for row in change_rows
+            }
+            for pub in pubs:
+                key = (pub["chapter_index"], pub["platform"])
+                row = change_map.get(key)
+                if row:
+                    pub["change_status"] = row["status"]   # changed/unchanged/file_missing/no_hash
+                    pub["change_detected"] = bool(row["changed"])
+                else:
+                    pub["change_status"] = None
+                    pub["change_detected"] = False
+        except Exception as e:
+            logger.warning("Change detection failed for %s: %s", story_name, e)
+            for pub in pubs:
+                pub.setdefault("change_status", None)
+                pub.setdefault("change_detected", False)
 
         # Enrich images with auto-detected cover when story.json doesn't declare
         # one — same fallback the listing endpoint applies via _story_entry().
@@ -134,6 +194,8 @@ def get_story_detail(story_name: str):
             "published_platforms": published_platforms,
             "unpublished_platforms": unpublished,
             "publications": pubs,
+            "recent_log": recent_log,
+            "pending_queue": pending_queue,
         }
     except FileNotFoundError:
         raise HTTPException(404, detail=f"Story not found: {story_name}")

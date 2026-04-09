@@ -156,6 +156,28 @@ const Posting = {
                     </div>
                 </div>`;
 
+            // ── Pending queue callout ──────────────────────────
+            // Top-of-page banner for any in-flight or scheduled work, since
+            // this is the most actionable thing on the page when present.
+            const pendingQueue = data.pending_queue || [];
+            let pendingHtml = '';
+            if (pendingQueue.length > 0) {
+                const items = pendingQueue.map(q => {
+                    const emoji = PLATFORM_EMOJI[q.platform] || '📦';
+                    const ch = q.chapter_index > 0 ? `Ch${q.chapter_index}` : 'Full';
+                    const sched = q.scheduled_at
+                        ? `scheduled for ${Utils.escapeHtml(q.scheduled_at)}`
+                        : 'next scheduler tick';
+                    const status = Utils.escapeHtml(q.status || 'pending');
+                    return `<li>${emoji} <strong>${Utils.escapeHtml(q.action)}</strong> ${ch} → ${Utils.escapeHtml((PLATFORM_LABELS[q.platform] || q.platform).replace(/^.+\s/, ''))} <span class="muted">(${status}, ${sched})</span></li>`;
+                }).join('');
+                pendingHtml = `
+                    <div class="card pending-queue-card">
+                        <h3>🕐 Pending (${pendingQueue.length})</h3>
+                        <ul class="pending-queue-list">${items}</ul>
+                    </div>`;
+            }
+
             // ── Cross-platform totals strip ────────────────────
             // Sum across all publications. Each platform names stats
             // differently (views/hits/reads, favorites_count/kudos/votes), so
@@ -205,16 +227,40 @@ const Posting = {
                     const updateBadge = updateCount > 0
                         ? `<span class="update-count-badge" title="${updateCount} update${updateCount === 1 ? '' : 's'} since first post">↻ ${updateCount}</span>`
                         : '';
+                    // Change-detection badge. Backend hashes the current local
+                    // file and compares against publications.file_hash. Four
+                    // statuses; we only render the visible badge for changed /
+                    // file_missing / no_hash since "unchanged" is the silent
+                    // default.
+                    let changeBadge = '';
+                    if (p.change_status === 'changed') {
+                        changeBadge = `<span class="change-badge change-stale" title="Local file has changed since last upload — push an update">⚠ stale</span>`;
+                    } else if (p.change_status === 'file_missing') {
+                        changeBadge = `<span class="change-badge change-missing" title="Local format file is missing — can't compare">? missing</span>`;
+                    } else if (p.change_status === 'no_hash') {
+                        changeBadge = `<span class="change-badge change-unknown" title="No hash recorded — likely claimed retroactively from a manual upload">? no hash</span>`;
+                    }
+                    // Top fans inline (IB-only). Limited to first 5 names from
+                    // faving_users; full list still available via the
+                    // submission detail page.
+                    const topFans = p.top_fans || [];
+                    const fansHtml = topFans.length > 0
+                        ? `<div class="pub-fans">Top fans: ${topFans.map(f => `<span class="fan-chip">${Utils.escapeHtml(f.username)}</span>`).join(' ')}</div>`
+                        : '';
                     return `
-                        <div class="pub-row">
-                            <span class="pub-platform">${emoji} ${(PLATFORM_LABELS[p.platform] || p.platform).replace(/^.+\s/, '')}</span>
-                            <span class="pub-chapter">${ch}</span>
-                            ${statsHtml}
-                            <span class="pub-date" title="${updatedTitle}">${updatedAgo}</span>
-                            ${updateBadge}
-                            <span class="pub-actions">${link}
-                                <button class="btn btn-sm btn-secondary" onclick="Posting._updateSingle('${Utils.escapeHtml(storyName)}', '${p.platform}', ${p.chapter_index})">Update</button>
-                            </span>
+                        <div class="pub-row-wrapper">
+                            <div class="pub-row">
+                                <span class="pub-platform">${emoji} ${(PLATFORM_LABELS[p.platform] || p.platform).replace(/^.+\s/, '')}</span>
+                                <span class="pub-chapter">${ch}</span>
+                                ${statsHtml}
+                                <span class="pub-date" title="${updatedTitle}">${updatedAgo}</span>
+                                ${updateBadge}
+                                ${changeBadge}
+                                <span class="pub-actions">${link}
+                                    <button class="btn btn-sm btn-secondary" onclick="Posting._updateSingle('${Utils.escapeHtml(storyName)}', '${p.platform}', ${p.chapter_index})">Update</button>
+                                </span>
+                            </div>
+                            ${fansHtml}
                         </div>`;
                 }).join('');
             }
@@ -230,11 +276,23 @@ const Posting = {
                 uploadHtml = `<div class="upload-actions">${uploadBtns}</div>`;
             }
 
+            // Smarter "Update All" label: when change detection knows some
+            // publications are stale, surface the count so the button
+            // communicates intent ("Update Stale (3)") rather than hiding
+            // the count behind a generic label.
+            const staleCount = pubs.filter(p => p.change_detected).length;
+            const updateAllLabel = staleCount > 0
+                ? `Update Stale (${staleCount})`
+                : 'Update All';
+            const updateAllClass = staleCount > 0
+                ? 'btn btn-sm btn-primary'
+                : 'btn btn-sm btn-secondary';
+
             const platformsHtml = `
                 <div class="card">
                     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem">
                         <h3 style="margin:0">Platforms</h3>
-                        ${pubs.length > 0 ? `<button class="btn btn-sm btn-primary" onclick="Posting._updateAll('${Utils.escapeHtml(storyName)}')">Update All</button>` : ''}
+                        ${pubs.length > 0 ? `<button class="${updateAllClass}" onclick="Posting._updateAll('${Utils.escapeHtml(storyName)}')">${updateAllLabel}</button>` : ''}
                     </div>
                     ${pubRows || '<p class="page-subtitle">Not published anywhere yet.</p>'}
                     ${uploadHtml}
@@ -286,6 +344,39 @@ const Posting = {
                 tagsHtml = `<div class="card"><h3>Tags by Platform</h3>${tagBlocks}</div>`;
             }
 
+            // ── Recent posting log card ────────────────────────
+            // Last 5 posting actions for this story (server-side filtered).
+            // Shows the human-readable history of uploads/updates with their
+            // success/failure state and any error message.
+            const recentLog = data.recent_log || [];
+            let recentLogHtml = '';
+            if (recentLog.length > 0) {
+                const logRows = recentLog.map(entry => {
+                    const emoji = PLATFORM_EMOJI[entry.platform] || '📦';
+                    const ch = entry.chapter_index > 0 ? `Ch${entry.chapter_index}` : 'Full';
+                    const statusClass = entry.status === 'success' ? 'log-success' : 'log-failed';
+                    const when = entry.created_at ? Utils.timeAgo(entry.created_at) : '';
+                    const whenTitle = entry.created_at ? Utils.escapeHtml(entry.created_at) : '';
+                    const errHint = entry.error_message
+                        ? `<div class="log-error" title="${Utils.escapeHtml(entry.error_message)}">${Utils.escapeHtml(entry.error_message.substring(0, 80))}${entry.error_message.length > 80 ? '…' : ''}</div>`
+                        : '';
+                    const link = entry.external_url
+                        ? ` · <a href="${Utils.escapeHtml(entry.external_url)}" target="_blank">link</a>`
+                        : '';
+                    const dur = entry.duration_seconds
+                        ? ` · ${entry.duration_seconds.toFixed(1)}s`
+                        : '';
+                    return `
+                        <div class="log-row ${statusClass}">
+                            <span class="log-when" title="${whenTitle}">${when}</span>
+                            <span class="log-action">${emoji} ${Utils.escapeHtml(entry.action)} ${ch}</span>
+                            <span class="log-status">${Utils.escapeHtml(entry.status)}${dur}${link}</span>
+                            ${errHint}
+                        </div>`;
+                }).join('');
+                recentLogHtml = `<div class="card"><h3>Recent Activity</h3>${logRows}</div>`;
+            }
+
             // Formats section
             const formats = data.formats || {};
             const formatList = Object.keys(formats).map(f =>
@@ -296,10 +387,12 @@ const Posting = {
             App._setContent(`
                 <a href="#/posting" class="back-link">&larr; All Stories</a>
                 ${infoHtml}
+                ${pendingHtml}
                 ${totalsHtml}
                 ${platformsHtml}
                 ${chaptersHtml}
                 ${tagsHtml}
+                ${recentLogHtml}
                 ${formatsHtml}`);
 
         } catch (err) {

@@ -320,11 +320,16 @@ def hash_file(file_path: str) -> str:
     return h.hexdigest()
 
 
-def detect_changes() -> list[dict]:
+def detect_changes(story_name: str | None = None) -> list[dict]:
     """Compare current archive files against what was last posted.
 
     For each publication, resolves the current format file, hashes it, and
     compares against the stored file_hash. Returns a list of change records.
+
+    Args:
+        story_name: If provided, only check publications for this story.
+            Used by the story detail page to avoid hashing every story's
+            files just to render one page.
 
     Returns:
         List of dicts: {story_name, chapter_index, platform, external_id, status,
@@ -335,7 +340,7 @@ def detect_changes() -> list[dict]:
     results = []
 
     try:
-        pubs = posting_queries.get_publications(conn, status="posted")
+        pubs = posting_queries.get_publications(conn, story_name=story_name, status="posted")
         if not pubs:
             return []
 

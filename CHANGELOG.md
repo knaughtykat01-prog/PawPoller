@@ -4,6 +4,49 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.3.13] - 2026-04-09
+
+### Added — Story detail page enrichment (Batch 2 of 3): change detection, history, queue, top fans
+
+Continues the story detail page enrichment from 2.3.12. Adds the four cross-cutting items that needed backend work: per-publication change-detection badges, recent posting log card, pending queue callout, and IB top-fans inline. Everything still served in a single `/api/posting/stories/{name}` round-trip — the alternative would have been four separate fetches and a noticeably slower page render.
+
+**Backend:**
+
+- **`posting/sync.py:detect_changes()`** now accepts an optional `story_name` parameter. Without it the function still walks every publication (existing behaviour for the dashboard's `/api/posting/changes` endpoint); with it, only that story's pubs are hashed. Story-scoped detection is what `get_story_detail` actually wants — paying the cost of hashing every other story's files just to render one detail page is wasteful and would scale badly as the archive grows.
+- **`database/posting_queries.py:get_queue()`** now accepts an optional `story_name` parameter. Backwards-compatible default (`None` = all queue items). Used by `get_story_detail` to surface only this story's pending items.
+- **`routes/posting_api.py:get_story_detail`** is now the single round-trip backend for the detail page. It now returns:
+  - `recent_log`: last 5 entries from `posting_log` filtered to this story (already supported by `get_posting_log(story_name=...)`).
+  - `pending_queue`: in-flight or scheduled queue items for this story.
+  - `publications[].top_fans`: for IB pubs, the 5 most recent rows from `faving_users` for that submission_id, as `[{username, first_seen_at}]`. Other platforms get an empty list. Wrapped in try/except for `OperationalError` so a fresh install without an IB poll yet doesn't crash the endpoint.
+  - `publications[].change_status` and `publications[].change_detected`: per-pub output of the new story-scoped `detect_changes()`. Status is one of `changed`/`unchanged`/`file_missing`/`no_hash`. Merged onto each publication by `(chapter_index, platform)` — the unique key. Wrapped in try/except so a transient `story_reader` failure doesn't break the page.
+
+**Frontend (`frontend/js/posting.js:renderStoryDetail`):**
+
+- **Pending queue callout** at the top of the page (below the info card) when there are in-flight or scheduled items. Per-item lines show action / chapter / platform / status / scheduled time. Visually styled as an accented card so it can't be missed.
+- **Per-pub change badges:** `⚠ stale` (yellow) when the local file hash differs from `publications.file_hash`, `? missing` (red) when the format file can't be resolved, `? no hash` (grey) when the publication was claimed retroactively without a stored hash. The "unchanged" case stays silent — no green badge — since silence is the desired default.
+- **Smarter "Update All" button.** When change detection knows N pubs are stale, the button label becomes `Update Stale (N)` and switches to primary styling; otherwise it stays `Update All` in secondary styling. Communicates intent at a glance.
+- **Top fans inline** on IB publication rows: a small strip below the row showing up to 5 fan-name chips drawn from `faving_users`. Empty for non-IB pubs. The full list is still available via the IB submission detail page.
+- **Recent activity card** showing the last 5 posting log entries for this story. Each row displays relative time (with raw timestamp on hover), action emoji, success/failure colour, duration, and an inline link if available. Failed entries also show a truncated error message tooltip.
+
+**CSS (`frontend/css/components.css`):**
+
+- New: `.pending-queue-card` (accented left border), `.pending-queue-list`, `.change-badge` + `.change-stale` / `.change-missing` / `.change-unknown`, `.pub-row-wrapper` (containing div so the fan strip can sit under the row without breaking the existing border-bottom pattern), `.pub-fans` + `.fan-chip`, `.log-row` (3-column grid: time / action / status, with full-width error subline), `.log-success` / `.log-failed`, `.log-when` / `.log-action` / `.log-status` / `.log-error`.
+- Mobile breakpoint extended: `.log-row` collapses to a single column and `.pub-fans` un-indents.
+
+**Verified:**
+- `python -m py_compile routes/posting_api.py database/posting_queries.py posting/sync.py` clean
+- `node --check frontend/js/posting.js` clean
+- Backwards compatibility: `detect_changes()` and `get_queue()` both keep their no-arg signatures working — existing callers (`/api/posting/changes`, `/api/posting/queue`) are unchanged.
+- Defensive: every new field early-returns to empty when its source data is absent. Stories with no change history, no queue items, no IB pub, and no recent log render exactly as before this change.
+- Single round-trip: the detail page still makes one request to `/api/posting/stories/{name}`. No extra fetches added.
+
+**Not done in this version:**
+- Did NOT add a "claim history" view to surface publications that came in via `claim_existing_submissions` (status `no_hash`) — the badge tells the user the state but there's no UI to convert them to "tracked from now on" by re-uploading. Reasonable follow-up.
+- Did NOT add per-platform comment/reply user lists (FA has comments + reply users via `fa_comments`, AO3/SqW have kudos users in their own tables). Top-fans is IB-only for now because faving_users is the cleanest source. Multi-platform top-fans goes in batch 3 alongside the comparison overlay chart.
+- Did NOT add a "stale chip count" badge to the listing-page story cards. Worth doing in a separate change so the listing can show "3 stories have stale publications" at a glance, but out of scope for the detail page.
+
+---
+
 ## [2.3.12] - 2026-04-09
 
 ### Added — Story detail page enrichment (Batch 1 of 3)
