@@ -175,17 +175,10 @@
     color: var(--text-tertiary);
 }
 
-/* Chapter headings + structural bold-only lines (centred by inline style) */
-.preview-html p[style*="text-align:center"]:has(> strong:only-child) {
-    font-size: 1.2em;
-    font-variant: small-caps;
-    letter-spacing: 0.04em;
-    margin: 2em 0 1.5em;
-    color: var(--text-primary);
-}
-
-.preview-html p[style*="text-align:center"]:has(> strong:only-child) strong {
-    font-weight: 600;
+/* Centred bold paragraphs (titles, headings, markers) — just spacing, no small-caps
+   (small-caps via :has() is unreliable — text nodes aren't element children) */
+.preview-html p[style*="text-align:center"] {
+    margin: 1.5em 0;
 }
 
 /* Chapter separator <hr> */
