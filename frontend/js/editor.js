@@ -148,31 +148,25 @@ const Editor = {
                 }
             });
 
-            // Sync scrolling between editor and both preview panel bodies
+            // Sync scrolling between editor and preview panels
+            // (disabled for styled_html since the source has CSS preamble that breaks proportional sync)
             const renderedPanel = document.getElementById('editor-preview-rendered-body');
             const sourcePanel = document.getElementById('editor-preview-source-body');
-            const syncTargets = [renderedPanel, sourcePanel].filter(Boolean);
 
-            ta.addEventListener('scroll', () => {
-                if (this._syncingScroll) return;
+            const _doSync = (source, targets) => {
+                if (this._syncingScroll || this.previewFormat === 'styled_html') return;
                 this._syncingScroll = true;
-                const pct = ta.scrollTop / (ta.scrollHeight - ta.clientHeight || 1);
-                syncTargets.forEach(el => {
+                const pct = source.scrollTop / (source.scrollHeight - source.clientHeight || 1);
+                targets.forEach(el => {
                     el.scrollTop = pct * (el.scrollHeight - el.clientHeight);
                 });
                 requestAnimationFrame(() => { this._syncingScroll = false; });
-            });
+            };
+
+            const syncTargets = [renderedPanel, sourcePanel].filter(Boolean);
+            ta.addEventListener('scroll', () => _doSync(ta, syncTargets));
             syncTargets.forEach(panel => {
-                panel.addEventListener('scroll', () => {
-                    if (this._syncingScroll) return;
-                    this._syncingScroll = true;
-                    const pct = panel.scrollTop / (panel.scrollHeight - panel.clientHeight || 1);
-                    ta.scrollTop = pct * (ta.scrollHeight - ta.clientHeight);
-                    syncTargets.filter(el => el !== panel).forEach(el => {
-                        el.scrollTop = pct * (el.scrollHeight - el.clientHeight);
-                    });
-                    requestAnimationFrame(() => { this._syncingScroll = false; });
-                });
+                panel.addEventListener('scroll', () => _doSync(panel, [ta, ...syncTargets.filter(el => el !== panel)]));
             });
 
             // Initial preview + slop score
