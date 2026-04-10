@@ -195,6 +195,7 @@ class FrontMatter:
     byline: str | None = None
     warning: str = ""
     disclaimer: str = ""
+    fanfiction: str | None = None  # fan fiction notice (optional, for IP attribution)
     body_start_line: int = 0  # line index where @body begins
 
 
@@ -262,9 +263,13 @@ def parse_front_matter(text: str) -> FrontMatter | None:
 
     if "disclaimer" in section_lines:
         raw_lines = section_lines["disclaimer"]
-        # Filter out the **DISCLAIMER** heading itself
         body_lines = [l for l in raw_lines if l.strip() != "**DISCLAIMER**"]
         fm.disclaimer = "\n".join(body_lines).strip()
+
+    if "fanfiction" in section_lines:
+        raw_lines = section_lines["fanfiction"]
+        body_lines = [l for l in raw_lines if l.strip() != "**FAN FICTION NOTICE**"]
+        fm.fanfiction = "\n".join(body_lines).strip()
 
     return fm
 
@@ -282,6 +287,9 @@ def render_front_matter_clean_html(fm: FrontMatter) -> list[str]:
     parts.append(c(f"<strong>Content Warning</strong>: {_escape_html(fm.warning)}"))
     parts.append(c("<strong>DISCLAIMER</strong>"))
     parts.append(c(_escape_html(fm.disclaimer)))
+    if fm.fanfiction:
+        parts.append(c("<strong>FAN FICTION NOTICE</strong>"))
+        parts.append(c(_escape_html(fm.fanfiction)))
     return parts
 
 
@@ -298,6 +306,9 @@ def render_front_matter_sofurry(fm: FrontMatter) -> list[str]:
     parts.append(tc(f"<strong>Content Warning</strong>: {_escape_html(fm.warning)}"))
     parts.append(tc("<strong>DISCLAIMER</strong>"))
     parts.append(tc(_escape_html(fm.disclaimer)))
+    if fm.fanfiction:
+        parts.append(tc("<strong>FAN FICTION NOTICE</strong>"))
+        parts.append(tc(_escape_html(fm.fanfiction)))
     return parts
 
 
@@ -313,6 +324,9 @@ def render_front_matter_bbcode(fm: FrontMatter) -> list[str]:
     parts.extend(["", f"[center][b]Content Warning[/b]: {fm.warning}[/center]"])
     parts.extend(["", f"[center][b]DISCLAIMER[/b][/center]"])
     parts.extend(["", f"[center]{fm.disclaimer}[/center]"])
+    if fm.fanfiction:
+        parts.extend(["", f"[center][b]FAN FICTION NOTICE[/b][/center]"])
+        parts.extend(["", f"[center]{fm.fanfiction}[/center]"])
     return parts
 
 
@@ -335,6 +349,13 @@ def render_front_matter_sqw(fm: FrontMatter, chapter_title: str,
     parts.append('    <p class="disclaimer-heading">DISCLAIMER</p>')
     parts.append("")
     parts.append(f'    <p class="disclaimer-body">{_escape_html(fm.disclaimer)}</p>')
+    if fm.fanfiction:
+        parts.append("")
+        parts.append('    <hr class="warning-divider">')
+        parts.append("")
+        parts.append('    <p class="disclaimer-heading">FAN FICTION NOTICE</p>')
+        parts.append("")
+        parts.append(f'    <p class="disclaimer-body">{_escape_html(fm.fanfiction)}</p>')
     parts.append('</div>')
     return parts
 
