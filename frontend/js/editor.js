@@ -79,23 +79,27 @@ const Editor = {
                         </select>
                     </div>
                 </div>
-                <div class="editor-split">
-                    <div class="editor-pane">
+                <div class="editor-quad">
+                    <div class="editor-quad-panel" id="panel-md-code">
+                        <div class="preview-panel-header">Markdown Source</div>
                         <textarea id="editor-textarea" spellcheck="true" placeholder="Loading..."></textarea>
                     </div>
-                    <div class="editor-divider" id="editor-divider"></div>
-                    <div class="editor-preview-col" id="editor-preview">
-                        <div class="editor-preview-panel" id="editor-preview-rendered">
-                            <div class="preview-panel-header">Rendered Preview</div>
-                            <div class="preview-panel-body" id="editor-preview-rendered-body">
-                                <p style="color:var(--text-secondary)">Loading...</p>
-                            </div>
+                    <div class="editor-quad-panel" id="panel-md-preview">
+                        <div class="preview-panel-header">Markdown Preview</div>
+                        <div class="preview-panel-body" id="editor-preview-rendered-body">
+                            <p style="color:var(--text-secondary)">Loading...</p>
                         </div>
-                        <div class="editor-preview-panel" id="editor-preview-source-panel">
-                            <div class="preview-panel-header" id="editor-source-header">Clean HTML output</div>
-                            <div class="preview-panel-body" id="editor-preview-source-body">
-                                <p style="color:var(--text-secondary)">Loading...</p>
-                            </div>
+                    </div>
+                    <div class="editor-quad-panel" id="panel-fmt-source">
+                        <div class="preview-panel-header" id="editor-source-header">Format Source</div>
+                        <div class="preview-panel-body" id="editor-preview-source-body">
+                            <p style="color:var(--text-secondary)">Loading...</p>
+                        </div>
+                    </div>
+                    <div class="editor-quad-panel" id="panel-fmt-preview">
+                        <div class="preview-panel-header" id="editor-fmt-preview-header">Format Preview</div>
+                        <div class="preview-panel-body" id="editor-preview-fmt-body">
+                            <p style="color:var(--text-secondary)">Loading...</p>
                         </div>
                     </div>
                 </div>
@@ -148,33 +152,38 @@ const Editor = {
                 }
             });
 
-            // Sync scrolling between editor and preview panels
-            // (disabled for styled_html since the source has CSS preamble that breaks proportional sync)
-            const renderedPanel = document.getElementById('editor-preview-rendered-body');
-            const sourcePanel = document.getElementById('editor-preview-source-body');
+            // Sync scrolling: MD code ↔ MD preview ↔ format preview (proportional)
+            // Format source excluded from sync when styled_html (CSS preamble breaks mapping)
+            const mdPanel = document.getElementById('editor-preview-rendered-body');
+            const fmtSrcPanel = document.getElementById('editor-preview-source-body');
+            const fmtPrvPanel = document.getElementById('editor-preview-fmt-body');
 
             const _doSync = (source, targets) => {
-                if (this._syncingScroll || this.previewFormat === 'styled_html') return;
+                if (this._syncingScroll) return;
                 this._syncingScroll = true;
                 const pct = source.scrollTop / (source.scrollHeight - source.clientHeight || 1);
                 targets.forEach(el => {
-                    el.scrollTop = pct * (el.scrollHeight - el.clientHeight);
+                    if (el) el.scrollTop = pct * (el.scrollHeight - el.clientHeight);
                 });
                 requestAnimationFrame(() => { this._syncingScroll = false; });
             };
 
-            const syncTargets = [renderedPanel, sourcePanel].filter(Boolean);
-            ta.addEventListener('scroll', () => _doSync(ta, syncTargets));
-            syncTargets.forEach(panel => {
-                panel.addEventListener('scroll', () => _doSync(panel, [ta, ...syncTargets.filter(el => el !== panel)]));
+            // MD code syncs with MD preview + format preview (not format source for styled)
+            ta.addEventListener('scroll', () => {
+                const targets = [mdPanel];
+                if (this.previewFormat !== 'styled_html') targets.push(fmtSrcPanel, fmtPrvPanel);
+                _doSync(ta, targets.filter(Boolean));
+            });
+            // MD preview syncs back to editor + others
+            if (mdPanel) mdPanel.addEventListener('scroll', () => {
+                const targets = [ta];
+                if (this.previewFormat !== 'styled_html') targets.push(fmtSrcPanel, fmtPrvPanel);
+                _doSync(mdPanel, targets.filter(Boolean));
             });
 
             // Initial preview + slop score
             this._requestPreview();
             this._requestSlopScore();
-
-            // Setup divider drag
-            this._setupDivider();
 
         } catch (err) {
             document.getElementById('editor-textarea').value = `Error loading: ${err.message}`;
@@ -204,10 +213,12 @@ const Editor = {
 
     async _requestPreview() {
         const ta = document.getElementById('editor-textarea');
-        const renderedBody = document.getElementById('editor-preview-rendered-body');
-        const sourceBody = document.getElementById('editor-preview-source-body');
+        const mdPreview = document.getElementById('editor-preview-rendered-body');
+        const fmtSource = document.getElementById('editor-preview-source-body');
+        const fmtPreview = document.getElementById('editor-preview-fmt-body');
         const sourceHeader = document.getElementById('editor-source-header');
-        if (!ta || !renderedBody || !sourceBody) return;
+        const fmtPreviewHeader = document.getElementById('editor-fmt-preview-header');
+        if (!ta || !mdPreview) return;
 
         let content = ta.value;
         const MAX_PREVIEW = 100000;
@@ -216,64 +227,79 @@ const Editor = {
         }
 
         const thisRequestId = ++this.previewRequestId;
+        const fmtLabels = { 'bbcode': 'BBCode', 'clean_html': 'Clean HTML', 'sofurry_html': 'SoFurry HTML', 'styled_html': 'Styled HTML' };
 
         try {
-            renderedBody.style.opacity = '0.6';
-            sourceBody.style.opacity = '0.6';
+            [mdPreview, fmtSource, fmtPreview].forEach(el => { if (el) el.style.opacity = '0.6'; });
 
-            // Fire both requests in parallel: rendered preview + source format
-            // For styled_html, rendered IS the styled output (iframe); for others, rendered = clean_html
-            const renderedFmt = this.previewFormat === 'styled_html' ? 'styled_html' : 'clean_html';
-            const [renderedResp, sourceResp] = await Promise.all([
+            // 3 parallel requests: MD preview (always clean_html) + format source + format rendered
+            const [mdResp, srcResp, fmtResp] = await Promise.all([
                 fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content, format: renderedFmt }),
+                    body: JSON.stringify({ content, format: 'clean_html' }),
                 }),
                 fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ content, format: this.previewFormat }),
                 }),
+                this.previewFormat !== 'clean_html'
+                    ? fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ content, format: this.previewFormat }),
+                    })
+                    : null,
             ]);
 
             if (thisRequestId !== this.previewRequestId) return;
 
-            // Rendered preview
-            if (renderedResp.ok) {
-                const renderedData = await renderedResp.json();
-                if (this.previewFormat === 'styled_html') {
-                    // Styled HTML is a complete document — render in iframe
-                    renderedBody.innerHTML = '<iframe class="preview-iframe" sandbox="allow-same-origin"></iframe>';
-                    const iframe = renderedBody.querySelector('iframe');
-                    iframe.srcdoc = renderedData.html || '';
-                } else {
-                    renderedBody.innerHTML = '<div class="preview-html">' + (renderedData.html || '') + '</div>';
-                }
-            } else {
-                renderedBody.innerHTML = `<p style="color:var(--color-error)">Render failed (${renderedResp.status})</p>`;
+            // Panel 2: MD rendered preview (always clean_html as formatted text)
+            if (mdResp.ok) {
+                const d = await mdResp.json();
+                mdPreview.innerHTML = '<div class="preview-html">' + (d.html || '') + '</div>';
             }
 
-            // Source output (raw tags visible)
-            if (sourceResp.ok) {
-                const sourceData = await sourceResp.json();
-                const raw = sourceData.html || '(empty)';
+            // Panel 3: Format source (raw tags)
+            if (srcResp.ok) {
+                const d = await srcResp.json();
+                const raw = d.html || '(empty)';
                 const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const fmtLabels = { 'bbcode': 'BBCode', 'clean_html': 'Clean HTML', 'sofurry_html': 'SoFurry HTML', 'styled_html': 'Styled HTML' };
-                const label = fmtLabels[sourceData.format] || sourceData.format;
-                if (sourceHeader) sourceHeader.textContent = `${label} output (${raw.length.toLocaleString()} bytes)`;
-                sourceBody.innerHTML = `<pre class="preview-source">${escaped}</pre>`;
-            } else {
-                sourceBody.innerHTML = `<p style="color:var(--color-error)">Source failed (${sourceResp.status})</p>`;
+                const label = fmtLabels[d.format] || d.format;
+                if (sourceHeader) sourceHeader.textContent = `${label} Source (${raw.length.toLocaleString()} bytes)`;
+                if (fmtSource) fmtSource.innerHTML = `<pre class="preview-source">${escaped}</pre>`;
             }
 
-            renderedBody.style.opacity = '1';
-            sourceBody.style.opacity = '1';
+            // Panel 4: Format rendered preview
+            if (fmtPreview) {
+                const label = fmtLabels[this.previewFormat] || this.previewFormat;
+                if (fmtPreviewHeader) fmtPreviewHeader.textContent = `${label} Preview`;
+
+                if (this.previewFormat === 'clean_html') {
+                    // Same as MD preview — show the rendered clean HTML
+                    if (mdResp.ok) {
+                        const d = await mdResp.clone().json().catch(() => ({ html: '' }));
+                        fmtPreview.innerHTML = '<div class="preview-html">' + (d.html || mdPreview.querySelector('.preview-html')?.innerHTML || '') + '</div>';
+                    }
+                } else if (fmtResp && fmtResp.ok) {
+                    const d = await fmtResp.json();
+                    if (this.previewFormat === 'styled_html') {
+                        fmtPreview.innerHTML = '<iframe class="preview-iframe" sandbox="allow-same-origin"></iframe>';
+                        fmtPreview.querySelector('iframe').srcdoc = d.html || '';
+                    } else if (this.previewFormat === 'bbcode') {
+                        fmtPreview.innerHTML = '<div class="preview-html">' + this._bbcodeToHtml(d.html || '') + '</div>';
+                    } else {
+                        // SoFurry HTML — render as formatted text
+                        fmtPreview.innerHTML = '<div class="preview-html">' + (d.html || '') + '</div>';
+                    }
+                }
+            }
+
+            [mdPreview, fmtSource, fmtPreview].forEach(el => { if (el) el.style.opacity = '1'; });
         } catch (err) {
-            renderedBody.innerHTML = `<p style="color:var(--color-error)">Error: ${err.message}</p>`;
-            sourceBody.innerHTML = '';
-            renderedBody.style.opacity = '1';
-            sourceBody.style.opacity = '1';
+            if (mdPreview) mdPreview.innerHTML = `<p style="color:var(--color-error)">Error: ${err.message}</p>`;
+            [mdPreview, fmtSource, fmtPreview].forEach(el => { if (el) el.style.opacity = '1'; });
         }
     },
 
