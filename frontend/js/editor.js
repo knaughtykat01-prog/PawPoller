@@ -696,6 +696,8 @@ const Editor = {
 
     cssEditorOpen: false,
     themeVars: {},
+    themeSavedVars: {},      // snapshot from server — for Revert
+    themeHistory: [],        // undo stack
     themeSourceMode: false,  // false = GUI, true = raw CSS source
 
     async toggleCssEditor() {
@@ -713,12 +715,16 @@ const Editor = {
                         <button class="panel-toggle" data-panel="panel-css-editor" title="Hide panel">&#128065;</button>
                         Theme Editor
                         <button class="btn-tiny" id="theme-save-btn">Save</button>
+                        <button class="btn-tiny" id="theme-undo-btn" disabled title="Undo last change">Undo</button>
+                        <button class="btn-tiny" id="theme-revert-btn" title="Revert to saved">Revert</button>
                         <button class="btn-tiny" id="theme-source-btn">Source</button>
                     </div>
                     <div id="theme-editor-body" class="preview-panel-body theme-editor-body"></div>
                 `;
                 quad.appendChild(panel);
                 document.getElementById('theme-save-btn')?.addEventListener('click', () => this.saveTheme());
+                document.getElementById('theme-undo-btn')?.addEventListener('click', () => this.undoTheme());
+                document.getElementById('theme-revert-btn')?.addEventListener('click', () => this.revertTheme());
                 document.getElementById('theme-source-btn')?.addEventListener('click', () => this._toggleThemeSource());
                 document.querySelector('#panel-css-editor .panel-toggle')?.addEventListener('click', () => this.togglePanel('panel-css-editor'));
             }
@@ -739,8 +745,11 @@ const Editor = {
             const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/theme`);
             const data = await resp.json();
             this.themeVars = data.variables || {};
+            this.themeSavedVars = { ...this.themeVars };
+            this.themeHistory = [];
             if (data.error) { this._updateStatus(`Theme: ${data.error}`); return; }
             this._renderThemeGUI();
+            this._updateUndoBtn();
         } catch (err) {
             body.innerHTML = `<p style="color:var(--color-error)">Error: ${err.message}</p>`;
         }
@@ -809,19 +818,25 @@ const Editor = {
         `;
 
         // Bind colour picker ↔ hex input sync
+        // Colour pickers fire 'input' continuously while dragging — only push
+        // one undo entry per drag (on first input), not hundreds.
         body.querySelectorAll('input[type="color"]').forEach(picker => {
             const key = picker.dataset.key;
             const hex = body.querySelector(`.theme-hex[data-key="${key}"]`);
+            let dragging = false;
             picker.addEventListener('input', () => {
+                if (!dragging) { this._pushThemeUndo(); dragging = true; }
                 if (hex) hex.value = picker.value;
                 this.themeVars[key] = picker.value;
                 this._onThemeChange();
             });
+            picker.addEventListener('change', () => { dragging = false; });
         });
         body.querySelectorAll('.theme-hex').forEach(input => {
             const key = input.dataset.key;
             const picker = body.querySelector(`input[type="color"][data-key="${key}"]`);
             input.addEventListener('change', () => {
+                this._pushThemeUndo();
                 if (picker && input.value.match(/^#[0-9a-fA-F]{6}$/)) picker.value = input.value;
                 this.themeVars[key] = input.value;
                 this._onThemeChange();
@@ -829,10 +844,41 @@ const Editor = {
         });
         body.querySelectorAll('.theme-text, select[data-key]').forEach(input => {
             input.addEventListener('change', () => {
+                this._pushThemeUndo();
                 this.themeVars[input.dataset.key] = input.value;
                 this._onThemeChange();
             });
         });
+    },
+
+    _pushThemeUndo() {
+        // Snapshot current state before a change — cap at 50 entries
+        this.themeHistory.push({ ...this.themeVars });
+        if (this.themeHistory.length > 50) this.themeHistory.shift();
+        this._updateUndoBtn();
+    },
+
+    _updateUndoBtn() {
+        const btn = document.getElementById('theme-undo-btn');
+        if (btn) btn.disabled = this.themeHistory.length === 0;
+    },
+
+    undoTheme() {
+        if (this.themeHistory.length === 0) return;
+        this.themeVars = this.themeHistory.pop();
+        this._updateUndoBtn();
+        this._renderThemeGUI();
+        this._onThemeChange();
+    },
+
+    revertTheme() {
+        if (Object.keys(this.themeSavedVars).length === 0) return;
+        // Push current state so the revert itself is undoable
+        this._pushThemeUndo();
+        this.themeVars = { ...this.themeSavedVars };
+        this._renderThemeGUI();
+        this._onThemeChange();
+        this._updateStatus('Theme reverted to saved');
     },
 
     _onThemeChange() {
@@ -900,6 +946,10 @@ const Editor = {
             if (this.themeSourceMode) {
                 this._updateStatus(`CSS saved (${data.bytes}b)`);
             } else {
+                // Update saved snapshot so Revert goes back to this state
+                this.themeSavedVars = { ...this.themeVars };
+                this.themeHistory = [];
+                this._updateUndoBtn();
                 this._updateStatus(`Theme saved (${data.css_bytes}b CSS)`);
             }
             if (this.previewFormat === 'styled_html') this._requestPreview();
