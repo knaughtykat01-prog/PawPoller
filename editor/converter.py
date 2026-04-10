@@ -178,8 +178,30 @@ class ConversionResult:
     warnings: list[str] = field(default_factory=list)
 
 
+def _is_warning_line(stripped: str) -> bool:
+    """Detect content-warning/disclaimer lines from MASTER.md front matter."""
+    return (
+        stripped.startswith("**Content Warning**")
+        or stripped.startswith("**Content Warning:**")
+        or stripped == "**DISCLAIMER**"
+        or stripped.startswith("**DISCLAIMER**")
+    )
+
+
+def _center_html(inner: str) -> str:
+    """Wrap HTML content in a centred paragraph."""
+    return f'<p style="text-align:center">{inner}</p>'
+
+
 def convert_to_clean_html(markdown_text: str) -> ConversionResult:
-    """Convert full MASTER.md text to body-only Clean HTML (SoFurry/AO3)."""
+    """Convert full MASTER.md text to body-only Clean HTML (AO3/SQW).
+
+    Centering rules:
+      - Title, subtitle, chapter headings: centred
+      - Content Warning + DISCLAIMER block: centred
+      - Section breaks, POV markers, end marker: centred
+      - Spacing before chapter headings
+    """
     lines = markdown_text.split("\n")
     body_parts: list[str] = []
     stats = {
@@ -191,6 +213,7 @@ def convert_to_clean_html(markdown_text: str) -> ConversionResult:
 
     title_seen = False
     subtitle_done = False
+    in_warning_block = False
     i = 0
     current_paragraph: list[str] = []
 
@@ -198,7 +221,10 @@ def convert_to_clean_html(markdown_text: str) -> ConversionResult:
         if current_paragraph:
             text = " ".join(current_paragraph)
             converted = format_paragraph_html(text)
-            body_parts.append(f"<p>{converted}</p>")
+            if in_warning_block:
+                body_parts.append(_center_html(converted))
+            else:
+                body_parts.append(f"<p>{converted}</p>")
             stats["paragraphs"] += 1
             current_paragraph.clear()
 
@@ -208,13 +234,14 @@ def convert_to_clean_html(markdown_text: str) -> ConversionResult:
         # --- Section/chapter break ---
         if stripped == "---":
             flush()
+            in_warning_block = False
             j = i + 1
             while j < len(lines) and lines[j].strip() == "":
                 j += 1
             if j < len(lines) and lines[j].strip().startswith("# "):
                 body_parts.append("<hr />")
             else:
-                body_parts.append('<p class="section-break">* * *</p>')
+                body_parts.append('<p style="text-align:center" class="section-break">* * *</p>')
                 stats["section_breaks"] += 1
             i += 1
             continue
@@ -222,12 +249,14 @@ def convert_to_clean_html(markdown_text: str) -> ConversionResult:
         # --- Headings ---
         if stripped.startswith("# "):
             flush()
+            in_warning_block = False
             heading = _escape_html(stripped[2:].strip())
-            body_parts.append(f"<p><strong>{heading}</strong></p>")
             if not title_seen:
+                body_parts.append(_center_html(f"<strong>{heading}</strong>"))
                 title_seen = True
                 stats["title"] = heading
             else:
+                body_parts.append(_center_html(f"<strong>{heading}</strong>"))
                 stats["chapters"].append(heading)
                 subtitle_done = True
             i += 1
@@ -242,13 +271,10 @@ def convert_to_clean_html(markdown_text: str) -> ConversionResult:
             if re.match(r"^\*[^*]+\*$", stripped):
                 inner = stripped[1:-1]
                 if not inner.startswith("End of "):
-                    is_sub = (
-                        re.match(r"^by\s+", inner, re.IGNORECASE)
-                        or re.match(r"^An?\s+.+\s+(Story|Tale|Novel|Novella|Horror)$", inner, re.IGNORECASE)
-                    )
-                    if is_sub:
+                    # Any italic-only line in subtitle position is a subtitle
+                    if True:
                         flush()
-                        body_parts.append(f"<p><em>{_escape_html(inner)}</em></p>")
+                        body_parts.append(_center_html(f"<em>{_escape_html(inner)}</em>"))
                         subtitle_done = True
                         stats["subtitle"] = inner
                         i += 1
@@ -258,10 +284,20 @@ def convert_to_clean_html(markdown_text: str) -> ConversionResult:
             else:
                 subtitle_done = True
 
+        # --- Warning/disclaimer block detection ---
+        if _is_warning_line(stripped):
+            flush()
+            in_warning_block = True
+            converted = format_paragraph_html(stripped)
+            body_parts.append(_center_html(converted))
+            stats["paragraphs"] += 1
+            i += 1
+            continue
+
         # --- End marker ---
         if re.match(r"^\*End of .+\*$", stripped):
             flush()
-            body_parts.append("<p><strong>~ End ~</strong></p>")
+            body_parts.append(_center_html("<strong>~ End ~</strong>"))
             stats["end_marker"] = True
             i += 1
             continue
@@ -270,7 +306,7 @@ def convert_to_clean_html(markdown_text: str) -> ConversionResult:
         if is_pov_marker(stripped):
             flush()
             inner = stripped[2:-2]
-            body_parts.append(f"<p><strong>{_escape_html(inner)}</strong></p>")
+            body_parts.append(_center_html(f"<strong>{_escape_html(inner)}</strong>"))
             stats["pov_markers"].append(inner)
             i += 1
             continue
@@ -280,7 +316,7 @@ def convert_to_clean_html(markdown_text: str) -> ConversionResult:
         if phone_m:
             flush()
             caller = phone_m.group(1).strip()
-            body_parts.append(f"<p><strong>{_escape_html(caller)}</strong></p>")
+            body_parts.append(_center_html(f"<strong>{_escape_html(caller)}</strong>"))
             stats["text_messages"] += 1
             i += 1
             continue
@@ -337,14 +373,21 @@ def convert_to_sofurry_html(markdown_text: str) -> ConversionResult:
 
     title_seen = False
     subtitle_done = False
+    in_warning_block = False
     i = 0
     current_paragraph: list[str] = []
+
+    def _sf_center(inner: str) -> str:
+        return f'<p class="text-center">{inner}</p>'
 
     def flush():
         if current_paragraph:
             text = " ".join(current_paragraph)
             converted = format_paragraph_html(text)
-            body_parts.append(f"<p>{converted}</p>")
+            if in_warning_block:
+                body_parts.append(_sf_center(converted))
+            else:
+                body_parts.append(f"<p>{converted}</p>")
             stats["paragraphs"] += 1
             current_paragraph.clear()
 
@@ -354,6 +397,7 @@ def convert_to_sofurry_html(markdown_text: str) -> ConversionResult:
         # --- Section/chapter break ---
         if stripped == "---":
             flush()
+            in_warning_block = False
             j = i + 1
             while j < len(lines) and lines[j].strip() == "":
                 j += 1
@@ -368,6 +412,7 @@ def convert_to_sofurry_html(markdown_text: str) -> ConversionResult:
         # --- Headings ---
         if stripped.startswith("# "):
             flush()
+            in_warning_block = False
             heading = _escape_html(stripped[2:].strip())
             if not title_seen:
                 body_parts.append(f'<h2 class="text-center">{heading}</h2>')
@@ -389,13 +434,10 @@ def convert_to_sofurry_html(markdown_text: str) -> ConversionResult:
             if re.match(r"^\*[^*]+\*$", stripped):
                 inner = stripped[1:-1]
                 if not inner.startswith("End of "):
-                    is_sub = (
-                        re.match(r"^by\s+", inner, re.IGNORECASE)
-                        or re.match(r"^An?\s+.+\s+(Story|Tale|Novel|Novella|Horror)$", inner, re.IGNORECASE)
-                    )
-                    if is_sub:
+                    # Any italic-only line in subtitle position is a subtitle
+                    if True:
                         flush()
-                        body_parts.append(f'<p class="text-center"><em>{_escape_html(inner)}</em></p>')
+                        body_parts.append(_sf_center(f"<em>{_escape_html(inner)}</em>"))
                         subtitle_done = True
                         stats["subtitle"] = inner
                         i += 1
@@ -405,10 +447,20 @@ def convert_to_sofurry_html(markdown_text: str) -> ConversionResult:
             else:
                 subtitle_done = True
 
+        # --- Warning/disclaimer block detection ---
+        if _is_warning_line(stripped):
+            flush()
+            in_warning_block = True
+            converted = format_paragraph_html(stripped)
+            body_parts.append(_sf_center(converted))
+            stats["paragraphs"] += 1
+            i += 1
+            continue
+
         # --- End marker ---
         if re.match(r"^\*End of .+\*$", stripped):
             flush()
-            body_parts.append('<p class="text-center"><strong>~ End ~</strong></p>')
+            body_parts.append(_sf_center("<strong>~ End ~</strong>"))
             stats["end_marker"] = True
             i += 1
             continue
@@ -417,7 +469,7 @@ def convert_to_sofurry_html(markdown_text: str) -> ConversionResult:
         if is_pov_marker(stripped):
             flush()
             inner = stripped[2:-2]
-            body_parts.append(f'<p class="text-center"><strong>{_escape_html(inner)}</strong></p>')
+            body_parts.append(_sf_center(f"<strong>{_escape_html(inner)}</strong>"))
             stats["pov_markers"].append(inner)
             i += 1
             continue
@@ -427,7 +479,7 @@ def convert_to_sofurry_html(markdown_text: str) -> ConversionResult:
         if phone_m:
             flush()
             caller = phone_m.group(1).strip()
-            body_parts.append(f'<p class="text-center"><strong>{_escape_html(caller)}</strong></p>')
+            body_parts.append(_sf_center(f"<strong>{_escape_html(caller)}</strong>"))
             stats["text_messages"] += 1
             i += 1
             continue
@@ -464,7 +516,13 @@ def convert_to_sofurry_html(markdown_text: str) -> ConversionResult:
 
 
 def convert_to_bbcode(markdown_text: str) -> ConversionResult:
-    """Convert full MASTER.md text to BBCode (Inkbunny)."""
+    """Convert full MASTER.md text to BBCode (Inkbunny).
+
+    Centering rules:
+      - Title, subtitle, chapter headings: centred
+      - Content Warning + DISCLAIMER block: centred
+      - Section breaks, POV markers, end marker: centred
+    """
     lines = markdown_text.split("\n")
     output_lines: list[str] = []
     stats = {
@@ -475,6 +533,7 @@ def convert_to_bbcode(markdown_text: str) -> ConversionResult:
 
     title_seen = False
     subtitle_done = False
+    in_warning_block = False
     i = 0
 
     while i < len(lines):
@@ -482,6 +541,7 @@ def convert_to_bbcode(markdown_text: str) -> ConversionResult:
 
         # --- Section/chapter break ---
         if stripped == "---":
+            in_warning_block = False
             j = i + 1
             while j < len(lines) and lines[j].strip() == "":
                 j += 1
@@ -503,15 +563,26 @@ def convert_to_bbcode(markdown_text: str) -> ConversionResult:
 
         # --- Headings ---
         if stripped.startswith("# "):
+            in_warning_block = False
             heading = stripped[2:].strip()
             if not title_seen:
                 output_lines.append(f"[center][t]{heading}[/t][/center]")
                 title_seen = True
                 stats["title"] = heading
             else:
+                output_lines.append("")
                 output_lines.append(f"[center][b]{heading}[/b][/center]")
                 stats["chapters"].append(heading)
                 subtitle_done = True
+            i += 1
+            continue
+
+        # --- Warning/disclaimer block detection ---
+        if _is_warning_line(stripped):
+            in_warning_block = True
+            converted = format_paragraph_bbcode(stripped)
+            output_lines.append(f"[center]{converted}[/center]")
+            stats["paragraphs"] += 1
             i += 1
             continue
 
@@ -524,11 +595,8 @@ def convert_to_bbcode(markdown_text: str) -> ConversionResult:
             if re.match(r"^\*[^*]+\*$", stripped):
                 inner = stripped[1:-1]
                 if not inner.startswith("End of "):
-                    is_sub = (
-                        re.match(r"^by\s+", inner, re.IGNORECASE)
-                        or re.match(r"^An?\s+.+\s+(Story|Tale|Novel|Novella|Horror)$", inner, re.IGNORECASE)
-                    )
-                    if is_sub:
+                    # Any italic-only line in subtitle position is a subtitle
+                    if True:
                         output_lines.extend(["", f"[center][i]{inner}[/i][/center]", ""])
                         subtitle_done = True
                         stats["subtitle"] = inner
@@ -584,7 +652,10 @@ def convert_to_bbcode(markdown_text: str) -> ConversionResult:
 
         # --- Regular paragraph ---
         converted = format_paragraph_bbcode(stripped)
-        output_lines.append(converted)
+        if in_warning_block:
+            output_lines.append(f"[center]{converted}[/center]")
+        else:
+            output_lines.append(converted)
         stats["paragraphs"] += 1
         i += 1
 
