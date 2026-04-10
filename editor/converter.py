@@ -1069,6 +1069,14 @@ def parse_chapter_styling(text: str) -> dict:
                 canon = role_map.get(role)
                 if canon and value.startswith("#"):
                     theme[canon] = value
+                # Also match when column 1 IS the canonical variable name
+                # (e.g. | `BACKGROUND` | `#0e1018` |)
+                role_clean = role.strip("`").upper()
+                value_clean = value.strip("`").strip()
+                # Strip parenthetical descriptions like "(⚠)" or "(star outline)"
+                value_clean = re.sub(r"\s*\(.*?\)\s*$", "", value_clean).strip().rstrip("`")
+                if role_clean in STYLED_HTML_THEME_KEYS and value_clean:
+                    theme[role_clean] = value_clean
 
         # --- Bold-label inline code: ``**Label:** `value` `` ---
         label_m = re.match(r"^\*\*(.+?):\*?\*?\s*`(.+?)`", stripped)
