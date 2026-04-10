@@ -925,11 +925,72 @@ def convert_to_bbcode(markdown_text: str) -> ConversionResult:
     return ConversionResult(output="\n".join(output_lines), format="bbcode", stats=stats)
 
 
+def convert_to_sqw_chapters(markdown_text: str, warning_icon: str = "&#9888;") -> list[ConversionResult]:
+    """Convert anchored MASTER.md to per-chapter SquidgeWorld body HTML.
+
+    Returns a list of ConversionResult, one per chapter. Chapter 1 gets
+    the full warning-page div; subsequent chapters get a bare title block.
+
+    Requires anchored MASTER.md (returns empty list if no anchors).
+    """
+    fm = parse_front_matter(markdown_text)
+    if fm is None:
+        return []
+
+    lines = markdown_text.split("\n")
+    body_lines = lines[fm.body_start_line + 1:]
+
+    # Detect chapters in the body section
+    body_text = "\n".join(body_lines)
+    chapters = detect_chapters(body_text)
+
+    if not chapters:
+        return []
+
+    results: list[ConversionResult] = []
+
+    for ch_idx, ch in enumerate(chapters):
+        ch_lines = body_text.split("\n")[ch["line_start"]:ch["line_end"] + 1]
+        # Convert body content (skip the chapter heading line itself)
+        body_start = 1  # skip the # heading line
+        while body_start < len(ch_lines) and ch_lines[body_start].strip() == "":
+            body_start += 1
+
+        body_parts, stats = _convert_body_clean_html(ch_lines, body_start)
+
+        # Build the chapter HTML
+        parts: list[str] = []
+
+        if ch_idx == 0:
+            # Chapter 1: full warning-page div
+            parts.extend(render_front_matter_sqw(fm, ch["title"], warning_icon))
+        else:
+            # Chapter 2+: bare title block (no warning page)
+            parts.append(f'<h1 class="story-title">{_escape_html(fm.title)}</h1>')
+            if fm.byline:
+                parts.append(f'<p class="byline">{_escape_html(fm.byline)}</p>')
+            else:
+                parts.append('<p class="byline">by KnaughtyKat</p>')
+            parts.append('<hr class="title-rule">')
+            parts.append(f'<h2 class="chapter-subtitle">{_escape_html(ch["title"])}</h2>')
+
+        parts.extend(body_parts)
+
+        output = "\n".join(parts)
+        results.append(ConversionResult(
+            output=output,
+            format="sqw",
+            stats={"chapter_index": ch_idx, "chapter_title": ch["title"], **stats},
+        ))
+
+    return results
+
+
 def convert(markdown_text: str, target_format: str) -> ConversionResult:
     """Convert markdown to the specified format.
 
     Supported formats: 'clean_html', 'sofurry_html', 'bbcode'
-    Future: 'sqw', 'styled_html'
+    For SQW per-chapter output, use convert_to_sqw_chapters() directly.
     """
     if target_format == "clean_html":
         return convert_to_clean_html(markdown_text)
