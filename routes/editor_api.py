@@ -355,3 +355,22 @@ async def regenerate(story_name: str, req: RegenerateRequest):
         "errors": errors,
         "word_count": _word_count(content),
     }
+
+
+class SlopRequest(BaseModel):
+    content: str
+
+
+@editor_router.post("/stories/{story_name:path}/slop")
+async def slop_score(story_name: str, req: SlopRequest):
+    """Run the slop scorer on the provided content."""
+    from editor.slop import score_text
+    result = score_text(req.content)
+    return {
+        "score": result.score,
+        "rating": result.rating,
+        "word_count": result.word_count,
+        "word_hits": dict(sorted(result.word_hits.items(), key=lambda x: -x[1])[:20]),
+        "trigram_hits": dict(sorted(result.trigram_hits.items(), key=lambda x: -x[1])[:10]),
+        "contrast_count": result.contrast_count,
+    }

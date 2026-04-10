@@ -1007,11 +1007,694 @@ def convert_to_sqw_chapters(markdown_text: str, warning_icon: str = "&#9888;") -
     return results
 
 
-def convert(markdown_text: str, target_format: str) -> ConversionResult:
+# ---------------------------------------------------------------------------
+# Styled HTML — complete themed documents with embedded CSS
+# ---------------------------------------------------------------------------
+
+# The 14 theme variables that every styled story needs.
+STYLED_HTML_THEME_KEYS = [
+    "BACKGROUND", "TEXT_COLOUR", "TITLE_COLOUR", "BYLINE_COLOUR",
+    "ACCENT_COLOUR", "WARNING_HEADING_COLOUR", "WARNING_BODY_COLOUR",
+    "DISCLAIMER_HEADING_COLOUR", "STORY_END_COLOUR", "SIGNATURE_COLOUR",
+    "TITLE_TEXT_SHADOW", "SECTION_BREAK_SYMBOL", "WARNING_ICON",
+    "PRINT_APPROACH",
+]
+
+
+def parse_chapter_styling(text: str) -> dict:
+    """Parse a CHAPTER_STYLING.md file and extract theme variables.
+
+    Handles two source formats:
+      1. Markdown table rows:  ``| Role | #hex | Description |``
+      2. Inline code in bold labels:  ``**Warning icon:** `&#9888;` ``
+
+    Returns a dict with the 14 STYLED_HTML_THEME_KEYS (values are strings).
+    Missing keys are omitted — caller should validate completeness.
+    """
+    theme: dict = {}
+
+    # --- Map table "Role" names to canonical variable names ---
+    role_map = {
+        "background": "BACKGROUND",
+        "body text": "TEXT_COLOUR",
+        "titles/headings": "TITLE_COLOUR",
+        "title": "TITLE_COLOUR",
+        "byline": "BYLINE_COLOUR",
+        "secondary (byline, disclaimer)": "BYLINE_COLOUR",
+        "accent": "ACCENT_COLOUR",
+        "accent (headings, dividers)": "ACCENT_COLOUR",
+        "warning heading": "WARNING_HEADING_COLOUR",
+        "warning body": "WARNING_BODY_COLOUR",
+        "disclaimer heading": "DISCLAIMER_HEADING_COLOUR",
+        "disclaimer": "DISCLAIMER_HEADING_COLOUR",
+        "story end": "STORY_END_COLOUR",
+        "signature": "SIGNATURE_COLOUR",
+        "section break": "SECTION_BREAK_COLOUR",  # extra, not one of the 14
+    }
+
+    for line in text.split("\n"):
+        stripped = line.strip()
+
+        # --- Markdown table rows: ``| Role | #hex | Description |`` ---
+        if stripped.startswith("|") and stripped.count("|") >= 3:
+            cells = [c.strip() for c in stripped.split("|")]
+            # cells[0] is empty (before first |), cells[-1] may be empty
+            cells = [c for c in cells if c]
+            if len(cells) >= 2:
+                role = cells[0].lower()
+                value = cells[1]
+                # Skip header rows
+                if role in ("role", "---", "------") or value in ("hex", "---", "-----"):
+                    continue
+                canon = role_map.get(role)
+                if canon and value.startswith("#"):
+                    theme[canon] = value
+
+        # --- Bold-label inline code: ``**Label:** `value` `` ---
+        label_m = re.match(r"^\*\*(.+?):\*?\*?\s*`(.+?)`", stripped)
+        if label_m:
+            label = label_m.group(1).strip().lower()
+            value = label_m.group(2).strip()
+            label_map = {
+                "section break": "SECTION_BREAK_SYMBOL",
+                "warning icon": "WARNING_ICON",
+                "print approach": "PRINT_APPROACH",
+            }
+            canon = label_map.get(label)
+            if canon:
+                theme[canon] = value
+
+        # --- Top-level metadata: ``**Theme:** Name`` ---
+        if stripped.lower().startswith("**theme:**"):
+            theme["_THEME_NAME"] = stripped.split(":", 1)[1].strip().strip("*").strip()
+
+        # --- Print approach from plain text ---
+        if stripped.lower().startswith("**print approach:**"):
+            pa = stripped.split(":", 1)[1].strip().strip("*").strip("`").strip()
+            # Normalise: strip parenthetical notes like "(dark background)"
+            pa = re.sub(r"\s*\(.*?\)\s*$", "", pa).strip()
+            theme["PRINT_APPROACH"] = pa
+
+        # --- Title text shadow (often in Typography or Structural section) ---
+        if "text-shadow" in stripped.lower() and "title" in stripped.lower():
+            shadow_m = re.search(r"(text-shadow:\s*[^;`]+)", stripped)
+            if shadow_m:
+                theme["TITLE_TEXT_SHADOW"] = shadow_m.group(1).rstrip(";").strip()
+
+    # Derive defaults for variables that can be inferred
+    if "DISCLAIMER_HEADING_COLOUR" not in theme and "TITLE_COLOUR" in theme:
+        theme["DISCLAIMER_HEADING_COLOUR"] = theme["TITLE_COLOUR"]
+    if "STORY_END_COLOUR" not in theme and "TITLE_COLOUR" in theme:
+        theme["STORY_END_COLOUR"] = theme["TITLE_COLOUR"]
+    if "SIGNATURE_COLOUR" not in theme and "WARNING_HEADING_COLOUR" in theme:
+        theme["SIGNATURE_COLOUR"] = theme["WARNING_HEADING_COLOUR"]
+    if "WARNING_BODY_COLOUR" not in theme and "BYLINE_COLOUR" in theme:
+        theme["WARNING_BODY_COLOUR"] = theme["BYLINE_COLOUR"]
+    if "PRINT_APPROACH" not in theme:
+        theme["PRINT_APPROACH"] = "colour-preserve"
+    if "TITLE_TEXT_SHADOW" not in theme:
+        theme["TITLE_TEXT_SHADOW"] = ""
+    if "WARNING_ICON" not in theme:
+        theme["WARNING_ICON"] = "&#9888;"
+    if "SECTION_BREAK_SYMBOL" not in theme:
+        theme["SECTION_BREAK_SYMBOL"] = "* &ensp; * &ensp; *"
+
+    return theme
+
+
+def _build_print_styles(theme: dict) -> str:
+    """Build the @media print CSS block based on PRINT_APPROACH.
+
+    Returns the complete block including the @media wrapper, ready to
+    replace ``{{PRINT_STYLES}}`` in the template.
+    """
+    approach = theme.get("PRINT_APPROACH", "colour-preserve")
+
+    if approach == "grayscale":
+        return (
+            "/* Print Styles */\n"
+            "        @media print {\n"
+            "            body {\n"
+            "                background: white;\n"
+            "                padding: 0;\n"
+            "                font-size: 11pt;\n"
+            "                max-width: none;\n"
+            "                color: black;\n"
+            "            }\n"
+            "\n"
+            "            .story-title {\n"
+            "                font-size: 24pt;\n"
+            "                color: black;\n"
+            "            }\n"
+            "\n"
+            "            .title-rule,\n"
+            "            .end-rule {\n"
+            "                background: #333;\n"
+            "            }\n"
+            "\n"
+            "            .section-break {\n"
+            "                color: #333;\n"
+            "                page-break-after: avoid;\n"
+            "            }\n"
+            "\n"
+            "            .chapter-heading {\n"
+            "                page-break-before: always;\n"
+            "                color: black;\n"
+            "            }\n"
+            "\n"
+            "            .chapter-heading:first-of-type {\n"
+            "                page-break-before: avoid;\n"
+            "            }\n"
+            "\n"
+            "            .chapter-divider {\n"
+            "                background: #333;\n"
+            "            }\n"
+            "\n"
+            "            p {\n"
+            "                orphans: 3;\n"
+            "                widows: 3;\n"
+            "            }\n"
+            "        }"
+        )
+
+    # colour-preserve (default)
+    bg = theme.get("BACKGROUND", "#1a1118")
+    text = theme.get("TEXT_COLOUR", "#e0d6cc")
+    title = theme.get("TITLE_COLOUR", "#e8ddd0")
+    accent = theme.get("ACCENT_COLOUR", "#8b2030")
+    warn_h = theme.get("WARNING_HEADING_COLOUR", "#c4a040")
+    warn_b = theme.get("WARNING_BODY_COLOUR", "#c8b8a8")
+    disc_h = theme.get("DISCLAIMER_HEADING_COLOUR", title)
+    sig = theme.get("SIGNATURE_COLOUR", warn_h)
+
+    return (
+        "/* Print Styles */\n"
+        "        @media print {\n"
+        "            @page {\n"
+        "                margin: 0;\n"
+        "                size: A4;\n"
+        "            }\n"
+        "\n"
+        "            html {\n"
+        "                -webkit-print-color-adjust: exact;\n"
+        "                print-color-adjust: exact;\n"
+        "            }\n"
+        "\n"
+        "            body {\n"
+        f"                background: {bg};\n"
+        "                padding: 2cm 2.5cm;\n"
+        "                font-size: 11pt;\n"
+        "                max-width: none;\n"
+        f"                color: {text};\n"
+        "            }\n"
+        "\n"
+        "            .story-title {\n"
+        "                font-size: 24pt;\n"
+        f"                color: {title};\n"
+        "                text-shadow: none;\n"
+        "            }\n"
+        "\n"
+        "            .title-rule,\n"
+        "            .end-rule {\n"
+        f"                background: {accent};\n"
+        "            }\n"
+        "\n"
+        "            .warning-heading {\n"
+        f"                color: {warn_h};\n"
+        "            }\n"
+        "\n"
+        "            .warning-body,\n"
+        "            .disclaimer-body {\n"
+        f"                color: {warn_b};\n"
+        "            }\n"
+        "\n"
+        "            .disclaimer-heading {\n"
+        f"                color: {disc_h};\n"
+        "            }\n"
+        "\n"
+        "            .section-break {\n"
+        f"                color: {accent};\n"
+        "                page-break-after: avoid;\n"
+        "            }\n"
+        "\n"
+        "            .chapter-heading {\n"
+        "                page-break-before: always;\n"
+        f"                color: {title};\n"
+        "            }\n"
+        "\n"
+        "            .chapter-heading:first-of-type {\n"
+        "                page-break-before: avoid;\n"
+        "            }\n"
+        "\n"
+        "            .chapter-divider {\n"
+        f"                background: {accent};\n"
+        "            }\n"
+        "\n"
+        "            .signature {\n"
+        f"                color: {sig};\n"
+        "            }\n"
+        "\n"
+        "            p {\n"
+        "                orphans: 3;\n"
+        "                widows: 3;\n"
+        "            }\n"
+        "        }"
+    )
+
+
+def _fill_template(template: str, theme: dict, fm: FrontMatter,
+                    story_body_html: str) -> str:
+    """Replace all ``{{PLACEHOLDER}}`` tokens in the HTML/CSS template.
+
+    Handles the 14 colour variables, print styles, front-matter content,
+    and the story body paragraphs.
+    """
+    doc = template
+
+    # --- CSS colour variables ---
+    simple_replacements = {
+        "{{BACKGROUND}}": theme.get("BACKGROUND", "#1a1118"),
+        "{{TEXT_COLOUR}}": theme.get("TEXT_COLOUR", "#e0d6cc"),
+        "{{TITLE_COLOUR}}": theme.get("TITLE_COLOUR", "#e8ddd0"),
+        "{{BYLINE_COLOUR}}": theme.get("BYLINE_COLOUR", "#b89a80"),
+        "{{ACCENT_COLOUR}}": theme.get("ACCENT_COLOUR", "#8b2030"),
+        "{{WARNING_HEADING_COLOUR}}": theme.get("WARNING_HEADING_COLOUR", "#c4a040"),
+        "{{WARNING_BODY_COLOUR}}": theme.get("WARNING_BODY_COLOUR", "#c8b8a8"),
+        "{{DISCLAIMER_HEADING_COLOUR}}": theme.get("DISCLAIMER_HEADING_COLOUR",
+                                                     theme.get("TITLE_COLOUR", "#e8ddd0")),
+        "{{STORY_END_COLOUR}}": theme.get("STORY_END_COLOUR",
+                                           theme.get("TITLE_COLOUR", "#e8ddd0")),
+        "{{SIGNATURE_COLOUR}}": theme.get("SIGNATURE_COLOUR",
+                                           theme.get("WARNING_HEADING_COLOUR", "#c4a040")),
+    }
+    for placeholder, value in simple_replacements.items():
+        doc = doc.replace(placeholder, value)
+
+    # --- Title text shadow: insert the property or remove the line ---
+    shadow = theme.get("TITLE_TEXT_SHADOW", "")
+    if shadow:
+        doc = doc.replace("{{TITLE_TEXT_SHADOW}}", shadow)
+    else:
+        # Remove the entire placeholder line (including leading whitespace)
+        doc = re.sub(r"\n\s*\{\{TITLE_TEXT_SHADOW\}\}", "", doc)
+
+    # --- Print styles ---
+    doc = doc.replace("{{PRINT_STYLES}}", _build_print_styles(theme))
+
+    # --- Chapter heading CSS (inject after the em rule) ---
+    chapter_css = (
+        "\n"
+        "        /* Chapter Headings */\n"
+        "        .chapter-heading {\n"
+        "            text-align: center;\n"
+        "            font-size: 1.6rem;\n"
+        "            font-weight: bold;\n"
+        "            letter-spacing: 0.08em;\n"
+        f"            color: {theme.get('TITLE_COLOUR', '#e8ddd0')};\n"
+        "            margin: 3rem 0 2rem;\n"
+        "            font-variant: small-caps;\n"
+        "        }\n"
+        "\n"
+        "        /* Chapter Dividers */\n"
+        "        .chapter-divider {\n"
+        "            width: 200px;\n"
+        "            height: 1px;\n"
+        f"            background: {theme.get('ACCENT_COLOUR', '#8b2030')};\n"
+        "            margin: 3rem auto;\n"
+        "            border: none;\n"
+        "        }\n"
+    )
+    # Insert before the section-break rule
+    section_break_marker = "        /* Section Breaks */"
+    if section_break_marker in doc:
+        doc = doc.replace(section_break_marker,
+                          chapter_css + "\n" + section_break_marker)
+
+    # --- Story content ---
+    title_escaped = _escape_html(fm.title)
+    # Strip "by " prefix — the template already includes "by {{AUTHOR_NAME}}"
+    raw_byline = fm.byline or "KnaughtyKat"
+    if raw_byline.lower().startswith("by "):
+        raw_byline = raw_byline[3:].strip()
+    author = _escape_html(raw_byline)
+    warning_icon = theme.get("WARNING_ICON", "&#9888;")
+
+    doc = doc.replace("{{STORY_TITLE}}", title_escaped)
+    doc = doc.replace("{{AUTHOR_NAME}}", author)
+    doc = doc.replace("{{WARNING_ICON}}", warning_icon)
+
+    # Warning text (may contain line breaks — join into one block)
+    warning_text = _escape_html(fm.warning).replace("\n", "<br>\n            ")
+    doc = doc.replace("{{CONTENT_WARNING_TEXT}}", warning_text)
+
+    # Disclaimer text
+    disclaimer_text = _escape_html(fm.disclaimer).replace("\n", "<br>\n            ")
+    doc = doc.replace("{{DISCLAIMER_TEXT}}", disclaimer_text)
+
+    # Fan fiction notice (optional extra disclaimers)
+    if fm.fanfiction:
+        ff_html = (
+            "\n"
+            '        <hr class="warning-divider">\n'
+            "\n"
+            '        <p class="disclaimer-heading">FAN FICTION NOTICE</p>\n'
+            "\n"
+            '        <p class="disclaimer-body">\n'
+            f"            {_escape_html(fm.fanfiction)}\n"
+            "        </p>"
+        )
+        doc = doc.replace("{{OPTIONAL_EXTRA_DISCLAIMERS}}", ff_html)
+    else:
+        doc = doc.replace("{{OPTIONAL_EXTRA_DISCLAIMERS}}", "")
+
+    # Story body paragraphs
+    doc = doc.replace("{{STORY_PARAGRAPHS}}", story_body_html)
+
+    return doc
+
+
+def _convert_body_styled_html(lines: list[str], start: int,
+                               theme: dict) -> tuple[list[str], dict]:
+    """Convert body lines to styled HTML elements.
+
+    Produces:
+      - ``<h2 class="chapter-heading">`` for chapter headings
+      - ``<hr class="chapter-divider">`` before headings (except the first)
+      - ``<div class="section-break">SYMBOL</div>`` for section breaks
+      - ``<p>...</p>`` for paragraphs (using format_paragraph_html)
+      - ``<div class="story-end">`` wrapper for the end marker
+    """
+    body_parts: list[str] = []
+    stats: dict = {
+        "chapters": [], "section_breaks": 0, "paragraphs": 0,
+        "pov_markers": [], "text_messages": 0, "end_marker": False,
+    }
+    symbol = theme.get("SECTION_BREAK_SYMBOL", "* &ensp; * &ensp; *")
+    I = "    "  # 4-space indent
+    first_chapter_seen = False
+    i = start
+    current_paragraph: list[str] = []
+
+    def flush():
+        if current_paragraph:
+            text = " ".join(current_paragraph)
+            converted = format_paragraph_html(text)
+            body_parts.append(f"{I}<p>{converted}</p>")
+            stats["paragraphs"] += 1
+            current_paragraph.clear()
+
+    while i < len(lines):
+        stripped = lines[i].strip()
+
+        # Skip anchor comments
+        if stripped.startswith("<!--") and stripped.endswith("-->"):
+            i += 1
+            continue
+
+        # Section break or chapter divider
+        if stripped == "---":
+            flush()
+            j = i + 1
+            while j < len(lines) and lines[j].strip() == "":
+                j += 1
+            if j < len(lines) and lines[j].strip().startswith("# "):
+                # This is a chapter divider (--- before # heading)
+                # The <hr> is emitted when we process the heading below
+                pass
+            elif j < len(lines) and re.match(r"^\*End of .+\*$", lines[j].strip()):
+                # Divider before end marker — skip, the end wrapper handles it
+                pass
+            else:
+                body_parts.append(f'{I}<div class="section-break">{symbol}</div>')
+                stats["section_breaks"] += 1
+            i += 1
+            continue
+
+        # Chapter heading
+        if stripped.startswith("# "):
+            flush()
+            heading = _escape_html(stripped[2:].strip())
+            if first_chapter_seen:
+                body_parts.append("")
+                body_parts.append(f'{I}<hr class="chapter-divider">')
+            body_parts.append("")
+            body_parts.append(f'{I}<h2 class="chapter-heading">{heading}</h2>')
+            body_parts.append("")
+            stats["chapters"].append(heading)
+            first_chapter_seen = True
+            i += 1
+            continue
+
+        # End marker
+        if re.match(r"^\*End of .+\*$", stripped):
+            flush()
+            # Handled externally via the story-end div in the template
+            stats["end_marker"] = True
+            i += 1
+            continue
+
+        # POV markers
+        if is_pov_marker(stripped):
+            flush()
+            inner = stripped[2:-2]
+            body_parts.append(f"{I}<p><strong>{_escape_html(inner)}</strong></p>")
+            stats["pov_markers"].append(inner)
+            i += 1
+            continue
+
+        # Phone display
+        phone_m = is_phone_display(stripped)
+        if phone_m:
+            flush()
+            caller = phone_m.group(1).strip()
+            body_parts.append(
+                f'{I}<div class="phone-display-wrap">'
+                f'<div class="phone-display">{_escape_html(caller)}</div></div>'
+            )
+            stats["text_messages"] += 1
+            i += 1
+            continue
+
+        # Text message
+        msg_m = is_text_message(stripped)
+        if msg_m:
+            flush()
+            sender = msg_m.group(1).strip()
+            message = msg_m.group(2).strip()
+            css_class = "text-message sent" if "MAYA" in sender.upper() else "text-message received"
+            body_parts.append(
+                f'{I}<div class="{css_class}">'
+                f"<strong>{_escape_html(sender)}</strong>"
+                f"{_escape_html(message)}</div>"
+            )
+            stats["text_messages"] += 1
+            i += 1
+            continue
+
+        # Blank line
+        if stripped == "":
+            flush()
+            i += 1
+            continue
+
+        # Regular paragraph text
+        current_paragraph.append(stripped)
+        i += 1
+
+    flush()
+    return body_parts, stats
+
+
+def convert_to_styled_html(
+    markdown_text: str,
+    theme: dict,
+    template: str,
+    *,
+    mode: str = "full",
+    chapter_index: int | None = None,
+) -> ConversionResult | list[ConversionResult]:
+    """Convert anchored MASTER.md to Styled HTML with embedded CSS.
+
+    Parameters
+    ----------
+    markdown_text : str
+        The full MASTER.md content.
+    theme : dict
+        The 14 colour variables (see STYLED_HTML_THEME_KEYS).
+        Use parse_chapter_styling() to build this from a CHAPTER_STYLING.md.
+    template : str
+        The STYLING_REFERENCE.md HTML template (the ``<!DOCTYPE html>``
+        block extracted from the code fence, or the raw template string).
+    mode : str
+        ``"full"`` — single document containing the entire story.
+        ``"chapters"`` — list of per-chapter documents.
+        ``"single_chapter"`` — one chapter only (requires chapter_index).
+    chapter_index : int or None
+        When mode is ``"single_chapter"``, which chapter (0-based).
+
+    Returns
+    -------
+    ConversionResult or list[ConversionResult]
+        For ``"full"`` and ``"single_chapter"`` modes, a single result.
+        For ``"chapters"`` mode, a list of results (one per chapter).
+    """
+    fm = parse_front_matter(markdown_text)
+    if fm is None:
+        return ConversionResult(
+            output="", format="styled_html",
+            warnings=["No anchors found — styled HTML requires anchored MASTER.md"],
+        )
+
+    lines = markdown_text.split("\n")
+    body_lines = lines[fm.body_start_line + 1:]
+
+    # --- Extract the raw HTML template from the code fence if needed ---
+    clean_template = _extract_html_template(template)
+
+    if mode == "full":
+        # Full-story single document
+        body_parts, body_stats = _convert_body_styled_html(body_lines, 0, theme)
+        body_html = "\n".join(body_parts)
+        doc = _fill_template(clean_template, theme, fm, body_html)
+        stats = {"title": fm.title, "subtitle": fm.subtitle, "mode": "full", **body_stats}
+        return ConversionResult(output=doc, format="styled_html", stats=stats)
+
+    # --- Per-chapter modes ---
+    body_text = "\n".join(body_lines)
+    chapters = detect_chapters(body_text)
+
+    if not chapters:
+        # No chapters detected — treat as single document
+        body_parts, body_stats = _convert_body_styled_html(body_lines, 0, theme)
+        body_html = "\n".join(body_parts)
+        doc = _fill_template(clean_template, theme, fm, body_html)
+        stats = {"title": fm.title, "subtitle": fm.subtitle, "mode": "full", **body_stats}
+        return ConversionResult(output=doc, format="styled_html", stats=stats,
+                                warnings=["No chapters detected — produced full document"])
+
+    if mode == "single_chapter":
+        if chapter_index is None or chapter_index < 0 or chapter_index >= len(chapters):
+            return ConversionResult(
+                output="", format="styled_html",
+                warnings=[f"Invalid chapter_index={chapter_index}, "
+                          f"story has {len(chapters)} chapters"],
+            )
+        return _build_styled_chapter(
+            clean_template, theme, fm, body_text, chapters,
+            chapter_index, include_warning_page=(chapter_index == 0),
+        )
+
+    # mode == "chapters"
+    results: list[ConversionResult] = []
+    for ch_idx in range(len(chapters)):
+        result = _build_styled_chapter(
+            clean_template, theme, fm, body_text, chapters,
+            ch_idx, include_warning_page=(ch_idx == 0),
+        )
+        results.append(result)
+    return results
+
+
+def _build_styled_chapter(
+    template: str, theme: dict, fm: FrontMatter,
+    body_text: str, chapters: list[dict],
+    ch_idx: int, include_warning_page: bool,
+) -> ConversionResult:
+    """Build a single styled HTML chapter document."""
+    ch = chapters[ch_idx]
+    ch_lines = body_text.split("\n")[ch["line_start"]:ch["line_end"] + 1]
+
+    # Skip the chapter heading line itself (it's in the body handler)
+    body_start = 0
+
+    body_parts, body_stats = _convert_body_styled_html(ch_lines, body_start, theme)
+    body_html = "\n".join(body_parts)
+
+    if not include_warning_page:
+        # For chapters 2+, strip the warning page from the template and
+        # replace it with just the title + chapter heading
+        doc = _fill_template(template, theme, fm, body_html)
+        # Remove the warning-page div contents, replace with minimal header
+        doc = _replace_warning_page_with_header(doc, fm, theme, ch["title"])
+    else:
+        doc = _fill_template(template, theme, fm, body_html)
+
+    # Update the <title> tag to include chapter name
+    chapter_title = ch["title"]
+    doc = doc.replace(
+        f"<title>{_escape_html(fm.title)}</title>",
+        f"<title>{_escape_html(fm.title)} - {_escape_html(chapter_title)}</title>",
+    )
+
+    stats = {
+        "title": fm.title, "chapter_index": ch_idx,
+        "chapter_title": chapter_title, "mode": "chapter",
+        **body_stats,
+    }
+    return ConversionResult(output=doc, format="styled_html", stats=stats)
+
+
+def _replace_warning_page_with_header(doc: str, fm: FrontMatter,
+                                       theme: dict, chapter_title: str) -> str:
+    """Replace the warning-page div with a minimal title header for chapters 2+."""
+    # Find and replace the warning-page div
+    wp_start = doc.find('<div class="warning-page">')
+    wp_end = doc.find("</div>", wp_start)
+    if wp_start == -1 or wp_end == -1:
+        return doc
+    # Find the closing </div> that matches the warning-page div
+    wp_end += len("</div>")
+
+    title_escaped = _escape_html(fm.title)
+    raw_byline = fm.byline or "KnaughtyKat"
+    if raw_byline.lower().startswith("by "):
+        raw_byline = raw_byline[3:].strip()
+    author = _escape_html(raw_byline)
+    header = (
+        f'    <div class="warning-page" style="page-break-after:avoid;margin-bottom:2rem;padding-bottom:1rem">\n'
+        f'        <h1 class="story-title">{title_escaped}</h1>\n'
+        f'        <p class="byline">by {author}</p>\n'
+        f'        <hr class="title-rule">\n'
+        f'    </div>'
+    )
+    doc = doc[:wp_start] + header + doc[wp_end:]
+    return doc
+
+
+def _extract_html_template(template: str) -> str:
+    """Extract the HTML template from a STYLING_REFERENCE.md or raw HTML.
+
+    If the input contains a fenced code block (```html ... ```), extract
+    the first one. Otherwise return the input as-is (assumed to be raw HTML).
+    """
+    if "<!DOCTYPE html>" in template and "```" not in template:
+        return template  # already raw HTML
+
+    # Extract from code fence
+    m = re.search(r"```html\s*\n(<!DOCTYPE html>.*?)\n```", template, re.DOTALL)
+    if m:
+        return m.group(1)
+
+    # Fallback: if it starts with <!DOCTYPE, use as-is
+    stripped = template.strip()
+    if stripped.startswith("<!DOCTYPE"):
+        return stripped
+
+    return template
+
+
+def convert(markdown_text: str, target_format: str, **kwargs) -> ConversionResult:
     """Convert markdown to the specified format.
 
-    Supported formats: 'clean_html', 'sofurry_html', 'bbcode'
+    Supported formats: 'clean_html', 'sofurry_html', 'bbcode', 'styled_html'
     For SQW per-chapter output, use convert_to_sqw_chapters() directly.
+    For styled HTML per-chapter output, use convert_to_styled_html() directly.
+
+    Styled HTML requires additional kwargs:
+      - theme: dict with the 14 colour variables
+      - template: str with the HTML/CSS template
+      - mode: str ('full', 'chapters', 'single_chapter')
+      - chapter_index: int (for 'single_chapter' mode)
     """
     if target_format == "clean_html":
         return convert_to_clean_html(markdown_text)
@@ -1019,5 +1702,21 @@ def convert(markdown_text: str, target_format: str) -> ConversionResult:
         return convert_to_sofurry_html(markdown_text)
     elif target_format == "bbcode":
         return convert_to_bbcode(markdown_text)
+    elif target_format == "styled_html":
+        theme = kwargs.get("theme")
+        template = kwargs.get("template")
+        if not theme or not template:
+            raise ValueError("styled_html format requires 'theme' and 'template' kwargs")
+        result = convert_to_styled_html(
+            markdown_text, theme, template,
+            mode=kwargs.get("mode", "full"),
+            chapter_index=kwargs.get("chapter_index"),
+        )
+        if isinstance(result, list):
+            raise ValueError(
+                "styled_html 'chapters' mode returns a list — "
+                "use convert_to_styled_html() directly"
+            )
+        return result
     else:
         raise ValueError(f"Unsupported format: {target_format}")

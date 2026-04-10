@@ -12,6 +12,8 @@ const Editor = {
     previewFormat: 'clean_html',
     previewDebounceTimer: null,
     previewRequestId: 0,
+    slopScore: null,
+    slopDebounceTimer: null,
     isDirty: false,
     chapters: [],
     _syncingScroll: false,  // prevents scroll event loops
@@ -64,6 +66,7 @@ const Editor = {
                     <a href="#/editor" class="editor-back">← Stories</a>
                     <span class="editor-title" id="editor-title">${Utils.escapeHtml(storyName.replace(/_/g, ' '))}</span>
                     <div class="editor-actions">
+                        <span id="editor-slop" class="editor-slop" title="Click to refresh slop score"></span>
                         <span id="editor-status" class="editor-status"></span>
                         <span id="editor-wordcount" class="editor-wordcount"></span>
                         <button id="editor-save-btn" class="btn btn-sm" onclick="Editor.save()">Save</button>
@@ -171,8 +174,9 @@ const Editor = {
                 });
             });
 
-            // Initial preview
+            // Initial preview + slop score
             this._requestPreview();
+            this._requestSlopScore();
 
             // Setup divider drag
             this._setupDivider();
@@ -323,6 +327,7 @@ const Editor = {
                 this.isDirty = false;
                 this._updateStatus('Saved');
                 this._updateWordCount(data.word_count);
+                this._requestSlopScore();
             } else {
                 this._updateStatus('Save failed');
             }
@@ -378,6 +383,36 @@ const Editor = {
     _updateWordCount(count) {
         const el = document.getElementById('editor-wordcount');
         if (el) el.textContent = `${(count || 0).toLocaleString()} words`;
+    },
+
+    // ---------------------------------------------------------------------------
+    // Slop score
+    // ---------------------------------------------------------------------------
+
+    async _requestSlopScore() {
+        const ta = document.getElementById('editor-textarea');
+        const el = document.getElementById('editor-slop');
+        if (!ta || !el) return;
+
+        try {
+            const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/slop`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: ta.value }),
+            });
+            if (!resp.ok) { el.textContent = 'Slop: ?'; return; }
+            const data = await resp.json();
+            this.slopScore = data;
+
+            const score = data.score.toFixed(1);
+            const rating = data.rating;
+            let color = 'var(--color-success)';
+            if (rating === 'BORDERLINE') color = 'var(--color-warning)';
+            if (rating === 'SLOP') color = 'var(--color-error)';
+            el.innerHTML = `<span style="color:${color}" title="${rating}: ${Object.keys(data.word_hits || {}).slice(0, 5).join(', ')}">Slop: ${score}</span>`;
+        } catch (err) {
+            el.textContent = 'Slop: error';
+        }
     },
 
     _setupDivider() {
