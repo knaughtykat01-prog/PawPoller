@@ -412,6 +412,11 @@ const Editor = {
 
             // 2 parallel requests: MD preview (clean_html) + selected format
             const url = `/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`;
+            // Pass live theme vars for styled_html so preview reflects GUI changes
+            const fmtBody = { content, format: this.previewFormat };
+            if (this.previewFormat === 'styled_html' && Object.keys(this.themeVars).length > 0) {
+                fmtBody.theme = this.themeVars;
+            }
             const [mdResp, fmtResp] = await Promise.all([
                 fetch(url, {
                     method: 'POST',
@@ -421,7 +426,7 @@ const Editor = {
                 fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content, format: this.previewFormat }),
+                    body: JSON.stringify(fmtBody),
                 }),
             ]);
 
@@ -472,6 +477,11 @@ const Editor = {
                         fmtPreview.innerHTML = '<div class="preview-html">' + (fmtData.html || '') + '</div>';
                     }
                 }
+            }
+
+            // Sync CSS source view if theme editor is in source mode and styled_html returned CSS
+            if (fmtData && fmtData.css && this.themeSourceMode && this.cmCssView) {
+                this._updateCmContent(this.cmCssView, fmtData.css);
             }
 
             [mdPreview, fmtSource, fmtPreview].forEach(el => { if (el) el.style.opacity = '1'; });
@@ -826,11 +836,15 @@ const Editor = {
     },
 
     _onThemeChange() {
-        // Live preview refresh if styled_html is active
-        if (this.previewFormat === 'styled_html') {
-            clearTimeout(this.previewDebounceTimer);
-            this.previewDebounceTimer = setTimeout(() => this._requestPreview(), 300);
-        }
+        // Live preview refresh — always trigger when theme changes so CSS stays in sync
+        clearTimeout(this.previewDebounceTimer);
+        this.previewDebounceTimer = setTimeout(() => {
+            // If styled_html preview is active, preview request carries the theme vars
+            // and returns generated CSS which we use to sync the source view
+            if (this.previewFormat === 'styled_html') {
+                this._requestPreview();
+            }
+        }, 300);
     },
 
     _toggleThemeSource() {

@@ -35,6 +35,7 @@ class PreviewRequest(BaseModel):
     content: str
     format: str = "clean_html"  # clean_html, bbcode, sqw
     chapter: int = 0  # 0 = full story
+    theme: dict | None = None  # live theme overrides for styled_html
 
 
 class RegenerateRequest(BaseModel):
@@ -220,13 +221,19 @@ async def preview(story_name: str, req: PreviewRequest):
 
     # Styled HTML needs theme + template from the story's files
     if req.format == "styled_html":
-        from editor.converter import convert_to_styled_html_external_css, parse_chapter_styling
+        from editor.converter import convert_to_styled_html_external_css, generate_styled_css, parse_chapter_styling
         story_dir = _resolve_story_dir(story_name)
         archive = get_archive_path()
-        theme = {}
-        styling_path = story_dir / "CHAPTER_STYLING.md"
-        if styling_path.is_file():
-            theme = parse_chapter_styling(styling_path.read_text(encoding="utf-8"))
+
+        # Use live theme vars from GUI if provided, otherwise read from disk
+        if req.theme:
+            theme = req.theme
+        else:
+            theme = {}
+            styling_path = story_dir / "CHAPTER_STYLING.md"
+            if styling_path.is_file():
+                theme = parse_chapter_styling(styling_path.read_text(encoding="utf-8"))
+
         template = ""
         template_path = archive / "Reference_Guides" / "Styling" / "HTML_CSS" / "STYLING_REFERENCE.md"
         if template_path.is_file():
@@ -249,9 +256,13 @@ async def preview(story_name: str, req: PreviewRequest):
             f"<style>\n{result.css}\n</style>",
         ) if source_html else ""
 
+        # Also return generated CSS so the frontend can sync the source view
+        css = result.css
+
         return {
             "html": source_html,
             "preview_html": preview_html,
+            "css": css,
             "format": "styled_html",
             "stats": result.full_story.stats if result.full_story else {},
             "warnings": [],
