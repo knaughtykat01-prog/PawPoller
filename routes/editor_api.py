@@ -432,13 +432,17 @@ async def save_theme(story_name: str, req: ThemeSaveRequest):
         logger.warning("Theme save: generated CSS is empty (template may be malformed)")
 
     # Write style.css
-    html_dir = story_dir / "HTML"
-    html_dir.mkdir(exist_ok=True)
-    (html_dir / "style.css").write_text(css, encoding="utf-8")
+    try:
+        html_dir = story_dir / "HTML"
+        html_dir.mkdir(exist_ok=True)
+        (html_dir / "style.css").write_text(css, encoding="utf-8")
 
-    ch_styled = story_dir / "Chapters" / "Styled_HTML"
-    if ch_styled.is_dir():
-        (ch_styled / "style.css").write_text(css, encoding="utf-8")
+        ch_styled = story_dir / "Chapters" / "Styled_HTML"
+        if ch_styled.is_dir():
+            (ch_styled / "style.css").write_text(css, encoding="utf-8")
+    except PermissionError as e:
+        logger.error("Theme save: permission denied writing CSS: %s", e)
+        raise HTTPException(status_code=500, detail=f"Permission denied writing style.css — check archive permissions")
 
     return {"ok": True, "css_bytes": len(css)}
 

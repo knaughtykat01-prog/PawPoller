@@ -131,7 +131,7 @@ def ssh_extract() -> None:
     remote_cmd = (
         f"cd {GCP_DEST_DIR} && "
         f"tar xzf {GCP_TMP_PATH} && "
-        f"sudo chmod -R o+rX {GCP_DEST_DIR} && "
+        f"sudo chmod -R o+rwX {GCP_DEST_DIR} && "
         f"rm -f {GCP_TMP_PATH}"
     )
     print(f"[3/4] Extracting on server ({GCP_USER}@{GCP_INSTANCE})")

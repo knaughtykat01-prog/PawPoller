@@ -878,7 +878,7 @@ const Editor = {
             if (!resp.ok) {
                 const errText = await resp.text();
                 let detail = `HTTP ${resp.status}`;
-                try { detail = JSON.parse(errText).detail || detail; } catch {}
+                try { const j = JSON.parse(errText); detail = j.detail || j.error || detail; } catch {}
                 this._updateStatus(`Save failed: ${detail}`);
                 return;
             }
