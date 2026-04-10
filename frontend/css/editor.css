@@ -218,6 +218,42 @@
     color: var(--text-tertiary);
 }
 
+/* CSS editor panel */
+.editor-css-panel {
+    background: var(--surface-primary);
+}
+
+#css-textarea {
+    width: 100%;
+    flex: 1;
+    resize: none;
+    border: none;
+    outline: none;
+    padding: 10px 12px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    background: var(--surface-primary);
+    color: #9cdcfe;
+    tab-size: 4;
+}
+
+.btn-tiny {
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+    background: var(--surface-elevated);
+    color: var(--text-secondary);
+    cursor: pointer;
+    margin-left: 8px;
+}
+
+.btn-tiny:hover {
+    background: var(--color-accent);
+    color: white;
+}
+
 /* Styled HTML iframe preview */
 .preview-iframe {
     width: 100%;

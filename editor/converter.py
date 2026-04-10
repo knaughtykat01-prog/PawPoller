@@ -1691,6 +1691,89 @@ def _extract_html_template(template: str) -> str:
     return template
 
 
+def generate_styled_css(theme: dict, template: str) -> str:
+    """Generate the standalone CSS file content from a theme + template.
+
+    Extracts the <style> block from the filled template, strips the
+    <style> tags, and returns pure CSS. This is the content of style.css
+    that all Styled HTML files reference via <link>.
+    """
+    # Build a dummy document just to get the filled CSS
+    dummy_fm = FrontMatter(title="__DUMMY__", warning="__DUMMY__", disclaimer="__DUMMY__")
+    doc = _fill_template(_extract_html_template(template), theme, dummy_fm, "")
+
+    # Extract the <style> block
+    m = re.search(r"<style>(.*?)</style>", doc, re.DOTALL)
+    if not m:
+        return ""
+    return m.group(1).strip()
+
+
+@dataclass
+class StyledHtmlOutput:
+    """Output from the external-CSS styled HTML generator.
+
+    Contains both the CSS (for style.css) and the HTML documents
+    (which use <link href="style.css"> instead of embedded <style>).
+    """
+    css: str
+    full_story: ConversionResult | None = None
+    chapters: list[ConversionResult] = field(default_factory=list)
+
+
+def convert_to_styled_html_external_css(
+    markdown_text: str,
+    theme: dict,
+    template: str,
+    *,
+    mode: str = "full",
+    css_href: str = "style.css",
+) -> StyledHtmlOutput:
+    """Generate Styled HTML with external CSS reference.
+
+    Returns a StyledHtmlOutput with:
+      - css: the standalone CSS file content
+      - full_story or chapters: HTML documents using <link> instead of <style>
+
+    The HTML documents reference the CSS via:
+      <link rel="stylesheet" href="{css_href}">
+    """
+    # Generate the CSS
+    css = generate_styled_css(theme, template)
+
+    # Generate the HTML with embedded CSS (reuse existing function)
+    if mode == "full":
+        result = convert_to_styled_html(markdown_text, theme, template, mode="full")
+        # Replace <style>...</style> with <link>
+        html = _replace_style_with_link(result.output, css_href)
+        output = StyledHtmlOutput(
+            css=css,
+            full_story=ConversionResult(output=html, format="styled_html", stats=result.stats),
+        )
+        return output
+
+    # mode == "chapters"
+    results = convert_to_styled_html(markdown_text, theme, template, mode="chapters")
+    if isinstance(results, ConversionResult):
+        results = [results]
+    ch_outputs = []
+    for r in results:
+        html = _replace_style_with_link(r.output, css_href)
+        ch_outputs.append(ConversionResult(output=html, format="styled_html", stats=r.stats))
+    return StyledHtmlOutput(css=css, chapters=ch_outputs)
+
+
+def _replace_style_with_link(html: str, css_href: str) -> str:
+    """Replace the embedded <style>...</style> block with a <link> tag."""
+    return re.sub(
+        r"<style>.*?</style>",
+        f'<link rel="stylesheet" href="{_escape_html(css_href)}">',
+        html,
+        count=1,
+        flags=re.DOTALL,
+    )
+
+
 def convert(markdown_text: str, target_format: str, **kwargs) -> ConversionResult:
     """Convert markdown to the specified format.
 

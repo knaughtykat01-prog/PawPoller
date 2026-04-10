@@ -70,6 +70,7 @@ const Editor = {
                         <span id="editor-status" class="editor-status"></span>
                         <span id="editor-wordcount" class="editor-wordcount"></span>
                         <button id="editor-save-btn" class="btn btn-sm" onclick="Editor.save()">Save</button>
+                        <button id="editor-css-btn" class="btn btn-sm btn-outline" onclick="Editor.toggleCssEditor()">CSS</button>
                         <button id="editor-regen-btn" class="btn btn-sm btn-outline" onclick="Editor.regenerate()">Regenerate</button>
                         <select id="editor-format-select">
                             <option value="clean_html">Clean HTML (AO3)</option>
@@ -434,6 +435,73 @@ const Editor = {
             el.innerHTML = `<span style="color:${color}" title="${rating}: ${Object.keys(data.word_hits || {}).slice(0, 5).join(', ')}">Slop: ${score}</span>`;
         } catch (err) {
             el.textContent = 'Slop: error';
+        }
+    },
+
+    // ---------------------------------------------------------------------------
+    // CSS Editor
+    // ---------------------------------------------------------------------------
+
+    cssEditorOpen: false,
+
+    async toggleCssEditor() {
+        this.cssEditorOpen = !this.cssEditorOpen;
+        const quad = document.querySelector('.editor-quad');
+        let cssPanel = document.getElementById('panel-css-editor');
+
+        if (this.cssEditorOpen) {
+            if (!cssPanel) {
+                // Create CSS panel
+                const panel = document.createElement('div');
+                panel.className = 'editor-quad-panel editor-css-panel';
+                panel.id = 'panel-css-editor';
+                panel.innerHTML = `
+                    <div class="preview-panel-header">
+                        Style CSS
+                        <button class="btn-tiny" onclick="Editor.saveCss()">Save CSS</button>
+                    </div>
+                    <textarea id="css-textarea" spellcheck="false" placeholder="Loading CSS..."></textarea>
+                `;
+                quad.appendChild(panel);
+            }
+            // Load CSS
+            try {
+                const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/css`);
+                const data = await resp.json();
+                const ta = document.getElementById('css-textarea');
+                if (ta) ta.value = data.css || '';
+                if (data.error) this._updateStatus(`CSS: ${data.error}`);
+            } catch (err) {
+                this._updateStatus(`CSS load error: ${err.message}`);
+            }
+            // Expand grid to 5 columns
+            quad.style.gridTemplateColumns = '1fr 1fr 1fr 1fr 1fr';
+        } else {
+            if (cssPanel) cssPanel.remove();
+            quad.style.gridTemplateColumns = '1fr 1fr 1fr 1fr';
+        }
+    },
+
+    async saveCss() {
+        const ta = document.getElementById('css-textarea');
+        if (!ta) return;
+        this._updateStatus('Saving CSS...');
+        try {
+            const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/css`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ css: ta.value }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                this._updateStatus(`CSS saved (${data.bytes} bytes)`);
+                // Refresh styled preview if active
+                if (this.previewFormat === 'styled_html') this._requestPreview();
+            } else {
+                this._updateStatus('CSS save failed');
+            }
+        } catch (err) {
+            this._updateStatus(`CSS save error: ${err.message}`);
         }
     },
 

@@ -385,6 +385,54 @@ async def regenerate(story_name: str, req: RegenerateRequest):
     }
 
 
+class CssSaveRequest(BaseModel):
+    css: str
+
+
+@editor_router.get("/stories/{story_name:path}/css")
+async def get_css(story_name: str):
+    """Get the story's style.css (or generate from CHAPTER_STYLING.md if absent)."""
+    from editor.converter import generate_styled_css, parse_chapter_styling
+    story_dir = _resolve_story_dir(story_name)
+    archive = get_archive_path()
+
+    # Check for existing style.css
+    css_path = story_dir / "HTML" / "style.css"
+    if css_path.is_file():
+        return {"css": css_path.read_text(encoding="utf-8"), "source": "file"}
+
+    # Generate from theme
+    styling_path = story_dir / "CHAPTER_STYLING.md"
+    if not styling_path.is_file():
+        return {"css": "", "source": "none", "error": "No CHAPTER_STYLING.md found"}
+
+    theme = parse_chapter_styling(styling_path.read_text(encoding="utf-8"))
+    template_path = archive / "Reference_Guides" / "Styling" / "HTML_CSS" / "STYLING_REFERENCE.md"
+    if not template_path.is_file():
+        return {"css": "", "source": "none", "error": "No STYLING_REFERENCE.md template"}
+
+    css = generate_styled_css(theme, template_path.read_text(encoding="utf-8"))
+    return {"css": css, "source": "generated"}
+
+
+@editor_router.put("/stories/{story_name:path}/css")
+async def save_css(story_name: str, req: CssSaveRequest):
+    """Save the story's style.css file."""
+    story_dir = _resolve_story_dir(story_name)
+    html_dir = story_dir / "HTML"
+    html_dir.mkdir(exist_ok=True)
+
+    css_path = html_dir / "style.css"
+    css_path.write_text(req.css, encoding="utf-8")
+
+    # Also copy to Chapters/Styled_HTML/ for per-chapter files
+    ch_styled = story_dir / "Chapters" / "Styled_HTML"
+    if ch_styled.is_dir():
+        (ch_styled / "style.css").write_text(req.css, encoding="utf-8")
+
+    return {"ok": True, "bytes": len(req.css)}
+
+
 class SlopRequest(BaseModel):
     content: str
 
