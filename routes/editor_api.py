@@ -226,14 +226,19 @@ async def preview(story_name: str, req: PreviewRequest):
     if req.format == "styled_html":
         from editor.converter import convert_to_styled_html, parse_chapter_styling
         story_dir = _resolve_story_dir(story_name)
+        archive = get_archive_path()
         theme = {}
         styling_path = story_dir / "CHAPTER_STYLING.md"
         if styling_path.is_file():
             theme = parse_chapter_styling(styling_path.read_text(encoding="utf-8"))
-        template_path = Path(str(_resolve_story_dir(story_name)).split("Complete_Stories")[0]) / "Complete_Stories" / "Reference_Guides" / "Styling" / "HTML_CSS" / "STYLING_REFERENCE.md"
         template = ""
+        template_path = archive / "Reference_Guides" / "Styling" / "HTML_CSS" / "STYLING_REFERENCE.md"
         if template_path.is_file():
             template = template_path.read_text(encoding="utf-8")
+        if not template:
+            return {"html": "(Styled HTML requires STYLING_REFERENCE.md template — not found)", "format": "styled_html", "stats": {}, "warnings": ["Template not found"]}
+        if not theme:
+            return {"html": "(Styled HTML requires CHAPTER_STYLING.md theme — not found or empty)", "format": "styled_html", "stats": {}, "warnings": ["Theme not found"]}
         try:
             result = convert_to_styled_html(content, theme, template, mode="full")
         except Exception as e:
