@@ -75,6 +75,7 @@ const Editor = {
                             <option value="clean_html">Clean HTML (AO3)</option>
                             <option value="sofurry_html">SoFurry HTML</option>
                             <option value="bbcode">BBCode (IB)</option>
+                            <option value="styled_html">Styled HTML (PDF)</option>
                         </select>
                     </div>
                 </div>
@@ -226,12 +227,14 @@ const Editor = {
             renderedBody.style.opacity = '0.6';
             sourceBody.style.opacity = '0.6';
 
-            // Fire both requests in parallel: rendered (always clean_html) + source format
+            // Fire both requests in parallel: rendered preview + source format
+            // For styled_html, rendered IS the styled output (iframe); for others, rendered = clean_html
+            const renderedFmt = this.previewFormat === 'styled_html' ? 'styled_html' : 'clean_html';
             const [renderedResp, sourceResp] = await Promise.all([
                 fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content, format: 'clean_html' }),
+                    body: JSON.stringify({ content, format: renderedFmt }),
                 }),
                 fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`, {
                     method: 'POST',
@@ -242,10 +245,17 @@ const Editor = {
 
             if (thisRequestId !== this.previewRequestId) return;
 
-            // Rendered preview (always HTML, displayed as formatted text)
+            // Rendered preview
             if (renderedResp.ok) {
                 const renderedData = await renderedResp.json();
-                renderedBody.innerHTML = '<div class="preview-html">' + (renderedData.html || '') + '</div>';
+                if (this.previewFormat === 'styled_html') {
+                    // Styled HTML is a complete document — render in iframe
+                    renderedBody.innerHTML = '<iframe class="preview-iframe" sandbox="allow-same-origin"></iframe>';
+                    const iframe = renderedBody.querySelector('iframe');
+                    iframe.srcdoc = renderedData.html || '';
+                } else {
+                    renderedBody.innerHTML = '<div class="preview-html">' + (renderedData.html || '') + '</div>';
+                }
             } else {
                 renderedBody.innerHTML = `<p style="color:var(--color-error)">Render failed (${renderedResp.status})</p>`;
             }
@@ -255,7 +265,7 @@ const Editor = {
                 const sourceData = await sourceResp.json();
                 const raw = sourceData.html || '(empty)';
                 const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const fmtLabels = { 'bbcode': 'BBCode', 'clean_html': 'Clean HTML', 'sofurry_html': 'SoFurry HTML' };
+                const fmtLabels = { 'bbcode': 'BBCode', 'clean_html': 'Clean HTML', 'sofurry_html': 'SoFurry HTML', 'styled_html': 'Styled HTML' };
                 const label = fmtLabels[sourceData.format] || sourceData.format;
                 if (sourceHeader) sourceHeader.textContent = `${label} output (${raw.length.toLocaleString()} bytes)`;
                 sourceBody.innerHTML = `<pre class="preview-source">${escaped}</pre>`;

@@ -222,6 +222,29 @@ async def preview(story_name: str, req: PreviewRequest):
             lines = content.split("\n")
             content = "\n".join(lines[ch["line_start"]:ch["line_end"] + 1])
 
+    # Styled HTML needs theme + template from the story's files
+    if req.format == "styled_html":
+        from editor.converter import convert_to_styled_html, parse_chapter_styling
+        story_dir = _resolve_story_dir(story_name)
+        theme = {}
+        styling_path = story_dir / "CHAPTER_STYLING.md"
+        if styling_path.is_file():
+            theme = parse_chapter_styling(styling_path.read_text(encoding="utf-8"))
+        template_path = Path(str(_resolve_story_dir(story_name)).split("Complete_Stories")[0]) / "Complete_Stories" / "Reference_Guides" / "Styling" / "HTML_CSS" / "STYLING_REFERENCE.md"
+        template = ""
+        if template_path.is_file():
+            template = template_path.read_text(encoding="utf-8")
+        try:
+            result = convert_to_styled_html(content, theme, template, mode="full")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "html": result.output,
+            "format": "styled_html",
+            "stats": result.stats,
+            "warnings": result.warnings,
+        }
+
     try:
         result = convert(content, req.format)
     except ValueError as e:
