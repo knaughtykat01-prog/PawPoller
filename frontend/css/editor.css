@@ -110,6 +110,50 @@
     color: var(--text-tertiary);
 }
 
+/* Panel toggle button (× to hide) */
+.panel-toggle {
+    float: right;
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    opacity: 0.5;
+}
+
+.panel-toggle:hover {
+    opacity: 1;
+    color: var(--color-error);
+}
+
+/* Restore bar for hidden panels */
+.panel-restore-bar {
+    display: flex;
+    gap: 6px;
+    padding: 4px 16px;
+    background: var(--surface-elevated);
+    border-bottom: 1px solid var(--border-primary);
+    flex-shrink: 0;
+}
+
+.restore-btn {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border: 1px dashed var(--border-primary);
+    border-radius: 3px;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.restore-btn:hover {
+    border-style: solid;
+    background: var(--surface-primary);
+    color: var(--text-primary);
+}
+
 .preview-panel-header {
     font-size: 0.7rem;
     font-weight: 600;

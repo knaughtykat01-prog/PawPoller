@@ -16,6 +16,7 @@ const Editor = {
     slopDebounceTimer: null,
     isDirty: false,
     chapters: [],
+    hiddenPanels: new Set(),
     _syncingScroll: false,  // prevents scroll event loops
 
     // ---------------------------------------------------------------------------
@@ -80,25 +81,25 @@ const Editor = {
                         </select>
                     </div>
                 </div>
-                <div class="editor-quad">
+                <div class="editor-quad" id="editor-quad">
                     <div class="editor-quad-panel" id="panel-md-code">
-                        <div class="preview-panel-header">Markdown Source</div>
+                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-md-code" title="Hide panel">×</button> Markdown Source</div>
                         <textarea id="editor-textarea" spellcheck="true" placeholder="Loading..."></textarea>
                     </div>
                     <div class="editor-quad-panel" id="panel-md-preview">
-                        <div class="preview-panel-header">Markdown Preview</div>
+                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-md-preview" title="Hide panel">×</button> Markdown Preview</div>
                         <div class="preview-panel-body" id="editor-preview-rendered-body">
                             <p style="color:var(--text-secondary)">Loading...</p>
                         </div>
                     </div>
                     <div class="editor-quad-panel" id="panel-fmt-source">
-                        <div class="preview-panel-header" id="editor-source-header">Format Source</div>
+                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-fmt-source" title="Hide panel">×</button> <span id="editor-source-header">Format Source</span></div>
                         <div class="preview-panel-body" id="editor-preview-source-body">
                             <p style="color:var(--text-secondary)">Loading...</p>
                         </div>
                     </div>
                     <div class="editor-quad-panel" id="panel-fmt-preview">
-                        <div class="preview-panel-header" id="editor-fmt-preview-header">Format Preview</div>
+                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-fmt-preview" title="Hide panel">×</button> <span id="editor-fmt-preview-header">Format Preview</span></div>
                         <div class="preview-panel-body" id="editor-preview-fmt-body">
                             <p style="color:var(--text-secondary)">Loading...</p>
                         </div>
@@ -133,6 +134,10 @@ const Editor = {
             if (cssBtn) {
                 cssBtn.addEventListener('click', () => this.toggleCssEditor());
             }
+            // Panel toggle buttons
+            document.querySelectorAll('.panel-toggle').forEach(btn => {
+                btn.addEventListener('click', () => this.togglePanel(btn.dataset.panel));
+            });
             ta.addEventListener('input', () => this._onInput());
             ta.addEventListener('keydown', (e) => {
                 if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -441,6 +446,59 @@ const Editor = {
         } catch (err) {
             el.textContent = 'Slop: error';
         }
+    },
+
+    // ---------------------------------------------------------------------------
+    // Panel visibility toggles
+    // ---------------------------------------------------------------------------
+
+    togglePanel(panelId) {
+        const panel = document.getElementById(panelId);
+        if (!panel) return;
+
+        if (this.hiddenPanels.has(panelId)) {
+            // Show
+            this.hiddenPanels.delete(panelId);
+            panel.style.display = '';
+        } else {
+            // Hide
+            this.hiddenPanels.add(panelId);
+            panel.style.display = 'none';
+        }
+        this._updateGridColumns();
+        this._updateRestoreBar();
+    },
+
+    _updateGridColumns() {
+        const quad = document.getElementById('editor-quad');
+        if (!quad) return;
+        const visible = quad.querySelectorAll('.editor-quad-panel:not([style*="display: none"])').length;
+        quad.style.gridTemplateColumns = Array(visible).fill('1fr').join(' ');
+    },
+
+    _updateRestoreBar() {
+        let bar = document.getElementById('panel-restore-bar');
+        if (this.hiddenPanels.size === 0) {
+            if (bar) bar.remove();
+            return;
+        }
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'panel-restore-bar';
+            bar.className = 'panel-restore-bar';
+            const toolbar = document.querySelector('.editor-toolbar');
+            if (toolbar) toolbar.after(bar);
+        }
+        const labels = {
+            'panel-md-code': 'MD Source',
+            'panel-md-preview': 'MD Preview',
+            'panel-fmt-source': 'Format Source',
+            'panel-fmt-preview': 'Format Preview',
+            'panel-css-editor': 'CSS',
+        };
+        bar.innerHTML = [...this.hiddenPanels].map(id =>
+            `<button class="restore-btn" onclick="Editor.togglePanel('${id}')">${labels[id] || id}</button>`
+        ).join('');
     },
 
     // ---------------------------------------------------------------------------
