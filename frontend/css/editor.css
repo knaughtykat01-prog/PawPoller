@@ -175,10 +175,8 @@
     color: var(--text-tertiary);
 }
 
-/* Chapter headings: <p><strong>Chapter/Part...</strong></p>
-   These are <p> tags whose only child is <strong> containing "Chapter" or "Part" */
-.preview-html p:has(> strong:only-child) {
-    text-align: center;
+/* Chapter headings + structural bold-only lines (centred by inline style) */
+.preview-html p[style*="text-align:center"]:has(> strong:only-child) {
     font-size: 1.2em;
     font-variant: small-caps;
     letter-spacing: 0.04em;
@@ -186,8 +184,7 @@
     color: var(--text-primary);
 }
 
-/* But don't over-style POV markers (shorter bold lines) */
-.preview-html p:has(> strong:only-child) strong {
+.preview-html p[style*="text-align:center"]:has(> strong:only-child) strong {
     font-weight: 600;
 }
 
