@@ -234,7 +234,7 @@
     font-size: 12px;
     line-height: 1.5;
     background: var(--surface-primary);
-    color: #9cdcfe;
+    color: var(--text-primary);
     tab-size: 4;
 }
 
