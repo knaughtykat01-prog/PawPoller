@@ -49,16 +49,12 @@ SKIP_DIRS = {"Reference_Guides"}
 
 
 def _resolve_story_dir(story_name: str) -> Path:
-    """Resolve a story name to its directory. Handles versioned stories."""
+    """Resolve a story name to its directory. Handles versioned stories
+    like 'The_Abstinent_Bet/Nice_Version' via the :path converter."""
     archive = get_archive_path()
-    # Direct match
-    direct = archive / story_name
-    if direct.is_dir():
-        return direct
-    # Try as a sub-path (e.g., "The_Abstinent_Bet/Nice_Version")
-    sub = archive / story_name
-    if sub.is_dir():
-        return sub
+    candidate = archive / story_name
+    if candidate.is_dir():
+        return candidate
     raise HTTPException(status_code=404, detail=f"Story not found: {story_name}")
 
 

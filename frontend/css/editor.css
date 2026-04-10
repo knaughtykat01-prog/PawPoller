@@ -265,14 +265,6 @@
 }
 
 /* Raw source output view */
-.preview-source-header {
-    font-size: 0.8rem;
-    color: var(--text-tertiary);
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-primary);
-    margin-bottom: 12px;
-}
-
 .preview-source {
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 12.5px;

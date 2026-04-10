@@ -565,15 +565,12 @@ def convert_to_clean_html(markdown_text: str) -> ConversionResult:
             if re.match(r"^\*[^*]+\*$", stripped):
                 inner = stripped[1:-1]
                 if not inner.startswith("End of "):
-                    if True:
-                        flush()
-                        body_parts.append(_center_html(f"<em>{_escape_html(inner)}</em>"))
-                        subtitle_done = True
-                        stats["subtitle"] = inner
-                        i += 1
-                        continue
-                    else:
-                        subtitle_done = True
+                    flush()
+                    body_parts.append(_center_html(f"<em>{_escape_html(inner)}</em>"))
+                    subtitle_done = True
+                    stats["subtitle"] = inner
+                    i += 1
+                    continue
             else:
                 subtitle_done = True
 

@@ -510,23 +510,4 @@ const Editor = {
         }
     },
 
-    _setupDivider() {
-        const divider = document.getElementById('editor-divider');
-        const container = document.querySelector('.editor-split');
-        if (!divider || !container) return;
-
-        let isDragging = false;
-        divider.addEventListener('mousedown', (e) => {
-            isDragging = true;
-            e.preventDefault();
-        });
-        document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-            const rect = container.getBoundingClientRect();
-            const pct = ((e.clientX - rect.left) / rect.width) * 100;
-            const clamped = Math.min(80, Math.max(20, pct));
-            container.style.gridTemplateColumns = `${clamped}% 4px ${100 - clamped}%`;
-        });
-        document.addEventListener('mouseup', () => { isDragging = false; });
-    },
 };
