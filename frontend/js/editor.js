@@ -70,7 +70,7 @@ const Editor = {
                         <span id="editor-status" class="editor-status"></span>
                         <span id="editor-wordcount" class="editor-wordcount"></span>
                         <button id="editor-save-btn" class="btn btn-sm" onclick="Editor.save()">Save</button>
-                        <button id="editor-css-btn" class="btn btn-sm btn-outline" onclick="Editor.toggleCssEditor()">CSS</button>
+                        <button id="editor-css-btn" class="btn btn-sm btn-outline">CSS</button>
                         <button id="editor-regen-btn" class="btn btn-sm btn-outline" onclick="Editor.regenerate()">Regenerate</button>
                         <select id="editor-format-select">
                             <option value="clean_html">Clean HTML (AO3)</option>
@@ -128,6 +128,10 @@ const Editor = {
                 formatSelect.addEventListener('change', (e) => {
                     this.switchFormat(e.target.value);
                 });
+            }
+            const cssBtn = document.getElementById('editor-css-btn');
+            if (cssBtn) {
+                cssBtn.addEventListener('click', () => this.toggleCssEditor());
             }
             ta.addEventListener('input', () => this._onInput());
             ta.addEventListener('keydown', (e) => {
@@ -467,7 +471,7 @@ const Editor = {
             }
             // Load CSS
             try {
-                const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/css`);
+                const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/css`, { credentials: 'same-origin' });
                 const data = await resp.json();
                 const ta = document.getElementById('css-textarea');
                 if (ta) ta.value = data.css || '';
