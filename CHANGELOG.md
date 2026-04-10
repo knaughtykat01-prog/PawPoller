@@ -4,6 +4,64 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.5.0] - 2026-04-10
+
+### Added — Story Editor: all formats complete + anchor system + slop scoring
+
+The story editor is now a full pipeline — every format automated from MASTER.md.
+
+**Anchor-based MASTER.md parsing (Phases 1-2):**
+- 7 HTML comment anchors mark structural sections: `@title`, `@subtitle`, `@byline`, `@warning`, `@disclaimer`, `@fanfiction`, `@body`
+- `parse_front_matter()` extracts structured `FrontMatter` dataclass from anchored files
+- 4 format-specific front matter renderers (Clean HTML, SoFurry HTML, BBCode, SQW)
+- Heuristic fallback for non-anchored files (backwards compatible)
+- Migration script `add_anchors_to_master.py` processed all 13 stories — warning/disclaimer text sourced from canonical SQW Chapter 1 files
+- `@fanfiction` anchor for IP attribution (Chosen = DreamWorks, Silk = Bethesda)
+
+**Standalone converter unification (Phase 3):**
+- `convert_md_to_sofurry_html.py` and `convert_md_to_bbcode.py` replaced with 80-line wrappers that import from `editor/converter.py`
+- ~1,000 lines of duplicate parser code eliminated
+
+**SQW auto-generation (Phase 4):**
+- `convert_to_sqw_chapters()` generates per-chapter SquidgeWorld body HTML from anchored source
+- Chapter 1: full warning-page div; Chapter 2+: bare title block
+- Warning icon read from CHAPTER_STYLING.md per story
+- Wired into editor regenerate endpoint
+
+**Styled HTML generator (the last manual format):**
+- `convert_to_styled_html()` generates complete HTML documents with embedded CSS
+- `parse_chapter_styling()` reads 14 colour variables from CHAPTER_STYLING.md
+- 3 modes: full story, per-chapter, single chapter
+- Template from STYLING_REFERENCE.md with `{{PLACEHOLDER}}` variable filling
+- Print CSS generation (colour-preserve + grayscale modes)
+- Editor renders Styled HTML in sandboxed iframe
+
+**Slop scoring:**
+- `editor/slop.py` — ported EQ-Bench scorer for in-memory use
+- `POST /api/editor/{story}/slop` endpoint
+- Colour-coded badge in editor toolbar (green CLEAN < 15, yellow BORDERLINE 15-25, red SLOP > 25)
+- Refreshes on load + after save
+
+**SF replace_file() fix:**
+- Upload-first-then-delete order (SF won't delete the last content item)
+- 32 duplicate content items cleaned across 12 stories
+
+**SoFurry HTML converter:**
+- New `convert_to_sofurry_html()` using SF's actual HTML capabilities (`<h2>`, `<h3>`, `text-center`)
+- `story_reader.py` updated to prefer `*_SoFurry.html` over `*_Clean.html` for SF uploads
+- SoFurry HTML capabilities reference documented from `sofurry_html_capabilities.html`
+
+**Content warning standardisation:**
+- 7 MASTER.md files received Content Warning + DISCLAIMER blocks (were missing)
+- Centering rules enforced: title, subtitle, CW, disclaimer, chapter headings, POV markers, section breaks, end marker — all centred in every format
+- `_is_warning_line()` detector + `in_warning_block` state tracking (heuristic, replaced by anchors)
+
+**Editor format dropdown:** Clean HTML (AO3), SoFurry HTML, BBCode (IB), Styled HTML (PDF) — 4 formats, all live-converting from the textarea
+
+**converter.py:** 1,722 lines (from 457 at session start)
+
+---
+
 ## [2.4.0] - 2026-04-09
 
 ### Added — Story Editor (Phase 1: Edit + Preview + Regenerate)
