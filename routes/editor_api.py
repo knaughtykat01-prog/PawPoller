@@ -416,12 +416,20 @@ async def save_theme(story_name: str, req: ThemeSaveRequest):
     archive = get_archive_path()
 
     template_path = archive / "Reference_Guides" / "Styling" / "HTML_CSS" / "STYLING_REFERENCE.md"
-    template = template_path.read_text(encoding="utf-8") if template_path.is_file() else ""
-    if not template:
-        raise HTTPException(status_code=500, detail="STYLING_REFERENCE.md template not found")
+    if not template_path.is_file():
+        logger.error("Theme save: template not found at %s (archive=%s)", template_path, archive)
+        raise HTTPException(status_code=500, detail=f"STYLING_REFERENCE.md not found (archive={archive})")
+    template = template_path.read_text(encoding="utf-8")
 
     # Generate CSS from the new theme variables
-    css = generate_styled_css(req.variables, template)
+    try:
+        css = generate_styled_css(req.variables, template)
+    except Exception as e:
+        logger.error("Theme save: generate_styled_css failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"CSS generation failed: {e}")
+
+    if not css:
+        logger.warning("Theme save: generated CSS is empty (template may be malformed)")
 
     # Write style.css
     html_dir = story_dir / "HTML"

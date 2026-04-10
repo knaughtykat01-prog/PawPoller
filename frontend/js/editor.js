@@ -859,24 +859,34 @@ const Editor = {
     async saveTheme() {
         this._updateStatus('Saving theme...');
         try {
+            let resp, data;
             if (this.themeSourceMode && this.cmCssView) {
                 // Save raw CSS directly
-                const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/css`, {
+                resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/css`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ css: this.cmCssView.state.doc.toString() }),
                 });
-                const data = await resp.json();
-                this._updateStatus(data.ok ? `CSS saved (${data.bytes}b)` : 'Save failed');
             } else {
                 // Save theme variables → regenerate CSS
-                const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/theme`, {
+                resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/theme`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ variables: this.themeVars }),
                 });
-                const data = await resp.json();
-                this._updateStatus(data.ok ? `Theme saved (${data.css_bytes}b CSS)` : 'Save failed');
+            }
+            if (!resp.ok) {
+                const errText = await resp.text();
+                let detail = `HTTP ${resp.status}`;
+                try { detail = JSON.parse(errText).detail || detail; } catch {}
+                this._updateStatus(`Save failed: ${detail}`);
+                return;
+            }
+            data = await resp.json();
+            if (this.themeSourceMode) {
+                this._updateStatus(`CSS saved (${data.bytes}b)`);
+            } else {
+                this._updateStatus(`Theme saved (${data.css_bytes}b CSS)`);
             }
             if (this.previewFormat === 'styled_html') this._requestPreview();
         } catch (err) {
