@@ -175,10 +175,26 @@
     color: var(--text-tertiary);
 }
 
-/* Centred bold paragraphs (titles, headings, markers) — just spacing, no small-caps
-   (small-caps via :has() is unreliable — text nodes aren't element children) */
-.preview-html p[style*="text-align:center"] {
+/* Centred paragraphs — both inline style and SF class variants */
+.preview-html p[style*="text-align:center"],
+.preview-html .text-center,
+.preview-html p.text-center {
+    text-align: center;
     margin: 1.5em 0;
+}
+
+.preview-html h2.text-center,
+.preview-html h3.text-center {
+    text-align: center;
+    margin: 1.5em 0;
+}
+
+.preview-html .text-right {
+    text-align: right;
+}
+
+.preview-html .text-left {
+    text-align: left;
 }
 
 /* Chapter separator <hr> */
