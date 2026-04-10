@@ -183,6 +183,7 @@ def _is_warning_line(stripped: str) -> bool:
     return (
         stripped.startswith("**Content Warning**")
         or stripped.startswith("**Content Warning:**")
+        or stripped.startswith("**Content Warning:")
         or stripped == "**DISCLAIMER**"
         or stripped.startswith("**DISCLAIMER**")
     )
