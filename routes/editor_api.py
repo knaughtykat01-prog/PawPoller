@@ -392,6 +392,49 @@ async def regenerate(story_name: str, req: RegenerateRequest):
     }
 
 
+class ThemeSaveRequest(BaseModel):
+    variables: dict
+
+
+@editor_router.get("/stories/{story_name:path}/theme")
+async def get_theme(story_name: str):
+    """Get the story's theme variables as a dict."""
+    from editor.converter import parse_chapter_styling, STYLED_HTML_THEME_KEYS
+    story_dir = _resolve_story_dir(story_name)
+    styling_path = story_dir / "CHAPTER_STYLING.md"
+    if not styling_path.is_file():
+        return {"variables": {}, "error": "No CHAPTER_STYLING.md found"}
+    theme = parse_chapter_styling(styling_path.read_text(encoding="utf-8"))
+    return {"variables": theme, "keys": STYLED_HTML_THEME_KEYS}
+
+
+@editor_router.put("/stories/{story_name:path}/theme")
+async def save_theme(story_name: str, req: ThemeSaveRequest):
+    """Save theme variables → regenerate style.css + update CHAPTER_STYLING.md."""
+    from editor.converter import generate_styled_css, STYLED_HTML_THEME_KEYS
+    story_dir = _resolve_story_dir(story_name)
+    archive = get_archive_path()
+
+    template_path = archive / "Reference_Guides" / "Styling" / "HTML_CSS" / "STYLING_REFERENCE.md"
+    template = template_path.read_text(encoding="utf-8") if template_path.is_file() else ""
+    if not template:
+        raise HTTPException(status_code=500, detail="STYLING_REFERENCE.md template not found")
+
+    # Generate CSS from the new theme variables
+    css = generate_styled_css(req.variables, template)
+
+    # Write style.css
+    html_dir = story_dir / "HTML"
+    html_dir.mkdir(exist_ok=True)
+    (html_dir / "style.css").write_text(css, encoding="utf-8")
+
+    ch_styled = story_dir / "Chapters" / "Styled_HTML"
+    if ch_styled.is_dir():
+        (ch_styled / "style.css").write_text(css, encoding="utf-8")
+
+    return {"ok": True, "css_bytes": len(css)}
+
+
 class CssSaveRequest(BaseModel):
     css: str
 

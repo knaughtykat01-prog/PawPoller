@@ -685,69 +685,202 @@ const Editor = {
     // ---------------------------------------------------------------------------
 
     cssEditorOpen: false,
+    themeVars: {},
+    themeSourceMode: false,  // false = GUI, true = raw CSS source
 
     async toggleCssEditor() {
         this.cssEditorOpen = !this.cssEditorOpen;
-        const quad = document.querySelector('.editor-quad');
+        const quad = document.getElementById('editor-quad');
         let cssPanel = document.getElementById('panel-css-editor');
 
         if (this.cssEditorOpen) {
             if (!cssPanel) {
-                // Create CSS panel
                 const panel = document.createElement('div');
                 panel.className = 'editor-quad-panel editor-css-panel';
                 panel.id = 'panel-css-editor';
                 panel.innerHTML = `
                     <div class="preview-panel-header">
-                        Style CSS
-                        <button class="btn-tiny" id="css-save-btn">Save CSS</button>
+                        <button class="panel-toggle" data-panel="panel-css-editor" title="Hide panel">&#128065;</button>
+                        Theme Editor
+                        <button class="btn-tiny" id="theme-save-btn">Save</button>
+                        <button class="btn-tiny" id="theme-source-btn">Source</button>
                     </div>
-                    <div id="css-cm-container" class="editor-cm-container"></div>
+                    <div id="theme-editor-body" class="preview-panel-body theme-editor-body"></div>
                 `;
                 quad.appendChild(panel);
-                document.getElementById('css-save-btn')?.addEventListener('click', () => this.saveCss());
+                document.getElementById('theme-save-btn')?.addEventListener('click', () => this.saveTheme());
+                document.getElementById('theme-source-btn')?.addEventListener('click', () => this._toggleThemeSource());
+                document.querySelector('#panel-css-editor .panel-toggle')?.addEventListener('click', () => this.togglePanel('panel-css-editor'));
             }
-            // Load CSS
-            try {
-                const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/css`, { credentials: 'same-origin' });
-                const data = await resp.json();
-                const container = document.getElementById('css-cm-container');
-                if (container) {
-                    this.cmCssView = this._createCmInstance(container, data.css || '', 'css', false);
-                }
-                if (data.error) this._updateStatus(`CSS: ${data.error}`);
-            } catch (err) {
-                this._updateStatus(`CSS load error: ${err.message}`);
-            }
-            // Expand grid to 5 columns
-            quad.style.gridTemplateColumns = '1fr 1fr 1fr 1fr 1fr';
+            await this._loadThemeEditor();
+            this._updateGridColumns();
         } else {
             if (this.cmCssView) { this.cmCssView.destroy(); this.cmCssView = null; }
             if (cssPanel) cssPanel.remove();
-            quad.style.gridTemplateColumns = '1fr 1fr 1fr 1fr';
+            this._updateGridColumns();
         }
     },
 
-    async saveCss() {
-        const cssContent = this.cmCssView ? this.cmCssView.state.doc.toString() : '';
-        if (!cssContent) return;
-        this._updateStatus('Saving CSS...');
+    async _loadThemeEditor() {
+        const body = document.getElementById('theme-editor-body');
+        if (!body) return;
+
         try {
-            const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/css`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ css: cssContent }),
-            });
+            const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/theme`);
             const data = await resp.json();
-            if (data.ok) {
-                this._updateStatus(`CSS saved (${data.bytes} bytes)`);
-                // Refresh styled preview if active
-                if (this.previewFormat === 'styled_html') this._requestPreview();
-            } else {
-                this._updateStatus('CSS save failed');
-            }
+            this.themeVars = data.variables || {};
+            if (data.error) { this._updateStatus(`Theme: ${data.error}`); return; }
+            this._renderThemeGUI();
         } catch (err) {
-            this._updateStatus(`CSS save error: ${err.message}`);
+            body.innerHTML = `<p style="color:var(--color-error)">Error: ${err.message}</p>`;
+        }
+    },
+
+    _renderThemeGUI() {
+        const body = document.getElementById('theme-editor-body');
+        if (!body) return;
+
+        const colorRow = (label, key) => {
+            const val = this.themeVars[key] || '#000000';
+            return `<div class="theme-row">
+                <label>${label}</label>
+                <input type="color" value="${val.startsWith('#') ? val : '#000000'}" data-key="${key}">
+                <input type="text" value="${val}" data-key="${key}" class="theme-hex">
+            </div>`;
+        };
+
+        const textRow = (label, key, placeholder) => {
+            const val = this.themeVars[key] || '';
+            return `<div class="theme-row">
+                <label>${label}</label>
+                <input type="text" value="${val}" data-key="${key}" class="theme-text" placeholder="${placeholder || ''}">
+            </div>`;
+        };
+
+        const selectRow = (label, key, options) => {
+            const val = this.themeVars[key] || options[0]?.value || '';
+            const opts = options.map(o => `<option value="${o.value}" ${o.value === val ? 'selected' : ''}>${o.label}</option>`).join('');
+            return `<div class="theme-row">
+                <label>${label}</label>
+                <select data-key="${key}">${opts}</select>
+            </div>`;
+        };
+
+        body.innerHTML = `
+            <div class="theme-section">
+                <h4>Colours</h4>
+                ${colorRow('Background', 'BACKGROUND')}
+                ${colorRow('Body Text', 'TEXT_COLOUR')}
+                ${colorRow('Title', 'TITLE_COLOUR')}
+                ${colorRow('Byline', 'BYLINE_COLOUR')}
+                ${colorRow('Accent', 'ACCENT_COLOUR')}
+                ${colorRow('Warning Heading', 'WARNING_HEADING_COLOUR')}
+                ${colorRow('Warning Body', 'WARNING_BODY_COLOUR')}
+                ${colorRow('Disclaimer', 'DISCLAIMER_HEADING_COLOUR')}
+                ${colorRow('Story End', 'STORY_END_COLOUR')}
+                ${colorRow('Signature', 'SIGNATURE_COLOUR')}
+            </div>
+            <div class="theme-section">
+                <h4>Typography</h4>
+                ${textRow('Title Shadow', 'TITLE_TEXT_SHADOW', 'text-shadow: 0 0 25px rgba(...)')}
+            </div>
+            <div class="theme-section">
+                <h4>Decorations</h4>
+                ${textRow('Warning Icon', 'WARNING_ICON', '&#9888;')}
+                ${textRow('Section Break', 'SECTION_BREAK_SYMBOL', '· ✦ ·')}
+            </div>
+            <div class="theme-section">
+                <h4>Print</h4>
+                ${selectRow('Approach', 'PRINT_APPROACH', [
+                    {value: 'colour-preserve', label: 'Colour Preserve (dark bg)'},
+                    {value: 'grayscale', label: 'Grayscale (light bg)'},
+                ])}
+            </div>
+        `;
+
+        // Bind colour picker ↔ hex input sync
+        body.querySelectorAll('input[type="color"]').forEach(picker => {
+            const key = picker.dataset.key;
+            const hex = body.querySelector(`.theme-hex[data-key="${key}"]`);
+            picker.addEventListener('input', () => {
+                if (hex) hex.value = picker.value;
+                this.themeVars[key] = picker.value;
+                this._onThemeChange();
+            });
+        });
+        body.querySelectorAll('.theme-hex').forEach(input => {
+            const key = input.dataset.key;
+            const picker = body.querySelector(`input[type="color"][data-key="${key}"]`);
+            input.addEventListener('change', () => {
+                if (picker && input.value.match(/^#[0-9a-fA-F]{6}$/)) picker.value = input.value;
+                this.themeVars[key] = input.value;
+                this._onThemeChange();
+            });
+        });
+        body.querySelectorAll('.theme-text, select[data-key]').forEach(input => {
+            input.addEventListener('change', () => {
+                this.themeVars[input.dataset.key] = input.value;
+                this._onThemeChange();
+            });
+        });
+    },
+
+    _onThemeChange() {
+        // Live preview refresh if styled_html is active
+        if (this.previewFormat === 'styled_html') {
+            clearTimeout(this.previewDebounceTimer);
+            this.previewDebounceTimer = setTimeout(() => this._requestPreview(), 300);
+        }
+    },
+
+    _toggleThemeSource() {
+        this.themeSourceMode = !this.themeSourceMode;
+        const body = document.getElementById('theme-editor-body');
+        const btn = document.getElementById('theme-source-btn');
+        if (!body) return;
+
+        if (this.themeSourceMode) {
+            // Show raw CSS
+            if (btn) btn.textContent = 'GUI';
+            (async () => {
+                const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/css`);
+                const data = await resp.json();
+                if (this.cmCssView) { this.cmCssView.destroy(); this.cmCssView = null; }
+                this.cmCssView = this._createCmInstance(body, data.css || '', 'css', false);
+            })();
+        } else {
+            // Back to GUI
+            if (btn) btn.textContent = 'Source';
+            if (this.cmCssView) { this.cmCssView.destroy(); this.cmCssView = null; }
+            this._renderThemeGUI();
+        }
+    },
+
+    async saveTheme() {
+        this._updateStatus('Saving theme...');
+        try {
+            if (this.themeSourceMode && this.cmCssView) {
+                // Save raw CSS directly
+                const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/css`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ css: this.cmCssView.state.doc.toString() }),
+                });
+                const data = await resp.json();
+                this._updateStatus(data.ok ? `CSS saved (${data.bytes}b)` : 'Save failed');
+            } else {
+                // Save theme variables → regenerate CSS
+                const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/theme`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ variables: this.themeVars }),
+                });
+                const data = await resp.json();
+                this._updateStatus(data.ok ? `Theme saved (${data.css_bytes}b CSS)` : 'Save failed');
+            }
+            if (this.previewFormat === 'styled_html') this._requestPreview();
+        } catch (err) {
+            this._updateStatus(`Theme save error: ${err.message}`);
         }
     },
 

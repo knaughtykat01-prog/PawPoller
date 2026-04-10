@@ -288,24 +288,83 @@
     color: var(--text-tertiary);
 }
 
-/* CSS editor panel */
+/* Theme editor panel */
 .editor-css-panel {
     background: var(--surface-primary);
 }
 
-#css-textarea {
-    width: 100%;
-    flex: 1;
-    resize: none;
-    border: none;
-    outline: none;
-    padding: 10px 12px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 12px;
-    line-height: 1.5;
-    background: var(--surface-primary);
+.theme-editor-body {
+    padding: 8px 10px !important;
+    overflow-y: auto;
+}
+
+.theme-section {
+    margin-bottom: 12px;
+}
+
+.theme-section h4 {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    margin: 0 0 6px 0;
+    padding-bottom: 3px;
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.theme-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.theme-row label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    min-width: 100px;
+    flex-shrink: 0;
+}
+
+.theme-row input[type="color"] {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+    padding: 1px;
+    cursor: pointer;
+    background: none;
+}
+
+.theme-row .theme-hex {
+    width: 75px;
+    font-family: 'Consolas', monospace;
+    font-size: 0.75rem;
+    padding: 2px 4px;
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+    background: var(--surface-elevated);
     color: var(--text-primary);
-    tab-size: 4;
+}
+
+.theme-row .theme-text {
+    flex: 1;
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+    background: var(--surface-elevated);
+    color: var(--text-primary);
+}
+
+.theme-row select {
+    flex: 1;
+    font-size: 0.75rem;
+    padding: 2px 4px;
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+    background: var(--surface-elevated);
+    color: var(--text-primary);
 }
 
 .btn-tiny {
