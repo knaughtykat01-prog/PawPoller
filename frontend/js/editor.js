@@ -235,6 +235,38 @@ const Editor = {
         });
     },
 
+    /** BBCode language definition for CodeMirror */
+    _bbcodeLang: null,
+    _getBBCodeLang() {
+        if (this._bbcodeLang) return this._bbcodeLang;
+        if (typeof CM === 'undefined' || !CM.StreamLanguage) return null;
+
+        this._bbcodeLang = CM.StreamLanguage.define({
+            token(stream) {
+                // Opening tags: [b], [i], [center], [t], [color=#hex], [size=N], [right], [left]
+                if (stream.match(/^\[\/?(b|i|u|s|center|right|left|t|url|img|quote)\]/i)) {
+                    return 'keyword';
+                }
+                // Tags with attributes: [color=#hex], [size=N], [url=...]
+                if (stream.match(/^\[\/?(?:color|size|url|font)=[^\]]*\]/i)) {
+                    return 'keyword';
+                }
+                // Closing tags catch-all
+                if (stream.match(/^\[\/[a-z]+\]/i)) {
+                    return 'keyword';
+                }
+                // Unicode decorative chars (section breaks, separators)
+                if (stream.match(/^[─✦✧⚜★☆·⸰✹❀☽☾◆⚝✿❋⁕✶📱❤♥⟨⟩]+/)) {
+                    return 'atom';
+                }
+                // Advance one char
+                stream.next();
+                return null;
+            },
+        });
+        return this._bbcodeLang;
+    },
+
     /** Create a CodeMirror instance for viewing/editing non-MD content */
     _createCmInstance(container, content, lang, readOnly = false) {
         if (typeof CM === 'undefined') return null;
@@ -251,6 +283,10 @@ const Editor = {
         ];
         if (lang === 'html') extensions.push(CM.html());
         else if (lang === 'css') extensions.push(CM.css());
+        else if (lang === 'bbcode') {
+            const bbLang = this._getBBCodeLang();
+            if (bbLang) extensions.push(bbLang);
+        }
         if (readOnly) extensions.push(CM.EditorState.readOnly.of(true));
         else extensions.push(CM.basicSetup);
 
@@ -407,7 +443,7 @@ const Editor = {
                 const raw = fmtData.html || '(empty)';
                 const label = fmtLabels[fmtData.format] || fmtData.format;
                 if (sourceHeader) sourceHeader.textContent = `${label} Source (${raw.length.toLocaleString()} bytes)`;
-                const lang = (this.previewFormat === 'bbcode') ? null : 'html';
+                const lang = (this.previewFormat === 'bbcode') ? 'bbcode' : 'html';
                 if (this.cmSourceView) {
                     this._updateCmContent(this.cmSourceView, raw);
                 } else if (typeof CM !== 'undefined') {
