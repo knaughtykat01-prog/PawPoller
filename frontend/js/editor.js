@@ -232,43 +232,41 @@ const Editor = {
         try {
             [mdPreview, fmtSource, fmtPreview].forEach(el => { if (el) el.style.opacity = '0.6'; });
 
-            // 3 parallel requests: MD preview (always clean_html) + format source + format rendered
-            const [mdResp, srcResp, fmtResp] = await Promise.all([
-                fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`, {
+            // 2 parallel requests: MD preview (clean_html) + selected format
+            const url = `/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`;
+            const [mdResp, fmtResp] = await Promise.all([
+                fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ content, format: 'clean_html' }),
                 }),
-                fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`, {
+                fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ content, format: this.previewFormat }),
                 }),
-                this.previewFormat !== 'clean_html'
-                    ? fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/preview`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ content, format: this.previewFormat }),
-                    })
-                    : null,
             ]);
 
             if (thisRequestId !== this.previewRequestId) return;
 
-            // Panel 2: MD rendered preview (always clean_html as formatted text)
-            if (mdResp.ok) {
-                const d = await mdResp.json();
-                mdPreview.innerHTML = '<div class="preview-html">' + (d.html || '') + '</div>';
+            // Parse responses once
+            const mdData = mdResp.ok ? await mdResp.json() : null;
+            const fmtData = fmtResp.ok ? await fmtResp.json() : null;
+
+            // Panel 2: MD rendered preview
+            if (mdData) {
+                mdPreview.innerHTML = '<div class="preview-html">' + (mdData.html || '') + '</div>';
+            } else {
+                mdPreview.innerHTML = `<p style="color:var(--color-error)">MD preview failed</p>`;
             }
 
             // Panel 3: Format source (raw tags)
-            if (srcResp.ok) {
-                const d = await srcResp.json();
-                const raw = d.html || '(empty)';
+            if (fmtData && fmtSource) {
+                const raw = fmtData.html || '(empty)';
                 const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const label = fmtLabels[d.format] || d.format;
+                const label = fmtLabels[fmtData.format] || fmtData.format;
                 if (sourceHeader) sourceHeader.textContent = `${label} Source (${raw.length.toLocaleString()} bytes)`;
-                if (fmtSource) fmtSource.innerHTML = `<pre class="preview-source">${escaped}</pre>`;
+                fmtSource.innerHTML = `<pre class="preview-source">${escaped}</pre>`;
             }
 
             // Panel 4: Format rendered preview
@@ -276,22 +274,16 @@ const Editor = {
                 const label = fmtLabels[this.previewFormat] || this.previewFormat;
                 if (fmtPreviewHeader) fmtPreviewHeader.textContent = `${label} Preview`;
 
-                if (this.previewFormat === 'clean_html') {
-                    // Same as MD preview — show the rendered clean HTML
-                    if (mdResp.ok) {
-                        const d = await mdResp.clone().json().catch(() => ({ html: '' }));
-                        fmtPreview.innerHTML = '<div class="preview-html">' + (d.html || mdPreview.querySelector('.preview-html')?.innerHTML || '') + '</div>';
-                    }
-                } else if (fmtResp && fmtResp.ok) {
-                    const d = await fmtResp.json();
+                if (this.previewFormat === 'clean_html' && mdData) {
+                    fmtPreview.innerHTML = '<div class="preview-html">' + (mdData.html || '') + '</div>';
+                } else if (fmtData) {
                     if (this.previewFormat === 'styled_html') {
                         fmtPreview.innerHTML = '<iframe class="preview-iframe" sandbox="allow-same-origin"></iframe>';
-                        fmtPreview.querySelector('iframe').srcdoc = d.html || '';
+                        fmtPreview.querySelector('iframe').srcdoc = fmtData.html || '';
                     } else if (this.previewFormat === 'bbcode') {
-                        fmtPreview.innerHTML = '<div class="preview-html">' + this._bbcodeToHtml(d.html || '') + '</div>';
+                        fmtPreview.innerHTML = '<div class="preview-html">' + this._bbcodeToHtml(fmtData.html || '') + '</div>';
                     } else {
-                        // SoFurry HTML — render as formatted text
-                        fmtPreview.innerHTML = '<div class="preview-html">' + (d.html || '') + '</div>';
+                        fmtPreview.innerHTML = '<div class="preview-html">' + (fmtData.html || '') + '</div>';
                     }
                 }
             }
