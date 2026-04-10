@@ -15,7 +15,9 @@ const Editor = {
     chapters: [],
     hiddenPanels: new Set(),
     _syncingScroll: false,
-    cmView: null,           // CodeMirror EditorView instance
+    cmView: null,           // CodeMirror EditorView instance (MD source)
+    cmSourceView: null,     // CodeMirror for format source (read-only)
+    cmCssView: null,        // CodeMirror for CSS editor
     autoSaveTimer: null,    // localStorage auto-save interval
 
     // ---------------------------------------------------------------------------
@@ -233,6 +235,34 @@ const Editor = {
         });
     },
 
+    /** Create a CodeMirror instance for viewing/editing non-MD content */
+    _createCmInstance(container, content, lang, readOnly = false) {
+        if (typeof CM === 'undefined') return null;
+        container.innerHTML = '';
+        const extensions = [
+            CM.oneDark,
+            CM.EditorView.theme({
+                '&': { height: '100%', fontSize: '12px' },
+                '.cm-scroller': { overflow: 'auto', fontFamily: "'Consolas', 'Monaco', monospace" },
+                '.cm-gutters': { background: 'var(--surface-elevated)', color: 'var(--text-tertiary)', border: 'none' },
+            }),
+            CM.lineNumbers(),
+            CM.EditorView.lineWrapping,
+        ];
+        if (lang === 'html') extensions.push(CM.html());
+        else if (lang === 'css') extensions.push(CM.css());
+        if (readOnly) extensions.push(CM.EditorState.readOnly.of(true));
+        else extensions.push(CM.basicSetup);
+
+        return new CM.EditorView({ doc: content, extensions, parent: container });
+    },
+
+    /** Update a CM instance's content without recreating it */
+    _updateCmContent(view, content) {
+        if (!view) return;
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
+    },
+
     /** Get the current editor content (works with both CM and textarea fallback) */
     _getContent() {
         if (this.cmView) return this.cmView.state.doc.toString();
@@ -372,13 +402,20 @@ const Editor = {
                 mdPreview.innerHTML = `<p style="color:var(--color-error)">MD preview failed</p>`;
             }
 
-            // Panel 3: Format source (raw tags)
+            // Panel 3: Format source (syntax highlighted, read-only)
             if (fmtData && fmtSource) {
                 const raw = fmtData.html || '(empty)';
-                const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 const label = fmtLabels[fmtData.format] || fmtData.format;
                 if (sourceHeader) sourceHeader.textContent = `${label} Source (${raw.length.toLocaleString()} bytes)`;
-                fmtSource.innerHTML = `<pre class="preview-source">${escaped}</pre>`;
+                const lang = (this.previewFormat === 'bbcode') ? null : 'html';
+                if (this.cmSourceView) {
+                    this._updateCmContent(this.cmSourceView, raw);
+                } else if (typeof CM !== 'undefined') {
+                    this.cmSourceView = this._createCmInstance(fmtSource, raw, lang, true);
+                } else {
+                    const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    fmtSource.innerHTML = `<pre class="preview-source">${escaped}</pre>`;
+                }
             }
 
             // Panel 4: Format rendered preview
@@ -409,9 +446,9 @@ const Editor = {
     },
 
     switchFormat(fmt) {
-        console.log('[Editor] switchFormat called:', fmt);
         this.previewFormat = fmt;
-        // Cancel any pending debounce so it doesn't overwrite with stale format
+        // Destroy source CM so it gets recreated with the right language
+        if (this.cmSourceView) { this.cmSourceView.destroy(); this.cmSourceView = null; }
         clearTimeout(this.previewDebounceTimer);
         this._requestPreview();
     },
@@ -627,18 +664,21 @@ const Editor = {
                 panel.innerHTML = `
                     <div class="preview-panel-header">
                         Style CSS
-                        <button class="btn-tiny" onclick="Editor.saveCss()">Save CSS</button>
+                        <button class="btn-tiny" id="css-save-btn">Save CSS</button>
                     </div>
-                    <textarea id="css-textarea" spellcheck="false" placeholder="Loading CSS..."></textarea>
+                    <div id="css-cm-container" class="editor-cm-container"></div>
                 `;
                 quad.appendChild(panel);
+                document.getElementById('css-save-btn')?.addEventListener('click', () => this.saveCss());
             }
             // Load CSS
             try {
                 const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/css`, { credentials: 'same-origin' });
                 const data = await resp.json();
-                const ta = document.getElementById('css-textarea');
-                if (ta) ta.value = data.css || '';
+                const container = document.getElementById('css-cm-container');
+                if (container) {
+                    this.cmCssView = this._createCmInstance(container, data.css || '', 'css', false);
+                }
                 if (data.error) this._updateStatus(`CSS: ${data.error}`);
             } catch (err) {
                 this._updateStatus(`CSS load error: ${err.message}`);
@@ -646,20 +686,21 @@ const Editor = {
             // Expand grid to 5 columns
             quad.style.gridTemplateColumns = '1fr 1fr 1fr 1fr 1fr';
         } else {
+            if (this.cmCssView) { this.cmCssView.destroy(); this.cmCssView = null; }
             if (cssPanel) cssPanel.remove();
             quad.style.gridTemplateColumns = '1fr 1fr 1fr 1fr';
         }
     },
 
     async saveCss() {
-        const ta = document.getElementById('css-textarea');
-        if (!ta) return;
+        const cssContent = this.cmCssView ? this.cmCssView.state.doc.toString() : '';
+        if (!cssContent) return;
         this._updateStatus('Saving CSS...');
         try {
             const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/css`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ css: ta.value }),
+                body: JSON.stringify({ css: cssContent }),
             });
             const data = await resp.json();
             if (data.ok) {
