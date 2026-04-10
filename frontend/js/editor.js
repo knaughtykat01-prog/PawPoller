@@ -497,8 +497,11 @@ const Editor = {
             'panel-css-editor': 'CSS',
         };
         bar.innerHTML = 'Hidden: ' + [...this.hiddenPanels].map(id =>
-            `<button class="restore-btn" onclick="Editor.togglePanel('${id}')">&#128065;&#8203;&#822; ${labels[id] || id}</button>`
+            `<button class="restore-btn" data-restore="${id}">&#128065;&#8203;&#822; ${labels[id] || id}</button>`
         ).join('');
+        bar.querySelectorAll('.restore-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.togglePanel(btn.dataset.restore));
+        });
     },
 
     // ---------------------------------------------------------------------------
