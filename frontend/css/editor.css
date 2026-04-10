@@ -91,6 +91,17 @@
     border-right: none;
 }
 
+/* CodeMirror container */
+.editor-cm-container {
+    flex: 1;
+    overflow: hidden;
+}
+
+.editor-cm-container .cm-editor {
+    height: 100%;
+}
+
+/* Textarea fallback (if CM bundle fails to load) */
 #editor-textarea {
     width: 100%;
     flex: 1;
@@ -106,8 +117,15 @@
     tab-size: 2;
 }
 
-#editor-textarea::placeholder {
-    color: var(--text-tertiary);
+/* Chapter navigation dropdown */
+#editor-chapter-nav {
+    background: var(--surface-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    padding: 3px 6px;
+    font-size: 0.8rem;
+    max-width: 200px;
 }
 
 /* Panel toggle button (eye icon to hide) */

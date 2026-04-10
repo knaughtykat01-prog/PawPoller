@@ -1,8 +1,6 @@
 /**
- * Story Editor — edit MASTER.md with live format preview.
- *
- * Phase 1: textarea editor + live Clean HTML preview + save + regenerate.
- * Future phases add CodeMirror, format tabs, theme editor, platform push.
+ * Story Editor — edit MASTER.md with CodeMirror, live format preview,
+ * chapter navigation, auto-save recovery, and per-chapter word count.
  */
 const Editor = {
     // State
@@ -13,11 +11,12 @@ const Editor = {
     previewDebounceTimer: null,
     previewRequestId: 0,
     slopScore: null,
-    slopDebounceTimer: null,
     isDirty: false,
     chapters: [],
     hiddenPanels: new Set(),
-    _syncingScroll: false,  // prevents scroll event loops
+    _syncingScroll: false,
+    cmView: null,           // CodeMirror EditorView instance
+    autoSaveTimer: null,    // localStorage auto-save interval
 
     // ---------------------------------------------------------------------------
     // Story list page
@@ -67,12 +66,13 @@ const Editor = {
                     <a href="#/editor" class="editor-back">← Stories</a>
                     <span class="editor-title" id="editor-title">${Utils.escapeHtml(storyName.replace(/_/g, ' '))}</span>
                     <div class="editor-actions">
-                        <span id="editor-slop" class="editor-slop" title="Click to refresh slop score"></span>
+                        <select id="editor-chapter-nav" title="Jump to chapter"></select>
+                        <span id="editor-slop" class="editor-slop" title="Slop score"></span>
                         <span id="editor-status" class="editor-status"></span>
                         <span id="editor-wordcount" class="editor-wordcount"></span>
-                        <button id="editor-save-btn" class="btn btn-sm" onclick="Editor.save()">Save</button>
+                        <button id="editor-save-btn" class="btn btn-sm">Save</button>
                         <button id="editor-css-btn" class="btn btn-sm btn-outline">CSS</button>
-                        <button id="editor-regen-btn" class="btn btn-sm btn-outline" onclick="Editor.regenerate()">Regenerate</button>
+                        <button id="editor-regen-btn" class="btn btn-sm btn-outline">Regenerate</button>
                         <select id="editor-format-select">
                             <option value="clean_html">Clean HTML (AO3)</option>
                             <option value="sofurry_html">SoFurry HTML</option>
@@ -84,7 +84,7 @@ const Editor = {
                 <div class="editor-quad" id="editor-quad">
                     <div class="editor-quad-panel" id="panel-md-code">
                         <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-md-code" title="Hide panel">&#128065;</button> Markdown Source</div>
-                        <textarea id="editor-textarea" spellcheck="true" placeholder="Loading..."></textarea>
+                        <div id="editor-cm-container" class="editor-cm-container"></div>
                     </div>
                     <div class="editor-quad-panel" id="panel-md-preview">
                         <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-md-preview" title="Hide panel">&#128065;</button> Markdown Preview</div>
@@ -114,90 +114,193 @@ const Editor = {
             if (!resp.ok) throw new Error(await resp.text());
             const data = await resp.json();
 
-            const ta = document.getElementById('editor-textarea');
-            ta.value = data.content;
-            ta.placeholder = '';
             this.lastSavedContent = data.content;
             this.lastMtime = data.last_modified;
             this.chapters = data.chapters || [];
             this._updateWordCount(data.word_count);
             this._updateStatus('Loaded');
 
-            // Bind events
-            const formatSelect = document.getElementById('editor-format-select');
-            if (formatSelect) {
-                formatSelect.addEventListener('change', (e) => {
-                    this.switchFormat(e.target.value);
-                });
+            // Check for crash recovery draft in localStorage
+            const recoveryKey = `editor_recovery_${storyName}`;
+            const recovered = localStorage.getItem(recoveryKey);
+            let initialContent = data.content;
+            if (recovered && recovered !== data.content) {
+                const useRecovery = confirm('A recovery draft was found (unsaved changes from a previous session). Restore it?');
+                if (useRecovery) {
+                    initialContent = recovered;
+                    this.isDirty = true;
+                    this._updateStatus('Recovered from auto-save');
+                } else {
+                    localStorage.removeItem(recoveryKey);
+                }
             }
-            const cssBtn = document.getElementById('editor-css-btn');
-            if (cssBtn) {
-                cssBtn.addEventListener('click', () => this.toggleCssEditor());
-            }
-            // Panel toggle buttons
+
+            // Initialize CodeMirror
+            this._initCodeMirror(initialContent);
+
+            // Bind toolbar events
+            document.getElementById('editor-format-select')?.addEventListener('change', (e) => this.switchFormat(e.target.value));
+            document.getElementById('editor-css-btn')?.addEventListener('click', () => this.toggleCssEditor());
+            document.getElementById('editor-save-btn')?.addEventListener('click', () => this.save());
+            document.getElementById('editor-regen-btn')?.addEventListener('click', () => this.regenerate());
+            document.getElementById('editor-chapter-nav')?.addEventListener('change', (e) => this._jumpToChapter(parseInt(e.target.value)));
             document.querySelectorAll('.panel-toggle').forEach(btn => {
                 btn.addEventListener('click', () => this.togglePanel(btn.dataset.panel));
-            });
-            ta.addEventListener('input', () => this._onInput());
-            ta.addEventListener('keydown', (e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                    e.preventDefault();
-                    this.save();
-                }
-                // Tab inserts spaces
-                if (e.key === 'Tab') {
-                    e.preventDefault();
-                    const start = ta.selectionStart;
-                    ta.value = ta.value.substring(0, start) + '  ' + ta.value.substring(ta.selectionEnd);
-                    ta.selectionStart = ta.selectionEnd = start + 2;
-                    this._onInput();
-                }
             });
 
             // Beforeunload warning
             window.addEventListener('beforeunload', (e) => {
-                if (this.isDirty) {
-                    e.preventDefault();
-                    e.returnValue = '';
+                if (this.isDirty) { e.preventDefault(); e.returnValue = ''; }
+            });
+
+            // Auto-save to localStorage every 30s
+            this.autoSaveTimer = setInterval(() => {
+                if (this.isDirty && this.cmView) {
+                    localStorage.setItem(recoveryKey, this.cmView.state.doc.toString());
                 }
-            });
+            }, 30000);
 
-            // Sync scrolling: MD code ↔ MD preview ↔ format preview (proportional)
-            // Format source excluded from sync when styled_html (CSS preamble breaks mapping)
-            const mdPanel = document.getElementById('editor-preview-rendered-body');
-            const fmtSrcPanel = document.getElementById('editor-preview-source-body');
-            const fmtPrvPanel = document.getElementById('editor-preview-fmt-body');
-
-            const _doSync = (source, targets) => {
-                if (this._syncingScroll) return;
-                this._syncingScroll = true;
-                const pct = source.scrollTop / (source.scrollHeight - source.clientHeight || 1);
-                targets.forEach(el => {
-                    if (el) el.scrollTop = pct * (el.scrollHeight - el.clientHeight);
-                });
-                requestAnimationFrame(() => { this._syncingScroll = false; });
-            };
-
-            // MD code syncs with MD preview + format preview (not format source for styled)
-            ta.addEventListener('scroll', () => {
-                const targets = [mdPanel];
-                if (this.previewFormat !== 'styled_html') targets.push(fmtSrcPanel, fmtPrvPanel);
-                _doSync(ta, targets.filter(Boolean));
-            });
-            // MD preview syncs back to editor + others
-            if (mdPanel) mdPanel.addEventListener('scroll', () => {
-                const targets = [ta];
-                if (this.previewFormat !== 'styled_html') targets.push(fmtSrcPanel, fmtPrvPanel);
-                _doSync(mdPanel, targets.filter(Boolean));
-            });
-
-            // Initial preview + slop score
+            // Build chapter nav + initial preview
+            this._updateChapterNav();
             this._requestPreview();
             this._requestSlopScore();
 
         } catch (err) {
-            document.getElementById('editor-textarea').value = `Error loading: ${err.message}`;
+            const container = document.getElementById('editor-cm-container');
+            if (container) container.innerHTML = `<p style="color:var(--color-error);padding:20px">Error loading: ${err.message}</p>`;
         }
+    },
+
+    // ---------------------------------------------------------------------------
+    // CodeMirror initialization
+    // ---------------------------------------------------------------------------
+
+    _initCodeMirror(content) {
+        const container = document.getElementById('editor-cm-container');
+        if (!container || typeof CM === 'undefined') {
+            // Fallback to textarea if CM bundle didn't load
+            container.innerHTML = '<textarea id="editor-textarea" spellcheck="true"></textarea>';
+            const ta = container.querySelector('textarea');
+            ta.value = content;
+            ta.addEventListener('input', () => this._onInput());
+            return;
+        }
+
+        // Custom anchor highlighting
+        const anchorHighlight = CM.ViewPlugin.fromClass(class {
+            constructor(view) { this.decorations = this.buildDecos(view); }
+            update(update) { if (update.docChanged || update.viewportChanged) this.decorations = this.buildDecos(update.view); }
+            buildDecos(view) {
+                const builder = new CM.Decoration.none.constructor();
+                // Can't easily build decorations without RangeSetBuilder — skip for now
+                return CM.Decoration.none;
+            }
+        }, { decorations: v => v.decorations });
+
+        const darkTheme = CM.EditorView.theme({
+            '&': { height: '100%', fontSize: '13px' },
+            '.cm-scroller': { overflow: 'auto', fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace" },
+            '.cm-content': { padding: '10px 0' },
+            '.cm-line': { padding: '0 12px' },
+            '.cm-gutters': { background: 'var(--surface-elevated)', color: 'var(--text-tertiary)', border: 'none', minWidth: '3em' },
+            '.cm-activeLineGutter': { background: 'var(--surface-primary)' },
+            '.cm-activeLine': { background: 'rgba(255,255,255,0.03)' },
+        });
+
+        // Ctrl+S keybinding
+        const saveKeymap = CM.keymap.of([{
+            key: 'Mod-s',
+            run: () => { this.save(); return true; },
+        }]);
+
+        this.cmView = new CM.EditorView({
+            doc: content,
+            extensions: [
+                CM.basicSetup,
+                CM.markdown(),
+                CM.oneDark,
+                darkTheme,
+                saveKeymap,
+                CM.lineNumbers(),
+                CM.highlightActiveLine(),
+                CM.highlightActiveLineGutter(),
+                CM.EditorView.lineWrapping,
+                CM.EditorView.updateListener.of(update => {
+                    if (update.docChanged) this._onInput();
+                }),
+            ],
+            parent: container,
+        });
+    },
+
+    /** Get the current editor content (works with both CM and textarea fallback) */
+    _getContent() {
+        if (this.cmView) return this.cmView.state.doc.toString();
+        const ta = document.getElementById('editor-textarea');
+        return ta ? ta.value : '';
+    },
+
+    /** Set the editor content */
+    _setEditorContent(text) {
+        if (this.cmView) {
+            this.cmView.dispatch({
+                changes: { from: 0, to: this.cmView.state.doc.length, insert: text },
+            });
+        } else {
+            const ta = document.getElementById('editor-textarea');
+            if (ta) ta.value = text;
+        }
+    },
+
+    // ---------------------------------------------------------------------------
+    // Chapter navigation
+    // ---------------------------------------------------------------------------
+
+    _updateChapterNav() {
+        const sel = document.getElementById('editor-chapter-nav');
+        if (!sel) return;
+
+        const content = this._getContent();
+        const lines = content.split('\n');
+        const chapters = [];
+        let currentChapterWords = 0;
+
+        for (let i = 0; i < lines.length; i++) {
+            const m = lines[i].match(/^#\s+(.+)$/);
+            if (m) {
+                if (chapters.length > 0) {
+                    chapters[chapters.length - 1].words = currentChapterWords;
+                }
+                chapters.push({ title: m[1], line: i, words: 0 });
+                currentChapterWords = 0;
+            } else {
+                currentChapterWords += lines[i].split(/\s+/).filter(Boolean).length;
+            }
+        }
+        if (chapters.length > 0) chapters[chapters.length - 1].words = currentChapterWords;
+
+        this.chapters = chapters;
+        sel.innerHTML = '<option value="-1">Chapters</option>' +
+            chapters.map((ch, idx) =>
+                `<option value="${idx}">${ch.title} (${ch.words.toLocaleString()}w)</option>`
+            ).join('');
+    },
+
+    _jumpToChapter(idx) {
+        if (idx < 0 || idx >= this.chapters.length) return;
+        const line = this.chapters[idx].line;
+
+        if (this.cmView) {
+            const lineInfo = this.cmView.state.doc.line(line + 1); // CM lines are 1-based
+            this.cmView.dispatch({
+                selection: { anchor: lineInfo.from },
+                effects: CM.EditorView.scrollIntoView(lineInfo.from, { y: 'start' }),
+            });
+            this.cmView.focus();
+        }
+        // Reset dropdown
+        const sel = document.getElementById('editor-chapter-nav');
+        if (sel) sel.value = '-1';
     },
 
     // ---------------------------------------------------------------------------
@@ -205,12 +308,12 @@ const Editor = {
     // ---------------------------------------------------------------------------
 
     _onInput() {
-        const ta = document.getElementById('editor-textarea');
-        if (!ta) return;
+        const content = this._getContent();
+        if (!content && content !== '') return;
 
-        this.isDirty = ta.value !== this.lastSavedContent;
+        this.isDirty = content !== this.lastSavedContent;
         this._updateStatus(this.isDirty ? 'Unsaved changes' : 'Saved');
-        this._updateWordCount(ta.value.split(/\s+/).filter(Boolean).length);
+        this._updateWordCount(content.split(/\s+/).filter(Boolean).length);
 
         // Debounced preview
         clearTimeout(this.previewDebounceTimer);
@@ -222,15 +325,14 @@ const Editor = {
     // ---------------------------------------------------------------------------
 
     async _requestPreview() {
-        const ta = document.getElementById('editor-textarea');
         const mdPreview = document.getElementById('editor-preview-rendered-body');
         const fmtSource = document.getElementById('editor-preview-source-body');
         const fmtPreview = document.getElementById('editor-preview-fmt-body');
         const sourceHeader = document.getElementById('editor-source-header');
         const fmtPreviewHeader = document.getElementById('editor-fmt-preview-header');
-        if (!ta || !mdPreview) return;
+        if (!mdPreview) return;
 
-        let content = ta.value;
+        let content = this._getContent();
         const MAX_PREVIEW = 100000;
         if (content.length > MAX_PREVIEW) {
             content = content.substring(0, MAX_PREVIEW) + '\n\n[... truncated for preview ...]';
@@ -334,8 +436,7 @@ const Editor = {
     // ---------------------------------------------------------------------------
 
     async save() {
-        const ta = document.getElementById('editor-textarea');
-        if (!ta) return;
+        const content = this._getContent();
 
         this._updateStatus('Saving...');
         try {
@@ -343,7 +444,7 @@ const Editor = {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    content: ta.value,
+                    content: content,
                     expected_mtime: this.lastMtime,
                 }),
             });
@@ -355,12 +456,15 @@ const Editor = {
 
             const data = await resp.json();
             if (data.ok) {
-                this.lastSavedContent = ta.value;
+                this.lastSavedContent = content;
                 this.lastMtime = data.last_modified;
                 this.isDirty = false;
                 this._updateStatus('Saved');
                 this._updateWordCount(data.word_count);
+                this._updateChapterNav();
                 this._requestSlopScore();
+                // Clear recovery draft on successful save
+                localStorage.removeItem(`editor_recovery_${this.storyName}`);
             } else {
                 this._updateStatus('Save failed');
             }
@@ -423,15 +527,14 @@ const Editor = {
     // ---------------------------------------------------------------------------
 
     async _requestSlopScore() {
-        const ta = document.getElementById('editor-textarea');
         const el = document.getElementById('editor-slop');
-        if (!ta || !el) return;
+        if (!el) return;
 
         try {
             const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/slop`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: ta.value }),
+                body: JSON.stringify({ content: this._getContent() }),
             });
             if (!resp.ok) { el.textContent = 'Slop: ?'; return; }
             const data = await resp.json();
