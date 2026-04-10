@@ -83,23 +83,23 @@ const Editor = {
                 </div>
                 <div class="editor-quad" id="editor-quad">
                     <div class="editor-quad-panel" id="panel-md-code">
-                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-md-code" title="Hide panel">×</button> Markdown Source</div>
+                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-md-code" title="Hide panel">&#128065;</button> Markdown Source</div>
                         <textarea id="editor-textarea" spellcheck="true" placeholder="Loading..."></textarea>
                     </div>
                     <div class="editor-quad-panel" id="panel-md-preview">
-                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-md-preview" title="Hide panel">×</button> Markdown Preview</div>
+                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-md-preview" title="Hide panel">&#128065;</button> Markdown Preview</div>
                         <div class="preview-panel-body" id="editor-preview-rendered-body">
                             <p style="color:var(--text-secondary)">Loading...</p>
                         </div>
                     </div>
                     <div class="editor-quad-panel" id="panel-fmt-source">
-                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-fmt-source" title="Hide panel">×</button> <span id="editor-source-header">Format Source</span></div>
+                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-fmt-source" title="Hide panel">&#128065;</button> <span id="editor-source-header">Format Source</span></div>
                         <div class="preview-panel-body" id="editor-preview-source-body">
                             <p style="color:var(--text-secondary)">Loading...</p>
                         </div>
                     </div>
                     <div class="editor-quad-panel" id="panel-fmt-preview">
-                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-fmt-preview" title="Hide panel">×</button> <span id="editor-fmt-preview-header">Format Preview</span></div>
+                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-fmt-preview" title="Hide panel">&#128065;</button> <span id="editor-fmt-preview-header">Format Preview</span></div>
                         <div class="preview-panel-body" id="editor-preview-fmt-body">
                             <p style="color:var(--text-secondary)">Loading...</p>
                         </div>
@@ -496,8 +496,8 @@ const Editor = {
             'panel-fmt-preview': 'Format Preview',
             'panel-css-editor': 'CSS',
         };
-        bar.innerHTML = [...this.hiddenPanels].map(id =>
-            `<button class="restore-btn" onclick="Editor.togglePanel('${id}')">${labels[id] || id}</button>`
+        bar.innerHTML = 'Hidden: ' + [...this.hiddenPanels].map(id =>
+            `<button class="restore-btn" onclick="Editor.togglePanel('${id}')">&#128065;&#8203;&#822; ${labels[id] || id}</button>`
         ).join('');
     },
 
