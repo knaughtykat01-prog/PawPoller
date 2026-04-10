@@ -224,7 +224,7 @@ async def preview(story_name: str, req: PreviewRequest):
 
     # Styled HTML needs theme + template from the story's files
     if req.format == "styled_html":
-        from editor.converter import convert_to_styled_html, parse_chapter_styling
+        from editor.converter import convert_to_styled_html_external_css, parse_chapter_styling
         story_dir = _resolve_story_dir(story_name)
         archive = get_archive_path()
         theme = {}
@@ -240,14 +240,25 @@ async def preview(story_name: str, req: PreviewRequest):
         if not theme:
             return {"html": "(Styled HTML requires CHAPTER_STYLING.md theme — not found or empty)", "format": "styled_html", "stats": {}, "warnings": ["Theme not found"]}
         try:
-            result = convert_to_styled_html(content, theme, template, mode="full")
+            result = convert_to_styled_html_external_css(content, theme, template, mode="full", css_href="style.css")
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+
+        # Source panel: the <link> version (what the file looks like)
+        source_html = result.full_story.output if result.full_story else ""
+
+        # Preview iframe: inject CSS inline so it renders in srcdoc
+        preview_html = source_html.replace(
+            '<link rel="stylesheet" href="style.css">',
+            f"<style>\n{result.css}\n</style>",
+        ) if source_html else ""
+
         return {
-            "html": result.output,
+            "html": source_html,
+            "preview_html": preview_html,
             "format": "styled_html",
-            "stats": result.stats,
-            "warnings": result.warnings,
+            "stats": result.full_story.stats if result.full_story else {},
+            "warnings": [],
         }
 
     try:

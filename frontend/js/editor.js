@@ -279,8 +279,9 @@ const Editor = {
                     fmtPreview.innerHTML = '<div class="preview-html">' + (mdData.html || '') + '</div>';
                 } else if (fmtData) {
                     if (this.previewFormat === 'styled_html') {
+                        // Use preview_html (CSS inlined) for iframe, html (external link) for source
                         fmtPreview.innerHTML = '<iframe class="preview-iframe" sandbox="allow-same-origin"></iframe>';
-                        fmtPreview.querySelector('iframe').srcdoc = fmtData.html || '';
+                        fmtPreview.querySelector('iframe').srcdoc = fmtData.preview_html || fmtData.html || '';
                     } else if (this.previewFormat === 'bbcode') {
                         fmtPreview.innerHTML = '<div class="preview-html">' + this._bbcodeToHtml(fmtData.html || '') + '</div>';
                     } else {
