@@ -114,28 +114,33 @@ Split-pane layout:
 
 ## Implementation Phases
 
-### Phase 1 (this PR): MVP Editor
-- Edit MASTER.md + live Clean HTML preview + save + regenerate BBCode/HTML
-- Backend: converter.py, editor_api.py, pipeline.py (partial)
-- Frontend: editor.js (textarea + preview), editor.css
+### Phase 1: MVP Editor ✅ DONE
+- Edit MASTER.md + live preview + save + regenerate
+- Backend: converter.py (1800+ lines), editor_api.py, slop.py
+- Frontend: editor.js (4-panel quad layout), editor.css
 
-### Phase 2: Format tabs + chapters
-- BBCode, SQW, Styled HTML preview tabs
-- Chapter outline sidebar
-- Chapter-scoped preview
+### Phase 2: All format tabs ✅ DONE
+- Clean HTML (AO3), SoFurry HTML, BBCode (IB), Styled HTML (PDF) — all 4 in dropdown
+- SQW chapter auto-generation from anchored source
+- Styled HTML rendered in sandboxed iframe
 
-### Phase 3: Validation + slop
-- Live slop score in status bar
-- Asterisk balance checks
-- Format validation panel
+### Phase 3: Anchor system + converters ✅ DONE
+- 7 HTML comment anchors (@title, @subtitle, @byline, @warning, @disclaimer, @fanfiction, @body)
+- Standalone converters unified as thin wrappers importing editor/converter.py
+- Slop score in editor toolbar (colour-coded badge)
 
-### Phase 4: Theme editor
-- Colour pickers for 14 CSS variables
-- Live styled preview updates
-- Work_Skin.css generation
+### Phase 4: CSS theme editor ✅ DONE
+- External style.css generation from CHAPTER_STYLING.md
+- CSS editor panel (5th column toggle)
+- Styled HTML uses `<link>` instead of embedded `<style>`
+- Live CSS editing with styled preview refresh
+- parse_chapter_styling() reads 14 colour variables
+- generate_styled_css() produces standalone CSS
 
-### Phase 5: Full pipeline + push
-- PDF generation via Edge headless
-- One-click platform push
-- Progress reporting
-- Auto-changelog entries
+### Phase 5: Remaining TODO
+- PDF generation via Edge headless (button in editor)
+- One-click platform push (reuse existing poster code)
+- CodeMirror 6 upgrade (replace textarea with syntax highlighting)
+- Anchor highlighting in editor
+- Validation panel (asterisk balance, format checks)
+- Auto-changelog entries on regenerate/push

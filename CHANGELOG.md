@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.5.1] - 2026-04-10
+
+### Fixed — Full code audit cleanup
+
+4-domain audit across editor code, standalone scripts, MASTER.md files, format files, and documentation. 66 findings addressed.
+
+**Code fixes:**
+- converter.py: removed unreachable `else` block (dead code from subtitle iteration)
+- editor_api.py: removed duplicate path resolution (copy-paste error)
+- editor.js: removed dead `_setupDivider()` method (19 lines, old split pane)
+- editor.css: removed dead `.preview-source-header` style
+
+**Portability fixes (14 scripts):**
+- Eliminated all hardcoded `C:/Users/rhysc/claude/...` absolute paths across 14 Scripts_Utils files
+- All now use `Path(__file__).resolve().parent.parent / "Archives" / "Complete_Stories"` (relative to script location)
+- Scripts work on any machine, any OS, any user account
+
+**Data fixes:**
+- AB Nice + Naughty: added missing `#workskin em` CSS rule to Work_Skin.css
+- Velvet story.json: title "Velvet And Vice" → "Velvet and Vice" (lowercase "and")
+- 7 MASTER.md files: added `---` separator after `<!-- @body -->` for cross-story consistency
+- slop_scorer.py: fixed formula docstring to match actual implementation
+
+**Documentation fixes:**
+- EDITOR_PLAN.md: updated all phase statuses (Phases 1-4 marked DONE, Phase 5 TODO list updated)
+- FILE_FORMAT_STANDARDS.md: added external CSS architecture section for Styled HTML
+
+---
+
 ## [2.5.0] - 2026-04-10
 
 ### Added — Story Editor: all formats complete + anchor system + slop scoring
