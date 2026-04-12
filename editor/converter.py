@@ -236,8 +236,8 @@ def parse_front_matter(text: str) -> FrontMatter | None:
             section_lines.setdefault(current_section, [])
             continue
 
-        # Accumulate non-blank lines into the current section
-        if current_section and stripped:
+        # Accumulate non-blank, non-separator lines into the current section
+        if current_section and stripped and stripped != "---":
             section_lines[current_section].append(stripped)
 
     # Extract structured fields from raw section lines
@@ -1147,6 +1147,12 @@ def _build_print_styles(theme: dict) -> str:
             "                color: black;\n"
             "            }\n"
             "\n"
+            "            .print-container {\n"
+            "                padding: 2cm 2.5cm;\n"
+            "                -webkit-box-decoration-break: clone;\n"
+            "                box-decoration-break: clone;\n"
+            "            }\n"
+            "\n"
             "            .story-title {\n"
             "                font-size: 24pt;\n"
             "                color: black;\n"
@@ -1207,10 +1213,16 @@ def _build_print_styles(theme: dict) -> str:
         "\n"
         "            body {\n"
         f"                background: {bg};\n"
-        "                padding: 2cm 2.5cm;\n"
+        "                padding: 0;\n"
         "                font-size: 11pt;\n"
         "                max-width: none;\n"
         f"                color: {text};\n"
+        "            }\n"
+        "\n"
+        "            .print-container {\n"
+        "                padding: 2cm 2.5cm;\n"
+        "                -webkit-box-decoration-break: clone;\n"
+        "                box-decoration-break: clone;\n"
         "            }\n"
         "\n"
         "            .story-title {\n"
