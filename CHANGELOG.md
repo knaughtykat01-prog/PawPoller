@@ -4,6 +4,36 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.6.0] - 2026-04-12
+
+### Added — Visual Theme Editor with live preview sync
+
+**Theme GUI (editor.js / editor_api.py):**
+- Visual colour picker interface for all 14 styled HTML theme variables
+- Live preview: changing any colour immediately updates the Styled HTML preview iframe (~300ms debounce)
+- CSS source view stays in sync with GUI changes (returned from preview endpoint)
+- Undo button — steps back one change at a time (50-entry stack, debounced for colour picker drags)
+- Revert button — resets to last-saved values (the revert itself is undoable)
+- Save writes `style.css` to `HTML/` and `Chapters/Styled_HTML/`, clears undo history
+- Source/GUI toggle switches between visual editor and raw CSS CodeMirror view
+
+**Backend (editor_api.py):**
+- `PreviewRequest` accepts optional `theme` dict for live GUI → preview pipeline
+- Preview response includes generated `css` field for styled_html format
+- `PUT /theme` endpoint: better error handling (PermissionError, template-not-found, CSS generation failures)
+- `PUT /theme` and `PUT /css`: proper HTTP error detail parsing in frontend
+
+**External CSS migration (all 13 stories):**
+- Generated `style.css` for all 13 stories (28 files: `HTML/` + `Chapters/Styled_HTML/`)
+- Converted 89 Styled HTML files from embedded `<style>` to external `<link rel="stylesheet" href="style.css">`
+- ~600 KB total size reduction across all styled HTML files
+
+**Infrastructure:**
+- `deploy/pawsync.py`: changed `chmod o+rX` to `o+rwX` so Docker container can write to story archive
+- Cache-busting on `editor.js` (v250 → v253)
+
+---
+
 ## [2.5.1] - 2026-04-10
 
 ### Fixed — Full code audit cleanup
