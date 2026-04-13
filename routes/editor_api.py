@@ -546,7 +546,7 @@ async def save_theme(story_name: str, req: ThemeSaveRequest):
         for key in STYLED_HTML_THEME_KEYS:
             if key in req.variables:
                 var_lines.append(f"| `{key}` | `{req.variables[key]}` |")
-        var_lines.append("", marker_end, "")
+        var_lines.extend(["", marker_end, ""])
         existing += "\n".join(var_lines)
         styling_path.write_text(existing, encoding="utf-8")
     except Exception as e:
