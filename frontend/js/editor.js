@@ -652,6 +652,17 @@ const Editor = {
                 const el = document.getElementById(id);
                 if (el) savedScrolls[id] = el.scrollTop;
             }
+            // Save iframe internal scroll (styled_html)
+            let savedIframePct = 0;
+            if (this.previewFormat === 'styled_html' && fmtPreview) {
+                try {
+                    const oldIframe = fmtPreview.querySelector('iframe');
+                    const iDoc = oldIframe?.contentDocument?.documentElement;
+                    if (iDoc && iDoc.scrollHeight > iDoc.clientHeight) {
+                        savedIframePct = iDoc.scrollTop / (iDoc.scrollHeight - iDoc.clientHeight);
+                    }
+                } catch {}
+            }
 
             [mdPreview, fmtSource, fmtPreview].forEach(el => { if (el) el.style.opacity = '0.6'; });
 
@@ -735,9 +746,13 @@ const Editor = {
                     fmtPreview.innerHTML = '<div class="preview-html">' + (mdData.html || '') + '</div>';
                 } else if (fmtData) {
                     if (this.previewFormat === 'styled_html') {
-                        // Use preview_html (CSS inlined) for iframe, html (external link) for source
-                        fmtPreview.innerHTML = '<iframe class="preview-iframe" sandbox="allow-same-origin"></iframe>';
-                        fmtPreview.querySelector('iframe').srcdoc = fmtData.preview_html || fmtData.html || '';
+                        // Reuse existing iframe if possible (avoids full recreate + scroll loss)
+                        let iframe = fmtPreview.querySelector('iframe.preview-iframe');
+                        if (!iframe) {
+                            fmtPreview.innerHTML = '<iframe class="preview-iframe" sandbox="allow-same-origin"></iframe>';
+                            iframe = fmtPreview.querySelector('iframe');
+                        }
+                        iframe.srcdoc = fmtData.preview_html || fmtData.html || '';
                     } else if (this.previewFormat === 'bbcode') {
                         fmtPreview.innerHTML = '<div class="preview-html">' + this._bbcodeToHtml(fmtData.html || '') + '</div>';
                     } else {
@@ -758,18 +773,15 @@ const Editor = {
                 const el = document.getElementById(id);
                 if (el) el.scrollTop = pos;
             }
-            // For styled_html iframe, restore scroll inside the iframe after it loads
-            if (this.previewFormat === 'styled_html' && fmtPreview) {
+            // For styled_html iframe, restore internal scroll after it loads
+            if (this.previewFormat === 'styled_html' && fmtPreview && savedIframePct > 0) {
                 const iframe = fmtPreview.querySelector('iframe');
                 if (iframe) {
                     iframe.addEventListener('load', () => {
                         try {
-                            const iframeBody = iframe.contentDocument?.documentElement;
-                            if (iframeBody && savedScrolls['editor-preview-fmt-body'] !== undefined) {
-                                // Approximate: use percentage-based restore
-                                const pct = savedScrolls['editor-preview-fmt-body'] /
-                                    (fmtPreview.scrollHeight - fmtPreview.clientHeight || 1);
-                                iframeBody.scrollTop = pct * (iframeBody.scrollHeight - iframeBody.clientHeight);
+                            const iDoc = iframe.contentDocument?.documentElement;
+                            if (iDoc) {
+                                iDoc.scrollTop = savedIframePct * (iDoc.scrollHeight - iDoc.clientHeight);
                             }
                         } catch {}
                     }, { once: true });
