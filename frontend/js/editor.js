@@ -820,7 +820,7 @@ const Editor = {
     // Format Source
     // ---------------------------------------------------------------------------
 
-    formatSource() {
+    async formatSource() {
         if (typeof html_beautify === 'undefined' && typeof css_beautify === 'undefined') {
             this._updateStatus('Formatter not loaded');
             return;
@@ -838,6 +838,28 @@ const Editor = {
                 const pretty = html_beautify(content, opts);
                 this._updateCmContent(this.cmSourceView, pretty);
                 formatted = true;
+
+                // Save formatted content to disk
+                this._updateStatus('Formatting + saving...');
+                try {
+                    const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/format-file`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ format: this.previewFormat, content: pretty }),
+                    });
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        this._updateStatus(`Formatted + saved ${data.file} (${data.bytes.toLocaleString()}b)`);
+                    } else {
+                        const errText = await resp.text();
+                        let detail = `HTTP ${resp.status}`;
+                        try { const j = JSON.parse(errText); detail = j.detail || j.error || detail; } catch {}
+                        this._updateStatus(`Formatted (save failed: ${detail})`);
+                    }
+                } catch (err) {
+                    this._updateStatus(`Formatted (save error: ${err.message})`);
+                }
+                return;
             }
         }
 
@@ -852,7 +874,6 @@ const Editor = {
         // Format the MD source (panel 1) — light cleanup only
         if (this.cmView && !formatted) {
             const content = this.cmView.state.doc.toString();
-            // Normalize trailing whitespace and blank lines
             const cleaned = content
                 .split('\n')
                 .map(line => line.trimEnd())

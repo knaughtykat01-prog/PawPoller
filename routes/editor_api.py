@@ -506,6 +506,38 @@ async def save_css(story_name: str, req: CssSaveRequest):
     return {"ok": True, "bytes": len(req.css)}
 
 
+class SaveFormatRequest(BaseModel):
+    format: str  # clean_html, sofurry_html, bbcode, styled_html
+    content: str
+
+
+@editor_router.put("/stories/{story_name:path}/format-file")
+async def save_format_file(story_name: str, req: SaveFormatRequest):
+    """Save formatted content directly to the appropriate format file."""
+    story_dir = _resolve_story_dir(story_name)
+    stem = story_dir.name
+
+    format_paths = {
+        "clean_html": story_dir / "HTML" / f"{stem}_Clean.html",
+        "sofurry_html": story_dir / "HTML" / f"{stem}_SoFurry.html",
+        "bbcode": story_dir / "BBCode" / f"{stem}_bbcode.txt",
+        "styled_html": story_dir / "HTML" / f"{stem}_Styled.html",
+    }
+
+    path = format_paths.get(req.format)
+    if not path:
+        raise HTTPException(status_code=400, detail=f"Unknown format: {req.format}")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        path.write_text(req.content, encoding="utf-8")
+    except PermissionError:
+        raise HTTPException(status_code=500, detail=f"Permission denied writing {path.name}")
+
+    return {"ok": True, "file": str(path.relative_to(story_dir)), "bytes": len(req.content)}
+
+
 class SlopRequest(BaseModel):
     content: str
 
