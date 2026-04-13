@@ -133,13 +133,43 @@ def is_pov_marker(stripped: str) -> bool:
 
 
 def is_text_message(stripped: str) -> re.Match | None:
-    """Detect text messages: **SENDER: message text** on own line."""
+    """Detect text messages: **Name:** message text on own line.
+
+    Matches both formats:
+      **Mika:** message text     (bold name only, message is plain)
+      **MIKA: message text**     (entire line bold — legacy)
+    """
+    # Bold name + colon, message is plain (current convention)
+    m = re.match(r"^\*\*(.+?):\*\*\s*(.+)$", stripped)
+    if m:
+        return m
+    # Legacy: entire line bold including message
     return re.match(r"^\*\*([A-Z][A-Z\s❤♥]*?):\s*(.+?)\*\*$", stripped)
 
 
 def is_phone_display(stripped: str) -> re.Match | None:
     """Detect phone call display: **NAME ❤** on own line."""
     return re.match(r"^\*\*([A-Z][A-Z\s]*[❤♥])\*\*$", stripped)
+
+
+# Semantic anchor types recognised in body content
+SEMANTIC_ANCHORS = {
+    "text-sent": "text-sent",
+    "text-received": "text-received",
+    "phone-incoming": "phone-incoming",
+}
+
+
+def parse_semantic_anchor(stripped: str) -> str | None:
+    """Check if a line is a semantic anchor comment.
+
+    Returns the anchor type ('text-sent', 'text-received', 'phone-incoming')
+    or None if not a semantic anchor.
+    """
+    m = re.match(r"^<!--\s*@(\S+)\s*-->$", stripped)
+    if m and m.group(1) in SEMANTIC_ANCHORS:
+        return SEMANTIC_ANCHORS[m.group(1)]
+    return None
 
 
 def detect_chapters(text: str) -> list[dict]:
@@ -399,16 +429,24 @@ def _convert_body_clean_html(lines: list[str], start: int = 0) -> tuple[list[str
             stats["paragraphs"] += 1
             current_paragraph.clear()
 
+    pending_semantic: str | None = None  # tracks semantic anchor for next content
+
     while i < len(lines):
         stripped = lines[i].strip()
 
-        # Skip anchor comments in body
+        # Check for semantic anchors (<!-- @text-sent --> etc.)
         if stripped.startswith("<!--") and stripped.endswith("-->"):
+            sem = parse_semantic_anchor(stripped)
+            if sem:
+                flush()
+                pending_semantic = sem
+            # Skip all anchor comments (semantic or structural)
             i += 1
             continue
 
         if stripped == "---":
             flush()
+            pending_semantic = None
             j = i + 1
             while j < len(lines) and lines[j].strip() == "":
                 j += 1
@@ -422,6 +460,7 @@ def _convert_body_clean_html(lines: list[str], start: int = 0) -> tuple[list[str
 
         if stripped.startswith("# "):
             flush()
+            pending_semantic = None
             heading = _escape_html(stripped[2:].strip())
             body_parts.append(_center_html(f"<strong>{heading}</strong>"))
             stats["chapters"].append(heading)
@@ -443,6 +482,45 @@ def _convert_body_clean_html(lines: list[str], start: int = 0) -> tuple[list[str
             i += 1
             continue
 
+        # Semantic anchor handling: text messages + phone displays
+        if pending_semantic == "phone-incoming":
+            flush()
+            # Strip bold markers if present
+            text = stripped.strip("*").strip()
+            body_parts.append(
+                f'<div class="phone-display-wrap"><div class="phone-display">'
+                f'{_escape_html(text)}</div></div>'
+            )
+            stats["text_messages"] += 1
+            pending_semantic = None
+            i += 1
+            continue
+
+        if pending_semantic in ("text-sent", "text-received"):
+            flush()
+            msg_class = "sent" if pending_semantic == "text-sent" else "received"
+            # Parse **Name:** message pattern
+            msg_m = is_text_message(stripped)
+            if msg_m:
+                sender = msg_m.group(1).strip()
+                message = msg_m.group(2).strip()
+                body_parts.append(
+                    f'<div class="text-message {msg_class}">'
+                    f'<strong>{_escape_html(sender)}</strong> '
+                    f'{format_paragraph_html(message)}</div>'
+                )
+            else:
+                # Fallback: no sender pattern, treat whole line as message
+                body_parts.append(
+                    f'<div class="text-message {msg_class}">'
+                    f'{format_paragraph_html(stripped)}</div>'
+                )
+            stats["text_messages"] += 1
+            pending_semantic = None
+            i += 1
+            continue
+
+        # Non-anchored text message detection (heuristic fallback)
         phone_m = is_phone_display(stripped)
         if phone_m:
             flush()
@@ -458,7 +536,7 @@ def _convert_body_clean_html(lines: list[str], start: int = 0) -> tuple[list[str
             sender = msg_m.group(1).strip()
             message = msg_m.group(2).strip()
             body_parts.append(
-                f"<p><strong>{_escape_html(sender)}:</strong> {_escape_html(message)}</p>"
+                f"<p><strong>{_escape_html(sender)}:</strong> {format_paragraph_html(message)}</p>"
             )
             stats["text_messages"] += 1
             i += 1
@@ -466,6 +544,7 @@ def _convert_body_clean_html(lines: list[str], start: int = 0) -> tuple[list[str
 
         if stripped == "":
             flush()
+            pending_semantic = None
             i += 1
             continue
 
@@ -651,13 +730,20 @@ def _convert_body_sofurry(lines: list[str], start: int = 0) -> tuple[list[str], 
             stats["paragraphs"] += 1
             current_paragraph.clear()
 
+    pending_semantic: str | None = None
+
     while i < len(lines):
         stripped = lines[i].strip()
         if stripped.startswith("<!--") and stripped.endswith("-->"):
+            sem = parse_semantic_anchor(stripped)
+            if sem:
+                flush()
+                pending_semantic = sem
             i += 1
             continue
         if stripped == "---":
             flush()
+            pending_semantic = None
             j = i + 1
             while j < len(lines) and lines[j].strip() == "":
                 j += 1
@@ -670,6 +756,7 @@ def _convert_body_sofurry(lines: list[str], start: int = 0) -> tuple[list[str], 
             continue
         if stripped.startswith("# "):
             flush()
+            pending_semantic = None
             heading = _escape_html(stripped[2:].strip())
             body_parts.append(f'<h3 class="text-center">{heading}</h3>')
             stats["chapters"].append(heading)
@@ -688,6 +775,33 @@ def _convert_body_sofurry(lines: list[str], start: int = 0) -> tuple[list[str], 
             stats["pov_markers"].append(inner)
             i += 1
             continue
+
+        # Semantic anchor: phone display
+        if pending_semantic == "phone-incoming":
+            flush()
+            text = stripped.strip("*").strip()
+            body_parts.append(tc(f"<strong>{_escape_html(text)}</strong>"))
+            stats["text_messages"] += 1
+            pending_semantic = None
+            i += 1
+            continue
+
+        # Semantic anchor: text messages
+        if pending_semantic in ("text-sent", "text-received"):
+            flush()
+            align = "text-right" if pending_semantic == "text-sent" else "text-left"
+            msg_m = is_text_message(stripped)
+            if msg_m:
+                sender, message = msg_m.group(1).strip(), msg_m.group(2).strip()
+                body_parts.append(f'<p class="{align}"><strong>{_escape_html(sender)}:</strong> {format_paragraph_html(message)}</p>')
+            else:
+                body_parts.append(f'<p class="{align}">{format_paragraph_html(stripped)}</p>')
+            stats["text_messages"] += 1
+            pending_semantic = None
+            i += 1
+            continue
+
+        # Non-anchored heuristic fallbacks
         phone_m = is_phone_display(stripped)
         if phone_m:
             flush()
@@ -699,14 +813,13 @@ def _convert_body_sofurry(lines: list[str], start: int = 0) -> tuple[list[str], 
         if msg_m:
             flush()
             sender, message = msg_m.group(1).strip(), msg_m.group(2).strip()
-            is_sent = "MAYA" in sender.upper()
-            align = "text-right" if is_sent else "text-left"
-            body_parts.append(f'<p class="{align}"><strong>{_escape_html(sender)}:</strong> {_escape_html(message)}</p>')
+            body_parts.append(f'<p><strong>{_escape_html(sender)}:</strong> {format_paragraph_html(message)}</p>')
             stats["text_messages"] += 1
             i += 1
             continue
         if stripped == "":
             flush()
+            pending_semantic = None
             i += 1
             continue
         current_paragraph.append(stripped)
@@ -724,12 +837,18 @@ def _convert_body_bbcode(lines: list[str], start: int = 0) -> tuple[list[str], d
     }
     i = start
 
+    pending_semantic: str | None = None
+
     while i < len(lines):
         stripped = lines[i].strip()
         if stripped.startswith("<!--") and stripped.endswith("-->"):
+            sem = parse_semantic_anchor(stripped)
+            if sem:
+                pending_semantic = sem
             i += 1
             continue
         if stripped == "---":
+            pending_semantic = None
             j = i + 1
             while j < len(lines) and lines[j].strip() == "":
                 j += 1
@@ -743,6 +862,7 @@ def _convert_body_bbcode(lines: list[str], start: int = 0) -> tuple[list[str], d
             i += 1
             continue
         if stripped.startswith("# "):
+            pending_semantic = None
             heading = stripped[2:].strip()
             output_lines.extend(["", f"[center][b]{heading}[/b][/center]"])
             stats["chapters"].append(heading)
@@ -759,24 +879,50 @@ def _convert_body_bbcode(lines: list[str], start: int = 0) -> tuple[list[str], d
             stats["pov_markers"].append(inner)
             i += 1
             continue
+
+        # Semantic anchor: phone display
+        if pending_semantic == "phone-incoming":
+            text = stripped.strip("*").strip()
+            output_lines.extend(["", f"[center]───── [color=#2c6e2c]📱 {text}[/color] ─────[/center]", ""])
+            stats["text_messages"] += 1
+            pending_semantic = None
+            i += 1
+            continue
+
+        # Semantic anchor: text messages
+        if pending_semantic in ("text-sent", "text-received"):
+            msg_m = is_text_message(stripped)
+            if pending_semantic == "text-sent":
+                color, align = "#508c46", "right"
+            else:
+                color, align = "#a07818", "left"
+            if msg_m:
+                sender, message = msg_m.group(1).strip(), msg_m.group(2).strip()
+                output_lines.append(f"[{align}][color={color}][b]{sender}:[/b] {format_paragraph_bbcode(message)}[/color][/{align}]")
+            else:
+                output_lines.append(f"[{align}][color={color}]{format_paragraph_bbcode(stripped)}[/color][/{align}]")
+            stats["text_messages"] += 1
+            pending_semantic = None
+            i += 1
+            continue
+
+        # Non-anchored heuristic fallbacks
         phone_m = is_phone_display(stripped)
         if phone_m:
-            output_lines.extend(["", f"[center]───── [color=#4a9eff]📱 {phone_m.group(1).strip()}[/color] ─────[/center]", ""])
+            output_lines.extend(["", f"[center]───── [color=#2c6e2c]📱 {phone_m.group(1).strip()}[/color] ─────[/center]", ""])
             stats["text_messages"] += 1
             i += 1
             continue
         msg_m = is_text_message(stripped)
         if msg_m:
             sender, message = msg_m.group(1).strip(), msg_m.group(2).strip()
-            is_sent = "MAYA" in sender.upper()
-            color = "#4a9eff" if is_sent else "#aab0bc"
-            align = "right" if is_sent else "left"
-            output_lines.append(f"[{align}][color={color}][b]{sender}[/b]: {message}[/color][/{align}]")
+            output_lines.append(f"[b]{sender}:[/b] {format_paragraph_bbcode(message)}")
             stats["text_messages"] += 1
             i += 1
             continue
         if stripped == "":
             output_lines.append("")
+            pending_semantic = None
             i += 1
             continue
         output_lines.append(format_paragraph_bbcode(stripped))
@@ -1420,26 +1566,30 @@ def _convert_body_styled_html(lines: list[str], start: int,
             stats["paragraphs"] += 1
             current_paragraph.clear()
 
+    pending_semantic: str | None = None
+
     while i < len(lines):
         stripped = lines[i].strip()
 
-        # Skip anchor comments
+        # Check for semantic anchors
         if stripped.startswith("<!--") and stripped.endswith("-->"):
+            sem = parse_semantic_anchor(stripped)
+            if sem:
+                flush()
+                pending_semantic = sem
             i += 1
             continue
 
         # Section break or chapter divider
         if stripped == "---":
             flush()
+            pending_semantic = None
             j = i + 1
             while j < len(lines) and lines[j].strip() == "":
                 j += 1
             if j < len(lines) and lines[j].strip().startswith("# "):
-                # This is a chapter divider (--- before # heading)
-                # The <hr> is emitted when we process the heading below
                 pass
             elif j < len(lines) and re.match(r"^\*End of .+\*$", lines[j].strip()):
-                # Divider before end marker — skip, the end wrapper handles it
                 pass
             else:
                 body_parts.append(f'{I}<div class="section-break">{symbol}</div>')
@@ -1450,6 +1600,7 @@ def _convert_body_styled_html(lines: list[str], start: int,
         # Chapter heading
         if stripped.startswith("# "):
             flush()
+            pending_semantic = None
             heading = _escape_html(stripped[2:].strip())
             if first_chapter_seen:
                 body_parts.append("")
@@ -1465,7 +1616,6 @@ def _convert_body_styled_html(lines: list[str], start: int,
         # End marker
         if re.match(r"^\*End of .+\*$", stripped):
             flush()
-            # Handled externally via the story-end div in the template
             stats["end_marker"] = True
             i += 1
             continue
@@ -1479,7 +1629,43 @@ def _convert_body_styled_html(lines: list[str], start: int,
             i += 1
             continue
 
-        # Phone display
+        # Semantic anchor: phone display
+        if pending_semantic == "phone-incoming":
+            flush()
+            text = stripped.strip("*").strip()
+            body_parts.append(
+                f'{I}<div class="phone-display-wrap">'
+                f'<div class="phone-display">{_escape_html(text)}</div></div>'
+            )
+            stats["text_messages"] += 1
+            pending_semantic = None
+            i += 1
+            continue
+
+        # Semantic anchor: text messages
+        if pending_semantic in ("text-sent", "text-received"):
+            flush()
+            msg_class = "sent" if pending_semantic == "text-sent" else "received"
+            msg_m = is_text_message(stripped)
+            if msg_m:
+                sender = msg_m.group(1).strip()
+                message = msg_m.group(2).strip()
+                body_parts.append(
+                    f'{I}<div class="text-message {msg_class}">'
+                    f"<strong>{_escape_html(sender)}</strong> "
+                    f"{format_paragraph_html(message)}</div>"
+                )
+            else:
+                body_parts.append(
+                    f'{I}<div class="text-message {msg_class}">'
+                    f"{format_paragraph_html(stripped)}</div>"
+                )
+            stats["text_messages"] += 1
+            pending_semantic = None
+            i += 1
+            continue
+
+        # Non-anchored heuristic fallbacks
         phone_m = is_phone_display(stripped)
         if phone_m:
             flush()
@@ -1492,17 +1678,15 @@ def _convert_body_styled_html(lines: list[str], start: int,
             i += 1
             continue
 
-        # Text message
         msg_m = is_text_message(stripped)
         if msg_m:
             flush()
             sender = msg_m.group(1).strip()
             message = msg_m.group(2).strip()
-            css_class = "text-message sent" if "MAYA" in sender.upper() else "text-message received"
             body_parts.append(
-                f'{I}<div class="{css_class}">'
+                f'{I}<div class="text-message">'
                 f"<strong>{_escape_html(sender)}</strong>"
-                f"{_escape_html(message)}</div>"
+                f"{format_paragraph_html(message)}</div>"
             )
             stats["text_messages"] += 1
             i += 1
@@ -1511,6 +1695,7 @@ def _convert_body_styled_html(lines: list[str], start: int,
         # Blank line
         if stripped == "":
             flush()
+            pending_semantic = None
             i += 1
             continue
 

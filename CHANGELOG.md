@@ -4,6 +4,51 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.7.0] - 2026-04-13
+
+### Added — WYSIWYG Editor, Semantic Anchors, Format Tools
+
+**WYSIWYG Rich Editor (panel 2):**
+- Contenteditable panel with formatting toolbar (Bold, Italic, Heading, Section Break, Undo, Redo)
+- Bidirectional sync with CM source via Turndown (HTML→markdown) library
+- Front matter locked as non-editable; body edits sync to all panels
+- Source-flag pattern prevents infinite sync loops
+- Paste handler sanitises to plain text
+
+**Semantic anchors for text messages + phone displays:**
+- New body-level anchors: `<!-- @text-sent -->`, `<!-- @text-received -->`, `<!-- @phone-incoming -->`
+- All 4 body converters (Clean HTML, SoFurry, BBCode, Styled HTML) handle anchors
+- Clean/Styled HTML: `<div class="text-message sent/received">` with CSS styling
+- BBCode: colour-coded `[right]` (sent) / `[left]` (received) alignment
+- SoFurry: `text-right` / `text-left` class alignment
+- Text-message + phone-display CSS added to STYLING_REFERENCE.md template
+- `is_text_message()` regex fixed to match `**Name:** message` format (was broken)
+
+**Format Document button:**
+- js-beautify library (141KB) for HTML/CSS prettification
+- Format button + Shift+Alt+F keyboard shortcut
+- Formats + saves the prettified content to disk via `PUT /format-file` endpoint
+
+**Editor improvements:**
+- Bidirectional scroll sync across all 4 panels (60ms lock prevents wobble)
+- Cross-panel selection sync (highlight text in any panel → shows in others)
+- Selection highlights skip contenteditable panel to prevent DOM corruption
+- Preview truncation limit raised from 100K to 500K chars
+- Print-container added to STYLING_REFERENCE.md template (print margins)
+- Ruins of Breeding: fixed 44 bogus `<strong>` tags from parser bug
+- 8 stories: added print-container wrapper to styled HTML files
+- Converter: `---` separator no longer leaks into disclaimer text
+
+**Bug fixes (comprehensive audit — 12 issues):**
+- Auto-save timer properly cleared on re-render
+- CM instances destroyed on re-render (prevents orphaned listeners)
+- beforeunload listener cleaned up between stories
+- Scroll sync flag in try/finally (prevents stuck state)
+- Toolbar overflow handled with nowrap + overflow-x
+- Front matter re-extracted from CM on every WYSIWYG sync (prevents stale cache)
+
+---
+
 ## [2.6.0] - 2026-04-12
 
 ### Added — Visual Theme Editor with live preview sync
