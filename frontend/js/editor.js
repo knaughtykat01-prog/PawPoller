@@ -399,7 +399,7 @@ const Editor = {
         if (!mdPreview) return;
 
         let content = this._getContent();
-        const MAX_PREVIEW = 100000;
+        const MAX_PREVIEW = 500000;
         if (content.length > MAX_PREVIEW) {
             content = content.substring(0, MAX_PREVIEW) + '\n\n[... truncated for preview ...]';
         }
