@@ -1339,6 +1339,11 @@ const Editor = {
                 ${colorRow('Signature', 'SIGNATURE_COLOUR')}
             </div>
             <div class="theme-section">
+                <h4>Text Messages</h4>
+                ${colorRow('Sent Background', 'TEXT_SENT_COLOUR')}
+                ${colorRow('Received Background', 'TEXT_RECEIVED_COLOUR')}
+            </div>
+            <div class="theme-section">
                 <h4>Typography</h4>
                 ${textRow('Title Shadow', 'TITLE_TEXT_SHADOW', 'text-shadow: 0 0 25px rgba(...)')}
             </div>

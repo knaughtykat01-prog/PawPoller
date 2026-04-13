@@ -1154,11 +1154,12 @@ def convert_to_sqw_chapters(markdown_text: str, warning_icon: str = "&#9888;") -
 # Styled HTML — complete themed documents with embedded CSS
 # ---------------------------------------------------------------------------
 
-# The 14 theme variables that every styled story needs.
+# Theme variables that every styled story needs.
 STYLED_HTML_THEME_KEYS = [
     "BACKGROUND", "TEXT_COLOUR", "TITLE_COLOUR", "BYLINE_COLOUR",
     "ACCENT_COLOUR", "WARNING_HEADING_COLOUR", "WARNING_BODY_COLOUR",
     "DISCLAIMER_HEADING_COLOUR", "STORY_END_COLOUR", "SIGNATURE_COLOUR",
+    "TEXT_SENT_COLOUR", "TEXT_RECEIVED_COLOUR",
     "TITLE_TEXT_SHADOW", "SECTION_BREAK_SYMBOL", "WARNING_ICON",
     "PRINT_APPROACH",
 ]
@@ -1449,6 +1450,9 @@ def _fill_template(template: str, theme: dict, fm: FrontMatter,
                                            theme.get("TITLE_COLOUR", "#e8ddd0")),
         "{{SIGNATURE_COLOUR}}": theme.get("SIGNATURE_COLOUR",
                                            theme.get("WARNING_HEADING_COLOUR", "#c4a040")),
+        "{{TEXT_SENT_COLOUR}}": theme.get("TEXT_SENT_COLOUR", "#508c46"),
+        "{{TEXT_RECEIVED_COLOUR}}": theme.get("TEXT_RECEIVED_COLOUR",
+                                               theme.get("ACCENT_COLOUR", "#8b2030")),
     }
     for placeholder, value in simple_replacements.items():
         doc = doc.replace(placeholder, value)
