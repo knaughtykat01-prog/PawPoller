@@ -249,32 +249,38 @@ const Editor = {
         if (this._syncingScroll) return;
         this._syncingScroll = true;
 
-        // Get scroll percentage from source
+        // Get scroll percentage from whichever panel triggered the scroll
         let pct = 0;
+        const _pct = (el) => el.scrollTop / (el.scrollHeight - el.clientHeight || 1);
+
         if (sourceId === 'cm-editor') {
-            const scroller = this.cmView?.dom.querySelector('.cm-scroller');
-            if (scroller) pct = scroller.scrollTop / (scroller.scrollHeight - scroller.clientHeight || 1);
+            const s = this.cmView?.dom.querySelector('.cm-scroller');
+            if (s) pct = _pct(s);
+        } else if (sourceId === 'cm-source') {
+            const s = this.cmSourceView?.dom.querySelector('.cm-scroller');
+            if (s) pct = _pct(s);
         } else {
             const el = document.getElementById(sourceId);
-            if (el) pct = el.scrollTop / (el.scrollHeight - el.clientHeight || 1);
+            if (el) pct = _pct(el);
         }
 
-        // Apply to all other scrollable targets
-        // CM editor
+        const _apply = (el) => { el.scrollTop = pct * (el.scrollHeight - el.clientHeight); };
+
+        // Sync to CM editor (panel 1)
         if (sourceId !== 'cm-editor') {
-            const scroller = this.cmView?.dom.querySelector('.cm-scroller');
-            if (scroller) scroller.scrollTop = pct * (scroller.scrollHeight - scroller.clientHeight);
+            const s = this.cmView?.dom.querySelector('.cm-scroller');
+            if (s) _apply(s);
         }
-        // CM source view (panel 3) — has its own .cm-scroller
-        if (sourceId !== 'editor-preview-source-body' && this.cmSourceView) {
-            const scroller = this.cmSourceView.dom.querySelector('.cm-scroller');
-            if (scroller) scroller.scrollTop = pct * (scroller.scrollHeight - scroller.clientHeight);
+        // Sync to CM source view (panel 3)
+        if (sourceId !== 'cm-source' && this.cmSourceView) {
+            const s = this.cmSourceView.dom.querySelector('.cm-scroller');
+            if (s) _apply(s);
         }
-        // HTML preview panels
+        // Sync to HTML preview panels (panel 2 + panel 4)
         for (const id of ['editor-preview-rendered-body', 'editor-preview-fmt-body']) {
             if (id === sourceId) continue;
             const el = document.getElementById(id);
-            if (el) el.scrollTop = pct * (el.scrollHeight - el.clientHeight);
+            if (el) _apply(el);
         }
 
         this._syncingScroll = false;
@@ -498,6 +504,9 @@ const Editor = {
                     this._updateCmContent(this.cmSourceView, raw);
                 } else if (typeof CM !== 'undefined') {
                     this.cmSourceView = this._createCmInstance(fmtSource, raw, lang, true);
+                    // Attach scroll sync to the new CM source view
+                    const srcScroller = this.cmSourceView.dom.querySelector('.cm-scroller');
+                    if (srcScroller) srcScroller.addEventListener('scroll', () => this._syncScroll('cm-source'));
                 } else {
                     const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     fmtSource.innerHTML = `<pre class="preview-source">${escaped}</pre>`;
