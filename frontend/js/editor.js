@@ -65,6 +65,17 @@ const Editor = {
     // ---------------------------------------------------------------------------
 
     async renderEditor(storyName) {
+        // Clean up previous editor state
+        clearInterval(this.autoSaveTimer);
+        if (this._beforeUnloadHandler) {
+            window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+        }
+        if (this.cmView) { this.cmView.destroy(); this.cmView = null; }
+        if (this.cmSourceView) { this.cmSourceView.destroy(); this.cmSourceView = null; }
+        if (this.cmCssView) { this.cmCssView.destroy(); this.cmCssView = null; }
+        this._wysiwygEditSource = null;
+        clearTimeout(this._wysiwygSyncTimer);
+
         this.storyName = storyName;
         this.isDirty = false;
 
@@ -174,10 +185,11 @@ const Editor = {
             // Cache front matter from initial content
             this._cacheFrontMatter(initialContent);
 
-            // Beforeunload warning
-            window.addEventListener('beforeunload', (e) => {
+            // Beforeunload warning (single handler, cleaned up on re-render)
+            this._beforeUnloadHandler = (e) => {
                 if (this.isDirty) { e.preventDefault(); e.returnValue = ''; }
-            });
+            };
+            window.addEventListener('beforeunload', this._beforeUnloadHandler);
 
             // Auto-save to localStorage every 30s
             this.autoSaveTimer = setInterval(() => {
@@ -288,11 +300,9 @@ const Editor = {
         const plain = text.replace(/\*+/g, '').replace(/_+/g, '').trim();
         if (!plain) return;
 
-        // Highlight in preview panels
-        for (const id of ['editor-preview-rendered-body', 'editor-preview-fmt-body']) {
-            const el = document.getElementById(id);
-            if (el) this._highlightInHtml(el, plain);
-        }
+        // Highlight in format preview only (skip contenteditable panel 2 to avoid DOM corruption)
+        const fmtPreview = document.getElementById('editor-preview-fmt-body');
+        if (fmtPreview) this._highlightInHtml(fmtPreview, plain);
         // Highlight in CM source view
         if (this.cmSourceView) this._highlightInCM(this.cmSourceView, plain);
     },
@@ -309,13 +319,10 @@ const Editor = {
         const plain = text.replace(/<[^>]+>/g, '').replace(/&[a-z]+;/gi, ' ').trim();
         if (!plain) return;
 
-        // Highlight in CM editor
+        // Highlight in CM editor and format preview (skip contenteditable panel 2)
         if (this.cmView) this._highlightInCM(this.cmView, plain);
-        // Highlight in preview panels
-        for (const id of ['editor-preview-rendered-body', 'editor-preview-fmt-body']) {
-            const el = document.getElementById(id);
-            if (el) this._highlightInHtml(el, plain);
-        }
+        const fmtPreview = document.getElementById('editor-preview-fmt-body');
+        if (fmtPreview) this._highlightInHtml(fmtPreview, plain);
     },
 
     _selectionHighlights: [],  // track active highlights for cleanup
@@ -338,11 +345,10 @@ const Editor = {
         // Highlight in CM source view (panel 3)
         if (this.cmSourceView) this._highlightInCM(this.cmSourceView, searchText);
 
-        // Highlight in the OTHER preview panel
-        for (const id of ['editor-preview-rendered-body', 'editor-preview-fmt-body']) {
-            if (id === sourceId) continue;
-            const el = document.getElementById(id);
-            if (el) this._highlightInHtml(el, searchText);
+        // Highlight in format preview only (skip contenteditable panel 2)
+        if (sourceId !== 'editor-preview-fmt-body') {
+            const fmtPreview = document.getElementById('editor-preview-fmt-body');
+            if (fmtPreview) this._highlightInHtml(fmtPreview, searchText);
         }
     },
 
@@ -422,42 +428,43 @@ const Editor = {
     _syncScroll(sourceId) {
         if (this._syncingScroll || this._wysiwygEditSource) return;
         this._syncingScroll = true;
+        try {
+            // Get scroll percentage from whichever panel triggered the scroll
+            let pct = 0;
+            const _pct = (el) => el.scrollTop / (el.scrollHeight - el.clientHeight || 1);
 
-        // Get scroll percentage from whichever panel triggered the scroll
-        let pct = 0;
-        const _pct = (el) => el.scrollTop / (el.scrollHeight - el.clientHeight || 1);
+            if (sourceId === 'cm-editor') {
+                const s = this.cmView?.dom.querySelector('.cm-scroller');
+                if (s) pct = _pct(s);
+            } else if (sourceId === 'cm-source') {
+                const s = this.cmSourceView?.dom.querySelector('.cm-scroller');
+                if (s) pct = _pct(s);
+            } else {
+                const el = document.getElementById(sourceId);
+                if (el) pct = _pct(el);
+            }
 
-        if (sourceId === 'cm-editor') {
-            const s = this.cmView?.dom.querySelector('.cm-scroller');
-            if (s) pct = _pct(s);
-        } else if (sourceId === 'cm-source') {
-            const s = this.cmSourceView?.dom.querySelector('.cm-scroller');
-            if (s) pct = _pct(s);
-        } else {
-            const el = document.getElementById(sourceId);
-            if (el) pct = _pct(el);
+            const _apply = (el) => { el.scrollTop = pct * (el.scrollHeight - el.clientHeight); };
+
+            // Sync to CM editor (panel 1)
+            if (sourceId !== 'cm-editor') {
+                const s = this.cmView?.dom.querySelector('.cm-scroller');
+                if (s) _apply(s);
+            }
+            // Sync to CM source view (panel 3)
+            if (sourceId !== 'cm-source' && this.cmSourceView) {
+                const s = this.cmSourceView.dom.querySelector('.cm-scroller');
+                if (s) _apply(s);
+            }
+            // Sync to HTML preview panels (panel 2 + panel 4)
+            for (const id of ['editor-preview-rendered-body', 'editor-preview-fmt-body']) {
+                if (id === sourceId) continue;
+                const el = document.getElementById(id);
+                if (el) _apply(el);
+            }
+        } finally {
+            this._syncingScroll = false;
         }
-
-        const _apply = (el) => { el.scrollTop = pct * (el.scrollHeight - el.clientHeight); };
-
-        // Sync to CM editor (panel 1)
-        if (sourceId !== 'cm-editor') {
-            const s = this.cmView?.dom.querySelector('.cm-scroller');
-            if (s) _apply(s);
-        }
-        // Sync to CM source view (panel 3)
-        if (sourceId !== 'cm-source' && this.cmSourceView) {
-            const s = this.cmSourceView.dom.querySelector('.cm-scroller');
-            if (s) _apply(s);
-        }
-        // Sync to HTML preview panels (panel 2 + panel 4)
-        for (const id of ['editor-preview-rendered-body', 'editor-preview-fmt-body']) {
-            if (id === sourceId) continue;
-            const el = document.getElementById(id);
-            if (el) _apply(el);
-        }
-
-        this._syncingScroll = false;
     },
 
     /** BBCode language definition for CodeMirror */
@@ -1099,9 +1106,23 @@ const Editor = {
         // Clean up: normalize multiple blank lines to double
         bodyMd = bodyMd.replace(/\n{3,}/g, '\n\n').trim();
 
+        // Re-extract front matter from current CM content (not stale cache)
+        const currentMd = this.cmView.state.doc.toString();
+        const bodyMarker = '<!-- @body -->';
+        const bodyMarkerIdx = currentMd.indexOf(bodyMarker);
+        let frontMatter = '';
+        if (bodyMarkerIdx >= 0) {
+            // Include @body line + any trailing --- separator
+            let endIdx = bodyMarkerIdx + bodyMarker.length;
+            const after = currentMd.substring(endIdx);
+            const trailMatch = after.match(/^\n(---\n|\n)/);
+            if (trailMatch) endIdx += trailMatch[0].length;
+            frontMatter = currentMd.substring(0, endIdx);
+        }
+
         // Reconstruct full markdown: front matter + body
-        const fullMd = this._frontMatterMd
-            ? this._frontMatterMd + '\n' + bodyMd + '\n'
+        const fullMd = frontMatter
+            ? frontMatter + '\n' + bodyMd + '\n'
             : bodyMd + '\n';
 
         // Save CM scroll position before replacing content

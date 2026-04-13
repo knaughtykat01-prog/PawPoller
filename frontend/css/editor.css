@@ -9,6 +9,8 @@
     background: var(--surface-elevated);
     border-bottom: 1px solid var(--border-primary);
     flex-shrink: 0;
+    white-space: nowrap;
+    overflow-x: auto;
 }
 
 .wysiwyg-toolbar button {
