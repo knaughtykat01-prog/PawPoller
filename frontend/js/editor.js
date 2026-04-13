@@ -1675,7 +1675,6 @@ const Editor = {
 
     async saveTheme() {
         this._updateStatus('Saving theme...');
-        console.log('saveTheme called, themeSourceMode:', this.themeSourceMode, 'vars:', JSON.stringify(this.themeVars).substring(0, 200));
         try {
             let resp, data;
             if (this.themeSourceMode && this.cmCssView) {
@@ -1688,13 +1687,11 @@ const Editor = {
             } else {
                 // Save theme variables → regenerate CSS
                 const payload = { variables: this.themeVars };
-                console.log('PUT /theme payload keys:', Object.keys(this.themeVars));
                 resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/theme`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                 });
-                console.log('PUT /theme response status:', resp.status);
             }
             if (!resp.ok) {
                 const errText = await resp.text();

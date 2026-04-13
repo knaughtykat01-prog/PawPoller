@@ -6,7 +6,16 @@ All notable changes to PawPoller are documented here.
 
 ## [2.7.0] - 2026-04-13
 
-### Added — WYSIWYG Editor, Semantic Anchors, Format Tools
+### Added — WYSIWYG Editor, Semantic Anchors, Format Tools, Theme Persistence
+
+**Theme Save persistence + Regenerate integration:**
+- Theme Save now persists variables to `CHAPTER_STYLING.md` (survives Regenerate)
+- Regenerate now includes Styled HTML (full + chapters + `style.css`)
+- `pawpull.py` reverse sync script (server → local)
+- Text message colour pickers in theme GUI (`TEXT_SENT_COLOUR`, `TEXT_RECEIVED_COLOUR`)
+- Warning icon + section break mega dropdown selectors (55 icons, 47 breaks, custom option)
+- `GET /theme` endpoint fills defaults for missing variables
+- `PUT /format-file` endpoint for saving formatted output
 
 **WYSIWYG Rich Editor (panel 2):**
 - Contenteditable panel with formatting toolbar (Bold, Italic, Heading, Section Break, Undo, Redo)
