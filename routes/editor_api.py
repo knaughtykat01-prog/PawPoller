@@ -285,8 +285,8 @@ async def preview(story_name: str, req: PreviewRequest):
 async def regenerate(story_name: str, req: RegenerateRequest):
     """Regenerate all derived format files from MASTER.md.
 
-    Writes BBCode, Clean HTML, and per-chapter splits to the story's
-    folder structure. Styled HTML and PDF generation are future phases.
+    Writes all formats: Clean HTML, SoFurry HTML, BBCode, Styled HTML
+    (full + chapters + style.css), SquidgeWorld, and per-chapter splits.
     """
     from editor.converter import convert
     story_dir = _resolve_story_dir(story_name)
@@ -356,7 +356,58 @@ async def regenerate(story_name: str, req: RegenerateRequest):
     except Exception as e:
         errors.append(f"SquidgeWorld: {e}")
 
-    # --- Chapter splits ---
+    # --- Styled HTML (full + chapters + CSS) ---
+    try:
+        from editor.converter import (
+            convert_to_styled_html_external_css, generate_styled_css,
+            parse_chapter_styling,
+        )
+        archive = get_archive_path()
+        template_path = archive / "Reference_Guides" / "Styling" / "HTML_CSS" / "STYLING_REFERENCE.md"
+        styling_path = story_dir / "CHAPTER_STYLING.md"
+
+        if template_path.is_file() and styling_path.is_file():
+            theme = parse_chapter_styling(styling_path.read_text(encoding="utf-8"))
+            template = template_path.read_text(encoding="utf-8")
+
+            # CSS
+            css = generate_styled_css(theme, template)
+            (html_dir / "style.css").write_text(css, encoding="utf-8")
+
+            ch_styled_dir = story_dir / "Chapters" / "Styled_HTML"
+            if ch_styled_dir.is_dir():
+                (ch_styled_dir / "style.css").write_text(css, encoding="utf-8")
+
+            # Full story
+            full_result = convert_to_styled_html_external_css(
+                content, theme, template, mode="full", css_href="style.css"
+            )
+            if full_result.full_story:
+                (html_dir / f"{stem}_Styled.html").write_text(
+                    full_result.full_story.output, encoding="utf-8"
+                )
+                results.append(f"HTML/{stem}_Styled.html ({len(full_result.full_story.output):,} bytes)")
+
+            # Per-chapter styled HTML
+            ch_result = convert_to_styled_html_external_css(
+                content, theme, template, mode="chapters", css_href="style.css"
+            )
+            if ch_result.chapters:
+                ch_styled_dir.mkdir(parents=True, exist_ok=True)
+                for ch_r in ch_result.chapters:
+                    ch_title = ch_r.stats.get("chapter_title", "")
+                    ch_title_safe = re.sub(
+                        r"^(Chapter|Part|Prelude|Epilogue)\s*\d*:?\s*", "", ch_title
+                    ).strip()
+                    ch_title_safe = re.sub(r"[^\w\s()-]", "", ch_title_safe).replace(" ", "_")
+                    ch_idx = ch_r.stats.get("chapter_index", 0)
+                    ch_filename = f"Chapter_{ch_idx + 1}_{ch_title_safe}.html"
+                    (ch_styled_dir / ch_filename).write_text(ch_r.output, encoding="utf-8")
+                results.append(f"Styled HTML: {len(ch_result.chapters)} chapters + full story + style.css")
+    except Exception as e:
+        errors.append(f"Styled HTML: {e}")
+
+    # --- Chapter splits (Markdown, SoFurry HTML, BBCode) ---
     from editor.converter import detect_chapters
     chapters = detect_chapters(content)
     lines = content.split("\n")
