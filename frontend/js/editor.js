@@ -230,9 +230,28 @@ const Editor = {
                 CM.EditorView.updateListener.of(update => {
                     if (update.docChanged) this._onInput();
                 }),
+                // Scroll sync: editor → preview panels
+                CM.EditorView.domEventHandlers({
+                    scroll: () => { this._syncScrollFromEditor(); },
+                }),
             ],
             parent: container,
         });
+    },
+
+    _syncScrollFromEditor() {
+        if (this._syncingScroll) return;
+        const scroller = this.cmView?.dom.querySelector('.cm-scroller');
+        if (!scroller) return;
+        const pct = scroller.scrollTop / (scroller.scrollHeight - scroller.clientHeight || 1);
+
+        this._syncingScroll = true;
+        // Sync to MD preview (panel 2) and format preview (panel 4)
+        for (const id of ['editor-preview-rendered-body', 'editor-preview-fmt-body']) {
+            const el = document.getElementById(id);
+            if (el) el.scrollTop = pct * (el.scrollHeight - el.clientHeight);
+        }
+        this._syncingScroll = false;
     },
 
     /** BBCode language definition for CodeMirror */
