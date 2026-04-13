@@ -523,6 +523,35 @@ async def save_theme(story_name: str, req: ThemeSaveRequest):
         logger.error("Theme save: permission denied writing CSS: %s", e)
         raise HTTPException(status_code=500, detail=f"Permission denied writing style.css — check archive permissions")
 
+    # Persist theme variables to CHAPTER_STYLING.md so Regenerate uses them
+    try:
+        styling_path = story_dir / "CHAPTER_STYLING.md"
+        if styling_path.is_file():
+            existing = styling_path.read_text(encoding="utf-8")
+        else:
+            existing = ""
+
+        # Remove any existing variables table (between markers)
+        marker_start = "<!-- THEME_VARIABLES_START -->"
+        marker_end = "<!-- THEME_VARIABLES_END -->"
+        if marker_start in existing:
+            before = existing[:existing.index(marker_start)]
+            after_idx = existing.index(marker_end) + len(marker_end) if marker_end in existing else len(existing)
+            existing = before.rstrip() + "\n"
+        else:
+            existing = existing.rstrip() + "\n\n"
+
+        # Build variables table
+        var_lines = [marker_start, "", "## Theme Variables", "", "| Variable | Value |", "| --- | --- |"]
+        for key in STYLED_HTML_THEME_KEYS:
+            if key in req.variables:
+                var_lines.append(f"| `{key}` | `{req.variables[key]}` |")
+        var_lines.append("", marker_end, "")
+        existing += "\n".join(var_lines)
+        styling_path.write_text(existing, encoding="utf-8")
+    except Exception as e:
+        logger.warning("Theme save: failed to update CHAPTER_STYLING.md: %s", e)
+
     return {"ok": True, "css_bytes": len(css)}
 
 
