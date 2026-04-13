@@ -233,6 +233,7 @@ const Editor = {
                 // Scroll sync: editor → other panels
                 CM.EditorView.domEventHandlers({
                     scroll: () => { this._syncScroll('cm-editor'); },
+                    mouseup: () => { this._syncSelectionFromCM(); },
                 }),
             ],
             parent: container,
@@ -243,6 +244,134 @@ const Editor = {
             const el = document.getElementById(id);
             if (el) el.addEventListener('scroll', () => this._syncScroll(id));
         }
+
+        // Selection sync: selecting text in any panel highlights it in the others
+        for (const id of ['editor-preview-rendered-body', 'editor-preview-fmt-body']) {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('mouseup', () => this._syncSelection(id));
+        }
+    },
+
+    _syncSelectionFromCM() {
+        this._clearSelectionHighlights();
+        if (!this.cmView) return;
+        const { from, to } = this.cmView.state.selection.main;
+        if (from === to) return;
+        const text = this.cmView.state.sliceDoc(from, to).trim();
+        if (text.length < 3 || text.length > 500) return;
+
+        // Strip markdown formatting to get the plain text for HTML panel search
+        const plain = text.replace(/\*+/g, '').replace(/_+/g, '').trim();
+        if (!plain) return;
+
+        // Highlight in preview panels
+        for (const id of ['editor-preview-rendered-body', 'editor-preview-fmt-body']) {
+            const el = document.getElementById(id);
+            if (el) this._highlightInHtml(el, plain);
+        }
+        // Highlight in CM source view
+        if (this.cmSourceView) this._highlightInCM(this.cmSourceView, plain);
+    },
+
+    _selectionHighlights: [],  // track active highlights for cleanup
+
+    _syncSelection(sourceId) {
+        const sel = window.getSelection();
+        const text = sel?.toString().trim();
+
+        // Clear previous highlights
+        this._clearSelectionHighlights();
+
+        if (!text || text.length < 3 || text.length > 500) return;
+
+        // Strip HTML tags to get plain text for searching in source
+        const searchText = text;
+
+        // Highlight in CM editor (panel 1)
+        if (this.cmView) this._highlightInCM(this.cmView, searchText);
+
+        // Highlight in CM source view (panel 3)
+        if (this.cmSourceView) this._highlightInCM(this.cmSourceView, searchText);
+
+        // Highlight in the OTHER preview panel
+        for (const id of ['editor-preview-rendered-body', 'editor-preview-fmt-body']) {
+            if (id === sourceId) continue;
+            const el = document.getElementById(id);
+            if (el) this._highlightInHtml(el, searchText);
+        }
+    },
+
+    _highlightInCM(view, text) {
+        // Find the text in the CM document and scroll to + select it
+        const doc = view.state.doc.toString();
+        const idx = doc.indexOf(text);
+        if (idx === -1) {
+            // Try stripped version (markdown has * for italic, HTML has tags)
+            const stripped = text.replace(/[*_]/g, '');
+            const idx2 = doc.replace(/[*_]/g, '').indexOf(stripped);
+            if (idx2 === -1) return;
+            // Map stripped position back to original — approximate by using same offset
+            view.dispatch({
+                selection: { anchor: idx2, head: idx2 + text.length },
+                effects: CM.EditorView.scrollIntoView(idx2, { y: 'center' }),
+            });
+            return;
+        }
+        view.dispatch({
+            selection: { anchor: idx, head: idx + text.length },
+            effects: CM.EditorView.scrollIntoView(idx, { y: 'center' }),
+        });
+    },
+
+    _highlightInHtml(container, text) {
+        // Walk text nodes and wrap first match in a <mark>
+        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+        let accumulated = '';
+        const nodes = [];
+
+        while (walker.nextNode()) {
+            nodes.push({ node: walker.currentNode, start: accumulated.length });
+            accumulated += walker.currentNode.textContent;
+        }
+
+        const matchIdx = accumulated.indexOf(text);
+        if (matchIdx === -1) return;
+
+        // Find which text node(s) contain the match
+        for (const { node, start } of nodes) {
+            const nodeEnd = start + node.textContent.length;
+            if (nodeEnd <= matchIdx) continue;
+            if (start >= matchIdx + text.length) break;
+
+            const localStart = Math.max(0, matchIdx - start);
+            const localEnd = Math.min(node.textContent.length, matchIdx + text.length - start);
+
+            const range = document.createRange();
+            range.setStart(node, localStart);
+            range.setEnd(node, localEnd);
+
+            const mark = document.createElement('mark');
+            mark.className = 'selection-sync-highlight';
+            mark.style.cssText = 'background: rgba(255, 200, 50, 0.4); border-radius: 2px;';
+            range.surroundContents(mark);
+            this._selectionHighlights.push(mark);
+
+            // Scroll the first highlight into view
+            if (this._selectionHighlights.length === 1) {
+                mark.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+        }
+    },
+
+    _clearSelectionHighlights() {
+        for (const mark of this._selectionHighlights) {
+            const parent = mark.parentNode;
+            if (parent) {
+                parent.replaceChild(document.createTextNode(mark.textContent), mark);
+                parent.normalize();  // merge adjacent text nodes
+            }
+        }
+        this._selectionHighlights = [];
     },
 
     _syncScroll(sourceId) {
