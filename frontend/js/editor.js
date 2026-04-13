@@ -420,7 +420,7 @@ const Editor = {
     },
 
     _syncScroll(sourceId) {
-        if (this._syncingScroll) return;
+        if (this._syncingScroll || this._wysiwygEditSource) return;
         this._syncingScroll = true;
 
         // Get scroll percentage from whichever panel triggered the scroll
@@ -1039,10 +1039,7 @@ const Editor = {
     },
 
     _execWysiwygCmd(cmd) {
-        const body = document.getElementById('editor-preview-rendered-body');
-        if (!body) return;
-        body.focus();
-
+        // Don't call body.focus() — the mousedown preventDefault keeps focus in contenteditable
         switch (cmd) {
             case 'bold':
                 document.execCommand('bold', false, null);
@@ -1107,6 +1104,10 @@ const Editor = {
             ? this._frontMatterMd + '\n' + bodyMd + '\n'
             : bodyMd + '\n';
 
+        // Save CM scroll position before replacing content
+        const cmScroller = this.cmView.dom.querySelector('.cm-scroller');
+        const savedScroll = cmScroller ? cmScroller.scrollTop : 0;
+
         // Update CM editor without triggering a preview refresh
         this.cmView.dispatch({
             changes: {
@@ -1116,9 +1117,11 @@ const Editor = {
             },
         });
 
+        // Restore CM scroll position
+        if (cmScroller) cmScroller.scrollTop = savedScroll;
+
         this.isDirty = true;
         this._updateWordCount(fullMd.split(/\s+/).length);
-        this._updateChapterNav();
 
         // Clear the flag after a microtask so CM's updateListener sees it
         setTimeout(() => { this._wysiwygEditSource = null; }, 0);
