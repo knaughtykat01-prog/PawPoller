@@ -19,6 +19,12 @@ const Editor = {
     cmSourceView: null,     // CodeMirror for format source (read-only)
     cmCssView: null,        // CodeMirror for CSS editor
     autoSaveTimer: null,    // localStorage auto-save interval
+    // WYSIWYG state
+    _wysiwygEditSource: null,   // 'cm' | 'wysiwyg' | null — prevents sync loops
+    _wysiwygSyncTimer: null,    // debounce for WYSIWYG→CM conversion
+    _turndown: null,            // TurndownService instance
+    _frontMatterMd: '',         // cached front matter (above <!-- @body -->)
+    _bodyStartLine: 0,          // line index of <!-- @body -->
 
     // ---------------------------------------------------------------------------
     // Story list page
@@ -89,8 +95,18 @@ const Editor = {
                         <div id="editor-cm-container" class="editor-cm-container"></div>
                     </div>
                     <div class="editor-quad-panel" id="panel-md-preview">
-                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-md-preview" title="Hide panel">&#128065;</button> Markdown Preview</div>
-                        <div class="preview-panel-body" id="editor-preview-rendered-body">
+                        <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-md-preview" title="Hide panel">&#128065;</button> Rich Editor</div>
+                        <div class="wysiwyg-toolbar" id="wysiwyg-toolbar">
+                            <button data-cmd="undo" title="Undo (Ctrl+Z)">&#8630;</button>
+                            <button data-cmd="redo" title="Redo (Ctrl+Y)">&#8631;</button>
+                            <span class="toolbar-sep"></span>
+                            <button data-cmd="bold" title="Bold (Ctrl+B)"><strong>B</strong></button>
+                            <button data-cmd="italic" title="Italic (Ctrl+I)"><em>I</em></button>
+                            <span class="toolbar-sep"></span>
+                            <button data-cmd="heading" title="Chapter Heading">H1</button>
+                            <button data-cmd="hr" title="Section Break">&#8213;</button>
+                        </div>
+                        <div class="preview-panel-body preview-html" id="editor-preview-rendered-body" contenteditable="true" spellcheck="true">
                             <p style="color:var(--text-secondary)">Loading...</p>
                         </div>
                     </div>
@@ -149,6 +165,14 @@ const Editor = {
             document.querySelectorAll('.panel-toggle').forEach(btn => {
                 btn.addEventListener('click', () => this.togglePanel(btn.dataset.panel));
             });
+
+            // Initialize WYSIWYG
+            this._initTurndown();
+            this._initWysiwygToolbar();
+            this._initWysiwygInput();
+
+            // Cache front matter from initial content
+            this._cacheFrontMatter(initialContent);
 
             // Beforeunload warning
             window.addEventListener('beforeunload', (e) => {
@@ -582,6 +606,9 @@ const Editor = {
         this._updateStatus(this.isDirty ? 'Unsaved changes' : 'Saved');
         this._updateWordCount(content.split(/\s+/).filter(Boolean).length);
 
+        // If WYSIWYG is the source, skip preview refresh (it already shows correct state)
+        if (this._wysiwygEditSource === 'wysiwyg') return;
+
         // Debounced preview
         clearTimeout(this.previewDebounceTimer);
         this.previewDebounceTimer = setTimeout(() => this._requestPreview(), 400);
@@ -637,9 +664,22 @@ const Editor = {
             const mdData = mdResp.ok ? await mdResp.json() : null;
             const fmtData = fmtResp.ok ? await fmtResp.json() : null;
 
-            // Panel 2: MD rendered preview
+            // Panel 2: WYSIWYG editor (contenteditable)
             if (mdData) {
-                mdPreview.innerHTML = '<div class="preview-html">' + (mdData.html || '') + '</div>';
+                this._wysiwygEditSource = 'cm';
+                const html = mdData.html || '';
+                // Wrap front matter (everything before first <hr />) as non-editable
+                const hrIdx = html.indexOf('<hr');
+                if (hrIdx > 0) {
+                    const frontHtml = html.substring(0, hrIdx);
+                    const bodyHtml = html.substring(hrIdx);
+                    mdPreview.innerHTML = '<div class="preview-html">' +
+                        '<div contenteditable="false" class="wysiwyg-frontmatter">' + frontHtml + '</div>' +
+                        bodyHtml + '</div>';
+                } else {
+                    mdPreview.innerHTML = '<div class="preview-html">' + html + '</div>';
+                }
+                setTimeout(() => { this._wysiwygEditSource = null; }, 0);
             } else {
                 mdPreview.innerHTML = `<p style="color:var(--color-error)">MD preview failed</p>`;
             }
@@ -895,6 +935,193 @@ const Editor = {
         bar.querySelectorAll('.restore-btn').forEach(btn => {
             btn.addEventListener('click', () => this.togglePanel(btn.dataset.restore));
         });
+    },
+
+    // ---------------------------------------------------------------------------
+    // WYSIWYG Editor
+    // ---------------------------------------------------------------------------
+
+    _initTurndown() {
+        if (typeof TurndownService === 'undefined') return;
+        this._turndown = new TurndownService({
+            headingStyle: 'atx',
+            hr: '---',
+            emDelimiter: '*',
+            strongDelimiter: '**',
+            bulletListMarker: '-',
+        });
+
+        // Chapter headings: centered <strong> paragraphs → # Heading
+        this._turndown.addRule('chapterHeading', {
+            filter: (node) => {
+                if (node.nodeName !== 'P') return false;
+                const style = node.getAttribute('style') || '';
+                if (!style.includes('text-align:center') && !style.includes('text-align: center')) return false;
+                const children = node.childNodes;
+                return children.length === 1 && children[0].nodeName === 'STRONG';
+            },
+            replacement: (content, node) => {
+                const text = node.textContent.trim();
+                return `\n# ${text}\n`;
+            },
+        });
+
+        // Centered paragraphs (subtitles, etc) — preserve as italic centered
+        this._turndown.addRule('centeredParagraph', {
+            filter: (node) => {
+                if (node.nodeName !== 'P') return false;
+                const style = node.getAttribute('style') || '';
+                if (!style.includes('text-align:center') && !style.includes('text-align: center')) return false;
+                const children = node.childNodes;
+                // Only match single <em> child (subtitles)
+                return children.length === 1 && children[0].nodeName === 'EM';
+            },
+            replacement: (content, node) => {
+                return `\n*${node.textContent.trim()}*\n`;
+            },
+        });
+
+        // Section breaks
+        this._turndown.addRule('sectionBreak', {
+            filter: (node) => {
+                if (node.nodeName !== 'P' && node.nodeName !== 'DIV') return false;
+                return (node.getAttribute('class') || '').includes('section-break') ||
+                    (node.textContent.trim().match(/^[*·✦\s]+$/) && (node.getAttribute('style') || '').includes('center'));
+            },
+            replacement: () => '\n---\n',
+        });
+
+        // Non-editable front matter — skip entirely
+        this._turndown.addRule('frontMatterBlock', {
+            filter: (node) => {
+                return node.getAttribute && node.getAttribute('contenteditable') === 'false';
+            },
+            replacement: () => '',
+        });
+
+        // HR elements
+        this._turndown.addRule('hrRule', {
+            filter: 'hr',
+            replacement: () => '\n---\n',
+        });
+    },
+
+    _cacheFrontMatter(markdown) {
+        const lines = markdown.split('\n');
+        let bodyIdx = -1;
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim() === '<!-- @body -->') { bodyIdx = i; break; }
+        }
+        if (bodyIdx >= 0) {
+            // Include the @body line and the --- after it
+            let endIdx = bodyIdx;
+            for (let i = bodyIdx + 1; i < lines.length && i <= bodyIdx + 2; i++) {
+                if (lines[i].trim() === '---' || lines[i].trim() === '') endIdx = i;
+                else break;
+            }
+            this._frontMatterMd = lines.slice(0, endIdx + 1).join('\n');
+            this._bodyStartLine = endIdx + 1;
+        } else {
+            this._frontMatterMd = '';
+            this._bodyStartLine = 0;
+        }
+    },
+
+    _initWysiwygToolbar() {
+        const toolbar = document.getElementById('wysiwyg-toolbar');
+        if (!toolbar) return;
+        toolbar.querySelectorAll('button[data-cmd]').forEach(btn => {
+            btn.addEventListener('mousedown', (e) => {
+                e.preventDefault(); // keep focus in contenteditable
+                this._execWysiwygCmd(btn.dataset.cmd);
+            });
+        });
+    },
+
+    _execWysiwygCmd(cmd) {
+        const body = document.getElementById('editor-preview-rendered-body');
+        if (!body) return;
+        body.focus();
+
+        switch (cmd) {
+            case 'bold':
+                document.execCommand('bold', false, null);
+                break;
+            case 'italic':
+                document.execCommand('italic', false, null);
+                break;
+            case 'undo':
+                document.execCommand('undo', false, null);
+                break;
+            case 'redo':
+                document.execCommand('redo', false, null);
+                break;
+            case 'heading': {
+                // Wrap current line/selection as a chapter heading
+                const sel = window.getSelection();
+                if (!sel.rangeCount) break;
+                const text = sel.toString().trim() || 'Chapter Heading';
+                document.execCommand('insertHTML', false,
+                    `<p style="text-align:center"><strong>${Utils.escapeHtml(text)}</strong></p>`);
+                break;
+            }
+            case 'hr':
+                document.execCommand('insertHTML', false, '<hr />');
+                break;
+        }
+    },
+
+    _initWysiwygInput() {
+        const body = document.getElementById('editor-preview-rendered-body');
+        if (!body) return;
+
+        body.addEventListener('input', () => {
+            if (this._wysiwygEditSource === 'cm') return; // ignore CM-triggered updates
+            clearTimeout(this._wysiwygSyncTimer);
+            this._wysiwygSyncTimer = setTimeout(() => this._syncWysiwygToCM(), 400);
+        });
+
+        // Paste handler — sanitize to plain text with basic formatting
+        body.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const text = e.clipboardData.getData('text/plain');
+            document.execCommand('insertText', false, text);
+        });
+    },
+
+    _syncWysiwygToCM() {
+        if (!this._turndown || !this.cmView) return;
+        const body = document.getElementById('editor-preview-rendered-body');
+        if (!body) return;
+
+        this._wysiwygEditSource = 'wysiwyg';
+
+        // Convert HTML → markdown (only the editable body, not front matter)
+        let bodyMd = this._turndown.turndown(body.innerHTML);
+
+        // Clean up: normalize multiple blank lines to double
+        bodyMd = bodyMd.replace(/\n{3,}/g, '\n\n').trim();
+
+        // Reconstruct full markdown: front matter + body
+        const fullMd = this._frontMatterMd
+            ? this._frontMatterMd + '\n' + bodyMd + '\n'
+            : bodyMd + '\n';
+
+        // Update CM editor without triggering a preview refresh
+        this.cmView.dispatch({
+            changes: {
+                from: 0,
+                to: this.cmView.state.doc.length,
+                insert: fullMd,
+            },
+        });
+
+        this.isDirty = true;
+        this._updateWordCount(fullMd.split(/\s+/).length);
+        this._updateChapterNav();
+
+        // Clear the flag after a microtask so CM's updateListener sees it
+        setTimeout(() => { this._wysiwygEditSource = null; }, 0);
     },
 
     // ---------------------------------------------------------------------------
