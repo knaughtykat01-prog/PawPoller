@@ -92,6 +92,7 @@ const Editor = {
                         <button id="editor-save-btn" class="btn btn-sm">Save</button>
                         <button id="editor-css-btn" class="btn btn-sm btn-outline">CSS</button>
                         <button id="editor-regen-btn" class="btn btn-sm btn-outline">Regenerate</button>
+                        <button id="editor-format-btn" class="btn btn-sm btn-outline" title="Format source code (Shift+Alt+F)">Format</button>
                         <select id="editor-format-select">
                             <option value="clean_html">Clean HTML (AO3)</option>
                             <option value="sofurry_html">SoFurry HTML</option>
@@ -172,6 +173,7 @@ const Editor = {
             document.getElementById('editor-css-btn')?.addEventListener('click', () => this.toggleCssEditor());
             document.getElementById('editor-save-btn')?.addEventListener('click', () => this.save());
             document.getElementById('editor-regen-btn')?.addEventListener('click', () => this.regenerate());
+            document.getElementById('editor-format-btn')?.addEventListener('click', () => this.formatSource());
             document.getElementById('editor-chapter-nav')?.addEventListener('change', (e) => this._jumpToChapter(parseInt(e.target.value)));
             document.querySelectorAll('.panel-toggle').forEach(btn => {
                 btn.addEventListener('click', () => this.togglePanel(btn.dataset.panel));
@@ -246,10 +248,10 @@ const Editor = {
         });
 
         // Ctrl+S keybinding
-        const saveKeymap = CM.keymap.of([{
-            key: 'Mod-s',
-            run: () => { this.save(); return true; },
-        }]);
+        const saveKeymap = CM.keymap.of([
+            { key: 'Mod-s', run: () => { this.save(); return true; } },
+            { key: 'Shift-Alt-f', run: () => { this.formatSource(); return true; } },
+        ]);
 
         this.cmView = new CM.EditorView({
             doc: content,
@@ -812,6 +814,60 @@ const Editor = {
         } catch (err) {
             this._updateStatus(`Save error: ${err.message}`);
         }
+    },
+
+    // ---------------------------------------------------------------------------
+    // Format Source
+    // ---------------------------------------------------------------------------
+
+    formatSource() {
+        if (typeof html_beautify === 'undefined' && typeof css_beautify === 'undefined') {
+            this._updateStatus('Formatter not loaded');
+            return;
+        }
+
+        const opts = { indent_size: 4, wrap_line_length: 0, preserve_newlines: true, max_preserve_newlines: 2 };
+        const cssOpts = { indent_size: 4 };
+        let formatted = false;
+
+        // Format the CM source view (panel 3) — HTML or BBCode
+        if (this.cmSourceView) {
+            const content = this.cmSourceView.state.doc.toString();
+            const isHtml = content.includes('<') && content.includes('>');
+            if (isHtml && typeof html_beautify !== 'undefined') {
+                const pretty = html_beautify(content, opts);
+                this._updateCmContent(this.cmSourceView, pretty);
+                formatted = true;
+            }
+        }
+
+        // Format the CSS editor if open
+        if (this.cmCssView && this.themeSourceMode && typeof css_beautify !== 'undefined') {
+            const content = this.cmCssView.state.doc.toString();
+            const pretty = css_beautify(content, cssOpts);
+            this._updateCmContent(this.cmCssView, pretty);
+            formatted = true;
+        }
+
+        // Format the MD source (panel 1) — light cleanup only
+        if (this.cmView && !formatted) {
+            const content = this.cmView.state.doc.toString();
+            // Normalize trailing whitespace and blank lines
+            const cleaned = content
+                .split('\n')
+                .map(line => line.trimEnd())
+                .join('\n')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim() + '\n';
+            if (cleaned !== content) {
+                this.cmView.dispatch({
+                    changes: { from: 0, to: this.cmView.state.doc.length, insert: cleaned },
+                });
+                formatted = true;
+            }
+        }
+
+        this._updateStatus(formatted ? 'Formatted' : 'Nothing to format');
     },
 
     // ---------------------------------------------------------------------------
