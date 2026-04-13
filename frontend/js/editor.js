@@ -1344,46 +1344,8 @@ const Editor = {
             </div>
             <div class="theme-section">
                 <h4>Decorations</h4>
-                ${selectRow('Warning Icon', 'WARNING_ICON', [
-                    {value: '&#9888;', label: '⚠ Warning Triangle'},
-                    {value: '&#10043;', label: '✻ Heavy Asterisk'},
-                    {value: '&#10048;', label: '✿ Flower'},
-                    {value: '&#9733;', label: '★ Star'},
-                    {value: '&#10070;', label: '❖ Diamond'},
-                    {value: '&#9670;', label: '◆ Black Diamond'},
-                    {value: '&#10045;', label: '✽ Teardrop Asterisk'},
-                    {value: '&#9830;', label: '♦ Diamond Suit'},
-                    {value: '&#10053;', label: '❅ Snowflake'},
-                    {value: '&#9827;', label: '♣ Club'},
-                    {value: '&#10023;', label: '✧ Open Star'},
-                    {value: '&#128293;', label: '🔥 Fire'},
-                    {value: '&#128420;', label: '🖤 Black Heart'},
-                    {value: '&#9760;', label: '☠ Skull'},
-                    {value: '&#10060;', label: '❌ Cross'},
-                    {value: '&#9883;', label: '⚫ Circle'},
-                ])}
-                ${selectRow('Section Break', 'SECTION_BREAK_SYMBOL', [
-                    {value: '* &ensp; * &ensp; *', label: '* * * (classic)'},
-                    {value: '· &ensp; ✦ &ensp; ·', label: '· ✦ · (star)'},
-                    {value: '~ &ensp; ✧ &ensp; ~', label: '~ ✧ ~ (open star)'},
-                    {value: '— &ensp; ❖ &ensp; —', label: '— ❖ — (diamond)'},
-                    {value: '✦ &ensp; ✦ &ensp; ✦', label: '✦ ✦ ✦ (three stars)'},
-                    {value: '⁂', label: '⁂ (asterism)'},
-                    {value: '❧', label: '❧ (floral heart)'},
-                    {value: '§', label: '§ (section sign)'},
-                    {value: '~ ~ ~', label: '~ ~ ~ (tildes)'},
-                    {value: '• • •', label: '• • • (bullets)'},
-                    {value: '◇ &ensp; ◆ &ensp; ◇', label: '◇ ◆ ◇ (diamonds)'},
-                    {value: '─── ✦ ───', label: '─── ✦ ─── (ruled star)'},
-                    {value: '═══════', label: '═══════ (double rule)'},
-                    {value: '· · · · ·', label: '· · · · · (dots)'},
-                    {value: '☽ &ensp; ✧ &ensp; ☾', label: '☽ ✧ ☾ (moons)'},
-                    {value: '⟡ &ensp; ⟡ &ensp; ⟡', label: '⟡ ⟡ ⟡ (four-point stars)'},
-                    {value: '❦', label: '❦ (floral heart bullet)'},
-                    {value: '✿ &ensp; ✿ &ensp; ✿', label: '✿ ✿ ✿ (flowers)'},
-                    {value: '† &ensp; † &ensp; †', label: '† † † (daggers)'},
-                    {value: '∞', label: '∞ (infinity)'},
-                ])}
+                ${this._iconSelector('WARNING_ICON')}
+                ${this._breakSelector('SECTION_BREAK_SYMBOL')}
             </div>
             <div class="theme-section">
                 <h4>Print</h4>
@@ -1393,6 +1355,29 @@ const Editor = {
                 ])}
             </div>
         `;
+
+        // Bind custom inputs (icon + break selectors have their own text fields)
+        body.querySelectorAll('.theme-combo-select').forEach(sel => {
+            const key = sel.dataset.key;
+            const textInput = body.querySelector(`.theme-combo-text[data-key="${key}"]`);
+            sel.addEventListener('change', () => {
+                if (sel.value === '__custom__') {
+                    if (textInput) textInput.style.display = '';
+                } else {
+                    if (textInput) { textInput.style.display = 'none'; textInput.value = sel.value; }
+                    this._pushThemeUndo();
+                    this.themeVars[key] = sel.value;
+                    this._onThemeChange();
+                }
+            });
+            if (textInput) {
+                textInput.addEventListener('change', () => {
+                    this._pushThemeUndo();
+                    this.themeVars[key] = textInput.value;
+                    this._onThemeChange();
+                });
+            }
+        });
 
         // Bind colour picker ↔ hex input sync
         // Colour pickers fire 'input' continuously while dragging — only push
@@ -1426,6 +1411,154 @@ const Editor = {
                 this._onThemeChange();
             });
         });
+    },
+
+    _iconSelector(key) {
+        const val = this.themeVars[key] || '&#9888;';
+        const icons = [
+            // Classic warnings
+            ['&#9888;', '⚠ Warning Triangle'],
+            ['&#9762;', '☢ Radioactive'],
+            ['&#9763;', '☣ Biohazard'],
+            ['&#9760;', '☠ Skull & Crossbones'],
+            ['&#10060;', '❌ Cross Mark'],
+            ['&#10071;', '❗ Exclamation'],
+            // Stars & celestial
+            ['&#9733;', '★ Black Star'],
+            ['&#9734;', '☆ White Star'],
+            ['&#10022;', '✦ Six-Point Star'],
+            ['&#10023;', '✧ Open Star'],
+            ['&#10038;', '✶ Six-Point Solid'],
+            ['&#10041;', '✹ Twelve-Point Star'],
+            ['&#10043;', '✻ Heavy Teardrop'],
+            ['&#10045;', '✽ Balloon Asterisk'],
+            ['&#10037;', '✵ Pinwheel Star'],
+            ['&#9789;', '☽ Crescent Moon'],
+            ['&#9790;', '☾ Last Quarter Moon'],
+            // Geometric
+            ['&#9670;', '◆ Black Diamond'],
+            ['&#9671;', '◇ White Diamond'],
+            ['&#9830;', '♦ Diamond Suit'],
+            ['&#10070;', '❖ Black Diamond Minus'],
+            ['&#9679;', '● Black Circle'],
+            ['&#9675;', '○ White Circle'],
+            ['&#9632;', '■ Black Square'],
+            ['&#9650;', '▲ Triangle Up'],
+            ['&#11044;', '⬤ Large Circle'],
+            // Nature & ornamental
+            ['&#10048;', '✿ Black Florette'],
+            ['&#10049;', '❁ Eight-Petal Flower'],
+            ['&#10053;', '❅ Tight Snowflake'],
+            ['&#10054;', '❆ Heavy Snowflake'],
+            ['&#9884;', '⚜ Fleur-de-lis'],
+            ['&#9752;', '☘ Shamrock'],
+            ['&#9773;', '☭ Hammer (industrial)'],
+            // Hearts & suits
+            ['&#9829;', '♥ Heart'],
+            ['&#9827;', '♣ Club'],
+            ['&#9824;', '♠ Spade'],
+            ['&#10084;', '❤ Heavy Heart'],
+            // Misc symbols
+            ['&#10016;', '✠ Maltese Cross'],
+            ['&#10013;', '✝ Latin Cross'],
+            ['&#10014;', '✞ Outlined Cross'],
+            ['&#9876;', '⚔ Crossed Swords'],
+            ['&#9873;', '⚑ Black Flag'],
+            ['&#9883;', '⚫ Medium Circle (dark)'],
+            ['&#10026;', '✪ Circled Star'],
+            ['&#10031;', '✯ Six-Point Pinwheel'],
+            // Emoji-style
+            ['&#128293;', '🔥 Fire'],
+            ['&#128420;', '🖤 Black Heart'],
+            ['&#127801;', '🌹 Rose'],
+            ['&#128128;', '💀 Skull'],
+            ['&#9889;', '⚡ Lightning'],
+            ['&#127775;', '🌟 Glowing Star'],
+        ];
+        const isCustom = !icons.some(([v]) => v === val);
+        const opts = icons.map(([v, l]) => `<option value="${v}" ${v === val ? 'selected' : ''}>${l}</option>`).join('');
+        return `<div class="theme-row">
+            <label>Warning Icon</label>
+            <select data-key="${key}" class="theme-combo-select">
+                ${opts}
+                <option value="__custom__" ${isCustom ? 'selected' : ''}>✏ Custom...</option>
+            </select>
+            <input type="text" value="${val}" data-key="${key}" class="theme-combo-text theme-text" style="${isCustom ? '' : 'display:none'}" placeholder="HTML entity e.g. &#9888;">
+        </div>`;
+    },
+
+    _breakSelector(key) {
+        const val = this.themeVars[key] || '* &ensp; * &ensp; *';
+        const breaks = [
+            // Classic
+            ['* &ensp; * &ensp; *', '* * * (classic)'],
+            ['• • •', '• • • (bullets)'],
+            ['· · · · ·', '· · · · · (dots)'],
+            ['~ ~ ~', '~ ~ ~ (tildes)'],
+            ['— — —', '— — — (em dashes)'],
+            // Star patterns
+            ['&#10022; &ensp; &#10022; &ensp; &#10022;', '✦ ✦ ✦ (solid stars)'],
+            ['&#10023; &ensp; &#10023; &ensp; &#10023;', '✧ ✧ ✧ (open stars)'],
+            ['&#9733; &ensp; &#10022; &ensp; &#9733;', '★ ✦ ★ (Chosen)'],
+            ['· &ensp; &#10022; &ensp; ·', '· ✦ · (dot star dot)'],
+            ['~ &ensp; &#10023; &ensp; ~', '~ ✧ ~ (tilde star)'],
+            ['&#10022; &#11824; &#10022;', '✦ ⸰ ✦ (Abstinent Bet)'],
+            ['&#10043; &ensp; &#10043; &ensp; &#10043;', '✻ ✻ ✻ (Ruins)'],
+            // Diamond patterns
+            ['&mdash; &#10022; &mdash;', '— ✦ — (Drumheller)'],
+            ['&mdash; &#10070; &mdash;', '— ❖ — (dash diamond)'],
+            ['&#9670; &middot; &#9670;', '◆ · ◆ (Extra Credit)'],
+            ['&#9671; &ensp; &#9670; &ensp; &#9671;', '◇ ◆ ◇ (diamonds)'],
+            ['&#9830; &ensp; &#9830; &ensp; &#9830;', '♦ ♦ ♦ (suits)'],
+            // Celestial
+            ['&#9789; &ensp; &#10022; &ensp; &#9790;', '☽ ✦ ☾ (Silk moons)'],
+            ['&#9789; &ensp; &#9733; &ensp; &#9790;', '☽ ★ ☾ (moon star moon)'],
+            ['&#9733; &ensp; &#9789; &ensp; &#9733;', '★ ☽ ★ (star moon star)'],
+            ['&#10023; &ensp; &#9789; &ensp; &#10023;', '✧ ☽ ✧ (open star moon)'],
+            // Ornamental
+            ['&#10023; &#9884; &#10023;', '✧ ⚜ ✧ (Velvet fleur-de-lis)'],
+            ['&#8258; &#9830; &#8258;', '⁂ ♦ ⁂ (NSES)'],
+            ['&#9884; &ensp; &#9884; &ensp; &#9884;', '⚜ ⚜ ⚜ (three fleur-de-lis)'],
+            ['&#10048; &ensp; &#10048; &ensp; &#10048;', '✿ ✿ ✿ (flowers)'],
+            ['&#10049; &ensp; &#10049; &ensp; &#10049;', '❁ ❁ ❁ (eight-petal)'],
+            ['&#9752; &ensp; &#9752; &ensp; &#9752;', '☘ ☘ ☘ (shamrocks)'],
+            // Rules & lines
+            ['─── &#10022; ───', '─── ✦ ─── (ruled star)'],
+            ['─── &#10070; ───', '─── ❖ ─── (ruled diamond)'],
+            ['─── &#9884; ───', '─── ⚜ ─── (ruled fleur-de-lis)'],
+            ['═══════', '═══════ (double rule)'],
+            ['───────', '─────── (single rule)'],
+            ['─ · ─ · ─', '─ · ─ · ─ (morse)'],
+            // Singles & pairs
+            ['&#8258;', '⁂ (asterism)'],
+            ['&#10087;', '❧ (rotated floral)'],
+            ['&#10086;', '❦ (floral heart)'],
+            ['§', '§ (section sign)'],
+            ['&#8224; &ensp; &#8224; &ensp; &#8224;', '† † † (daggers)'],
+            ['&#8225; &ensp; &#8225; &ensp; &#8225;', '‡ ‡ ‡ (double daggers)'],
+            ['&#8734;', '∞ (infinity)'],
+            ['&#9876;', '⚔ (crossed swords)'],
+            // Hearts
+            ['&#9829; &ensp; &#9829; &ensp; &#9829;', '♥ ♥ ♥ (hearts)'],
+            ['&#10084;', '❤ (heavy heart)'],
+            ['&#9825; &ensp; &#9829; &ensp; &#9825;', '♡ ♥ ♡ (open heart)'],
+            // Arrows & misc
+            ['&#10148; &ensp; &#10148; &ensp; &#10148;', '➤ ➤ ➤ (arrows)'],
+            ['&#8226; &#10022; &#8226;', '• ✦ • (bullet star)'],
+            ['&#10040; &ensp; &#10040; &ensp; &#10040;', '✸ ✸ ✸ (heavy stars)'],
+            ['&#10059;', '❋ (heavy asterisk)'],
+            ['&#10056; &ensp; &#10056; &ensp; &#10056;', '❈ ❈ ❈ (asterisk flowers)'],
+        ];
+        const isCustom = !breaks.some(([v]) => v === val);
+        const opts = breaks.map(([v, l]) => `<option value="${v}" ${v === val ? 'selected' : ''}>${l}</option>`).join('');
+        return `<div class="theme-row">
+            <label>Section Break</label>
+            <select data-key="${key}" class="theme-combo-select">
+                ${opts}
+                <option value="__custom__" ${isCustom ? 'selected' : ''}>✏ Custom...</option>
+            </select>
+            <input type="text" value="${val}" data-key="${key}" class="theme-combo-text theme-text" style="${isCustom ? '' : 'display:none'}" placeholder="HTML entities or text">
+        </div>`;
     },
 
     _pushThemeUndo() {
