@@ -646,6 +646,13 @@ const Editor = {
         const fmtLabels = { 'bbcode': 'BBCode', 'clean_html': 'Clean HTML', 'sofurry_html': 'SoFurry HTML', 'styled_html': 'Styled HTML' };
 
         try {
+            // Save scroll positions before re-rendering
+            const savedScrolls = {};
+            for (const id of ['editor-preview-rendered-body', 'editor-preview-source-body', 'editor-preview-fmt-body']) {
+                const el = document.getElementById(id);
+                if (el) savedScrolls[id] = el.scrollTop;
+            }
+
             [mdPreview, fmtSource, fmtPreview].forEach(el => { if (el) el.style.opacity = '0.6'; });
 
             // 2 parallel requests: MD preview (clean_html) + selected format
@@ -745,6 +752,29 @@ const Editor = {
             }
 
             [mdPreview, fmtSource, fmtPreview].forEach(el => { if (el) el.style.opacity = '1'; });
+
+            // Restore scroll positions after re-rendering
+            for (const [id, pos] of Object.entries(savedScrolls)) {
+                const el = document.getElementById(id);
+                if (el) el.scrollTop = pos;
+            }
+            // For styled_html iframe, restore scroll inside the iframe after it loads
+            if (this.previewFormat === 'styled_html' && fmtPreview) {
+                const iframe = fmtPreview.querySelector('iframe');
+                if (iframe) {
+                    iframe.addEventListener('load', () => {
+                        try {
+                            const iframeBody = iframe.contentDocument?.documentElement;
+                            if (iframeBody && savedScrolls['editor-preview-fmt-body'] !== undefined) {
+                                // Approximate: use percentage-based restore
+                                const pct = savedScrolls['editor-preview-fmt-body'] /
+                                    (fmtPreview.scrollHeight - fmtPreview.clientHeight || 1);
+                                iframeBody.scrollTop = pct * (iframeBody.scrollHeight - iframeBody.clientHeight);
+                            }
+                        } catch {}
+                    }, { once: true });
+                }
+            }
         } catch (err) {
             if (mdPreview) mdPreview.innerHTML = `<p style="color:var(--color-error)">Error: ${err.message}</p>`;
             [mdPreview, fmtSource, fmtPreview].forEach(el => { if (el) el.style.opacity = '1'; });
