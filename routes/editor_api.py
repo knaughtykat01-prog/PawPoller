@@ -416,6 +416,23 @@ async def get_theme(story_name: str):
     if not styling_path.is_file():
         return {"variables": {}, "error": "No CHAPTER_STYLING.md found"}
     theme = parse_chapter_styling(styling_path.read_text(encoding="utf-8"))
+    # Fill in defaults for any missing keys so the GUI always has values
+    defaults = {
+        "BACKGROUND": "#1a1118", "TEXT_COLOUR": "#e0d6cc",
+        "TITLE_COLOUR": "#e8ddd0", "BYLINE_COLOUR": "#b89a80",
+        "ACCENT_COLOUR": "#8b2030", "WARNING_HEADING_COLOUR": "#c4a040",
+        "WARNING_BODY_COLOUR": "#c8b8a8", "DISCLAIMER_HEADING_COLOUR": "#e8ddd0",
+        "STORY_END_COLOUR": "#e8ddd0", "SIGNATURE_COLOUR": "#c4a040",
+        "TEXT_SENT_COLOUR": "#508c46", "TEXT_RECEIVED_COLOUR": "#8b2030",
+        "TITLE_TEXT_SHADOW": "", "SECTION_BREAK_SYMBOL": "* &ensp; * &ensp; *",
+        "WARNING_ICON": "&#9888;", "PRINT_APPROACH": "colour-preserve",
+    }
+    for key, default in defaults.items():
+        if key not in theme:
+            theme[key] = default
+    # Default TEXT_RECEIVED_COLOUR to ACCENT_COLOUR if not set
+    if theme.get("TEXT_RECEIVED_COLOUR") == "#8b2030" and theme.get("ACCENT_COLOUR") != "#8b2030":
+        theme["TEXT_RECEIVED_COLOUR"] = theme["ACCENT_COLOUR"]
     return {"variables": theme, "keys": STYLED_HTML_THEME_KEYS}
 
 
