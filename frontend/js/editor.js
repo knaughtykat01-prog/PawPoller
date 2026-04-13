@@ -273,6 +273,27 @@ const Editor = {
         if (this.cmSourceView) this._highlightInCM(this.cmSourceView, plain);
     },
 
+    _syncSelectionFromCMSource() {
+        this._clearSelectionHighlights();
+        if (!this.cmSourceView) return;
+        const { from, to } = this.cmSourceView.state.selection.main;
+        if (from === to) return;
+        const text = this.cmSourceView.state.sliceDoc(from, to).trim();
+        if (text.length < 3 || text.length > 500) return;
+
+        // Strip HTML tags to get plain text
+        const plain = text.replace(/<[^>]+>/g, '').replace(/&[a-z]+;/gi, ' ').trim();
+        if (!plain) return;
+
+        // Highlight in CM editor
+        if (this.cmView) this._highlightInCM(this.cmView, plain);
+        // Highlight in preview panels
+        for (const id of ['editor-preview-rendered-body', 'editor-preview-fmt-body']) {
+            const el = document.getElementById(id);
+            if (el) this._highlightInHtml(el, plain);
+        }
+    },
+
     _selectionHighlights: [],  // track active highlights for cleanup
 
     _syncSelection(sourceId) {
@@ -633,9 +654,12 @@ const Editor = {
                     this._updateCmContent(this.cmSourceView, raw);
                 } else if (typeof CM !== 'undefined') {
                     this.cmSourceView = this._createCmInstance(fmtSource, raw, lang, true);
-                    // Attach scroll sync to the new CM source view
+                    // Attach scroll + selection sync to the new CM source view
                     const srcScroller = this.cmSourceView.dom.querySelector('.cm-scroller');
-                    if (srcScroller) srcScroller.addEventListener('scroll', () => this._syncScroll('cm-source'));
+                    if (srcScroller) {
+                        srcScroller.addEventListener('scroll', () => this._syncScroll('cm-source'));
+                        srcScroller.addEventListener('mouseup', () => this._syncSelectionFromCMSource());
+                    }
                 } else {
                     const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     fmtSource.innerHTML = `<pre class="preview-source">${escaped}</pre>`;
