@@ -1344,8 +1344,46 @@ const Editor = {
             </div>
             <div class="theme-section">
                 <h4>Decorations</h4>
-                ${textRow('Warning Icon', 'WARNING_ICON', '&#9888;')}
-                ${textRow('Section Break', 'SECTION_BREAK_SYMBOL', '· ✦ ·')}
+                ${selectRow('Warning Icon', 'WARNING_ICON', [
+                    {value: '&#9888;', label: '⚠ Warning Triangle'},
+                    {value: '&#10043;', label: '✻ Heavy Asterisk'},
+                    {value: '&#10048;', label: '✿ Flower'},
+                    {value: '&#9733;', label: '★ Star'},
+                    {value: '&#10070;', label: '❖ Diamond'},
+                    {value: '&#9670;', label: '◆ Black Diamond'},
+                    {value: '&#10045;', label: '✽ Teardrop Asterisk'},
+                    {value: '&#9830;', label: '♦ Diamond Suit'},
+                    {value: '&#10053;', label: '❅ Snowflake'},
+                    {value: '&#9827;', label: '♣ Club'},
+                    {value: '&#10023;', label: '✧ Open Star'},
+                    {value: '&#128293;', label: '🔥 Fire'},
+                    {value: '&#128420;', label: '🖤 Black Heart'},
+                    {value: '&#9760;', label: '☠ Skull'},
+                    {value: '&#10060;', label: '❌ Cross'},
+                    {value: '&#9883;', label: '⚫ Circle'},
+                ])}
+                ${selectRow('Section Break', 'SECTION_BREAK_SYMBOL', [
+                    {value: '* &ensp; * &ensp; *', label: '* * * (classic)'},
+                    {value: '· &ensp; ✦ &ensp; ·', label: '· ✦ · (star)'},
+                    {value: '~ &ensp; ✧ &ensp; ~', label: '~ ✧ ~ (open star)'},
+                    {value: '— &ensp; ❖ &ensp; —', label: '— ❖ — (diamond)'},
+                    {value: '✦ &ensp; ✦ &ensp; ✦', label: '✦ ✦ ✦ (three stars)'},
+                    {value: '⁂', label: '⁂ (asterism)'},
+                    {value: '❧', label: '❧ (floral heart)'},
+                    {value: '§', label: '§ (section sign)'},
+                    {value: '~ ~ ~', label: '~ ~ ~ (tildes)'},
+                    {value: '• • •', label: '• • • (bullets)'},
+                    {value: '◇ &ensp; ◆ &ensp; ◇', label: '◇ ◆ ◇ (diamonds)'},
+                    {value: '─── ✦ ───', label: '─── ✦ ─── (ruled star)'},
+                    {value: '═══════', label: '═══════ (double rule)'},
+                    {value: '· · · · ·', label: '· · · · · (dots)'},
+                    {value: '☽ &ensp; ✧ &ensp; ☾', label: '☽ ✧ ☾ (moons)'},
+                    {value: '⟡ &ensp; ⟡ &ensp; ⟡', label: '⟡ ⟡ ⟡ (four-point stars)'},
+                    {value: '❦', label: '❦ (floral heart bullet)'},
+                    {value: '✿ &ensp; ✿ &ensp; ✿', label: '✿ ✿ ✿ (flowers)'},
+                    {value: '† &ensp; † &ensp; †', label: '† † † (daggers)'},
+                    {value: '∞', label: '∞ (infinity)'},
+                ])}
             </div>
             <div class="theme-section">
                 <h4>Print</h4>
