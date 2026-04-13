@@ -616,10 +616,8 @@ const Editor = {
         this._updateStatus(this.isDirty ? 'Unsaved changes' : 'Saved');
         this._updateWordCount(content.split(/\s+/).filter(Boolean).length);
 
-        // If WYSIWYG is the source, skip preview refresh (it already shows correct state)
-        if (this._wysiwygEditSource === 'wysiwyg') return;
-
-        // Debounced preview
+        // Debounced preview — if WYSIWYG is source, still refresh format panels (3+4)
+        // but skip panel 2 (the user is actively editing there)
         clearTimeout(this.previewDebounceTimer);
         this.previewDebounceTimer = setTimeout(() => this._requestPreview(), 400);
     },
@@ -675,23 +673,26 @@ const Editor = {
             const fmtData = fmtResp.ok ? await fmtResp.json() : null;
 
             // Panel 2: WYSIWYG editor (contenteditable)
-            if (mdData) {
-                this._wysiwygEditSource = 'cm';
-                const html = mdData.html || '';
-                // Wrap front matter (everything before first <hr />) as non-editable
-                const hrIdx = html.indexOf('<hr');
-                if (hrIdx > 0) {
-                    const frontHtml = html.substring(0, hrIdx);
-                    const bodyHtml = html.substring(hrIdx);
-                    mdPreview.innerHTML = '<div class="preview-html">' +
-                        '<div contenteditable="false" class="wysiwyg-frontmatter">' + frontHtml + '</div>' +
-                        bodyHtml + '</div>';
+            // Skip panel 2 update if the user is actively editing in it
+            if (this._wysiwygEditSource !== 'wysiwyg') {
+                if (mdData) {
+                    this._wysiwygEditSource = 'cm';
+                    const html = mdData.html || '';
+                    // Wrap front matter (everything before first <hr />) as non-editable
+                    const hrIdx = html.indexOf('<hr');
+                    if (hrIdx > 0) {
+                        const frontHtml = html.substring(0, hrIdx);
+                        const bodyHtml = html.substring(hrIdx);
+                        mdPreview.innerHTML = '<div class="preview-html">' +
+                            '<div contenteditable="false" class="wysiwyg-frontmatter">' + frontHtml + '</div>' +
+                            bodyHtml + '</div>';
+                    } else {
+                        mdPreview.innerHTML = '<div class="preview-html">' + html + '</div>';
+                    }
+                    setTimeout(() => { this._wysiwygEditSource = null; }, 0);
                 } else {
-                    mdPreview.innerHTML = '<div class="preview-html">' + html + '</div>';
+                    mdPreview.innerHTML = `<p style="color:var(--color-error)">MD preview failed</p>`;
                 }
-                setTimeout(() => { this._wysiwygEditSource = null; }, 0);
-            } else {
-                mdPreview.innerHTML = `<p style="color:var(--color-error)">MD preview failed</p>`;
             }
 
             // Panel 3: Format source (syntax highlighted, read-only)
