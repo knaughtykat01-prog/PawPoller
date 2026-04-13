@@ -428,6 +428,7 @@ const Editor = {
     _syncScroll(sourceId) {
         if (this._syncingScroll || this._wysiwygEditSource) return;
         this._syncingScroll = true;
+        clearTimeout(this._scrollLockTimer);
         try {
             // Get scroll percentage from whichever panel triggered the scroll
             let pct = 0;
@@ -463,7 +464,9 @@ const Editor = {
                 if (el) _apply(el);
             }
         } finally {
-            this._syncingScroll = false;
+            // Keep the lock active for 60ms so cascading scroll events
+            // (fired async by the browser after setting scrollTop) are ignored
+            this._scrollLockTimer = setTimeout(() => { this._syncingScroll = false; }, 60);
         }
     },
 
