@@ -1025,19 +1025,18 @@
 }
 
 .metadata-tag-dropdown {
-    position: absolute;
-    top: calc(100% + 2px);
-    left: 0;
-    right: 0;
+    position: fixed;
+    /* Position set by JS via inline style (top/left/width) to escape
+       the section's overflow:hidden accordion clipping. */
     min-width: 380px;
-    z-index: 50;
-    max-height: 360px;
+    z-index: 1500;
+    max-height: 480px;
     overflow-y: auto;
     overflow-x: hidden;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 6px;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
 .metadata-tag-result {
