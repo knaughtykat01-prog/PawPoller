@@ -4,6 +4,55 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.9.1] - 2026-04-15
+
+### Added — Phase 6a: Publish Check (read-only validation matrix)
+
+Pre-flight check before the actual publish flow lands in 6b. Opens a
+chapter × platform grid showing which combinations are ready, blocked,
+or already posted — without making a single HTTP request to any
+external platform.
+
+**Backend (`routes/editor_api.py`):**
+- `GET /api/editor/stories/{name}/publish-check` — returns
+  `{ok, story_name, story_title, total_chapters, platforms[], chapters[], matrix[]}`.
+- For each chapter × platform: builds the `StoryUploadPackage` via
+  `story_reader.build_package()`, runs `poster.validate(package)`,
+  cross-references the publications registry. No external HTTP.
+- Cell statuses: `ready`, `blocked`, `posted`, `posted_stale`
+  (already posted but file/tags now invalid), `ready_retry` (previous
+  attempt failed, package now valid), `failed_prev` (previous attempt
+  failed and still blocked), `error` (poster init or package build threw).
+- `PUBLISH_PLATFORMS` constant defines display order: IB, FA, WS, SF,
+  SQW, AO3, DA, IK, BSky.
+
+**Frontend (`frontend/js/publish_check.js` — new):**
+- `PublishCheck.open(storyName)` opens a full-screen modal (5vw inset,
+  z-index 10010) with the matrix.
+- Each cell shows a status icon (✓ / ✗ / ! / ↻ / ⚠) colour-coded by
+  status. Click a cell → detail panel with package title, tag count,
+  file path + size + max-size, mode requirement, edit support,
+  existing publication link.
+- Sticky header row (platform names) and sticky first column (chapter
+  titles) so the matrix scales for stories with many chapters.
+- Stats line: total combinations / posted / ready / blocked.
+- "Re-check" button re-fires the endpoint without closing the modal.
+- ESC and backdrop click both close.
+
+**Frontend (`frontend/js/editor.js`):**
+- New "Publish" button between Regenerate and Format, opens
+  `PublishCheck.open(storyName)`.
+
+**Frontend (`frontend/css/editor.css`):**
+- Full modal styling: `.publish-check-modal`, `.publish-check-dialog`,
+  `.publish-check-table`, status colour cells (`.cell-ready`,
+  `.cell-posted`, `.cell-posted-stale`, `.cell-retry`,
+  `.cell-blocked`, `.cell-error`), detail panel.
+
+**Cache busters:** `editor.js?v=276`, `publish_check.js?v=1`.
+
+---
+
 ## [2.9.0] - 2026-04-15
 
 ### Added — Native PDF generation in the editor (WeasyPrint primary, Edge fallback)

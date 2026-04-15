@@ -93,6 +93,7 @@ const Editor = {
                         <button id="editor-metadata-btn" class="btn btn-sm btn-outline">Metadata</button>
                         <button id="editor-css-btn" class="btn btn-sm btn-outline">CSS</button>
                         <button id="editor-regen-btn" class="btn btn-sm btn-outline">Regenerate</button>
+                        <button id="editor-publish-btn" class="btn btn-sm btn-outline" title="Check publishability across all platforms">Publish</button>
                         <button id="editor-format-btn" class="btn btn-sm btn-outline" title="Format source code (Shift+Alt+F)">Format</button>
                         <select id="editor-format-select">
                             <option value="clean_html">Clean HTML (AO3)</option>
@@ -175,6 +176,7 @@ const Editor = {
             document.getElementById('editor-metadata-btn')?.addEventListener('click', () => MetaEditor.toggle());
             document.getElementById('editor-save-btn')?.addEventListener('click', () => this.save());
             document.getElementById('editor-regen-btn')?.addEventListener('click', () => this.regenerate());
+            document.getElementById('editor-publish-btn')?.addEventListener('click', () => PublishCheck.open(storyName));
             document.getElementById('editor-format-btn')?.addEventListener('click', () => this.formatSource());
             document.getElementById('editor-chapter-nav')?.addEventListener('change', (e) => this._jumpToChapter(parseInt(e.target.value)));
             document.querySelectorAll('.panel-toggle').forEach(btn => {

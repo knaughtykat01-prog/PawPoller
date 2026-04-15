@@ -494,6 +494,139 @@ async def regenerate(story_name: str, req: RegenerateRequest):
     }
 
 
+# ---------------------------------------------------------------------------
+# Publishability check (Phase 6a — read-only validation matrix)
+# ---------------------------------------------------------------------------
+
+# Platform display order + labels for the matrix
+PUBLISH_PLATFORMS = [
+    ("ib", "Inkbunny"),
+    ("fa", "FurAffinity"),
+    ("ws", "Weasyl"),
+    ("sf", "SoFurry"),
+    ("sqw", "SquidgeWorld"),
+    ("ao3", "AO3"),
+    ("da", "DeviantArt"),
+    ("ik", "Itaku"),
+    ("bsky", "Bluesky"),
+]
+
+
+@editor_router.get("/stories/{story_name:path}/publish-check")
+async def publish_check(story_name: str):
+    """Validate every (chapter × platform) combination against its poster.
+
+    Returns a matrix of cells, each describing whether that combination is
+    ready to post, blocked by validation errors, or already published.
+    No HTTP requests are made to external platforms — this is pure local
+    validation + a read of the publications registry.
+    """
+    from posting import story_reader, manager
+    from database.db import get_connection
+    from database import posting_queries
+
+    # Resolve the canonical story name (the editor passes the URL-safe form,
+    # but story_reader works off the archive folder name).
+    story_dir = _resolve_story_dir(story_name)
+    canonical = story_dir.name
+
+    try:
+        story = story_reader.load_story(canonical)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Story not found: {e}")
+
+    # Build chapter list — full story (0) for unsplit stories, otherwise 1..N
+    if story.total_chapters > 0:
+        chapters = [
+            {"index": i, "title": story.chapters[i - 1].title}
+            for i in range(1, story.total_chapters + 1)
+        ]
+    else:
+        chapters = [{"index": 0, "title": story.title or canonical}]
+
+    # Pre-load existing publications keyed by (chapter, platform)
+    conn = get_connection()
+    try:
+        pubs = posting_queries.get_publications(conn, story_name=canonical)
+    finally:
+        conn.close()
+    pub_map = {(p["chapter_index"], p["platform"]): p for p in pubs}
+
+    # Build the matrix
+    matrix = []
+    for ch in chapters:
+        row = {
+            "chapter_index": ch["index"],
+            "chapter_title": ch["title"],
+            "cells": {},
+        }
+        for plat_id, _ in PUBLISH_PLATFORMS:
+            try:
+                poster = manager._get_poster(plat_id)
+            except Exception as e:
+                row["cells"][plat_id] = {
+                    "status": "error",
+                    "errors": [f"Poster init failed: {e}"],
+                }
+                continue
+
+            try:
+                package = story_reader.build_package(story, ch["index"], plat_id)
+            except Exception as e:
+                row["cells"][plat_id] = {
+                    "status": "error",
+                    "errors": [f"Package build failed: {e}"],
+                }
+                continue
+
+            errors = poster.validate(package)
+            existing = pub_map.get((ch["index"], plat_id))
+
+            cell = {
+                "errors": errors,
+                "title": package.title,
+                "tag_count": len(package.tags),
+                "file_path": package.file_path or "",
+                "file_size": (
+                    os.path.getsize(package.file_path)
+                    if package.file_path and os.path.isfile(package.file_path)
+                    else 0
+                ),
+                "requires_mode": poster.requires_mode,
+                "max_file_size": poster.max_file_size,
+                "supports_edit": poster.supports_edit,
+            }
+
+            if existing:
+                cell["existing"] = {
+                    "status": existing["status"],
+                    "external_id": existing["external_id"],
+                    "external_url": existing["external_url"],
+                    "posted_at": existing.get("created_at"),
+                    "updated_at": existing.get("updated_at"),
+                }
+                if existing["status"] == "posted":
+                    cell["status"] = "posted" if not errors else "posted_stale"
+                else:
+                    cell["status"] = "failed_prev" if errors else "ready_retry"
+            else:
+                cell["status"] = "ready" if not errors else "blocked"
+
+            row["cells"][plat_id] = cell
+
+        matrix.append(row)
+
+    return {
+        "ok": True,
+        "story_name": canonical,
+        "story_title": story.title or canonical,
+        "total_chapters": story.total_chapters,
+        "platforms": [{"id": pid, "name": pname} for pid, pname in PUBLISH_PLATFORMS],
+        "chapters": chapters,
+        "matrix": matrix,
+    }
+
+
 class ThemeSaveRequest(BaseModel):
     variables: dict
 
