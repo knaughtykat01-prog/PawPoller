@@ -522,6 +522,7 @@ async def publish_check(story_name: str):
     validation + a read of the publications registry.
     """
     from posting import story_reader, manager
+    from posting.sync import hash_file
     from database.db import get_connection
     from database import posting_queries
 
@@ -616,15 +617,38 @@ async def publish_check(story_name: str):
             }
 
             if existing:
+                # Detect content drift — has the local file changed since
+                # the last successful post? If so, the user should hit
+                # Update to push the fresh content. We only check this for
+                # rows that have a file; tag-only platforms (Bsky, Itaku)
+                # store an empty file_hash and we skip the check.
+                drift = False
+                if (
+                    existing["status"] == "posted"
+                    and package.file_path
+                    and os.path.isfile(package.file_path)
+                    and existing.get("file_hash")
+                ):
+                    current_hash = hash_file(package.file_path)
+                    if current_hash and current_hash != existing["file_hash"]:
+                        drift = True
+
                 cell["existing"] = {
                     "status": existing["status"],
                     "external_id": existing["external_id"],
                     "external_url": existing["external_url"],
                     "posted_at": existing.get("created_at"),
                     "updated_at": existing.get("updated_at"),
+                    "file_hash": existing.get("file_hash", ""),
+                    "drifted": drift,
                 }
                 if existing["status"] == "posted":
-                    cell["status"] = "posted" if not errors else "posted_stale"
+                    if errors:
+                        cell["status"] = "posted_stale"
+                    elif drift:
+                        cell["status"] = "posted_drifted"
+                    else:
+                        cell["status"] = "posted"
                 else:
                     cell["status"] = "failed_prev" if errors else "ready_retry"
             else:

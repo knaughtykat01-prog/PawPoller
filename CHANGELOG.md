@@ -4,6 +4,49 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.9.4] - 2026-04-15
+
+### Added — Content drift detection in the Publish Check matrix
+
+When you regenerate a story after posting, the matrix now flags
+any (chapter × platform) cell whose local file has changed since the
+last successful upload. The cell flips to a violet `↑` "Drifted"
+state, and the detail panel shows a banner: *"Local content has
+changed since this was posted. Hit Update existing to push the fresh
+file."* — with the Update button promoted to primary so it's hard to
+miss.
+
+This fixes the silent failure mode where you edit MASTER.md, post
+without regenerating, then later regenerate and forget the platform
+copies are now out of date.
+
+**Backend (`routes/editor_api.py`):**
+- `/publish-check` now imports `posting.sync.hash_file`. For each
+  cell whose `existing.status == 'posted'` and which has a file
+  path, it hashes the current local file and compares to the
+  `publications.file_hash` recorded at post time. Mismatch →
+  `posted_drifted` cell status; the existing.drifted flag and
+  the stored hash are surfaced to the UI.
+- Tag-only platforms (Bsky, Itaku) store an empty file_hash on
+  post and are skipped by the drift check.
+
+**Frontend (`frontend/js/publish_check.js`):**
+- New `posted_drifted` cell state — icon `↑`, violet colour.
+- Stats line gains a "X drifted" counter (only shown when > 0).
+- Action panel detects drift and:
+  - Renders a violet banner explaining the drift.
+  - Promotes Update to btn-primary with an extra "(push fresh
+    content)" hint, so the right action is the obvious one.
+- Footer legend updated.
+
+**Frontend (`frontend/css/editor.css`):**
+- `.cell-posted-drifted`, `.publish-action-drift-banner`,
+  `.stat-drifted` styles.
+
+**Cache buster:** `publish_check.js?v=4`.
+
+---
+
 ## [2.9.3] - 2026-04-15
 
 ### Added — Full-story row in the Publish Check matrix

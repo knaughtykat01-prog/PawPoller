@@ -13,6 +13,7 @@ window.PublishCheck = (function () {
         ready: { icon: '✓', cls: 'cell-ready', label: 'Ready' },
         blocked: { icon: '✗', cls: 'cell-blocked', label: 'Blocked' },
         posted: { icon: '✓', cls: 'cell-posted', label: 'Posted' },
+        posted_drifted: { icon: '↑', cls: 'cell-posted-drifted', label: 'Posted (local content changed)' },
         posted_stale: { icon: '!', cls: 'cell-posted-stale', label: 'Posted (now blocked)' },
         ready_retry: { icon: '↻', cls: 'cell-retry', label: 'Failed prev — retry?' },
         failed_prev: { icon: '✗', cls: 'cell-blocked', label: 'Blocked + prev failed' },
@@ -43,7 +44,8 @@ window.PublishCheck = (function () {
                     <span class="publish-check-legend">
                         <span class="cell-legend cell-ready">✓</span> Ready
                         <span class="cell-legend cell-posted">✓</span> Posted
-                        <span class="cell-legend cell-posted-stale">!</span> Posted (stale)
+                        <span class="cell-legend cell-posted-drifted">↑</span> Drifted
+                        <span class="cell-legend cell-posted-stale">!</span> Stale
                         <span class="cell-legend cell-retry">↻</span> Retry
                         <span class="cell-legend cell-blocked">✗</span> Blocked
                         <span class="cell-legend cell-error">⚠</span> Error
@@ -110,21 +112,23 @@ window.PublishCheck = (function () {
         const sub = document.getElementById('publish-check-subtitle');
 
         // Stats line
-        let totalCells = 0, ready = 0, posted = 0, blocked = 0;
+        let totalCells = 0, ready = 0, posted = 0, drifted = 0, blocked = 0;
         for (const row of data.matrix) {
             for (const platId of Object.keys(row.cells)) {
                 const cell = row.cells[platId];
                 totalCells++;
                 if (cell.status === 'ready' || cell.status === 'ready_retry') ready++;
                 else if (cell.status === 'posted') posted++;
+                else if (cell.status === 'posted_drifted') drifted++;
                 else if (cell.status === 'blocked' || cell.status === 'posted_stale' || cell.status === 'failed_prev') blocked++;
             }
         }
         sub.innerHTML =
-            '<strong>' + data.matrix.length + '</strong> chapter(s) × ' +
+            '<strong>' + data.matrix.length + '</strong> row(s) × ' +
             '<strong>' + data.platforms.length + '</strong> platform(s) = ' +
             totalCells + ' combinations &nbsp;|&nbsp; ' +
             '<span class="stat-posted">' + posted + ' posted</span> &nbsp;|&nbsp; ' +
+            (drifted ? '<span class="stat-drifted">' + drifted + ' drifted</span> &nbsp;|&nbsp; ' : '') +
             '<span class="stat-ready">' + ready + ' ready</span> &nbsp;|&nbsp; ' +
             '<span class="stat-blocked">' + blocked + ' blocked</span>';
 
@@ -266,8 +270,9 @@ window.PublishCheck = (function () {
 
     function _renderActionPanel(cell, platId, platName, chIdx, chTitle) {
         const isPosted = cell.existing && cell.existing.status === 'posted';
+        const isDrifted = cell.status === 'posted_drifted';
         const isReady = cell.status === 'ready' || cell.status === 'ready_retry'
-            || cell.status === 'posted';
+            || cell.status === 'posted' || cell.status === 'posted_drifted';
         const canEdit = cell.supports_edit;
 
         let html = '<div class="publish-check-detail-section publish-action-panel">';
@@ -278,6 +283,13 @@ window.PublishCheck = (function () {
                 'Resolve validation errors before posting.' +
                 '</div></div>';
             return html;
+        }
+
+        if (isDrifted) {
+            html += '<div class="publish-action-drift-banner">' +
+                '<strong>Local content has changed</strong> since this was posted. ' +
+                'Hit <em>Update existing</em> to push the fresh file.' +
+                '</div>';
         }
 
         html += '<div class="publish-action-options">';
@@ -292,9 +304,10 @@ window.PublishCheck = (function () {
             'Dry Run (preview package)</button>';
 
         if (isPosted) {
-            html += '<button class="btn btn-sm" data-publish-action="update"' +
+            const updateClass = isDrifted ? 'btn btn-sm btn-primary' : 'btn btn-sm';
+            html += '<button class="' + updateClass + '" data-publish-action="update"' +
                 (canEdit ? '' : ' disabled title="Platform does not support edit"') + '>' +
-                'Update existing</button>';
+                'Update existing' + (isDrifted ? ' (push fresh content)' : '') + '</button>';
             if (cell.existing && cell.existing.external_url) {
                 html += '<a class="btn btn-sm btn-outline" href="' +
                     _escape(cell.existing.external_url) +
