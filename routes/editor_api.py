@@ -767,9 +767,9 @@ async def slop_score(story_name: str, req: SlopRequest):
 # ---------------------------------------------------------------------------
 
 # Bundled e621-derived tag database. Shipped with the repo under
-# PawPoller/data/tag_database/ so it deploys with the code (see .gitignore +
-# .dockerignore allowlist exceptions).
-_TAG_DB_DIR = Path(__file__).resolve().parent.parent / "data" / "tag_database"
+# PawPoller/tag_database/ — NOT under data/ because /app/data is volume-mounted
+# in Docker (would shadow bundled files).
+_TAG_DB_DIR = Path(__file__).resolve().parent.parent / "tag_database"
 
 # Files → category label exposed to the frontend.
 _TAG_DB_FILES = [
