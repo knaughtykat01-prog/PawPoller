@@ -854,8 +854,8 @@ const MetaEditor = {
             setTimeout(() => this._closeDropdown(), 150);
         });
 
-        const dd = document.getElementById('metadata-tag-dropdown');
-        if (dd) {
+        const dd = this._ensureDropdownPortal();
+        if (dd && !dd._handlersBound) {
             dd.addEventListener('mousedown', (e) => {
                 // Prevent blur from firing before click
                 e.preventDefault();
@@ -874,8 +874,10 @@ const MetaEditor = {
                 if (!row) return;
                 const idx = parseInt(row.getAttribute('data-tag-result-index'), 10);
                 const picked = this._tagDropdownResults[idx];
-                if (picked) this._addTagToPlatform(platform, picked.tag.name);
+                // Use _activeTagPlatform (always current) not closure-captured
+                if (picked) this._addTagToPlatform(this._activeTagPlatform, picked.tag.name);
             });
+            dd._handlersBound = true;
         }
     },
 
