@@ -90,6 +90,7 @@ const Editor = {
                         <span id="editor-status" class="editor-status"></span>
                         <span id="editor-wordcount" class="editor-wordcount"></span>
                         <button id="editor-save-btn" class="btn btn-sm">Save</button>
+                        <button id="editor-metadata-btn" class="btn btn-sm btn-outline">Metadata</button>
                         <button id="editor-css-btn" class="btn btn-sm btn-outline">CSS</button>
                         <button id="editor-regen-btn" class="btn btn-sm btn-outline">Regenerate</button>
                         <button id="editor-format-btn" class="btn btn-sm btn-outline" title="Format source code (Shift+Alt+F)">Format</button>
@@ -171,6 +172,7 @@ const Editor = {
             // Bind toolbar events
             document.getElementById('editor-format-select')?.addEventListener('change', (e) => this.switchFormat(e.target.value));
             document.getElementById('editor-css-btn')?.addEventListener('click', () => this.toggleCssEditor());
+            document.getElementById('editor-metadata-btn')?.addEventListener('click', () => MetaEditor.toggle());
             document.getElementById('editor-save-btn')?.addEventListener('click', () => this.save());
             document.getElementById('editor-regen-btn')?.addEventListener('click', () => this.regenerate());
             document.getElementById('editor-format-btn')?.addEventListener('click', () => this.formatSource());

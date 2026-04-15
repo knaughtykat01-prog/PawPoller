@@ -603,6 +603,113 @@ async def save_css(story_name: str, req: CssSaveRequest):
     return {"ok": True, "bytes": len(req.css)}
 
 
+class MetadataSaveRequest(BaseModel):
+    metadata: dict
+    expected_mtime: float | None = None  # optimistic concurrency check
+
+
+# Canonical AO3-style ratings (Phase 1 validation whitelist).
+# Also accept common lowercase short forms seen in existing story.json files
+# ("explicit", "mature", etc.) so historical data round-trips cleanly.
+_VALID_RATINGS_CANONICAL = {
+    "Not Rated",
+    "General Audiences",
+    "Teen And Up Audiences",
+    "Mature",
+    "Explicit",
+}
+_VALID_RATINGS_LOWER = {
+    "not rated",
+    "general audiences",
+    "teen and up audiences",
+    "mature",
+    "explicit",
+    # Historical short forms present in existing story.json files
+    "general",
+    "teen",
+}
+
+
+def _backup_story_json(sj_path: Path) -> Path | None:
+    """Create a timestamped backup of story.json. Keeps the 10 most recent."""
+    if not sj_path.is_file():
+        return None
+    ts = int(time.time())
+    backup = sj_path.with_name(f"story.json.bak.{ts}")
+    backup.write_text(sj_path.read_text(encoding="utf-8"), encoding="utf-8")
+    baks = sorted(
+        sj_path.parent.glob("story.json.bak.*"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for old in baks[10:]:
+        old.unlink(missing_ok=True)
+    return backup
+
+
+@editor_router.get("/stories/{story_name:path}/metadata")
+async def get_metadata(story_name: str):
+    """Read the story's story.json metadata file."""
+    story_dir = _resolve_story_dir(story_name)
+    sj = story_dir / "story.json"
+    if not sj.is_file():
+        raise HTTPException(status_code=404, detail="story.json not found")
+    try:
+        data = json.loads(sj.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Invalid JSON in story.json: {e}")
+    return {
+        "metadata": data,
+        "last_modified": sj.stat().st_mtime,
+    }
+
+
+@editor_router.put("/stories/{story_name:path}/metadata")
+async def save_metadata(story_name: str, req: MetadataSaveRequest):
+    """Save the story's story.json with backup + optimistic concurrency check."""
+    story_dir = _resolve_story_dir(story_name)
+    sj = story_dir / "story.json"
+
+    # Tier 1 validation: title non-empty, rating in whitelist.
+    md = req.metadata or {}
+    title = (md.get("title") or "").strip() if isinstance(md.get("title"), str) else ""
+    if not title:
+        raise HTTPException(status_code=400, detail="title must be non-empty")
+    rating = md.get("rating")
+    if rating is not None and rating != "":
+        if not isinstance(rating, str) or rating.strip().lower() not in _VALID_RATINGS_LOWER:
+            canonical = ", ".join(sorted(_VALID_RATINGS_CANONICAL))
+            raise HTTPException(
+                status_code=400,
+                detail=f"rating must be one of: {canonical}",
+            )
+
+    # Optimistic concurrency check (match save_content pattern).
+    if req.expected_mtime is not None and sj.is_file():
+        actual_mtime = sj.stat().st_mtime
+        if abs(actual_mtime - req.expected_mtime) > 0.5:
+            raise HTTPException(
+                status_code=409,
+                detail="story.json has been modified externally since you loaded it. Reload and merge your changes.",
+            )
+
+    # Ensure parent directory exists (story dir always does, but be safe).
+    sj.parent.mkdir(parents=True, exist_ok=True)
+
+    # Backup existing file.
+    _backup_story_json(sj)
+
+    # Atomic write via temp file.
+    tmp = sj.with_name("story.json.tmp")
+    tmp.write_text(json.dumps(md, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(str(tmp), str(sj))
+
+    return {
+        "ok": True,
+        "last_modified": sj.stat().st_mtime,
+    }
+
+
 class SaveFormatRequest(BaseModel):
     format: str  # clean_html, sofurry_html, bbcode, styled_html
     content: str
