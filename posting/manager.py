@@ -83,6 +83,7 @@ async def post_story(
     story_name: str,
     platforms: list[str],
     chapters: list[int] | None = None,
+    extras: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Post a story to multiple platforms.
 
@@ -90,6 +91,9 @@ async def post_story(
         story_name: Story folder name (e.g. "Extra_Credit").
         platforms: Platform IDs (e.g. ["ib", "bsky"]).
         chapters: Specific chapter indices (None = all). [0] = full story.
+        extras: Per-package overrides merged into ``package.extra`` before
+            posting (e.g. ``{"draft": True}`` to post as a draft on
+            platforms that support it).
 
     Returns:
         List of result dicts with platform, chapter, success, url, error.
@@ -110,6 +114,8 @@ async def post_story(
         poster = _get_poster(platform)
         for ch_idx in chapter_list:
             package = story_reader.build_package(story, ch_idx, platform)
+            if extras:
+                package.extra.update(extras)
 
             # Validate
             errors = poster.validate(package)

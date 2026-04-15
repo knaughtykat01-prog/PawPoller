@@ -627,6 +627,101 @@ async def publish_check(story_name: str):
     }
 
 
+class PublishRequest(BaseModel):
+    platform: str                 # 'sf', 'ib', 'fa', etc.
+    chapter: int                  # 0 = full story; 1+ = specific chapter
+    action: str = "post"          # 'post' | 'update' | 'dry_run'
+    draft: bool = True            # SF/SQW/AO3 etc. — post as draft if supported
+    confirm_live: bool = False    # Must be True for action='post' or 'update'
+
+
+@editor_router.post("/stories/{story_name:path}/publish")
+async def publish(story_name: str, req: PublishRequest):
+    """Post or update a single (chapter × platform) combination.
+
+    Phase 6b — single-platform action endpoint. The matrix UI calls this
+    when the user clicks Post/Update on a specific cell. Front-end MUST
+    set ``confirm_live=True`` for non-dry-run actions; this is a
+    server-side guard in case the UI bypass is forgotten.
+
+    For ``action='dry_run'`` we build the package and validate without
+    making any external HTTP calls — useful for inspecting the exact
+    payload that would be posted.
+    """
+    from posting import story_reader, manager
+    from database.db import get_connection
+    from database import posting_queries
+
+    story_dir = _resolve_story_dir(story_name)
+    canonical = story_dir.name
+
+    if req.action not in ("post", "update", "dry_run"):
+        raise HTTPException(status_code=400, detail=f"Unknown action: {req.action}")
+
+    if req.action in ("post", "update") and not req.confirm_live:
+        raise HTTPException(
+            status_code=400,
+            detail=f"action='{req.action}' requires confirm_live=true (safety guard)",
+        )
+
+    extras: dict = {}
+    if req.draft:
+        extras["draft"] = True
+
+    # --- Dry run: just rebuild the package and validate, return as JSON ---
+    if req.action == "dry_run":
+        story = story_reader.load_story(canonical)
+        try:
+            poster = manager._get_poster(req.platform)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Unknown platform: {e}")
+        package = story_reader.build_package(story, req.chapter, req.platform)
+        package.extra.update(extras)
+        errors = poster.validate(package)
+        return {
+            "ok": not errors,
+            "action": "dry_run",
+            "platform": req.platform,
+            "chapter": req.chapter,
+            "errors": errors,
+            "package": {
+                "title": package.title,
+                "description": package.description,
+                "tags": package.tags,
+                "rating": package.rating,
+                "file_path": package.file_path,
+                "file_size": (
+                    os.path.getsize(package.file_path)
+                    if package.file_path and os.path.isfile(package.file_path)
+                    else 0
+                ),
+                "word_count": package.word_count,
+                "extra": package.extra,
+            },
+        }
+
+    # --- Real action ---
+    if req.action == "post":
+        results = await manager.post_story(
+            canonical,
+            platforms=[req.platform],
+            chapters=[req.chapter],
+            extras=extras,
+        )
+    else:  # update
+        results = await manager.update_story(
+            canonical,
+            platforms=[req.platform],
+            chapters=[req.chapter],
+        )
+
+    return {
+        "ok": all(r.get("success") for r in results),
+        "action": req.action,
+        "results": results,
+    }
+
+
 class ThemeSaveRequest(BaseModel):
     variables: dict
 

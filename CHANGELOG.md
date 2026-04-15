@@ -4,6 +4,58 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.9.2] - 2026-04-15
+
+### Added — Phase 6b: Publish actions (POC, all platforms via single endpoint)
+
+The Publish Check matrix gains real action buttons. Click any cell, and
+the detail panel now shows: **Dry Run** (always available — rebuilds
+package + validates, returns full payload as JSON), **Post** (for
+`ready` cells), **Update** (for `posted` cells where the platform
+supports edit), and **Open** (for posted cells with an external URL).
+
+Two safety layers:
+- **Frontend**: `confirm()` dialog with the title, platform, and draft
+  state spelled out. User must explicitly approve before any external
+  HTTP fires.
+- **Backend**: `confirm_live=true` is required in the request body for
+  any non-dry-run action. The endpoint 400s without it — server-side
+  guard if the UI is bypassed.
+
+A "Save as draft" checkbox (default ON) sets `package.extra["draft"] =
+True`, which on supported platforms (SF, SQW, AO3, etc.) creates the
+submission as a draft instead of going public. Platforms that don't
+support drafts ignore the flag.
+
+**Backend (`routes/editor_api.py`):**
+- `POST /api/editor/stories/{name}/publish` — body
+  `{platform, chapter, action, draft, confirm_live}`. Routes to
+  `manager.post_story()` or `manager.update_story()` for a single
+  (platform, chapter) pair. Dry-run path skips manager entirely and
+  returns the rebuilt package as JSON for inspection.
+
+**Backend (`posting/manager.py`):**
+- `post_story()` gains an `extras: dict | None` parameter. Values are
+  merged into `package.extra` before posting. Update path inherits
+  existing behaviour (no extras yet).
+
+**Frontend (`frontend/js/publish_check.js`):**
+- `_renderActionPanel()` produces the action buttons inside the detail
+  panel based on cell state.
+- `_executeAction()` handles dry-run / post / update calls, shows
+  loading state, and refreshes the matrix on success.
+- Result panel renders dry-run package as a `<details><pre>` JSON
+  block, real posts as success/failure with external URL link.
+- Matrix rows now carry `data-ch-idx` + `data-ch-title` for cell
+  click → detail-panel context.
+
+**Cache buster:** `publish_check.js?v=2`.
+
+**Next (Phase 6c):** broaden testing to the other 8 platforms, then
+6d adds bulk "Publish to all" and "Update all changed" actions.
+
+---
+
 ## [2.9.1] - 2026-04-15
 
 ### Added — Phase 6a: Publish Check (read-only validation matrix)
