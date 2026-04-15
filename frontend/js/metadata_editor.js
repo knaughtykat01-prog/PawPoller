@@ -29,6 +29,14 @@ const MetaEditor = {
     _tagDropdownIndex: 0,
     _tagDropdownResults: [],     // last rendered result set
 
+    // Phase 3a+: expanded tag browser modal state
+    _tagBrowserOpen: false,
+    _tagBrowserQuery: '',
+    _tagBrowserFilters: new Set(),
+    _tagBrowserPage: 1,           // page size = 100 results
+    _TAG_BROWSER_PAGE_SIZE: 100,
+    _TAG_BROWSER_CATEGORIES: ['physical', 'acts', 'kink', 'meta', 'image'],
+
     // Platform tag caps (∞ = no cap)
     TAG_LIMITS: {
         sofurry: 97,
@@ -591,14 +599,22 @@ const MetaEditor = {
         const dd = document.getElementById('metadata-tag-dropdown');
         if (!dd) return;
         this._tagDropdownResults = results;
+        const footer = `
+            <div class="metadata-tag-dropdown-footer">
+                <button type="button" class="metadata-tag-browse-btn" data-action="open-tag-browser">
+                    &#128269; Browse all matches in expanded view &rarr;
+                </button>
+            </div>
+        `;
         if (!results.length) {
             const q = (query || '').trim();
             if (q) {
-                dd.innerHTML = `<div class="metadata-tag-result-empty">No matches &mdash; Press Enter to add "<span>${this._escape(q)}</span>" anyway</div>`;
+                dd.innerHTML = `<div class="metadata-tag-result-empty">No matches &mdash; Press Enter to add "<span>${this._escape(q)}</span>" anyway</div>${footer}`;
                 dd.hidden = false;
             } else {
-                dd.hidden = true;
-                dd.innerHTML = '';
+                // Empty query, no results — still show footer so user can open browser
+                dd.innerHTML = footer;
+                dd.hidden = false;
             }
             return;
         }
@@ -619,7 +635,7 @@ const MetaEditor = {
                 </div>
             `;
         }).join('');
-        dd.innerHTML = rows;
+        dd.innerHTML = rows + footer;
         dd.hidden = false;
     },
 
@@ -807,6 +823,15 @@ const MetaEditor = {
                 e.preventDefault();
             });
             dd.addEventListener('click', (e) => {
+                const actionBtn = e.target.closest('[data-action="open-tag-browser"]');
+                if (actionBtn) {
+                    e.preventDefault();
+                    const input = document.getElementById('metadata-tag-input');
+                    const q = input ? input.value : '';
+                    this._closeDropdown();
+                    this._openTagBrowser(q);
+                    return;
+                }
                 const row = e.target.closest('[data-tag-result-index]');
                 if (!row) return;
                 const idx = parseInt(row.getAttribute('data-tag-result-index'), 10);
@@ -819,6 +844,479 @@ const MetaEditor = {
     _truncate(s, n) {
         if (!s) return '';
         return s.length > n ? (s.slice(0, n - 1) + '\u2026') : s;
+    },
+
+    // ---------------------------------------------------------------------
+    // Section 4b: Expanded Tag Browser Modal (Phase 3a+)
+    //
+    // Full-screen modal giving users a card grid view of all matching tags
+    // with category filter chips + pagination. Mounted on document.body
+    // (not inside the drawer) so it can overlay at a higher z-index.
+    // ---------------------------------------------------------------------
+
+    /**
+     * Public entry point — opens the expanded tag browser for the currently
+     * active tag platform. Can be called from anywhere once the drawer is
+     * open (e.g. via console, or by future keyboard shortcuts).
+     */
+    openTagBrowser(query) {
+        this._openTagBrowser(query || '');
+    },
+
+    async _openTagBrowser(initialQuery) {
+        if (!this.isOpen) return;
+        this._tagBrowserOpen = true;
+        this._tagBrowserQuery = initialQuery || '';
+        this._tagBrowserFilters = new Set();
+        this._tagBrowserPage = 1;
+
+        // Mount shell immediately with a loading state so the modal pops
+        // up even if the tag DB is still loading.
+        this._mountTagBrowser();
+
+        if (!this._tagDb) {
+            try {
+                await this._loadTagDb();
+            } catch (err) {
+                const host = document.getElementById('tag-browser-results');
+                if (host) host.innerHTML = `<div class="tag-browser-empty">Failed to load tags: ${this._escape(err.message || err)}</div>`;
+                return;
+            }
+            // If closed during load, bail
+            if (!this._tagBrowserOpen) return;
+        }
+        this._renderTagBrowserResults();
+        this._updateTagBrowserFilterCounts();
+        this._updateTagBrowserSelectedStrip();
+        this._updateTagBrowserFooter();
+    },
+
+    _closeTagBrowser() {
+        if (!this._tagBrowserOpen) return;
+        this._tagBrowserOpen = false;
+        const root = document.getElementById('tag-browser-root');
+        if (root) {
+            const modal = root.querySelector('.tag-browser-modal');
+            if (modal) modal.classList.remove('open');
+            setTimeout(() => root.remove(), 200);
+        }
+        // Unhook escape handler
+        if (this._tagBrowserKeyHandler) {
+            document.removeEventListener('keydown', this._tagBrowserKeyHandler);
+            this._tagBrowserKeyHandler = null;
+        }
+        // Re-render the underlying drawer tag pills so they reflect any
+        // additions/removals made through the browser.
+        this._rerenderTagTabBody();
+    },
+
+    _mountTagBrowser() {
+        // Remove any stale instance
+        const stale = document.getElementById('tag-browser-root');
+        if (stale) stale.remove();
+
+        const root = document.createElement('div');
+        root.id = 'tag-browser-root';
+        root.innerHTML = this._renderTagBrowser();
+        document.body.appendChild(root);
+
+        // Slide-in on next frame so CSS transition plays
+        requestAnimationFrame(() => {
+            root.querySelector('.tag-browser-modal')?.classList.add('open');
+            const search = document.getElementById('tag-browser-search');
+            if (search) {
+                search.focus();
+                // Put cursor at end so typing appends
+                const v = search.value;
+                search.value = '';
+                search.value = v;
+            }
+        });
+
+        this._bindTagBrowserEvents();
+    },
+
+    _renderTagBrowser() {
+        const platform = this._activeTagPlatform;
+        const platformLabel = this.PLATFORM_LABELS[platform] || platform;
+        const q = this._tagBrowserQuery || '';
+        const filters = this._tagBrowserFilters;
+
+        const chips = ['all', ...this._TAG_BROWSER_CATEGORIES].map(cat => {
+            const active = (cat === 'all' && filters.size === 0) || filters.has(cat);
+            const label = cat === 'all' ? 'All' : (cat.charAt(0).toUpperCase() + cat.slice(1));
+            return `<button type="button" class="tag-browser-chip${active ? ' tag-browser-chip-active' : ''}" data-tb-filter="${this._escape(cat)}"><span class="tag-browser-chip-label">${this._escape(label)}</span> <span class="tag-browser-chip-count" data-tb-count="${this._escape(cat)}"></span></button>`;
+        }).join('');
+
+        return `
+            <div class="tag-browser-backdrop" data-tb-backdrop></div>
+            <div class="tag-browser-modal" role="dialog" aria-label="Browse tags">
+                <div class="tag-browser-header">
+                    <div class="tag-browser-title-row">
+                        <div class="tag-browser-title">Browse Tags &mdash; ${this._escape(platformLabel)}</div>
+                        <button type="button" class="tag-browser-close" data-tb-close aria-label="Close">&times;</button>
+                    </div>
+                    <input type="text" id="tag-browser-search" class="tag-browser-search" placeholder="Search tags..." value="${this._escape(q)}" autocomplete="off" />
+                    <div class="tag-browser-filters">${chips}</div>
+                </div>
+                <div class="tag-browser-selected" id="tag-browser-selected"></div>
+                <div class="tag-browser-body">
+                    <div class="tag-browser-grid" id="tag-browser-results">
+                        <div class="tag-browser-empty">Loading...</div>
+                    </div>
+                    <div class="tag-browser-loadmore-wrap" id="tag-browser-loadmore-wrap"></div>
+                </div>
+                <div class="tag-browser-footer">
+                    <div class="tag-browser-count" id="tag-browser-count"></div>
+                    <button type="button" class="btn btn-sm" data-tb-close>Done</button>
+                </div>
+            </div>
+        `;
+    },
+
+    _bindTagBrowserEvents() {
+        const root = document.getElementById('tag-browser-root');
+        if (!root) return;
+
+        // Close (×, Done, backdrop)
+        root.querySelectorAll('[data-tb-close]').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.preventDefault();
+                this._closeTagBrowser();
+            });
+        });
+        const backdrop = root.querySelector('[data-tb-backdrop]');
+        if (backdrop) {
+            backdrop.addEventListener('click', () => this._closeTagBrowser());
+        }
+
+        // Escape key
+        this._tagBrowserKeyHandler = (e) => {
+            if (e.key === 'Escape' && this._tagBrowserOpen) {
+                e.preventDefault();
+                this._closeTagBrowser();
+            }
+        };
+        document.addEventListener('keydown', this._tagBrowserKeyHandler);
+
+        // Search input — live filter
+        const search = document.getElementById('tag-browser-search');
+        if (search) {
+            search.addEventListener('input', () => {
+                this._tagBrowserQuery = search.value;
+                this._tagBrowserPage = 1;
+                this._renderTagBrowserResults();
+                this._updateTagBrowserFilterCounts();
+            });
+        }
+
+        // Filter chips — toggle multi-select
+        root.querySelectorAll('[data-tb-filter]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const cat = btn.getAttribute('data-tb-filter');
+                if (cat === 'all') {
+                    this._tagBrowserFilters.clear();
+                } else {
+                    if (this._tagBrowserFilters.has(cat)) {
+                        this._tagBrowserFilters.delete(cat);
+                    } else {
+                        this._tagBrowserFilters.add(cat);
+                    }
+                }
+                this._tagBrowserPage = 1;
+                this._updateTagBrowserChipStates();
+                this._renderTagBrowserResults();
+            });
+        });
+    },
+
+    _updateTagBrowserChipStates() {
+        const root = document.getElementById('tag-browser-root');
+        if (!root) return;
+        const filters = this._tagBrowserFilters;
+        root.querySelectorAll('[data-tb-filter]').forEach(btn => {
+            const cat = btn.getAttribute('data-tb-filter');
+            const active = (cat === 'all' && filters.size === 0) || filters.has(cat);
+            btn.classList.toggle('tag-browser-chip-active', active);
+        });
+    },
+
+    /**
+     * Build the filtered list of tags based on current query + category
+     * filters. Returns the full list (unpaginated) — pagination applied
+     * by the renderer.
+     */
+    _filterTagBrowserResults() {
+        if (!this._tagDb) return [];
+        const q = (this._tagBrowserQuery || '').toLowerCase().trim();
+        const filters = this._tagBrowserFilters;
+        const hasCat = filters.size > 0;
+        const { names } = this._tagDb;
+
+        // Ranking: exact match → prefix → substring → alphabetical (within buckets)
+        const exact = [];
+        const prefix = [];
+        const substring = [];
+        const all = [];
+
+        for (const entry of names) {
+            if (hasCat && !filters.has(entry.tag.category)) continue;
+            if (!q) {
+                all.push(entry.tag);
+            } else if (entry.lower === q) {
+                exact.push(entry.tag);
+            } else if (entry.lower.startsWith(q)) {
+                prefix.push(entry.tag);
+            } else if (entry.lower.includes(q)) {
+                substring.push(entry.tag);
+            }
+        }
+
+        if (!q) {
+            // Stable alphabetical for browsing
+            all.sort((a, b) => a.name.localeCompare(b.name));
+            return all;
+        }
+        return [...exact, ...prefix, ...substring];
+    },
+
+    _renderTagBrowserResults() {
+        const host = document.getElementById('tag-browser-results');
+        const loadMoreWrap = document.getElementById('tag-browser-loadmore-wrap');
+        if (!host) return;
+
+        const all = this._filterTagBrowserResults();
+        const pageSize = this._TAG_BROWSER_PAGE_SIZE;
+        const limit = pageSize * this._tagBrowserPage;
+        const shown = all.slice(0, limit);
+
+        if (!shown.length) {
+            const q = (this._tagBrowserQuery || '').trim();
+            host.innerHTML = `<div class="tag-browser-empty">No tags match${q ? ` "${this._escape(q)}"` : ''}.</div>`;
+            if (loadMoreWrap) loadMoreWrap.innerHTML = '';
+            this._updateTagBrowserFooter(all.length);
+            return;
+        }
+
+        const platform = this._activeTagPlatform;
+        const platformTags = (this.metadata.tags[platform] || []).map(t => t.toLowerCase());
+        const platformTagSet = new Set(platformTags);
+
+        const cards = shown.map(t => {
+            // A tag counts as "added" to the current platform if its name (or
+            // platform-transformed name) is in the platform's list.
+            const canonical = t.name;
+            const transformed = this._transformTagForPlatform(canonical, platform).toLowerCase();
+            const isAdded = platformTagSet.has(canonical.toLowerCase()) || platformTagSet.has(transformed);
+            const addedCls = isAdded ? ' tag-browser-card-added' : '';
+            const btnLabel = isAdded ? '&#10003; Added' : '+ Add';
+            const btnCls = isAdded ? 'tag-browser-card-btn tag-browser-card-btn-added' : 'tag-browser-card-btn';
+            const desc = t.desc ? `<div class="tag-browser-card-desc">${this._escape(t.desc)}</div>` : '';
+            return `
+                <div class="tag-browser-card${addedCls}" data-tb-tag="${this._escape(canonical)}">
+                    <div class="tag-browser-card-head">
+                        <div class="tag-browser-card-name">${this._escape(canonical)}</div>
+                        <span class="tag-browser-card-cat metadata-tag-cat-${this._escape(t.category)}">${this._escape(t.category)}</span>
+                    </div>
+                    ${desc}
+                    <div class="tag-browser-card-footer">
+                        <button type="button" class="${btnCls}" data-tb-toggle="${this._escape(canonical)}">${btnLabel}</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        host.innerHTML = cards;
+
+        // "Load more" button
+        if (loadMoreWrap) {
+            if (all.length > shown.length) {
+                loadMoreWrap.innerHTML = `
+                    <button type="button" class="btn btn-sm btn-outline tag-browser-loadmore" data-tb-loadmore>
+                        Load ${Math.min(pageSize, all.length - shown.length)} more (${shown.length} of ${all.length})
+                    </button>
+                `;
+                const btn = loadMoreWrap.querySelector('[data-tb-loadmore]');
+                if (btn) {
+                    btn.addEventListener('click', () => {
+                        this._tagBrowserPage += 1;
+                        this._renderTagBrowserResults();
+                    });
+                }
+            } else {
+                loadMoreWrap.innerHTML = '';
+            }
+        }
+
+        // Wire card interactions — click card or button toggles add/remove
+        host.querySelectorAll('[data-tb-tag]').forEach(card => {
+            const tagName = card.getAttribute('data-tb-tag');
+            card.addEventListener('click', (e) => {
+                // Ignore clicks on the button directly — button has its own
+                // handler to avoid a double-fire. Matching [data-tb-toggle]
+                // ancestor catches clicks on text inside the button too.
+                if (e.target.closest('[data-tb-toggle]')) return;
+                this._tagBrowserToggleTag(tagName);
+            });
+        });
+        host.querySelectorAll('[data-tb-toggle]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const tagName = btn.getAttribute('data-tb-toggle');
+                this._tagBrowserToggleTag(tagName);
+            });
+        });
+
+        this._updateTagBrowserFooter(all.length);
+    },
+
+    _tagBrowserToggleTag(canonicalName) {
+        const platform = this._activeTagPlatform;
+        const tags = this.metadata.tags[platform] || [];
+        const transformed = this._transformTagForPlatform(canonicalName, platform);
+        const lcTransformed = transformed.toLowerCase();
+        const lcCanonical = canonicalName.toLowerCase();
+
+        // Find existing entry matching either canonical or transformed name
+        const idx = tags.findIndex(t => {
+            const lc = t.toLowerCase();
+            return lc === lcCanonical || lc === lcTransformed;
+        });
+
+        if (idx >= 0) {
+            // Route through the shared removal path so default→platform
+            // cascade semantics stay identical to the inline dropdown.
+            this._removeTagFromPlatformSilent(platform, idx);
+        } else {
+            this._addTagToPlatformSilent(platform, canonicalName);
+        }
+
+        // Re-render just the grid + selected strip + footer (no full
+        // drawer rebuild — that would kick focus back to the drawer input).
+        this._renderTagBrowserResults();
+        this._updateTagBrowserSelectedStrip();
+        this._updateTagBrowserFooter();
+    },
+
+    /**
+     * Mutation wrappers that mirror _addTagToPlatform / _removeTagFromPlatform
+     * but DON'T rerender the drawer tag body (that happens lazily on close,
+     * to avoid stealing focus from the browser modal).
+     */
+    _addTagToPlatformSilent(platform, rawName) {
+        const name = (rawName || '').trim();
+        if (!name) return;
+        const tags = this.metadata.tags[platform] || [];
+        if (tags.some(t => t.toLowerCase() === name.toLowerCase())) return;
+
+        let final = name;
+        if (this._tagDb) {
+            const alias = this._tagDb.aliases[name.toLowerCase()];
+            if (alias && this._tagDb.byName.has(alias)) {
+                if (tags.some(t => t.toLowerCase() === alias.toLowerCase())) return;
+                final = alias;
+            }
+        }
+
+        tags.push(final);
+        this.metadata.tags[platform] = tags;
+
+        if (platform === 'default') {
+            for (const p of this.TAG_PLATFORMS) {
+                if (p === 'default') continue;
+                const transformed = this._transformTagForPlatform(final, p);
+                const otherTags = this.metadata.tags[p] || [];
+                if (!otherTags.some(t => t.toLowerCase() === transformed.toLowerCase())) {
+                    otherTags.push(transformed);
+                    this.metadata.tags[p] = otherTags;
+                }
+            }
+        }
+        this._clearStatus();
+    },
+
+    _removeTagFromPlatformSilent(platform, index) {
+        const tags = this.metadata.tags[platform] || [];
+        if (index < 0 || index >= tags.length) return;
+        const removed = tags[index];
+        tags.splice(index, 1);
+        this.metadata.tags[platform] = tags;
+
+        if (platform === 'default') {
+            for (const p of this.TAG_PLATFORMS) {
+                if (p === 'default') continue;
+                const transformed = this._transformTagForPlatform(removed, p);
+                const otherTags = this.metadata.tags[p] || [];
+                const idx = otherTags.findIndex(t => t.toLowerCase() === transformed.toLowerCase());
+                if (idx >= 0) {
+                    otherTags.splice(idx, 1);
+                    this.metadata.tags[p] = otherTags;
+                }
+            }
+        }
+        this._clearStatus();
+    },
+
+    _updateTagBrowserFilterCounts() {
+        const root = document.getElementById('tag-browser-root');
+        if (!root || !this._tagDb) return;
+        const q = (this._tagBrowserQuery || '').toLowerCase().trim();
+        const counts = { all: 0, physical: 0, acts: 0, kink: 0, meta: 0, image: 0 };
+        for (const entry of this._tagDb.names) {
+            if (q && !entry.lower.includes(q)) continue;
+            counts.all += 1;
+            if (counts[entry.tag.category] !== undefined) counts[entry.tag.category] += 1;
+        }
+        root.querySelectorAll('[data-tb-count]').forEach(el => {
+            const cat = el.getAttribute('data-tb-count');
+            const n = counts[cat] || 0;
+            el.textContent = `(${n.toLocaleString()})`;
+        });
+    },
+
+    _updateTagBrowserSelectedStrip() {
+        const host = document.getElementById('tag-browser-selected');
+        if (!host) return;
+        const platform = this._activeTagPlatform;
+        const tags = this.metadata.tags[platform] || [];
+        if (!tags.length) {
+            host.innerHTML = `<div class="tag-browser-selected-empty">No tags on ${this._escape(this.PLATFORM_LABELS[platform] || platform)} yet.</div>`;
+            return;
+        }
+        const pills = tags.map((t, i) => `
+            <span class="tag-browser-selected-pill" data-tb-selected-index="${i}">
+                <span>${this._escape(t)}</span>
+                <button type="button" class="tag-browser-selected-remove" data-tb-remove-selected="${i}" aria-label="Remove">&times;</button>
+            </span>
+        `).join('');
+        host.innerHTML = `
+            <div class="tag-browser-selected-label">On ${this._escape(this.PLATFORM_LABELS[platform] || platform)}:</div>
+            <div class="tag-browser-selected-pills">${pills}</div>
+        `;
+        host.querySelectorAll('[data-tb-remove-selected]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const idx = parseInt(btn.getAttribute('data-tb-remove-selected'), 10);
+                if (Number.isNaN(idx)) return;
+                this._removeTagFromPlatformSilent(platform, idx);
+                this._renderTagBrowserResults();
+                this._updateTagBrowserSelectedStrip();
+                this._updateTagBrowserFooter();
+            });
+        });
+    },
+
+    _updateTagBrowserFooter(totalMatches) {
+        const el = document.getElementById('tag-browser-count');
+        if (!el) return;
+        const platform = this._activeTagPlatform;
+        const count = (this.metadata.tags[platform] || []).length;
+        const limit = this.TAG_LIMITS[platform];
+        const limitLabel = (limit === Infinity) ? '\u221E' : limit;
+        const overLimit = (limit !== Infinity) && count > limit;
+        const matchFrag = (typeof totalMatches === 'number') ? ` &middot; ${totalMatches.toLocaleString()} matches` : '';
+        el.innerHTML = `<span class="${overLimit ? 'tag-browser-count-over' : ''}">Selected: ${count} &middot; Platform max: ${this._escape(String(limitLabel))}</span>${matchFrag}`;
     },
 
     // ---------------------------------------------------------------------
