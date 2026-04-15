@@ -657,6 +657,18 @@ const MetaEditor = {
         this._renderDropdown(results, query);
     },
 
+    // Platform-specific transforms: convert a default canonical tag into the
+    // form expected by each target platform.
+    _transformTagForPlatform(canonicalTag, platform) {
+        if (platform === 'default') return canonicalTag;
+        if (platform === 'wattpad') {
+            // camelCase: "slow_burn" → "slowBurn"
+            return canonicalTag.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+        }
+        // sofurry, inkbunny: spaces instead of underscores
+        return canonicalTag.replace(/_/g, ' ');
+    },
+
     _addTagToPlatform(platform, rawName) {
         const name = (rawName || '').trim();
         if (!name) return;
@@ -669,7 +681,6 @@ const MetaEditor = {
         if (this._tagDb) {
             const alias = this._tagDb.aliases[name.toLowerCase()];
             if (alias && this._tagDb.byName.has(alias)) {
-                // Re-dedup against canonical
                 if (tags.some(t => t.toLowerCase() === alias.toLowerCase())) return;
                 final = alias;
             }
@@ -677,9 +688,22 @@ const MetaEditor = {
 
         tags.push(final);
         this.metadata.tags[platform] = tags;
+
+        // Default tab is canonical — propagate to other platforms with transforms
+        if (platform === 'default') {
+            for (const p of this.TAG_PLATFORMS) {
+                if (p === 'default') continue;
+                const transformed = this._transformTagForPlatform(final, p);
+                const otherTags = this.metadata.tags[p] || [];
+                if (!otherTags.some(t => t.toLowerCase() === transformed.toLowerCase())) {
+                    otherTags.push(transformed);
+                    this.metadata.tags[p] = otherTags;
+                }
+            }
+        }
+
         this._clearStatus();
         this._rerenderTagTabBody();
-        // Re-focus + reopen dropdown cleared
         requestAnimationFrame(() => {
             const input = document.getElementById('metadata-tag-input');
             if (input) input.focus();
@@ -689,8 +713,24 @@ const MetaEditor = {
     _removeTagFromPlatform(platform, index) {
         const tags = this.metadata.tags[platform] || [];
         if (index < 0 || index >= tags.length) return;
+        const removed = tags[index];
         tags.splice(index, 1);
         this.metadata.tags[platform] = tags;
+
+        // Default removal cascades to other platforms (using transformed name)
+        if (platform === 'default') {
+            for (const p of this.TAG_PLATFORMS) {
+                if (p === 'default') continue;
+                const transformed = this._transformTagForPlatform(removed, p);
+                const otherTags = this.metadata.tags[p] || [];
+                const idx = otherTags.findIndex(t => t.toLowerCase() === transformed.toLowerCase());
+                if (idx >= 0) {
+                    otherTags.splice(idx, 1);
+                    this.metadata.tags[p] = otherTags;
+                }
+            }
+        }
+
         this._clearStatus();
         this._rerenderTagTabBody();
     },

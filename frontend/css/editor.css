@@ -1029,13 +1029,20 @@
     top: calc(100% + 2px);
     left: 0;
     right: 0;
+    min-width: 380px;
     z-index: 50;
-    max-height: 320px;
+    max-height: 360px;
     overflow-y: auto;
+    overflow-x: hidden;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 6px;
     box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+
+.metadata-tag-result {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .metadata-tag-result {
@@ -1091,10 +1098,17 @@
 }
 
 .metadata-tag-result-desc {
-    margin-top: 2px;
+    margin-top: 3px;
     font-size: 11px;
     color: var(--text-muted);
-    line-height: 1.35;
+    line-height: 1.4;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .metadata-tag-result-empty {
