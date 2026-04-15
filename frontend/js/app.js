@@ -5114,6 +5114,10 @@ const App = {
                             <option value="60" ${prefs.poll_interval_minutes === 60 || !prefs.poll_interval_minutes ? 'selected' : ''}>1 hour</option>
                             <option value="120" ${prefs.poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
                             <option value="240" ${prefs.poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
                         </select>
                     </div>
                     <div class="settings-row">
@@ -5127,6 +5131,10 @@ const App = {
                             <option value="60" ${prefs.fa_poll_interval_minutes === 60 || !prefs.fa_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
                             <option value="120" ${prefs.fa_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
                             <option value="240" ${prefs.fa_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.fa_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.fa_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.fa_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.fa_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
                         </select>
                     </div>
                     <div class="settings-row">
@@ -5140,6 +5148,10 @@ const App = {
                             <option value="60" ${prefs.ws_poll_interval_minutes === 60 || !prefs.ws_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
                             <option value="120" ${prefs.ws_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
                             <option value="240" ${prefs.ws_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.ws_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.ws_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.ws_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.ws_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
                         </select>
                     </div>
                     <div class="settings-row">
@@ -5153,6 +5165,10 @@ const App = {
                             <option value="60" ${prefs.sf_poll_interval_minutes === 60 || !prefs.sf_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
                             <option value="120" ${prefs.sf_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
                             <option value="240" ${prefs.sf_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.sf_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.sf_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.sf_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.sf_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
                         </select>
                     </div>
                     <div class="settings-row">
@@ -5166,6 +5182,10 @@ const App = {
                             <option value="60" ${prefs.sqw_poll_interval_minutes === 60 || !prefs.sqw_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
                             <option value="120" ${prefs.sqw_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
                             <option value="240" ${prefs.sqw_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.sqw_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.sqw_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.sqw_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.sqw_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
                         </select>
                     </div>
                     <div class="settings-row">
@@ -5179,6 +5199,10 @@ const App = {
                             <option value="60" ${prefs.ao3_poll_interval_minutes === 60 || !prefs.ao3_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
                             <option value="120" ${prefs.ao3_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
                             <option value="240" ${prefs.ao3_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.ao3_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.ao3_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.ao3_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.ao3_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
                         </select>
                     </div>
                     <div class="settings-row">
@@ -5192,6 +5216,10 @@ const App = {
                             <option value="60" ${prefs.da_poll_interval_minutes === 60 || !prefs.da_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
                             <option value="120" ${prefs.da_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
                             <option value="240" ${prefs.da_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.da_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.da_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.da_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.da_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
                         </select>
                     </div>
                     <div class="settings-row">
@@ -5205,6 +5233,10 @@ const App = {
                             <option value="60" ${prefs.wp_poll_interval_minutes === 60 || !prefs.wp_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
                             <option value="120" ${prefs.wp_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
                             <option value="240" ${prefs.wp_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.wp_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.wp_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.wp_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.wp_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
                         </select>
                     </div>
                     <div class="settings-row">
@@ -5218,6 +5250,10 @@ const App = {
                             <option value="60" ${prefs.ik_poll_interval_minutes === 60 || !prefs.ik_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
                             <option value="120" ${prefs.ik_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
                             <option value="240" ${prefs.ik_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.ik_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.ik_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.ik_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.ik_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
                         </select>
                     </div>
                     <div class="settings-row">
@@ -5231,6 +5267,10 @@ const App = {
                             <option value="60" ${prefs.bsky_poll_interval_minutes === 60 || !prefs.bsky_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
                             <option value="120" ${prefs.bsky_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
                             <option value="240" ${prefs.bsky_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.bsky_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.bsky_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.bsky_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.bsky_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
                         </select>
                     </div>
                     <div class="settings-row">
@@ -5244,6 +5284,10 @@ const App = {
                             <option value="60" ${prefs.tw_poll_interval_minutes === 60 || !prefs.tw_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
                             <option value="120" ${prefs.tw_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
                             <option value="240" ${prefs.tw_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.tw_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.tw_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.tw_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.tw_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
                         </select>
                     </div>
                     <div class="settings-row">
