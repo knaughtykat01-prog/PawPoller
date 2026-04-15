@@ -3205,3 +3205,202 @@ The posting module uses these settings in `settings.json`:
 1. `posting_story_archive_path` setting (explicit override)
 2. `/app/story-archive` (Docker bind mount on GCP server)
 3. `../m_x/Archives/Complete_Stories/` (relative to PawPoller, for desktop)
+
+---
+
+## 15. Story Editor
+
+The Story Editor is a browser-based authoring environment for stories
+under `m_x/Archives/Complete_Stories/`. Its job is to take `MASTER.md`
+(the canonical source for every completed story) and produce all of the
+derivative formats — Clean HTML, SoFurry HTML, BBCode, SquidgeWorld,
+Styled HTML, and PDFs — that the posting module then uploads to each
+platform.
+
+### Architecture
+
+```
+frontend/                                        backend
+├── editor.html             ◄─────────────────►  routes/editor_api.py
+├── js/editor.js                  HTTP / JSON      ├── /api/editor/stories
+├── js/metadata_editor.js                          ├── /api/editor/stories/{name}/master
+├── css/editor.css                                 ├── /api/editor/stories/{name}/preview
+                                                   ├── /api/editor/stories/{name}/regenerate
+                                                   ├── /api/editor/stories/{name}/theme
+                                                   ├── /api/editor/stories/{name}/chapters
+                                                   ├── /api/editor/stories/{name}/cover
+                                                   ├── /api/editor/tags
+                                                   ├── /api/editor/tags/lookup
+                                                   └── /api/editor/tags/add
+                                                       │
+                                                       ▼
+                                                  editor/converter.py
+                                                  editor/pdf_generator.py
+                                                  editor/slop.py
+```
+
+The editor never modifies derivative files directly — it edits
+`MASTER.md`, then `/regenerate` rebuilds every other format from it.
+This guarantees the formats can never drift from the source.
+
+### Anchor System
+
+`MASTER.md` uses HTML-comment anchors to mark structural elements that
+plain Markdown can't express. The converter parses them and emits
+appropriate per-format markup.
+
+| Anchor | Meaning | Used by |
+|--------|---------|---------|
+| `<!-- @title -->` | Story / chapter title block | All formats (style hooks) |
+| `<!-- @subtitle -->` | Subtitle line | Styled HTML, SoFurry HTML |
+| `<!-- @byline -->` | "by Author" line | Styled HTML, SQW |
+| `<!-- @warning -->` | Content warning panel | Styled HTML, SQW |
+| `<!-- @disclaimer -->` | Disclaimer block | Styled HTML, SQW |
+| `<!-- @body -->` | Main story prose starts here | Splits front matter from content |
+| `<!-- @text-sent --> ... <!-- @text-end -->` | Outgoing text-message bubble | Styled HTML (CSS bubble), SQW (`.text-sent` class), SoFurry HTML (italic block) |
+| `<!-- @text-received --> ... <!-- @text-end -->` | Incoming text-message bubble | Same as above |
+| `<!-- @phone --> ... <!-- @phone-end -->` | Phone screen container | Styled HTML (frame/border), SQW |
+| `<!-- @story-end -->` | "~ End ~" centered marker | Styled HTML, SQW |
+| `# Chapter N: Title` | Chapter break (after `---`) | Per-chapter splitting |
+
+The converter (`editor/converter.py`) walks the markdown line-by-line,
+maintaining anchor state. Inline markdown (`*italic*`, `**bold**`,
+`---` section breaks, POV markers like `**⟨ Callum ⟩**`) is converted
+per-format using the `convert(content, format)` entry point.
+
+### Format Converters
+
+`editor/converter.py` exposes these format keys:
+
+| Format | Output | Used by |
+|--------|--------|---------|
+| `clean_html` | Body-only HTML, no `<head>` | AO3, generic uploaders |
+| `sofurry_html` | SF-specific HTML (`<h2>`, `<h3>`, `text-center`) | SoFurry |
+| `bbcode` | Inkbunny BBCode | Inkbunny, Weasyl |
+| `sqw` | SquidgeWorld OTW-Archive HTML (per-chapter) | SquidgeWorld |
+| `styled_html` | Self-contained Styled HTML with theme CSS | Local rendering, PDF source |
+
+Each returns a `ConvertResult` dataclass: `output`, `stats` (chapter
+counts, word counts), `warnings` (non-fatal issues like missing
+anchors). `convert_to_styled_html_external_css()` emits a variant
+that links to an external `style.css` rather than inlining — used for
+the editor's preview pane and the per-chapter Styled HTML files.
+
+### Theme System (Styled HTML / PDF)
+
+Each story owns a `CHAPTER_STYLING.md` file declaring its visual
+theme — currently 14 colour variables plus the section-break symbol
+and warning icon. The canonical template lives at
+`m_x/Archives/Complete_Stories/Reference_Guides/Styling/HTML_CSS/STYLING_REFERENCE.md`.
+
+Theme keys (all optional — defaults applied for missing ones):
+`BACKGROUND`, `TEXT_COLOUR`, `TITLE_COLOUR`, `BYLINE_COLOUR`,
+`ACCENT_COLOUR`, `WARNING_HEADING_COLOUR`, `WARNING_BODY_COLOUR`,
+`DISCLAIMER_HEADING_COLOUR`, `STORY_END_COLOUR`, `SIGNATURE_COLOUR`,
+`TEXT_SENT_COLOUR`, `TEXT_RECEIVED_COLOUR`, `TITLE_TEXT_SHADOW`,
+`SECTION_BREAK_SYMBOL`, `WARNING_ICON`, `PRINT_APPROACH`.
+
+Theme save flow:
+1. User edits colour pickers in the editor's Theme panel.
+2. `POST /api/editor/stories/{name}/theme` writes the new
+   `CHAPTER_STYLING.md` (with `.bak.{ts}` snapshot) and regenerates
+   `style.css` next to both `HTML/` and `Chapters/Styled_HTML/`.
+3. User clicks Regenerate — Styled HTML files (and PDFs) pick up the
+   new CSS automatically.
+
+**Server permission gotcha:** `pawsync.bat` chmod's archive files
+`o+rwX` (not just `o+rX`) so the Docker container (uid 1001) can
+write theme updates to files owned by `kithetiger` (uid 1000).
+
+### Metadata Editor (Drawer)
+
+A right-side drawer (50vw, slides from right, portal-mounted to
+`document.body`) edits `story.json` — the per-story metadata file
+that drives platform packages.
+
+Sections (each collapsible, state persisted in `localStorage`):
+1. **Basics** — title, author, summary, description
+2. **Cover** — drag-drop full-series + per-chapter thumbnails
+3. **Classification** — rating, fandom, categories, warnings
+4. **Characters & Relationships**
+5. **Tags** — per-platform tag lists with autocomplete
+6. **Chapter Tags** — per-chapter tag editing (Phase 4b)
+7. **Chapters** — title + description per chapter
+8. **Advanced** — raw `story.json` JSON view (read-only)
+
+Each save: write to `.tmp` → atomic rename → `.bak.{ts}` snapshot.
+
+### Tag System (Bundled Database + e621 Lookup)
+
+The editor ships a curated tag database at `tag_database/` (NOT under
+`data/` — that's a Docker volume that would shadow bundled files):
+
+| File | Tags | Purpose |
+|------|------|---------|
+| `tag_database_physical.txt` | 1,337 | Body / species / form |
+| `tag_database_acts.txt` | 1,270 | Sexual / romantic acts |
+| `tag_database_kink.txt` | 788 | Kink / BDSM / fetish |
+| `tag_database_meta.txt` | 1,216 | Genre / mood / structure |
+| `tag_database_image.txt` | ~3,000 | Visual descriptors (for image tags) |
+| `tag_database_user.txt` | grows | User-added tags via "+ Library" |
+| `tag_aliases.json` | 23,159 | Synonym → canonical mapping |
+| `e621_lookup.tsv` | 26,829 | Fallback lookup when local DB has no match |
+
+**Autocomplete flow** (in `frontend/js/metadata_editor.js`):
+1. User types in the per-platform tag input.
+2. Local fuzzy match against tag database + aliases. Top results
+   shown in a portal-mounted dropdown.
+3. If local matches < 5 AND query >= 3 chars, fire debounced (300ms)
+   `GET /api/editor/tags/lookup?q=<str>` for e621 results.
+4. e621 results show with violet "e621" category chip + post count.
+   Three actions per row: **+ Library** (default target by
+   category), caret menu (explicit target), **Use once** (apply to
+   current platform without persisting).
+
+**Cross-platform sync** (story-level only, not per-chapter):
+Adding a tag to **Default** cascades to SF/IB/Wattpad with
+platform-specific transforms (underscores → spaces for SF, camelCase
+for Wattpad, etc.). Adding directly to a specific platform's tab
+applies to that platform only.
+
+### Regenerate Endpoint
+
+`POST /api/editor/stories/{name}/regenerate` rebuilds every derivative
+file from `MASTER.md`. Sequence:
+
+1. Full-story Clean HTML → `HTML/{stem}_Clean.html`
+2. Full-story SoFurry HTML → `HTML/{stem}_SoFurry.html`
+3. Full-story BBCode → `BBCode/{stem}_bbcode.txt`
+4. SquidgeWorld per-chapter HTML → `SquidgeWorld/Chapter_*.html`
+5. Styled HTML — generates `style.css` + full + per-chapter into
+   `HTML/` and `Chapters/Styled_HTML/`
+6. **PDFs** (if `skip_pdf=False`, default) — full + per-chapter via
+   `editor.pdf_generator.html_to_pdf()`
+7. Chapter splits — Markdown, Clean HTML, BBCode → `Chapters/{Markdown,SoFurry_HTML,BBCode}/`
+
+Returns `{ok, results: [...], errors: [...], word_count}`.
+
+### PDF Generation
+
+`editor/pdf_generator.py` provides `html_to_pdf(html_path, pdf_path)`
+returning `(success, backend_used)`. Two backends, picked
+automatically:
+
+| Backend | Where it works | Notes |
+|---------|----------------|-------|
+| **WeasyPrint** | Linux/Docker (and Windows with GTK runtime) | Pure Python. Resolves `style.css` and images via `base_url=html_path.parent`. Server-side rendering — no desktop required. |
+| **Edge headless** | Windows (auto-probed at standard install paths) | Subprocess: `msedge --headless --no-margins --print-to-pdf=...`. Used when WeasyPrint can't import its native libs. |
+
+Server (Docker) installs WeasyPrint's deps via `apt-get`:
+`libpango-1.0-0`, `libpangoft2-1.0-0`, `libharfbuzz0b`, `libcairo2`,
+`libgdk-pixbuf-2.0-0`, `libffi8`, `fonts-dejavu-core`. ~50 MB image
+growth.
+
+`get_backend()` reports the active backend for diagnostics —
+`weasyprint` / `edge` / `none`.
+
+### Slop Scoring (Optional)
+
+`editor/slop.py` exposes the EQ-Bench slop scorer used by the writing
+guide pipeline. The editor surfaces this for any open story but it's
+not required for regeneration — it's a quality signal, not a gate.

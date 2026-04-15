@@ -41,7 +41,7 @@ class PreviewRequest(BaseModel):
 
 
 class RegenerateRequest(BaseModel):
-    skip_pdf: bool = True  # PDFs are slow; opt-in
+    skip_pdf: bool = False  # WeasyPrint is fast enough to be on by default
 
 
 # ---------------------------------------------------------------------------
@@ -408,6 +408,44 @@ async def regenerate(story_name: str, req: RegenerateRequest):
                 results.append(f"Styled HTML: {len(ch_result.chapters)} chapters + full story + style.css")
     except Exception as e:
         errors.append(f"Styled HTML: {e}")
+
+    # --- PDF (full + per-chapter) ---
+    if not req.skip_pdf:
+        try:
+            from editor.pdf_generator import html_to_pdf, get_backend
+            backend = get_backend()
+            if backend == "none":
+                errors.append("PDF: no backend available (WeasyPrint not installed and Edge not found)")
+            else:
+                pdf_dir = story_dir / "PDF"
+                pdf_dir.mkdir(exist_ok=True)
+                pdf_count = 0
+
+                full_styled = html_dir / f"{stem}_Styled.html"
+                if full_styled.is_file():
+                    full_pdf = pdf_dir / f"{stem}.pdf"
+                    ok, _ = html_to_pdf(full_styled, full_pdf)
+                    if ok:
+                        pdf_count += 1
+                    else:
+                        errors.append(f"PDF: full-story render failed ({backend})")
+
+                ch_styled_dir = story_dir / "Chapters" / "Styled_HTML"
+                ch_pdf_dir = story_dir / "Chapters" / "PDF"
+                if ch_styled_dir.is_dir():
+                    ch_pdf_dir.mkdir(parents=True, exist_ok=True)
+                    for ch_html in sorted(ch_styled_dir.glob("Chapter_*.html")):
+                        ch_pdf = ch_pdf_dir / (ch_html.stem + ".pdf")
+                        ok, _ = html_to_pdf(ch_html, ch_pdf)
+                        if ok:
+                            pdf_count += 1
+                        else:
+                            errors.append(f"PDF: {ch_html.name} render failed ({backend})")
+
+                if pdf_count:
+                    results.append(f"PDF: {pdf_count} file(s) generated via {backend}")
+        except Exception as e:
+            errors.append(f"PDF: {e}")
 
     # --- Chapter splits (Markdown, SoFurry HTML, BBCode) ---
     from editor.converter import detect_chapters
