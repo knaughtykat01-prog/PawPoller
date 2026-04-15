@@ -595,8 +595,47 @@ const MetaEditor = {
         return out;
     },
 
+    _ensureDropdownPortal() {
+        // Render the dropdown as a body-level portal so it escapes the
+        // metadata-section-body overflow:hidden + drawer transform.
+        let dd = document.getElementById('metadata-tag-dropdown-portal');
+        if (!dd) {
+            dd = document.createElement('div');
+            dd.id = 'metadata-tag-dropdown-portal';
+            dd.className = 'metadata-tag-dropdown-portal';
+            dd.hidden = true;
+            document.body.appendChild(dd);
+        }
+        return dd;
+    },
+
+    _positionDropdownPortal() {
+        const dd = document.getElementById('metadata-tag-dropdown-portal');
+        const input = document.getElementById('metadata-tag-input');
+        if (!dd || !input) return;
+        const rect = input.getBoundingClientRect();
+        const viewportH = window.innerHeight;
+        const spaceBelow = viewportH - rect.bottom - 10;
+        const spaceAbove = rect.top - 10;
+        const width = Math.max(380, rect.width);
+        // Prefer below; flip up if cramped
+        if (spaceBelow < 200 && spaceAbove > spaceBelow) {
+            dd.style.top = '';
+            dd.style.bottom = (viewportH - rect.top + 4) + 'px';
+            dd.style.maxHeight = Math.min(480, spaceAbove) + 'px';
+        } else {
+            dd.style.bottom = '';
+            dd.style.top = (rect.bottom + 4) + 'px';
+            dd.style.maxHeight = Math.min(480, spaceBelow) + 'px';
+        }
+        dd.style.left = rect.left + 'px';
+        dd.style.width = width + 'px';
+    },
+
     _renderDropdown(results, query) {
-        const dd = document.getElementById('metadata-tag-dropdown');
+        // Use body-level portal instead of in-tree dropdown to escape
+        // overflow:hidden on parent sections.
+        const dd = this._ensureDropdownPortal();
         if (!dd) return;
         this._tagDropdownResults = results;
         const footer = `
@@ -612,10 +651,10 @@ const MetaEditor = {
                 dd.innerHTML = `<div class="metadata-tag-result-empty">No matches &mdash; Press Enter to add "<span>${this._escape(q)}</span>" anyway</div>${footer}`;
                 dd.hidden = false;
             } else {
-                // Empty query, no results — still show footer so user can open browser
                 dd.innerHTML = footer;
                 dd.hidden = false;
             }
+            this._positionDropdownPortal();
             return;
         }
         const rows = results.map((r, i) => {
@@ -637,10 +676,11 @@ const MetaEditor = {
         }).join('');
         dd.innerHTML = rows + footer;
         dd.hidden = false;
+        this._positionDropdownPortal();
     },
 
     _closeDropdown() {
-        const dd = document.getElementById('metadata-tag-dropdown');
+        const dd = document.getElementById('metadata-tag-dropdown-portal');
         if (dd) {
             dd.hidden = true;
             dd.innerHTML = '';
@@ -654,19 +694,17 @@ const MetaEditor = {
         this._tagDropdownOpenFor = platform;
         this._tagDropdownIndex = 0;
         if (!this._tagDb) {
-            // Show loading state while fetching
-            const dd = document.getElementById('metadata-tag-dropdown');
-            if (dd) {
-                dd.innerHTML = `<div class="metadata-tag-result-empty">Loading tag database...</div>`;
-                dd.hidden = false;
-            }
+            const dd = this._ensureDropdownPortal();
+            dd.innerHTML = `<div class="metadata-tag-result-empty">Loading tag database...</div>`;
+            dd.hidden = false;
+            this._positionDropdownPortal();
             try {
                 await this._loadTagDb();
             } catch (err) {
-                if (dd) dd.innerHTML = `<div class="metadata-tag-result-empty">Failed to load tags: ${this._escape(err.message || err)}</div>`;
+                dd.innerHTML = `<div class="metadata-tag-result-empty">Failed to load tags: ${this._escape(err.message || err)}</div>`;
+                this._positionDropdownPortal();
                 return;
             }
-            // User may have moved on — check still focused
             if (this._tagDropdownOpenFor !== platform) return;
         }
         const results = this._filterTagResults(query);

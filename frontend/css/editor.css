@@ -1026,20 +1026,21 @@
     opacity: 0.7;
 }
 
-.metadata-tag-dropdown {
-    position: absolute;
-    top: calc(100% + 2px);
-    left: 0;
-    right: 0;
-    min-width: 380px;
-    z-index: 100;
-    max-height: 480px;
+.metadata-tag-dropdown,
+.metadata-tag-dropdown-portal {
+    position: fixed;
+    /* Position set by JS via inline top/left/width/maxHeight */
+    z-index: 1500;
     overflow-y: auto;
     overflow-x: hidden;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 6px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.metadata-tag-dropdown-portal[hidden] {
+    display: none;
 }
 
 .metadata-tag-result {
