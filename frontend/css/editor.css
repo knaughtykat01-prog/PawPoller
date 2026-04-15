@@ -610,7 +610,9 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-sm, 8px);
     margin-bottom: 12px;
-    overflow: hidden;
+    /* No overflow:hidden — would clip the tag autocomplete dropdown.
+       The accordion collapse uses max-height on .metadata-section-body
+       which has its own overflow:hidden. */
 }
 
 .metadata-section-header {
@@ -1025,11 +1027,12 @@
 }
 
 .metadata-tag-dropdown {
-    position: fixed;
-    /* Position set by JS via inline style (top/left/width) to escape
-       the section's overflow:hidden accordion clipping. */
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
     min-width: 380px;
-    z-index: 1500;
+    z-index: 100;
     max-height: 480px;
     overflow-y: auto;
     overflow-x: hidden;

@@ -595,28 +595,6 @@ const MetaEditor = {
         return out;
     },
 
-    _positionDropdown() {
-        const dd = document.getElementById('metadata-tag-dropdown');
-        const input = document.getElementById('metadata-tag-input');
-        if (!dd || !input) return;
-        const rect = input.getBoundingClientRect();
-        const viewportH = window.innerHeight;
-        const spaceBelow = viewportH - rect.bottom;
-        const spaceAbove = rect.top;
-        // Prefer below; flip up if cramped
-        if (spaceBelow < 200 && spaceAbove > spaceBelow) {
-            dd.style.top = '';
-            dd.style.bottom = (viewportH - rect.top + 4) + 'px';
-            dd.style.maxHeight = Math.min(480, spaceAbove - 16) + 'px';
-        } else {
-            dd.style.bottom = '';
-            dd.style.top = (rect.bottom + 4) + 'px';
-            dd.style.maxHeight = Math.min(480, spaceBelow - 16) + 'px';
-        }
-        dd.style.left = rect.left + 'px';
-        dd.style.width = Math.max(380, rect.width) + 'px';
-    },
-
     _renderDropdown(results, query) {
         const dd = document.getElementById('metadata-tag-dropdown');
         if (!dd) return;
@@ -638,7 +616,6 @@ const MetaEditor = {
                 dd.innerHTML = footer;
                 dd.hidden = false;
             }
-            this._positionDropdown();
             return;
         }
         const rows = results.map((r, i) => {
@@ -660,7 +637,6 @@ const MetaEditor = {
         }).join('');
         dd.innerHTML = rows + footer;
         dd.hidden = false;
-        this._positionDropdown();
     },
 
     _closeDropdown() {
