@@ -13,7 +13,8 @@ import re
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from posting.story_reader import get_archive_path
@@ -708,6 +709,263 @@ async def save_metadata(story_name: str, req: MetadataSaveRequest):
     return {
         "ok": True,
         "last_modified": sj.stat().st_mtime,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Chapter detection + merge with stored chapter_info
+# ---------------------------------------------------------------------------
+
+@editor_router.get("/stories/{story_name:path}/chapters")
+async def get_chapters(story_name: str):
+    """Return a merged view of MASTER.md chapter detection + stored
+    chapter_info from story.json, along with a drift report.
+
+    The title "chapter" (index 0 — the story-level `# Title` heading) is
+    skipped; we only return real story chapters. Returned chapter index
+    numbers start at 1 (matching the convention used in story.json).
+    """
+    from editor.converter import detect_chapters
+
+    story_dir = _resolve_story_dir(story_name)
+    master = _get_master_path(story_dir)
+    sj = story_dir / "story.json"
+
+    if not master.is_file():
+        raise HTTPException(status_code=404, detail="MASTER.md not found")
+
+    md_text = master.read_text(encoding="utf-8")
+    md_chapters_all = detect_chapters(md_text)
+    # Skip the title heading at index 0 — it's the story title, not a chapter
+    md_chapters = md_chapters_all[1:] if len(md_chapters_all) > 1 else []
+    md_lines = md_text.split("\n")
+
+    # Load stored chapter_info from story.json (may be missing entirely)
+    stored_info: list[dict] = []
+    if sj.is_file():
+        try:
+            raw = json.loads(sj.read_text(encoding="utf-8"))
+            ci = raw.get("chapter_info", [])
+            if isinstance(ci, list):
+                stored_info = ci
+        except Exception as e:
+            logger.warning("chapters: failed reading chapter_info from %s: %s", sj, e)
+
+    # Build lookup by chapter number. story.json uses 1-based index.
+    stored_by_index: dict[int, dict] = {}
+    for entry in stored_info:
+        if not isinstance(entry, dict):
+            continue
+        idx = entry.get("index")
+        if isinstance(idx, int):
+            stored_by_index[idx] = entry
+
+    # Build merged chapter rows. MASTER.md is the source of truth for
+    # existence; story.json provides description/tags overrides.
+    chapters_out: list[dict] = []
+    seen_indices: set[int] = set()
+    added_in_md: list[dict] = []
+    renamed: list[dict] = []
+
+    for slice_i, ch in enumerate(md_chapters):
+        # detect_chapters indexes from 0 including the title row. Re-number
+        # against our skipped slice so index 1 is the first real chapter.
+        chapter_number = slice_i + 1
+        md_title = ch.get("title", "") or ""
+        seen_indices.add(chapter_number)
+
+        # Word count scoped to this chapter's line range
+        line_start = ch.get("line_start", 0)
+        line_end = ch.get("line_end", line_start)
+        ch_body = "\n".join(md_lines[line_start:line_end + 1])
+        words = _word_count(ch_body)
+
+        stored = stored_by_index.get(chapter_number)
+        in_metadata = stored is not None
+
+        override_title = ""
+        description = ""
+        tags: dict = {"default": [], "sofurry": [], "wattpad": []}
+        if stored:
+            stored_title = stored.get("title")
+            if isinstance(stored_title, str) and stored_title.strip():
+                override_title = stored_title
+            desc = stored.get("description")
+            if isinstance(desc, str):
+                description = desc
+            stored_tags = stored.get("tags")
+            if isinstance(stored_tags, dict):
+                for k in ("default", "sofurry", "wattpad"):
+                    v = stored_tags.get(k)
+                    if isinstance(v, list):
+                        tags[k] = [str(t) for t in v]
+
+        if in_metadata and override_title and override_title != md_title:
+            renamed.append({
+                "index": chapter_number,
+                "md_title": md_title,
+                "stored_title": override_title,
+            })
+
+        chapters_out.append({
+            "index": chapter_number,
+            "title_from_md": md_title,
+            "title": override_title or md_title,
+            "words": words,
+            "description": description,
+            "tags": tags,
+            "in_md": True,
+            "in_metadata": in_metadata,
+        })
+
+        if not in_metadata:
+            added_in_md.append({"index": chapter_number, "title": md_title})
+
+    # Chapters in stored metadata but no longer in MD
+    removed_in_md: list[dict] = []
+    for idx, entry in stored_by_index.items():
+        if idx in seen_indices:
+            continue
+        title = entry.get("title") or f"Chapter {idx}"
+        tags_raw = entry.get("tags") if isinstance(entry.get("tags"), dict) else {}
+        desc = entry.get("description") if isinstance(entry.get("description"), str) else ""
+        tags: dict = {"default": [], "sofurry": [], "wattpad": []}
+        for k in ("default", "sofurry", "wattpad"):
+            v = tags_raw.get(k) if isinstance(tags_raw, dict) else None
+            if isinstance(v, list):
+                tags[k] = [str(t) for t in v]
+        chapters_out.append({
+            "index": idx,
+            "title_from_md": "",
+            "title": title,
+            "words": entry.get("words", 0) if isinstance(entry.get("words"), int) else 0,
+            "description": desc,
+            "tags": tags,
+            "in_md": False,
+            "in_metadata": True,
+        })
+        removed_in_md.append({"index": idx, "title": title})
+
+    # Sort output by chapter index for stable rendering
+    chapters_out.sort(key=lambda c: c["index"])
+
+    return {
+        "chapters": chapters_out,
+        "drift": {
+            "added_in_md": added_in_md,
+            "removed_in_md": removed_in_md,
+            "renamed": renamed,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: Cover image upload + fetch
+# ---------------------------------------------------------------------------
+
+_COVER_ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+_COVER_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+def _find_existing_cover(story_dir: Path) -> Path | None:
+    """Return the Path of an existing cover image referenced in story.json,
+    or (fallback) a conventionally named `<stem>_cover.<ext>` in the dir."""
+    sj = story_dir / "story.json"
+    if sj.is_file():
+        try:
+            data = json.loads(sj.read_text(encoding="utf-8"))
+            images = data.get("images") or {}
+            cover = images.get("cover")
+            if isinstance(cover, str) and cover.strip():
+                candidate = story_dir / cover.strip()
+                if candidate.is_file():
+                    return candidate
+        except Exception:
+            pass
+    # Fallback: search by conventional name
+    stem_lower = story_dir.name.lower()
+    for ext in _COVER_ALLOWED_EXTS:
+        candidate = story_dir / f"{stem_lower}_cover{ext}"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+@editor_router.get("/stories/{story_name:path}/cover")
+async def get_cover(story_name: str):
+    """Serve the story's cover image file, or 404 if none is present."""
+    story_dir = _resolve_story_dir(story_name)
+    cover = _find_existing_cover(story_dir)
+    if cover is None:
+        raise HTTPException(status_code=404, detail="No cover image")
+    # Guess media type from extension (FileResponse will also infer)
+    ext = cover.suffix.lower()
+    media = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }.get(ext, "application/octet-stream")
+    return FileResponse(str(cover), media_type=media)
+
+
+@editor_router.post("/stories/{story_name:path}/cover")
+async def upload_cover(story_name: str, file: UploadFile = File(...)):
+    """Upload a cover image. Saves to the story directory using an existing
+    filename if one is already configured, otherwise `<stem>_cover.<ext>`.
+
+    Returns the filename (relative to the story dir) and byte size. Caller
+    is responsible for updating story.json via PUT /metadata."""
+    story_dir = _resolve_story_dir(story_name)
+
+    # Validate extension
+    orig_name = file.filename or ""
+    ext = Path(orig_name).suffix.lower()
+    if ext not in _COVER_ALLOWED_EXTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported image type: {ext or '(none)'} — allowed: {', '.join(sorted(_COVER_ALLOWED_EXTS))}",
+        )
+
+    # Read + size-check (stream to memory since limit is small)
+    data = await file.read()
+    if len(data) > _COVER_MAX_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Image too large ({len(data):,} bytes) — max {_COVER_MAX_BYTES:,} bytes",
+        )
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    # Determine destination filename. If story.json already references a
+    # cover, reuse its filename (swap extension to match new upload).
+    sj = story_dir / "story.json"
+    existing_name: str | None = None
+    if sj.is_file():
+        try:
+            raw = json.loads(sj.read_text(encoding="utf-8"))
+            images = raw.get("images") or {}
+            cover_ref = images.get("cover")
+            if isinstance(cover_ref, str) and cover_ref.strip():
+                existing_name = cover_ref.strip()
+        except Exception:
+            existing_name = None
+
+    if existing_name:
+        # Preserve stem, swap extension to match uploaded bytes
+        dest = story_dir / (Path(existing_name).stem + ext)
+    else:
+        dest = story_dir / f"{story_dir.name.lower()}_cover{ext}"
+
+    try:
+        dest.write_bytes(data)
+    except PermissionError:
+        raise HTTPException(status_code=500, detail=f"Permission denied writing {dest.name}")
+
+    return {
+        "ok": True,
+        "filename": dest.name,
+        "size": len(data),
     }
 
 

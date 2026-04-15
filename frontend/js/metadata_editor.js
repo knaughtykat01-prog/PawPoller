@@ -37,6 +37,20 @@ const MetaEditor = {
     _TAG_BROWSER_PAGE_SIZE: 100,
     _TAG_BROWSER_CATEGORIES: ['physical', 'acts', 'kink', 'meta', 'image'],
 
+    // Phase 4: Chapters
+    _chapterData: null,           // { chapters, drift } from GET /chapters
+    _chaptersLoading: false,
+    _chaptersLoaded: false,       // flip true once we have data at least once
+    _expandedChapter: null,       // chapter index currently expanded (or null)
+    _activeChapterTagPlatform: 'default', // sub-tab within chapter detail
+    _CHAPTER_TAG_PLATFORMS: ['default', 'sofurry', 'wattpad'],
+
+    // Phase 5: Cover + Raw JSON
+    _coverFilename: null,         // current metadata.images.cover
+    _coverBustKey: 0,             // cache-bust counter for preview img
+    _coverUploading: false,
+    _rawJsonEditMode: false,
+
     // Platform tag caps (∞ = no cap)
     TAG_LIMITS: {
         sofurry: 97,
@@ -278,6 +292,9 @@ const MetaEditor = {
             ${this._renderClassificationsSection()}
             ${this._renderPlatformTagsSection()}
             ${this._renderPlatformTogglesSection()}
+            ${this._renderChaptersSection()}
+            ${this._renderCoverSection()}
+            ${this._renderRawJsonSection()}
         `;
 
         this._updateCharCounter('meta-description', 'meta-desc-counter', this.DESC_MAX);
@@ -320,6 +337,15 @@ const MetaEditor = {
         this.PLATFORMS.forEach(p => {
             if (typeof md.platforms[p] !== 'boolean') md.platforms[p] = !!md.platforms[p];
         });
+
+        // Phase 4: chapter_info — list of { index, title, description, tags, words }
+        if (!Array.isArray(md.chapter_info)) md.chapter_info = [];
+
+        // Phase 5: images map (cover filename lives at images.cover)
+        if (!md.images || typeof md.images !== 'object' || Array.isArray(md.images)) {
+            md.images = {};
+        }
+        this._coverFilename = (typeof md.images.cover === 'string' && md.images.cover.trim()) ? md.images.cover.trim() : null;
     },
 
     // ---------------------------------------------------------------------
@@ -1490,6 +1516,16 @@ const MetaEditor = {
                 section.setAttribute('data-expanded', expanded ? 'false' : 'true');
                 const chev = btn.querySelector('.metadata-section-chevron');
                 if (chev) chev.innerHTML = expanded ? '&#9654;' : '&#9660;';
+
+                // Phase 4: lazy-load chapter data when expanding the chapters
+                // section (or refresh on each re-expand to catch MD changes).
+                if (key === 'chapters' && !expanded) {
+                    this._loadChapters();
+                }
+                // Phase 5: refresh raw JSON view on expand
+                if (key === 'rawjson' && !expanded) {
+                    this._refreshRawJsonView();
+                }
             });
         });
 
@@ -1592,6 +1628,578 @@ const MetaEditor = {
                 this._clearStatus();
             });
         });
+
+        // Phase 5: bind cover + raw JSON once up-front so they work even if
+        // the user expands those sections without interacting elsewhere.
+        this._bindCoverEvents();
+        this._bindRawJsonEvents();
+    },
+
+    // ---------------------------------------------------------------------
+    // Section 6: Chapters (Phase 4)
+    //
+    // Lazy-loaded accordion. Each chapter is a collapsed row that expands
+    // into a form with override title, description, and simple comma-
+    // separated tag textareas per platform (no autocomplete in Phase 4;
+    // full pill/autocomplete machinery is Phase 4b).
+    // ---------------------------------------------------------------------
+
+    _renderChaptersSection() {
+        // The body itself is rendered lazily — we emit a shell here and
+        // _renderChapterRows() populates #metadata-chapters-body on expand.
+        const count = this._chapterData ? this._chapterData.chapters.length : '...';
+        return `
+            <section class="metadata-section" data-section="chapters" data-expanded="false">
+                <button type="button" class="metadata-section-header" data-section-toggle="chapters">
+                    <span class="metadata-section-chevron">&#9654;</span>
+                    <span>Chapters <span class="metadata-section-count" id="metadata-chapters-count">(${count})</span></span>
+                </button>
+                <div class="metadata-section-body">
+                    <div id="metadata-chapters-body">
+                        <div class="metadata-loading">Expand to load chapters...</div>
+                    </div>
+                </div>
+            </section>
+        `;
+    },
+
+    async _loadChapters() {
+        if (this._chaptersLoading) return;
+        this._chaptersLoading = true;
+        const host = document.getElementById('metadata-chapters-body');
+        if (host && !this._chaptersLoaded) {
+            host.innerHTML = `<div class="metadata-loading">Loading chapters...</div>`;
+        }
+        try {
+            const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/chapters`);
+            if (!resp.ok) {
+                const txt = await resp.text();
+                throw new Error(txt || `HTTP ${resp.status}`);
+            }
+            const data = await resp.json();
+            this._chapterData = data;
+            this._chaptersLoaded = true;
+
+            // Sync metadata.chapter_info with detected chapters so edits made
+            // via this UI are persisted even if the original story.json had
+            // no chapter_info yet. We never clobber user-authored descriptions
+            // or tags — we only add stubs for MD chapters that aren't in
+            // metadata yet.
+            this._syncChapterInfoFromLoad(data);
+
+            this._renderChapterRows();
+            const countEl = document.getElementById('metadata-chapters-count');
+            if (countEl) countEl.textContent = `(${data.chapters.length})`;
+        } catch (err) {
+            if (host) {
+                host.innerHTML = `<div class="metadata-error-banner">Failed to load chapters: ${this._escape(err.message || err)}</div>`;
+            }
+        } finally {
+            this._chaptersLoading = false;
+        }
+    },
+
+    /**
+     * Upsert detected chapters into this.metadata.chapter_info. The backend
+     * response is the source of truth for which chapters exist; we take
+     * description/tags from any existing entry so edits survive.
+     */
+    _syncChapterInfoFromLoad(data) {
+        const md = this.metadata;
+        const byIndex = new Map();
+        (md.chapter_info || []).forEach(entry => {
+            if (entry && typeof entry === 'object' && typeof entry.index === 'number') {
+                byIndex.set(entry.index, entry);
+            }
+        });
+
+        const merged = [];
+        data.chapters.forEach(ch => {
+            const existing = byIndex.get(ch.index) || {};
+            const tags = existing.tags && typeof existing.tags === 'object' && !Array.isArray(existing.tags)
+                ? existing.tags : {};
+            merged.push({
+                index: ch.index,
+                // Prefer MD title unless user has an override
+                title: (typeof existing.title === 'string' && existing.title.trim())
+                    ? existing.title
+                    : (ch.title_from_md || ch.title || ''),
+                words: ch.words,
+                description: typeof existing.description === 'string' ? existing.description : '',
+                tags: {
+                    default: Array.isArray(tags.default) ? tags.default : [],
+                    sofurry: Array.isArray(tags.sofurry) ? tags.sofurry : [],
+                    wattpad: Array.isArray(tags.wattpad) ? tags.wattpad : [],
+                },
+            });
+        });
+
+        md.chapter_info = merged;
+    },
+
+    _renderChapterRows() {
+        const host = document.getElementById('metadata-chapters-body');
+        if (!host || !this._chapterData) return;
+
+        const { chapters, drift } = this._chapterData;
+        const hasDrift = (drift.added_in_md.length + drift.removed_in_md.length + drift.renamed.length) > 0;
+        const driftHtml = hasDrift ? this._renderChapterDriftBanner(drift) : '';
+
+        if (!chapters.length) {
+            host.innerHTML = driftHtml + `<div class="metadata-loading">No chapters detected in MASTER.md.</div>`;
+            return;
+        }
+
+        const rows = chapters.map(ch => this._renderChapterRow(ch)).join('');
+        host.innerHTML = driftHtml + `<div class="metadata-chapter-list">${rows}</div>`;
+        this._bindChapterRowEvents();
+    },
+
+    _renderChapterDriftBanner(drift) {
+        const bits = [];
+        if (drift.added_in_md.length) bits.push(`${drift.added_in_md.length} new chapter${drift.added_in_md.length === 1 ? '' : 's'} in MASTER.md`);
+        if (drift.removed_in_md.length) bits.push(`${drift.removed_in_md.length} chapter${drift.removed_in_md.length === 1 ? '' : 's'} removed from MASTER.md`);
+        if (drift.renamed.length) bits.push(`${drift.renamed.length} renamed`);
+        const label = bits.join(', ');
+        return `
+            <div class="metadata-chapter-drift-banner">
+                <div class="metadata-chapter-drift-text">Chapter drift: ${this._escape(label)}.</div>
+                <div class="metadata-chapter-drift-actions">
+                    <button type="button" class="btn btn-sm" data-chapter-action="sync-md">Sync from MD</button>
+                </div>
+            </div>
+        `;
+    },
+
+    _renderChapterRow(ch) {
+        const expanded = this._expandedChapter === ch.index;
+        const chev = expanded ? '&#9660;' : '&#9654;';
+        const removed = (!ch.in_md && ch.in_metadata);
+        const rowCls = `metadata-chapter-row${expanded ? ' metadata-chapter-row-expanded' : ''}${removed ? ' metadata-chapter-row-removed' : ''}`;
+        const title = ch.title || ch.title_from_md || `Chapter ${ch.index}`;
+        const detail = expanded ? this._renderChapterDetail(ch) : '';
+        return `
+            <div class="${rowCls}" data-chapter-index="${ch.index}">
+                <button type="button" class="metadata-chapter-row-header" data-chapter-toggle="${ch.index}">
+                    <span class="metadata-chapter-row-chevron">${chev}</span>
+                    <span class="metadata-chapter-row-title">${this._escape(title)}</span>
+                    <span class="metadata-chapter-row-meta">${ch.words ? ch.words.toLocaleString() + ' words' : ''}</span>
+                </button>
+                <div class="metadata-chapter-row-detail">${detail}</div>
+            </div>
+        `;
+    },
+
+    _renderChapterDetail(ch) {
+        // Find the live editable entry in metadata.chapter_info
+        const entry = this._getChapterEntry(ch.index) || { title: '', description: '', tags: {} };
+        const overrideVal = (entry.title && entry.title !== ch.title_from_md) ? entry.title : '';
+        const desc = entry.description || '';
+        const active = this._activeChapterTagPlatform;
+
+        const tabs = this._CHAPTER_TAG_PLATFORMS.map(p => {
+            const cls = p === active ? ' metadata-chapter-tag-tab-active' : '';
+            return `<button type="button" class="metadata-chapter-tag-tab${cls}" data-chapter-tag-tab="${this._escape(p)}" data-chapter-index="${ch.index}">${this._escape(this.PLATFORM_LABELS[p] || p)}</button>`;
+        }).join('');
+
+        const tagsForActive = (entry.tags && Array.isArray(entry.tags[active])) ? entry.tags[active] : [];
+        const tagsText = tagsForActive.join(', ');
+
+        const removedNote = (!ch.in_md && ch.in_metadata) ? `
+            <div class="metadata-chapter-removed-note">
+                This chapter exists in metadata but not in MASTER.md.
+                <button type="button" class="btn btn-sm btn-outline" data-chapter-action="remove" data-chapter-index="${ch.index}">Remove from metadata</button>
+            </div>
+        ` : '';
+
+        const mdTitleLine = ch.title_from_md
+            ? `<div class="metadata-chapter-md-title">MASTER.md title: <code>${this._escape(ch.title_from_md)}</code></div>`
+            : '';
+
+        return `
+            ${removedNote}
+            ${mdTitleLine}
+            <div class="metadata-field">
+                <label for="meta-chapter-title-${ch.index}">Override title <span class="metadata-hint">(leave empty to use MD title)</span></label>
+                <input type="text" id="meta-chapter-title-${ch.index}" data-chapter-field="title" data-chapter-index="${ch.index}" value="${this._escape(overrideVal)}" placeholder="${this._escape(ch.title_from_md || '')}" autocomplete="off" />
+            </div>
+            <div class="metadata-field">
+                <label for="meta-chapter-desc-${ch.index}">Description</label>
+                <textarea id="meta-chapter-desc-${ch.index}" data-chapter-field="description" data-chapter-index="${ch.index}" rows="3">${this._escape(desc)}</textarea>
+            </div>
+            <div class="metadata-field">
+                <label>Per-platform tags <span class="metadata-hint">(comma-separated; full autocomplete coming in Phase 4b)</span></label>
+                <div class="metadata-chapter-tag-tabs" role="tablist">${tabs}</div>
+                <textarea
+                    class="metadata-chapter-tag-textarea"
+                    data-chapter-field="tags"
+                    data-chapter-index="${ch.index}"
+                    data-chapter-tag-platform="${this._escape(active)}"
+                    rows="4"
+                    placeholder="tag1, tag2, tag3">${this._escape(tagsText)}</textarea>
+            </div>
+        `;
+    },
+
+    _getChapterEntry(index) {
+        return (this.metadata.chapter_info || []).find(e => e && e.index === index) || null;
+    },
+
+    _bindChapterRowEvents() {
+        const host = document.getElementById('metadata-chapters-body');
+        if (!host) return;
+
+        // Row header toggles
+        host.querySelectorAll('[data-chapter-toggle]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.getAttribute('data-chapter-toggle'), 10);
+                if (Number.isNaN(idx)) return;
+                this._expandedChapter = (this._expandedChapter === idx) ? null : idx;
+                this._renderChapterRows();
+            });
+        });
+
+        // Tag platform sub-tabs (inside expanded detail)
+        host.querySelectorAll('[data-chapter-tag-tab]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const p = btn.getAttribute('data-chapter-tag-tab');
+                if (p === this._activeChapterTagPlatform) return;
+                this._activeChapterTagPlatform = p;
+                this._renderChapterRows();
+            });
+        });
+
+        // Field edits (override title, description, tags textarea)
+        host.querySelectorAll('[data-chapter-field]').forEach(el => {
+            const field = el.getAttribute('data-chapter-field');
+            const idx = parseInt(el.getAttribute('data-chapter-index'), 10);
+            if (Number.isNaN(idx)) return;
+
+            const write = () => {
+                const entry = this._ensureChapterEntry(idx);
+                if (field === 'title') {
+                    const v = el.value.trim();
+                    // Empty override means "use MD title"; store MD title so
+                    // round-tripping through JSON is stable.
+                    const chInfo = (this._chapterData && this._chapterData.chapters.find(c => c.index === idx));
+                    const mdTitle = chInfo ? (chInfo.title_from_md || '') : '';
+                    entry.title = v || mdTitle;
+                } else if (field === 'description') {
+                    entry.description = el.value;
+                } else if (field === 'tags') {
+                    const platform = el.getAttribute('data-chapter-tag-platform') || 'default';
+                    if (!entry.tags || typeof entry.tags !== 'object') entry.tags = {};
+                    entry.tags[platform] = el.value
+                        .split(',')
+                        .map(s => s.trim())
+                        .filter(s => s.length > 0);
+                }
+                this._clearStatus();
+            };
+            el.addEventListener('input', write);
+            el.addEventListener('change', write);
+        });
+
+        // Drift banner actions
+        host.querySelectorAll('[data-chapter-action]').forEach(btn => {
+            const action = btn.getAttribute('data-chapter-action');
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (action === 'sync-md') {
+                    // Re-run _syncChapterInfoFromLoad (which created stubs on load)
+                    // then re-render. The sync is idempotent.
+                    if (this._chapterData) {
+                        this._syncChapterInfoFromLoad(this._chapterData);
+                    }
+                    this._loadChapters();
+                } else if (action === 'remove') {
+                    const idx = parseInt(btn.getAttribute('data-chapter-index'), 10);
+                    if (Number.isNaN(idx)) return;
+                    this.metadata.chapter_info = (this.metadata.chapter_info || []).filter(e => !(e && e.index === idx));
+                    // Also remove from the displayed data
+                    if (this._chapterData) {
+                        this._chapterData.chapters = this._chapterData.chapters.filter(c => c.index !== idx);
+                        this._chapterData.drift.removed_in_md = this._chapterData.drift.removed_in_md.filter(d => d.index !== idx);
+                    }
+                    if (this._expandedChapter === idx) this._expandedChapter = null;
+                    this._clearStatus();
+                    this._renderChapterRows();
+                }
+            });
+        });
+    },
+
+    _ensureChapterEntry(index) {
+        this.metadata.chapter_info = this.metadata.chapter_info || [];
+        let entry = this.metadata.chapter_info.find(e => e && e.index === index);
+        if (!entry) {
+            entry = { index, title: '', description: '', tags: { default: [], sofurry: [], wattpad: [] }, words: 0 };
+            this.metadata.chapter_info.push(entry);
+            this.metadata.chapter_info.sort((a, b) => a.index - b.index);
+        }
+        return entry;
+    },
+
+    // ---------------------------------------------------------------------
+    // Section 7: Cover Image (Phase 5)
+    // ---------------------------------------------------------------------
+
+    _renderCoverSection() {
+        return `
+            <section class="metadata-section" data-section="cover" data-expanded="false">
+                <button type="button" class="metadata-section-header" data-section-toggle="cover">
+                    <span class="metadata-section-chevron">&#9654;</span>
+                    <span>Cover Image</span>
+                </button>
+                <div class="metadata-section-body">
+                    <div class="metadata-cover-wrap" id="metadata-cover-wrap">
+                        ${this._renderCoverBody()}
+                    </div>
+                </div>
+            </section>
+        `;
+    },
+
+    _renderCoverBody() {
+        const hasCover = !!this._coverFilename;
+        const src = hasCover
+            ? `/api/editor/stories/${encodeURIComponent(this.storyName)}/cover?t=${this._coverBustKey}`
+            : '';
+        const preview = hasCover
+            ? `<img class="metadata-cover-thumb" src="${src}" alt="Cover preview" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" /><div class="metadata-cover-empty" style="display:none;">Preview unavailable</div>`
+            : `<div class="metadata-cover-empty">No cover image</div>`;
+        const meta = hasCover
+            ? `<div class="metadata-cover-meta"><code>${this._escape(this._coverFilename)}</code></div>`
+            : '';
+        return `
+            <div class="metadata-cover-preview" id="metadata-cover-preview">
+                ${preview}
+            </div>
+            ${meta}
+            <div class="metadata-cover-actions">
+                <label class="btn btn-sm metadata-cover-upload-btn" for="metadata-cover-file">
+                    ${hasCover ? 'Replace image' : 'Upload image'}
+                </label>
+                <input type="file" id="metadata-cover-file" accept="image/png,image/jpeg,image/jpg,image/webp" style="display:none" />
+                <span class="metadata-hint">or drop an image on the preview above (PNG/JPG/WebP, max 5MB)</span>
+            </div>
+            <div class="metadata-cover-status" id="metadata-cover-status"></div>
+        `;
+    },
+
+    _refreshCoverBody() {
+        const wrap = document.getElementById('metadata-cover-wrap');
+        if (!wrap) return;
+        wrap.innerHTML = this._renderCoverBody();
+        this._bindCoverEvents();
+    },
+
+    _bindCoverEvents() {
+        const fileInput = document.getElementById('metadata-cover-file');
+        if (fileInput) {
+            fileInput.addEventListener('change', (e) => {
+                const f = e.target.files && e.target.files[0];
+                if (f) this._uploadCover(f);
+                // reset so same file can be re-selected later
+                fileInput.value = '';
+            });
+        }
+        const drop = document.getElementById('metadata-cover-preview');
+        if (drop) {
+            ['dragenter', 'dragover'].forEach(evt => {
+                drop.addEventListener(evt, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    drop.classList.add('metadata-cover-dropzone-active');
+                });
+            });
+            ['dragleave', 'drop'].forEach(evt => {
+                drop.addEventListener(evt, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    drop.classList.remove('metadata-cover-dropzone-active');
+                });
+            });
+            drop.addEventListener('drop', (e) => {
+                const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+                if (f) this._uploadCover(f);
+            });
+        }
+    },
+
+    async _uploadCover(file) {
+        if (this._coverUploading) return;
+        const statusEl = document.getElementById('metadata-cover-status');
+        if (!/^image\/(png|jpe?g|webp)$/i.test(file.type) && !/\.(png|jpe?g|webp)$/i.test(file.name)) {
+            if (statusEl) {
+                statusEl.textContent = 'Unsupported file type. Use PNG, JPG, or WebP.';
+                statusEl.className = 'metadata-cover-status metadata-cover-status-error';
+            }
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            if (statusEl) {
+                statusEl.textContent = `File too large (${(file.size / 1024 / 1024).toFixed(2)} MB — max 5 MB).`;
+                statusEl.className = 'metadata-cover-status metadata-cover-status-error';
+            }
+            return;
+        }
+        this._coverUploading = true;
+        if (statusEl) {
+            statusEl.textContent = 'Uploading...';
+            statusEl.className = 'metadata-cover-status';
+        }
+        try {
+            const fd = new FormData();
+            fd.append('file', file, file.name);
+            const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/cover`, {
+                method: 'POST',
+                body: fd,
+            });
+            if (!resp.ok) {
+                const txt = await resp.text();
+                throw new Error(txt || `HTTP ${resp.status}`);
+            }
+            const data = await resp.json();
+            // Update metadata so Save persists the filename
+            if (!this.metadata.images || typeof this.metadata.images !== 'object' || Array.isArray(this.metadata.images)) {
+                this.metadata.images = {};
+            }
+            this.metadata.images.cover = data.filename;
+            this._coverFilename = data.filename;
+            this._coverBustKey = Date.now();
+            this._clearStatus();
+            this._refreshCoverBody();
+            const newStatusEl = document.getElementById('metadata-cover-status');
+            if (newStatusEl) {
+                newStatusEl.textContent = `Uploaded ${data.filename} (${(data.size / 1024).toFixed(1)} KB) — remember to Save to persist filename change.`;
+                newStatusEl.className = 'metadata-cover-status metadata-cover-status-ok';
+            }
+        } catch (err) {
+            if (statusEl) {
+                statusEl.textContent = `Upload failed: ${err.message || err}`;
+                statusEl.className = 'metadata-cover-status metadata-cover-status-error';
+            }
+        } finally {
+            this._coverUploading = false;
+        }
+    },
+
+    // ---------------------------------------------------------------------
+    // Section 8: Raw JSON (Phase 5)
+    // ---------------------------------------------------------------------
+
+    _renderRawJsonSection() {
+        return `
+            <section class="metadata-section" data-section="rawjson" data-expanded="false">
+                <button type="button" class="metadata-section-header" data-section-toggle="rawjson">
+                    <span class="metadata-section-chevron">&#9654;</span>
+                    <span>Raw JSON <span class="metadata-hint">(advanced)</span></span>
+                </button>
+                <div class="metadata-section-body">
+                    <div id="metadata-rawjson-wrap">
+                        ${this._renderRawJsonBody()}
+                    </div>
+                </div>
+            </section>
+        `;
+    },
+
+    _renderRawJsonBody() {
+        const pretty = this._safeStringifyMetadata();
+        const editing = this._rawJsonEditMode;
+        const warning = editing
+            ? `<div class="metadata-rawjson-warning">Direct JSON editing bypasses validation. Use carefully. Click Apply to replace the entire metadata object.</div>`
+            : '';
+        const ta = `<textarea class="metadata-rawjson-textarea" id="metadata-rawjson-textarea" rows="16" ${editing ? '' : 'readonly'}>${this._escape(pretty)}</textarea>`;
+        const actions = editing
+            ? `
+                <div class="metadata-rawjson-actions">
+                    <button type="button" class="btn btn-sm" id="metadata-rawjson-apply">Apply</button>
+                    <button type="button" class="btn btn-sm btn-outline" id="metadata-rawjson-cancel">Cancel</button>
+                </div>
+                <div class="metadata-rawjson-error" id="metadata-rawjson-error"></div>
+              `
+            : `
+                <div class="metadata-rawjson-actions">
+                    <button type="button" class="btn btn-sm btn-outline" id="metadata-rawjson-edit">Edit JSON</button>
+                    <button type="button" class="btn btn-sm btn-outline" id="metadata-rawjson-refresh">Refresh</button>
+                </div>
+              `;
+        return `${warning}${ta}${actions}`;
+    },
+
+    _safeStringifyMetadata() {
+        try {
+            return JSON.stringify(this.metadata, null, 2);
+        } catch (err) {
+            return `// JSON stringify failed: ${err.message || err}`;
+        }
+    },
+
+    _refreshRawJsonView() {
+        const wrap = document.getElementById('metadata-rawjson-wrap');
+        if (!wrap) return;
+        wrap.innerHTML = this._renderRawJsonBody();
+        this._bindRawJsonEvents();
+    },
+
+    _bindRawJsonEvents() {
+        const editBtn = document.getElementById('metadata-rawjson-edit');
+        if (editBtn) {
+            editBtn.addEventListener('click', () => {
+                this._rawJsonEditMode = true;
+                this._refreshRawJsonView();
+                const ta = document.getElementById('metadata-rawjson-textarea');
+                if (ta) ta.focus();
+            });
+        }
+        const refreshBtn = document.getElementById('metadata-rawjson-refresh');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => this._refreshRawJsonView());
+        }
+        const applyBtn = document.getElementById('metadata-rawjson-apply');
+        if (applyBtn) {
+            applyBtn.addEventListener('click', () => this._applyRawJsonEdit());
+        }
+        const cancelBtn = document.getElementById('metadata-rawjson-cancel');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                this._rawJsonEditMode = false;
+                this._refreshRawJsonView();
+            });
+        }
+    },
+
+    _applyRawJsonEdit() {
+        const ta = document.getElementById('metadata-rawjson-textarea');
+        const errEl = document.getElementById('metadata-rawjson-error');
+        if (!ta) return;
+        let parsed;
+        try {
+            parsed = JSON.parse(ta.value);
+        } catch (err) {
+            if (errEl) errEl.textContent = `Parse error: ${err.message || err}`;
+            return;
+        }
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            if (errEl) errEl.textContent = 'Root must be a JSON object.';
+            return;
+        }
+        if (!confirm('Replace the entire metadata object with the edited JSON? All form state will be re-rendered from this.')) {
+            return;
+        }
+        this.metadata = parsed;
+        this._normaliseMetadata();
+        this._rawJsonEditMode = false;
+        // Full re-render so all form fields reflect the new state
+        this._renderForm();
+        this._initFormBindings();
+        // Refresh cover preview binding (rendered as part of _renderForm)
+        this._refreshCoverBody();
+        this._clearStatus();
+        this._setStatus('JSON applied (not yet saved)', 'info');
     },
 
     _updateCharCounter(inputId, counterId, max) {
