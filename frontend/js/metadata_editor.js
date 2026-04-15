@@ -29,6 +29,15 @@ const MetaEditor = {
     _tagDropdownIndex: 0,
     _tagDropdownResults: [],     // last rendered result set
 
+    // Phase 3b: e621 lookup fallback — surfaced when local results are sparse.
+    _e621LookupCache: new Map(),     // lowercase query → array<{name,category,post_count}>
+    _e621LookupPending: null,        // in-flight {query, promise} to dedupe concurrent fetches
+    _e621LookupResults: [],          // last rendered e621 result set (parallel to _tagDropdownResults)
+    _e621LookupDebounce: null,       // setTimeout handle
+    _E621_LOOKUP_MIN_QUERY: 3,       // min chars before triggering lookup
+    _E621_LOOKUP_LOCAL_THRESHOLD: 5, // only trigger when local matches < this
+    _E621_LOOKUP_DEBOUNCE_MS: 300,
+
     // Phase 4b: tag autocomplete context — the dropdown portal is a single
     // element shared between story-level tags and per-chapter tags. Context
     // tracks where the dropdown is currently writing to.
@@ -45,7 +54,7 @@ const MetaEditor = {
     _tagBrowserFilters: new Set(),
     _tagBrowserPage: 1,           // page size = 100 results
     _TAG_BROWSER_PAGE_SIZE: 100,
-    _TAG_BROWSER_CATEGORIES: ['physical', 'acts', 'kink', 'meta', 'image'],
+    _TAG_BROWSER_CATEGORIES: ['physical', 'acts', 'kink', 'meta', 'image', 'user'],
 
     // Phase 4: Chapters
     _chapterData: null,           // { chapters, drift } from GET /chapters
@@ -681,10 +690,14 @@ const MetaEditor = {
                 </button>
             </div>
         `;
+
+        // Phase 3b: e621 suggestions block (appended below local results).
+        const e621Block = this._renderE621SuggestionsBlock(query);
+
         if (!results.length) {
             const q = (query || '').trim();
             if (q) {
-                dd.innerHTML = `<div class="metadata-tag-result-empty">No matches &mdash; Press Enter to add "<span>${this._escape(q)}</span>" anyway</div>${footer}`;
+                dd.innerHTML = `<div class="metadata-tag-result-empty">No matches &mdash; Press Enter to add "<span>${this._escape(q)}</span>" anyway</div>${e621Block}${footer}`;
                 dd.hidden = false;
             } else {
                 dd.innerHTML = footer;
@@ -710,9 +723,234 @@ const MetaEditor = {
                 </div>
             `;
         }).join('');
-        dd.innerHTML = rows + footer;
+        dd.innerHTML = rows + e621Block + footer;
         dd.hidden = false;
         this._positionDropdownPortal();
+    },
+
+    // ----------------------------------------------------------------
+    // Phase 3b: e621 lookup fallback — rendered below local matches.
+    // ----------------------------------------------------------------
+
+    /**
+     * Human label for the raw e621 category integer. 0=general, 3=copyright,
+     * 5=species, 7=meta, 8=lore. We only surface these five (filter drops
+     * 1/2/4).
+     */
+    _e621CategoryLabel(catInt) {
+        switch (catInt) {
+            case 0: return 'general';
+            case 3: return 'copyright';
+            case 5: return 'species';
+            case 7: return 'meta';
+            case 8: return 'lore';
+            default: return 'e621';
+        }
+    },
+
+    /**
+     * Map an e621 category int to the most natural local DB bucket for the
+     * primary "+ Library" shortcut. Returns a `target` accepted by
+     * /api/editor/tags/add.
+     */
+    _suggestedTargetForE621Cat(catInt) {
+        switch (catInt) {
+            case 5: return 'physical';  // species → body/physical
+            case 0: return 'user';      // general → catch-all
+            case 3: return 'meta';      // copyright → meta
+            case 7: return 'image';     // meta → image-ish
+            case 8: return 'kink';      // lore → kink (lore is often kink-adjacent)
+            default: return 'user';
+        }
+    },
+
+    _targetLabel(target) {
+        const map = {
+            physical: 'Physical',
+            acts: 'Acts',
+            kink: 'Kink',
+            meta: 'Meta',
+            image: 'Image',
+            user: 'User',
+        };
+        return map[target] || target;
+    },
+
+    /**
+     * Render the e621 suggestions block HTML. Returns "" when there's nothing
+     * to show (either the cache has no entry for this query, or the entry is
+     * empty). The block sits between the local-result rows and the footer.
+     */
+    _renderE621SuggestionsBlock(query) {
+        const q = (query || '').trim().toLowerCase();
+        if (!q || q.length < this._E621_LOOKUP_MIN_QUERY) {
+            this._e621LookupResults = [];
+            return '';
+        }
+        // Loading state
+        if (this._e621LookupPending && this._e621LookupPending.query === q) {
+            return `
+                <div class="metadata-tag-result-divider">
+                    &#128218; Searching e621 for more suggestions&hellip;
+                </div>
+            `;
+        }
+        const matches = this._e621LookupCache.get(q);
+        if (!matches || !matches.length) {
+            this._e621LookupResults = [];
+            return '';
+        }
+        this._e621LookupResults = matches;
+        const rows = matches.map((m, i) => {
+            const catLabel = this._e621CategoryLabel(m.category);
+            const suggestedTarget = this._suggestedTargetForE621Cat(m.category);
+            const count = (m.post_count || 0).toLocaleString();
+            // Primary button uses the suggested target. "User" is the
+            // neutral generic bucket for general cat 0.
+            const primaryLabel = `+ ${this._targetLabel(suggestedTarget)}`;
+            return `
+                <div class="metadata-tag-result-e621" data-e621-index="${i}" data-e621-name="${this._escape(m.name)}" data-e621-cat="${m.category}">
+                    <div class="metadata-tag-result-row">
+                        <span class="metadata-tag-result-name">${this._escape(m.name)}</span>
+                        <span class="metadata-tag-result-cat metadata-tag-cat-e621">e621 ${this._escape(catLabel)}</span>
+                        <span class="metadata-tag-result-count">${count} posts</span>
+                    </div>
+                    <div class="metadata-tag-result-actions">
+                        <button type="button" class="metadata-tag-add-library-btn"
+                                data-action="add-to-library"
+                                data-e621-name="${this._escape(m.name)}"
+                                data-target="${this._escape(suggestedTarget)}">
+                            ${this._escape(primaryLabel)}
+                        </button>
+                        <div class="metadata-tag-target-menu">
+                            <button type="button" class="metadata-tag-target-caret"
+                                    data-action="toggle-target-menu"
+                                    data-e621-index="${i}"
+                                    aria-label="Choose library target">&#9662;</button>
+                            <div class="metadata-tag-target-menu-list" data-target-menu-for="${i}" hidden>
+                                ${['physical', 'acts', 'kink', 'meta', 'image', 'user'].map(t => `
+                                    <button type="button" class="metadata-tag-target-menu-item"
+                                            data-action="add-to-library"
+                                            data-e621-name="${this._escape(m.name)}"
+                                            data-target="${this._escape(t)}">
+                                        + ${this._escape(this._targetLabel(t))}
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <button type="button" class="metadata-tag-use-once-btn"
+                                data-action="use-once"
+                                data-e621-name="${this._escape(m.name)}">
+                            Use once
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        return `
+            <div class="metadata-tag-result-divider">
+                &#128218; e621 suggestions (not in your library)
+            </div>
+            ${rows}
+        `;
+    },
+
+    /**
+     * Schedule an e621 lookup fetch for `query` against the current input.
+     * Debounced — repeated keystrokes within the window collapse into one
+     * fetch. Called from _openDropdownFor after local filtering.
+     */
+    _maybeTriggerE621Lookup(query, localResultCount) {
+        const q = (query || '').trim().toLowerCase();
+        // Guard: skip if query is too short OR local already has enough matches.
+        if (q.length < this._E621_LOOKUP_MIN_QUERY) return;
+        if (localResultCount >= this._E621_LOOKUP_LOCAL_THRESHOLD) return;
+        if (this._e621LookupCache.has(q)) return;  // already cached
+        if (this._e621LookupPending && this._e621LookupPending.query === q) return;
+
+        if (this._e621LookupDebounce) {
+            clearTimeout(this._e621LookupDebounce);
+            this._e621LookupDebounce = null;
+        }
+        this._e621LookupDebounce = setTimeout(() => {
+            this._e621LookupDebounce = null;
+            this._fetchE621Lookup(q).catch(() => { /* already logged */ });
+        }, this._E621_LOOKUP_DEBOUNCE_MS);
+    },
+
+    async _fetchE621Lookup(query) {
+        const q = (query || '').trim().toLowerCase();
+        if (!q) return;
+        if (this._e621LookupCache.has(q)) return;
+
+        const pending = { query: q };
+        this._e621LookupPending = pending;
+        try {
+            const resp = await fetch(`/api/editor/tags/lookup?q=${encodeURIComponent(q)}&limit=10`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const matches = Array.isArray(data.matches) ? data.matches : [];
+            this._e621LookupCache.set(q, matches);
+        } catch (err) {
+            // Silent failure — just no suggestions.
+            console.debug('e621 lookup failed:', err);
+        } finally {
+            if (this._e621LookupPending === pending) {
+                this._e621LookupPending = null;
+            }
+            // Re-render dropdown if it's still open with this query.
+            const inp = document.getElementById(this._currentTagInputId || 'metadata-tag-input');
+            if (this._tagDropdownOpenFor && inp && inp.value.trim().toLowerCase() === q) {
+                const results = this._filterTagResults(inp.value);
+                this._renderDropdown(results, inp.value);
+            }
+        }
+    },
+
+    /**
+     * POST /api/editor/tags/add, then reload the tag DB + immediately add
+     * the tag to the active platform so the user's intent (autocomplete
+     * this tag) is fulfilled in one click.
+     */
+    async _addTagToLibrary(name, target) {
+        try {
+            const resp = await fetch('/api/editor/tags/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, target, description: '' }),
+            });
+            if (!resp.ok) {
+                let msg = `HTTP ${resp.status}`;
+                try {
+                    const j = await resp.json();
+                    if (j && j.detail) msg = j.detail;
+                } catch (_) { /* non-JSON body */ }
+                this._setStatus(`Add to library failed: ${msg}`, 'error');
+                return false;
+            }
+            // Force-reload the local tag DB so autocomplete sees the new tag.
+            try { sessionStorage.removeItem('pawpoller_tag_db_v1'); } catch (_) {}
+            this._tagDb = null;
+            try {
+                await this._loadTagDb();
+            } catch (err) {
+                this._setStatus(`Added, but DB reload failed: ${err.message || err}`, 'error');
+            }
+
+            // Invalidate e621 cache so the now-in-local-DB tag stops appearing
+            // in future suggestion panels.
+            this._e621LookupCache.clear();
+
+            // Route through normal add path so cross-platform propagation
+            // happens exactly like a native pick.
+            this._addTagFromDropdown(name);
+
+            this._setStatus(`Added "${name}" to ${this._targetLabel(target)} library`, 'ok');
+            return true;
+        } catch (err) {
+            this._setStatus(`Add to library failed: ${err.message || err}`, 'error');
+            return false;
+        }
     },
 
     _closeDropdown() {
@@ -726,6 +964,13 @@ const MetaEditor = {
         this._tagDropdownResults = [];
         this._tagDropdownIndex = 0;
         this._currentTagInputId = 'metadata-tag-input';
+        // Phase 3b: leave _e621LookupCache (session-scoped) but clear
+        // the visible/pending state. Cache still short-circuits re-fetches.
+        this._e621LookupResults = [];
+        if (this._e621LookupDebounce) {
+            clearTimeout(this._e621LookupDebounce);
+            this._e621LookupDebounce = null;
+        }
     },
 
     async _openDropdownFor(platform, query, context) {
@@ -759,6 +1004,9 @@ const MetaEditor = {
         }
         const results = this._filterTagResults(query);
         this._renderDropdown(results, query);
+        // Phase 3b: if local matches are sparse, kick off an async e621
+        // lookup. When it resolves, _fetchE621Lookup re-renders the dropdown.
+        this._maybeTriggerE621Lookup(query, results.length);
     },
 
     // Platform-specific transforms: convert a default canonical tag into the
@@ -1027,6 +1275,38 @@ const MetaEditor = {
                 this._openTagBrowser(q, browserCtx);
                 return;
             }
+
+            // Phase 3b: e621 "+ Library" / "Use once" buttons.
+            const addBtn = e.target.closest('[data-action="add-to-library"]');
+            if (addBtn) {
+                e.preventDefault();
+                const name = addBtn.getAttribute('data-e621-name');
+                const target = addBtn.getAttribute('data-target') || 'user';
+                if (name) this._addTagToLibrary(name, target);
+                return;
+            }
+            const useOnceBtn = e.target.closest('[data-action="use-once"]');
+            if (useOnceBtn) {
+                e.preventDefault();
+                const name = useOnceBtn.getAttribute('data-e621-name');
+                if (name) this._addTagFromDropdown(name);
+                return;
+            }
+            const caretBtn = e.target.closest('[data-action="toggle-target-menu"]');
+            if (caretBtn) {
+                e.preventDefault();
+                const idx = caretBtn.getAttribute('data-e621-index');
+                const menu = dd.querySelector(`[data-target-menu-for="${idx}"]`);
+                if (menu) {
+                    // Close any other open menus first
+                    dd.querySelectorAll('[data-target-menu-for]').forEach(m => {
+                        if (m !== menu) m.hidden = true;
+                    });
+                    menu.hidden = !menu.hidden;
+                }
+                return;
+            }
+
             const row = e.target.closest('[data-tag-result-index]');
             if (!row) return;
             const idx = parseInt(row.getAttribute('data-tag-result-index'), 10);

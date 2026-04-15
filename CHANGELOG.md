@@ -4,6 +4,63 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.8.1] - 2026-04-15
+
+### Added — Metadata Editor Phase 3b: e621 lookup fallback + "+ Library" workflow
+
+**Bundled e621 lookup TSV:**
+- `tag_database/e621_lookup.tsv` — 26,829 tags, ~500KB. Filtered from the raw
+  e621 dump (drop cat 1/2/4 + low-post + IMAGE_NOISE regex + bad-name chars).
+- Generator lives at `m_x/Scripts_Utils/generate_e621_lookup.py` (not shipped —
+  only the output TSV ships with the repo).
+
+**Backend (`routes/editor_api.py`):**
+- New lazy loader `_load_e621_lookup()` — parses TSV once on first lookup call.
+- `GET /api/editor/tags/lookup?q=<str>&limit=<N>` — substring search against
+  the e621 lookup, excluding tags already in the local DB. Ranking:
+  exact > prefix > substring, post_count desc. Returns `{matches: [{name, category, post_count}]}`.
+- `POST /api/editor/tags/add` — appends a tag to one of the local DB files.
+  Body: `{name, target, description}`. `target` is one of
+  `physical|acts|kink|meta|image|user`. Validates against
+  `^[a-z0-9_/-]+$`, rejects dupes (409), invalidates the in-memory
+  `_TAG_DB_CACHE` on success.
+- `tag_database_user.txt` added to `_TAG_DB_FILES` with category label
+  `user`. Auto-created with a header on first write.
+- Curated DBs get a new `USER ADDITIONS` section appended on first
+  per-file user-add, then appended-to on subsequent adds.
+
+**Frontend (`frontend/js/metadata_editor.js`):**
+- Autocomplete dropdown now appends an "e621 suggestions" block below local
+  matches whenever local hits < 5 and query length >= 3.
+- Debounced (300ms) fetch; session-scoped `Map` cache keyed by lowercased query.
+- Each e621 row shows: name, category chip (`e621 general/species/copyright/meta/lore`),
+  post count, and three actions:
+  - **+ {Target}** primary button — target is derived from the e621 category
+    (species → physical, general → user, copyright → meta, etc.).
+  - **Caret dropdown** — choose any of the 6 library buckets explicitly.
+  - **Use once** — adds the tag to the current platform without mutating
+    the library (same as pressing Enter on the raw query).
+- `_addTagToLibrary(name, target)` — POST to `/api/editor/tags/add`, then
+  clears `sessionStorage['pawpoller_tag_db_v1']`, reloads the local tag DB,
+  clears the e621 cache, and routes through `_addTagFromDropdown` so the
+  tag is immediately applied with normal cross-platform propagation.
+- Status toast: "Added '<name>' to <Target> library".
+- Tag browser categories now include `user` (so user-added tags show up
+  in the expanded browse modal's filter chips).
+
+**Frontend (`frontend/css/editor.css`):**
+- `.metadata-tag-result-divider` — section header above e621 block.
+- `.metadata-tag-result-e621` — subtle violet wash to distinguish from local rows.
+- `.metadata-tag-cat-e621` — violet category chip for e621 rows.
+- `.metadata-tag-cat-user` — warm beige chip for user-added tags.
+- `.metadata-tag-add-library-btn` — primary "+ Library" button.
+- `.metadata-tag-use-once-btn` — subtle "Use once" link-style button.
+- `.metadata-tag-target-menu*` — caret + dropdown for explicit target choice.
+
+**Cache buster:** `metadata_editor.js?v=12`
+
+---
+
 ## [2.8.0] - 2026-04-15
 
 ### Added — Metadata Editor Phase 3a: Tag Autocomplete

@@ -1093,6 +1093,7 @@
 .metadata-tag-cat-kink     { background: #4a3a1a; color: #f5c078; border-color: #805c28; }
 .metadata-tag-cat-meta     { background: #2a4a3a; color: #a5e5c0; border-color: #3a7058; }
 .metadata-tag-cat-image    { background: #3a3a4a; color: #c0c0d8; border-color: #555575; }
+.metadata-tag-cat-user     { background: #4a3a2a; color: #f0d0a8; border-color: #7a5a3a; }
 
 .metadata-tag-result-alias {
     font-size: 11px;
@@ -1856,4 +1857,150 @@
     margin-top: 8px;
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     white-space: pre-wrap;
+}
+
+/* -----------------------------------------------------------------------
+   Phase 3b: e621 lookup fallback — suggestions rendered below local
+   matches in the autocomplete dropdown with a "+ Library" button that
+   appends the tag to tag_database_{target}.txt and immediately makes
+   it available for autocomplete.
+   ----------------------------------------------------------------------- */
+
+.metadata-tag-result-divider {
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.metadata-tag-result-e621 {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(90, 70, 120, 0.08); /* subtle violet wash */
+    transition: background 0.1s ease;
+}
+
+.metadata-tag-result-e621:hover {
+    background: rgba(90, 70, 120, 0.18);
+}
+
+.metadata-tag-result-e621:last-child {
+    border-bottom: none;
+}
+
+/* Category chip for e621 suggestions — distinct from local categories. */
+.metadata-tag-cat-e621 {
+    background: #3a2a4a;
+    color: #d8b8f0;
+    border-color: #5a3a80;
+}
+
+.metadata-tag-result-count {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.metadata-tag-result-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+
+.metadata-tag-add-library-btn {
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease;
+}
+
+.metadata-tag-add-library-btn:hover {
+    background: var(--accent-hover, var(--accent));
+    filter: brightness(1.1);
+}
+
+.metadata-tag-use-once-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: underline;
+    transition: color 120ms ease;
+}
+
+.metadata-tag-use-once-btn:hover {
+    color: var(--text-primary);
+    text-decoration: none;
+    border-color: var(--border);
+}
+
+/* Dropdown caret + menu for choosing a non-suggested library target. */
+.metadata-tag-target-menu {
+    position: relative;
+}
+
+.metadata-tag-target-caret {
+    padding: 3px 6px;
+    font-size: 10px;
+    line-height: 1;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 120ms ease;
+}
+
+.metadata-tag-target-caret:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.metadata-tag-target-menu-list {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    z-index: 1600;
+    min-width: 120px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+    padding: 4px 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.metadata-tag-target-menu-list[hidden] {
+    display: none;
+}
+
+.metadata-tag-target-menu-item {
+    padding: 5px 12px;
+    font-size: 11px;
+    background: transparent;
+    color: var(--text-primary);
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    transition: background 100ms ease;
+}
+
+.metadata-tag-target-menu-item:hover {
+    background: var(--bg-hover);
 }
