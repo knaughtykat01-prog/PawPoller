@@ -5,9 +5,13 @@
  *   - Story Info (title, author, fandom, rating)
  *   - Description & Summary (with character counters)
  *
- * Later phases will add: classifications (warnings/categories/characters/
- * relationships), per-chapter editing, tag autocomplete, cover uploads,
- * platform toggles, and raw JSON view.
+ * Phase 2 scope:
+ *   - Classifications (warnings, categories, characters, relationships)
+ *   - Per-Platform Tags (stub textareas — autocomplete in Phase 3)
+ *   - Platform Toggles
+ *
+ * Later phases will add: tag autocomplete (P3), per-chapter editing (P4),
+ * cover uploads + raw JSON view (P5).
  */
 const MetaEditor = {
     // State
@@ -25,6 +29,36 @@ const MetaEditor = {
         'Mature',
         'Explicit',
     ],
+
+    // AO3 archive warnings (canonical list)
+    WARNINGS: [
+        'No Archive Warnings Apply',
+        'Choose Not To Use Archive Warnings',
+        'Graphic Depictions Of Violence',
+        'Major Character Death',
+        'Rape/Non-Con',
+        'Underage Sex',
+    ],
+
+    // AO3 categories
+    CATEGORIES: ['F/F', 'F/M', 'Gen', 'M/M', 'Multi', 'Other'],
+
+    // Platform keys (order controls render)
+    PLATFORMS: ['sofurry', 'inkbunny', 'squidgeworld', 'ao3', 'furaffinity', 'wattpad'],
+
+    // Platforms that support per-platform tag overrides (Section 4)
+    TAG_PLATFORMS: ['default', 'sofurry', 'inkbunny', 'wattpad'],
+
+    // Human-readable platform names
+    PLATFORM_LABELS: {
+        sofurry: 'SoFurry',
+        inkbunny: 'Inkbunny',
+        squidgeworld: 'SquidgeWorld',
+        ao3: 'AO3',
+        furaffinity: 'FurAffinity',
+        wattpad: 'Wattpad',
+        default: 'Default',
+    },
 
     // Character limits (soft — warns in counter, no hard validation)
     DESC_MAX: 500,
@@ -154,6 +188,10 @@ const MetaEditor = {
         const body = document.getElementById('metadata-drawer-body');
         if (!body) return;
 
+        // Normalise Phase 2 fields on the live metadata so later reads/writes
+        // operate on arrays/objects instead of undefined.
+        this._normaliseMetadata();
+
         const md = this.metadata || {};
         const ratingOptions = ['', ...this.RATINGS]
             .map(r => {
@@ -212,10 +250,253 @@ const MetaEditor = {
                     </div>
                 </div>
             </section>
+
+            ${this._renderClassificationsSection()}
+            ${this._renderPlatformTagsSection()}
+            ${this._renderPlatformTogglesSection()}
         `;
 
         this._updateCharCounter('meta-description', 'meta-desc-counter', this.DESC_MAX);
         this._updateCharCounter('meta-summary', 'meta-summary-counter', this.SUMMARY_MAX);
+    },
+
+    /**
+     * Ensure all Phase 2 metadata fields exist as the right JS type so
+     * subsequent renderers/binders can assume arrays + objects.
+     */
+    _normaliseMetadata() {
+        const md = this.metadata = this.metadata || {};
+
+        if (!Array.isArray(md.warnings)) {
+            md.warnings = [];
+        }
+
+        // Legacy: `category` (string) → `categories` (array)
+        if (!Array.isArray(md.categories)) {
+            if (typeof md.category === 'string' && md.category.trim()) {
+                md.categories = [md.category.trim()];
+            } else {
+                md.categories = [];
+            }
+        }
+
+        if (!Array.isArray(md.characters)) md.characters = [];
+        if (!Array.isArray(md.relationships)) md.relationships = [];
+
+        if (!md.tags || typeof md.tags !== 'object' || Array.isArray(md.tags)) {
+            md.tags = {};
+        }
+        this.TAG_PLATFORMS.forEach(p => {
+            if (!Array.isArray(md.tags[p])) md.tags[p] = [];
+        });
+
+        if (!md.platforms || typeof md.platforms !== 'object' || Array.isArray(md.platforms)) {
+            md.platforms = {};
+        }
+        this.PLATFORMS.forEach(p => {
+            if (typeof md.platforms[p] !== 'boolean') md.platforms[p] = !!md.platforms[p];
+        });
+    },
+
+    // ---------------------------------------------------------------------
+    // Section 3: Classifications
+    // ---------------------------------------------------------------------
+
+    _renderClassificationsSection() {
+        const md = this.metadata;
+
+        const warningsHtml = this.WARNINGS.map((w, i) => {
+            const checked = md.warnings.includes(w) ? ' checked' : '';
+            const id = `meta-warning-${i}`;
+            return `
+                <label class="metadata-checkbox" for="${id}">
+                    <input type="checkbox" id="${id}" data-classification="warning" value="${this._escape(w)}"${checked} />
+                    <span>${this._escape(w)}</span>
+                </label>
+            `;
+        }).join('');
+
+        const categoriesHtml = this.CATEGORIES.map((c, i) => {
+            const checked = md.categories.includes(c) ? ' checked' : '';
+            const id = `meta-category-${i}`;
+            return `
+                <label class="metadata-checkbox" for="${id}">
+                    <input type="checkbox" id="${id}" data-classification="category" value="${this._escape(c)}"${checked} />
+                    <span>${this._escape(c)}</span>
+                </label>
+            `;
+        }).join('');
+
+        return `
+            <section class="metadata-section" data-section="classifications" data-expanded="false">
+                <button type="button" class="metadata-section-header" data-section-toggle="classifications">
+                    <span class="metadata-section-chevron">&#9654;</span>
+                    <span>Classifications</span>
+                </button>
+                <div class="metadata-section-body">
+                    <div class="metadata-field">
+                        <label>Archive Warnings <span class="metadata-required">*</span></label>
+                        <div class="metadata-checkbox-list" id="meta-warnings-list">
+                            ${warningsHtml}
+                        </div>
+                        <div class="metadata-error" id="meta-error-warnings"></div>
+                    </div>
+                    <div class="metadata-field">
+                        <label>Categories</label>
+                        <div class="metadata-checkbox-row" id="meta-categories-list">
+                            ${categoriesHtml}
+                        </div>
+                    </div>
+                    <div class="metadata-field">
+                        <label for="meta-characters-input">Characters</label>
+                        ${this._renderPillInput('characters', md.characters, 'Type a character and press Enter')}
+                    </div>
+                    <div class="metadata-field">
+                        <label for="meta-relationships-input">Relationships</label>
+                        ${this._renderPillInput('relationships', md.relationships, 'e.g. Alice/Bob, Alice & Bob')}
+                    </div>
+                </div>
+            </section>
+        `;
+    },
+
+    // ---------------------------------------------------------------------
+    // Section 4: Per-Platform Tags (Phase 2 stub)
+    // ---------------------------------------------------------------------
+
+    _renderPlatformTagsSection() {
+        const md = this.metadata;
+
+        const rows = this.TAG_PLATFORMS.map(p => {
+            const val = (md.tags[p] || []).join(', ');
+            return `
+                <div class="metadata-field">
+                    <label for="meta-tags-${p}">${this._escape(this.PLATFORM_LABELS[p] || p)}</label>
+                    <textarea id="meta-tags-${p}" data-tag-platform="${this._escape(p)}" rows="2" placeholder="comma, separated, tags">${this._escape(val)}</textarea>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <section class="metadata-section" data-section="platform-tags" data-expanded="false">
+                <button type="button" class="metadata-section-header" data-section-toggle="platform-tags">
+                    <span class="metadata-section-chevron">&#9654;</span>
+                    <span>Per-Platform Tags</span>
+                </button>
+                <div class="metadata-section-body">
+                    <div class="metadata-help">(Tag autocomplete coming in Phase 3)</div>
+                    ${rows}
+                </div>
+            </section>
+        `;
+    },
+
+    // ---------------------------------------------------------------------
+    // Section 5: Platform Toggles
+    // ---------------------------------------------------------------------
+
+    _renderPlatformTogglesSection() {
+        const md = this.metadata;
+
+        const rows = this.PLATFORMS.map(p => {
+            const checked = md.platforms[p] ? ' checked' : '';
+            const id = `meta-platform-${p}`;
+            return `
+                <label class="metadata-checkbox" for="${id}">
+                    <input type="checkbox" id="${id}" data-platform-toggle="${this._escape(p)}"${checked} />
+                    <span>${this._escape(this.PLATFORM_LABELS[p] || p)}</span>
+                </label>
+            `;
+        }).join('');
+
+        return `
+            <section class="metadata-section" data-section="platforms" data-expanded="false">
+                <button type="button" class="metadata-section-header" data-section-toggle="platforms">
+                    <span class="metadata-section-chevron">&#9654;</span>
+                    <span>Platform Toggles</span>
+                </button>
+                <div class="metadata-section-body">
+                    <div class="metadata-checkbox-list">
+                        ${rows}
+                    </div>
+                </div>
+            </section>
+        `;
+    },
+
+    // ---------------------------------------------------------------------
+    // Pill input component (characters, relationships, etc.)
+    // ---------------------------------------------------------------------
+
+    /**
+     * Render a tag-pill input. Pills come first, then an input field that
+     * grows to fill the rest of the row.
+     *
+     * @param {string} fieldName  Metadata key (e.g. 'characters') that holds
+     *                            the backing array on this.metadata.
+     * @param {string[]} values   Current pill values to prerender.
+     * @param {string} placeholder  Placeholder text for the free-text input.
+     */
+    _renderPillInput(fieldName, values, placeholder) {
+        const pills = (values || []).map((v, i) => `
+            <span class="metadata-pill" data-pill-index="${i}">
+                <span class="metadata-pill-text">${this._escape(v)}</span>
+                <button type="button" class="metadata-pill-remove" data-pill-remove="${this._escape(fieldName)}" data-index="${i}" aria-label="Remove">&times;</button>
+            </span>
+        `).join('');
+
+        const inputId = `meta-${fieldName}-input`;
+        return `
+            <div class="metadata-pill-input" data-pill-field="${this._escape(fieldName)}">
+                <div class="metadata-pill-list" data-pill-list="${this._escape(fieldName)}">${pills}</div>
+                <input type="text" id="${inputId}" class="metadata-pill-entry" data-pill-entry="${this._escape(fieldName)}" placeholder="${this._escape(placeholder || '')}" autocomplete="off" />
+            </div>
+        `;
+    },
+
+    /**
+     * Re-render pill list for a given field without rebuilding the whole
+     * form. Called after any pill add/remove.
+     */
+    _refreshPillList(fieldName) {
+        const list = document.querySelector(`[data-pill-list="${fieldName}"]`);
+        if (!list) return;
+        const values = this.metadata[fieldName] || [];
+        list.innerHTML = values.map((v, i) => `
+            <span class="metadata-pill" data-pill-index="${i}">
+                <span class="metadata-pill-text">${this._escape(v)}</span>
+                <button type="button" class="metadata-pill-remove" data-pill-remove="${this._escape(fieldName)}" data-index="${i}" aria-label="Remove">&times;</button>
+            </span>
+        `).join('');
+        this._bindPillRemoveButtons(fieldName);
+    },
+
+    _bindPillRemoveButtons(fieldName) {
+        document.querySelectorAll(`[data-pill-remove="${fieldName}"]`).forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const idx = parseInt(btn.getAttribute('data-index'), 10);
+                if (Number.isNaN(idx)) return;
+                const arr = this.metadata[fieldName] || [];
+                arr.splice(idx, 1);
+                this.metadata[fieldName] = arr;
+                this._refreshPillList(fieldName);
+                this._clearStatus();
+            });
+        });
+    },
+
+    _addPill(fieldName, value) {
+        const trimmed = (value || '').trim();
+        if (!trimmed) return;
+        const arr = this.metadata[fieldName] || [];
+        // Prevent exact duplicates (case-insensitive)
+        const exists = arr.some(v => v.toLowerCase() === trimmed.toLowerCase());
+        if (exists) return;
+        arr.push(trimmed);
+        this.metadata[fieldName] = arr;
+        this._refreshPillList(fieldName);
+        this._clearStatus();
     },
 
     _initFormBindings() {
@@ -254,6 +535,81 @@ const MetaEditor = {
                 this.metadata[field] = el.value;
             });
         });
+
+        // Classifications — warning/category checkboxes
+        document.querySelectorAll('[data-classification]').forEach(cb => {
+            cb.addEventListener('change', () => {
+                const kind = cb.getAttribute('data-classification');
+                const value = cb.value;
+                const key = kind === 'warning' ? 'warnings' : 'categories';
+                const arr = this.metadata[key] || [];
+                const idx = arr.indexOf(value);
+                if (cb.checked && idx === -1) arr.push(value);
+                else if (!cb.checked && idx !== -1) arr.splice(idx, 1);
+                this.metadata[key] = arr;
+                this._clearStatus();
+                // Clear warnings error banner once user picks anything
+                if (key === 'warnings') {
+                    const errEl = document.getElementById('meta-error-warnings');
+                    if (errEl) errEl.textContent = '';
+                }
+            });
+        });
+
+        // Pill inputs — bind entry fields + existing remove buttons
+        document.querySelectorAll('[data-pill-entry]').forEach(input => {
+            const field = input.getAttribute('data-pill-entry');
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    this._addPill(field, input.value);
+                    input.value = '';
+                } else if (e.key === 'Backspace' && input.value === '') {
+                    // Remove last pill on backspace-in-empty
+                    const arr = this.metadata[field] || [];
+                    if (arr.length) {
+                        arr.pop();
+                        this.metadata[field] = arr;
+                        this._refreshPillList(field);
+                        this._clearStatus();
+                    }
+                }
+            });
+            input.addEventListener('blur', () => {
+                // Convert any pending text on blur so nothing is silently lost
+                if (input.value.trim()) {
+                    this._addPill(field, input.value);
+                    input.value = '';
+                }
+            });
+        });
+        // Bind remove buttons for each pill field currently on screen
+        const pillFields = new Set();
+        document.querySelectorAll('[data-pill-remove]').forEach(btn => {
+            pillFields.add(btn.getAttribute('data-pill-remove'));
+        });
+        pillFields.forEach(f => this._bindPillRemoveButtons(f));
+
+        // Per-platform tag textareas — split on commas on change
+        document.querySelectorAll('[data-tag-platform]').forEach(ta => {
+            const platform = ta.getAttribute('data-tag-platform');
+            ta.addEventListener('input', () => {
+                const tags = ta.value.split(',')
+                    .map(t => t.trim())
+                    .filter(t => t.length > 0);
+                this.metadata.tags[platform] = tags;
+                this._clearStatus();
+            });
+        });
+
+        // Platform toggle checkboxes
+        document.querySelectorAll('[data-platform-toggle]').forEach(cb => {
+            cb.addEventListener('change', () => {
+                const p = cb.getAttribute('data-platform-toggle');
+                this.metadata.platforms[p] = cb.checked;
+                this._clearStatus();
+            });
+        });
     },
 
     _updateCharCounter(inputId, counterId, max) {
@@ -287,6 +643,19 @@ const MetaEditor = {
             }
         }
 
+        // Tier 1: at least one archive warning required (AO3 standard)
+        const warnings = Array.isArray(this.metadata.warnings) ? this.metadata.warnings : [];
+        if (warnings.length === 0) {
+            errors.push({ field: 'warnings', msg: 'Select at least one archive warning (AO3 standard).' });
+            // Also auto-expand the Classifications section so user can see it
+            const sec = document.querySelector('[data-section="classifications"]');
+            if (sec && sec.getAttribute('data-expanded') !== 'true') {
+                sec.setAttribute('data-expanded', 'true');
+                const chev = sec.querySelector('.metadata-section-chevron');
+                if (chev) chev.innerHTML = '&#9660;';
+            }
+        }
+
         // Render errors inline
         errors.forEach(e => {
             const el = document.getElementById(`meta-error-${e.field}`);
@@ -303,11 +672,17 @@ const MetaEditor = {
     async save() {
         const errors = this._validate();
         if (errors.length) {
-            // Scroll to first errored field
-            const first = document.getElementById(`meta-${errors[0].field}`);
-            if (first) {
-                first.focus();
-                first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Scroll to first errored field (or the error banner if the
+            // field is a checkbox group like warnings with no single input)
+            const firstField = errors[0].field;
+            let target = document.getElementById(`meta-${firstField}`);
+            if (!target) {
+                target = document.getElementById(`meta-error-${firstField}`)
+                    || document.getElementById(`meta-${firstField}-list`);
+            }
+            if (target) {
+                if (typeof target.focus === 'function') target.focus();
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
             this._setStatus('Fix errors before saving', 'error');
             return;
