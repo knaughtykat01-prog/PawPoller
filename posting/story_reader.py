@@ -362,15 +362,31 @@ def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) ->
             files=manifest_ch.get("files", {}),
         ))
 
-    # Build tags_by_platform from story.json tags
+    # Build tags_by_platform from story.json tags. The plat_map covers
+    # every poster registered in posting.manager — when a story.json key
+    # matches one of these, it's stored under the short ID the package
+    # builder uses. Anything else passes through unchanged.
+    plat_map = {
+        "inkbunny": "ib", "furaffinity": "fa", "weasyl": "ws",
+        "sofurry": "sf", "squidgeworld": "sqw", "wattpad": "wp",
+        "deviantart": "da", "itaku": "ik", "bluesky": "bsky",
+        # ao3 already short
+    }
+    # Every poster ID, used to backfill missing entries from "default".
+    all_poster_ids = ["ib", "fa", "ws", "sf", "sqw", "ao3", "da", "ik", "bsky", "wp"]
+
     tags = data.get("tags", {})
     tags_by_platform = {}
     for plat_key, tag_list in tags.items():
-        # Map platform names to IDs
-        plat_map = {"inkbunny": "ib", "furaffinity": "fa", "weasyl": "ws",
-                    "sofurry": "sf", "squidgeworld": "sqw", "wattpad": "wp"}
         plat_id = plat_map.get(plat_key, plat_key)
         tags_by_platform[plat_id] = tag_list
+    # Cascade default → any platform that wasn't given an explicit list.
+    # This mirrors the editor UI's "Default tab cascades to all platforms"
+    # behaviour and the legacy tags_upload.txt parser.
+    if "default" in tags_by_platform:
+        for pid in all_poster_ids:
+            if pid not in tags_by_platform:
+                tags_by_platform[pid] = list(tags_by_platform["default"])
 
     # Chapter descriptions and per-chapter tags
     chapter_descriptions = {}
@@ -386,6 +402,11 @@ def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) ->
             for plat_key, tag_list in ch_tag_data.items():
                 plat_id = plat_map.get(plat_key, plat_key)
                 ch_plat_tags[plat_id] = tag_list
+            # Same default cascade at the chapter level.
+            if "default" in ch_plat_tags:
+                for pid in all_poster_ids:
+                    if pid not in ch_plat_tags:
+                        ch_plat_tags[pid] = list(ch_plat_tags["default"])
             chapter_tags[ch_idx] = ch_plat_tags
 
     # Images

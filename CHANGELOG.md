@@ -4,6 +4,47 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.9.3] - 2026-04-15
+
+### Added — Full-story row in the Publish Check matrix
+
+For chaptered stories the matrix previously only showed per-chapter
+rows. You now get a "Full story" row at the top so you can choose to
+post the whole work as one submission OR split into per-chapter
+submissions. Some platforms suit one mode (FA chaptered for size,
+SQW per-chapter only); others (SF, IB, AO3, WS) work either way.
+
+The full row gets a heavier border + bold label so it's visually
+distinct from chapter rows.
+
+**Backend (`routes/editor_api.py`):**
+- `chapters` array now always starts with `{"index": 0, "kind": "full"}`
+  followed by per-chapter rows (if any). Single-chapter stories still
+  show only the full-story row.
+- New `PER_CHAPTER_ONLY = {"sqw"}` set — these platforms get a
+  dedicated `not_supported` cell on the full-story row with a clear
+  "use a chapter row" hint.
+- New cell status `not_supported` (icon `–`, label "N/A —
+  per-chapter only").
+
+**Backend (`posting/story_reader.py`):**
+- `_parse_story_json()` now cascades `default` tags to every poster
+  ID that wasn't given an explicit list — at both the story level and
+  the per-chapter level. Fixes the bug where DA / IK / BSky returned
+  0 tags for the full-story package even when `default` had plenty.
+- Platform name map extended with `deviantart→da`, `itaku→ik`,
+  `bluesky→bsky` so editor-written story.json keys translate to the
+  short IDs the package builder uses.
+
+**Frontend (`frontend/js/publish_check.js`):**
+- Full-story row gets `class="row-full"` + a "(<title>)" hint after
+  the bold "Full story" label.
+- New `cell-na` colour-block (subtle grey) for `not_supported` cells.
+
+**Cache buster:** `publish_check.js?v=3`.
+
+---
+
 ## [2.9.2] - 2026-04-15
 
 ### Added — Phase 6b: Publish actions (POC, all platforms via single endpoint)

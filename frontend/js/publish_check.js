@@ -16,6 +16,7 @@ window.PublishCheck = (function () {
         posted_stale: { icon: '!', cls: 'cell-posted-stale', label: 'Posted (now blocked)' },
         ready_retry: { icon: '↻', cls: 'cell-retry', label: 'Failed prev — retry?' },
         failed_prev: { icon: '✗', cls: 'cell-blocked', label: 'Blocked + prev failed' },
+        not_supported: { icon: '–', cls: 'cell-na', label: 'N/A — per-chapter only' },
         error: { icon: '⚠', cls: 'cell-error', label: 'Error' },
     };
 
@@ -137,11 +138,15 @@ window.PublishCheck = (function () {
         html += '</tr></thead><tbody>';
 
         for (const row of data.matrix) {
-            const chLabel = row.chapter_index === 0
-                ? '<em>Full story</em>'
+            const isFull = row.chapter_index === 0;
+            const chLabel = isFull
+                ? '<strong>Full story</strong> <span class="row-hint">(' +
+                  _escape(row.chapter_title) + ')</span>'
                 : 'Ch ' + row.chapter_index + '. ' + _escape(row.chapter_title);
-            html += '<tr data-ch-idx="' + row.chapter_index +
-                '" data-ch-title="' + _escape(row.chapter_title) + '">' +
+            const rowCls = isFull ? 'row-full' : 'row-chapter';
+            const titleAttr = isFull ? row.chapter_title : row.chapter_title;
+            html += '<tr class="' + rowCls + '" data-ch-idx="' + row.chapter_index +
+                '" data-ch-title="' + _escape(titleAttr) + '">' +
                 '<td class="ch-col">' + chLabel + '</td>';
             for (const p of data.platforms) {
                 const cell = row.cells[p.id] || { status: 'error', errors: ['Missing'] };

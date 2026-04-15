@@ -2166,6 +2166,22 @@
 
 .publish-check-table .plat-col { min-width: 90px; }
 
+.publish-check-table tr.row-full td {
+    background: var(--bg-secondary);
+    border-bottom: 2px solid var(--border-color);
+}
+
+.publish-check-table tr.row-full .ch-col {
+    font-weight: 600;
+}
+
+.publish-check-table .row-hint {
+    color: var(--text-secondary);
+    font-weight: normal;
+    font-size: 11px;
+    margin-left: 4px;
+}
+
 .publish-check-cell {
     cursor: pointer;
     font-size: 16px;
@@ -2187,6 +2203,7 @@
 .cell-retry { background: rgba(220, 160, 60, 0.20); color: #d96; }
 .cell-blocked { background: rgba(200, 90, 90, 0.18); color: #c66; }
 .cell-error { background: rgba(200, 90, 90, 0.30); color: #d77; }
+.cell-na { background: rgba(120, 120, 120, 0.10); color: var(--text-secondary); cursor: default; }
 
 .cell-legend {
     display: inline-block;

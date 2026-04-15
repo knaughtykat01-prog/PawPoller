@@ -535,14 +535,18 @@ async def publish_check(story_name: str):
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Story not found: {e}")
 
-    # Build chapter list — full story (0) for unsplit stories, otherwise 1..N
+    # Build row list. Always include the "Full story" row (index 0).
+    # For chaptered stories, follow it with per-chapter rows so the user
+    # can choose to post the whole work as one submission OR split into
+    # chapters (some platforms prefer one mode over the other).
+    chapters = [{"index": 0, "title": story.title or canonical, "kind": "full"}]
     if story.total_chapters > 0:
-        chapters = [
-            {"index": i, "title": story.chapters[i - 1].title}
-            for i in range(1, story.total_chapters + 1)
-        ]
-    else:
-        chapters = [{"index": 0, "title": story.title or canonical}]
+        for i in range(1, story.total_chapters + 1):
+            chapters.append({
+                "index": i,
+                "title": story.chapters[i - 1].title,
+                "kind": "chapter",
+            })
 
     # Pre-load existing publications keyed by (chapter, platform)
     conn = get_connection()
@@ -552,15 +556,29 @@ async def publish_check(story_name: str):
         conn.close()
     pub_map = {(p["chapter_index"], p["platform"]): p for p in pubs}
 
+    # Platforms that only publish per-chapter (no concept of a single
+    # full-story upload). We still show the full-story row but mark
+    # these cells as not-supported so the user can't try to post.
+    PER_CHAPTER_ONLY = {"sqw"}
+
     # Build the matrix
     matrix = []
     for ch in chapters:
         row = {
             "chapter_index": ch["index"],
             "chapter_title": ch["title"],
+            "kind": ch.get("kind", "chapter"),
             "cells": {},
         }
         for plat_id, _ in PUBLISH_PLATFORMS:
+            # Skip platforms that only publish per-chapter on the full-story row
+            if ch["index"] == 0 and ch.get("kind") == "full" and plat_id in PER_CHAPTER_ONLY and story.total_chapters > 0:
+                row["cells"][plat_id] = {
+                    "status": "not_supported",
+                    "errors": ["Platform posts per-chapter only — use a chapter row"],
+                }
+                continue
+
             try:
                 poster = manager._get_poster(plat_id)
             except Exception as e:
