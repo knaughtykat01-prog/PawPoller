@@ -1712,6 +1712,22 @@
     min-height: 70px;
 }
 
+/* Phase 4b: pill + autocomplete UI for per-chapter tags.
+   Reuses story-level .metadata-tag-pills / .metadata-tag-input / .metadata-tag-count
+   classes; this just scopes + tightens them inside the chapter detail. */
+.metadata-chapter-detail .metadata-chapter-tag-body {
+    margin-top: 8px;
+}
+.metadata-chapter-detail .metadata-chapter-tag-body .metadata-tag-pills {
+    margin-bottom: 6px;
+}
+.metadata-chapter-detail .metadata-chapter-tag-body .metadata-tag-count {
+    font-size: 11px;
+}
+.metadata-chapter-detail .metadata-chapter-tag-body .metadata-tag-input {
+    font-size: 13px;
+}
+
 /* =======================================================================
    Phase 5: Cover image
    ======================================================================= */

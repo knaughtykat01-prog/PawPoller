@@ -29,6 +29,16 @@ const MetaEditor = {
     _tagDropdownIndex: 0,
     _tagDropdownResults: [],     // last rendered result set
 
+    // Phase 4b: tag autocomplete context — the dropdown portal is a single
+    // element shared between story-level tags and per-chapter tags. Context
+    // tracks where the dropdown is currently writing to.
+    //   shape: { scope: 'story'|'chapter', platform: 'default'|..., chapterIdx: null|number }
+    _tagDropdownContext: null,
+    // ID of the input the portal is currently anchored to (for positioning).
+    _currentTagInputId: 'metadata-tag-input',
+    // Active sub-tab per chapter expanded detail (remembers choice per row).
+    _chapterTagPlatformByIdx: {},
+
     // Phase 3a+: expanded tag browser modal state
     _tagBrowserOpen: false,
     _tagBrowserQuery: '',
@@ -637,7 +647,7 @@ const MetaEditor = {
 
     _positionDropdownPortal() {
         const dd = document.getElementById('metadata-tag-dropdown-portal');
-        const input = document.getElementById('metadata-tag-input');
+        const input = document.getElementById(this._currentTagInputId || 'metadata-tag-input');
         if (!dd || !input) return;
         const rect = input.getBoundingClientRect();
         const viewportH = window.innerHeight;
@@ -712,13 +722,27 @@ const MetaEditor = {
             dd.innerHTML = '';
         }
         this._tagDropdownOpenFor = null;
+        this._tagDropdownContext = null;
         this._tagDropdownResults = [];
         this._tagDropdownIndex = 0;
+        this._currentTagInputId = 'metadata-tag-input';
     },
 
-    async _openDropdownFor(platform, query) {
+    async _openDropdownFor(platform, query, context) {
         this._tagDropdownOpenFor = platform;
         this._tagDropdownIndex = 0;
+        // Phase 4b: context defaults to story-level for backwards compat.
+        if (context && typeof context === 'object') {
+            this._tagDropdownContext = {
+                scope: context.scope || 'story',
+                platform: context.platform || platform,
+                chapterIdx: (typeof context.chapterIdx === 'number') ? context.chapterIdx : null,
+            };
+            this._currentTagInputId = context.inputId || 'metadata-tag-input';
+        } else {
+            this._tagDropdownContext = { scope: 'story', platform, chapterIdx: null };
+            this._currentTagInputId = 'metadata-tag-input';
+        }
         if (!this._tagDb) {
             const dd = this._ensureDropdownPortal();
             dd.innerHTML = `<div class="metadata-tag-result-empty">Loading tag database...</div>`;
@@ -815,6 +839,101 @@ const MetaEditor = {
         this._rerenderTagTabBody();
     },
 
+    // -----------------------------------------------------------------
+    // Phase 4b: chapter-scoped tag writes (NO cross-platform sync —
+    // each chapter's per-platform list is independent).
+    // -----------------------------------------------------------------
+
+    _addTagToChapter(chapterIdx, platform, rawName) {
+        const name = (rawName || '').trim();
+        if (!name) return;
+        const entry = this._ensureChapterEntry(chapterIdx);
+        if (!entry.tags || typeof entry.tags !== 'object') entry.tags = {};
+        const tags = Array.isArray(entry.tags[platform]) ? entry.tags[platform] : [];
+        if (tags.some(t => t.toLowerCase() === name.toLowerCase())) return;
+
+        // Alias resolution still applies — write canonical tag if the user
+        // typed a known alias.
+        let final = name;
+        if (this._tagDb) {
+            const alias = this._tagDb.aliases[name.toLowerCase()];
+            if (alias && this._tagDb.byName.has(alias)) {
+                if (tags.some(t => t.toLowerCase() === alias.toLowerCase())) return;
+                final = alias;
+            }
+        }
+
+        tags.push(final);
+        entry.tags[platform] = tags;
+        this._clearStatus();
+        this._rerenderChapterDetail(chapterIdx);
+        requestAnimationFrame(() => {
+            const inp = document.getElementById(`metadata-tag-input-chapter-${chapterIdx}`);
+            if (inp) inp.focus();
+        });
+    },
+
+    _removeTagFromChapter(chapterIdx, platform, index) {
+        const entry = this._getChapterEntry(chapterIdx);
+        if (!entry || !entry.tags || !Array.isArray(entry.tags[platform])) return;
+        const tags = entry.tags[platform];
+        if (index < 0 || index >= tags.length) return;
+        tags.splice(index, 1);
+        entry.tags[platform] = tags;
+        this._clearStatus();
+        this._rerenderChapterDetail(chapterIdx);
+    },
+
+    /**
+     * Silent mutation wrappers used by the tag browser modal — mirror the
+     * add/remove chapter helpers but don't rerender the chapter detail
+     * (caller handles rerenders so focus isn't stolen).
+     */
+    _addTagToChapterSilent(chapterIdx, platform, rawName) {
+        const name = (rawName || '').trim();
+        if (!name) return;
+        const entry = this._ensureChapterEntry(chapterIdx);
+        if (!entry.tags || typeof entry.tags !== 'object') entry.tags = {};
+        const tags = Array.isArray(entry.tags[platform]) ? entry.tags[platform] : [];
+        if (tags.some(t => t.toLowerCase() === name.toLowerCase())) return;
+        let final = name;
+        if (this._tagDb) {
+            const alias = this._tagDb.aliases[name.toLowerCase()];
+            if (alias && this._tagDb.byName.has(alias)) {
+                if (tags.some(t => t.toLowerCase() === alias.toLowerCase())) return;
+                final = alias;
+            }
+        }
+        tags.push(final);
+        entry.tags[platform] = tags;
+        this._clearStatus();
+    },
+
+    _removeTagFromChapterSilent(chapterIdx, platform, index) {
+        const entry = this._getChapterEntry(chapterIdx);
+        if (!entry || !entry.tags || !Array.isArray(entry.tags[platform])) return;
+        const tags = entry.tags[platform];
+        if (index < 0 || index >= tags.length) return;
+        tags.splice(index, 1);
+        entry.tags[platform] = tags;
+        this._clearStatus();
+    },
+
+    /**
+     * Context-aware add — routes to _addTagToPlatform (story scope) or
+     * _addTagToChapter (chapter scope). Called from the dropdown portal
+     * click / Enter handlers.
+     */
+    _addTagFromDropdown(rawName) {
+        const ctx = this._tagDropdownContext;
+        if (!ctx) return;
+        if (ctx.scope === 'chapter' && typeof ctx.chapterIdx === 'number') {
+            this._addTagToChapter(ctx.chapterIdx, ctx.platform, rawName);
+        } else {
+            this._addTagToPlatform(ctx.platform, rawName);
+        }
+    },
+
     _bindTagTabBodyEvents() {
         // Remove-pill buttons
         document.querySelectorAll('[data-tag-remove]').forEach(btn => {
@@ -829,13 +948,14 @@ const MetaEditor = {
         const input = document.getElementById('metadata-tag-input');
         if (!input) return;
         const platform = input.getAttribute('data-tag-platform-input');
+        const storyContext = { scope: 'story', platform, chapterIdx: null, inputId: 'metadata-tag-input' };
 
         input.addEventListener('focus', () => {
-            this._openDropdownFor(platform, input.value);
+            this._openDropdownFor(platform, input.value, storyContext);
         });
 
         input.addEventListener('input', () => {
-            this._openDropdownFor(platform, input.value);
+            this._openDropdownFor(platform, input.value, storyContext);
         });
 
         input.addEventListener('keydown', (e) => {
@@ -880,31 +1000,41 @@ const MetaEditor = {
             setTimeout(() => this._closeDropdown(), 150);
         });
 
+        this._ensureDropdownPortalHandlers();
+    },
+
+    /**
+     * Bind the portal-level mousedown/click handlers exactly once. Routes
+     * clicks on result rows + "Browse all" based on the current context,
+     * so it works for story tabs AND per-chapter inputs.
+     */
+    _ensureDropdownPortalHandlers() {
         const dd = this._ensureDropdownPortal();
-        if (dd && !dd._handlersBound) {
-            dd.addEventListener('mousedown', (e) => {
-                // Prevent blur from firing before click
+        if (!dd || dd._handlersBound) return;
+        dd.addEventListener('mousedown', (e) => {
+            // Prevent blur from firing before click
+            e.preventDefault();
+        });
+        dd.addEventListener('click', (e) => {
+            const ctx = this._tagDropdownContext;
+            const actionBtn = e.target.closest('[data-action="open-tag-browser"]');
+            if (actionBtn) {
                 e.preventDefault();
-            });
-            dd.addEventListener('click', (e) => {
-                const actionBtn = e.target.closest('[data-action="open-tag-browser"]');
-                if (actionBtn) {
-                    e.preventDefault();
-                    const input = document.getElementById('metadata-tag-input');
-                    const q = input ? input.value : '';
-                    this._closeDropdown();
-                    this._openTagBrowser(q);
-                    return;
-                }
-                const row = e.target.closest('[data-tag-result-index]');
-                if (!row) return;
-                const idx = parseInt(row.getAttribute('data-tag-result-index'), 10);
-                const picked = this._tagDropdownResults[idx];
-                // Use _activeTagPlatform (always current) not closure-captured
-                if (picked) this._addTagToPlatform(this._activeTagPlatform, picked.tag.name);
-            });
-            dd._handlersBound = true;
-        }
+                const inp = document.getElementById(this._currentTagInputId || 'metadata-tag-input');
+                const q = inp ? inp.value : '';
+                const browserCtx = ctx ? { ...ctx } : null;
+                this._closeDropdown();
+                this._openTagBrowser(q, browserCtx);
+                return;
+            }
+            const row = e.target.closest('[data-tag-result-index]');
+            if (!row) return;
+            const idx = parseInt(row.getAttribute('data-tag-result-index'), 10);
+            const picked = this._tagDropdownResults[idx];
+            if (!picked) return;
+            this._addTagFromDropdown(picked.tag.name);
+        });
+        dd._handlersBound = true;
     },
 
     _truncate(s, n) {
@@ -929,12 +1059,19 @@ const MetaEditor = {
         this._openTagBrowser(query || '');
     },
 
-    async _openTagBrowser(initialQuery) {
+    async _openTagBrowser(initialQuery, context) {
         if (!this.isOpen) return;
         this._tagBrowserOpen = true;
         this._tagBrowserQuery = initialQuery || '';
         this._tagBrowserFilters = new Set();
         this._tagBrowserPage = 1;
+        // Phase 4b: remember where browser writes to. null = story-level
+        // using _activeTagPlatform (legacy behaviour).
+        this._tagBrowserContext = (context && typeof context === 'object') ? {
+            scope: context.scope || 'story',
+            platform: context.platform || this._activeTagPlatform,
+            chapterIdx: (typeof context.chapterIdx === 'number') ? context.chapterIdx : null,
+        } : null;
 
         // Mount shell immediately with a loading state so the modal pops
         // up even if the tag DB is still loading.
@@ -972,8 +1109,37 @@ const MetaEditor = {
             this._tagBrowserKeyHandler = null;
         }
         // Re-render the underlying drawer tag pills so they reflect any
-        // additions/removals made through the browser.
-        this._rerenderTagTabBody();
+        // additions/removals made through the browser. For chapter scope,
+        // rerender just the chapter's tag body.
+        const bctx = this._tagBrowserContext;
+        if (bctx && bctx.scope === 'chapter' && typeof bctx.chapterIdx === 'number') {
+            this._rerenderChapterTagBody(bctx.chapterIdx);
+        } else {
+            this._rerenderTagTabBody();
+        }
+        this._tagBrowserContext = null;
+    },
+
+    /**
+     * Phase 4b: return the platform the browser is currently writing to
+     * + the tag array it's reading from, factoring in chapter scope.
+     */
+    _tagBrowserTargetPlatform() {
+        const ctx = this._tagBrowserContext;
+        if (ctx && ctx.scope === 'chapter') return ctx.platform;
+        return this._activeTagPlatform;
+    },
+
+    _tagBrowserTargetTags() {
+        const ctx = this._tagBrowserContext;
+        if (ctx && ctx.scope === 'chapter' && typeof ctx.chapterIdx === 'number') {
+            const entry = this._getChapterEntry(ctx.chapterIdx);
+            if (entry && entry.tags && Array.isArray(entry.tags[ctx.platform])) {
+                return entry.tags[ctx.platform];
+            }
+            return [];
+        }
+        return this.metadata.tags[this._activeTagPlatform] || [];
     },
 
     _mountTagBrowser() {
@@ -1003,10 +1169,20 @@ const MetaEditor = {
     },
 
     _renderTagBrowser() {
-        const platform = this._activeTagPlatform;
+        const platform = this._tagBrowserTargetPlatform();
         const platformLabel = this.PLATFORM_LABELS[platform] || platform;
         const q = this._tagBrowserQuery || '';
         const filters = this._tagBrowserFilters;
+
+        // Chapter-scoped title includes the chapter number + title
+        const bctx = this._tagBrowserContext;
+        let titlePrefix = 'Browse Tags';
+        if (bctx && bctx.scope === 'chapter' && typeof bctx.chapterIdx === 'number') {
+            const ch = this._chapterData && this._chapterData.chapters.find(c => c.index === bctx.chapterIdx);
+            const chEntry = this._getChapterEntry(bctx.chapterIdx);
+            const chTitle = (chEntry && chEntry.title) || (ch && (ch.title_from_md || ch.title)) || `Chapter ${bctx.chapterIdx}`;
+            titlePrefix = `Browse Tags &mdash; Chapter ${bctx.chapterIdx}: ${this._escape(chTitle)}`;
+        }
 
         const chips = ['all', ...this._TAG_BROWSER_CATEGORIES].map(cat => {
             const active = (cat === 'all' && filters.size === 0) || filters.has(cat);
@@ -1019,7 +1195,7 @@ const MetaEditor = {
             <div class="tag-browser-modal" role="dialog" aria-label="Browse tags">
                 <div class="tag-browser-header">
                     <div class="tag-browser-title-row">
-                        <div class="tag-browser-title">Browse Tags &mdash; ${this._escape(platformLabel)}</div>
+                        <div class="tag-browser-title">${titlePrefix} &mdash; ${this._escape(platformLabel)}</div>
                         <button type="button" class="tag-browser-close" data-tb-close aria-label="Close">&times;</button>
                     </div>
                     <input type="text" id="tag-browser-search" class="tag-browser-search" placeholder="Search tags..." value="${this._escape(q)}" autocomplete="off" />
@@ -1176,8 +1352,8 @@ const MetaEditor = {
             return;
         }
 
-        const platform = this._activeTagPlatform;
-        const platformTags = (this.metadata.tags[platform] || []).map(t => t.toLowerCase());
+        const platform = this._tagBrowserTargetPlatform();
+        const platformTags = this._tagBrowserTargetTags().map(t => t.toLowerCase());
         const platformTagSet = new Set(platformTags);
 
         const cards = shown.map(t => {
@@ -1250,28 +1426,41 @@ const MetaEditor = {
     },
 
     _tagBrowserToggleTag(canonicalName) {
-        const platform = this._activeTagPlatform;
-        const tags = this.metadata.tags[platform] || [];
-        const transformed = this._transformTagForPlatform(canonicalName, platform);
-        const lcTransformed = transformed.toLowerCase();
+        const bctx = this._tagBrowserContext;
+        const isChapter = bctx && bctx.scope === 'chapter' && typeof bctx.chapterIdx === 'number';
+        const platform = this._tagBrowserTargetPlatform();
+        const tags = this._tagBrowserTargetTags();
+
+        // For chapter scope, there's no default→others cascade, so we
+        // only check canonical name. For story scope, also check transformed
+        // (matches existing behaviour).
         const lcCanonical = canonicalName.toLowerCase();
-
-        // Find existing entry matching either canonical or transformed name
-        const idx = tags.findIndex(t => {
-            const lc = t.toLowerCase();
-            return lc === lcCanonical || lc === lcTransformed;
-        });
-
-        if (idx >= 0) {
-            // Route through the shared removal path so default→platform
-            // cascade semantics stay identical to the inline dropdown.
-            this._removeTagFromPlatformSilent(platform, idx);
+        let idx;
+        if (isChapter) {
+            idx = tags.findIndex(t => t.toLowerCase() === lcCanonical);
         } else {
-            this._addTagToPlatformSilent(platform, canonicalName);
+            const transformed = this._transformTagForPlatform(canonicalName, platform);
+            const lcTransformed = transformed.toLowerCase();
+            idx = tags.findIndex(t => {
+                const lc = t.toLowerCase();
+                return lc === lcCanonical || lc === lcTransformed;
+            });
         }
 
-        // Re-render just the grid + selected strip + footer (no full
-        // drawer rebuild — that would kick focus back to the drawer input).
+        if (idx >= 0) {
+            if (isChapter) {
+                this._removeTagFromChapterSilent(bctx.chapterIdx, platform, idx);
+            } else {
+                this._removeTagFromPlatformSilent(platform, idx);
+            }
+        } else {
+            if (isChapter) {
+                this._addTagToChapterSilent(bctx.chapterIdx, platform, canonicalName);
+            } else {
+                this._addTagToPlatformSilent(platform, canonicalName);
+            }
+        }
+
         this._renderTagBrowserResults();
         this._updateTagBrowserSelectedStrip();
         this._updateTagBrowserFooter();
@@ -1356,8 +1545,10 @@ const MetaEditor = {
     _updateTagBrowserSelectedStrip() {
         const host = document.getElementById('tag-browser-selected');
         if (!host) return;
-        const platform = this._activeTagPlatform;
-        const tags = this.metadata.tags[platform] || [];
+        const bctx = this._tagBrowserContext;
+        const isChapter = bctx && bctx.scope === 'chapter' && typeof bctx.chapterIdx === 'number';
+        const platform = this._tagBrowserTargetPlatform();
+        const tags = this._tagBrowserTargetTags();
         if (!tags.length) {
             host.innerHTML = `<div class="tag-browser-selected-empty">No tags on ${this._escape(this.PLATFORM_LABELS[platform] || platform)} yet.</div>`;
             return;
@@ -1377,7 +1568,11 @@ const MetaEditor = {
                 e.preventDefault();
                 const idx = parseInt(btn.getAttribute('data-tb-remove-selected'), 10);
                 if (Number.isNaN(idx)) return;
-                this._removeTagFromPlatformSilent(platform, idx);
+                if (isChapter) {
+                    this._removeTagFromChapterSilent(bctx.chapterIdx, platform, idx);
+                } else {
+                    this._removeTagFromPlatformSilent(platform, idx);
+                }
                 this._renderTagBrowserResults();
                 this._updateTagBrowserSelectedStrip();
                 this._updateTagBrowserFooter();
@@ -1388,8 +1583,8 @@ const MetaEditor = {
     _updateTagBrowserFooter(totalMatches) {
         const el = document.getElementById('tag-browser-count');
         if (!el) return;
-        const platform = this._activeTagPlatform;
-        const count = (this.metadata.tags[platform] || []).length;
+        const platform = this._tagBrowserTargetPlatform();
+        const count = this._tagBrowserTargetTags().length;
         const limit = this.TAG_LIMITS[platform];
         const limitLabel = (limit === Infinity) ? '\u221E' : limit;
         const overLimit = (limit !== Infinity) && count > limit;
@@ -1795,15 +1990,14 @@ const MetaEditor = {
         const entry = this._getChapterEntry(ch.index) || { title: '', description: '', tags: {} };
         const overrideVal = (entry.title && entry.title !== ch.title_from_md) ? entry.title : '';
         const desc = entry.description || '';
-        const active = this._activeChapterTagPlatform;
+        // Phase 4b: use per-chapter active sub-tab (falls back to component default).
+        const active = this._chapterTagPlatformByIdx[ch.index] || this._activeChapterTagPlatform || 'default';
+        this._chapterTagPlatformByIdx[ch.index] = active;
 
         const tabs = this._CHAPTER_TAG_PLATFORMS.map(p => {
             const cls = p === active ? ' metadata-chapter-tag-tab-active' : '';
             return `<button type="button" class="metadata-chapter-tag-tab${cls}" data-chapter-tag-tab="${this._escape(p)}" data-chapter-index="${ch.index}">${this._escape(this.PLATFORM_LABELS[p] || p)}</button>`;
         }).join('');
-
-        const tagsForActive = (entry.tags && Array.isArray(entry.tags[active])) ? entry.tags[active] : [];
-        const tagsText = tagsForActive.join(', ');
 
         const removedNote = (!ch.in_md && ch.in_metadata) ? `
             <div class="metadata-chapter-removed-note">
@@ -1816,29 +2010,120 @@ const MetaEditor = {
             ? `<div class="metadata-chapter-md-title">MASTER.md title: <code>${this._escape(ch.title_from_md)}</code></div>`
             : '';
 
+        // Phase 4b: render the pill+autocomplete tag UI for the active
+        // chapter sub-tab (Default / SoFurry / Wattpad). Uses per-chapter
+        // input IDs so the dropdown portal can position against the right
+        // input when multiple chapter rows are expanded simultaneously
+        // (only one is actually expanded at a time, but IDs must still be
+        // unique against the story-level input).
+        const tagBodyHtml = this._renderChapterTagBody(ch.index, active);
+
         return `
-            ${removedNote}
-            ${mdTitleLine}
-            <div class="metadata-field">
-                <label for="meta-chapter-title-${ch.index}">Override title <span class="metadata-hint">(leave empty to use MD title)</span></label>
-                <input type="text" id="meta-chapter-title-${ch.index}" data-chapter-field="title" data-chapter-index="${ch.index}" value="${this._escape(overrideVal)}" placeholder="${this._escape(ch.title_from_md || '')}" autocomplete="off" />
-            </div>
-            <div class="metadata-field">
-                <label for="meta-chapter-desc-${ch.index}">Description</label>
-                <textarea id="meta-chapter-desc-${ch.index}" data-chapter-field="description" data-chapter-index="${ch.index}" rows="3">${this._escape(desc)}</textarea>
-            </div>
-            <div class="metadata-field">
-                <label>Per-platform tags <span class="metadata-hint">(comma-separated; full autocomplete coming in Phase 4b)</span></label>
-                <div class="metadata-chapter-tag-tabs" role="tablist">${tabs}</div>
-                <textarea
-                    class="metadata-chapter-tag-textarea"
-                    data-chapter-field="tags"
-                    data-chapter-index="${ch.index}"
-                    data-chapter-tag-platform="${this._escape(active)}"
-                    rows="4"
-                    placeholder="tag1, tag2, tag3">${this._escape(tagsText)}</textarea>
+            <div class="metadata-chapter-detail">
+                ${removedNote}
+                ${mdTitleLine}
+                <div class="metadata-field">
+                    <label for="meta-chapter-title-${ch.index}">Override title <span class="metadata-hint">(leave empty to use MD title)</span></label>
+                    <input type="text" id="meta-chapter-title-${ch.index}" data-chapter-field="title" data-chapter-index="${ch.index}" value="${this._escape(overrideVal)}" placeholder="${this._escape(ch.title_from_md || '')}" autocomplete="off" />
+                </div>
+                <div class="metadata-field">
+                    <label for="meta-chapter-desc-${ch.index}">Description</label>
+                    <textarea id="meta-chapter-desc-${ch.index}" data-chapter-field="description" data-chapter-index="${ch.index}" rows="3">${this._escape(desc)}</textarea>
+                </div>
+                <div class="metadata-field">
+                    <label>Per-platform tags <span class="metadata-hint">(independent of story tags)</span></label>
+                    <div class="metadata-chapter-tag-tabs" role="tablist">${tabs}</div>
+                    <div class="metadata-chapter-tag-body" id="metadata-chapter-tag-body-${ch.index}">
+                        ${tagBodyHtml}
+                    </div>
+                </div>
             </div>
         `;
+    },
+
+    /**
+     * Phase 4b: body of a single chapter's tag sub-tab. Emits pill list +
+     * autocomplete input + tag count, modelled after _renderTagTabBody
+     * but writing to metadata.chapter_info[idx].tags[platform].
+     */
+    _renderChapterTagBody(chapterIdx, platform) {
+        const entry = this._getChapterEntry(chapterIdx) || { tags: {} };
+        const tags = (entry.tags && Array.isArray(entry.tags[platform])) ? entry.tags[platform] : [];
+        const aliases = this._tagDb ? this._tagDb.aliases : {};
+        const byName = this._tagDb ? this._tagDb.byName : null;
+
+        const pills = tags.map((t, i) => {
+            const inDb = byName ? byName.has(t) : false;
+            const aliasTarget = (!inDb && aliases[t]) ? aliases[t] : null;
+            let cls = 'metadata-tag-pill';
+            if (byName && !inDb && !aliasTarget) cls += ' metadata-tag-pill-unknown';
+            const aliasNote = aliasTarget ? `<span class="metadata-tag-pill-alias">&rarr; ${this._escape(aliasTarget)}</span>` : '';
+            return `
+                <span class="${cls}" data-tag-pill-index="${i}">
+                    <span class="metadata-tag-pill-text">${this._escape(t)}</span>
+                    ${aliasNote}
+                    <button type="button" class="metadata-tag-pill-remove" data-chapter-tag-remove="${this._escape(platform)}" data-chapter-index="${chapterIdx}" data-index="${i}" aria-label="Remove tag">&times;</button>
+                </span>
+            `;
+        }).join('');
+
+        const limit = this.TAG_LIMITS[platform];
+        const limitLabel = (limit === Infinity) ? '&infin;' : limit;
+        const overLimit = (limit !== Infinity) && tags.length > limit;
+        const inputId = `metadata-tag-input-chapter-${chapterIdx}`;
+
+        return `
+            <div class="metadata-tag-pills" id="metadata-chapter-tag-pills-${chapterIdx}-${this._escape(platform)}">${pills}</div>
+            <div class="metadata-tag-input-wrap">
+                <input type="text"
+                       class="metadata-tag-input"
+                       id="${inputId}"
+                       data-chapter-tag-input="${chapterIdx}"
+                       data-chapter-tag-platform-input="${this._escape(platform)}"
+                       placeholder="Add tag..."
+                       autocomplete="off" />
+            </div>
+            <div class="metadata-tag-count ${overLimit ? 'metadata-tag-count-over' : ''}">
+                <span>${tags.length} tags</span>
+                <span class="metadata-tag-count-sep">&middot;</span>
+                <span>Platform max: ${limitLabel}</span>
+            </div>
+        `;
+    },
+
+    /**
+     * Phase 4b: re-render a single chapter's expanded detail view (used
+     * after add/remove inside a chapter's tag list, so we don't collapse
+     * the row or rebuild the whole chapter list).
+     */
+    _rerenderChapterDetail(chapterIdx) {
+        const host = document.getElementById('metadata-chapters-body');
+        if (!host) return;
+        const rowEl = host.querySelector(`[data-chapter-index="${chapterIdx}"]`);
+        if (!rowEl) return;
+        const detailHost = rowEl.querySelector('.metadata-chapter-row-detail');
+        if (!detailHost) return;
+
+        // Look up the chapter descriptor to rebuild
+        const ch = this._chapterData && this._chapterData.chapters.find(c => c.index === chapterIdx);
+        if (!ch) return;
+        detailHost.innerHTML = this._renderChapterDetail(ch);
+        // Rebind chapter-scoped events on the newly-inserted nodes.
+        this._bindChapterDetailEvents(chapterIdx);
+    },
+
+    /**
+     * Phase 4b: re-render just the tag body portion of a chapter detail
+     * when the user switches the sub-tab or adds/removes a pill. Keeps
+     * input focus + text inputs (title/description) untouched.
+     */
+    _rerenderChapterTagBody(chapterIdx) {
+        const body = document.getElementById(`metadata-chapter-tag-body-${chapterIdx}`);
+        if (!body) return;
+        const platform = this._chapterTagPlatformByIdx[chapterIdx] || 'default';
+        body.innerHTML = this._renderChapterTagBody(chapterIdx, platform);
+        this._bindChapterTagInputEvents(chapterIdx);
+        this._bindChapterTagPillRemoveEvents(chapterIdx);
     },
 
     _getChapterEntry(index) {
@@ -1854,51 +2139,13 @@ const MetaEditor = {
             btn.addEventListener('click', () => {
                 const idx = parseInt(btn.getAttribute('data-chapter-toggle'), 10);
                 if (Number.isNaN(idx)) return;
+                // Close any open autocomplete dropdown when collapsing a row
+                if (this._tagDropdownContext && this._tagDropdownContext.scope === 'chapter') {
+                    this._closeDropdown();
+                }
                 this._expandedChapter = (this._expandedChapter === idx) ? null : idx;
                 this._renderChapterRows();
             });
-        });
-
-        // Tag platform sub-tabs (inside expanded detail)
-        host.querySelectorAll('[data-chapter-tag-tab]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const p = btn.getAttribute('data-chapter-tag-tab');
-                if (p === this._activeChapterTagPlatform) return;
-                this._activeChapterTagPlatform = p;
-                this._renderChapterRows();
-            });
-        });
-
-        // Field edits (override title, description, tags textarea)
-        host.querySelectorAll('[data-chapter-field]').forEach(el => {
-            const field = el.getAttribute('data-chapter-field');
-            const idx = parseInt(el.getAttribute('data-chapter-index'), 10);
-            if (Number.isNaN(idx)) return;
-
-            const write = () => {
-                const entry = this._ensureChapterEntry(idx);
-                if (field === 'title') {
-                    const v = el.value.trim();
-                    // Empty override means "use MD title"; store MD title so
-                    // round-tripping through JSON is stable.
-                    const chInfo = (this._chapterData && this._chapterData.chapters.find(c => c.index === idx));
-                    const mdTitle = chInfo ? (chInfo.title_from_md || '') : '';
-                    entry.title = v || mdTitle;
-                } else if (field === 'description') {
-                    entry.description = el.value;
-                } else if (field === 'tags') {
-                    const platform = el.getAttribute('data-chapter-tag-platform') || 'default';
-                    if (!entry.tags || typeof entry.tags !== 'object') entry.tags = {};
-                    entry.tags[platform] = el.value
-                        .split(',')
-                        .map(s => s.trim())
-                        .filter(s => s.length > 0);
-                }
-                this._clearStatus();
-            };
-            el.addEventListener('input', write);
-            el.addEventListener('change', write);
         });
 
         // Drift banner actions
@@ -1907,17 +2154,12 @@ const MetaEditor = {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 if (action === 'sync-md') {
-                    // Re-run _syncChapterInfoFromLoad (which created stubs on load)
-                    // then re-render. The sync is idempotent.
-                    if (this._chapterData) {
-                        this._syncChapterInfoFromLoad(this._chapterData);
-                    }
+                    if (this._chapterData) this._syncChapterInfoFromLoad(this._chapterData);
                     this._loadChapters();
                 } else if (action === 'remove') {
                     const idx = parseInt(btn.getAttribute('data-chapter-index'), 10);
                     if (Number.isNaN(idx)) return;
                     this.metadata.chapter_info = (this.metadata.chapter_info || []).filter(e => !(e && e.index === idx));
-                    // Also remove from the displayed data
                     if (this._chapterData) {
                         this._chapterData.chapters = this._chapterData.chapters.filter(c => c.index !== idx);
                         this._chapterData.drift.removed_in_md = this._chapterData.drift.removed_in_md.filter(d => d.index !== idx);
@@ -1928,6 +2170,153 @@ const MetaEditor = {
                 }
             });
         });
+
+        // Bind per-chapter detail events for whichever chapter is expanded.
+        if (this._expandedChapter != null) {
+            this._bindChapterDetailEvents(this._expandedChapter);
+        }
+    },
+
+    /**
+     * Phase 4b: bind all interactive elements inside a single chapter's
+     * expanded detail (override title, description, tag sub-tabs, tag
+     * pills, tag autocomplete input). Called on initial render, re-render
+     * after sub-tab switch, and after pill add/remove.
+     */
+    _bindChapterDetailEvents(chapterIdx) {
+        const host = document.getElementById('metadata-chapters-body');
+        if (!host) return;
+        const rowEl = host.querySelector(`[data-chapter-index="${chapterIdx}"]`);
+        if (!rowEl) return;
+
+        // Title + description fields (not tags — those use the pill UI)
+        rowEl.querySelectorAll('[data-chapter-field]').forEach(el => {
+            const field = el.getAttribute('data-chapter-field');
+            const idx = parseInt(el.getAttribute('data-chapter-index'), 10);
+            if (Number.isNaN(idx)) return;
+            if (field !== 'title' && field !== 'description') return;
+            const write = () => {
+                const entry = this._ensureChapterEntry(idx);
+                if (field === 'title') {
+                    const v = el.value.trim();
+                    const chInfo = (this._chapterData && this._chapterData.chapters.find(c => c.index === idx));
+                    const mdTitle = chInfo ? (chInfo.title_from_md || '') : '';
+                    entry.title = v || mdTitle;
+                } else if (field === 'description') {
+                    entry.description = el.value;
+                }
+                this._clearStatus();
+            };
+            el.addEventListener('input', write);
+            el.addEventListener('change', write);
+        });
+
+        // Sub-tab clicks — switch active platform for THIS chapter only.
+        rowEl.querySelectorAll('[data-chapter-tag-tab]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const p = btn.getAttribute('data-chapter-tag-tab');
+                if (p === this._chapterTagPlatformByIdx[chapterIdx]) return;
+                this._chapterTagPlatformByIdx[chapterIdx] = p;
+                // Update the stored "default" so the next newly-expanded
+                // chapter inherits the user's preference.
+                this._activeChapterTagPlatform = p;
+                // Close dropdown if it was open on the previous tab's input.
+                if (this._tagDropdownContext && this._tagDropdownContext.scope === 'chapter'
+                    && this._tagDropdownContext.chapterIdx === chapterIdx) {
+                    this._closeDropdown();
+                }
+                // Update tab active state without rebuilding
+                rowEl.querySelectorAll('[data-chapter-tag-tab]').forEach(b => {
+                    const bp = b.getAttribute('data-chapter-tag-tab');
+                    b.classList.toggle('metadata-chapter-tag-tab-active', bp === p);
+                });
+                this._rerenderChapterTagBody(chapterIdx);
+            });
+        });
+
+        // Tag pill remove + autocomplete input
+        this._bindChapterTagPillRemoveEvents(chapterIdx);
+        this._bindChapterTagInputEvents(chapterIdx);
+    },
+
+    _bindChapterTagPillRemoveEvents(chapterIdx) {
+        const host = document.getElementById('metadata-chapters-body');
+        if (!host) return;
+        const rowEl = host.querySelector(`[data-chapter-index="${chapterIdx}"]`);
+        if (!rowEl) return;
+        rowEl.querySelectorAll('[data-chapter-tag-remove]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const platform = btn.getAttribute('data-chapter-tag-remove');
+                const idx = parseInt(btn.getAttribute('data-index'), 10);
+                if (Number.isNaN(idx)) return;
+                this._removeTagFromChapter(chapterIdx, platform, idx);
+            });
+        });
+    },
+
+    _bindChapterTagInputEvents(chapterIdx) {
+        const inputId = `metadata-tag-input-chapter-${chapterIdx}`;
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        const platform = input.getAttribute('data-chapter-tag-platform-input');
+        const ctx = { scope: 'chapter', platform, chapterIdx, inputId };
+
+        input.addEventListener('focus', () => {
+            this._openDropdownFor(platform, input.value, ctx);
+        });
+
+        input.addEventListener('input', () => {
+            this._openDropdownFor(platform, input.value, ctx);
+        });
+
+        input.addEventListener('keydown', (e) => {
+            const results = this._tagDropdownResults;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (!results.length) return;
+                this._tagDropdownIndex = Math.min(results.length - 1, this._tagDropdownIndex + 1);
+                this._renderDropdown(results, input.value);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (!results.length) return;
+                this._tagDropdownIndex = Math.max(0, this._tagDropdownIndex - 1);
+                this._renderDropdown(results, input.value);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const picked = results[this._tagDropdownIndex];
+                if (picked) {
+                    this._addTagToChapter(chapterIdx, platform, picked.tag.name);
+                } else if (input.value.trim()) {
+                    this._addTagToChapter(chapterIdx, platform, input.value);
+                }
+            } else if (e.key === 'Escape') {
+                this._closeDropdown();
+                input.blur();
+            } else if (e.key === 'Backspace' && input.value === '') {
+                const entry = this._getChapterEntry(chapterIdx);
+                const tags = entry && entry.tags && Array.isArray(entry.tags[platform]) ? entry.tags[platform] : [];
+                if (tags.length) {
+                    this._removeTagFromChapter(chapterIdx, platform, tags.length - 1);
+                }
+            }
+        });
+
+        input.addEventListener('blur', () => {
+            setTimeout(() => {
+                // Only close if context still belongs to this input — avoids
+                // fighting with a freshly-opened story-level dropdown.
+                const ctx2 = this._tagDropdownContext;
+                if (ctx2 && ctx2.scope === 'chapter' && ctx2.chapterIdx === chapterIdx) {
+                    this._closeDropdown();
+                }
+            }, 150);
+        });
+
+        // Ensure portal-level handlers exist (no-op after first call)
+        this._ensureDropdownPortalHandlers();
     },
 
     _ensureChapterEntry(index) {
