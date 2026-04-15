@@ -798,6 +798,10 @@ const MetaEditor = {
         const matches = this._e621LookupCache.get(q);
         if (!matches || !matches.length) {
             this._e621LookupResults = [];
+            // Only show "no e621 matches" if cache definitely returned (not pending)
+            if (this._e621LookupCache.has(q)) {
+                return `<div class="metadata-tag-result-divider">&#128218; No e621 matches for "${this._escape(q)}"</div>`;
+            }
             return '';
         }
         this._e621LookupResults = matches;
@@ -1614,6 +1618,83 @@ const MetaEditor = {
         return [...exact, ...prefix, ...substring];
     },
 
+    _renderE621CardsBlock() {
+        const q = (this._tagBrowserQuery || '').trim().toLowerCase();
+        if (!q || q.length < this._E621_LOOKUP_MIN_QUERY) return '';
+
+        // Trigger lookup if not cached
+        if (!this._e621LookupCache.has(q) && (!this._e621LookupPending || this._e621LookupPending.query !== q)) {
+            this._fetchE621Lookup(q).then(() => {
+                if (this._tagBrowserOpen && (this._tagBrowserQuery || '').trim().toLowerCase() === q) {
+                    this._renderTagBrowserResults();
+                }
+            }).catch(() => {});
+            return `<div class="tag-browser-e621-loading">&#128218; Searching e621 for more suggestions&hellip;</div>`;
+        }
+
+        const matches = this._e621LookupCache.get(q);
+        if (!matches || !matches.length) return '';
+
+        const platform = this._tagBrowserTargetPlatform();
+        const platformTags = this._tagBrowserTargetTags().map(t => t.toLowerCase());
+        const platformTagSet = new Set(platformTags);
+
+        const cards = matches.map(m => {
+            const transformed = this._transformTagForPlatform(m.name, platform).toLowerCase();
+            const isAdded = platformTagSet.has(m.name.toLowerCase()) || platformTagSet.has(transformed);
+            const addedCls = isAdded ? ' tag-browser-card-added' : '';
+            const catLabel = this._e621CategoryLabel(m.category);
+            const suggestedTarget = this._suggestedTargetForE621Cat(m.category);
+            const count = (m.post_count || 0).toLocaleString();
+            return `
+                <div class="tag-browser-card tag-browser-card-e621${addedCls}" data-e621-name="${this._escape(m.name)}">
+                    <div class="tag-browser-card-head">
+                        <div class="tag-browser-card-name">${this._escape(m.name)}</div>
+                        <span class="tag-browser-card-cat metadata-tag-cat-e621">e621 ${this._escape(catLabel)}</span>
+                    </div>
+                    <div class="tag-browser-card-meta">${count} posts</div>
+                    <div class="tag-browser-card-footer">
+                        <button type="button" class="tag-browser-card-btn" data-action="add-to-library" data-e621-name="${this._escape(m.name)}" data-target="${this._escape(suggestedTarget)}">+ Library (${this._escape(this._targetLabel(suggestedTarget))})</button>
+                        <button type="button" class="tag-browser-card-btn tag-browser-card-btn-secondary" data-action="use-once" data-e621-name="${this._escape(m.name)}">Use once</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        return `<div class="tag-browser-e621-divider">&#128218; e621 suggestions (not in your library)</div><div class="tag-browser-grid">${cards}</div>`;
+    },
+
+    _bindE621CardActions(host) {
+        if (!host) return;
+        host.querySelectorAll('[data-e621-name]').forEach(card => {
+            // Buttons inside cards
+            card.querySelectorAll('[data-action]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const action = btn.getAttribute('data-action');
+                    const name = btn.getAttribute('data-e621-name');
+                    if (action === 'add-to-library') {
+                        const target = btn.getAttribute('data-target');
+                        const ok = await this._addTagToLibrary(name, target);
+                        if (ok) this._renderTagBrowserResults();
+                    } else if (action === 'use-once') {
+                        // Add to platform without library mutation
+                        const platform = this._tagBrowserTargetPlatform();
+                        const ctx = this._tagBrowserContext;
+                        if (ctx && ctx.scope === 'chapter') {
+                            this._addTagToChapterSilent(ctx.chapterIdx, platform, name);
+                        } else {
+                            this._addTagToPlatformSilent(platform, name);
+                        }
+                        this._renderTagBrowserResults();
+                        this._updateTagBrowserSelectedStrip();
+                        this._updateTagBrowserFooter();
+                    }
+                });
+            });
+        });
+    },
+
     _renderTagBrowserResults() {
         const host = document.getElementById('tag-browser-results');
         const loadMoreWrap = document.getElementById('tag-browser-loadmore-wrap');
@@ -1626,8 +1707,10 @@ const MetaEditor = {
 
         if (!shown.length) {
             const q = (this._tagBrowserQuery || '').trim();
-            host.innerHTML = `<div class="tag-browser-empty">No tags match${q ? ` "${this._escape(q)}"` : ''}.</div>`;
+            const e621Block = this._renderE621CardsBlock();
+            host.innerHTML = `<div class="tag-browser-empty">No local tags match${q ? ` "${this._escape(q)}"` : ''}.</div>${e621Block}`;
             if (loadMoreWrap) loadMoreWrap.innerHTML = '';
+            this._bindE621CardActions(host);
             this._updateTagBrowserFooter(all.length);
             return;
         }
@@ -1660,7 +1743,11 @@ const MetaEditor = {
             `;
         }).join('');
 
-        host.innerHTML = cards;
+        // Append e621 suggestions only when we've reached the last page
+        // (so they appear at the very bottom, after everything else loaded)
+        const e621Block = (shown.length === all.length) ? this._renderE621CardsBlock() : '';
+        host.innerHTML = `<div class="tag-browser-grid">${cards}</div>${e621Block}`;
+        this._bindE621CardActions(host);
 
         // "Load more" button
         if (loadMoreWrap) {

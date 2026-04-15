@@ -1297,6 +1297,9 @@ async def lookup_tags(q: str, limit: int = 10):
     user) are filtered out so the user only sees genuinely new suggestions.
     """
     q = (q or "").strip().lower()
+    # Normalise spaces to underscores (e621 convention) so "racoon tail"
+    # matches the same as "racoon_tail"
+    q = q.replace(" ", "_")
     if len(q) < 2:
         return {"matches": []}
     limit = max(1, min(50, int(limit or 10)))

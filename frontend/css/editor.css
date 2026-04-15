@@ -1403,6 +1403,43 @@
     gap: 12px;
 }
 
+.tag-browser-e621-divider {
+    margin: 24px 0 8px;
+    padding: 8px 12px;
+    background: rgba(155, 125, 255, 0.08);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.tag-browser-e621-loading {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 13px;
+}
+
+.tag-browser-card-e621 {
+    border-color: rgba(155, 125, 255, 0.4);
+    background: rgba(155, 125, 255, 0.04);
+}
+
+.tag-browser-card-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin: 4px 0;
+}
+
+.tag-browser-card-btn-secondary {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    margin-left: 6px;
+}
+
 .tag-browser-empty {
     grid-column: 1 / -1;
     padding: 40px 20px;
