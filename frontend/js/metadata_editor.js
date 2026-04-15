@@ -21,6 +21,22 @@ const MetaEditor = {
     lastMtime: 0,
     storyName: null,
 
+    // Phase 3a: tag database (lazy-loaded on first autocomplete interaction).
+    _tagDb: null,             // { tags: [], aliases: {}, byName: Map, names: [], version }
+    _tagDbLoading: null,      // in-flight promise (dedupe concurrent loads)
+    _activeTagPlatform: 'default',
+    _tagDropdownOpenFor: null,   // platform key the dropdown is currently open for
+    _tagDropdownIndex: 0,
+    _tagDropdownResults: [],     // last rendered result set
+
+    // Platform tag caps (∞ = no cap)
+    TAG_LIMITS: {
+        sofurry: 97,
+        wattpad: 24,
+        inkbunny: Infinity,
+        default: Infinity,
+    },
+
     // Canonical ratings (must match backend whitelist)
     RATINGS: [
         'Not Rated',
@@ -361,20 +377,18 @@ const MetaEditor = {
     },
 
     // ---------------------------------------------------------------------
-    // Section 4: Per-Platform Tags (Phase 2 stub)
+    // Section 4: Per-Platform Tags (Phase 3a — autocomplete)
+    //
+    // UI: one section containing a tab strip (Default/SoFurry/Wattpad/Inkbunny);
+    // active tab shows a pill list + autocomplete input + a footer counter.
+    // Pills write back to `metadata.tags.<platform>` so the standard dirty
+    // check picks up changes with no extra wiring.
     // ---------------------------------------------------------------------
 
     _renderPlatformTagsSection() {
-        const md = this.metadata;
-
-        const rows = this.TAG_PLATFORMS.map(p => {
-            const val = (md.tags[p] || []).join(', ');
-            return `
-                <div class="metadata-field">
-                    <label for="meta-tags-${p}">${this._escape(this.PLATFORM_LABELS[p] || p)}</label>
-                    <textarea id="meta-tags-${p}" data-tag-platform="${this._escape(p)}" rows="2" placeholder="comma, separated, tags">${this._escape(val)}</textarea>
-                </div>
-            `;
+        const tabs = this.TAG_PLATFORMS.map(p => {
+            const active = p === this._activeTagPlatform ? ' metadata-tag-tab-active' : '';
+            return `<button type="button" class="metadata-tag-tab${active}" data-tag-tab="${this._escape(p)}">${this._escape(this.PLATFORM_LABELS[p] || p)}</button>`;
         }).join('');
 
         return `
@@ -384,11 +398,387 @@ const MetaEditor = {
                     <span>Per-Platform Tags</span>
                 </button>
                 <div class="metadata-section-body">
-                    <div class="metadata-help">(Tag autocomplete coming in Phase 3)</div>
-                    ${rows}
+                    <div class="metadata-tag-tabs" role="tablist">${tabs}</div>
+                    <div class="metadata-tag-tab-body" id="metadata-tag-tab-body">
+                        ${this._renderTagTabBody(this._activeTagPlatform)}
+                    </div>
                 </div>
             </section>
         `;
+    },
+
+    _renderTagTabBody(platform) {
+        const md = this.metadata;
+        const tags = md.tags[platform] || [];
+        const aliases = this._tagDb ? this._tagDb.aliases : {};
+        const byName = this._tagDb ? this._tagDb.byName : null;
+
+        const pills = tags.map((t, i) => {
+            const inDb = byName ? byName.has(t) : false;
+            const aliasTarget = (!inDb && aliases[t]) ? aliases[t] : null;
+            let cls = 'metadata-tag-pill';
+            if (byName && !inDb && !aliasTarget) cls += ' metadata-tag-pill-unknown';
+            const aliasNote = aliasTarget ? `<span class="metadata-tag-pill-alias">&rarr; ${this._escape(aliasTarget)}</span>` : '';
+            return `
+                <span class="${cls}" data-tag-pill-index="${i}">
+                    <span class="metadata-tag-pill-text">${this._escape(t)}</span>
+                    ${aliasNote}
+                    <button type="button" class="metadata-tag-pill-remove" data-tag-remove="${this._escape(platform)}" data-index="${i}" aria-label="Remove tag">&times;</button>
+                </span>
+            `;
+        }).join('');
+
+        const limit = this.TAG_LIMITS[platform];
+        const limitLabel = (limit === Infinity) ? '&infin;' : limit;
+        const overLimit = (limit !== Infinity) && tags.length > limit;
+
+        return `
+            <div class="metadata-tag-pills" id="metadata-tag-pills-${this._escape(platform)}">${pills}</div>
+            <div class="metadata-tag-input-wrap">
+                <input type="text"
+                       class="metadata-tag-input"
+                       id="metadata-tag-input"
+                       data-tag-platform-input="${this._escape(platform)}"
+                       placeholder="Add tag..."
+                       autocomplete="off" />
+                <div class="metadata-tag-dropdown" id="metadata-tag-dropdown" hidden></div>
+            </div>
+            <div class="metadata-tag-count ${overLimit ? 'metadata-tag-count-over' : ''}">
+                <span id="metadata-tag-count-text">${tags.length} tags</span>
+                <span class="metadata-tag-count-sep">&middot;</span>
+                <span>Platform max: ${limitLabel}</span>
+            </div>
+        `;
+    },
+
+    _rerenderTagTabBody() {
+        const host = document.getElementById('metadata-tag-tab-body');
+        if (!host) return;
+        host.innerHTML = this._renderTagTabBody(this._activeTagPlatform);
+        this._bindTagTabBodyEvents();
+    },
+
+    _updateTagTabs() {
+        document.querySelectorAll('[data-tag-tab]').forEach(b => {
+            const p = b.getAttribute('data-tag-tab');
+            b.classList.toggle('metadata-tag-tab-active', p === this._activeTagPlatform);
+        });
+    },
+
+    // ---- Tag DB loading (lazy, cached in sessionStorage by version hash) ----
+
+    async _loadTagDb() {
+        if (this._tagDb) return this._tagDb;
+        if (this._tagDbLoading) return this._tagDbLoading;
+
+        this._tagDbLoading = (async () => {
+            // Try sessionStorage cache first, but still fetch to check version.
+            // We could optimise by sending If-None-Match, but the payload is
+            // tiny gzipped and parsed once per session — keep it simple.
+            try {
+                const cachedRaw = sessionStorage.getItem('pawpoller_tag_db_v1');
+                if (cachedRaw) {
+                    const cached = JSON.parse(cachedRaw);
+                    if (cached && cached.version && cached.tags) {
+                        this._tagDb = this._indexTagDb(cached);
+                        // Fire off a background refresh so stale versions self-heal
+                        this._refreshTagDbBackground();
+                        return this._tagDb;
+                    }
+                }
+            } catch (_) { /* corrupted cache — ignore */ }
+
+            const resp = await fetch('/api/editor/tags');
+            if (!resp.ok) {
+                const t = await resp.text();
+                throw new Error(`Tag DB load failed: ${t || resp.status}`);
+            }
+            const data = await resp.json();
+            try { sessionStorage.setItem('pawpoller_tag_db_v1', JSON.stringify(data)); } catch (_) { /* quota */ }
+            this._tagDb = this._indexTagDb(data);
+            return this._tagDb;
+        })();
+
+        try {
+            return await this._tagDbLoading;
+        } finally {
+            this._tagDbLoading = null;
+        }
+    },
+
+    async _refreshTagDbBackground() {
+        try {
+            const resp = await fetch('/api/editor/tags');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (this._tagDb && data.version === this._tagDb.version) return;
+            try { sessionStorage.setItem('pawpoller_tag_db_v1', JSON.stringify(data)); } catch (_) {}
+            this._tagDb = this._indexTagDb(data);
+            // Refresh current view so any unknown-tag styling gets re-evaluated
+            if (this.isOpen) this._rerenderTagTabBody();
+        } catch (_) { /* silent */ }
+    },
+
+    _indexTagDb(data) {
+        const byName = new Map();
+        for (const t of data.tags) byName.set(t.name, t);
+        // Pre-lowercase names for cheap case-insensitive filtering
+        const names = data.tags.map(t => ({
+            name: t.name,
+            lower: t.name.toLowerCase(),
+            tag: t,
+        }));
+        return {
+            tags: data.tags,
+            aliases: data.aliases || {},
+            version: data.version,
+            byName,
+            names,
+        };
+    },
+
+    // ---- Dropdown rendering + filtering ----
+
+    _filterTagResults(query) {
+        if (!this._tagDb) return [];
+        const q = (query || '').toLowerCase().trim();
+        if (!q) return [];
+
+        const { names, aliases, byName } = this._tagDb;
+        const exact = [];
+        const prefix = [];
+        const substring = [];
+
+        for (const entry of names) {
+            if (entry.lower === q) exact.push({ kind: 'tag', tag: entry.tag });
+            else if (entry.lower.startsWith(q)) prefix.push({ kind: 'tag', tag: entry.tag });
+            else if (entry.lower.includes(q)) substring.push({ kind: 'tag', tag: entry.tag });
+            if (exact.length + prefix.length + substring.length >= 120) break;
+        }
+
+        // Alias matches — show canonical tag with "(alias)" badge
+        const aliasResults = [];
+        const qAliasExact = aliases[q];
+        if (qAliasExact && byName.has(qAliasExact)) {
+            aliasResults.push({ kind: 'alias', from: q, tag: byName.get(qAliasExact) });
+        }
+        // Also substring match on aliases (cheap — ~23K entries)
+        let aliasCount = 0;
+        for (const [aliasKey, canonical] of Object.entries(aliases)) {
+            if (aliasCount >= 10) break;
+            if (aliasKey === q) continue; // already added above
+            if (aliasKey.toLowerCase().includes(q) && byName.has(canonical)) {
+                aliasResults.push({ kind: 'alias', from: aliasKey, tag: byName.get(canonical) });
+                aliasCount++;
+            }
+        }
+
+        const combined = [...exact, ...aliasResults, ...prefix, ...substring];
+
+        // Dedup by canonical tag name, keeping first occurrence (preserves priority)
+        const seen = new Set();
+        const out = [];
+        for (const r of combined) {
+            if (seen.has(r.tag.name)) continue;
+            seen.add(r.tag.name);
+            out.push(r);
+            if (out.length >= 30) break;
+        }
+        return out;
+    },
+
+    _renderDropdown(results, query) {
+        const dd = document.getElementById('metadata-tag-dropdown');
+        if (!dd) return;
+        this._tagDropdownResults = results;
+        if (!results.length) {
+            const q = (query || '').trim();
+            if (q) {
+                dd.innerHTML = `<div class="metadata-tag-result-empty">No matches &mdash; Press Enter to add "<span>${this._escape(q)}</span>" anyway</div>`;
+                dd.hidden = false;
+            } else {
+                dd.hidden = true;
+                dd.innerHTML = '';
+            }
+            return;
+        }
+        const rows = results.map((r, i) => {
+            const t = r.tag;
+            const active = i === this._tagDropdownIndex ? ' metadata-tag-result-active' : '';
+            const aliasBadge = r.kind === 'alias'
+                ? `<span class="metadata-tag-result-alias">alias of &ldquo;${this._escape(r.from)}&rdquo;</span>` : '';
+            const desc = t.desc ? `<div class="metadata-tag-result-desc">${this._escape(this._truncate(t.desc, 110))}</div>` : '';
+            return `
+                <div class="metadata-tag-result${active}" data-tag-result-index="${i}">
+                    <div class="metadata-tag-result-row">
+                        <span class="metadata-tag-result-name">${this._escape(t.name)}</span>
+                        <span class="metadata-tag-result-cat metadata-tag-cat-${this._escape(t.category)}">${this._escape(t.category)}</span>
+                        ${aliasBadge}
+                    </div>
+                    ${desc}
+                </div>
+            `;
+        }).join('');
+        dd.innerHTML = rows;
+        dd.hidden = false;
+    },
+
+    _closeDropdown() {
+        const dd = document.getElementById('metadata-tag-dropdown');
+        if (dd) {
+            dd.hidden = true;
+            dd.innerHTML = '';
+        }
+        this._tagDropdownOpenFor = null;
+        this._tagDropdownResults = [];
+        this._tagDropdownIndex = 0;
+    },
+
+    async _openDropdownFor(platform, query) {
+        this._tagDropdownOpenFor = platform;
+        this._tagDropdownIndex = 0;
+        if (!this._tagDb) {
+            // Show loading state while fetching
+            const dd = document.getElementById('metadata-tag-dropdown');
+            if (dd) {
+                dd.innerHTML = `<div class="metadata-tag-result-empty">Loading tag database...</div>`;
+                dd.hidden = false;
+            }
+            try {
+                await this._loadTagDb();
+            } catch (err) {
+                if (dd) dd.innerHTML = `<div class="metadata-tag-result-empty">Failed to load tags: ${this._escape(err.message || err)}</div>`;
+                return;
+            }
+            // User may have moved on — check still focused
+            if (this._tagDropdownOpenFor !== platform) return;
+        }
+        const results = this._filterTagResults(query);
+        this._renderDropdown(results, query);
+    },
+
+    _addTagToPlatform(platform, rawName) {
+        const name = (rawName || '').trim();
+        if (!name) return;
+        const tags = this.metadata.tags[platform] || [];
+        // Case-insensitive dedup
+        if (tags.some(t => t.toLowerCase() === name.toLowerCase())) return;
+
+        // If this matches an alias, add the canonical tag instead
+        let final = name;
+        if (this._tagDb) {
+            const alias = this._tagDb.aliases[name.toLowerCase()];
+            if (alias && this._tagDb.byName.has(alias)) {
+                // Re-dedup against canonical
+                if (tags.some(t => t.toLowerCase() === alias.toLowerCase())) return;
+                final = alias;
+            }
+        }
+
+        tags.push(final);
+        this.metadata.tags[platform] = tags;
+        this._clearStatus();
+        this._rerenderTagTabBody();
+        // Re-focus + reopen dropdown cleared
+        requestAnimationFrame(() => {
+            const input = document.getElementById('metadata-tag-input');
+            if (input) input.focus();
+        });
+    },
+
+    _removeTagFromPlatform(platform, index) {
+        const tags = this.metadata.tags[platform] || [];
+        if (index < 0 || index >= tags.length) return;
+        tags.splice(index, 1);
+        this.metadata.tags[platform] = tags;
+        this._clearStatus();
+        this._rerenderTagTabBody();
+    },
+
+    _bindTagTabBodyEvents() {
+        // Remove-pill buttons
+        document.querySelectorAll('[data-tag-remove]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const platform = btn.getAttribute('data-tag-remove');
+                const idx = parseInt(btn.getAttribute('data-index'), 10);
+                if (!Number.isNaN(idx)) this._removeTagFromPlatform(platform, idx);
+            });
+        });
+
+        const input = document.getElementById('metadata-tag-input');
+        if (!input) return;
+        const platform = input.getAttribute('data-tag-platform-input');
+
+        input.addEventListener('focus', () => {
+            this._openDropdownFor(platform, input.value);
+        });
+
+        input.addEventListener('input', () => {
+            this._openDropdownFor(platform, input.value);
+        });
+
+        input.addEventListener('keydown', (e) => {
+            const results = this._tagDropdownResults;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (!results.length) return;
+                this._tagDropdownIndex = Math.min(results.length - 1, this._tagDropdownIndex + 1);
+                this._renderDropdown(results, input.value);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (!results.length) return;
+                this._tagDropdownIndex = Math.max(0, this._tagDropdownIndex - 1);
+                this._renderDropdown(results, input.value);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const picked = results[this._tagDropdownIndex];
+                if (picked) {
+                    this._addTagToPlatform(platform, picked.tag.name);
+                } else if (input.value.trim()) {
+                    // No matches — add raw (allows arbitrary tags)
+                    this._addTagToPlatform(platform, input.value);
+                }
+                // _rerenderTagTabBody replaces the input; nothing else to clear
+            } else if (e.key === 'Escape') {
+                this._closeDropdown();
+                input.blur();
+            } else if (e.key === 'Backspace' && input.value === '') {
+                // Remove last pill
+                const tags = this.metadata.tags[platform] || [];
+                if (tags.length) {
+                    tags.pop();
+                    this.metadata.tags[platform] = tags;
+                    this._clearStatus();
+                    this._rerenderTagTabBody();
+                }
+            }
+        });
+
+        input.addEventListener('blur', () => {
+            // Small delay so click-on-result registers before we close
+            setTimeout(() => this._closeDropdown(), 150);
+        });
+
+        const dd = document.getElementById('metadata-tag-dropdown');
+        if (dd) {
+            dd.addEventListener('mousedown', (e) => {
+                // Prevent blur from firing before click
+                e.preventDefault();
+            });
+            dd.addEventListener('click', (e) => {
+                const row = e.target.closest('[data-tag-result-index]');
+                if (!row) return;
+                const idx = parseInt(row.getAttribute('data-tag-result-index'), 10);
+                const picked = this._tagDropdownResults[idx];
+                if (picked) this._addTagToPlatform(platform, picked.tag.name);
+            });
+        }
+    },
+
+    _truncate(s, n) {
+        if (!s) return '';
+        return s.length > n ? (s.slice(0, n - 1) + '\u2026') : s;
     },
 
     // ---------------------------------------------------------------------
@@ -590,17 +980,19 @@ const MetaEditor = {
         });
         pillFields.forEach(f => this._bindPillRemoveButtons(f));
 
-        // Per-platform tag textareas — split on commas on change
-        document.querySelectorAll('[data-tag-platform]').forEach(ta => {
-            const platform = ta.getAttribute('data-tag-platform');
-            ta.addEventListener('input', () => {
-                const tags = ta.value.split(',')
-                    .map(t => t.trim())
-                    .filter(t => t.length > 0);
-                this.metadata.tags[platform] = tags;
-                this._clearStatus();
+        // Per-platform tag tabs (Phase 3a)
+        document.querySelectorAll('[data-tag-tab]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const p = btn.getAttribute('data-tag-tab');
+                if (p === this._activeTagPlatform) return;
+                this._activeTagPlatform = p;
+                this._closeDropdown();
+                this._updateTagTabs();
+                this._rerenderTagTabBody();
             });
         });
+        // Initial tag body bindings (pills + input for active tab)
+        this._bindTagTabBodyEvents();
 
         // Platform toggle checkboxes
         document.querySelectorAll('[data-platform-toggle]').forEach(cb => {

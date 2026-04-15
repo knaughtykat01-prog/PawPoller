@@ -5,6 +5,7 @@ multiple formats, and triggering format regeneration.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -759,3 +760,207 @@ async def slop_score(story_name: str, req: SlopRequest):
         "trigram_hits": dict(sorted(result.trigram_hits.items(), key=lambda x: -x[1])[:10]),
         "contrast_count": result.contrast_count,
     }
+
+
+# ---------------------------------------------------------------------------
+# Tag database (Phase 3a — autocomplete)
+# ---------------------------------------------------------------------------
+
+# Bundled e621-derived tag database. Shipped with the repo under
+# PawPoller/data/tag_database/ so it deploys with the code (see .gitignore +
+# .dockerignore allowlist exceptions).
+_TAG_DB_DIR = Path(__file__).resolve().parent.parent / "data" / "tag_database"
+
+# Files → category label exposed to the frontend.
+_TAG_DB_FILES = [
+    ("tag_database_physical.txt", "physical"),
+    ("tag_database_acts.txt", "acts"),
+    ("tag_database_kink.txt", "kink"),
+    ("tag_database_meta.txt", "meta"),
+    ("tag_database_image.txt", "image"),
+]
+
+_TAG_ALIASES_FILE = "tag_aliases.json"
+
+# In-process cache of the parsed + flattened tag DB. Populated on first
+# request, reused afterwards.  Keyed by version hash so if someone hot-swaps
+# files on disk the cache self-invalidates.
+_TAG_DB_CACHE: dict | None = None
+
+
+def _parse_tag_db_file(text: str, category: str) -> list[dict]:
+    """Parse a tag DB text file into a list of {name, category, section, desc}.
+
+    Format (roughly):
+
+        TAG DATABASE: ...
+        ========================================
+        ...header lines...
+
+        ================================================================================
+        SECTION NAME
+        ================================================================================
+        tag_name | description
+        other_tag | other description
+        ...
+
+        ================================================================================
+        NEXT SECTION
+        ================================================================================
+        ...
+
+    We skip the file preamble (before the first `===...===` fence pair),
+    track the active section via the text line sandwiched between `===`
+    fences, and emit one entry per `name | desc` line.
+    """
+    lines = text.splitlines()
+    entries: list[dict] = []
+    section = ""
+    i = 0
+    n = len(lines)
+    # Fence rows are runs of 40+ `=` characters.
+    fence_re = re.compile(r"^={40,}\s*$")
+
+    while i < n:
+        line = lines[i]
+        stripped = line.strip()
+
+        # Detect a fenced section header: fence / text / fence
+        if fence_re.match(stripped) and i + 2 < n and fence_re.match(lines[i + 2].strip()):
+            section = lines[i + 1].strip()
+            i += 3
+            continue
+
+        # Skip blank + comment lines
+        if not stripped or stripped.startswith("#"):
+            i += 1
+            continue
+
+        # Skip standalone fence lines (shouldn't happen after pairing above,
+        # but some files have a trailing `===` without a text row)
+        if fence_re.match(stripped):
+            i += 1
+            continue
+
+        # Skip the file-header preamble (lines without `|` encountered before
+        # we've set a section — e.g., "Total tags: 4354").
+        if "|" not in stripped:
+            i += 1
+            continue
+
+        # Parse `name | desc` rows
+        name, _, desc = stripped.partition("|")
+        name = name.strip()
+        desc = desc.strip()
+        if not name:
+            i += 1
+            continue
+
+        entries.append({
+            "name": name,
+            "category": category,
+            "section": section,
+            "desc": desc,
+        })
+        i += 1
+
+    return entries
+
+
+def _compute_tag_db_version() -> str | None:
+    """SHA256 over all tag DB file bytes.  Returns None if the directory is
+    missing (so the endpoint can surface a clean error)."""
+    if not _TAG_DB_DIR.is_dir():
+        return None
+    h = hashlib.sha256()
+    missing_any = True
+    for fname, _cat in _TAG_DB_FILES:
+        p = _TAG_DB_DIR / fname
+        if p.is_file():
+            missing_any = False
+            # Include filename so reordering/renaming perturbs the hash
+            h.update(fname.encode("utf-8"))
+            h.update(p.read_bytes())
+    aliases_path = _TAG_DB_DIR / _TAG_ALIASES_FILE
+    if aliases_path.is_file():
+        missing_any = False
+        h.update(_TAG_ALIASES_FILE.encode("utf-8"))
+        h.update(aliases_path.read_bytes())
+    if missing_any:
+        return None
+    return h.hexdigest()
+
+
+def _load_tag_db() -> dict:
+    """Parse + cache the full tag DB. Returned dict is the exact payload
+    shipped to the frontend."""
+    global _TAG_DB_CACHE
+
+    version = _compute_tag_db_version()
+    if _TAG_DB_CACHE is not None and _TAG_DB_CACHE.get("version") == version:
+        return _TAG_DB_CACHE
+
+    if version is None or not _TAG_DB_DIR.is_dir():
+        raise HTTPException(
+            status_code=500,
+            detail=f"Tag database not found at {_TAG_DB_DIR}",
+        )
+
+    tags: list[dict] = []
+    for fname, category in _TAG_DB_FILES:
+        p = _TAG_DB_DIR / fname
+        if not p.is_file():
+            logger.warning("Tag DB file missing: %s", p)
+            continue
+        try:
+            txt = p.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            txt = p.read_text(encoding="utf-8", errors="replace")
+        try:
+            parsed = _parse_tag_db_file(txt, category)
+            tags.extend(parsed)
+            logger.info("Tag DB: loaded %d tags from %s", len(parsed), fname)
+        except Exception as e:
+            logger.error("Tag DB: failed parsing %s: %s", fname, e)
+
+    aliases: dict = {}
+    aliases_path = _TAG_DB_DIR / _TAG_ALIASES_FILE
+    if aliases_path.is_file():
+        try:
+            aliases = json.loads(aliases_path.read_text(encoding="utf-8"))
+            if not isinstance(aliases, dict):
+                logger.warning("Tag DB: tag_aliases.json is not an object, ignoring")
+                aliases = {}
+        except Exception as e:
+            logger.error("Tag DB: failed reading tag_aliases.json: %s", e)
+
+    payload = {
+        "tags": tags,
+        "aliases": aliases,
+        "version": version,
+    }
+    _TAG_DB_CACHE = payload
+    logger.info(
+        "Tag DB: cached %d tags, %d aliases (version=%s)",
+        len(tags), len(aliases), version[:12] if version else "?",
+    )
+    return payload
+
+
+@editor_router.get("/tags")
+async def get_tag_database():
+    """Return the full bundled tag database + alias map for the autocomplete
+    frontend.
+
+    Response shape:
+        {
+          "tags":    [{"name": "raccoon", "category": "physical",
+                       "section": "SPECIES & BODY TYPE", "desc": "..."}, ...],
+          "aliases": {"boobs": "breasts", ...},
+          "version": "<sha256>"
+        }
+
+    Parsed once per process (keyed by version hash) and served from memory
+    afterwards.  FastAPI auto-gzips so ~2MB raw lands as ~400KB on the wire.
+    """
+    return _load_tag_db()

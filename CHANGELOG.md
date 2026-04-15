@@ -4,6 +4,38 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.8.0] - 2026-04-15
+
+### Added — Metadata Editor Phase 3a: Tag Autocomplete
+
+**Bundled tag database:**
+- `data/tag_database/` shipped with the repo (5 tag files + `tag_aliases.json`, ~2MB raw / ~400KB gzipped)
+- Sourced from `C:\Users\rhysc\claude\Tag_Database\`: physical, acts, kink, meta, image categories + 23K aliases
+- `.gitignore` + `.dockerignore` carve-outs so `data/` stays ignored but `data/tag_database/` ships
+- Loads + parses once per process (version-hashed cache); served from memory
+
+**Backend (`routes/editor_api.py`):**
+- `GET /api/editor/tags` — returns `{tags: [...], aliases: {...}, version: sha256}`
+- Section-aware parser for `name | description` tag files
+- SHA256 version hash over all files → cache self-invalidates if files change on disk
+
+**Frontend (`frontend/js/metadata_editor.js`):**
+- Per-platform tag section now renders a tab strip (Default / SoFurry / Wattpad / Inkbunny) with separate pill lists per platform
+- Lazy tag DB load on first autocomplete interaction (cached in `sessionStorage` by version hash, background refresh)
+- Autocomplete dropdown: exact → alias → prefix → substring match ranking, capped at 30 results
+- Alias matching: typing "boobs" surfaces `breasts` with alias badge; selection adds the canonical tag
+- Keyboard nav: ArrowUp/Down, Enter to add, Esc to close, Backspace-on-empty to remove last pill
+- Unknown-tag handling: "No matches — Press Enter to add anyway" with yellow-bordered pill flag
+- Tag count footer with per-platform limits (SoFurry 97, Wattpad 24, Inkbunny/Default ∞), turns red over limit
+
+**Frontend (`frontend/css/editor.css`):**
+- Tab strip + dropdown + pill styles matching dark theme tokens
+- Per-category chips with colour coding (physical/acts/kink/meta/image)
+
+**Cache busters:** `metadata_editor.js?v=3`, `editor.css?v=241`
+
+---
+
 ## [2.7.0] - 2026-04-13
 
 ### Added — WYSIWYG Editor, Semantic Anchors, Format Tools, Theme Persistence

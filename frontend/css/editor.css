@@ -898,3 +898,229 @@
     color: var(--text-muted);
     opacity: 0.7;
 }
+
+/* ===================================================================
+ * Per-platform tag autocomplete (Phase 3a)
+ * =================================================================== */
+
+.metadata-tag-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 10px;
+    padding-bottom: 0;
+}
+
+.metadata-tag-tab {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 6px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.metadata-tag-tab:hover {
+    color: var(--text-primary);
+}
+
+.metadata-tag-tab-active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.metadata-tag-tab-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.metadata-tag-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 4px;
+}
+
+.metadata-tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 4px 3px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font-size: 12px;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+.metadata-tag-pill-unknown {
+    border-color: var(--accent-warm);
+    background: color-mix(in srgb, var(--accent-warm) 12%, var(--bg-tertiary));
+}
+
+.metadata-tag-pill-text {
+    font-family: inherit;
+}
+
+.metadata-tag-pill-alias {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: 2px;
+}
+
+.metadata-tag-pill-remove {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0;
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    opacity: 0.6;
+    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.metadata-tag-pill-remove:hover {
+    opacity: 1;
+    background: var(--danger);
+    color: white;
+}
+
+.metadata-tag-input-wrap {
+    position: relative;
+}
+
+.metadata-tag-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.12s ease;
+}
+
+.metadata-tag-input:focus {
+    border-color: var(--accent);
+}
+
+.metadata-tag-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.metadata-tag-dropdown {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    z-index: 50;
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+
+.metadata-tag-result {
+    padding: 7px 10px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s ease;
+}
+
+.metadata-tag-result:last-child {
+    border-bottom: none;
+}
+
+.metadata-tag-result:hover,
+.metadata-tag-result-active {
+    background: var(--bg-hover);
+}
+
+.metadata-tag-result-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.metadata-tag-result-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.metadata-tag-result-cat {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.metadata-tag-cat-physical { background: #2a3a55; color: #a8c5ff; border-color: #3a5080; }
+.metadata-tag-cat-acts     { background: #4a2a40; color: #ffa8d5; border-color: #80405a; }
+.metadata-tag-cat-kink     { background: #4a3a1a; color: #f5c078; border-color: #805c28; }
+.metadata-tag-cat-meta     { background: #2a4a3a; color: #a5e5c0; border-color: #3a7058; }
+.metadata-tag-cat-image    { background: #3a3a4a; color: #c0c0d8; border-color: #555575; }
+
+.metadata-tag-result-alias {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.metadata-tag-result-desc {
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.35;
+}
+
+.metadata-tag-result-empty {
+    padding: 10px;
+    color: var(--text-muted);
+    font-size: 12px;
+    text-align: center;
+}
+
+.metadata-tag-result-empty span {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.metadata-tag-count {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.metadata-tag-count-sep {
+    margin: 0 6px;
+    opacity: 0.5;
+}
+
+.metadata-tag-count-over {
+    color: var(--danger);
+    font-weight: 600;
+}

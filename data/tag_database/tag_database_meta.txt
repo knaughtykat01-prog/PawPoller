@@ -1,0 +1,1503 @@
+TAG DATABASE: META, SETTING & CHARACTER
+========================================
+Total tags: 1434
+Categories: 12
+Last updated: 2026-02-26
+
+================================================================================
+SEX, GENDER & PAIRING
+================================================================================
+_transformation | Indicates a transformation into a specific gender.
+ambiguous_gender | Character's gender is undefined or unclear.
+andromorph | Male body with a vagina.
+bicurious | Character questioning or exploring outside their usual orientation
+bisexual | Character attracted to more than one gender
+bisexual_awakening | Character discovering bisexual attraction for the first time
+bottom | Receptive/penetrated sexual role
+couple | Established romantic pair as central characters
+cuntboy | Male-presenting character with vagina
+dickgirl | Female-presenting character with penis
+duo | Two characters
+female | Female-identified character
+female_character | Supporting or secondary female character
+female_protagonist | Female character as lead/POV
+femboy | Male character with feminine presentation
+ff | Female/female pairing
+fff | Three-female pairing
+fmf | Female/male/female threesome pairing
+foursome | Sexual encounter involving four participants
+fta_transformation, mtf_transformation, etc. | Explicit tag showing the transformation path (e.g., Female → Andromorph).
+futa | Abbreviation for futanari
+futanari | Female character with both penis and vagina
+gay | Male homosexual orientation or content
+gay_with_exceptions | Primarily gay character with rare opposite-sex attraction
+genderfluid | Character whose gender identity shifts
+group_sex_pairing | More than four participants
+gynomorph | Female body with a penis.
+herm | Female body with both a penis and vagina.
+heterosexual | Opposite-sex attraction or content
+homosexual | Same-sex attraction or content
+intersex | Character has both sets of genitals, form varies.
+male | Male-identified character
+male_harem | One male with multiple female partners
+male_protagonist | Male character as lead/POV
+maleherm | Male body with both a penis and vagina.
+mf | Male/female pairing
+mfm | Male/female/male threesome pairing
+mm | Male/male pairing
+mmf | Male/male/female threesome pairing
+mmm | Three-male pairing
+nonbinary | Character identifying outside the gender binary
+orgy_pairing | Multiple participants beyond threesome
+pillow_princess | Passive receiver who doesn't reciprocate
+polyamorous_group | Multiple partners in a polyamorous arrangement
+power_bottom | Receptive partner who controls the encounter
+quartet | Four characters
+quintet | Five characters
+reverse_harem | One female with multiple male partners
+service_top | Insertive partner who serves the bottom's desires
+shota, loli | Young boy/girl archetypes.
+size_queen | Character who prefers large partners or penetration
+solo | Single character (no partner)
+stone_butch | Masculine partner who gives but doesn't receive
+stone_top | Top who does not want to be touched sexually
+straight | Heterosexual orientation or content
+straight_curious | Primarily straight character curious about same-sex experience
+switch | Character who alternates between dominant and submissive roles
+threesome | Sexual encounter involving three participants
+tomboy | Female character with masculine presentation
+top | Insertive/penetrating sexual role
+trans_female | Male-to-female transgender character
+trans_male | Female-to-male transgender character
+transgender | Character whose gender differs from assigned sex
+trio | Three characters
+twins | Twin sibling characters
+vers | Versatile — comfortable in both top and bottom roles
+
+================================================================================
+CHARACTER ROLES & ARCHETYPES
+================================================================================
+adopted_daughter | A daughter who is adopted.
+adopted_son | A son who is adopted.
+adoptive_brother(s) | Adopted male sibling(s).
+adoptive_father | Adoptive male parent.
+adoptive_mother | Adoptive female parent.
+adoptive_sibling(s) | Adopted siblings, male or female.
+adoptive_sister(s) | Adopted female sibling(s).
+adventurer | Character on quests or journeys
+age_gap | Significant age difference between partners
+alpha_character | Dominant leader in pack/group hierarchy
+ancestor_and_descendant | Relation across generations.
+anthro_character | Anthropomorphic animal character
+apprentice | Character learning under a mentor
+aristocracy | Character of noble or upper-class standing
+assassin | Character who kills for hire or duty
+aunt | Female sibling of a parent.
+aunt_and_nephew | Aunt and nephew family relationship. May imply taboo dynamics depending on context.
+aunt_and_niece | Aunt and niece family relationship. May imply taboo dynamics depending on context.
+bad_parenting | Depicts neglectful or harmful parenthood.
+bard | Musical or storytelling character
+bartender | Character who serves drinks at a bar
+best_friends | Characters who are close platonic friends
+beta_character | Middle-rank in pack/group hierarchy
+blacksmith | Character who forges metal items
+blue_collar_workers | Characters in manual labor or trade occupations
+body_swap | Characters swap bodies.
+bodyguard | Character tasked with protecting another
+boutique_owner | Character who owns a specialty shop
+brother | Male sibling.
+chief_and_subordinate | Professional hierarchy: one character reports to another.
+clone | A character and their genetic or magical duplicate. Often paired with selfcest if sexual content is involved.
+clothed/nude | One character fully dressed while the other is naked, creating a power or vulnerability contrast. Common in dominance and humiliation scenarios.
+clothing_swap | Characters swap outfits.
+concubine | Secondary sexual partner in a formal arrangement
+courtesan | High-class sex worker or companion
+cousins | Relatives sharing a common ancestor.
+crossover | Characters from different series meet.
+daughter | Female child.
+dominant/submissive | Power exchange dynamic.
+engaged | Character who is betrothed to someone
+familiar | Magical animal companion bound to a master
+family | General family theme.
+father | Male parent.
+father_and_daughter | Father and daughter family relationship. May imply taboo dynamics depending on context.
+father_and_son | Father and son relationship.
+feral_character | Non-anthropomorphic animal character
+girlfriend | Female romantic partner (often of a cheating character)
+gladiator | Arena fighter character
+good_parenting | Depicts affectionate or attentive parenting.
+granddaughter | Female grandchild.
+grandfather | Male grandparent.
+grandmother | Female grandparent.
+grandparent_and_grandchild | Relationship across two generations.
+grandson | Male grandchild.
+guard | Character in a protective or security role
+healer | Character with healing abilities or medical role
+human_character | Fully human character in a furry setting
+husband_and_husband | Gay married couple.
+husband_and_wife | Hetero married couple.
+incest | Explicit familial sexual content.
+knight | Armored warrior or chivalrous protector
+lone_wolf | Character who operates alone by choice
+mage | Gender-neutral magic user character
+married | Marital relationship tag.
+master | Character in position of authority or ownership
+master/slave | One character owns or commands another.
+mentor | Experienced character guiding a less experienced one
+merchant | Character who trades goods
+mother | Female parent.
+mother_and_daughter | Mother and daughter relationship.
+mother_and_son | Mother and son relationship.
+mount/rider_relations | One character rides the other.
+neighbor | Characters living nearby.
+nephew | Male child of a sibling.
+niece | Female child of a sibling.
+noble | Character of aristocratic or high social standing
+omega_character | Submissive/lowest-rank in pack/group hierarchy
+pack_leader | Leader of an animal or social pack
+parent_and_child | Parent with their child.
+partners | Characters in an established romantic partnership
+pet | Domesticated animal or character in pet role
+photographer | Character whose profession is photography
+pirate | Seafaring outlaw character
+predator/prey | Ecological relationship.
+priest | Religious or spiritual authority character
+priestess | Female religious or spiritual authority
+professor | Academic instructor character
+roommate | Characters sharing a living space.
+royalty | Character of royal bloodline or status
+selfcest | A character engaging sexually with themselves or clone.
+servant | Character in service to another
+shapeshifter | Character able to change physical form
+siblings | Characters who are brothers or sisters
+sister | Female sibling.
+son | Male child.
+square_crossover | Different versions of same character meet.
+stray | Homeless or unowned animal character
+student | Character enrolled in education
+sugar_baby | Younger partner receiving support from wealthier partner
+sugar_daddy | Older wealthy partner providing for younger partner
+sugar_mama | Older wealthy female partner providing for younger partner
+tailor | Character whose profession is tailoring/clothing
+teacher | Character in an educational instructor role
+teacher_and_student | Educational relationship.
+thief | Character who steals as profession or necessity
+trophy_husband | Attractive male spouse valued primarily for appearance
+trophy_wife | Attractive spouse valued primarily for appearance
+twincest | Incest between twins.
+twinning | A character becomes a look-alike of another.
+uncle | Male sibling of a parent.
+uncle_and_nephew | Uncle and nephew family relationship. May imply taboo dynamics depending on context.
+uncle_and_niece | Uncle and niece family relationship. May imply taboo dynamics depending on context.
+wife_and_wife | Lesbian married couple.
+witch | Female magic user character
+wizard | Male magic user character
+
+================================================================================
+BODY FLUIDS
+================================================================================
+amniotic_fluid | Fluid around fetus inside amniotic sac
+anal_juice | Lubricant or secretion from anus
+blood | Presence of blood (injury, menstruation, etc.)
+breast_milk | Milk from lactating breasts
+cum_dripping | Ejaculate dripping from body or orifice
+cum_in_mouth | Ejaculate inside the mouth
+cum_on_tongue | Ejaculate visibly on the tongue
+ectoplasm | Ghostly or spectral fluid
+excess_saliva | Excessive drool from arousal or oral activity
+excessive_drool | Large amounts of drool during oral or arousal
+excessive_precum | Large amounts of pre-ejaculatory fluid
+feces | Bodily waste from rectum
+heat_slick | Lubricant produced during heat/estrus
+ichor | Supernatural or divine blood
+ink | Defensive ink from cephalopod
+mating_fluid | Specialized reproductive fluid
+messy_cum | Ejaculate spread messily across surfaces or body
+milk | Mammary secretion
+mixed_fluids | Multiple body fluids mingled together
+natural_lubrication | Self-produced genital lubrication
+nectar | Sweet fluid (insect or plant creature)
+nose_bleed | Blood from nose (often from arousal in anime style)
+pheromone_cloud | Visible cloud of pheromones
+pussy_juice | Vaginal lubrication or ejaculation
+rut_musk | Pungent scent produced during rut
+saliva | Spit or drool from mouth
+sap | Sticky fluid (plant creature)
+slick | Natural lubricant produced during arousal (omegaverse term)
+slime_fluid | Viscous fluid from slime creatures
+soaked | Extremely wet from arousal or fluids
+squirt | Female ejaculation during orgasm
+squirting | Act of female ejaculation
+sweat | Perspiration on body
+tears | Crying or emotional discharge
+urine | Piss; liquid excretion from urethra
+venom | Poisonous or toxic fluid from fangs or stinger
+wet | Visibly aroused and lubricated
+
+================================================================================
+SOUNDS & PHYSICAL REACTIONS
+================================================================================
+afterglow | Warm, satisfied state following orgasm
+aftershock | Residual orgasmic waves after climax
+arousal | State of sexual excitement
+babbling | Incoherent stream of words from overwhelm
+back_arching | Arching the back from intense sensation
+begging | Pleading verbally during sex
+bellowing | Deep, loud vocalisation (typically bovine)
+bite_marking | Leaving visible bite marks as a claiming act
+biting | Using teeth on partner's body during sex
+blacking_out | Brief loss of consciousness from intensity
+blushing | Face reddening from arousal or embarrassment
+body_shudder | Full body shudder of pleasure
+boneless | Going completely limp after intense orgasm
+chain_orgasm | One orgasm triggering another immediately
+chittering | Rapid clicking or chattering sounds
+clenching | Involuntary muscle tightening during arousal
+clinging | Grabbing and holding tightly to partner during climax
+collapsing | Going limp and falling after intense orgasm
+coming_untouched | Orgasm without direct genital contact
+convulsing | Full-body contractions during intense orgasm
+cooing | Soft, gentle sounds of contentment
+cross_eyed | Eyes crossing from overwhelming sensation
+crying | Tears during emotional or intense sexual experience
+cuddling_after | Physical closeness and comfort after sex
+desperation | Urgent, frantic need during sexual situation
+dirty_talk | Explicit verbal communication during sex
+drooling | Involuntary saliva flow from arousal or stimulation
+ear_flicking | Involuntary ear movement from arousal or attention
+exhaustion | Physical depletion from intense sexual activity
+eye_rolling | Eyes rolling back from overwhelming pleasure
+falling_asleep_after | Drifting off together post-sex
+flirting | Playful romantic/sexual communication
+flushing | Skin reddening from arousal or exertion
+full_body_orgasm | Orgasm felt through the entire body
+gasping | Sharp intake of breath from surprise or pleasure
+going_nonverbal | Losing ability to speak from intensity
+goosebumps | Skin prickling from arousal or sensation
+grooming_partner | Licking or cleaning a partner's fur as intimacy
+grunting | Low, rough vocalisations during exertion
+hackles_raised | Fur standing on end from arousal or aggression
+incoherent | Unable to form words from overwhelming pleasure
+keening | Sustained high-pitched cry of pleasure or need
+knees_buckling | Knees failing from overwhelming sensation
+laughing_during_sex | Genuine laughter from joy or ticklishness
+leg_shaking | Involuntary leg tremors during or after orgasm
+legs_giving_out | Legs going weak from intense pleasure
+lip_biting | Biting own lip from arousal
+marking_during_orgasm | Biting or scratching partner at the point of climax
+mewling | Soft, high-pitched whimpering sounds
+mind_going_blank | Losing all thought from intensity
+moaning | Vocal expression of pleasure
+name_moaning | Moaning a partner's name during sex
+overstimulation_tears | Crying from too much stimulation
+panting | Heavy breathing from exertion or arousal
+pillow_talk | Intimate conversation after sex
+pleasure_crying | Tears from overwhelming pleasure
+post_coital_bliss | Peaceful contentment after sex
+puddle | Collapsing into a satisfied heap post-orgasm
+pulsing | Rhythmic contracting during orgasm
+rolling_orgasm | Sustained, wave-like orgasm
+screaming | Loud vocalisation from intense pleasure or pain
+seeing_stars | Overwhelmed senses during intense pleasure
+shaking | Whole-body tremors from intense arousal or orgasm
+sighing | Long exhale of pleasure or satisfaction
+snarling | Aggressive vocalisation baring teeth
+sobbing | Intense crying during emotional sexual experience
+sobbing_orgasm | Crying from intensity during climax
+squirming | Writhing or wriggling from stimulation
+stuttering | Broken speech from intense stimulation
+swearing | Cursing from intensity of sensation
+sympathetic_orgasm | Orgasm triggered by partner's climax
+tail_wagging | Involuntary tail movement from excitement or happiness
+toe_curling | Curling toes from intense pleasure
+trembling | Involuntary shaking from arousal or intensity
+twitching | Involuntary muscle spasms from stimulation
+vocal | Notably loud or expressive during sex
+whimpering | Soft, breathy sounds of pleasure or submission
+whining | High-pitched pleading vocalisation
+yelping | Sharp cry of surprise or stimulation
+
+================================================================================
+FACIAL EXPRESSIONS
+================================================================================
+ahegao | Orgasmic face: eyes rolled up, tongue out.
+bedroom_eyes | Seductive, half-lidded look.
+blank_stare | Empty, emotionless look.
+closed_frown | Frown with lips together.
+closed_smile | Smile with lips together.
+constricted_pupils | Pupils narrowed; shock, drugs, or intensity.
+cross-eyed | Eyes turned inward.
+derp_eyes | Silly or confused eye expression.
+dilated_pupils | Enlarged pupils; often arousal or fear.
+evil_grin | Malicious or wicked grin.
+eye_glint | Light sparkle or shine in the eyes.
+eye_roll | Eyes turned upward in reaction.
+eyes_closed | Eyes shut.
+frown | Sad or discontent expression.
+fucked_silly | Expression of post-orgasm daze.
+furrowed_brow | Eyebrows drawn together, expressing worry or focus.
+glare | Angry or intense stare.
+grin | Wide smile showing teeth.
+half-closed_eyes | Relaxed or sleepy gaze.
+licking_lips | Suggestive or hungry look.
+looking_pleasured | Character appears sensually satisfied.
+mouth_closed | Neutral mouth.
+narrowed_eyes | Squinting or suspicious gaze.
+one_eye_closed | Winking or in pain.
+open_frown | Frown with open mouth.
+open_mouth | Mouth agape; surprise or pleasure.
+open_smile | Smile with open mouth.
+orgasm_face | Intense expression of orgasm.
+petted_silly | Blissed-out from touch or affection.
+pouting | Pushed-out lips in displeasure.
+raised_eyebrow(s) | Indicates surprise, skepticism, or sass.
+scowl | Angry frown.
+smile | Simple expression of happiness.
+smirk | Confident or cocky half-smile.
+sneer | Contemptuous or mocking smile.
+spiral_eyes | Dizzy, hypnotized, or confused.
+squint | Partially closed eyes.
+tongue_out | Tongue sticking out.
+torogao | Dominance-lust mix; heavy drool, rolled eyes.
+wavy_mouth | Uneven lip line, often anxiety or nervousness.
+wide_eyed | Eyes wide open.
+wince | Expression of pain or discomfort.
+wink | One eye closed, often playfully.
+x_eyes | Crosses for eyes; often represents unconsciousness or death.
+
+================================================================================
+EMOTIONAL THEMES & DYNAMICS
+================================================================================
+abo | Alpha/Beta/Omega dynamic (abbreviation)
+acceptance | Coming to terms with desires or identity
+addiction | Compulsive need for sexual encounters or partner
+affair | Sexual relationship outside a committed partnership
+alpha | Dominant leader role in pack or ABO dynamics
+alpha_command | Voice of authority that compels obedience
+alpha_pair | Dominant mated pair leading a pack
+alpha_rut | Alpha experiencing rut cycle (omegaverse)
+arranged_marriage | Partnership arranged by others, not chosen
+battle_couple | Partners who fight together and love together
+beta | Middle-rank role in pack or ABO dynamics
+betrayal | Violation of trust within a relationship
+bittersweet | Mixed emotions — pleasure tinged with sadness or loss
+bonded | Mystically or emotionally linked partners
+breaking_point | Moment where restraint finally snaps
+breeding_bond | Emotional connection formed through mating
+catalyst | Character who triggers change in others' relationships
+catharsis | Emotional release through sexual experience
+character_development | Significant growth or change in characters over story
+character_driven | Story prioritizing character psychology over plot
+chase | Pursuit of one character by another with sexual intent
+cheating | Sexual activity that violates a relationship commitment
+childhood_friends | Long-standing friendship, often turning romantic
+claiming | Declaring sexual or romantic ownership of a partner
+claiming_ceremony | Ritual of formally claiming a mate
+codependency | Unhealthy mutual emotional reliance
+comfort_scenting | Using scent to calm or reassure a partner
+coming_to_terms | Process of accepting difficult truths about oneself
+communication_focused | Story emphasizing verbal negotiation between partners
+courting | Formal pursuit or wooing before mating
+cross_species_romance | Romance between different species
+deflowering | Taking someone's virginity
+den_building | Creating a shared den or nest space
+dependency | Emotional or sexual reliance on a partner
+desire | Intense wanting or sexual longing
+devotion | Deep, committed emotional attachment
+domestic | Home life, everyday comfort between partners
+emotional | Story with significant emotional weight and depth
+emotional_abuse | Psychological manipulation within a relationship
+emotional_manipulation | Using emotions to control another person
+emotional_resolution | Achieving emotional closure or peace
+enemies_to_lovers | Characters progressing from antagonism to romance
+estrus | Hormonal reproductive cycle causing intense sexual drive
+ex_partners | Former romantic partners interacting
+falling_in_love | Process of developing romantic love
+fated_mates | Partners destined to be together by fate
+feral | Animalistic behavior overriding civilized restraint
+first_time | Character's first sexual experience
+first_time_anal | Character's first experience with anal sex
+first_time_mm | Character's first male/male sexual experience
+forbidden | Sexual activity that breaks social rules or taboos
+forbidden_love | Romance that violates social norms or expectations
+forbidden_mate | Mate from a rival pack, forbidden species, etc.
+forgiveness | Granting pardon for sexual or romantic transgression
+found_family | Chosen family bonds among non-related characters
+found_mate | Discovering one's destined mate
+friends_with_benefits | Sexual relationship without romantic commitment
+gay_awakening | First realization of same-sex attraction
+giving_in | Finally surrendering to desire after resistance
+grief_sex | Sex as a response to loss or mourning
+guilt | Feeling of wrongdoing after or during sexual activity
+harem | One character with multiple romantic or sexual partners
+healing | Recovery from trauma through relationship
+heat | Biological estrus cycle driving uncontrollable sexual need
+hookup | Casual sexual encounter without commitment
+hopeful_ending | Story concluding with optimism despite difficulties
+hunt | Active pursuit of sexual target with predatory intent
+identity_exploration | Examining one's sexual or personal identity
+infidelity | Sexual unfaithfulness within a relationship
+instinct | Primal biological drive overriding rational thought
+interspecies | Sexual or romantic content between different species
+intimacy | Deep emotional and physical closeness between partners
+jealous_rage | Violent jealousy over a partner
+jealousy | Possessive emotional response to perceived romantic threat
+labels_discussion | Characters discussing sexual identity labels
+loneliness | Emotional isolation that drives connection-seeking
+longing | Persistent aching desire for someone
+loss_of_control | Discipline or restraint breaking down under pressure
+love_at_first_scent | Instant attraction from a partner's scent (furry-specific)
+love_at_first_sight | Instant romantic connection upon meeting
+love_confession | Declaring romantic feelings to another
+love_triangle | Three-person romantic conflict or competition
+loyalty | Faithful commitment to a partner or relationship
+lust | Intense physical sexual desire
+marking | Leaving physical evidence of sexual claiming on partner
+mate_claim | Declaring someone as your mate
+mate_mark | Physical mark showing someone is mated
+mated | State of being in a mating bond with a partner
+mates | Furry-specific term for bonded romantic/sexual partners
+mating | Sex framed as biological reproductive pairing
+mating_season | Period when species-wide mating drive intensifies
+moral_complexity | Ethical ambiguity in character actions or motivations
+mutual_pining | Both characters longing for each other without acting
+nesting | Building a safe comfortable space, often pre-birth/bonding
+no_judgement | Accepting attitude toward others' sexual choices
+no_strings_attached | Sexual encounter with no expectations of commitment
+obsession | Consuming fixation on a sexual partner or act
+omega | Submissive/lowest rank in pack or ABO dynamics
+omega_drop | Emotional/physical crash in an omega
+omega_in_heat | Omega experiencing heat cycle (omegaverse)
+omegaverse | Alpha/Beta/Omega social and biological dynamic
+one_night_stand | Single sexual encounter with no follow-up expected
+open_mindedness | Willingness to explore unfamiliar sexual territory
+open_relationship | Partnership allowing outside sexual or romantic connections
+orchestration | Deliberately arranging sexual encounters between others
+pack_dynamics | Social hierarchy within a pack (wolves, canines)
+pack_hierarchy | Social ranking system within a group
+pair_bonding | Forming an exclusive emotional/biological bond
+passion | Intense emotional and physical desire
+personal_growth | Character becoming more self-aware through experience
+polyamory | Romantic relationships involving more than two partners
+possessive_growl | Growling at others who approach one's mate
+post_breakup | Story set after the end of a relationship
+power_couple | Two strong individuals in a dominant relationship
+praise_addiction | Craving verbal validation and approval
+predator_prey_romance | Romance between natural predator and prey species
+predatory | Behavior characterized by hunting or targeting prey
+presenting_to_alpha | Omega offering themselves to an alpha
+primal | Driven by deep biological urges rather than reason
+protection | Guarding or defending a sexual partner
+protective_instinct | Overwhelming urge to protect a mate
+psychological | Story exploring mental and emotional dimensions
+reconciliation | Repairing a damaged relationship
+rejected_mate | Partner who has been rejected by their fated mate
+relationship_issues | Problems within an established partnership
+reluctance | Initial resistance to sexual activity that gives way
+reunion | Coming back together after separation
+rivals | Competitive relationship between characters
+romance | Emotional love story alongside sexual content
+rut | Male biological mating drive (counterpart to heat)
+ruthless | Pursuing sexual goals without mercy or restraint
+scent_bond | Bond formed through exchanging scents
+scent_marking | Using personal scent to claim a partner or territory
+secret_affair | Hidden sexual relationship
+secret_relationship | Hidden romantic or sexual partnership
+seductive | Deliberately alluring and enticing manner
+self_discovery | Learning about one's own desires and identity
+sensual | Emphasizing sensory pleasure and slow eroticism
+separation_anxiety | Distress from being apart from a bonded partner
+sex_positive | Affirming attitude toward diverse sexual expression
+sexuality_questioning | Actively examining one's sexual orientation
+shame | Negative self-judgment about sexual desires or actions
+size_difference_romance | Romance between partners of very different sizes
+slow_burn | Gradually building sexual or romantic tension
+slow_seduction | Gradual, patient seduction over time
+soul_bond | Supernatural connection of souls between partners
+soulmates | Fated or destined romantic partners
+stagnant_relationship | Partnership that has lost passion or growth
+stockholm_syndrome | Developing attachment to a captor or manipulator
+straight_to_gay | Heterosexual character having homosexual experience
+strangers_to_lovers | Characters progressing from unknown to intimate
+telepathic_bond | Mental link between bonded partners
+tension | Unresolved sexual or emotional pressure between characters
+territorial_marking | Scent-marking territory around a mate
+territory | Marking or defending claimed sexual space/partner
+touch_starved | Desperate for physical contact and affection
+toxic_relationship | Harmful or destructive romantic dynamic
+trophy | Treating a sexual conquest as a prize or achievement
+trust | Confidence in a partner's intentions and care
+unfaithful | Committing sexual acts outside a committed relationship
+unrequited_love | One-sided romantic feelings not returned
+virgin | Character who has not had sexual intercourse
+virginity | State of sexual inexperience
+vulnerability | Emotional or physical openness and exposure
+
+================================================================================
+SETTINGS & UNIVERSE
+================================================================================
+afterlife | Setting in a post-death realm
+airplane | Aircraft cabin setting
+airport | Terminal facility for aircraft travel.
+alberta | Canadian province setting
+alien_planet | Extraterrestrial world
+alley | Narrow passage between buildings.
+alternate_universe | Story set in a different version of reality
+amusement_park | Entertainment park with rides and games.
+ancient_china | Historical Chinese setting
+aquarium | Transparent tank or building for aquatic life.
+arena | Combat or performance arena setting
+attic | Upper room or loft.
+aviary | Large flight cage for birds.
+back_alley | Secluded urban passage
+back_room | Private room behind a shop or venue
+backroom | Private area in a bar or club
+backstage | Behind a performance stage
+backyard | Outdoor area behind a house.
+badlands | Eroded prairie landscape (Drumheller region)
+ballroom | Large, elegant room meant for dancing or formal events.
+bamboo | Bamboo forest or grove setting
+bar | Drinking establishment setting
+barn | Rural barn setting.
+basement | Lower-level room in a building.
+bathhouse | Communal bathing area, often traditional or spa-like.
+bathroom | Generic bathroom setting.
+bathtub | A tub used for soaking or bathing.
+beach | Sandy coastal setting.
+beach_shower | Outdoor shower near beaches.
+bedroom | Bedroom scene.
+birdhouse | Miniature house for birds.
+birthday_party | Party event themed around a birthday.
+black_sky | Sky shaded black—often dramatic or apocalyptic.
+blue_sky | Clear, serene sky.
+boiler_room | Industrial/utility room with boilers.
+bondage_theme_park | Fantasy amusement park focused on bondage/erotica.
+boutique | Small specialty retail shop setting
+break_room | Room for resting at work.
+brothel | Establishment for commercial sex work
+brown_sky | Unusual or polluted atmospheric tone.
+burrow | Underground animal dwelling
+bus | Public transportation vehicle.
+cabin | Small rustic dwelling setting
+cafe | Smaller, more casual restaurant.
+cafeteria | Self-service meal location.
+campfire | Outdoor fire gathering spot
+canada | Canadian national setting
+candy_shop | Store selling sweets.
+canyon | Deep narrow valley
+carnival | Traveling entertainment event setting
+casino | Gambling and entertainment venue.
+castle | Medieval-style or royal stone fortress.
+catacomb | Underground tunnel system with burials
+cathedral | Large, ornate Christian church.
+cave | Underground natural chamber setting
+cemetery | Burial ground setting
+china | Chinese national setting
+church | Christian religious building.
+city | Urban environment with buildings, roads, and people.
+cityscape | Artistic or visual representation of a city.
+classroom | School classroom setting
+clearing | Open space within a forest or grove
+cliff | Steep rock face
+clock_tower | Tower with a large timepiece.
+closet | Small enclosed storage space
+clothing_store | Store selling garments.
+cloudscape | Detailed cloud-heavy sky.
+club | Nightclub or social club setting
+coffee_shop | Casual café setting.
+college | Higher education institution.
+colosseum | Large amphitheater, often Roman-style.
+communal_shower | Shared shower area, typically in gyms or dorms.
+contemporary | Modern-day real-world setting
+control_room | Hub room with tech panels, usually for operations/surveillance.
+coral_reef | Underwater coral formation
+cottage | Small cozy rural dwelling
+courtroom | Legal setting where judgments are passed.
+crypt | Underground burial chamber
+crystal_cave | Cave with crystal formations
+cyberpunk | High-tech low-life futuristic setting
+dark_forest | Ominous, foreboding woods
+dark_room | Dim or red-lit room, often photographic or thematic.
+deep_sea | Very deep ocean setting
+den | Animal dwelling or cozy private space
+desert | Arid desert landscape setting
+desolate | Empty, barren outdoor scene.
+dimensional_rift | Tear between realities
+diner | Retro-style eating place.
+dining_room | Eating or mealtime setting.
+dog_park | Park designed for dogs.
+doghouse | Small shelter for dogs.
+dragon_lair | Dragon's dwelling
+dream_world | Setting within a dream
+dreamworks | DreamWorks Animation intellectual property
+dressing_room | Room for changing clothes
+drumheller | Town in Alberta, Canada
+dumpster | Behind commercial buildings, gritty urban setting
+dungeon | Underground or prison-like room.
+eagle_nest | High-altitude bird dwelling
+eiffel_tower | Iconic French iron lattice tower.
+elder_scrolls | The Elder Scrolls video game universe
+elevator | Enclosed vertical transport
+elsweyr | Khajiit homeland in Elder Scrolls universe
+enchanted_forest | Magical woodland setting
+examination_room | Checkup or diagnostic medical room.
+fantasy | Fictional world with fantastical elements
+farm | Agricultural setting.
+festival | Large celebratory gathering or event
+fish_bowl | Small, round aquarium.
+fish_pond | Decorative or stocked pond.
+fish_tank | Glass box for fishkeeping.
+fitting_room | Changing room in a clothing store.
+forest | Wooded natural setting
+forge | Metalworking workshop
+fort_mcmurray | City in Alberta, Canada
+fox_den | Fox's burrow home
+futuristic | Advanced future time period setting
+garage | Vehicle storage or workshop area.
+garden | Cultivated floral or plant-filled area.
+garden_of_eden | Mythical paradise, often lush and sexualized.
+glacier | Massive ice formation
+gladiator_arena | Combat arena for gladiatorial fights
+graveyard | Cemetery; spooky or somber outdoor space.
+green_room | Actor waiting room.
+green_sky | Unnatural or alien sky hue.
+greenhouse | Glass structure for cultivating plants.
+grey_sky | Clouded or dreary sky.
+grocery_store | Food and household item market.
+gym | Exercise facility.
+harem_quarters | Living space for harem members
+haunted_house | Supernatural or spooky residential setting.
+heaven | Celestial realm setting
+hell | Infernal realm setting
+herpetarium | Vivarium for reptiles and amphibians.
+high_school | Secondary academic institution.
+highway | Road/travel setting
+hill | Raised area of land.
+hive | Insect colony dwelling
+hospital | Medical facility setting
+hospital_room | Generic medical room.
+hot_spring | Natural heated pool setting
+hotel | Lodging or travel accommodation.
+hotel_room | Room inside a hotel.
+house | Residential building.
+inside | Generic indoor setting when the specific room or building isn't specified. Use more specific tags like bedroom, kitchen, or office when the location is identifiable.
+interrogation_room | Scene involving questioning/suspense.
+island | Landmass surrounded by water.
+jacuzzi | Hot tub or whirlpool bath
+janitor_closet | Utility or cleaning supply storage.
+jungle | Dense tropical forest.
+junkyard | Outdoor lot of discarded or salvaged items.
+kiddie_pool | Shallow pool for children.
+kitchen | Cooking area.
+koi_pond | Pond with ornamental koi fish.
+kung_fu | Chinese martial arts tradition
+kung_fu_panda | DreamWorks Kung Fu Panda franchise
+laboratory | Science or experiment room.
+lake | A lake or lakeside setting.
+lakeside | Near the edge of a lake.
+landscape | General terrain or land scenery.
+laundromat | Public space with coin-operated laundry machines.
+laundry_room | Where clothes are washed.
+lava_pool | Pool of molten lava.
+lava_waterfall | Flowing stream of molten lava.
+library | Room or building with books.
+lighthouse | Coastal tower with beacon.
+living_room | Main domestic lounging space.
+locker_room | Gym or sports changing area.
+loft_apartment | Upper-floor open-plan living space
+magic_academy | School for magical learning
+mall | Shopping complex with multiple stores.
+mansion | Large luxurious estate
+market | Open-air marketplace setting
+market_stall | Small vendor booth in a market.
+marketplace | Broader term for market zones.
+mars | Extraterrestrial setting based on the red planet.
+meadow | Open grassy field
+medieval | Middle Ages time period setting
+messy_room | Untidy or cluttered indoor environment.
+mine | Underground excavation
+modern | Contemporary real-world setting
+monument | Memorial or commemorative structure.
+motel | Roadside accommodation setting
+mountain | Elevated natural formations.
+movie_theater | Cinema space for watching films.
+multicolored_sky | Sky with various hues.
+nature | Broad tag for unspoiled outdoor scenery where the wilderness itself is a key element. Use when the natural environment is prominent rather than just backdrop.
+nest | Bird or creature dwelling
+night_sky | Sky during nighttime.
+nightclub | Social venue with loud music, dancing, and dim lighting.
+nightlife | Evening entertainment scene setting
+oasis | Fertile spot in a desert
+observation_tower | Tower built for scenic viewing.
+ocean | Open sea or underwater setting
+office | Professional workspace setting
+oil_sands | Alberta oil extraction industry setting
+onsen | Japanese hot spring bathing facility
+operating_room | Surgery room.
+orange_sky | Warm, dusky atmospheric color.
+orchard | Fruit tree plantation
+outside | Generic outdoor setting when the specific terrain or location isn't specified. Use more specific tags like forest, beach, or park when identifiable.
+overcast | Sky completely covered in clouds.
+padded_room | Room with cushioned walls, usually for containment.
+pagoda | Multi-tiered East Asian temple structure.
+palace | Royal or grand building setting
+pantry | Food storage room
+park | Recreational outdoor space.
+parking_lot | Paved outdoor space for vehicles.
+party | Generic celebration gathering.
+penthouse | Luxury apartment on a building's top floor.
+pet_shop | Store selling pets and supplies.
+petting_zoo | Hands-on animal exhibit, usually for children.
+pier | Platform extending over water.
+pink_sky | Dreamlike or romantic setting.
+pirate_ship | Seafaring outlaw vessel
+playground | Children's recreational area.
+pond | Small still body of water.
+pool | Swimming pool setting
+pool_party | Social gathering by a pool.
+poolside | Area surrounding a pool.
+post_apocalyptic | Setting after civilization's collapse
+prairie | Flat grassland landscape setting
+prison | Detention or incarceration area.
+prison_cell | Locked room within a prison.
+private_room | Secluded space within a public venue
+public | A place accessible to the public.
+public_aquarium | Building open to public with aquatic animals.
+public_pool | Pool open to public use.
+public_restroom | Public toilet or washroom.
+public_shower | Any non-private shower used by multiple people.
+purgatory | Liminal space between life and death
+purple_sky | Often used for fantastical or moody scenes.
+pyramid | Large triangular monument or tomb.
+radio_station | Broadcasting location.
+rave | Intense, usually night-long dance party with lights/music.
+red_sky | Danger or apocalyptic overtones.
+restaurant | Dining establishment.
+restroom_stall | Inside a bathroom stall.
+river | Flowing water body setting
+roof | Uppermost flat surface of a building.
+rooftop | Scene taking place on top of a building.
+royal_bedchamber | Monarch's private bedroom
+ruins | Crumbled structures or ancient buildings.
+saloon | Western-style bar.
+sand_dune | Mounded sand area, often desert.
+sauna | Steam room or heated bathing space
+savanna | Tropical grassland
+school | Educational institution setting
+sea | Ocean or deep sea setting.
+seabed | Bottom floor of the ocean or sea.
+seascape | Artistic depiction of the sea.
+seaside | Near the ocean or beach.
+senchal | Coastal city in Elsweyr (Elder Scrolls)
+server_room | Computer server storage room.
+sewer | Underground drainage system
+sex_dungeon | Room designed for BDSM/sexual restraint.
+sex_shop | Adult toy and product retail space.
+shed | Small utility or storage building.
+ship | Water-faring vessel.
+shipwreck | Sunken or damaged ship scene.
+shore | Edge of a body of water.
+shower | A space or setup for bathing via overhead water.
+shower_room | Communal or gym-style shower.
+shower_stall | Small, private area for one person to shower.
+skate_park | Outdoor space for skateboarding and ramps.
+sky | General term for the atmosphere above.
+skyrim | The Elder Scrolls V: Skyrim setting
+skyscraper | Very tall modern urban building.
+slave_market | Marketplace for slaves, fictional/fantasy.
+slumber_party | Overnight group event, often casual and youthful.
+small_town | Rural or small community setting
+snowscape | Snow-covered outdoor setting.
+space | Outer space setting.
+space_needle | Futuristic Seattle landmark tower.
+space_station | Orbital habitat or facility
+spacecraft | Space-faring vessel.
+spacescape | Stylized depiction of outer space.
+spaceship | Spacecraft or space station setting
+spirit_realm | Supernatural plane of existence
+stable | Horse or livestock building.
+stadium | Large venue for sports or events.
+stage | Performance platform
+starry_sky | Visible stars filling the sky.
+starscape | Star-filled view of space.
+steampunk | Victorian-era technology aesthetic setting
+storage_room | General storage space.
+store | Retail space.
+street | Road or paved path in a populated place.
+strip_club_setting | Venue for erotic dancing and performance
+studio | Art, music, or media work space.
+submarine | Underwater vessel
+supermarket | Large self-service food and goods store.
+swamp | Wetland/marshland setting
+swimming_pool | Water-filled recreational basin.
+tavern | Inn or drinking establishment (fantasy setting)
+tea_party | Intimate, often dainty gathering around tea.
+temple | Religious/fantasy spiritual site.
+tent | Temporary fabric shelter setting
+tentacle_room | Fantastical room filled with tentacles—BDSM/erotic in tone.
+terrarium | Glass container for plants or small land animals.
+the_white_house | The U.S. presidential residence.
+throne_room | Royal chamber or fantasy throne setting.
+tokyo_tower | Red and white tower in Tokyo.
+tower | Tall structure, often freestanding.
+train | Railway carriage setting
+tree_house | Structure built among tree branches.
+treehouse | Elevated dwelling in trees
+tundra | Frozen treeless landscape
+two_tone_sky | Sky shaded in two primary colors.
+underground | Below-ground setting (tunnels, sewers, etc.)
+underwater | Scene takes place beneath the water.
+university | Higher education and research institution.
+urban | City environment setting
+valley | Lowland between hills or mountains.
+victorian | Victorian era time period setting
+village | Small rural settlement setting
+vineyard | Grape-growing estate
+vivarium | Enclosure for keeping animals/plants in controlled conditions.
+volcano | Volcanic mountain or crater
+waiting_room | Pre-appointment area.
+war_camp | Military encampment setting
+war_tent | Commander's tent in a military camp
+warehouse | Large industrial storage area.
+warren | Rabbit burrow system
+water_park | Park with water slides and pools.
+water_tower | Tower storing elevated water.
+waterfall | Water descending vertically in nature.
+waterscape | Visual or scenic representation of water.
+white_sky | Foggy or high-noon glow.
+wine_cellar | Underground wine storage
+wizard_tower | Magical practitioner's tower
+wolf_den | Wolf pack's home
+workshop | Workspace for crafting or building.
+worldbuilding | Story featuring detailed fictional world construction
+yellow_sky | Warm, pastel, or post-storm ambiance.
+zoological_gardens | Full-sized zoo.
+
+================================================================================
+STORY FORMAT & META
+================================================================================
+adult | Content intended for mature audiences only
+adventure | Action and exploration driven narrative
+angst | Emotional pain, turmoil, and suffering
+AU | Alternate universe — same characters, different setting/rules
+comfort | Soothing, reassuring, nurturing content
+coming_of_age | Character maturing through formative experiences
+cozy | Warm, safe, comfortable atmosphere
+crack_fic | Absurd, intentionally ridiculous content
+dark | Story with bleak, harsh, or morally challenging tone
+dark_comedy | Humor mixed with dark or taboo themes
+dominant_pov | Scene viewed from dom's eyes
+drabble | Very short fiction (typically 100 words)
+enemies_to_lovers_trope | Narrative trope tag for enemies becoming romantic
+epistolary | Story told through letters, messages, or documents
+erotic | Containing sexually arousing content
+erotica | Literature focused on sexual arousal and desire
+explicit | Graphic depiction of sexual activity
+fan_fiction | Story set in an existing intellectual property universe
+first_person | Narrative told from "I" perspective
+fluff | Light, warm, comforting content
+friends_to_lovers | Narrative trope of friendship becoming romance
+gritty | Raw, realistic, harsh atmosphere
+happy_ending | Story concluding with a positive resolution
+hardcore | Extremely graphic or intense sexual content
+heist | Elaborate theft or con as plot driver
+horror | Frightening, unsettling, or terrifying content
+hurt_comfort | Pain or injury followed by consolation and care
+lighthearted | Fun, carefree, playful tone
+long_story | Extended narrative (15000+ words)
+melancholy | Quiet, reflective sadness pervading the story
+multi_chapter | Story divided into multiple chapters
+multiple_pov | Story told from several characters' perspectives
+mystery | Investigation and puzzle-driven narrative
+nonlinear | Story told out of chronological order
+nostalgic | Wistful longing for the past
+novella | Mid-length narrative (15000-50000 words)
+open_ending | Deliberately unresolved or ambiguous conclusion
+parody | Humorous imitation of a genre or work
+prequel | Story set before events of another story
+pwp | Plot? What plot? — purely sexual content with minimal story
+redemption_arc | Character overcoming past wrongs
+revenge | Story driven by retribution or payback
+road_trip | Story structured around a journey by vehicle
+satire | Mocking or ironic commentary through fiction
+sci_fi | Science fiction genre elements
+second_person | Narrative told from 'you' perspective
+sequel | Continuation of a previous story
+series | Part of a connected series of stories
+short_story | Brief narrative (under 15000 words)
+slice_of_life | Everyday experiences and mundane moments
+slowburn | Alternative spelling/tag for slow_burn
+steampunk_genre | Victorian-era speculative fiction genre
+submissive_pov | Scene viewed from sub’s perspective
+surreal | Strange, dreamlike, otherworldly tone
+survival | Story focused on enduring against threats
+suspense | Tension-driven, anxiety-building narrative
+third_person | Narrative told from "he/she/they" perspective
+third_person_speech | Characters referring to themselves in third person
+thriller | Fast-paced, high-stakes tension narrative
+tragic | Sorrowful narrative centered on loss or failure
+tragic_ending | Story concluding with loss or failure
+unreliable_narrator | Narrator whose account cannot be fully trusted
+vignette | Short evocative scene or snapshot
+war | Armed conflict as setting or theme
+wholesome | Pure, heartwarming content
+
+================================================================================
+ACCESSORIES & OBJECTS
+================================================================================
+alcohol | Alcoholic beverages present in the scene
+altar | Ritual or sacrificial platform
+amulet | Magical protective jewelry
+ankle_bracelet | Jewelry worn around the ankle
+apron | Front-covering garment (cooking or costume)
+armor | Protective combat gear
+axe | Chopping or combat weapon
+bandages | Wrapped cloth for wounds or aesthetic
+bandana | Folded cloth headband or face cover
+bathrobe | Loose robe worn after bathing
+beer | Beer as a social element
+bell | Small bell worn as accessory (often on collar)
+belly_chain | Chain worn around the waist/hips
+beret | Soft round cap
+bikini | Two-piece women's swimwear
+blindfold_accessory | Fabric covering the eyes
+body_chain | Chain jewelry draped across the body
+bodysuit | Full-body fitted garment
+book | Book present in the scene
+boots | Tall sturdy footwear
+bow | Ranged weapon with arrows
+bowler_hat | Rounded formal hat
+boxers | Loose-fitting male underwear
+bra | Breast support undergarment
+bracelet | Wrist jewelry
+briefs | Fitted male underwear
+cage | Enclosure for holding captives
+camera | Camera for photography or recording
+candles | Candles for atmosphere or wax play
+cape | Flowing shoulder garment
+cauldron | Large cooking or brewing vessel
+chain_leash | Metal chain leash
+chains | Metal chains as accessory or restraint
+champagne | Champagne or sparkling wine
+chocolate | Chocolate as a treat or sensual element
+choker | Tight-fitting necklace (distinct from collar)
+cigar | Smoking a cigar
+cigarette | Smoking a cigarette
+clit_jewelry | Decorative jewelry on the clitoris
+cloak | Full-body outer covering
+cocktail | Mixed alcoholic drink
+coffee | Coffee as a social element
+collar_tag | ID tag on a collar
+condom | Barrier contraceptive used during sex
+corset | Structured torso garment cinching the waist
+cosplay | Dressing as a character from media
+crop_jacket | Short jacket ending above waist
+crop_top | Short top exposing midriff
+crossbow | Mechanical ranged weapon
+crossdressing | Wearing clothing traditionally associated with another gender
+crown | Royal or decorative headpiece
+crystal_ball | Divination tool
+dagger | Short bladed weapon
+diary | Personal journal or diary
+dog_tag | Military-style identification tag
+dreamcatcher | Spiritual protective object
+dress | One-piece garment hanging from shoulders
+drinks | Beverages as social element in the scene
+earring | Ear jewelry
+eyebrow_piercing_jewelry | Jewelry in an eyebrow piercing
+fedora | Brimmed felt hat
+fishnet | Net-pattern legwear or clothing
+flower_crown | Crown made of woven flowers
+flowers | Floral gift or decoration
+fox_mask | Kitsune-style decorative mask
+garter_belt | Belt with clips to hold up stockings
+gas_mask | Breathing filter mask
+genital_jewelry | Decorative jewelry on genitalia
+glasses | Corrective or decorative eyewear
+gloves | Hand coverings
+grimoire | Book of magical spells
+gun | Firearm weapon
+hair_clip | Clip holding hair in place
+hair_ribbon | Ribbon tied in the hair
+hat | Head covering
+headband | Band worn around the head
+helix_piercing | Piercing on the ear's outer rim
+high_heels | Elevated heel footwear
+honey | Honey as food or sensual body element
+hoodie | Hooded sweatshirt
+hookah | Water pipe for smoking
+ice_cream | Ice cream as treat or sensual element
+incense | Burning incense for atmosphere
+industrial_piercing | Bar through upper ear cartilage
+jacket | Outerwear garment
+jockstrap | Athletic/sexual male undergarment
+joint | Smoking cannabis
+key | Key as symbol or plot element
+kilt | Scottish-style pleated skirt garment
+labret | Stud below the lower lip
+latex_clothing | Tight-fitting latex/rubber garments
+leash_accessory | Lead for attachment to a collar
+leather_leash | Leather-style leash
+leotard | One-piece fitted bodysuit
+letter | Written letter or note
+lip_ring | Ring through the lip
+locket | Small hinged pendant holding a photo
+loincloth | Minimal lower-body covering
+mace | Blunt striking weapon
+maid_outfit | Maid costume, often sexualized
+map | Map as adventure or plot element
+mask | Face covering (decorative, protective, or concealing)
+masquerade_mask | Ornate party mask
+military_uniform | Armed forces dress or combat uniform
+mirror | Reflective surface in the scene
+monocle | Single-lens eyepiece
+music_box | Small mechanical music player
+necklace | Decorative neck chain or pendant
+net | Mesh device used to capture or restrain characters. Common in hunting, gladiator, or bondage scenarios.
+nipple_chain | Chain connecting nipple piercings or clamps
+nurse_outfit | Nurse costume, often sexualized
+overalls | Bib-and-brace work garment
+panties | Women's underwear
+phone | Mobile phone present in scene
+pipe | Smoking a pipe
+plague_mask | Bird-beaked doctor mask
+pocket_watch | Portable timepiece
+police_uniform | Law enforcement uniform
+potion_bottle | Container for magical liquids
+purity_ring | Ring symbolizing sexual abstinence pledge
+ring | Finger ring (decorative or symbolic)
+robes | Flowing garments worn by characters
+rope_leash | Rope-style leash
+roses | Rose flowers as romantic symbol
+rubber | Tight-fitting rubber or latex material worn as fetish gear. Emphasises texture, shine, and restriction of the material.
+scarf | Neck wrap garment
+school_uniform | Educational institution uniform
+scroll | Rolled document or spell scroll
+septum_ring | Ring through the nasal septum
+shield | Defensive equipment
+skirt | Lower-body garment hanging from waist
+sleep_mask | Eye covering for sleeping
+spear | Polearm weapon
+staff | Magical or walking staff
+stockings | Thigh-length fitted legwear
+strawberries | Strawberries as a romantic/sensual element
+suit | Formal business attire
+sunglasses | Tinted protective eyewear
+swimsuit | One-piece swimming garment
+swimwear | Swimming attire (general)
+sword | Bladed weapon
+talisman | Lucky or magical charm
+tank_top | Sleeveless casual top
+tarot_cards | Fortune-telling cards
+tea | Tea as a social element
+thigh_highs | Stockings reaching the thigh
+thong | Minimal-coverage underwear
+throne | Royal or grand chair
+tiara | Small decorative crown
+toe_ring | Ring worn on the toe
+toga | Classical draped garment
+top_hat | Tall formal hat
+towel | Cloth wrap (often post-bath)
+tragus_piercing | Piercing on the small ear flap
+trap | Hidden mechanism designed to ensnare or restrain characters. Includes pit traps, snares, magical traps, and ambush setups.
+uniform | General tag for standardised institutional clothing. Use specific tags like military_uniform or police_uniform when the type is identifiable.
+vape | Using a vaporiser/e-cigarette
+wand | Magical wand
+whipped_cream | Whipped cream for food or body play
+whiskey | Specific spirit consumed by characters
+wine | Wine as a social or romantic element
+wreath | Circular arrangement of foliage
+
+================================================================================
+WEATHER & ATMOSPHERE
+================================================================================
+aurora | Northern/Southern lights display
+backlighting | Light source behind the subjects
+blizzard | Heavy snowstorm with wind
+blue_hour | Cool light just after sunset
+bright_lighting | Well-lit, vivid lighting
+candlelight | Scene lit by candles
+cold_snap | Sudden cold weather
+dappled_light | Light filtered through leaves or lattice
+dawn | Scene at first light of day
+daytime | Scene during daylight hours
+dim_lighting | Low, subdued lighting
+drizzle | Light, gentle rain
+dry_heat | Hot and arid conditions
+dusk | Scene as daylight fades
+early_morning | Scene in the first hours of the day
+firelight | Scene lit by a fire
+fog | Low-lying mist obscuring visibility
+frost | Ice crystals on surfaces
+full_moon | Full moon visible in the scene
+gale | Strong, powerful wind
+golden_hour | Warm light just before sunset
+hail | Falling ice during the scene
+harsh_lighting | Strong, unflattering light
+heatwave | Extreme hot weather
+heavy_rain | Intense, pouring rain
+humid | Hot and moisture-laden air
+hurricane | Extreme storm conditions
+ice | Frozen water surfaces or conditions
+lamplight | Scene lit by a lamp
+late_night | Scene in the late hours before dawn
+lightning | Lightning flashes during the scene
+midnight | Scene at midnight
+mist | Light atmospheric moisture
+moonlight | Scene lit by the moon
+neon_light | Scene lit by neon signs or lights
+night | Scene taking place at night
+partly_cloudy | Mix of sun and clouds
+rain | Rainfall during the scene
+rainbow | Rainbow visible in the scene
+shadow_play | Dramatic use of shadows
+silhouette | Figures visible only as dark outlines
+snow | Snowfall during the scene
+soft_lighting | Gentle, diffused light
+starlight | Scene lit by stars
+storm | Thunderstorm with lightning and heavy rain
+sunrise | Scene during sunrise
+sunset | Scene during sunset
+sunshine | Bright sunlight during the scene
+thunder | Sound of thunder during the scene
+torchlight | Scene lit by torches
+tornado | Violent rotating wind column
+twilight | Scene during twilight/dusk
+wind | Noticeable wind during the scene
+witching_hour | Scene at 3am, the supernatural hour
+
+================================================================================
+SEASONAL & HOLIDAY
+================================================================================
+anniversary | Relationship anniversary celebration
+autumn | Autumn/fall season setting
+ball | Formal dance event with elegant attire and social intrigue. Implies grandeur, waltzing, and high-society atmosphere.
+birthday_celebration | Birthday party or celebration
+blood_moon | Red-tinted lunar eclipse
+bonfire | Large outdoor fire gathering
+breeding_season | Period when breeding drive intensifies
+ceremony | Formal ritual or official event marking a significant occasion. Use specific tags like wedding, coronation, or claiming_ceremony when the type is known.
+christmas | Christmas holiday setting or theme
+concert | Musical performance event
+coronation | Crowning of a monarch
+easter | Easter holiday setting
+eclipse | Solar or lunar eclipse event
+equinox | Spring or autumn equinox event
+fall | Fall/autumn season setting
+festival_event | Cultural festival or celebration
+full_moon_event | Event occurring during a full moon
+funeral | Death memorial event
+halloween | Halloween holiday setting or theme
+harvest_festival | Agricultural celebration
+hibernation | Winter dormancy period
+masquerade | Masked ball or party
+mating_season_event | During a species' mating season
+migration | Seasonal movement of species
+new_years | New Year's Eve/Day celebration
+prom | School formal dance
+ritual | Ceremonial or magical ritual
+solstice | Summer or winter solstice event
+spring | Spring season setting
+summer | Summer season setting
+thanksgiving | Thanksgiving holiday setting
+tournament | Combat competition event
+valentines_day | Valentine's Day romantic theme
+wedding | Marriage ceremony event
+winter | Winter season setting
+
+================================================================================
+MAGIC & SUPERNATURAL
+================================================================================
+air_magic | Magic controlling wind and air
+aphrodisiac_potion | Potion enhancing sexual arousal
+aura | Visible energy field around a character
+blessing | Beneficial magical gift
+blood_magic | Magic powered by blood
+curse | Harmful magical affliction
+dark_magic | Forbidden or evil magical practices
+divination | Magic for seeing the future or hidden things
+earth_magic | Magic controlling earth and stone
+elemental_magic | Magic controlling natural elements
+empathy_power | Ability to sense or share emotions
+enchanted_chains | Chains with magical binding properties
+enchanted_collar | Collar with magical effects
+enchantment | Magical enhancement or alteration
+familiar_bond | Bond between magic user and animal companion
+fertility_potion | Potion enhancing reproductive ability
+fire_magic | Magic controlling fire
+flight_magic | Magical ability to fly
+growth_potion | Potion causing size increase
+healing_magic | Magic that repairs injury or illness
+hex | Minor harmful spell
+ice_magic | Magic controlling ice and cold
+illusion | Magic creating false sensory experiences
+immortality | Cannot die of natural causes
+intangibility | Ability to pass through solid matter
+invisibility | Magical concealment from sight
+ley_line | Natural channel of magical energy
+lightning_magic | Magic controlling electricity
+love_potion | Potion inducing attraction or love
+lust_potion | Potion inducing sexual desire
+magic | Magical abilities or elements present
+magical_bond | Supernatural connection between characters
+magical_restraint | Bonds that suppress magic or movement
+magical_tattoo | Tattoo with magical properties
+mana | Magical energy resource
+necromancy | Magic involving death and undead
+pocket_dimension | Small personal extradimensional space
+potion | Magical concoction or elixir
+power_nullification | Ability to suppress another's powers
+profane_ground | Desecrated or corrupted location
+regeneration | Magical rapid healing
+rune_magic | Magic using inscribed runes
+sacred_ground | Location with spiritual significance
+sex_magic | Magic powered by or involving sexual energy
+shapeshifting_magic | Magic enabling form changes
+shrinking_potion | Potion causing size decrease
+soul_magic | Magic affecting or powered by souls
+spellcasting | Active use of magic spells
+spirit_animal | Spiritual animal guide or representation
+strength_potion | Potion enhancing physical power
+summoning | Calling forth creatures or entities
+super_strength | Magically enhanced physical power
+telekinesis | Moving objects with the mind
+telepathy | Ability to read or transmit thoughts
+time_stop | Magical freezing of time
+totem | Sacred spiritual object or symbol
+transformation_potion | Potion causing physical changes
+ward | Protective magical barrier
+water_magic | Magic controlling water
+
+
+================================================================================
+E621 IMPORT - 2026-04-15
+================================================================================
+# Tags imported from e621 dump on 2026-04-15
+# These are appended for review; re-sort into appropriate sections later
+
+comic | Content structure
+story | Content structure
+
+
+================================================================================
+E621 IMPORT v2 - 2026-04-15
+================================================================================
+# Permissive import: dropped artist/character/modeler/meta categories
+# These need re-sorting into appropriate sections
+
+2_panel_comic | imported from e621 (e621 cat 0)
+3_panel_comic | imported from e621 (e621 cat 0)
+4_panel_comic | imported from e621 (e621 cat 0)
+5_panel_comic | imported from e621 (e621 cat 0)
+6_panel_comic | imported from e621 (e621 cat 0)
+adastra_(series) | imported from e621 (e621 cat 3)
+aika_(series) | imported from e621 (e621 cat 3)
+aikatsu!_(series) | imported from e621 (e621 cat 3)
+american_mythology | imported from e621 (e621 cat 3)
+amphibia_(series) | imported from e621 (e621 cat 3)
+angstrom | imported from e621 (e621 cat 8)
+animal_ear_fluff | imported from e621 (e621 cat 0)
+animated_comic | imported from e621 (e621 cat 14)
+aquarion_(series) | imported from e621 (e621 cat 3)
+archie_comics | imported from e621 (e621 cat 3)
+art_nouveau | imported from e621 (e621 cat 0)
+arthur_(series) | imported from e621 (e621 cat 3)
+asian_mythology | imported from e621 (e621 cat 3)
+atelier_(series) | imported from e621 (e621 cat 3)
+au_ra | imported from e621 (e621 cat 0)
+avengers_(series) | imported from e621 (e621 cat 3)
+balto_(series) | imported from e621 (e621 cat 3)
+bandeau | imported from e621 (e621 cat 0)
+batman_(series) | imported from e621 (e621 cat 3)
+bayonetta_(series) | imported from e621 (e621 cat 3)
+black_bandeau | imported from e621 (e621 cat 0)
+blue_inner_ear_fluff | imported from e621 (e621 cat 0)
+bluey_(series) | imported from e621 (e621 cat 3)
+brown_dust_(series) | imported from e621 (e621 cat 3)
+bucky_o'hare_(series) | imported from e621 (e621 cat 3)
+call_of_duty:_modern_warfare_2 | imported from e621 (e621 cat 3)
+castlevania_(series) | imported from e621 (e621 cat 3)
+cave_story | imported from e621 (e621 cat 3)
+chinese_mythology | imported from e621 (e621 cat 3)
+cinderella_series | imported from e621 (e621 cat 3)
+comedy_central | imported from e621 (e621 cat 3)
+comic_cover | imported from e621 (e621 cat 0)
+comic_panel | imported from e621 (e621 cat 0)
+comic_sans | imported from e621 (e621 cat 0)
+crash_bandicoot_(series) | imported from e621 (e621 cat 3)
+crash_team_racing_(series) | imported from e621 (e621 cat 3)
+crisis_core:_final_fantasy_vii | imported from e621 (e621 cat 3)
+crossover_cosplay | imported from e621 (e621 cat 0)
+cyberpunk_(series) | imported from e621 (e621 cat 3)
+danganronpa_(series) | imported from e621 (e621 cat 3)
+dark_souls_(series) | imported from e621 (e621 cat 3)
+dc_comics | imported from e621 (e621 cat 3)
+deadpool_(series) | imported from e621 (e621 cat 3)
+devil_may_cry_(series) | imported from e621 (e621 cat 3)
+dissidia_final_fantasy | imported from e621 (e621 cat 3)
+donkey_kong_(series) | imported from e621 (e621 cat 3)
+doom_(series) | imported from e621 (e621 cat 3)
+dota_(series) | imported from e621 (e621 cat 3)
+doukyuusei_(series) | imported from e621 (e621 cat 3)
+dream_c_club_(series) | imported from e621 (e621 cat 3)
+earthbound_(series) | imported from e621 (e621 cat 3)
+east_asian_mythology | imported from e621 (e621 cat 3)
+echo_(series) | imported from e621 (e621 cat 3)
+egyptian_mythology | imported from e621 (e621 cat 3)
+eureka_seven_(series) | imported from e621 (e621 cat 3)
+european_mythology | imported from e621 (e621 cat 3)
+fear_&_hunger_(series) | imported from e621 (e621 cat 3)
+final_fantasy | imported from e621 (e621 cat 3)
+final_fantasy_iv | imported from e621 (e621 cat 3)
+final_fantasy_ix | imported from e621 (e621 cat 3)
+final_fantasy_tactics | imported from e621 (e621 cat 3)
+final_fantasy_v | imported from e621 (e621 cat 3)
+final_fantasy_vi | imported from e621 (e621 cat 3)
+final_fantasy_vii | imported from e621 (e621 cat 3)
+final_fantasy_vii:_ever_crisis | imported from e621 (e621 cat 3)
+final_fantasy_vii_rebirth | imported from e621 (e621 cat 3)
+final_fantasy_vii_remake | imported from e621 (e621 cat 3)
+final_fantasy_viii | imported from e621 (e621 cat 3)
+final_fantasy_x | imported from e621 (e621 cat 3)
+final_fantasy_xi | imported from e621 (e621 cat 3)
+final_fantasy_xii | imported from e621 (e621 cat 3)
+final_fantasy_xiii | imported from e621 (e621 cat 3)
+final_fantasy_xiv | imported from e621 (e621 cat 3)
+final_fantasy_xv | imported from e621 (e621 cat 3)
+final_fantasy_xvi | imported from e621 (e621 cat 3)
+fluff-kevlar | imported from e621 (e621 cat 8)
+fluffy_clothes | imported from e621 (e621 cat 0)
+fluffy_ears | imported from e621 (e621 cat 0)
+fluffy_hair | imported from e621 (e621 cat 0)
+fluffy_pony | imported from e621 (e621 cat 3)
+full_page_comic | imported from e621 (e621 cat 0)
+garfield_(series) | imported from e621 (e621 cat 3)
+general-irrelevant | imported from e621 (e621 cat 8)
+godzilla_(series) | imported from e621 (e621 cat 3)
+granblue_fantasy | imported from e621 (e621 cat 3)
+greek_mythology | imported from e621 (e621 cat 3)
+grey_inner_ear_fluff | imported from e621 (e621 cat 0)
+grisaia_(series) | imported from e621 (e621 cat 3)
+hades_(series) | imported from e621 (e621 cat 3)
+halo_(series) | imported from e621 (e621 cat 3)
+hamtaro_(series) | imported from e621 (e621 cat 3)
+harry_potter_(series) | imported from e621 (e621 cat 3)
+hello_kitty_(series) | imported from e621 (e621 cat 3)
+historical_name_connection | imported from e621 (e621 cat 0)
+honkai_(series) | imported from e621 (e621 cat 3)
+ice_age_(series) | imported from e621 (e621 cat 3)
+in-franchise_crossover | imported from e621 (e621 cat 0)
+inazuma_eleven_(series) | imported from e621 (e621 cat 3)
+indigenous_north_american_mythology | imported from e621 (e621 cat 3)
+inner_ear_fluff | imported from e621 (e621 cat 0)
+japanese_mythology | imported from e621 (e621 cat 3)
+jewish_mythology | imported from e621 (e621 cat 3)
+kirby_(series) | imported from e621 (e621 cat 3)
+klonoa_(series) | imported from e621 (e621 cat 3)
+kuro_no_kiseki_(series) | imported from e621 (e621 cat 3)
+madagascar_(series) | imported from e621 (e621 cat 3)
+mana_(series) | imported from e621 (e621 cat 3)
+maplestory | imported from e621 (e621 cat 3)
+mario_(series) | imported from e621 (e621 cat 3)
+mario_and_luigi_(series) | imported from e621 (e621 cat 3)
+mazinger_(series) | imported from e621 (e621 cat 3)
+mega_man_(series) | imported from e621 (e621 cat 3)
+mega_man_battle_network_(series) | imported from e621 (e621 cat 3)
+mega_man_legends_(series) | imported from e621 (e621 cat 3)
+mega_man_star_force_(series) | imported from e621 (e621 cat 3)
+mega_man_x_(series) | imported from e621 (e621 cat 3)
+mega_man_zero_(series) | imported from e621 (e621 cat 3)
+metal_gear_(series) | imported from e621 (e621 cat 3)
+middle_eastern_mythology | imported from e621 (e621 cat 3)
+million_arthur_(series) | imported from e621 (e621 cat 3)
+monogatari_(series) | imported from e621 (e621 cat 3)
+monster_hunter_(series) | imported from e621 (e621 cat 3)
+mother_(series) | imported from e621 (e621 cat 3)
+multiple_crossover | imported from e621 (e621 cat 0)
+my_melody_(series) | imported from e621 (e621 cat 3)
+mythological_bird | imported from e621 (e621 cat 5)
+mythological_firebird | imported from e621 (e621 cat 5)
+mythological_sphinx | imported from e621 (e621 cat 5)
+naruto_(series) | imported from e621 (e621 cat 3)
+neptune_(series) | imported from e621 (e621 cat 3)
+nier_(series) | imported from e621 (e621 cat 3)
+nikki_(series) | imported from e621 (e621 cat 3)
+north_american_mythology | imported from e621 (e621 cat 3)
+orange_inner_ear_fluff | imported from e621 (e621 cat 0)
+ori_(series) | imported from e621 (e621 cat 3)
+original | imported from e621 (e621 cat 3)
+osomatsu_(series) | imported from e621 (e621 cat 3)
+overlord_(series) | imported from e621 (e621 cat 3)
+peanuts_(comic) | imported from e621 (e621 cat 3)
+persona_(series) | imported from e621 (e621 cat 3)
+pikmin_(series) | imported from e621 (e621 cat 3)
+pokemon_the_series:_black_&_white | imported from e621 (e621 cat 3)
+pokemon_the_series:_diamond_and_pearl | imported from e621 (e621 cat 3)
+pokemon_the_series:_ruby_and_sapphire | imported from e621 (e621 cat 3)
+pokemon_the_series:_sun_&_moon | imported from e621 (e621 cat 3)
+pokemon_the_series:_xy | imported from e621 (e621 cat 3)
+portal_(series) | imported from e621 (e621 cat 3)
+pretty_series | imported from e621 (e621 cat 3)
+project_diva_(series) | imported from e621 (e621 cat 3)
+quin-nsfw | imported from e621 (e621 cat 8)
+rance_(series) | imported from e621 (e621 cat 3)
+rayman_(series) | imported from e621 (e621 cat 3)
+red_bandeau | imported from e621 (e621 cat 0)
+red_inner_ear_fluff | imported from e621 (e621 cat 0)
+right-to-left_comic | imported from e621 (e621 cat 0)
+rio_(series) | imported from e621 (e621 cat 3)
+rocko's_modern_life | imported from e621 (e621 cat 3)
+ryuu_ga_gotoku_(series) | imported from e621 (e621 cat 3)
+safe_vore | imported from e621 (e621 cat 0)
+safety_pin | imported from e621 (e621 cat 0)
+sailor_moon_(series) | imported from e621 (e621 cat 3)
+scooby-doo_(series) | imported from e621 (e621 cat 3)
+scott_pilgrim_(series) | imported from e621 (e621 cat 3)
+segmented_comic | imported from e621 (e621 cat 0)
+sen_no_kiseki_(series) | imported from e621 (e621 cat 3)
+senjou_no_valkyria_(series) | imported from e621 (e621 cat 3)
+shantae_(series) | imported from e621 (e621 cat 3)
+shining_(series) | imported from e621 (e621 cat 3)
+shrek_(series) | imported from e621 (e621 cat 3)
+shy_(series) | imported from e621 (e621 cat 3)
+silent_comic | imported from e621 (e621 cat 0)
+silent_hill_(series) | imported from e621 (e621 cat 3)
+silver_soul_(comic) | imported from e621 (e621 cat 3)
+sirjzau | imported from e621 (e621 cat 8)
+slam_dunk_(series) | imported from e621 (e621 cat 3)
+sly_cooper_(series) | imported from e621 (e621 cat 3)
+smuttysquid | imported from e621 (e621 cat 8)
+sonic_(series) | imported from e621 (e621 cat 3)
+sonic_the_hedgehog_(comics) | imported from e621 (e621 cat 3)
+sonic_the_hedgehog_(series) | imported from e621 (e621 cat 3)
+spider-man_(series) | imported from e621 (e621 cat 3)
+splatoon_(series) | imported from e621 (e621 cat 3)
+spongebob_squarepants_(series) | imported from e621 (e621 cat 3)
+star_ocean:_the_second_story | imported from e621 (e621 cat 3)
+story_at_source | imported from e621 (e621 cat 14)
+story_in_description | imported from e621 (e621 cat 14)
+street_fighter_ii_(series) | imported from e621 (e621 cat 3)
+street_fighter_iii_(series) | imported from e621 (e621 cat 3)
+street_fighter_iv_(series) | imported from e621 (e621 cat 3)
+street_fighter_zero_(series) | imported from e621 (e621 cat 3)
+superman_(series) | imported from e621 (e621 cat 3)
+taimanin_(series) | imported from e621 (e621 cat 3)
+tales_of_(series) | imported from e621 (e621 cat 3)
+tan_inner_ear_fluff | imported from e621 (e621 cat 0)
+the_witcher_(series) | imported from e621 (e621 cat 3)
+to_heart_(series) | imported from e621 (e621 cat 3)
+top_wo_nerae!_(series) | imported from e621 (e621 cat 3)
+trinity_general_school_logo | imported from e621 (e621 cat 0)
+troll_(mythology) | imported from e621 (e621 cat 5)
+ultra_series | imported from e621 (e621 cat 3)
+undertale_(series) | imported from e621 (e621 cat 3)
+utau | imported from e621 (e621 cat 3)
+violet_evergarden_(series) | imported from e621 (e621 cat 3)
+warhammer_fantasy | imported from e621 (e621 cat 3)
+warriors_(book_series) | imported from e621 (e621 cat 3)
+western_comics_(style) | imported from e621 (e621 cat 0)
+white_bandeau | imported from e621 (e621 cat 0)
+white_inner_ear_fluff | imported from e621 (e621 cat 0)
+world_witches_series | imported from e621 (e621 cat 3)
+xenoblade_chronicles_(series) | imported from e621 (e621 cat 3)
+yellow_bandeau | imported from e621 (e621 cat 0)
