@@ -670,12 +670,41 @@ class AO3Client:
             else:
                 new_fields.append((name, value))
 
-        # If work_skin_id was requested but the field wasn't in the form, append it
-        if (
-            work_skin_id is not None
-            and not any(n == "work[work_skin_id]" for n, _ in new_fields)
-        ):
-            new_fields.append(("work[work_skin_id]", work_skin_id))
+        # Fallback append: if the form didn't have a field we wanted to
+        # override (rare, but happens when OTW renders fields differently
+        # between new-work and edit forms, e.g. autocomplete widgets that
+        # don't emit a hidden input), add the override directly. Without
+        # this, a missing form field silently swallows the update.
+        def _append_if_missing(field_name: str, value: str | None):
+            if value is None:
+                return
+            if not any(n == field_name for n, _ in new_fields):
+                new_fields.append((field_name, value))
+
+        _append_if_missing("work[title]", title)
+        if summary is not None:
+            _append_if_missing("work[summary]", summary[:1250])
+        _append_if_missing("work[freeform_string]", additional_tags)
+        _append_if_missing("work[notes]", notes_begin)
+        _append_if_missing("work[endnotes]", notes_end)
+        _append_if_missing("work[relationship_string]", relationship)
+        _append_if_missing("work[character_string]", characters)
+        _append_if_missing("work[fandom_string]", fandom)
+        _append_if_missing("work[rating_string]", rating)
+        _append_if_missing("work[work_skin_id]", work_skin_id)
+
+        # Diagnostics — log what work[*] overrides we're actually sending
+        # so next time we can tell whether the field was shipped or dropped.
+        overrides_sent = {
+            n: v for n, v in new_fields
+            if n in (
+                "work[title]", "work[freeform_string]",
+                "work[relationship_string]", "work[character_string]",
+                "work[fandom_string]", "work[rating_string]",
+                "work[work_skin_id]",
+            )
+        }
+        logger.info("AO3 edit_work(%s) override summary: %s", work_id, overrides_sent)
 
         from urllib.parse import urlencode
         submit_data: list[tuple[str, str]] = [
