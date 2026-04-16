@@ -7,14 +7,13 @@ platform posters (which handle the actual HTTP uploads).
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
 from database.db import get_connection
 from database import posting_queries
 from posting import story_reader
-from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
+from posting.platforms.base import PlatformPoster
 
 logger = logging.getLogger(__name__)
 

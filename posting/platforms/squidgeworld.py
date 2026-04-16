@@ -36,7 +36,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from pathlib import Path
 
 import config
 from posting import story_reader
