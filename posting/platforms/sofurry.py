@@ -279,6 +279,42 @@ class SoFurryPoster(PlatformPoster):
             logger.error("SF edit failed for %s: %s", external_id, e, exc_info=True)
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
+    async def probe_exists(self, external_id: str) -> bool | None:
+        """Check whether an SF submission still exists.
+
+        Uses the authenticated client so drafts (privacy=1) are visible too.
+        Returns False only when the server actively says the submission is
+        gone (404 / deleted). Network errors return None so the caller
+        doesn't incorrectly mark a still-live submission as deleted.
+        """
+        try:
+            client = await self._ensure_client()
+            if not client._logged_in:
+                if not await client.ensure_logged_in():
+                    return None
+            resp = await client._http.get(
+                f"https://sofurry.com/ui/submission/{external_id}",
+                headers={"Accept": "application/json"},
+            )
+            if resp.status_code == 404:
+                return False
+            if resp.status_code == 200:
+                # Some platforms return a generic 200 with an error body when
+                # the submission is gone. SF returns a JSON payload with
+                # submission fields when it exists. If we get JSON with no
+                # submissionId/title, treat it as missing.
+                try:
+                    data = resp.json()
+                    if isinstance(data, dict) and not (data.get("id") or data.get("title")):
+                        return False
+                except Exception:
+                    pass
+                return True
+            return None
+        except Exception as e:
+            logger.warning("SF probe_exists(%s) failed: %s", external_id, e)
+            return None
+
     async def replace_file(self, external_id: str, file_path: str) -> PostResult:
         """Replace content on an existing SF submission.
 

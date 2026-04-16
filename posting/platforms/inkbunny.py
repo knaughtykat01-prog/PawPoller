@@ -199,6 +199,21 @@ class InkbunnyPoster(PlatformPoster):
                 duration_seconds=self._elapsed(_t),
             )
 
+    async def probe_exists(self, external_id: str) -> bool | None:
+        """Check whether an IB submission still exists via api_submissions.php.
+
+        Uses the authenticated client so drafts (hidden=yes) are visible.
+        Returns False only when IB actively says the submission isn't
+        available (empty submissions[] in the response).
+        """
+        try:
+            client = await self._ensure_client()
+            details = await client.get_submission_details([int(external_id)])
+            return bool(details)
+        except Exception as e:
+            logger.warning("IB probe_exists(%s) failed: %s", external_id, e)
+            return None
+
     async def replace_file(self, external_id: str, file_path: str) -> PostResult:
         """Replace the story text on an existing Inkbunny submission.
 

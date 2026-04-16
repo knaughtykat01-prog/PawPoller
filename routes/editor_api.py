@@ -673,6 +673,90 @@ async def publish_check(story_name: str):
     }
 
 
+@editor_router.post("/stories/{story_name:path}/verify")
+async def verify_publications(story_name: str):
+    """Probe every posted publication for this story to detect upstream deletions.
+
+    Calls each poster's ``probe_exists()`` — platforms that haven't
+    implemented probing return None and are left alone. Publications
+    confirmed missing are flipped to ``status='deleted'`` in the registry
+    so the matrix shows them as re-postable.
+    """
+    from posting import story_reader, manager
+    from database.db import get_connection
+    from database import posting_queries
+
+    story_dir = _resolve_story_dir(story_name)
+    canonical = story_dir.name
+
+    conn = get_connection()
+    try:
+        posted = posting_queries.get_publications(conn, story_name=canonical, status="posted")
+    finally:
+        conn.close()
+
+    results = []
+    for pub in posted:
+        plat = pub["platform"]
+        ext_id = pub["external_id"]
+        ch_idx = pub["chapter_index"]
+        if not ext_id:
+            continue
+        try:
+            poster = manager._get_poster(plat)
+        except Exception:
+            continue
+
+        exists = await poster.probe_exists(ext_id)
+        if exists is None:
+            results.append({
+                "platform": plat, "chapter_index": ch_idx,
+                "external_id": ext_id, "status": "not_probed",
+            })
+            continue
+        if exists:
+            results.append({
+                "platform": plat, "chapter_index": ch_idx,
+                "external_id": ext_id, "status": "still_live",
+            })
+            continue
+
+        # Confirmed deleted — flip registry
+        conn = get_connection()
+        try:
+            posting_queries.upsert_publication(
+                conn, canonical, ch_idx, plat,
+                external_id=ext_id,
+                external_url=pub["external_url"],
+                title_used=pub.get("title_used") or "",
+                description_used=pub.get("description_used") or "",
+                tags_used=(pub.get("tags_used") or "").split(",") if pub.get("tags_used") else [],
+                rating_used=pub.get("rating_used") or "",
+                format_file=pub.get("format_file") or "",
+                file_hash=pub.get("file_hash") or "",
+                word_count=pub.get("word_count") or 0,
+                status="deleted",
+            )
+        finally:
+            conn.close()
+        results.append({
+            "platform": plat, "chapter_index": ch_idx,
+            "external_id": ext_id, "status": "deleted",
+        })
+        logger.info("Verify: %s ch%d on %s deleted upstream (id=%s)",
+                    canonical, ch_idx, plat, ext_id)
+
+    summary = {
+        "ok": True,
+        "probed": len(results),
+        "deleted": sum(1 for r in results if r["status"] == "deleted"),
+        "still_live": sum(1 for r in results if r["status"] == "still_live"),
+        "not_probed": sum(1 for r in results if r["status"] == "not_probed"),
+        "results": results,
+    }
+    return summary
+
+
 class PublishRequest(BaseModel):
     platform: str                 # 'sf', 'ib', 'fa', etc.
     chapter: int                  # 0 = full story; 1+ = specific chapter

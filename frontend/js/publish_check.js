@@ -52,6 +52,7 @@ window.PublishCheck = (function () {
                         <span class="cell-legend cell-blocked">✗</span> Blocked
                         <span class="cell-legend cell-error">⚠</span> Error
                     </span>
+                    <button class="btn btn-sm btn-outline" id="publish-check-verify" title="Probe each platform to detect deletions">Verify posted</button>
                     <button class="btn btn-sm" id="publish-check-recheck">Re-check</button>
                 </div>
             </div>
@@ -62,6 +63,9 @@ window.PublishCheck = (function () {
         modal.querySelector('#publish-check-close').addEventListener('click', () => close());
         modal.querySelector('#publish-check-recheck').addEventListener('click', () => {
             if (_currentStory) load(_currentStory);
+        });
+        modal.querySelector('#publish-check-verify').addEventListener('click', () => {
+            if (_currentStory) verify(_currentStory);
         });
 
         document.addEventListener('keydown', (e) => {
@@ -89,6 +93,32 @@ window.PublishCheck = (function () {
     function close() {
         const modal = document.getElementById('publish-check-modal');
         if (modal) modal.classList.remove('open');
+    }
+
+    async function verify(storyName) {
+        const btn = document.getElementById('publish-check-verify');
+        const original = btn ? btn.textContent : 'Verify posted';
+        if (btn) { btn.disabled = true; btn.textContent = 'Probing...'; }
+        try {
+            const resp = await fetch(
+                '/api/editor/stories/' + encodeURIComponent(storyName) + '/verify',
+                { method: 'POST' },
+            );
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            const msg = data.deleted + ' deleted, ' + data.still_live +
+                ' still live, ' + data.not_probed + ' not probed';
+            if (btn) { btn.textContent = msg; setTimeout(() => {
+                btn.textContent = original; btn.disabled = false;
+            }, 2400); }
+            // Reload matrix so deletions appear as ⊘ cells
+            await load(storyName);
+        } catch (e) {
+            if (btn) {
+                btn.textContent = 'Probe failed';
+                setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2000);
+            }
+        }
     }
 
     async function load(storyName) {

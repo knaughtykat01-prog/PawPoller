@@ -67,6 +67,17 @@ class PlatformPoster(ABC):
         """Replace the file on an existing submission."""
         ...
 
+    async def probe_exists(self, external_id: str) -> bool | None:
+        """Check whether a previously-posted submission still exists on the platform.
+
+        Returns:
+            True  — confirmed still present
+            False — confirmed deleted / missing
+            None  — probe not implemented for this platform, caller should
+                    not draw conclusions from the result
+        """
+        return None
+
     def validate(self, package: StoryUploadPackage) -> list[str]:
         """Validate a package before posting. Returns list of errors (empty = OK)."""
         errors = []
