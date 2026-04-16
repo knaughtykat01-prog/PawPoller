@@ -172,13 +172,48 @@ class AO3Client:
             return False
 
         page = resp.text
+
+        def _extract_account_name_from_url(url: str) -> str | None:
+            m = re.search(r"/users/([^/?&#]+)", url)
+            if m:
+                candidate = m.group(1)
+                if candidate not in ("login", "logout", "register", "password"):
+                    return candidate
+            return None
+
+        def _extract_account_name_from_page(html: str) -> str | None:
+            for m in re.finditer(r'href="/users/([^/"?&]+)"', html):
+                candidate = m.group(1)
+                if candidate not in ("login", "logout", "register", "password"):
+                    return candidate
+            return None
+
         if f"Hi, {self.username}" in page or "Log Out" in page or 'class="greeting"' in page:
             self._logged_in = True
+            if "@" in self.username:
+                new_name = (
+                    _extract_account_name_from_url(str(resp.url))
+                    or _extract_account_name_from_page(page)
+                )
+                if new_name:
+                    logger.info(
+                        "AO3: Resolved login %r -> account name %r",
+                        self.username, new_name,
+                    )
+                    self.username = new_name
             logger.info("AO3: Successfully logged in as %s", self.username)
             return True
 
         if resp.url and "/users/" in str(resp.url):
             self._logged_in = True
+            if "@" in self.username:
+                new_name = _extract_account_name_from_url(str(resp.url))
+                if new_name:
+                    logger.info(
+                        "AO3: Resolved login %r -> account name %r",
+                        self.username, new_name,
+                    )
+                    self.username = new_name
             logger.info("AO3: Login redirect successful for %s", self.username)
             return True
 

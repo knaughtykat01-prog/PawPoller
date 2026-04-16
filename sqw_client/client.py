@@ -352,14 +352,54 @@ class SquidgeWorldClient:
 
         # Step 3: Verify login — check for greeting or logged-in indicators
         page = resp.text
+
+        def _extract_account_name_from_url(url: str) -> str | None:
+            # Successful login redirects to /users/<account-name>
+            m = re.search(r"/users/([^/?&#]+)", url)
+            if m:
+                candidate = m.group(1)
+                # Skip synthetic segments like 'login', 'confirmation', etc.
+                if candidate not in ("login", "logout", "register", "password"):
+                    return candidate
+            return None
+
+        def _extract_account_name_from_page(html: str) -> str | None:
+            # Look for the user menu link — "<a href='/users/<name>'>...</a>"
+            for m in re.finditer(r'href="/users/([^/"?&]+)"', html):
+                candidate = m.group(1)
+                if candidate not in ("login", "logout", "register", "password"):
+                    return candidate
+            return None
+
         if "greeting" in page.lower() or f"Hi, {self.username}" in page or "Log Out" in page:
             self._logged_in = True
+            # Replace login email with the actual account name so subsequent
+            # /users/{name}/... URLs hit the right page.
+            if "@" in self.username:
+                new_name = (
+                    _extract_account_name_from_url(str(resp.url))
+                    or _extract_account_name_from_page(page)
+                )
+                if new_name:
+                    logger.info(
+                        "SqW: Resolved login %r -> account name %r",
+                        self.username, new_name,
+                    )
+                    self.username = new_name
             logger.info("SqW: Successfully logged in as %s", self.username)
             return True
 
         # Check if we landed on the dashboard (successful login redirects)
         if resp.url and "/users/" in str(resp.url):
             self._logged_in = True
+            if "@" in self.username:
+                new_name = _extract_account_name_from_url(str(resp.url))
+                if new_name:
+                    logger.info(
+                        "SqW: Resolved login %r -> account name %r",
+                        self.username, new_name,
+                    )
+                    self.username = new_name
             logger.info("SqW: Login redirect successful for %s", self.username)
             return True
 
