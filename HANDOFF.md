@@ -1,7 +1,7 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-04-15
-**Current version:** 2.9.4
+**Last updated:** 2026-04-16
+**Current version:** 2.10.0
 **Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`)
 
 Living document — update as the roadmap shifts. Read this first when picking up a fresh session.
@@ -38,7 +38,16 @@ The **Story Editor + Publish Check** system (documentation_guide.md §15) is fea
 | Publish Check matrix | 2.9.1 | Chapter × platform validation grid, detail panel |
 | Full-story row in matrix | 2.9.3 | Also fixed DA/IK/Bsky tag cascade from default |
 | Post / Update / Dry-run actions | 2.9.2 | confirm_live guard on backend, frontend confirm() dialog |
-| **Content drift detection** | 2.9.4 | Flags cells where local file hash differs from posted hash |
+| Content drift detection | 2.9.4 | Flags cells where local file hash differs from posted hash |
+| **AO3 chaptered posting** | 2.10.0 | create_work + create_chapter loop, mirrors SQW |
+| **AO3 work skin upload** | 2.10.0 | `_ensure_work_skin` on post + edit, auto-refreshes CSS |
+| **Metadata only update button** | 2.10.0 | Skips content refresh via `skip_content_refresh` extras |
+| **Upstream deletion probe + /verify** | 2.10.0 | SF / IB / AO3 / SQW probed; deleted cells flip to ⊘ |
+| **SF/FA edit content refresh** | 2.10.0 | edit() now calls replace_file() for drifted uploads |
+| **AO3 edit safe-overlay** | 2.10.0 | Fetch form → overlay → resubmit with save_button |
+| **Tag cascade all platforms** | 2.10.0 | Default tab syncs to every poster (except BSky) |
+| **Chapter prefix strip** | 2.10.0 | AO3/SQW don't show "Chapter 1: Chapter 1: Title" anymore |
+| **Email-login account resolution** | 2.10.0 | SQW/AO3 login with email resolves to account name for URLs |
 
 ### What posted successfully during testing
 - Inkbunny draft of "Late Shift" full story — flipped cell from green ✓ → blue ✓ posted with URL.
@@ -47,20 +56,21 @@ The **Story Editor + Publish Check** system (documentation_guide.md §15) is fea
 
 ## Open roadmap
 
-### Phase 6c — broader platform testing (NEXT UP)
+### Phase 6c — broader platform testing (remaining)
 
-Now that Inkbunny works end-to-end, verify the other 8 posters. Test each on Test Story as a draft:
+IB, SF, AO3 confirmed end-to-end (post + update + drift + delete + re-post).
+SQW needs a retest now that the work-oriented flip + email-login fix are live.
+Still to verify:
 
-- [ ] SoFurry (has a stale post from pre-drift-detection testing — regen + Update to test the drift flow)
-- [ ] Weasyl
-- [ ] AO3
-- [ ] SquidgeWorld
-- [ ] FurAffinity (desktop only — server will auto-queue)
+- [x] Inkbunny (post + re-post after delete)
+- [x] SoFurry (drift → update pushes fresh content)
+- [x] AO3 (chaptered post, edit metadata + content, work skin, tag cascade)
+- [ ] SquidgeWorld (retest after matrix flip + login fix — known to have worked earlier)
+- [ ] Weasyl (metadata-only edit expected, soft warning)
+- [ ] FurAffinity (desktop queue handoff path)
 - [ ] DeviantArt
-- [ ] Itaku (tag-only, no file upload)
-- [ ] Bluesky (tag-only, no file upload)
-
-For each: dry-run first, then Post to draft, then edit MASTER, regen, confirm drift detection, Update.
+- [ ] Itaku (tag-only, no file)
+- [ ] Bluesky (text-only, delete+repost for edit)
 
 ### Phase 6d — bulk actions
 

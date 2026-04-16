@@ -4,6 +4,130 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.10.0] - 2026-04-16
+
+### Added — AO3 parity pass (chaptered posting, work skins, edit fidelity)
+
+Large bundle of AO3 improvements driven by end-to-end testing of
+chaptered story publishing on AO3 drafts. Chaptered stories now post
+to AO3 the same way they post to SquidgeWorld: one work with N chapters
+via `create_work` + `create_chapter` loop. Metadata edits push every
+field instead of silently dropping the submission.
+
+**Work skins on AO3 (mirroring SQW, same OTW Archive software):**
+- `ao3_client.find_work_skin_by_title`, `create_work_skin`,
+  `get_or_create_work_skin`, `edit_work_skin` — full CRUD on
+  `/skins/{id}` via `skin_type=WorkSkin`.
+- `edit_work` gains a `work_skin_id` kwarg so the assigned skin can
+  be updated alongside other metadata.
+- `AO3Poster._ensure_work_skin()` — finds or creates the per-story
+  "<Story> Skin" on every post/edit, auto-refreshing the CSS from
+  `SquidgeWorld/Work_Skin.css` so local edits propagate. Leading
+  underscores on story folder names (`_Test_Story`) are stripped so
+  the skin title is `Test Story Skin` rather than `_Test Story Skin`.
+
+**Chaptered posting:**
+- `ao3_client.create_chapter` — ported from SqW. POST to
+  `/works/{id}/chapters/new` with `preview_button=Preview` so a
+  draft work stays a draft while the chapter is added.
+- `AO3Poster.post()` detects multi-chapter stories via
+  `story.total_chapters > 1`. Multi-chapter → `create_work` with
+  ch1 content, then iterate ch2..N via `create_chapter`. Single
+  chapter → previous behaviour (full-story Clean HTML as one chapter).
+- `AO3Poster.edit()` iterates AO3's existing chapters via
+  `get_chapter_ids()`, edits each from the matching SquidgeWorld
+  chapter HTML, appends any local chapters missing upstream.
+- `_read_chapter_content(story, idx)` resolves
+  `SquidgeWorld/Chapter_<idx>_*.html` with a prefer-exact-match
+  glob (avoids picking up debris files).
+
+**`edit_work` safe-overlay pattern (critical bug fix):**
+Earlier builds sent `_method=patch` with only 5 `work[*]` fields
+and no commit button. AO3 returned 302 but never persisted the
+changes — a silent no-op. `edit_work` now:
+1. GETs `/works/{id}/edit` and extracts every current `work[*]`
+   field via `_extract_work_form_fields`.
+2. Overlays only the caller-supplied overrides (title, summary,
+   additional_tags, warnings, categories, relationship, characters,
+   fandom, rating, work_skin_id).
+3. `_append_if_missing()` any scalar override whose field name isn't
+   in the form (defensive net against OTW rendering fields differently
+   between new-work and edit forms).
+4. POSTs the full form back with `save_button=Save As Draft`
+   (or `post_button=Post` when `save_as_draft=False`).
+5. Parses flash messages and logs notice/error/caution/warning
+   classes at INFO so canonicalisation notices and validation errors
+   surface in logs.
+
+**Safety fixes:**
+- Login with email instead of account name resolves via the login
+  redirect URL so every `/users/{name}/...` call hits the right
+  page. Fixes SQW SAFETY ABORT after `create_work` (draft-state
+  check was hitting `/users/<email>/works/drafts` → 404 → treated
+  as missing → work deleted). Same fix in AO3 client.
+- `probe_exists()` added for AO3 + SQW. `/works/{id}/edit` 404 means
+  deleted, 2xx means live, transient errors return None so we don't
+  misflag live works.
+
+**Matrix work-oriented flip:**
+- Removed `PER_CHAPTER_ONLY = {"sqw"}` (had semantics inverted).
+  Replaced with `WORK_ORIENTED = {"ao3", "sqw"}`. For chaptered
+  stories on these platforms, per-chapter rows show grey `–` N/A
+  with the hint to use the Full story row. The full-story row is
+  the actionable one — internally handles multi-chapter creation.
+
+**`Metadata only` update action:**
+- New cell button next to `Update all`. Sends `skip_content_refresh`
+  through `package.extra`. Short-circuits the chapter-refresh / file
+  re-upload loop on IB, SF, FA, AO3, SQW (WS was metadata-only by
+  API constraint). Faster edits when only tags/title/summary changed.
+- `manager.update_story()` gains an `extras: dict` kwarg (mirrors
+  `post_story`).
+- Existing action renamed `Update existing` → `Update all` for
+  clarity.
+
+**Upstream deletion detection:**
+- `PlatformPoster.probe_exists(external_id) -> bool | None` — new
+  abstract method. SF / IB / AO3 / SQW implemented; others return
+  None (not probed).
+- `POST /api/editor/stories/{name}/verify` endpoint — walks every
+  `posted` publication, probes each poster, flips confirmed deletions
+  to `status='deleted'` in the registry. Matrix then renders those
+  cells as red ⊘ with a `Re-post to <platform>` primary button.
+- `manager.update_story()` catches deletion error strings (IB, FA,
+  AO3) and flips the registry row to `deleted` instead of auto-queuing
+  for desktop (which would hit the same wall).
+
+**Content-refresh parity:**
+- SF `edit()` now calls `replace_file()` alongside `edit_submission()`
+  — previously metadata-only. FA `edit()` likewise calls
+  `replace_file()` (changestory endpoint). WS explicitly documents
+  the API limitation + returns a soft warning so the UI can surface
+  `delete + repost required`.
+- IB `edit()` skips BBCode read when `skip_content_refresh` is set.
+
+**Tag cascade fix (editor UI):**
+- `TAG_CASCADE_PLATFORMS` replaces the old `TAG_PLATFORMS` cascade
+  target. Default tab now propagates added/removed tags to SF, IB,
+  WP, **plus** AO3, SQW, WS, FA, DA, IK (everyone with a poster
+  except Bluesky, which uses hashtag-style tags). Previously only
+  the first three were synced, so AO3/SQW/etc. would keep stale
+  tag lists and silently ignore updates.
+- `_transformTagForPlatform` branch added for Itaku (underscores
+  like default).
+
+**Chapter title de-duplication (OTW display):**
+- AO3 and SQW both render chapters as `Chapter N: <title>`. Passing
+  `chapter_title="Chapter 1: The Counter"` ended up rendering as
+  `Chapter 1: Chapter 1: The Counter`. Both posters now strip the
+  leading `Chapter N:` / `Part N:` / `Prelude:` / `Epilogue:`
+  prefix from chapter titles before `create_work` / `create_chapter`
+  / `edit_chapter` calls.
+
+**Cache busters:** `metadata_editor.js?v=14`, `publish_check.js?v=7`.
+
+---
+
 ## [2.9.4] - 2026-04-15
 
 ### Added — Content drift detection in the Publish Check matrix

@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from pathlib import Path
 
 import config
@@ -54,6 +55,22 @@ logger = logging.getLogger(__name__)
 # OTW Archive total-tag limit (fandom + relationship + character + freeform).
 # Rating, warnings, categories do NOT count toward this.
 OTW_TAG_LIMIT = 75
+
+
+# Leading "Chapter N:", "Part N:", "Prelude:", "Epilogue:" patterns that
+# our story.json titles carry but that OTW Archive (AO3/SQW) auto-prefixes
+# on display — stripping avoids rendering like "Chapter 1: Chapter 1: Title".
+_CHAPTER_PREFIX_RE = re.compile(
+    r"^(?:Chapter|Part|Prelude|Epilogue)\s*\d*\s*[:\-—–]\s*",
+    re.IGNORECASE,
+)
+
+
+def _strip_chapter_prefix(title: str) -> str:
+    if not title:
+        return title
+    stripped = _CHAPTER_PREFIX_RE.sub("", title).strip()
+    return stripped or title  # if the title was JUST the prefix, keep original
 
 
 class AO3Poster(PlatformPoster):
@@ -412,7 +429,9 @@ class AO3Poster(PlatformPoster):
 
             if has_chapters:
                 chapter_1 = next((c for c in story.chapters if c.index == 1), None)
-                chapter_1_title = chapter_1.title if chapter_1 else "Chapter 1"
+                chapter_1_title = _strip_chapter_prefix(
+                    chapter_1.title if chapter_1 else ""
+                )
                 content = self._read_chapter_content(story, 1)
                 if not content:
                     return PostResult(
@@ -483,7 +502,7 @@ class AO3Poster(PlatformPoster):
                         continue
                     await client.create_chapter(
                         work_id,
-                        title=ch.title,
+                        title=_strip_chapter_prefix(ch.title),
                         content=ch_content,
                         position=ch.index,
                         publish=False,
@@ -590,7 +609,8 @@ class AO3Poster(PlatformPoster):
                             continue
                         await client.edit_chapter(
                             external_id, ao3_ch["chapter_id"],
-                            title=local_ch.title, content=ch_content,
+                            title=_strip_chapter_prefix(local_ch.title),
+                            content=ch_content,
                         )
                         logger.info(
                             "AO3: Updated chapter %s (local idx %d) of work %s",
@@ -605,7 +625,7 @@ class AO3Poster(PlatformPoster):
                                 continue
                             await client.create_chapter(
                                 external_id,
-                                title=local_ch.title,
+                                title=_strip_chapter_prefix(local_ch.title),
                                 content=ch_content,
                                 position=local_ch.index,
                                 publish=False,

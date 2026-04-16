@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from pathlib import Path
 
 import config
@@ -48,6 +49,21 @@ logger = logging.getLogger(__name__)
 # OTW Archive total-tag limit (fandom + relationship + character + freeform).
 # Rating, warnings, categories do NOT count toward this.
 OTW_TAG_LIMIT = 75
+
+
+# Leading "Chapter N:", "Part N:", "Prelude:", "Epilogue:" patterns that
+# our story.json titles carry but that OTW Archive auto-prefixes on display.
+_CHAPTER_PREFIX_RE = re.compile(
+    r"^(?:Chapter|Part|Prelude|Epilogue)\s*\d*\s*[:\-—–]\s*",
+    re.IGNORECASE,
+)
+
+
+def _strip_chapter_prefix(title: str) -> str:
+    if not title:
+        return title
+    stripped = _CHAPTER_PREFIX_RE.sub("", title).strip()
+    return stripped or title
 
 
 class SquidgeWorldPoster(PlatformPoster):
@@ -345,7 +361,7 @@ class SquidgeWorldPoster(PlatformPoster):
 
             # 5. Create the work (chapter 1 only at this point)
             ch1 = next((c for c in story.chapters if c.index == 1), None)
-            chapter_1_title = ch1.title if ch1 else "Chapter 1"
+            chapter_1_title = _strip_chapter_prefix(ch1.title if ch1 else "")
             work_title = package.title or story.name.replace("_", " ")
             summary = (story.description or package.description or "")[:1250]
 
@@ -382,7 +398,7 @@ class SquidgeWorldPoster(PlatformPoster):
                     continue
                 await client.create_chapter(
                     work_id,
-                    title=ch.title,
+                    title=_strip_chapter_prefix(ch.title),
                     content=ch_content,
                     position=ch.index,
                     publish=False,  # SAFETY: keeps work in draft state
