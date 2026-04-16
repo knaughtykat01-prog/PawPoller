@@ -61,11 +61,14 @@ window.PublishCheck = (function () {
 
         modal.querySelector('.publish-check-backdrop').addEventListener('click', () => close());
         modal.querySelector('#publish-check-close').addEventListener('click', () => close());
-        modal.querySelector('#publish-check-recheck').addEventListener('click', () => {
-            if (_currentStory) load(_currentStory);
+        modal.querySelector('#publish-check-recheck').addEventListener('click', (e) => {
+            if (!_currentStory) return;
+            e.currentTarget.disabled = true;
+            load(_currentStory).finally(() => { e.currentTarget.disabled = false; });
         });
         modal.querySelector('#publish-check-verify').addEventListener('click', () => {
             if (_currentStory) verify(_currentStory);
+            // verify() sets its own .disabled on the button
         });
 
         document.addEventListener('keydown', (e) => {
@@ -387,6 +390,12 @@ window.PublishCheck = (function () {
     }
 
     async function _executeAction(action, platId, platName, chIdx, chTitle) {
+        // Capture the current story NOW so we don't end up posting to or
+        // reloading a different story if the user closes+reopens the modal
+        // for a different story while a request is in flight.
+        const storyName = _currentStory;
+        if (!storyName) return;
+
         const draftCheckbox = document.getElementById('publish-opt-draft');
         const draft = draftCheckbox ? draftCheckbox.checked : true;
         const resultBox = document.getElementById('publish-action-result');
@@ -410,7 +419,7 @@ window.PublishCheck = (function () {
 
         try {
             const resp = await fetch(
-                '/api/editor/stories/' + encodeURIComponent(_currentStory) + '/publish',
+                '/api/editor/stories/' + encodeURIComponent(storyName) + '/publish',
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -426,8 +435,12 @@ window.PublishCheck = (function () {
             const data = await resp.json();
             _renderActionResult(data, action);
             if (action !== 'dry_run' && data.ok) {
-                // Refresh the matrix on success so the cell flips to 'posted'
-                setTimeout(() => load(_currentStory), 800);
+                // Refresh the matrix on success — only if the user is still
+                // looking at the same story. Prevents a late success callback
+                // from clobbering the view if the user moved on.
+                setTimeout(() => {
+                    if (_currentStory === storyName) load(storyName);
+                }, 800);
             }
         } catch (e) {
             if (resultBox) {
