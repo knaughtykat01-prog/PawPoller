@@ -70,15 +70,21 @@ def get_platform_requires(platform: str) -> str:
 # When we detect one of these during update_story(), we mark the publication
 # as 'deleted' in the registry so the matrix flips it back to a re-postable
 # state instead of repeatedly retrying an edit against a dead ID.
+#
+# All patterns scoped to phrasings that refer to the submission/work/URL, not
+# generic "not found" (which would false-positive on unrelated errors like
+# "model not found in cache" or local file-not-found exceptions).
 DELETION_ERROR_PATTERNS = (
-    "submission has been deleted",   # Inkbunny
-    "submission not found",          # FA / generic
-    "submission was not found",      # FA
-    "work not found",                # AO3
-    "does not exist",                # generic
-    "404",                           # httpx 404 -> in exception message
-    "not found",                     # broad fallback — last
-    "no such submission",            # SF-ish
+    "submission has been deleted",     # Inkbunny
+    "submission not found",            # FA / generic
+    "submission was not found",        # FA
+    "work not found",                  # AO3
+    "work has been deleted",           # AO3
+    "work does not exist",             # AO3
+    "page does not exist",             # generic OTW
+    "no such submission",              # SF-ish
+    "404 not found",                   # direct httpx error string
+    "client error '404",               # httpx's formatted 404 message
 )
 
 

@@ -690,6 +690,7 @@ async def verify_publications(story_name: str):
     confirmed missing are flipped to ``status='deleted'`` in the registry
     so the matrix shows them as re-postable.
     """
+    import asyncio
     from posting import story_reader, manager
     from database.db import get_connection
     from database import posting_queries
@@ -704,7 +705,12 @@ async def verify_publications(story_name: str):
         conn.close()
 
     results = []
-    for pub in posted:
+    for pub_idx, pub in enumerate(posted):
+        # Light rate limit between probes — each is an authenticated HTTP
+        # round-trip and we don't want to hammer a platform on a 20-chapter
+        # story. First probe fires immediately.
+        if pub_idx > 0:
+            await asyncio.sleep(0.4)
         plat = pub["platform"]
         ext_id = pub["external_id"]
         ch_idx = pub["chapter_index"]
@@ -715,7 +721,21 @@ async def verify_publications(story_name: str):
         except Exception:
             continue
 
-        exists = await poster.probe_exists(ext_id)
+        try:
+            exists = await poster.probe_exists(ext_id)
+        except Exception as e:
+            # Belt-and-braces — probe_exists() is supposed to swallow its own
+            # errors and return None, but if a poster raises anyway we don't
+            # want one bad platform to crash the whole verify loop.
+            logger.warning(
+                "Verify: %s ch%d on %s probe raised: %s — treating as not_probed",
+                canonical, ch_idx, plat, e,
+            )
+            results.append({
+                "platform": plat, "chapter_index": ch_idx,
+                "external_id": ext_id, "status": "not_probed",
+            })
+            continue
         if exists is None:
             results.append({
                 "platform": plat, "chapter_index": ch_idx,
