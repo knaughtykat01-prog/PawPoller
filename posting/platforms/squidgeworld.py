@@ -515,6 +515,32 @@ class SquidgeWorldPoster(PlatformPoster):
             logger.error("SqW edit failed for %s: %s", external_id, e, exc_info=True)
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
+    async def probe_exists(self, external_id: str) -> bool | None:
+        """Check whether a SqW work still exists.
+
+        Uses the authenticated client so drafts are visible. Probes the
+        work's edit page — 404 means deleted, 200/3xx means live. Returns
+        None on transient errors so we don't falsely mark live works as
+        deleted.
+        """
+        try:
+            client = await self._ensure_client()
+            if not client._logged_in:
+                if not await client.ensure_logged_in():
+                    return None
+            resp = await client._http.get(
+                f"https://squidgeworld.org/works/{external_id}/edit",
+                follow_redirects=False,
+            )
+            if resp.status_code == 404:
+                return False
+            if 200 <= resp.status_code < 400:
+                return True
+            return None
+        except Exception as e:
+            logger.warning("SqW probe_exists(%s) failed: %s", external_id, e)
+            return None
+
     async def replace_file(self, external_id: str, file_path: str) -> PostResult:
         """Replace the first chapter's content from a single file.
 

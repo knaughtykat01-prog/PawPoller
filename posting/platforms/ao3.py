@@ -192,6 +192,33 @@ class AO3Poster(PlatformPoster):
             logger.warning("AO3: Work skin creation failed for %s: %s", story.name, e)
             return ""
 
+    async def probe_exists(self, external_id: str) -> bool | None:
+        """Check whether an AO3 work still exists.
+
+        Uses the authenticated client so drafts are visible. Hits the
+        work's edit page — AO3 returns 404 for deleted works and 200 (or
+        a redirect to the work) for live ones. Returns None on transient
+        errors (Cloudflare hiccups, timeouts) so we don't falsely mark
+        still-alive works as deleted.
+        """
+        try:
+            client = await self._ensure_client()
+            if not client._logged_in:
+                if not await client.ensure_logged_in():
+                    return None
+            resp = await client._http.get(
+                f"https://archiveofourown.org/works/{external_id}/edit",
+                follow_redirects=False,
+            )
+            if resp.status_code == 404:
+                return False
+            if 200 <= resp.status_code < 400:
+                return True
+            return None
+        except Exception as e:
+            logger.warning("AO3 probe_exists(%s) failed: %s", external_id, e)
+            return None
+
     @staticmethod
     def _read_chapter_content(story: story_reader.StoryInfo, ch_idx: int) -> str | None:
         """Resolve a single chapter's body HTML for AO3.
