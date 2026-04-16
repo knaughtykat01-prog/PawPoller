@@ -140,9 +140,12 @@ class AO3Poster(PlatformPoster):
         if not story.work_skin_path or not story.work_skin_path.is_file():
             return ""
 
-        skin_title = f"{story.name.replace('_', ' ')} Skin"
+        # Strip leading underscores that story folder names sometimes have
+        # (e.g. "_Test_Story" → "Test Story Skin", not "_Test Story Skin").
+        display_name = story.name.lstrip("_").replace("_", " ")
+        skin_title = f"{display_name} Skin"
         skin_description = (
-            f"Custom Work Skin for '{story.name.replace('_', ' ')}' by {story.author}."
+            f"Custom Work Skin for '{display_name}' by {story.author}."
         )
 
         try:
@@ -233,13 +236,30 @@ class AO3Poster(PlatformPoster):
         sqw_dir = story.path / "SquidgeWorld"
         if sqw_dir.is_dir():
             base = ch.filename.replace(".md", "") if ch.filename else f"Chapter_{ch_idx}"
-            for candidate in sqw_dir.glob(f"{base}*"):
-                if candidate.suffix == ".html":
-                    try:
-                        return candidate.read_text(encoding="utf-8")
-                    except Exception:
-                        pass
-            for candidate in sorted(sqw_dir.glob(f"Chapter_{ch_idx}_*.html")):
+            # Prefer an EXACT match to avoid picking up stale debris files
+            # like "Chapter_1_The_Counter_testing_testing_1_2_3.html".
+            exact = sqw_dir / f"{base}.html"
+            if exact.is_file():
+                try:
+                    return exact.read_text(encoding="utf-8")
+                except Exception:
+                    pass
+            # Fallback: shortest matching filename so variants with noise
+            # suffixes lose to the clean version.
+            candidates = sorted(
+                (c for c in sqw_dir.glob(f"{base}*") if c.suffix == ".html"),
+                key=lambda c: len(c.name),
+            )
+            for candidate in candidates:
+                try:
+                    return candidate.read_text(encoding="utf-8")
+                except Exception:
+                    pass
+            # Last resort: match by chapter index prefix
+            for candidate in sorted(
+                sqw_dir.glob(f"Chapter_{ch_idx}_*.html"),
+                key=lambda c: len(c.name),
+            ):
                 try:
                     return candidate.read_text(encoding="utf-8")
                 except Exception:

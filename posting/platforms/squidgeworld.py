@@ -133,15 +133,29 @@ class SquidgeWorldPoster(PlatformPoster):
         sqw_dir = story.path / "SquidgeWorld"
         if sqw_dir.is_dir():
             base = ch.filename.replace(".md", "") if ch.filename else f"Chapter_{ch_idx}"
-            for candidate in sqw_dir.glob(f"{base}*"):
-                if candidate.suffix == ".html":
-                    try:
-                        return candidate.read_text(encoding="utf-8")
-                    except Exception:
-                        pass
+            # Prefer an EXACT match; avoids grabbing debris files like
+            # "Chapter_1_The_Counter_testing_testing_1_2_3.html".
+            exact = sqw_dir / f"{base}.html"
+            if exact.is_file():
+                try:
+                    return exact.read_text(encoding="utf-8")
+                except Exception:
+                    pass
+            # Fallback: shortest matching filename.
+            for candidate in sorted(
+                (c for c in sqw_dir.glob(f"{base}*") if c.suffix == ".html"),
+                key=lambda c: len(c.name),
+            ):
+                try:
+                    return candidate.read_text(encoding="utf-8")
+                except Exception:
+                    pass
 
-            # Fallback: glob for any chapter file matching the index
-            for candidate in sorted(sqw_dir.glob(f"Chapter_{ch_idx}_*.html")):
+            # Last resort: glob for any chapter file matching the index.
+            for candidate in sorted(
+                sqw_dir.glob(f"Chapter_{ch_idx}_*.html"),
+                key=lambda c: len(c.name),
+            ):
                 try:
                     return candidate.read_text(encoding="utf-8")
                 except Exception:
@@ -180,9 +194,11 @@ class SquidgeWorldPoster(PlatformPoster):
             return ""
 
         # Skin title convention: "<Story Name> Skin"
-        skin_title = f"{story.name.replace('_', ' ')} Skin"
+        # Strip leading underscores — "_Test_Story" → "Test Story Skin".
+        display_name = story.name.lstrip("_").replace("_", " ")
+        skin_title = f"{display_name} Skin"
         skin_description = (
-            f"Custom Work Skin for '{story.name.replace('_', ' ')}' by {story.author}."
+            f"Custom Work Skin for '{display_name}' by {story.author}."
         )
 
         try:
