@@ -506,10 +506,31 @@ class SquidgeWorldPoster(PlatformPoster):
                         f"unpublished a published work! State flipped published→draft."
                     )
 
-            # Metadata-only mode: skip the chapter content refresh below.
+            # Metadata-only mode: skip chapter BODY uploads, but still push
+            # per-chapter titles since those are metadata. edit_chapter with
+            # content=None preserves the existing body on SqW.
             if package.extra.get("skip_content_refresh"):
+                if story.chapters and story.total_chapters > 1:
+                    try:
+                        sqw_chapters = await client.get_chapter_ids(external_id)
+                        local_chapters = sorted(story.chapters, key=lambda c: c.index)
+                        for sqw_ch, local_ch in zip(sqw_chapters, local_chapters):
+                            new_title = _strip_chapter_prefix(local_ch.title)
+                            if new_title and new_title != sqw_ch.get("title", ""):
+                                await client.edit_chapter(
+                                    external_id, sqw_ch["chapter_id"],
+                                    title=new_title,  # content=None preserves body
+                                )
+                                logger.info(
+                                    "SqW: Retitled chapter %s -> %r (metadata-only)",
+                                    sqw_ch["chapter_id"], new_title,
+                                )
+                    except Exception as ch_err:
+                        logger.warning(
+                            "SqW: Chapter title refresh failed: %s", ch_err,
+                        )
                 logger.info(
-                    "SqW: Skipping chapter content refresh for %s (metadata-only edit)",
+                    "SqW: Metadata-only edit complete for %s (body content preserved)",
                     external_id,
                 )
                 return PostResult(

@@ -822,62 +822,150 @@ class AO3Client:
         work_id: str,
         chapter_id: str,
         *,
-        content: str,
+        content: str | None = None,
         title: str | None = None,
+        summary: str | None = None,
+        notes_begin: str | None = None,
+        notes_end: str | None = None,
     ) -> dict:
-        """Edit the content of a specific chapter.
+        """Edit a chapter using the safe form-fetch overlay pattern.
 
-        Collapses HTML whitespace to prevent AO3's auto-formatter from
-        inserting <br /> tags within elements.
+        Ported from sqw_client — GETs /works/{w}/chapters/{c}/edit,
+        extracts every current chapter[*] field, overrides only the
+        requested fields, and POSTs the full form back. Passing
+        content=None preserves the existing content on AO3 — useful
+        for title-only edits (chapter rename without re-uploading the
+        body). Collapses HTML whitespace in content to prevent AO3's
+        auto-formatter from inserting <br /> inside elements.
         """
         if not self._logged_in:
             if not await self.ensure_logged_in():
                 raise RuntimeError("AO3: Not logged in")
 
-        clean_content = _collapse_html_whitespace(content)
         edit_url = f"{_BASE}/works/{work_id}/chapters/{chapter_id}/edit"
+        form_resp = await self._http.get(edit_url)
+        if form_resp.status_code != 200:
+            raise RuntimeError(
+                f"AO3: Could not load chapter edit form (status {form_resp.status_code})"
+            )
+        html = form_resp.text
 
-        page = await self._get_page(edit_url)
-        if not page:
-            raise RuntimeError("AO3: Could not load chapter edit page")
+        token_m = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', html)
+        if not token_m:
+            token_m = re.search(r'value="([^"]+)"[^>]*name="authenticity_token"', html)
+        if not token_m:
+            raise RuntimeError("AO3: Could not find CSRF token in chapter edit form")
+        token = token_m.group(1)
 
-        token = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', page)
-        if not token:
-            token = re.search(r'value="([^"]+)"[^>]*name="authenticity_token"', page)
-        if not token:
-            raise RuntimeError("AO3: Could not get CSRF token from chapter edit")
+        form_match = re.search(
+            r'<form[^>]*action="[^"]*chapters/\d+[^"]*"[^>]*>(.*?)</form>',
+            html, re.DOTALL,
+        )
+        form_body = form_match.group(1) if form_match else html
 
-        form_data: dict[str, str] = {
-            "authenticity_token": token.group(1),
-            "_method": "patch",
-            "chapter[content]": clean_content,
-        }
-        if title is not None:
-            form_data["chapter[title]"] = title
+        def _decode(s: str) -> str:
+            return (
+                s.replace("&amp;", "&")
+                .replace("&quot;", '"')
+                .replace("&#39;", "'")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+            )
 
-        # Include commit button
-        commit = re.search(r'name="commit"[^>]*value="([^"]*)"', page)
-        form_data["commit"] = commit.group(1) if commit else "Update"
+        # Extract every chapter[*] field with its current value
+        current: list[tuple[str, str]] = []
+        for inp in re.finditer(r'<input([^>]*?)>', form_body):
+            attrs = inp.group(1)
+            t_m = re.search(r'\btype="([^"]+)"', attrs)
+            t = t_m.group(1).lower() if t_m else "text"
+            if t in ("submit", "button", "image", "reset", "file"):
+                continue
+            n_m = re.search(r'\bname="([^"]+)"', attrs)
+            if not n_m:
+                continue
+            name = n_m.group(1)
+            if not (name.startswith("chapter[") or "pseud" in name or "author" in name):
+                continue
+            v_m = re.search(r'\bvalue="([^"]*)"', attrs)
+            v = v_m.group(1) if v_m else ""
+            if t in ("checkbox", "radio") and "checked" not in attrs.lower():
+                continue
+            current.append((name, _decode(v)))
 
-        utf8 = re.search(r'name="utf8"[^>]*value="([^"]*)"', page)
-        if utf8:
-            form_data["utf8"] = utf8.group(1)
+        for sel in re.finditer(r'<select([^>]*?)>(.*?)</select>', form_body, re.DOTALL):
+            attrs, body = sel.group(1), sel.group(2)
+            n_m = re.search(r'\bname="([^"]+)"', attrs)
+            if not n_m or not n_m.group(1).startswith("chapter["):
+                continue
+            opt = re.search(r'<option[^>]*\bselected[^>]*\bvalue="([^"]*)"', body)
+            if not opt:
+                opt = re.search(r'<option[^>]*\bvalue="([^"]*)"[^>]*\bselected', body)
+            current.append((n_m.group(1), opt.group(1) if opt else ""))
+
+        for ta in re.finditer(r'<textarea([^>]*?)>(.*?)</textarea>', form_body, re.DOTALL):
+            attrs, body = ta.group(1), ta.group(2)
+            n_m = re.search(r'\bname="([^"]+)"', attrs)
+            if not n_m or not n_m.group(1).startswith("chapter["):
+                continue
+            current.append((n_m.group(1), _decode(body)))
+
+        # Apply overrides
+        if content is not None:
+            content = _collapse_html_whitespace(content)
+
+        new_fields: list[tuple[str, str]] = []
+        for name, value in current:
+            if name == "chapter[content]" and content is not None:
+                new_fields.append((name, content))
+            elif name == "chapter[title]" and title is not None:
+                new_fields.append((name, title))
+            elif name == "chapter[summary]" and summary is not None:
+                new_fields.append((name, summary))
+            elif name == "chapter[notes]" and notes_begin is not None:
+                new_fields.append((name, notes_begin))
+            elif name == "chapter[endnotes]" and notes_end is not None:
+                new_fields.append((name, notes_end))
+            else:
+                new_fields.append((name, value))
+
+        # Button selection: prefer save_button for drafts, post_without_preview
+        # for published works. OTW's chapter edit form exposes whichever one
+        # matches the current state.
+        button_name = "post_without_preview_button"
+        button_value = "Post"
+        if 'name="save_button"' in form_body:
+            button_name = "save_button"
+            button_value = "Save As Draft"
+
+        from urllib.parse import urlencode
+        submit_data: list[tuple[str, str]] = [
+            ("authenticity_token", token),
+            ("_method", "patch"),
+        ]
+        submit_data.extend(new_fields)
+        submit_data.append((button_name, button_value))
+
+        body = urlencode(submit_data, doseq=True)
 
         await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
         resp = await self._http.post(
             f"{_BASE}/works/{work_id}/chapters/{chapter_id}",
-            data=form_data,
-            headers={"Referer": edit_url},
+            content=body,
+            headers={
+                "Referer": edit_url,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
             timeout=60.0,
         )
 
         if resp.status_code >= 400:
             raise RuntimeError(f"AO3: Chapter edit failed — status {resp.status_code}")
 
-        errors = re.findall(r'class="error"[^>]*>(.*?)</li>', resp.text[:3000], re.DOTALL)
-        if errors:
-            err_text = "; ".join(re.sub(r'<[^>]+>', '', e).strip() for e in errors[:3])
-            raise RuntimeError(f"AO3: Chapter edit errors: {err_text}")
+        if "have not been saved" in resp.text:
+            raise RuntimeError(
+                f"AO3: Chapter edit POST returned but flash says 'changes have not been saved' "
+                f"(button={button_name}, work={work_id}, chapter={chapter_id})"
+            )
 
         logger.info("AO3: Edited chapter %s of work %s", chapter_id, work_id)
         return {"work_id": work_id, "chapter_id": chapter_id}
