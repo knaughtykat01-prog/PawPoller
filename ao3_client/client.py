@@ -768,6 +768,17 @@ class AO3Client:
                 "(flash/errors: %s)", err_text or "(none parsed)",
             )
 
+        # Diagnostics: log any notice/warning flash and any parsed validation
+        # errors so tag-dropping / canonicalisation issues surface in the logs.
+        for cls in ("notice", "error", "caution", "warning"):
+            flash = re.search(
+                rf'<(?:div|ul)[^>]*class="[^"]*flash[^"]*\b{cls}\b[^"]*"[^>]*>(.*?)</(?:div|ul)>',
+                resp.text, re.DOTALL,
+            )
+            if flash:
+                msg = re.sub(r"<[^>]+>", " ", flash.group(1)).strip()[:400]
+                logger.info("AO3 edit_work(%s) flash.%s: %s", work_id, cls, msg)
+
         logger.info("AO3: Edited work %s", work_id)
         return {"work_id": work_id, "url": f"{_BASE}/works/{work_id}"}
 
