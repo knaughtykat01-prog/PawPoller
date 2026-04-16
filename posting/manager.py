@@ -66,6 +66,29 @@ def get_platform_requires(platform: str) -> str:
         return "any"
 
 
+# Error patterns that mean "the submission no longer exists on the platform".
+# When we detect one of these during update_story(), we mark the publication
+# as 'deleted' in the registry so the matrix flips it back to a re-postable
+# state instead of repeatedly retrying an edit against a dead ID.
+DELETION_ERROR_PATTERNS = (
+    "submission has been deleted",   # Inkbunny
+    "submission not found",          # FA / generic
+    "submission was not found",      # FA
+    "work not found",                # AO3
+    "does not exist",                # generic
+    "404",                           # httpx 404 -> in exception message
+    "not found",                     # broad fallback — last
+    "no such submission",            # SF-ish
+)
+
+
+def _looks_like_deletion(error: str | None) -> bool:
+    if not error:
+        return False
+    low = error.lower()
+    return any(p in low for p in DELETION_ERROR_PATTERNS)
+
+
 PLATFORM_EMOJIS = {
     "ib": "🐾",
     "fa": "🦊",
@@ -271,9 +294,16 @@ async def update_story(
         from posting.sync import hash_file
         current_hash = hash_file(package.file_path) if package.file_path else ""
 
-        # If the edit failed on the server, auto-queue for desktop as a fallback
+        # Was the submission deleted on the platform side? Mark the
+        # publication so the matrix prompts a re-post rather than
+        # retrying the edit (which will keep failing).
+        was_deleted = (not result.success) and _looks_like_deletion(result.error)
+
+        # If the edit failed on the server for some OTHER reason, auto-queue
+        # for desktop as a fallback. Deletion errors skip the queue — desktop
+        # would hit the same wall.
         queued_for_desktop = False
-        if not result.success:
+        if not result.success and not was_deleted:
             from posting.scheduler import _runtime_mode
             if _runtime_mode == "server":
                 conn = get_connection()
@@ -289,10 +319,31 @@ async def update_story(
                     )
                 finally:
                     conn.close()
+        elif was_deleted:
+            logger.info(
+                "Publication %s ch%d on %s was deleted upstream — marking registry",
+                story_name, ch_idx, plat,
+            )
 
         conn = get_connection()
         try:
-            if result.success:
+            if was_deleted:
+                # Mark as deleted so the matrix treats this slot as
+                # re-postable. Keep the external_id/url for history.
+                posting_queries.upsert_publication(
+                    conn, story_name, ch_idx, plat,
+                    external_id=ext_id,
+                    external_url=pub["external_url"],
+                    title_used=package.title,
+                    description_used=package.description[:500],
+                    tags_used=package.tags,
+                    rating_used=package.rating,
+                    format_file=package.file_path or "",
+                    file_hash=current_hash,
+                    word_count=package.word_count,
+                    status="deleted",
+                )
+            elif result.success:
                 posting_queries.upsert_publication(
                     conn, story_name, ch_idx, plat,
                     external_id=result.external_id or ext_id,
@@ -306,10 +357,16 @@ async def update_story(
                     word_count=package.word_count,
                     status="posted",
                 )
+            log_status = (
+                "success" if result.success
+                else "deleted_upstream" if was_deleted
+                else "queued_desktop" if queued_for_desktop
+                else "failed"
+            )
             posting_queries.log_posting_action(
                 conn, plat, story_name, ch_idx,
                 action="update",
-                status="success" if result.success else ("queued_desktop" if queued_for_desktop else "failed"),
+                status=log_status,
                 pub_id=pub["pub_id"],
                 external_id=result.external_id or ext_id,
                 external_url=result.external_url,
@@ -325,6 +382,7 @@ async def update_story(
             "chapter_title": package.chapter_title,
             "success": result.success,
             "queued_desktop": queued_for_desktop,
+            "deleted_upstream": was_deleted,
             "external_id": result.external_id or ext_id,
             "external_url": result.external_url or pub["external_url"],
             "error": result.error,

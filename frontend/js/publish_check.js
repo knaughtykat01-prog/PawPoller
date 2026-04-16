@@ -15,6 +15,7 @@ window.PublishCheck = (function () {
         posted: { icon: '✓', cls: 'cell-posted', label: 'Posted' },
         posted_drifted: { icon: '↑', cls: 'cell-posted-drifted', label: 'Posted (local content changed)' },
         posted_stale: { icon: '!', cls: 'cell-posted-stale', label: 'Posted (now blocked)' },
+        deleted_upstream: { icon: '⊘', cls: 'cell-deleted', label: 'Deleted on platform — re-post?' },
         ready_retry: { icon: '↻', cls: 'cell-retry', label: 'Failed prev — retry?' },
         failed_prev: { icon: '✗', cls: 'cell-blocked', label: 'Blocked + prev failed' },
         not_supported: { icon: '–', cls: 'cell-na', label: 'N/A — per-chapter only' },
@@ -45,6 +46,7 @@ window.PublishCheck = (function () {
                         <span class="cell-legend cell-ready">✓</span> Ready
                         <span class="cell-legend cell-posted">✓</span> Posted
                         <span class="cell-legend cell-posted-drifted">↑</span> Drifted
+                        <span class="cell-legend cell-deleted">⊘</span> Deleted
                         <span class="cell-legend cell-posted-stale">!</span> Stale
                         <span class="cell-legend cell-retry">↻</span> Retry
                         <span class="cell-legend cell-blocked">✗</span> Blocked
@@ -112,7 +114,7 @@ window.PublishCheck = (function () {
         const sub = document.getElementById('publish-check-subtitle');
 
         // Stats line
-        let totalCells = 0, ready = 0, posted = 0, drifted = 0, blocked = 0;
+        let totalCells = 0, ready = 0, posted = 0, drifted = 0, deleted = 0, blocked = 0;
         for (const row of data.matrix) {
             for (const platId of Object.keys(row.cells)) {
                 const cell = row.cells[platId];
@@ -120,6 +122,7 @@ window.PublishCheck = (function () {
                 if (cell.status === 'ready' || cell.status === 'ready_retry') ready++;
                 else if (cell.status === 'posted') posted++;
                 else if (cell.status === 'posted_drifted') drifted++;
+                else if (cell.status === 'deleted_upstream') deleted++;
                 else if (cell.status === 'blocked' || cell.status === 'posted_stale' || cell.status === 'failed_prev') blocked++;
             }
         }
@@ -129,6 +132,7 @@ window.PublishCheck = (function () {
             totalCells + ' combinations &nbsp;|&nbsp; ' +
             '<span class="stat-posted">' + posted + ' posted</span> &nbsp;|&nbsp; ' +
             (drifted ? '<span class="stat-drifted">' + drifted + ' drifted</span> &nbsp;|&nbsp; ' : '') +
+            (deleted ? '<span class="stat-deleted">' + deleted + ' deleted</span> &nbsp;|&nbsp; ' : '') +
             '<span class="stat-ready">' + ready + ' ready</span> &nbsp;|&nbsp; ' +
             '<span class="stat-blocked">' + blocked + ' blocked</span>';
 
@@ -270,9 +274,11 @@ window.PublishCheck = (function () {
 
     function _renderActionPanel(cell, platId, platName, chIdx, chTitle) {
         const isPosted = cell.existing && cell.existing.status === 'posted';
+        const isDeleted = cell.status === 'deleted_upstream';
         const isDrifted = cell.status === 'posted_drifted';
         const isReady = cell.status === 'ready' || cell.status === 'ready_retry'
-            || cell.status === 'posted' || cell.status === 'posted_drifted';
+            || cell.status === 'posted' || cell.status === 'posted_drifted'
+            || cell.status === 'deleted_upstream';
         const canEdit = cell.supports_edit;
 
         let html = '<div class="publish-check-detail-section publish-action-panel">';
@@ -292,6 +298,13 @@ window.PublishCheck = (function () {
                 '</div>';
         }
 
+        if (isDeleted) {
+            html += '<div class="publish-action-deleted-banner">' +
+                '<strong>Submission was deleted on ' + _escape(platName) + '.</strong> ' +
+                'The previous URL is dead. Hit <em>Re-post</em> to create a new submission.' +
+                '</div>';
+        }
+
         html += '<div class="publish-action-options">';
         html += '<label><input type="checkbox" id="publish-opt-draft" checked> ' +
             'Save as draft (where supported)</label>';
@@ -303,7 +316,11 @@ window.PublishCheck = (function () {
         html += '<button class="btn btn-sm btn-outline" data-publish-action="dry_run">' +
             'Dry Run (preview package)</button>';
 
-        if (isPosted) {
+        if (isDeleted) {
+            // Re-post creates a brand new submission (goes through post, not edit)
+            html += '<button class="btn btn-sm btn-primary" data-publish-action="post">' +
+                'Re-post to ' + _escape(platName) + '</button>';
+        } else if (isPosted) {
             const updateClass = isDrifted ? 'btn btn-sm btn-primary' : 'btn btn-sm';
             html += '<button class="' + updateClass + '" data-publish-action="update"' +
                 (canEdit ? '' : ' disabled title="Platform does not support edit"') + '>' +

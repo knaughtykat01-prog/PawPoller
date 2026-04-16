@@ -642,7 +642,11 @@ async def publish_check(story_name: str):
                     "file_hash": existing.get("file_hash", ""),
                     "drifted": drift,
                 }
-                if existing["status"] == "posted":
+                if existing["status"] == "deleted":
+                    # Submission no longer exists on the platform — treat
+                    # the cell as re-postable but keep the history visible.
+                    cell["status"] = "deleted_upstream" if not errors else "blocked"
+                elif existing["status"] == "posted":
                     if errors:
                         cell["status"] = "posted_stale"
                     elif drift:
