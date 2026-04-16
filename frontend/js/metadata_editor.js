@@ -103,8 +103,20 @@ const MetaEditor = {
     // Platform keys (order controls render)
     PLATFORMS: ['sofurry', 'inkbunny', 'squidgeworld', 'ao3', 'furaffinity', 'wattpad'],
 
-    // Platforms that support per-platform tag overrides (Section 4)
+    // Platforms that show as tabs in the Tags section (keeps UI tight —
+    // other posters' tags are cascaded from default behind the scenes).
     TAG_PLATFORMS: ['default', 'sofurry', 'inkbunny', 'wattpad'],
+
+    // Platforms that receive cascaded tags when the user adds/removes a
+    // tag from the Default tab. Broader than TAG_PLATFORMS so AO3, SQW,
+    // WS, FA, DA, IK also pick up new tags even though they don't have
+    // their own UI tabs. Bluesky is excluded — it uses hashtag-style
+    // freeform tags that don't map from canonical underscored tags.
+    TAG_CASCADE_PLATFORMS: [
+        'sofurry', 'inkbunny', 'wattpad',
+        'ao3', 'squidgeworld', 'weasyl', 'furaffinity',
+        'deviantart', 'itaku',
+    ],
 
     // Human-readable platform names
     PLATFORM_LABELS: {
@@ -1017,11 +1029,13 @@ const MetaEditor = {
     // form expected by each target platform.
     _transformTagForPlatform(canonicalTag, platform) {
         if (platform === 'default') return canonicalTag;
+        if (platform === 'itaku') return canonicalTag;  // underscores like default
         if (platform === 'wattpad') {
             // camelCase: "slow_burn" → "slowBurn"
             return canonicalTag.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
         }
-        // sofurry, inkbunny: spaces instead of underscores
+        // sofurry, inkbunny, ao3, squidgeworld, weasyl, furaffinity, deviantart:
+        // spaces instead of underscores.
         return canonicalTag.replace(/_/g, ' ');
     },
 
@@ -1045,10 +1059,10 @@ const MetaEditor = {
         tags.push(final);
         this.metadata.tags[platform] = tags;
 
-        // Default tab is canonical — propagate to other platforms with transforms
+        // Default tab is canonical — propagate to EVERY posting platform
+        // (not just the UI tabs) with the right per-platform transform.
         if (platform === 'default') {
-            for (const p of this.TAG_PLATFORMS) {
-                if (p === 'default') continue;
+            for (const p of this.TAG_CASCADE_PLATFORMS) {
                 const transformed = this._transformTagForPlatform(final, p);
                 const otherTags = this.metadata.tags[p] || [];
                 if (!otherTags.some(t => t.toLowerCase() === transformed.toLowerCase())) {
@@ -1073,10 +1087,10 @@ const MetaEditor = {
         tags.splice(index, 1);
         this.metadata.tags[platform] = tags;
 
-        // Default removal cascades to other platforms (using transformed name)
+        // Default removal cascades to every posting platform (using
+        // transformed name), not just the UI-visible tabs.
         if (platform === 'default') {
-            for (const p of this.TAG_PLATFORMS) {
-                if (p === 'default') continue;
+            for (const p of this.TAG_CASCADE_PLATFORMS) {
                 const transformed = this._transformTagForPlatform(removed, p);
                 const otherTags = this.metadata.tags[p] || [];
                 const idx = otherTags.findIndex(t => t.toLowerCase() === transformed.toLowerCase());
