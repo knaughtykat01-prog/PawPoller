@@ -1,7 +1,7 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-04-16
-**Current version:** 2.10.0
+**Last updated:** 2026-04-17
+**Current version:** 2.10.2
 **Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`)
 
 Living document — update as the roadmap shifts. Read this first when picking up a fresh session.

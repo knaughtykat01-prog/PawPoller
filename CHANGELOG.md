@@ -4,6 +4,82 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.10.2] - 2026-04-17
+
+### Added — Unit tests, CF Worker hostname allowlist, docs refresh
+
+Low-risk polish pass while the user was away from keyboard. No
+runtime behaviour changes to the posting paths themselves — this
+release locks in the 2.10.x helpers with tests, hardens the CF
+proxy, and brings the reference docs back in sync with the code.
+
+**Unit tests (`tests/test_posting_helpers.py`)**
+- 30 tests, all passing, runnable via
+  `python -m unittest tests.test_posting_helpers` from the PawPoller
+  root. Plain stdlib `unittest`, no pytest dependency.
+- Covers `posting.manager._looks_like_deletion` — deletion pattern
+  matcher with explicit false-positive guards (`File not found on
+  disk`, `model not found in cache`, etc. that the old `not found`
+  catch-all would have matched).
+- Covers `_strip_chapter_prefix` on both AO3 and SQW posters, with
+  a divergence-check test that asserts the two verbatim-copied
+  helpers produce identical output for identical input.
+- Covers `_extract_work_form_fields` on both AO3 and SQW clients,
+  with a hand-built OTW-style form fixture exercising text inputs,
+  checkboxes (checked vs unchecked), selects (selected option),
+  textareas, submit skipping, auth_token skipping, and HTML entity
+  decoding. Also asserts AO3 and SQW helpers produce identical
+  output for identical input.
+
+**CF Worker hostname allowlist (`deploy/cf-worker.js`)**
+- New `ALLOWED_HOSTS` set — only `sofurry.com`, `deviantart.com`,
+  `archiveofourown.org`, `squidgeworld.org`, `furaffinity.net` (+ `www.`
+  variants). Requests to anything else return
+  `403 Target host not on allowlist: <host>`. Chain URLs validated
+  against the same list so they can't bypass.
+- Closes the open-proxy risk if `PROXY_SECRET` ever leaks: an
+  attacker with the secret can only hit platforms we already route
+  through, not arbitrary SSRF targets.
+- **Requires manual redeploy via wrangler or the CF dashboard** —
+  the Worker doesn't auto-deploy from git.
+
+**`documentation_guide.md` refresh**
+- Section 14 (AO3 poster) rewritten to reflect reality: chaptered
+  posting via `create_work + create_chapter` loop, work skin
+  CRUD, safe fetch-form overlay edit pattern, `content=None`
+  preservation in `edit_chapter`, `skip_content_refresh` mode,
+  `probe_exists` deletion detection, email-login account-name
+  resolution. Removed the "Known limitations" block that falsely
+  claimed AO3 had no chaptered / no work skin / chapter-1-only-edit.
+- Section 15 (Story Editor) extended with three new subsections:
+  Publish Check Matrix, Publish Action Panel, Theme-Save Trailing
+  Content. Cell states documented, work-oriented vs per-chapter
+  distinction explained, confirm_live guard noted.
+- Section 10 (CF Worker) gained the hostname allowlist description.
+
+**`PHASE_6D_PLAN.md` added**
+- Design doc for bulk publish actions (Publish row, Publish all new,
+  Update all drifted). Recommended path: frontend-orchestrated loop
+  over existing `/publish` endpoint, no backend changes, no
+  server-side state. AbortController-based cancellation. ~1 day
+  complexity, all changes within `publish_check.js` + `editor.css`.
+
+**Pyflakes-flagged dead imports removed**
+- `asyncio`, `PostResult`, `StoryUploadPackage` from
+  `posting/manager.py`.
+- `pathlib.Path` from `posting/platforms/ao3.py` and
+  `posting/platforms/squidgeworld.py`.
+- No behaviour change; verified all tests still pass after removal.
+
+### Not changed this release
+- 13 polling module audit findings deferred — low-risk fixes there
+  require careful testing that the user will do when back at a machine.
+- Weasyl / FurAffinity / DeviantArt / Itaku / Bluesky still untested
+  end-to-end. FA is blocked on desktop queue flush; Weasyl is blocked
+  on account verification; DA / IK / BSky are user's choice to skip.
+
+---
+
 ## [2.10.1] - 2026-04-16
 
 ### Fixed — Bug hunt round + edit_chapter overlay + AO3 shields
