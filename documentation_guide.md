@@ -2141,6 +2141,20 @@ The Worker follows redirects internally (up to 10) with `redirect: 'manual'`, fo
 - `X-Session-Cookies` — all cookies as `"name=val; name2=val2"` string
 - Original `Set-Cookie` headers forwarded through
 
+**Hostname allowlist** (added 2026-04-17): The Worker enforces an
+`ALLOWED_HOSTS` set covering only the platforms PawPoller actually
+routes through — `sofurry.com`, `deviantart.com`, `archiveofourown.org`,
+`squidgeworld.org`, `furaffinity.net` and their `www.` variants.
+Requests to anything else return `403 Target host not on allowlist: <host>`.
+Chain URLs (`x-proxy-chain`) are validated against the same list so they
+can't bypass it. This closes the open-proxy risk if `PROXY_SECRET` ever
+leaks: an attacker with the secret can only hit platforms we already
+talk to, not arbitrary SSRF targets.
+
+When you add a new platform that uses the CF proxy (FA is the likely
+next candidate), extend the allowlist in `deploy/cf-worker.js` and
+redeploy via wrangler or the CF dashboard.
+
 ### Deployment Instructions
 
 1. Log into [Cloudflare Dashboard](https://dash.cloudflare.com/)
@@ -2899,19 +2913,25 @@ First match wins, restricted to png/jpg/jpeg/gif. The IB poster forwards `packag
 
 **Same OTW Archive software as SquidgeWorld** — identical form structure, HTML handling, and chapter editing. The `AO3Poster` is a near-mirror of `SquidgeWorldPoster` after the 2026-04-08 refactor.
 
-**Post flow** (single-bulk-file convention, like IB):
+**Post flow**:
 1. Read full StoryInfo from `story.json` (fandom, warnings, categories, characters, relationships)
 2. Trim freeform tags to fit OTW's 75-tag total budget (`fandom + relationships + characters + freeform <= 75`)
-3. Read body-only HTML from `HTML/<Story>_Clean.html`
-4. `client.create_work(...)` with `preview_button` — work lands in `/works/{id}/preview` (drafts), NOT published
-5. SAFETY: post-flight `is_work_published` check — only aborts on POSITIVE confirmation of publish (handles AO3 timeouts gracefully)
+3. `_ensure_work_skin(client, story)` — find or create the per-story Work Skin on AO3 from `SquidgeWorld/Work_Skin.css`, auto-refresh CSS on every post. Returns skin_id or `""` (no skin applied if no CSS file).
+4. Chaptered detection (`story.total_chapters > 1`):
+   - **Multi-chapter**: read chapter 1 body from `SquidgeWorld/Chapter_1_*.html`, create_work with ch1 content, then iterate ch2..N via `create_chapter(work_id, title=, content=, position=, publish=False)`. Chapter titles are stripped of `Chapter N:` / `Part N:` / `Prelude:` / `Epilogue:` prefixes via `_strip_chapter_prefix()` since AO3 auto-prefixes on display.
+   - **Single-chapter / unsplit**: read `HTML/<Story>_Clean.html` (full-story body) and upload as one chapter.
+5. `client.create_work(...)` with `preview_button` — work lands in `/works/{id}/preview` (drafts), NOT published.
+6. SAFETY: post-flight `is_work_published` check — only aborts on POSITIVE confirmation of publish (handles AO3 timeouts gracefully). Each `create_chapter` call is also safety-checked.
 
-**Why single-bulk-file for chaptered prose**: AO3 client doesn't yet support multi-chapter `create_chapter` (deferred refactor). For now, full-story body HTML is uploaded as a single AO3 chapter — same approach as Inkbunny's reading-panel convention. The `HTML/<story>_Clean.html` file is body-only paragraphs with no `<html><head>` wrapper, ideal for AO3's content field.
+**Edit flow** (metadata + per-chapter content):
+1. `_ensure_work_skin` — refresh skin CSS before the metadata write so skin changes propagate.
+2. `client.edit_work(id, title=, summary=, additional_tags=, warnings=, categories=, relationship=, characters=, fandom=, rating=, work_skin_id=, save_as_draft=True)` — **safe fetch-form overlay pattern**: GET `/works/{id}/edit`, extract every current `work[*]` field via `_extract_work_form_fields()`, overlay only the caller-supplied overrides, POST back with `save_button=Save As Draft`. Earlier versions sent only a handful of fields with `_method=patch` alone — AO3 returned 302 but silently dropped the update; the overlay pattern fixed this. `_append_if_missing()` fallback ensures fields are sent even when OTW renders the edit form differently than new-work.
+3. `get_chapter_ids()` — scrape `/works/{id}/navigate`.
+4. Multi-chapter edit: iterate AO3's existing chapters, pair with local by index, call `edit_chapter(title=stripped_title, content=local_ch_html)`. Appends any local chapters missing upstream via `create_chapter`. Single-chapter fallback pushes the Clean HTML blob to chapter 1.
+5. `edit_chapter` also uses the safe fetch-form overlay — `content=None` preserves the existing body on AO3 so **title-only retitles don't re-upload content** (used by Metadata only flow).
 
-**Edit flow** (metadata + chapter content):
-1. `client.edit_work(id, title=, summary=, additional_tags=)` — metadata
-2. `get_chapter_ids()` — scrape `/works/{id}/navigate` for chapter IDs
-3. `edit_chapter(work_id, chapter_id, content=)` — replaces chapter 1 content
+**Metadata-only mode** (`package.extra["skip_content_refresh"] = True`):
+Short-circuits chapter body re-upload but still iterates chapters to push title changes via `edit_chapter(title=, content=None)`. ~N extra GET+POST roundtrips for N chapters but no HTML body transfer. Triggered by the Publish Check "Metadata only" button or by passing `extras` through `manager.update_story()`.
 
 **Critical OTW form fields** (any of these missing → silent validation failure):
 - `work[author_attributes][ids][]` — pseud_id, REQUIRED, extracted from `/works/new` HTML on every post
@@ -2947,10 +2967,14 @@ For full-story posting (`chapter_index=0`) priority 3 is skipped automatically b
 - `is_work_in_drafts(work_id)` — tri-state check against `/users/{user}/works/drafts`
 - `is_work_published(work_id)` — tri-state check against `/users/{user}/works`
 
-**Known limitations** (deferred):
-- Multi-chapter `create_chapter` not implemented — chaptered prose goes up as single bulk file
-- Work Skin support not implemented — AO3 won't have custom CSS until ported
-- `edit_work` only updates metadata + chapter 1; multi-chapter edits not supported
+**Deletion detection** (`probe_exists`):
+- `AO3Poster.probe_exists(external_id)` — GET `/works/{id}/edit`, returns False on 404 (deleted), True on 2xx (live), None on transient errors (don't misflag). Called by `/api/editor/stories/{name}/verify` endpoint during matrix Verify action. Also triggered automatically by `_looks_like_deletion()` in `manager.update_story()` when an edit fails with a deletion-ish error — flips the publications registry row to `status='deleted'` so the cell flips to ⊘ Re-post in the Publish Check matrix.
+
+**Login-with-email resolution**:
+AO3 lets you log in with either username OR email. If you log in with email, the account-name URLs (`/users/{name}/works/drafts`, `/users/{name}/skins`) won't resolve. `AO3Client.login()` post-authentication parses the redirect URL and replaces `self.username` with the actual account name, so every subsequent URL hits the right page.
+
+**Known limitations**:
+- None of the earlier posting limits remain; AO3 has full SQW parity (chaptered, work skins, safe-overlay edits, deletion probe).
 
 #### DeviantArt (`posting/platforms/deviantart.py`)
 
@@ -3404,3 +3428,78 @@ growth.
 `editor/slop.py` exposes the EQ-Bench slop scorer used by the writing
 guide pipeline. The editor surfaces this for any open story but it's
 not required for regeneration — it's a quality signal, not a gate.
+
+### Publish Check Matrix
+
+`GET /api/editor/stories/{name}/publish-check` returns a chapter × platform
+matrix showing where a story can be published. The matrix UI (Publish
+button on the editor toolbar → modal) renders:
+
+- **Rows**: always starts with a **Full story** row; chaptered stories
+  append per-chapter rows.
+- **Columns**: 9 platforms (IB, FA, WS, SF, SQW, AO3, DA, IK, BSky).
+- **Cells**: each is one of these states, each colour-coded:
+  - `ready` (green ✓) — validation passes, no prior publication
+  - `posted` (blue ✓) — already posted to this platform, external URL known
+  - `posted_drifted` (violet ↑) — posted but local file hash differs from
+    what was uploaded; hit Update to push fresh content
+  - `posted_stale` (orange !) — posted but package no longer validates
+  - `deleted_upstream` (red ⊘) — publication was detected deleted on the
+    platform; hit Re-post to create a fresh submission
+  - `ready_retry` (orange ↻) — previous attempt failed, current package is valid
+  - `failed_prev` (red ✗) — blocked + prior attempt failed
+  - `not_supported` (grey –) — work-oriented platforms (AO3, SQW) show
+    grey dashes on per-chapter rows because they post whole works
+  - `error` (red ⚠) — poster init / package build threw
+  - `blocked` (red ✗) — fresh cell with validation errors
+
+**Work-oriented vs per-chapter** (`WORK_ORIENTED = {"ao3", "sqw"}`):
+OTW-Archive-family platforms post a whole work containing N chapters;
+per-chapter rows show `not_supported` with the hint to use the Full story
+row. For IB/FA/WS/SF/DA/IK/BSky each chapter is a separate submission so
+every row is actionable.
+
+**Drift detection**: cells that were `posted` are cross-checked against
+the current file hash via `posting.sync.hash_file()`. Mismatch flips to
+`posted_drifted`. Stored hash comes from `publications.file_hash` recorded
+at post time. Tag-only platforms (IK, BSky) skip the drift check.
+
+### Publish Action Panel
+
+Clicking any matrix cell opens the detail panel with the package summary
+(title, tag count, file path + size, mode requirement, edit support,
+existing publication URL) and action buttons per cell state:
+
+- **Dry Run** — always available. Fires `POST /api/editor/stories/{name}/publish`
+  with `action="dry_run"`. Rebuilds the `StoryUploadPackage` and returns
+  it as JSON so you can inspect the exact payload that would be posted.
+  No external HTTP.
+- **Post** — visible on `ready` / `deleted_upstream` cells. Calls
+  `manager.post_story()`. Confirmation dialog spells out platform + draft
+  state; backend requires `confirm_live=True` in the request body.
+- **Update all** — visible on `posted` / `posted_drifted` cells.
+  Calls `manager.update_story()` with no extras — pushes metadata AND
+  content via the platform's `edit()` path. Primary-styled when drifted.
+- **Metadata only** — visible on `posted` / `posted_drifted` cells.
+  Same path but `extras={"skip_content_refresh": True}`. IB / SF / FA
+  skip the file re-upload; AO3 / SQW iterate chapters to push title
+  changes via `edit_chapter(content=None)` which preserves bodies. WS
+  ignores the flag (API can't replace file anyway) but returns a soft
+  warning in the result.
+- **Re-post** — visible on `deleted_upstream` cells. Goes through
+  `post_story()` (not edit), creating a fresh submission.
+- **Open** — external link to the live URL when one exists.
+
+Verify posted button at the modal footer walks every `posted` publication
+for the story and calls `poster.probe_exists()` to detect upstream
+deletions. Confirmed deletions are flipped to `status='deleted'` in the
+registry; the matrix reloads and deleted cells flip to ⊘.
+
+### Theme-Save Trailing Content
+
+`POST /api/editor/stories/{name}/theme` writes `CHAPTER_STYLING.md` with
+the new variables table between `<!-- THEME_VARIABLES_START -->` and
+`<!-- THEME_VARIABLES_END -->` markers. Any user-authored content AFTER
+the end marker (notes, credits, extra sections) is preserved by a
+`after = existing[existing.index(marker_end) + len(marker_end):]` split;
+earlier versions silently wiped this content on every save.
