@@ -557,10 +557,12 @@ async def publish_check(story_name: str):
         conn.close()
     pub_map = {(p["chapter_index"], p["platform"]): p for p in pubs}
 
-    # Platforms that only publish per-chapter (no concept of a single
-    # full-story upload). We still show the full-story row but mark
-    # these cells as not-supported so the user can't try to post.
-    PER_CHAPTER_ONLY = {"sqw"}
+    # OTW-Archive-family platforms post the whole work as one submission
+    # containing N chapters. Posting a single lone chapter to one of these
+    # platforms isn't a concept — you post the work. Per-chapter rows for
+    # these get marked not_supported; the full-story row is the actionable
+    # one (and internally handles multi-chapter creation).
+    WORK_ORIENTED = {"ao3", "sqw"}
 
     # Build the matrix
     matrix = []
@@ -572,11 +574,17 @@ async def publish_check(story_name: str):
             "cells": {},
         }
         for plat_id, _ in PUBLISH_PLATFORMS:
-            # Skip platforms that only publish per-chapter on the full-story row
-            if ch["index"] == 0 and ch.get("kind") == "full" and plat_id in PER_CHAPTER_ONLY and story.total_chapters > 0:
+            # Work-oriented platforms: per-chapter rows aren't valid; use
+            # the full-story row instead. Only applies to chaptered stories
+            # (single-chapter stories only have the full-story row anyway).
+            if (
+                ch["index"] > 0
+                and plat_id in WORK_ORIENTED
+                and story.total_chapters > 0
+            ):
                 row["cells"][plat_id] = {
                     "status": "not_supported",
-                    "errors": ["Platform posts per-chapter only — use a chapter row"],
+                    "errors": ["Platform posts a whole work at once — use the Full story row"],
                 }
                 continue
 

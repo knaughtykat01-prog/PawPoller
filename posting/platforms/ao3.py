@@ -193,6 +193,42 @@ class AO3Poster(PlatformPoster):
             return ""
 
     @staticmethod
+    def _read_chapter_content(story: story_reader.StoryInfo, ch_idx: int) -> str | None:
+        """Resolve a single chapter's body HTML for AO3.
+
+        Uses the SquidgeWorld/ per-chapter files (same OTW Archive format),
+        falling back to Chapters/SoFurry_HTML/ as a last resort.
+        """
+        ch = next((c for c in story.chapters if c.index == ch_idx), None)
+        if not ch:
+            return None
+
+        sqw_dir = story.path / "SquidgeWorld"
+        if sqw_dir.is_dir():
+            base = ch.filename.replace(".md", "") if ch.filename else f"Chapter_{ch_idx}"
+            for candidate in sqw_dir.glob(f"{base}*"):
+                if candidate.suffix == ".html":
+                    try:
+                        return candidate.read_text(encoding="utf-8")
+                    except Exception:
+                        pass
+            for candidate in sorted(sqw_dir.glob(f"Chapter_{ch_idx}_*.html")):
+                try:
+                    return candidate.read_text(encoding="utf-8")
+                except Exception:
+                    pass
+
+        sf_html = story.path / "Chapters" / "SoFurry_HTML"
+        if sf_html.is_dir():
+            for candidate in sorted(sf_html.glob(f"Chapter_{ch_idx}_*.html")):
+                try:
+                    return candidate.read_text(encoding="utf-8")
+                except Exception:
+                    pass
+
+        return None
+
+    @staticmethod
     def _read_full_story_html(story: story_reader.StoryInfo) -> str | None:
         """Read the body-only full-story HTML for AO3.
 
@@ -319,17 +355,36 @@ class AO3Poster(PlatformPoster):
             )
             additional_tags = ", ".join(freeform_tags)
 
-            # 3. Read full-story body HTML
-            content = self._read_full_story_html(story)
-            if not content and package.file_path:
-                with open(package.file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-            if not content:
-                return PostResult(
-                    success=False,
-                    error=f"No AO3 content for {story.name} (no HTML/<story>_Clean.html and no fallback)",
-                    duration_seconds=self._elapsed(_t),
-                )
+            # 3. Decide content strategy.
+            # Multi-chapter story → create work with Ch1, then create_chapter
+            # for Ch2..N (mirrors the SQW flow so AO3 works match the source
+            # chapter structure).
+            # Single-chapter story / no chapter_info → use the full-story
+            # Clean HTML as one chapter.
+            has_chapters = bool(story.chapters) and story.total_chapters > 1
+
+            if has_chapters:
+                chapter_1 = next((c for c in story.chapters if c.index == 1), None)
+                chapter_1_title = chapter_1.title if chapter_1 else "Chapter 1"
+                content = self._read_chapter_content(story, 1)
+                if not content:
+                    return PostResult(
+                        success=False,
+                        error=f"No AO3 content for {story.name} chapter 1",
+                        duration_seconds=self._elapsed(_t),
+                    )
+            else:
+                chapter_1_title = ""
+                content = self._read_full_story_html(story)
+                if not content and package.file_path:
+                    with open(package.file_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                if not content:
+                    return PostResult(
+                        success=False,
+                        error=f"No AO3 content for {story.name} (no HTML/<story>_Clean.html and no fallback)",
+                        duration_seconds=self._elapsed(_t),
+                    )
 
             # 4. Title + summary
             work_title = package.title or story.name.replace("_", " ")
@@ -340,8 +395,8 @@ class AO3Poster(PlatformPoster):
             # the skin_id can be passed through.
             skin_id = await self._ensure_work_skin(client, story)
 
-            # 5. Create the work in preview/draft state
-            create_result = await client.create_work(
+            # 5. Create the work in preview/draft state (with ch1 content)
+            create_kwargs: dict = dict(
                 title=work_title,
                 content=content,
                 fandom=fandom,
@@ -355,12 +410,45 @@ class AO3Poster(PlatformPoster):
                 language_id="1",  # AO3 English (numeric, like SQW's "15")
                 work_skin_id=skin_id,
             )
+            if chapter_1_title:
+                create_kwargs["chapter_title"] = chapter_1_title
+            create_result = await client.create_work(**create_kwargs)
             work_id = create_result["work_id"]
             url = create_result.get("url", f"https://archiveofourown.org/works/{work_id}")
             logger.info("AO3: Created work %s for %s — %s", work_id, story.name, url)
 
             # SAFETY: verify the new work is in drafts
             await _verify_still_draft(client, work_id, "create_work")
+
+            # 6. Add remaining chapters (Ch2..N) as drafts.
+            # publish=False keeps the work in its current (draft) state —
+            # the OTW preview_button flow adds the chapter without flipping
+            # the work to published, verified by SQW's test suite.
+            if has_chapters:
+                remaining = [c for c in story.chapters if c.index > 1]
+                for ch in sorted(remaining, key=lambda c: c.index):
+                    ch_content = self._read_chapter_content(story, ch.index)
+                    if not ch_content:
+                        logger.warning(
+                            "AO3: Skipping chapter %d for %s (no content found)",
+                            ch.index, story.name,
+                        )
+                        continue
+                    await client.create_chapter(
+                        work_id,
+                        title=ch.title,
+                        content=ch_content,
+                        position=ch.index,
+                        publish=False,
+                    )
+                    logger.info(
+                        "AO3: Added chapter %d to %s (work_id=%s)",
+                        ch.index, story.name, work_id,
+                    )
+                    # SAFETY: verify still draft after each chapter
+                    await _verify_still_draft(
+                        client, work_id, f"create_chapter ch{ch.index}",
+                    )
 
             return PostResult(
                 success=True,
@@ -373,11 +461,14 @@ class AO3Poster(PlatformPoster):
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
     async def edit(self, external_id: str, package: StoryUploadPackage) -> PostResult:
-        """Edit an existing AO3 work — metadata + first chapter content.
+        """Edit an existing AO3 work — metadata + per-chapter content refresh.
 
-        Note: only updates the first chapter (since the AO3 client does not
-        yet support multi-chapter create_chapter / iteration). Multi-chapter
-        edits will need a follow-up refactor.
+        For multi-chapter stories, iterates AO3's chapters in order and
+        updates each one's content from the matching SquidgeWorld HTML
+        file. Chapters present on AO3 beyond the local story length are
+        left alone; chapters present locally but missing on AO3 are
+        appended via create_chapter. Chapter count/order should match
+        the local source after this call.
         """
         _t = self._start_timer()
         try:
@@ -404,18 +495,59 @@ class AO3Poster(PlatformPoster):
             )
             logger.info("AO3: Updated work %s metadata", external_id)
 
-            # Update chapter 1 content
+            # Update chapter content. Multi-chapter: edit each existing
+            # chapter from local source; append any extras. Single-chapter:
+            # fall back to the full-story Clean HTML blob (unchanged behaviour).
             try:
-                chapters = await client.get_chapter_ids(external_id)
-                if chapters:
+                ao3_chapters = await client.get_chapter_ids(external_id)
+                has_chapters = bool(story.chapters) and story.total_chapters > 1
+
+                if has_chapters:
+                    local_chapters = sorted(story.chapters, key=lambda c: c.index)
+                    for ao3_ch, local_ch in zip(ao3_chapters, local_chapters):
+                        ch_content = self._read_chapter_content(story, local_ch.index)
+                        if not ch_content:
+                            logger.warning(
+                                "AO3: Skipping ch%d edit for %s (no content)",
+                                local_ch.index, story.name,
+                            )
+                            continue
+                        await client.edit_chapter(
+                            external_id, ao3_ch["chapter_id"],
+                            title=local_ch.title, content=ch_content,
+                        )
+                        logger.info(
+                            "AO3: Updated chapter %s (local idx %d) of work %s",
+                            ao3_ch["chapter_id"], local_ch.index, external_id,
+                        )
+
+                    # Append any local chapters that aren't on AO3 yet
+                    if len(local_chapters) > len(ao3_chapters):
+                        for local_ch in local_chapters[len(ao3_chapters):]:
+                            ch_content = self._read_chapter_content(story, local_ch.index)
+                            if not ch_content:
+                                continue
+                            await client.create_chapter(
+                                external_id,
+                                title=local_ch.title,
+                                content=ch_content,
+                                position=local_ch.index,
+                                publish=False,
+                            )
+                            logger.info(
+                                "AO3: Appended missing ch%d to work %s",
+                                local_ch.index, external_id,
+                            )
+                elif ao3_chapters:
+                    # Single-chapter work: push the full-story HTML blob
                     content = self._read_full_story_html(story)
                     if content:
                         await client.edit_chapter(
-                            external_id, chapters[0]["chapter_id"], content=content,
+                            external_id, ao3_chapters[0]["chapter_id"], content=content,
                         )
                         logger.info(
                             "AO3: Updated chapter %s content of work %s",
-                            chapters[0]["chapter_id"], external_id,
+                            ao3_chapters[0]["chapter_id"], external_id,
                         )
             except Exception as ch_err:
                 logger.warning("AO3: Chapter content update failed: %s", ch_err)

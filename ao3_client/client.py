@@ -709,6 +709,139 @@ class AO3Client:
             for ch_id, idx, title in chapters
         ]
 
+    async def create_chapter(
+        self,
+        work_id: str,
+        *,
+        title: str,
+        content: str,
+        position: int | None = None,
+        summary: str = "",
+        notes_begin: str = "",
+        notes_end: str = "",
+        publish: bool = False,
+    ) -> dict:
+        """Add a new chapter to an existing AO3 work.
+
+        Ported from the SqW client — AO3 and SquidgeWorld run the same OTW
+        Archive software so the chapters/new form is identical.
+
+        SAFETY: By default (publish=False) this uses preview_button=Preview,
+        which adds the chapter to the work while PRESERVING the work's
+        current state (a draft stays a draft). No follow-up POST is needed —
+        the preview request creates the chapter fully. Set publish=True only
+        when you want to publish the entire work along with the new chapter.
+
+        Args:
+            work_id: The work to add the chapter to.
+            title: Chapter title.
+            content: HTML content of the chapter.
+            position: Optional position (1 = first, etc). None lets OTW append.
+            summary: Optional chapter summary.
+            notes_begin: Optional beginning notes.
+            notes_end: Optional end notes.
+            publish: If True, uses post_without_preview_button (publishes).
+                If False (default), uses preview_button — safe for drafts.
+
+        Returns:
+            Dict with 'chapter_id', 'work_id', 'url', 'published'.
+        """
+        if not self._logged_in:
+            if not await self.ensure_logged_in():
+                raise RuntimeError("AO3: Not logged in")
+
+        form_url = f"{_BASE}/works/{work_id}/chapters/new"
+        form_resp = await self._http.get(form_url)
+        if form_resp.status_code != 200:
+            raise RuntimeError(
+                f"AO3: Could not load chapter form (status {form_resp.status_code})"
+            )
+        html = form_resp.text
+
+        token_m = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', html)
+        if not token_m:
+            token_m = re.search(r'value="([^"]+)"[^>]*name="authenticity_token"', html)
+        if not token_m:
+            raise RuntimeError("AO3: Could not get CSRF token from chapter form")
+        token = token_m.group(1)
+
+        pseud_m = re.search(
+            r'<input[^>]*value="(\d+)"[^>]*name="chapter\[author_attributes\]\[ids\]\[\]"',
+            html,
+        ) or re.search(
+            r'<input[^>]*name="chapter\[author_attributes\]\[ids\]\[\]"[^>]*value="(\d+)"',
+            html,
+        )
+        if not pseud_m:
+            raise RuntimeError("AO3: Could not extract chapter author pseud ID")
+        pseud_id = pseud_m.group(1)
+
+        from urllib.parse import urlencode
+        form_data: list[tuple[str, str]] = [
+            ("authenticity_token", token),
+            ("chapter[author_attributes][ids][]", pseud_id),
+            ("chapter[title]", title),
+            ("chapter[summary]", summary),
+            ("chapter[notes]", notes_begin),
+            ("chapter[endnotes]", notes_end),
+            ("chapter[content]", content),
+        ]
+        if position is not None:
+            form_data.append(("chapter[position]", str(position)))
+
+        if publish:
+            form_data.append(("post_without_preview_button", "Post"))
+        else:
+            form_data.append(("preview_button", "Preview"))
+
+        body = urlencode(form_data, doseq=True)
+
+        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        resp = await self._http.post(
+            f"{_BASE}/works/{work_id}/chapters",
+            content=body,
+            headers={
+                "Referer": form_url,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            timeout=60.0,
+        )
+
+        if resp.status_code >= 400:
+            raise RuntimeError(f"AO3: Chapter creation failed — status {resp.status_code}")
+
+        if "Sorry! We couldn" in resp.text:
+            errors = re.findall(
+                r'<(?:li|div)[^>]*class="[^"]*error[^"]*"[^>]*>(.*?)</(?:li|div)>',
+                resp.text, re.DOTALL,
+            )
+            err_text = "; ".join(
+                re.sub(r"<[^>]+>", "", e).strip()[:200] for e in errors[:5]
+            )
+            raise RuntimeError(
+                f"AO3: Chapter creation failed: {err_text or '(none parsed)'}"
+            )
+
+        final_url = str(resp.url)
+        ch_match = re.search(rf'/works/{work_id}/chapters/(\d+)', final_url)
+        chapter_id = ch_match.group(1) if ch_match else ""
+
+        if not chapter_id:
+            raise RuntimeError(
+                f"AO3: Could not extract chapter_id from response URL: {final_url}"
+            )
+
+        logger.info(
+            "AO3: Added chapter to work %s — chapter_id=%s publish=%s",
+            work_id, chapter_id, publish,
+        )
+        return {
+            "chapter_id": chapter_id,
+            "work_id": work_id,
+            "url": final_url,
+            "published": publish,
+        }
+
     # ── Safety / Cleanup ────────────────────────────────────────
 
     async def delete_work(self, work_id: str) -> bool:
