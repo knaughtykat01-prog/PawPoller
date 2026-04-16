@@ -791,7 +791,7 @@ mental_transformation | Changes to a character's personality, intelligence, desi
 merging | Two or more characters physically fuse into a single combined being, their bodies melting or pressing together until individual forms are indistinguishable. | kink:transformation
 micro | A character shrunken to tiny proportions — small enough to fit in a palm, stand on a finger, or be accidentally stepped on by a normal-sized being. | kink:transformation
 mid_tf_sex | Sexual activity that occurs during an active transformation, with the changing body creating shifting sensations and anatomy throughout the encounter. | kink:transformation
-multi_arm | A character with more than two arms, providing extra limbs for grasping, restraining, or simultaneously stimulating multiple areas of a partner's body at once. | kink:transformation
+multi_arm | More than two arms present, the multi arm as the noted anatomy or body feature. | kink:transformation
 multi_leg | A character with more than two legs, often as part of a taur, insectoid, or spider body configuration that changes how they move and mate. | kink:transformation
 muscle_growth | A character's muscles visibly swell and expand, bulking up with increasing mass as definition deepens and veins surface across their growing physique. | kink:transformation
 nipple_expansion | A character's nipples grow larger, longer, and more prominent, swelling from normal size into thick, finger-length or larger protrusions that demand constant attention. | kink:transformation
