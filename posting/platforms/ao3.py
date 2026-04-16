@@ -533,11 +533,27 @@ class AO3Poster(PlatformPoster):
             # pushes the current CSS, then assigns it to the work.
             skin_id = await self._ensure_work_skin(client, story)
 
+            # Resolve AO3-style metadata for the edit (mirrors post()).
+            rating = self._rating_to_ao3(story.rating or package.rating)
+            warnings_list = story.warnings or ["Choose Not To Use Archive Warnings"]
+            categories_list = story.categories or (
+                [story.category] if story.category else []
+            )
+            fandom = story.fandom or "Original Work"
+            characters_str = ", ".join(story.characters)
+            relationships_str = ", ".join(story.relationships)
+
             await client.edit_work(
                 external_id,
                 title=package.title or story.name.replace("_", " "),
                 summary=(story.description or package.description or "")[:1250],
                 additional_tags=additional_tags,
+                warnings=warnings_list,
+                categories=categories_list,
+                relationship=relationships_str or None,
+                characters=characters_str or None,
+                fandom=fandom,
+                rating=rating,
                 work_skin_id=skin_id if skin_id else None,
             )
             logger.info("AO3: Updated work %s metadata", external_id)

@@ -580,50 +580,164 @@ class AO3Client:
         additional_tags: str | None = None,
         notes_begin: str | None = None,
         notes_end: str | None = None,
+        warnings: list[str] | None = None,
+        categories: list[str] | None = None,
+        relationship: str | None = None,
+        characters: str | None = None,
+        fandom: str | None = None,
+        rating: str | None = None,
         work_skin_id: str | None = None,
+        save_as_draft: bool = True,
     ) -> dict:
         """Edit metadata on an existing AO3 work.
 
-        Pass ``work_skin_id`` to apply or change the Work Skin; pass an
-        empty string to clear it. Leave as None to preserve whatever the
-        work currently has.
+        Uses the safe form-fetch pattern (ported from SqW): GET the edit
+        form, extract every current field value, modify only the requested
+        fields, then POST the full form back with `save_button=Save As
+        Draft` (or `post_button=Post`). This fixes the bug where sending
+        only a handful of work[*] fields and _method=patch alone returned
+        302 but didn't persist — OTW Archive needs all fields + a commit
+        button to actually save.
+
+        Args:
+            work_id: AO3 work ID.
+            title / summary / additional_tags / notes_begin / notes_end /
+            relationship / characters / fandom / rating / work_skin_id:
+                scalar fields. None = keep current value on AO3.
+            warnings / categories: list fields; None = keep current set.
+            save_as_draft: True (default) saves the work as a draft;
+                False publishes via post_button=Post.
+
+        Returns:
+            Dict with work_id and url.
         """
         if not self._logged_in:
             if not await self.ensure_logged_in():
                 raise RuntimeError("AO3: Not logged in")
 
         edit_url = f"{_BASE}/works/{work_id}/edit"
-        token = await self._get_authenticity_token(edit_url)
-        if not token:
-            raise RuntimeError("AO3: Could not get CSRF token from edit page")
+        form_resp = await self._http.get(edit_url)
+        if form_resp.status_code != 200:
+            raise RuntimeError(
+                f"AO3: Could not load edit form (status {form_resp.status_code})"
+            )
 
-        form_data: dict[str, str] = {
-            "authenticity_token": token,
-            "_method": "patch",
-        }
-        if title is not None:
-            form_data["work[title]"] = title
-        if summary is not None:
-            form_data["work[summary]"] = summary[:1250]
-        if additional_tags is not None:
-            form_data["work[freeform_string]"] = additional_tags
-        if notes_begin is not None:
-            form_data["work[notes]"] = notes_begin
-        if notes_end is not None:
-            form_data["work[endnotes]"] = notes_end
-        if work_skin_id is not None:
-            form_data["work[work_skin_id]"] = work_skin_id
+        token, current_fields = _extract_work_form_fields(form_resp.text)
+
+        new_fields: list[tuple[str, str]] = []
+        warnings_handled = False
+        categories_handled = False
+
+        for name, value in current_fields:
+            if name == "work[title]" and title is not None:
+                new_fields.append((name, title))
+            elif name == "work[summary]" and summary is not None:
+                new_fields.append((name, summary[:1250]))
+            elif name == "work[freeform_string]" and additional_tags is not None:
+                new_fields.append((name, additional_tags))
+            elif name == "work[notes]" and notes_begin is not None:
+                new_fields.append((name, notes_begin))
+            elif name == "work[endnotes]" and notes_end is not None:
+                new_fields.append((name, notes_end))
+            elif name == "work[relationship_string]" and relationship is not None:
+                new_fields.append((name, relationship))
+            elif name == "work[character_string]" and characters is not None:
+                new_fields.append((name, characters))
+            elif name == "work[fandom_string]" and fandom is not None:
+                new_fields.append((name, fandom))
+            elif name == "work[rating_string]" and rating is not None:
+                new_fields.append((name, rating))
+            elif name == "work[work_skin_id]" and work_skin_id is not None:
+                new_fields.append((name, work_skin_id))
+            elif name == "work[archive_warning_strings][]":
+                if warnings is not None:
+                    if not warnings_handled:
+                        new_fields.append((name, ""))  # hidden placeholder
+                        for w in warnings:
+                            new_fields.append((name, w))
+                        warnings_handled = True
+                else:
+                    new_fields.append((name, value))
+            elif name == "work[category_strings][]":
+                if categories is not None:
+                    if not categories_handled:
+                        new_fields.append((name, ""))
+                        for c in categories:
+                            new_fields.append((name, c))
+                        categories_handled = True
+                else:
+                    new_fields.append((name, value))
+            else:
+                new_fields.append((name, value))
+
+        # If work_skin_id was requested but the field wasn't in the form, append it
+        if (
+            work_skin_id is not None
+            and not any(n == "work[work_skin_id]" for n, _ in new_fields)
+        ):
+            new_fields.append(("work[work_skin_id]", work_skin_id))
+
+        from urllib.parse import urlencode
+        submit_data: list[tuple[str, str]] = [
+            ("authenticity_token", token),
+            ("_method", "patch"),
+        ]
+        submit_data.extend(new_fields)
+        if save_as_draft:
+            submit_data.append(("save_button", "Save As Draft"))
+        else:
+            submit_data.append(("post_button", "Post"))
+
+        body = urlencode(submit_data, doseq=True)
 
         await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
         resp = await self._http.post(
             f"{_BASE}/works/{work_id}",
-            data=form_data,
-            headers={"Referer": edit_url},
-            timeout=30.0,
+            content=body,
+            headers={
+                "Referer": edit_url,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            timeout=60.0,
         )
 
         if resp.status_code >= 400:
             raise RuntimeError(f"AO3: Edit failed — status {resp.status_code}")
+
+        # OTW returns 200 even when nothing was saved — check the flash.
+        if "have not been saved" in resp.text:
+            raise RuntimeError(
+                "AO3: Edit POST returned but flash says 'changes have not been saved' "
+                "(wrong submit button or validation error)"
+            )
+
+        success_patterns = [
+            "successfully updated",
+            "Work was successfully",
+            "updated successfully",
+        ]
+        if not any(p in resp.text for p in success_patterns):
+            err_block = re.search(
+                r'<(?:div|ul)[^>]*id="error"[^>]*>(.*?)</(?:div|ul)>',
+                resp.text, re.DOTALL,
+            )
+            err_text = ""
+            if err_block:
+                err_text = re.sub(r"<[^>]+>", " ", err_block.group(1)).strip()[:300]
+            else:
+                flash = re.search(
+                    r'<div[^>]*class="[^"]*flash[^"]*"[^>]*>(.*?)</div>',
+                    resp.text, re.DOTALL,
+                )
+                if flash:
+                    err_text = re.sub(r"<[^>]+>", " ", flash.group(1)).strip()[:300]
+            # Missing success flash isn't always fatal (draft redirect can
+            # swallow it) — log as warning instead of raising, so the
+            # flow continues and the caller can verify by reload.
+            logger.warning(
+                "AO3: Edit POST returned 200 but no explicit success flash "
+                "(flash/errors: %s)", err_text or "(none parsed)",
+            )
 
         logger.info("AO3: Edited work %s", work_id)
         return {"work_id": work_id, "url": f"{_BASE}/works/{work_id}"}
@@ -1202,6 +1316,90 @@ class AO3Client:
 
         logger.info("AO3: Updated Work Skin %s", skin_id)
         return {"skin_id": skin_id, "url": f"{_BASE}/skins/{skin_id}"}
+
+
+def _extract_work_form_fields(html: str) -> tuple[str, list[tuple[str, str]]]:
+    """Parse all work[*] form fields from a /works/{id}/edit page.
+
+    Ported from sqw_client — AO3 runs the same OTW Archive software, so
+    the edit form layout is identical. Returns (csrf_token, list_of_
+    (name, value)_tuples) so edit_work can resubmit the complete form
+    without Rails clearing omitted fields.
+
+    Handles hidden/text inputs, checkboxes (checked only), radios
+    (checked only), selects (selected option), and textareas.
+    """
+    token_m = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', html)
+    if not token_m:
+        token_m = re.search(r'value="([^"]+)"[^>]*name="authenticity_token"', html)
+    if not token_m:
+        raise RuntimeError("AO3: Could not find CSRF token in work edit form")
+    token = token_m.group(1)
+
+    form_match = re.search(
+        r'<form[^>]*action="[^"]*works/\d+[^"]*"[^>]*>(.*?)</form>',
+        html, re.DOTALL,
+    )
+    form_html = form_match.group(1) if form_match else html
+
+    def _decode(s: str) -> str:
+        return (
+            s.replace("&amp;", "&")
+            .replace("&quot;", '"')
+            .replace("&#39;", "'")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+        )
+
+    fields: list[tuple[str, str]] = []
+
+    for inp_match in re.finditer(r'<input([^>]*?)>', form_html):
+        attrs = inp_match.group(1)
+        type_m = re.search(r'\btype="([^"]+)"', attrs)
+        inp_type = type_m.group(1).lower() if type_m else "text"
+        if inp_type in ("submit", "button", "image", "reset", "file"):
+            continue
+        name_m = re.search(r'\bname="([^"]+)"', attrs)
+        if not name_m:
+            continue
+        name = name_m.group(1)
+        if name in ("authenticity_token", "_method", "utf8"):
+            continue
+        if not (name.startswith("work[") or "pseud" in name or "author" in name):
+            continue
+        value_m = re.search(r'\bvalue="([^"]*)"', attrs)
+        value = value_m.group(1) if value_m else ""
+        if inp_type in ("checkbox", "radio") and "checked" not in attrs.lower():
+            continue
+        fields.append((name, _decode(value)))
+
+    for sel_match in re.finditer(r'<select([^>]*?)>(.*?)</select>', form_html, re.DOTALL):
+        attrs = sel_match.group(1)
+        body = sel_match.group(2)
+        name_m = re.search(r'\bname="([^"]+)"', attrs)
+        if not name_m:
+            continue
+        name = name_m.group(1)
+        if not name.startswith("work["):
+            continue
+        sel_opt = re.search(r'<option[^>]*\bselected[^>]*\bvalue="([^"]*)"', body)
+        if not sel_opt:
+            sel_opt = re.search(r'<option[^>]*\bvalue="([^"]*)"[^>]*\bselected', body)
+        value = sel_opt.group(1) if sel_opt else ""
+        fields.append((name, value))
+
+    for ta_match in re.finditer(r'<textarea([^>]*?)>(.*?)</textarea>', form_html, re.DOTALL):
+        attrs = ta_match.group(1)
+        body = ta_match.group(2)
+        name_m = re.search(r'\bname="([^"]+)"', attrs)
+        if not name_m:
+            continue
+        name = name_m.group(1)
+        if not name.startswith("work["):
+            continue
+        fields.append((name, _decode(body)))
+
+    return token, fields
 
 
 def _collapse_html_whitespace(html: str) -> str:
