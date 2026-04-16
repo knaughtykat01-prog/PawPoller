@@ -580,8 +580,14 @@ class AO3Client:
         additional_tags: str | None = None,
         notes_begin: str | None = None,
         notes_end: str | None = None,
+        work_skin_id: str | None = None,
     ) -> dict:
-        """Edit metadata on an existing AO3 work."""
+        """Edit metadata on an existing AO3 work.
+
+        Pass ``work_skin_id`` to apply or change the Work Skin; pass an
+        empty string to clear it. Leave as None to preserve whatever the
+        work currently has.
+        """
         if not self._logged_in:
             if not await self.ensure_logged_in():
                 raise RuntimeError("AO3: Not logged in")
@@ -605,6 +611,8 @@ class AO3Client:
             form_data["work[notes]"] = notes_begin
         if notes_end is not None:
             form_data["work[endnotes]"] = notes_end
+        if work_skin_id is not None:
+            form_data["work[work_skin_id]"] = work_skin_id
 
         await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
         resp = await self._http.post(
@@ -791,6 +799,276 @@ class AO3Client:
         if html is None:
             return None
         return f"/works/{work_id}" in html
+
+    # ── Work Skins ──────────────────────────────────────────────
+    #
+    # AO3 runs the OTW Archive software (same as SquidgeWorld), so the
+    # skin endpoints are identical: GET /skins/new?skin_type=WorkSkin,
+    # POST /skins, /skins/{id}/edit, /skins/{id}. These methods are a
+    # near-verbatim port of the SqW client's Work Skin CRUD.
+
+    async def find_work_skin_by_title(self, title: str) -> str | None:
+        """Look up an existing Work Skin owned by the current user by title.
+
+        Returns the skin_id as a string, or None if not found.
+        """
+        if not self._logged_in:
+            await self.ensure_logged_in()
+
+        url = f"{_BASE}/users/{self.username}/skins?skin_type=WorkSkin"
+        resp = await self._http.get(url)
+        if resp.status_code != 200:
+            return None
+        html = resp.text
+
+        for m in re.finditer(
+            r'<a\s+href="/skins/(\d+)"[^>]*>([^<]+)</a>',
+            html,
+        ):
+            skin_id, skin_title = m.group(1), m.group(2).strip()
+            if skin_title == title:
+                return skin_id
+        return None
+
+    async def create_work_skin(
+        self,
+        *,
+        title: str,
+        css: str,
+        description: str = "",
+        public: bool = False,
+        role: str = "user",
+    ) -> dict:
+        """Create a new Work Skin on AO3.
+
+        Args:
+            title: Skin title (visible in dropdowns).
+            css: The CSS source. Should be scoped to #workskin (OTW Archive
+                wraps work content in <div id="workskin">).
+            description: Optional skin description.
+            public: If True, requests public visibility (requires admin approval).
+            role: "user" (add to archive skin) or "override" (replace).
+
+        Returns:
+            Dict with 'skin_id' and 'url'.
+        """
+        if not self._logged_in:
+            if not await self.ensure_logged_in():
+                raise RuntimeError("AO3: Not logged in")
+
+        form_url = f"{_BASE}/skins/new?skin_type=WorkSkin"
+        form_resp = await self._http.get(form_url)
+        if form_resp.status_code != 200:
+            raise RuntimeError(
+                f"AO3: Could not load skin form (status {form_resp.status_code})"
+            )
+
+        token_m = re.search(
+            r'name="authenticity_token"[^>]*value="([^"]+)"', form_resp.text
+        )
+        if not token_m:
+            token_m = re.search(
+                r'value="([^"]+)"[^>]*name="authenticity_token"', form_resp.text
+            )
+        if not token_m:
+            raise RuntimeError("AO3: Could not get CSRF token from skin form")
+        token = token_m.group(1)
+
+        from urllib.parse import urlencode
+        form_data = [
+            ("authenticity_token", token),
+            ("skin_type", "WorkSkin"),
+            ("skin[title]", title),
+            ("skin[description]", description),
+            ("skin[public]", "0"),
+            ("skin[unusable]", "0"),
+            ("skin[role]", role),
+            ("skin[ie_condition]", ""),
+            ("skin[css]", css),
+            ("commit", "Submit"),
+        ]
+        if public:
+            form_data.append(("skin[public]", "1"))
+
+        body = urlencode(form_data, doseq=True)
+
+        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        resp = await self._http.post(
+            f"{_BASE}/skins",
+            content=body,
+            headers={
+                "Referer": form_url,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            timeout=60.0,
+        )
+
+        final_url = str(resp.url)
+        skin_match = re.search(r'/skins/(\d+)(?:[/?]|$)', final_url)
+        if skin_match:
+            skin_id = skin_match.group(1)
+            logger.info("AO3: Created Work Skin %s — %s", skin_id, title)
+            return {"skin_id": skin_id, "url": f"{_BASE}/skins/{skin_id}", "title": title}
+
+        errors = re.findall(
+            r'<(?:li|div)[^>]*class="[^"]*error[^"]*"[^>]*>(.*?)</(?:li|div)>',
+            resp.text, re.DOTALL,
+        )
+        err_text = "; ".join(
+            re.sub(r"<[^>]+>", "", e).strip()[:200] for e in errors[:5]
+        )
+        raise RuntimeError(
+            f"AO3: Skin creation failed. status={resp.status_code} url={final_url} "
+            f"errors={err_text or '(none parsed)'}"
+        )
+
+    async def get_or_create_work_skin(
+        self,
+        *,
+        title: str,
+        css: str,
+        description: str = "",
+    ) -> str:
+        """Find an existing Work Skin by title or create a new one. Returns skin_id."""
+        existing = await self.find_work_skin_by_title(title)
+        if existing:
+            logger.info("AO3: Reusing existing Work Skin %s — %s", existing, title)
+            return existing
+        result = await self.create_work_skin(
+            title=title, css=css, description=description,
+        )
+        return result["skin_id"]
+
+    async def edit_work_skin(
+        self,
+        skin_id: str,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        css: str | None = None,
+        public: bool | None = None,
+    ) -> dict:
+        """Edit an existing Work Skin's metadata or CSS.
+
+        Uses the safe form-fetch pattern: GET /skins/{id}/edit, extract
+        every skin[*] field with its current value, override only the
+        requested fields, then POST back with _method=patch.
+        """
+        if not self._logged_in:
+            if not await self.ensure_logged_in():
+                raise RuntimeError("AO3: Not logged in")
+
+        edit_url = f"{_BASE}/skins/{skin_id}/edit"
+        form_resp = await self._http.get(edit_url)
+        if form_resp.status_code != 200:
+            raise RuntimeError(
+                f"AO3: Could not load skin edit form (status {form_resp.status_code})"
+            )
+        html = form_resp.text
+
+        token_m = re.search(
+            r'name="authenticity_token"[^>]*value="([^"]+)"', html
+        )
+        if not token_m:
+            token_m = re.search(
+                r'value="([^"]+)"[^>]*name="authenticity_token"', html
+            )
+        if not token_m:
+            raise RuntimeError("AO3: Could not find CSRF token in skin edit form")
+        token = token_m.group(1)
+
+        form_match = re.search(
+            r'<form[^>]*action="[^"]*skins/\d+[^"]*"[^>]*>(.*?)</form>',
+            html, re.DOTALL,
+        )
+        form_body = form_match.group(1) if form_match else html
+
+        def _decode(s: str) -> str:
+            return (
+                s.replace("&amp;", "&")
+                .replace("&quot;", '"')
+                .replace("&#39;", "'")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+            )
+
+        current: list[tuple[str, str]] = []
+        for inp in re.finditer(r'<input([^>]*?)>', form_body):
+            attrs = inp.group(1)
+            t_m = re.search(r'\btype="([^"]+)"', attrs)
+            t = t_m.group(1).lower() if t_m else "text"
+            if t in ("submit", "button", "image", "reset", "file"):
+                continue
+            n_m = re.search(r'\bname="([^"]+)"', attrs)
+            if not n_m or not n_m.group(1).startswith("skin["):
+                continue
+            v_m = re.search(r'\bvalue="([^"]*)"', attrs)
+            v = v_m.group(1) if v_m else ""
+            if t in ("checkbox", "radio"):
+                if "checked" not in attrs.lower():
+                    continue
+            current.append((n_m.group(1), _decode(v)))
+
+        for sel in re.finditer(r'<select([^>]*?)>(.*?)</select>', form_body, re.DOTALL):
+            attrs, body = sel.group(1), sel.group(2)
+            n_m = re.search(r'\bname="([^"]+)"', attrs)
+            if not n_m or not n_m.group(1).startswith("skin["):
+                continue
+            opt = re.search(r'<option[^>]*\bselected[^>]*\bvalue="([^"]*)"', body)
+            if not opt:
+                opt = re.search(r'<option[^>]*\bvalue="([^"]*)"[^>]*\bselected', body)
+            current.append((n_m.group(1), opt.group(1) if opt else ""))
+
+        for ta in re.finditer(r'<textarea([^>]*?)>(.*?)</textarea>', form_body, re.DOTALL):
+            attrs, body = ta.group(1), ta.group(2)
+            n_m = re.search(r'\bname="([^"]+)"', attrs)
+            if not n_m or not n_m.group(1).startswith("skin["):
+                continue
+            current.append((n_m.group(1), _decode(body)))
+
+        new_fields: list[tuple[str, str]] = []
+        for name, value in current:
+            if name == "skin[title]" and title is not None:
+                new_fields.append((name, title))
+            elif name == "skin[description]" and description is not None:
+                new_fields.append((name, description))
+            elif name == "skin[css]" and css is not None:
+                new_fields.append((name, css))
+            elif name == "skin[public]" and public is not None:
+                new_fields.append((name, "1" if public else "0"))
+            else:
+                new_fields.append((name, value))
+
+        from urllib.parse import urlencode
+        submit_data: list[tuple[str, str]] = [
+            ("authenticity_token", token),
+            ("_method", "patch"),
+        ]
+        submit_data.extend(new_fields)
+        submit_data.append(("commit", "Update"))
+
+        body = urlencode(submit_data, doseq=True)
+
+        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        resp = await self._http.post(
+            f"{_BASE}/skins/{skin_id}",
+            content=body,
+            headers={
+                "Referer": edit_url,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            timeout=60.0,
+        )
+
+        if resp.status_code >= 400:
+            raise RuntimeError(f"AO3: Skin edit failed — status {resp.status_code}")
+        if "have not been saved" in resp.text:
+            raise RuntimeError(
+                "AO3: Skin edit POST returned but flash says 'changes have not been saved'"
+            )
+
+        logger.info("AO3: Updated Work Skin %s", skin_id)
+        return {"skin_id": skin_id, "url": f"{_BASE}/skins/{skin_id}"}
 
 
 def _collapse_html_whitespace(html: str) -> str:

@@ -118,6 +118,80 @@ class AO3Poster(PlatformPoster):
             return tags
         return tags[:budget]
 
+    async def _ensure_work_skin(
+        self,
+        client: AO3Client,
+        story: story_reader.StoryInfo,
+    ) -> str:
+        """Find or create the Work Skin for this story and sync the CSS.
+
+        Ports the SquidgeWorld poster's behaviour — both platforms run the
+        OTW Archive software, so the endpoints and skin conventions are
+        identical. Returns the skin_id, or '' if the story doesn't have a
+        Work_Skin.css file (in which case no skin gets applied).
+
+        Behavior:
+          1. No Work_Skin.css → return '' (no skin applied)
+          2. Skin doesn't exist by title → create new with current CSS
+          3. Skin exists → push current CSS + description via edit_work_skin
+             so local edits propagate on every post/edit. Best-effort —
+             if the refresh fails, log and return the existing skin_id.
+        """
+        if not story.work_skin_path or not story.work_skin_path.is_file():
+            return ""
+
+        skin_title = f"{story.name.replace('_', ' ')} Skin"
+        skin_description = (
+            f"Custom Work Skin for '{story.name.replace('_', ' ')}' by {story.author}."
+        )
+
+        try:
+            css = story.work_skin_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.warning(
+                "AO3: Could not read Work_Skin.css for %s: %s", story.name, e,
+            )
+            return ""
+
+        try:
+            existing = await client.find_work_skin_by_title(skin_title)
+        except Exception as e:
+            logger.warning(
+                "AO3: Could not search for existing Work Skin for %s: %s",
+                story.name, e,
+            )
+            existing = None
+
+        if existing:
+            skin_id = existing
+            try:
+                await client.edit_work_skin(
+                    skin_id,
+                    title=skin_title,
+                    description=skin_description,
+                    css=css,
+                )
+                logger.info(
+                    "AO3: Refreshed Work Skin %s (%s) with current CSS",
+                    skin_id, skin_title,
+                )
+            except Exception as e:
+                logger.warning(
+                    "AO3: Could not refresh Work Skin %s for %s: %s "
+                    "(using existing CSS on AO3)",
+                    skin_id, story.name, e,
+                )
+            return skin_id
+
+        try:
+            result = await client.create_work_skin(
+                title=skin_title, css=css, description=skin_description,
+            )
+            return result["skin_id"]
+        except Exception as e:
+            logger.warning("AO3: Work skin creation failed for %s: %s", story.name, e)
+            return ""
+
     @staticmethod
     def _read_full_story_html(story: story_reader.StoryInfo) -> str | None:
         """Read the body-only full-story HTML for AO3.
@@ -261,6 +335,11 @@ class AO3Poster(PlatformPoster):
             work_title = package.title or story.name.replace("_", " ")
             summary = (story.description or package.description or "")[:1250]
 
+            # 4b. Ensure the Work Skin exists and is up-to-date (no-op if
+            # the story has no Work_Skin.css). Done BEFORE create_work so
+            # the skin_id can be passed through.
+            skin_id = await self._ensure_work_skin(client, story)
+
             # 5. Create the work in preview/draft state
             create_result = await client.create_work(
                 title=work_title,
@@ -274,6 +353,7 @@ class AO3Poster(PlatformPoster):
                 additional_tags=additional_tags,
                 summary=summary,
                 language_id="1",  # AO3 English (numeric, like SQW's "15")
+                work_skin_id=skin_id,
             )
             work_id = create_result["work_id"]
             url = create_result.get("url", f"https://archiveofourown.org/works/{work_id}")
@@ -311,11 +391,16 @@ class AO3Poster(PlatformPoster):
             )
             additional_tags = ", ".join(freeform_tags)
 
+            # Ensure work skin is synced — reuses existing skin by title,
+            # pushes the current CSS, then assigns it to the work.
+            skin_id = await self._ensure_work_skin(client, story)
+
             await client.edit_work(
                 external_id,
                 title=package.title or story.name.replace("_", " "),
                 summary=(story.description or package.description or "")[:1250],
                 additional_tags=additional_tags,
+                work_skin_id=skin_id if skin_id else None,
             )
             logger.info("AO3: Updated work %s metadata", external_id)
 
