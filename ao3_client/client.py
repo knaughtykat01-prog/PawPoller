@@ -25,15 +25,34 @@ logger = logging.getLogger(__name__)
 
 _BASE = "https://archiveofourown.org"
 
-# Realistic browser headers
+# Realistic browser headers — Chrome 131 on Windows 10. Full Sec-Fetch +
+# Sec-Ch-Ua set is required to get past AO3's "Shields are up!" page when
+# hitting from residential IPs. Without these AO3 flags the client as bot
+# traffic and returns 403 on /users/login even though the same IP works
+# fine in a real browser.
 _HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/131.0.0.0 Safari/537.36"
     ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,image/apng,*/*;q=0.8,"
+        "application/signed-exchange;v=b3;q=0.7"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Sec-Ch-Ua": (
+        '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"'
+    ),
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Priority": "u=0, i",
 }
 
 
@@ -128,7 +147,38 @@ class AO3Client:
         """Authenticate via OTW Archive Rails login form."""
         logger.info("AO3: Logging in as %s...", self.username)
 
-        html = await self._get_page(f"{_BASE}/users/login")
+        # Warmup: hit the homepage first so AO3 sees us doing a realistic
+        # navigation sequence (same-site request for /users/login with the
+        # Referer set) instead of a cold direct-hit on the login URL. Helps
+        # get past the "Shields are up!" 403 that residential IPs hit when
+        # going straight to /users/login.
+        try:
+            await self._http.get(_BASE + "/", headers=_HEADERS)
+        except Exception as e:
+            logger.debug("AO3: homepage warmup failed (non-fatal): %s", e)
+
+        # For the login page request, include navigation-style headers
+        # (Referer from homepage, Sec-Fetch-Site=same-origin).
+        login_nav_headers = {
+            **_HEADERS,
+            "Referer": _BASE + "/",
+            "Sec-Fetch-Site": "same-origin",
+        }
+        try:
+            resp = await self._http.get(
+                _BASE + "/users/login",
+                headers=login_nav_headers,
+            )
+            html = resp.text if resp.status_code == 200 else None
+            if resp.status_code == 403 or (html and "Shields are up" in html):
+                logger.error(
+                    "AO3: 'Shields are up!' page returned for %s/users/login",
+                    _BASE,
+                )
+                return False
+        except Exception as e:
+            logger.error("AO3: Login page fetch failed: %s", e)
+            return False
         if not html:
             logger.error("AO3: Failed to fetch login page")
             return False
