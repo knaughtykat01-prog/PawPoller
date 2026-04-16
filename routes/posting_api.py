@@ -671,18 +671,6 @@ def get_changes():
         raise HTTPException(500, detail=str(e))
 
 
-@posting_router.get("/sync/status")
-def get_sync_status():
-    """Get per-story sync status summary for the dashboard."""
-    from posting.sync import get_sync_status_summary
-    try:
-        summaries = get_sync_status_summary()
-        return {"stories": summaries}
-    except Exception as e:
-        logger.error("Sync status failed: %s", e, exc_info=True)
-        raise HTTPException(500, detail=str(e))
-
-
 # ── Sync: Server receives archive uploads ─────────────────────
 
 @posting_router.post("/sync/upload")

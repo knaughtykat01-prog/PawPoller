@@ -960,14 +960,21 @@ async def save_theme(story_name: str, req: ThemeSaveRequest):
         else:
             existing = ""
 
-        # Remove any existing variables table (between markers)
+        # Replace any existing variables table (between markers) while
+        # preserving whatever content sits before the start marker AND
+        # after the end marker (user-authored notes, credits, extra sections
+        # appended below the variables block).
         marker_start = "<!-- THEME_VARIABLES_START -->"
         marker_end = "<!-- THEME_VARIABLES_END -->"
         if marker_start in existing:
             before = existing[:existing.index(marker_start)]
-            after_idx = existing.index(marker_end) + len(marker_end) if marker_end in existing else len(existing)
+            if marker_end in existing:
+                after = existing[existing.index(marker_end) + len(marker_end):]
+            else:
+                after = ""
             existing = before.rstrip() + "\n"
         else:
+            after = ""
             existing = existing.rstrip() + "\n\n"
 
         # Build variables table
@@ -977,6 +984,10 @@ async def save_theme(story_name: str, req: ThemeSaveRequest):
                 var_lines.append(f"| `{key}` | `{req.variables[key]}` |")
         var_lines.extend(["", marker_end, ""])
         existing += "\n".join(var_lines)
+        # Re-attach any content that lived after the end marker. lstrip the
+        # after-chunk so we don't carry double blank lines.
+        if after.strip():
+            existing += after.lstrip("\n")
         styling_path.write_text(existing, encoding="utf-8")
     except Exception as e:
         logger.warning("Theme save: failed to update CHAPTER_STYLING.md: %s", e)
