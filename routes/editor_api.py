@@ -768,9 +768,9 @@ async def verify_publications(story_name: str):
 class PublishRequest(BaseModel):
     platform: str                 # 'sf', 'ib', 'fa', etc.
     chapter: int                  # 0 = full story; 1+ = specific chapter
-    action: str = "post"          # 'post' | 'update' | 'dry_run'
+    action: str = "post"          # 'post' | 'update' | 'update_metadata' | 'dry_run'
     draft: bool = True            # SF/SQW/AO3 etc. — post as draft if supported
-    confirm_live: bool = False    # Must be True for action='post' or 'update'
+    confirm_live: bool = False    # Must be True for non-dry-run actions
 
 
 @editor_router.post("/stories/{story_name:path}/publish")
@@ -793,10 +793,10 @@ async def publish(story_name: str, req: PublishRequest):
     story_dir = _resolve_story_dir(story_name)
     canonical = story_dir.name
 
-    if req.action not in ("post", "update", "dry_run"):
+    if req.action not in ("post", "update", "update_metadata", "dry_run"):
         raise HTTPException(status_code=400, detail=f"Unknown action: {req.action}")
 
-    if req.action in ("post", "update") and not req.confirm_live:
+    if req.action in ("post", "update", "update_metadata") and not req.confirm_live:
         raise HTTPException(
             status_code=400,
             detail=f"action='{req.action}' requires confirm_live=true (safety guard)",
@@ -805,6 +805,8 @@ async def publish(story_name: str, req: PublishRequest):
     extras: dict = {}
     if req.draft:
         extras["draft"] = True
+    if req.action == "update_metadata":
+        extras["skip_content_refresh"] = True
 
     # --- Dry run: just rebuild the package and validate, return as JSON ---
     if req.action == "dry_run":
@@ -846,11 +848,12 @@ async def publish(story_name: str, req: PublishRequest):
             chapters=[req.chapter],
             extras=extras,
         )
-    else:  # update
+    else:  # update / update_metadata — both route through update_story
         results = await manager.update_story(
             canonical,
             platforms=[req.platform],
             chapters=[req.chapter],
+            extras=extras,
         )
 
     return {

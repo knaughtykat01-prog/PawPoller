@@ -558,6 +558,19 @@ class AO3Poster(PlatformPoster):
             )
             logger.info("AO3: Updated work %s metadata", external_id)
 
+            # Metadata-only mode: skip the chapter content refresh.
+            if package.extra.get("skip_content_refresh"):
+                logger.info(
+                    "AO3: Skipping chapter content refresh for %s (metadata-only edit)",
+                    external_id,
+                )
+                return PostResult(
+                    success=True,
+                    external_id=external_id,
+                    external_url=f"https://archiveofourown.org/works/{external_id}",
+                    duration_seconds=self._elapsed(_t),
+                )
+
             # Update chapter content. Multi-chapter: edit each existing
             # chapter from local source; append any extras. Single-chapter:
             # fall back to the full-story Clean HTML blob (unchanged behaviour).

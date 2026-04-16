@@ -168,9 +168,16 @@ class InkbunnyPoster(PlatformPoster):
             rating_tags = _rating_to_tags(package.rating)
             keywords = ", ".join(package.tags)
 
-            # Read updated story content from BBCode file
+            # Read updated story content from BBCode file. Skipped when
+            # package.extra["skip_content_refresh"] is set — lets the
+            # caller push just metadata and leave the story text alone.
             story_text = None
-            if package.file_path and package.file_type == "bbcode":
+            skip_content = bool(package.extra.get("skip_content_refresh", False))
+            if (
+                not skip_content
+                and package.file_path
+                and package.file_type == "bbcode"
+            ):
                 with open(package.file_path, "r", encoding="utf-8") as f:
                     story_text = f.read()
 

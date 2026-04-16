@@ -233,6 +233,7 @@ async def update_story(
     story_name: str,
     platforms: list[str] | None = None,
     chapters: list[int] | None = None,
+    extras: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Push updates to already-posted submissions.
 
@@ -242,6 +243,10 @@ async def update_story(
         story_name: Story folder name.
         platforms: Filter by platform (None = all posted platforms).
         chapters: Filter by chapter (None = all posted chapters).
+        extras: Per-package overrides merged into ``package.extra`` before
+            the edit runs (e.g. ``{"skip_content_refresh": True}`` to
+            push metadata only, skipping the file/chapter content
+            upload where supported).
 
     Returns:
         List of result dicts.
@@ -283,6 +288,8 @@ async def update_story(
 
         poster = _get_poster(plat)
         package = story_reader.build_package(story, ch_idx, plat)
+        if extras:
+            package.extra.update(extras)
 
         if not poster.supports_edit:
             logger.warning(

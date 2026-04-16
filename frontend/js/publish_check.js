@@ -354,7 +354,11 @@ window.PublishCheck = (function () {
             const updateClass = isDrifted ? 'btn btn-sm btn-primary' : 'btn btn-sm';
             html += '<button class="' + updateClass + '" data-publish-action="update"' +
                 (canEdit ? '' : ' disabled title="Platform does not support edit"') + '>' +
-                'Update existing' + (isDrifted ? ' (push fresh content)' : '') + '</button>';
+                'Update all' + (isDrifted ? ' (push fresh content)' : '') + '</button>';
+            // Metadata-only — faster when only tags/title/summary changed
+            html += '<button class="btn btn-sm btn-outline" data-publish-action="update_metadata"' +
+                (canEdit ? '' : ' disabled title="Platform does not support edit"') + '>' +
+                'Metadata only</button>';
             if (cell.existing && cell.existing.external_url) {
                 html += '<a class="btn btn-sm btn-outline" href="' +
                     _escape(cell.existing.external_url) +
@@ -388,9 +392,11 @@ window.PublishCheck = (function () {
         const resultBox = document.getElementById('publish-action-result');
 
         // Live confirm gate
-        if (action === 'post' || action === 'update') {
+        if (action === 'post' || action === 'update' || action === 'update_metadata') {
             const draftLabel = draft ? ' as a DRAFT' : ' LIVE';
-            const verb = action === 'post' ? 'Post' : 'Update';
+            const verb = action === 'post' ? 'Post'
+                : action === 'update_metadata' ? 'Update metadata only'
+                : 'Update';
             const ok = confirm(
                 verb + ' "' + chTitle + '" to ' + platName + draftLabel + '?\n\n' +
                 'This will make a real request to the platform.'

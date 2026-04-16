@@ -490,6 +490,19 @@ class SquidgeWorldPoster(PlatformPoster):
                         f"unpublished a published work! State flipped published→draft."
                     )
 
+            # Metadata-only mode: skip the chapter content refresh below.
+            if package.extra.get("skip_content_refresh"):
+                logger.info(
+                    "SqW: Skipping chapter content refresh for %s (metadata-only edit)",
+                    external_id,
+                )
+                return PostResult(
+                    success=True,
+                    external_id=external_id,
+                    external_url=f"https://squidgeworld.org/works/{external_id}",
+                    duration_seconds=self._elapsed(_t),
+                )
+
             # 5. Update each chapter's content
             try:
                 sqw_chapters = await client.get_chapter_ids(external_id)
