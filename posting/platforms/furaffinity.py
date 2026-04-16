@@ -107,6 +107,13 @@ class FurAffinityPoster(PlatformPoster):
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
     async def edit(self, external_id: str, package: StoryUploadPackage) -> PostResult:
+        """Edit metadata AND refresh the PDF on an existing FA submission.
+
+        FA's changeinfo endpoint only updates metadata. To keep drifted
+        local PDFs in sync we also call replace_file() via the changestory
+        endpoint. Set ``package.extra["skip_content_refresh"] = True`` to
+        do a metadata-only edit.
+        """
         _t = self._start_timer()
         try:
             client = await self._ensure_client()
@@ -120,6 +127,22 @@ class FurAffinityPoster(PlatformPoster):
                 keywords=keywords,
                 rating=rating,
             )
+
+            skip_content = bool(package.extra.get("skip_content_refresh", False))
+            if package.file_path and not skip_content:
+                file_result = await self.replace_file(external_id, package.file_path)
+                if not file_result.success:
+                    logger.warning(
+                        "FA edit: metadata updated but content replace failed for %s: %s",
+                        external_id, file_result.error,
+                    )
+                    return PostResult(
+                        success=False,
+                        external_id=external_id,
+                        external_url=result.get("url", ""),
+                        error=f"Metadata updated but content refresh failed: {file_result.error}",
+                        duration_seconds=self._elapsed(_t),
+                    )
 
             return PostResult(
                 success=True,

@@ -211,7 +211,14 @@ class SoFurryPoster(PlatformPoster):
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
     async def edit(self, external_id: str, package: StoryUploadPackage) -> PostResult:
-        """Edit metadata on an existing SoFurry submission.
+        """Edit metadata AND refresh content on an existing SoFurry submission.
+
+        SF's edit_submission() only touches metadata (title/desc/tags/rating/
+        privacy) — it does NOT replace the story content. To keep drifted
+        local files in sync with what's on the platform, we also call
+        replace_file() when a file is attached to the package. If the caller
+        only wants a metadata refresh, they can set
+        ``package.extra["skip_content_refresh"] = True``.
 
         By default this PRESERVES the existing privacy state (whatever the
         submission is currently set to on the server). To change privacy
@@ -242,6 +249,25 @@ class SoFurryPoster(PlatformPoster):
                 rating=rating,
                 privacy=privacy,
             )
+
+            # Refresh the file on SF to match what we have locally. Skipped
+            # when there's no file (shouldn't happen for SF normally) or
+            # when the caller asks for a metadata-only edit.
+            skip_content = bool(package.extra.get("skip_content_refresh", False))
+            if package.file_path and not skip_content:
+                file_result = await self.replace_file(external_id, package.file_path)
+                if not file_result.success:
+                    logger.warning(
+                        "SF edit: metadata updated but content replace failed for %s: %s",
+                        external_id, file_result.error,
+                    )
+                    return PostResult(
+                        success=False,
+                        external_id=external_id,
+                        external_url=result.get("url", ""),
+                        error=f"Metadata updated but content refresh failed: {file_result.error}",
+                        duration_seconds=self._elapsed(_t),
+                    )
 
             return PostResult(
                 success=True,

@@ -77,6 +77,13 @@ class WeasylPoster(PlatformPoster):
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
     async def edit(self, external_id: str, package: StoryUploadPackage) -> PostResult:
+        """Edit metadata only — Weasyl's API does not support file replacement.
+
+        If the local file has drifted from what's on the platform, the user
+        must delete the Weasyl submission and re-post. The response's
+        ``error`` field carries a note when content may be stale so the UI
+        can surface it.
+        """
         _t = self._start_timer()
         try:
             client = await self._ensure_client()
@@ -91,10 +98,21 @@ class WeasylPoster(PlatformPoster):
                 rating=rating,
             )
 
+            # Soft warning: content refresh not possible on WS
+            warning = None
+            if package.file_path:
+                logger.info(
+                    "WS edit: metadata updated for %s, but file content cannot "
+                    "be replaced via API. Delete + repost if content has drifted.",
+                    external_id,
+                )
+                warning = "Metadata updated. Weasyl cannot replace file content — delete + repost if drifted."
+
             return PostResult(
                 success=True,
                 external_id=external_id,
                 external_url=result.get("url", ""),
+                error=warning,  # populated as a non-fatal note
                 duration_seconds=self._elapsed(_t),
             )
         except Exception as e:
