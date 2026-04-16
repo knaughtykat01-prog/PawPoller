@@ -301,6 +301,34 @@ export default {
       return new Response('Missing x-target-url or x-proxy-login header', { status: 400 });
     }
 
+    // Hostname allowlist — if PROXY_SECRET ever leaks, an attacker
+    // shouldn't be able to turn this into an open proxy to arbitrary
+    // hosts. Only allow the platforms we actually route through here.
+    const ALLOWED_HOSTS = new Set([
+      'sofurry.com',
+      'www.sofurry.com',
+      'deviantart.com',
+      'www.deviantart.com',
+      'archiveofourown.org',
+      'www.archiveofourown.org',
+      'squidgeworld.org',
+      'www.squidgeworld.org',
+      'furaffinity.net',
+      'www.furaffinity.net',
+    ]);
+    let targetHost;
+    try {
+      targetHost = new URL(targetUrl).host.toLowerCase();
+    } catch {
+      return new Response('Invalid target URL', { status: 400 });
+    }
+    if (!ALLOWED_HOSTS.has(targetHost)) {
+      return new Response(
+        `Target host not on allowlist: ${targetHost}`,
+        { status: 403 },
+      );
+    }
+
     // Optional: chain of follow-up URLs to fetch after the main request
     const chainHeader = request.headers.get('x-proxy-chain');
     let chainUrls = [];
@@ -308,8 +336,22 @@ export default {
       try { chainUrls = JSON.parse(chainHeader); } catch {}
     }
 
+    // Validate chain URLs against the same allowlist
+    for (const u of chainUrls) {
+      try {
+        if (!ALLOWED_HOSTS.has(new URL(u).host.toLowerCase())) {
+          return new Response(
+            `Chain URL host not on allowlist: ${u}`,
+            { status: 403 },
+          );
+        }
+      } catch {
+        return new Response(`Invalid chain URL: ${u}`, { status: 400 });
+      }
+    }
+
     try {
-      headers.set('Host', new URL(targetUrl).host);
+      headers.set('Host', targetHost);
     } catch {
       return new Response('Invalid target URL', { status: 400 });
     }
