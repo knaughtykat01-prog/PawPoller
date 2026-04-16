@@ -48,6 +48,9 @@ The **Story Editor + Publish Check** system (documentation_guide.md §15) is fea
 | **Tag cascade all platforms** | 2.10.0 | Default tab syncs to every poster (except BSky) |
 | **Chapter prefix strip** | 2.10.0 | AO3/SQW don't show "Chapter 1: Chapter 1: Title" anymore |
 | **Email-login account resolution** | 2.10.0 | SQW/AO3 login with email resolves to account name for URLs |
+| **Metadata-only chapter retitles** | 2.10.0 | AO3/SQW edit_chapter now supports content=None (title-only edits preserve body) |
+| **Shields-up resistance** | 2.10.0 | AO3 login uses full Chrome 131 header set + homepage warmup |
+| **Bug hunt round** | 2.10.0 | DELETION_PATTERNS tightened, /verify hardened with try/except + rate limit, duplicate /sync/status removed, theme-save no longer wipes trailing content, Publish Check _currentStory race fixed |
 
 ### What posted successfully during testing
 - Inkbunny draft of "Late Shift" full story — flipped cell from green ✓ → blue ✓ posted with URL.
@@ -58,19 +61,20 @@ The **Story Editor + Publish Check** system (documentation_guide.md §15) is fea
 
 ### Phase 6c — broader platform testing (remaining)
 
-IB, SF, AO3 confirmed end-to-end (post + update + drift + delete + re-post).
-SQW needs a retest now that the work-oriented flip + email-login fix are live.
-Still to verify:
+IB, SF, AO3, SQW all confirmed end-to-end (post + update + drift + delete + re-post).
+User opted out of Itaku / Wattpad / DeviantArt / Bluesky / X for now.
+FurAffinity is the only remaining target:
 
 - [x] Inkbunny (post + re-post after delete)
 - [x] SoFurry (drift → update pushes fresh content)
-- [x] AO3 (chaptered post, edit metadata + content, work skin, tag cascade)
-- [ ] SquidgeWorld (retest after matrix flip + login fix — known to have worked earlier)
-- [ ] Weasyl (metadata-only edit expected, soft warning)
-- [ ] FurAffinity (desktop queue handoff path)
-- [ ] DeviantArt
-- [ ] Itaku (tag-only, no file)
-- [ ] Bluesky (text-only, delete+repost for edit)
+- [x] AO3 (chaptered post, edit metadata + content, work skin, tag cascade, metadata-only chapter retitles)
+- [x] SquidgeWorld (post + chaptered + work skin — retested post matrix/login fixes)
+- [ ] Weasyl (account not verified yet — blocked on account-level verification)
+- [ ] FurAffinity (desktop queue handoff path — requires desktop running, last remaining platform to test)
+- [skip] DeviantArt — user opted out
+- [skip] Itaku — user opted out
+- [skip] Wattpad — user opted out
+- [skip] Bluesky/X — user opted out
 
 ### Phase 6d — bulk actions
 

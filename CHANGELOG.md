@@ -4,6 +4,65 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.10.1] - 2026-04-16
+
+### Fixed — Bug hunt round + edit_chapter overlay + AO3 shields
+
+After Test Story posting was verified end-to-end on IB, SF, AO3, and
+SQW, ran two rounds of automated audits against the posting module,
+routes, editor, and frontend JS. Plus a few things that surfaced during
+testing.
+
+**Bug hunt finds:**
+- `DELETION_ERROR_PATTERNS` no longer has a generic `"not found"`
+  catch-all. Scoped to phrasings that specifically refer to the
+  submission/work/URL (`submission has been deleted`, `work does not
+  exist`, `page does not exist`, `client error 404`). Prevents
+  false-positives on unrelated `"File not found on disk"` errors.
+- `/verify` endpoint: `probe_exists()` is supposed to swallow its own
+  errors, but now wrapped in try/except so one bad platform can't crash
+  the whole verify loop. Rate-limited to 400ms between probes.
+- `routes/posting_api.py` had a duplicate `get_sync_status` function
+  both registered at `GET /sync/status`. FastAPI resolves last-one-wins;
+  the earlier (simpler) one became dead code. Removed.
+- **Silent data loss fix**: theme-save in `routes/editor_api.py`
+  computed `after_idx` (position after `<!-- THEME_VARIABLES_END -->`)
+  but never used it. Any content below the end marker — user notes,
+  credits, extra CSS sections — got wiped on every theme save. Now
+  properly re-attaches.
+- `publish_check.js` v8: `_executeAction` captures `_currentStory` into
+  a local at start; success-reload guards with `_currentStory ===
+  storyName`. Prevents wrong-story matrix reload if user opens Publish
+  Check for Story A → clicks Post → closes → opens for Story B.
+- Re-check button disables itself immediately on click to prevent
+  double-fire on rapid double-click.
+
+**edit_chapter overlay pattern (AO3):**
+- Ported from sqw_client — GET edit form, extract every chapter[*]
+  field, overlay only caller overrides, POST with save_button.
+- `content: str | None = None` — passing None preserves body on AO3.
+- Metadata-only button on AO3 now pushes chapter title changes without
+  re-uploading the chapter body.
+
+**AO3 "Shields are up!" workaround:**
+- Residential IPs were getting 403 on `/users/login` even though
+  GCP/datacenter IPs worked fine. Expanded `_HEADERS` to match a real
+  Chrome 131: added Sec-Fetch-Dest/Mode/Site/User, Sec-Ch-Ua/Mobile/
+  Platform, Upgrade-Insecure-Requests, Priority.
+- Login now warms up the session by GETting the homepage first, then
+  navigates to `/users/login` with Referer + Sec-Fetch-Site:
+  same-origin — mimics a real browser navigation instead of a cold
+  direct-hit.
+
+**Version bump:**
+- `config.py APP_VERSION` bumped from `1.5.0` to `2.10.0`. Had been
+  stale for months — every release was tracked in CHANGELOG.md but
+  the in-app constant stayed behind. This is what the desktop tray
+  tooltip shows, so the desktop was silently advertising year-old
+  vintage even with current code.
+
+---
+
 ## [2.10.0] - 2026-04-16
 
 ### Added — AO3 parity pass (chaptered posting, work skins, edit fidelity)
