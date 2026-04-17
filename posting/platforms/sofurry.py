@@ -108,6 +108,62 @@ class SoFurryPoster(PlatformPoster):
             raise RuntimeError("SoFurry login failed")
         return self._client
 
+    async def _set_chapter_titles(
+        self,
+        client: SoFurryClient,
+        submission_id: str,
+        story: story_reader.StoryInfo,
+    ) -> None:
+        """Set chapter titles on all content items of a submission.
+
+        SF creates content items with "Untitled Chapter" by default.
+        This fetches the submission JSON to get each contentId, then
+        POSTs the title from story.chapters in order.
+        """
+        csrf = await client._get_csrf_meta()
+        if not csrf:
+            logger.warning("SF: Could not get CSRF for chapter title setting")
+            return
+
+        headers = {
+            "X-CSRF-TOKEN": csrf,
+            "Origin": "https://sofurry.com",
+            "Referer": "https://sofurry.com/",
+            "Accept": "application/json",
+        }
+
+        resp = await client._http.get(
+            f"https://sofurry.com/ui/submission/{submission_id}",
+            headers={"Accept": "application/json"},
+        )
+        if resp.status_code != 200:
+            logger.warning("SF: Could not fetch submission %s for title setting", submission_id)
+            return
+
+        content_items = resp.json().get("content", [])
+        local_chapters = sorted(story.chapters, key=lambda c: c.index)
+
+        for content_item, local_ch in zip(content_items, local_chapters):
+            cid = content_item.get("contentId")
+            if not cid:
+                continue
+            title = _strip_chapter_prefix(local_ch.title)
+            if not title:
+                continue
+            current_title = content_item.get("title", "")
+            if current_title == title:
+                continue
+            try:
+                await client._http.post(
+                    f"https://sofurry.com/ui/submission/{submission_id}/content/{cid}",
+                    headers=headers,
+                    json={"title": title},
+                    timeout=15.0,
+                )
+                logger.info("SF: Set chapter title '%s' on content %s", title, cid)
+            except Exception as e:
+                logger.warning("SF: Failed to set title on content %s: %s", cid, e)
+
     def _read_sf_chapter_content(self, story: story_reader.StoryInfo, ch_idx: int) -> str | None:
         """Read a single chapter's SoFurry HTML file path for upload."""
         ch = next((c for c in story.chapters if c.index == ch_idx), None)
@@ -232,6 +288,15 @@ class SoFurryPoster(PlatformPoster):
                             ch.index, ch_resp.status_code, submission_id,
                         )
 
+            # Set chapter titles on all content items. SF creates them as
+            # "Untitled Chapter" by default. Fetch the submission to get
+            # each content item's contentId, then POST the title.
+            if has_chapters and submission_id:
+                try:
+                    await self._set_chapter_titles(client, submission_id, story)
+                except Exception as title_err:
+                    logger.warning("SF: Chapter title setting failed: %s", title_err)
+
             # SAFETY: when posting as draft/private, verify the submission
             # actually landed Private. The existing get_submission_detail
             # helper strips the privacy field, so we hit /ui/submission/{id}
@@ -341,6 +406,16 @@ class SoFurryPoster(PlatformPoster):
                         error=f"Metadata updated but content refresh failed: {file_result.error}",
                         duration_seconds=self._elapsed(_t),
                     )
+
+            # Always refresh chapter titles (cheap — just a JSON POST per
+            # content item, no file re-upload). Works for both full-update
+            # and metadata-only modes.
+            story = story_reader.load_story(package.story_name)
+            if story.chapters and story.total_chapters > 1:
+                try:
+                    await self._set_chapter_titles(client, external_id, story)
+                except Exception as title_err:
+                    logger.warning("SF: Chapter title refresh failed: %s", title_err)
 
             return PostResult(
                 success=True,
