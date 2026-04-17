@@ -529,7 +529,7 @@ async def publish_check(story_name: str):
     # Resolve the canonical story name (the editor passes the URL-safe form,
     # but story_reader works off the archive folder name).
     story_dir = _resolve_story_dir(story_name)
-    canonical = story_dir.name
+    canonical = str(story_dir.relative_to(get_archive_path()))
 
     try:
         story = story_reader.load_story(canonical)
@@ -696,7 +696,7 @@ async def verify_publications(story_name: str):
     from database import posting_queries
 
     story_dir = _resolve_story_dir(story_name)
-    canonical = story_dir.name
+    canonical = str(story_dir.relative_to(get_archive_path()))
 
     conn = get_connection()
     try:
@@ -811,7 +811,7 @@ async def publish(story_name: str, req: PublishRequest):
     from database import posting_queries
 
     story_dir = _resolve_story_dir(story_name)
-    canonical = story_dir.name
+    canonical = str(story_dir.relative_to(get_archive_path()))
 
     if req.action not in ("post", "update", "update_metadata", "dry_run"):
         raise HTTPException(status_code=400, detail=f"Unknown action: {req.action}")
