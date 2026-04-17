@@ -33,6 +33,7 @@ Visibility override:
 from __future__ import annotations
 
 import logging
+import re
 
 import config
 from posting import story_reader
@@ -45,6 +46,18 @@ logger = logging.getLogger(__name__)
 _PRIVACY_PUBLIC = 3
 _PRIVACY_UNLISTED = 2
 _PRIVACY_PRIVATE = 1
+
+_CHAPTER_PREFIX_RE = re.compile(
+    r"^(?:Chapter|Part|Prelude|Epilogue)\s*\d*\s*[:\-\u2014\u2013]\s*",
+    re.IGNORECASE,
+)
+
+
+def _strip_chapter_prefix(title: str) -> str:
+    if not title:
+        return title
+    stripped = _CHAPTER_PREFIX_RE.sub("", title).strip()
+    return stripped or title
 
 
 def _normalize_privacy(value) -> int | None:
