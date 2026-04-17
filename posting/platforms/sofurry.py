@@ -445,11 +445,64 @@ class SoFurryPoster(PlatformPoster):
                 privacy=privacy,
             )
 
-            # Refresh the file on SF to match what we have locally. Skipped
-            # when there's no file (shouldn't happen for SF normally) or
-            # when the caller asks for a metadata-only edit.
+            # Refresh content on SF. For multi-chapter stories, we need
+            # to replace ALL content items with per-chapter files (not use
+            # replace_file which treats the whole story as one item).
             skip_content = bool(package.extra.get("skip_content_refresh", False))
-            if package.file_path and not skip_content:
+            story = story_reader.load_story(package.story_name)
+            has_chapters = bool(story.chapters) and story.total_chapters > 1
+
+            if not skip_content and has_chapters:
+                # Chapter-aware content refresh: delete all old, upload each fresh
+                try:
+                    csrf = await client._get_csrf_meta()
+                    resp = await client._http.get(
+                        f"https://sofurry.com/ui/submission/{external_id}",
+                        headers={"Accept": "application/json"},
+                    )
+                    old_ids = [c["contentId"] for c in resp.json().get("content", []) if c.get("contentId")]
+
+                    # Upload all chapters first (SF won't delete the last item)
+                    import os
+                    for ch in sorted(story.chapters, key=lambda c: c.index):
+                        ch_path = self._read_sf_chapter_content(story, ch.index)
+                        if not ch_path:
+                            continue
+                        with open(ch_path, "rb") as f:
+                            file_data = f.read()
+                        ch_resp = await client._http.post(
+                            f"https://sofurry.com/ui/submission/{external_id}/content",
+                            headers={
+                                "X-CSRF-TOKEN": csrf,
+                                "Origin": "https://sofurry.com",
+                                "Referer": "https://sofurry.com/",
+                            },
+                            files={"file": (os.path.basename(ch_path), file_data)},
+                            timeout=60.0,
+                        )
+                        if ch_resp.status_code in (200, 201):
+                            logger.info("SF: Uploaded chapter %d for %s", ch.index, external_id)
+                        else:
+                            logger.warning("SF: Chapter %d upload returned %d", ch.index, ch_resp.status_code)
+
+                    # Delete old content items
+                    del_headers = {
+                        "X-CSRF-TOKEN": csrf,
+                        "Origin": "https://sofurry.com",
+                        "Referer": "https://sofurry.com/",
+                    }
+                    for cid in old_ids:
+                        await client._http.delete(
+                            f"https://sofurry.com/ui/submission/{external_id}/content/{cid}",
+                            headers=del_headers,
+                            timeout=15.0,
+                        )
+                        logger.info("SF: Deleted old content %s", cid)
+                except Exception as ch_err:
+                    logger.warning("SF: Chaptered content refresh failed: %s", ch_err)
+
+            elif not skip_content and package.file_path:
+                # Single-file content replacement (non-chaptered)
                 file_result = await self.replace_file(external_id, package.file_path)
                 if not file_result.success:
                     logger.warning(
@@ -464,11 +517,9 @@ class SoFurryPoster(PlatformPoster):
                         duration_seconds=self._elapsed(_t),
                     )
 
-            # Always refresh chapter titles (cheap — just a JSON POST per
-            # content item, no file re-upload). Works for both full-update
-            # and metadata-only modes.
-            story = story_reader.load_story(package.story_name)
-            if story.chapters and story.total_chapters > 1:
+            # Refresh chapter titles (works for both full-update and
+            # metadata-only — cheap JSON POST per content item).
+            if has_chapters:
                 try:
                     await self._set_chapter_titles(client, external_id, story)
                 except Exception as title_err:
