@@ -470,10 +470,17 @@ async def regenerate(story_name: str, req: RegenerateRequest):
             ch_md_path = md_dir / f"{ch_filename}.md"
             ch_md_path.write_text(ch_content, encoding="utf-8")
 
-            # Chapter Clean HTML
+            # Chapter SoFurry HTML — use the body converter directly so
+            # semantic anchors (text-sent, text-received, phone, etc.)
+            # get processed. The top-level convert() falls through to the
+            # heuristic parser for fragments without <!-- @body -->, which
+            # escapes anchors as literal HTML.
             try:
-                ch_html = convert(ch_content, "clean_html")
-                (sf_dir / f"{ch_filename}.html").write_text(ch_html.output, encoding="utf-8")
+                from editor.converter import _convert_body_clean_html, ConversionResult
+                ch_lines = ch_content.split("\n")
+                ch_parts, ch_stats = _convert_body_clean_html(ch_lines, 0)
+                ch_html_output = "\n".join(ch_parts)
+                (sf_dir / f"{ch_filename}.html").write_text(ch_html_output, encoding="utf-8")
             except Exception:
                 pass
 
