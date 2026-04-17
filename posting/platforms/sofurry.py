@@ -35,6 +35,7 @@ from __future__ import annotations
 import logging
 
 import config
+from posting import story_reader
 from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
 from sf_client.client import SoFurryClient
 
