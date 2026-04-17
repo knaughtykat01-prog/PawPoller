@@ -177,8 +177,8 @@ class SoFurryPoster(PlatformPoster):
             except Exception as e:
                 logger.warning("SF: Failed to set title on content %s: %s", cid, e)
 
-    def _read_sf_chapter_content(self, story: story_reader.StoryInfo, ch_idx: int) -> str | None:
-        """Read a single chapter's SoFurry HTML file path for upload."""
+    def _read_sf_chapter_file(self, story: story_reader.StoryInfo, ch_idx: int) -> str | None:
+        """Resolve a chapter's SoFurry HTML file path."""
         ch = next((c for c in story.chapters if c.index == ch_idx), None)
         if not ch:
             return None
@@ -195,6 +195,50 @@ class SoFurryPoster(PlatformPoster):
             ):
                 return str(candidate)
         return None
+
+    def _read_sf_front_matter(self, story: story_reader.StoryInfo) -> str:
+        """Extract front matter (title, subtitle, warning, disclaimer) from
+        the full-story SoFurry HTML. Returns everything before the first
+        chapter heading (<h3>) so it can be prepended to chapter 1."""
+        html_dir = story.path / "HTML"
+        for f in sorted(html_dir.glob("*_SoFurry.html")):
+            try:
+                content = f.read_text(encoding="utf-8")
+                # Find the first <h3 (chapter heading) and take everything before it
+                idx = content.find("<h3")
+                if idx > 0:
+                    return content[:idx]
+                # Fallback: find <hr /> before chapter content
+                idx = content.find("<hr />")
+                if idx > 0:
+                    return content[:idx + len("<hr />")]
+            except Exception:
+                pass
+        return ""
+
+    def _read_sf_chapter_content(self, story: story_reader.StoryInfo, ch_idx: int) -> str | None:
+        """Read a single chapter's SoFurry HTML for upload.
+
+        For chapter 1: prepends the front matter (title, warning,
+        disclaimer) from the full-story SoFurry HTML so the first
+        chapter displays the story header. Chapters 2+ are body-only.
+        """
+        path = self._read_sf_chapter_file(story, ch_idx)
+        if not path:
+            return None
+        if ch_idx == 1:
+            front_matter = self._read_sf_front_matter(story)
+            if front_matter:
+                import tempfile, os
+                body = open(path, "r", encoding="utf-8").read()
+                # Write combined content to a temp file for upload
+                tmp = tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".html", encoding="utf-8", delete=False,
+                )
+                tmp.write(front_matter + "\n" + body)
+                tmp.close()
+                return tmp.name
+        return path
 
     async def post(self, package: StoryUploadPackage) -> PostResult:
         """Create a new SoFurry submission, with chaptered support.
