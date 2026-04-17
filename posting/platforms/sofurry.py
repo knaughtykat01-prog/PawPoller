@@ -107,8 +107,31 @@ class SoFurryPoster(PlatformPoster):
             raise RuntimeError("SoFurry login failed")
         return self._client
 
+    def _read_sf_chapter_content(self, story: story_reader.StoryInfo, ch_idx: int) -> str | None:
+        """Read a single chapter's SoFurry HTML file path for upload."""
+        ch = next((c for c in story.chapters if c.index == ch_idx), None)
+        if not ch:
+            return None
+
+        sf_html = story.path / "Chapters" / "SoFurry_HTML"
+        if sf_html.is_dir():
+            base = ch.filename.replace(".md", "") if ch.filename else f"Chapter_{ch_idx}"
+            exact = sf_html / f"{base}.html"
+            if exact.is_file():
+                return str(exact)
+            for candidate in sorted(
+                sf_html.glob(f"Chapter_{ch_idx}_*.html"),
+                key=lambda c: len(c.name),
+            ):
+                return str(candidate)
+        return None
+
     async def post(self, package: StoryUploadPackage) -> PostResult:
-        """Create a new SoFurry submission.
+        """Create a new SoFurry submission, with chaptered support.
+
+        For multi-chapter stories: creates the submission with chapter 1,
+        then appends chapters 2..N via POST to /ui/submission/{id}/content
+        (SF's content endpoint APPENDS chapters, it doesn't replace).
 
         Visibility behaviour:
           - Default: privacy=3 (Public) — listed in feeds and search
@@ -120,7 +143,18 @@ class SoFurryPoster(PlatformPoster):
         _t = self._start_timer()
         try:
             client = await self._ensure_client()
-            if not package.file_path:
+
+            # Resolve chapter 1 file (if chaptered) or full-story file
+            story = story_reader.load_story(package.story_name)
+            has_chapters = bool(story.chapters) and story.total_chapters > 1
+
+            ch1_file = package.file_path
+            if has_chapters:
+                ch1_path = self._read_sf_chapter_content(story, 1)
+                if ch1_path:
+                    ch1_file = ch1_path
+
+            if not ch1_file:
                 return PostResult(
                     success=False, error="No file for SoFurry upload",
                     duration_seconds=self._elapsed(_t),
@@ -140,12 +174,13 @@ class SoFurryPoster(PlatformPoster):
 
             privacy_label = {1: "Private", 2: "Unlisted", 3: "Public"}.get(privacy, str(privacy))
             logger.info(
-                "SF: Posting %r as %s (draft=%s, privacy=%d)",
+                "SF: Posting %r as %s (draft=%s, privacy=%d, chapters=%d)",
                 package.title, privacy_label, draft_mode, privacy,
+                story.total_chapters if has_chapters else 1,
             )
 
             result = await client.create_submission(
-                package.file_path,
+                ch1_file,
                 title=package.title,
                 description=package.description,
                 tags=package.tags,
@@ -158,6 +193,43 @@ class SoFurryPoster(PlatformPoster):
 
             submission_id = result.get("submission_id", "")
             url = result.get("url", "")
+
+            # Add remaining chapters (2..N) by POSTing each file to
+            # /ui/submission/{id}/content — SF appends chapters on POST.
+            if has_chapters and submission_id:
+                csrf = await client._get_csrf_meta()
+                remaining = [c for c in story.chapters if c.index > 1]
+                for ch in sorted(remaining, key=lambda c: c.index):
+                    ch_path = self._read_sf_chapter_content(story, ch.index)
+                    if not ch_path:
+                        logger.warning(
+                            "SF: Skipping chapter %d for %s (no SoFurry HTML)",
+                            ch.index, story.name,
+                        )
+                        continue
+                    import os
+                    with open(ch_path, "rb") as f:
+                        file_data = f.read()
+                    ch_resp = await client._http.post(
+                        f"https://sofurry.com/ui/submission/{submission_id}/content",
+                        headers={
+                            "X-CSRF-TOKEN": csrf,
+                            "Origin": "https://sofurry.com",
+                            "Referer": "https://sofurry.com/",
+                        },
+                        files={"file": (os.path.basename(ch_path), file_data)},
+                        timeout=60.0,
+                    )
+                    if ch_resp.status_code in (200, 201):
+                        logger.info(
+                            "SF: Added chapter %d to submission %s",
+                            ch.index, submission_id,
+                        )
+                    else:
+                        logger.warning(
+                            "SF: Chapter %d upload returned %d for %s",
+                            ch.index, ch_resp.status_code, submission_id,
+                        )
 
             # SAFETY: when posting as draft/private, verify the submission
             # actually landed Private. The existing get_submission_detail
