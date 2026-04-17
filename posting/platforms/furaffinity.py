@@ -154,6 +154,34 @@ class FurAffinityPoster(PlatformPoster):
             logger.error("FA edit failed for %s: %s", external_id, e, exc_info=True)
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
+    async def probe_exists(self, external_id: str) -> bool | None:
+        """Check whether an FA submission still exists.
+
+        Hits the public view page — FA returns 404 for deleted submissions
+        and redirects to a "The submission you are trying to find is not
+        in our database" page. Returns None on transient errors so we
+        don't falsely mark live submissions as deleted.
+        """
+        try:
+            client = await self._ensure_client()
+            fa = await client._get_fa_http()
+            resp = await fa.get(
+                f"https://www.furaffinity.net/view/{external_id}/",
+                follow_redirects=False,
+            )
+            if resp.status_code == 404:
+                return False
+            if resp.status_code == 200:
+                if "is not in our database" in resp.text or "System Error" in resp.text:
+                    return False
+                return True
+            if 300 <= resp.status_code < 400:
+                return True
+            return None
+        except Exception as e:
+            logger.warning("FA probe_exists(%s) failed: %s", external_id, e)
+            return None
+
     async def replace_file(self, external_id: str, file_path: str) -> PostResult:
         """Replace the story file via FA's changestory endpoint."""
         _t = self._start_timer()
