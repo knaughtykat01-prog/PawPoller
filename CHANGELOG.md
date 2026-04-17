@@ -4,6 +4,61 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.10.3] - 2026-04-17
+
+### Added — SoFurry chaptered posting, FA probe_exists, nested story paths, anchor fix
+
+**SoFurry chaptered posting (one submission, N chapters):**
+- SF poster's `post()` detects multi-chapter stories: creates
+  submission with chapter 1 (including front matter — title, subtitle,
+  warning, disclaimer prepended), then appends chapters 2..N via
+  `POST /ui/submission/{id}/content`.
+- SF poster's `edit()` now does chapter-aware content refresh: uploads
+  each chapter file individually then deletes old content items.
+  Previous behaviour used `replace_file()` which clobbered all chapters
+  into one content blob.
+- `_set_chapter_titles()` sets per-content-item titles via
+  `POST /ui/submission/{id}/content/{contentId}` with `{"title": "..."}`.
+  Called after both post and edit. Strips `Chapter N:` prefix.
+- SF added to `WORK_ORIENTED` set — per-chapter matrix rows show grey
+  `–` N/A; Full story row is the actionable one.
+- `_read_sf_front_matter()` extracts title/warning/disclaimer from the
+  full-story SoFurry HTML to prepend to chapter 1 uploads (per-chapter
+  files are body-only).
+
+**FA deletion probe:**
+- `FurAffinityPoster.probe_exists()` — hits `/view/{id}/`, checks for
+  404 or "is not in our database" text. Verify posted now detects
+  deleted FA submissions.
+
+**Nested story path fix:**
+- `publish-check`, `publish`, and `verify` endpoints used
+  `story_dir.name` which returned only the last path component
+  (`Nice_Version`) for nested stories like `The_Abstinent_Bet/Nice_Version`.
+  Fixed to `story_dir.relative_to(get_archive_path())` so the full
+  relative path is preserved.
+
+**AO3 CF proxy for desktop residential IPs:**
+- `AO3Client` accepts `proxy_url` + `proxy_key` (same pattern as
+  SoFurryClient). When configured, all requests route through the
+  CF Worker which bypasses AO3's "Shields are up!" Cloudflare TLS
+  fingerprint check. All three AO3Client instantiation sites (poller,
+  poster, API route) pass `cf_worker_url` / `cf_worker_key` from
+  settings.json.
+
+**Per-chapter SoFurry HTML anchor processing:**
+- `/regenerate` endpoint's per-chapter SoFurry HTML generation now
+  calls `_convert_body_clean_html()` directly instead of
+  `convert(ch_content, "clean_html")`. The latter falls through to
+  the heuristic parser for fragments without `<!-- @body -->`, which
+  HTML-escapes semantic anchors. The body converter processes them
+  correctly — `<!-- @text-received -->` becomes
+  `<div class="text-message received">` instead of literal text.
+
+**`APP_VERSION` bumped to `2.10.2`** (config.py).
+
+---
+
 ## [2.10.2] - 2026-04-17
 
 ### Added — Unit tests, CF Worker hostname allowlist, docs refresh

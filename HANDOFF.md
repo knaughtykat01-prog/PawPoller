@@ -1,7 +1,7 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-04-17
-**Current version:** 2.10.2
+**Current version:** 2.10.3
 **Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`)
 
 Living document — update as the roadmap shifts. Read this first when picking up a fresh session.
@@ -51,6 +51,11 @@ The **Story Editor + Publish Check** system (documentation_guide.md §15) is fea
 | **Metadata-only chapter retitles** | 2.10.0 | AO3/SQW edit_chapter now supports content=None (title-only edits preserve body) |
 | **Shields-up resistance** | 2.10.0 | AO3 login uses full Chrome 131 header set + homepage warmup |
 | **Bug hunt round** | 2.10.0 | DELETION_PATTERNS tightened, /verify hardened with try/except + rate limit, duplicate /sync/status removed, theme-save no longer wipes trailing content, Publish Check _currentStory race fixed |
+| **SF chaptered posting** | 2.10.3 | One submission with N chapters via /content append, chapter titles set, front matter prepended to ch1 |
+| **FA deletion probe** | 2.10.3 | probe_exists checks /view/{id}/ for 404 / "not in our database" |
+| **Nested story path fix** | 2.10.3 | publish-check/publish/verify now resolve The_Abstinent_Bet/Nice_Version correctly |
+| **AO3 CF proxy on desktop** | 2.10.3 | Routes through Worker to bypass Shields-up TLS fingerprinting |
+| **Per-chapter anchor processing** | 2.10.3 | /regenerate uses body converter directly so text-message anchors render |
 
 ### What posted successfully during testing
 - Inkbunny draft of "Late Shift" full story — flipped cell from green ✓ → blue ✓ posted with URL.
@@ -59,22 +64,18 @@ The **Story Editor + Publish Check** system (documentation_guide.md §15) is fea
 
 ## Open roadmap
 
-### Phase 6c — broader platform testing (remaining)
+### Phase 6c — broader platform testing (COMPLETE)
 
-IB, SF, AO3, SQW all confirmed end-to-end (post + update + drift + delete + re-post).
-User opted out of Itaku / Wattpad / DeviantArt / Bluesky / X for now.
-FurAffinity is the only remaining target:
+All target platforms confirmed end-to-end: post, update, metadata-only,
+drift detection, deletion probe, re-post.
 
-- [x] Inkbunny (post + re-post after delete)
-- [x] SoFurry (drift → update pushes fresh content)
-- [x] AO3 (chaptered post, edit metadata + content, work skin, tag cascade, metadata-only chapter retitles)
-- [x] SquidgeWorld (post + chaptered + work skin — retested post matrix/login fixes)
-- [ ] Weasyl (account not verified yet — blocked on account-level verification)
-- [ ] FurAffinity (desktop queue handoff path — requires desktop running, last remaining platform to test)
-- [skip] DeviantArt — user opted out
-- [skip] Itaku — user opted out
-- [skip] Wattpad — user opted out
-- [skip] Bluesky/X — user opted out
+- [x] Inkbunny (post + re-post after delete + deletion probe)
+- [x] SoFurry (chaptered posting + chapter titles + front matter on ch1 + edit with chapter-aware content refresh + deletion probe)
+- [x] AO3 (chaptered + work skin + safe-overlay edit + metadata-only retitles + CF proxy bypass for desktop + deletion probe)
+- [x] SquidgeWorld (chaptered + work skin + email-login resolution + deletion probe)
+- [x] FurAffinity (direct from server — no desktop queue needed! + PDF update via changestory + deletion probe)
+- [ ] Weasyl (account not verified — blocked on account-level verification, not a code issue)
+- [skip] DeviantArt / Itaku / Wattpad / Bluesky/X — user opted out
 
 ### Phase 6d — bulk actions
 
