@@ -96,7 +96,11 @@ class AO3Poster(PlatformPoster):
         if not username or not password:
             raise RuntimeError("AO3 credentials not configured")
 
-        self._client = AO3Client(username, password, target_user)
+        self._client = AO3Client(
+            username, password, target_user,
+            proxy_url=settings.get("cf_worker_url", ""),
+            proxy_key=settings.get("cf_worker_key", ""),
+        )
         if not await self._client.ensure_logged_in():
             raise RuntimeError("AO3 login failed")
         return self._client

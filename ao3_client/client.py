@@ -59,11 +59,23 @@ _HEADERS = {
 class AO3Client:
     """Async HTTP client for Archive of Our Own (OTW Archive)."""
 
-    def __init__(self, username: str, password: str, target_user: str):
+    def __init__(self, username: str, password: str, target_user: str,
+                 proxy_url: str = "", proxy_key: str = ""):
         self.username = username
         self.password = password
         self.target_user = target_user
-        transport = httpx.AsyncHTTPTransport(retries=2)
+
+        # Use Cloudflare Worker proxy if configured — bypasses AO3's
+        # "Shields are up!" Cloudflare TLS fingerprint check on
+        # residential IPs. The Worker runs on CF's own edge so it
+        # won't challenge itself. Same pattern as sf_client.
+        if proxy_url and proxy_key:
+            from polling.cf_proxy import CloudflareProxyTransport
+            transport = CloudflareProxyTransport(proxy_url, proxy_key)
+            logger.info("AO3 client using CF proxy: %s", proxy_url)
+        else:
+            transport = httpx.AsyncHTTPTransport(retries=2)
+
         self._http = httpx.AsyncClient(
             timeout=60.0,
             follow_redirects=True,

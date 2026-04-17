@@ -185,6 +185,8 @@ def _get_or_create_client(settings: dict) -> AO3Client:
             username=ao3_user,
             password=ao3_pass,
             target_user=ao3_target,
+            proxy_url=settings.get("cf_worker_url", ""),
+            proxy_key=settings.get("cf_worker_key", ""),
         )
     else:
         _ao3_client.update_credentials(ao3_user, ao3_pass, ao3_target)

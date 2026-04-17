@@ -14,6 +14,8 @@ from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse
 
+import config
+
 from database.db import get_connection
 from database import ao3_queries
 from polling.ao3_poller import run_ao3_poll_cycle, ao3_poll_progress
@@ -65,7 +67,12 @@ async def ao3_connect(body: dict):
     if not target_user:
         raise HTTPException(400, "Target user is required (the AO3 user to track)")
 
-    client = AO3Client(username=username, password=password, target_user=target_user)
+    settings = config.get_settings()
+    client = AO3Client(
+        username=username, password=password, target_user=target_user,
+        proxy_url=settings.get("cf_worker_url", ""),
+        proxy_key=settings.get("cf_worker_key", ""),
+    )
     try:
         result = await client.validate_session()
     except Exception as e:
