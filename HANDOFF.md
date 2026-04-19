@@ -77,13 +77,14 @@ drift detection, deletion probe, re-post.
 - [ ] Weasyl (account not verified — blocked on account-level verification, not a code issue)
 - [skip] DeviantArt / Itaku / Wattpad / Bluesky/X — user opted out
 
-### Phase 6d — bulk actions
+### Phase 6d — bulk actions (COMPLETE)
 
-Single-cell Post/Update works. Next:
-- [ ] "Publish row" button — post Full story (or one chapter) to all ready cells
-- [ ] "Publish all" — row-by-row, all chapters to all ready cells (with per-platform rate limits)
-- [ ] "Update all drifted" — scans the matrix, updates every drifted cell
-- [ ] Progress indicator during bulk ops (streaming response or WebSocket)
+- [x] "Publish row" button — number badge at row end, bulk-posts all actionable cells
+- [x] "Publish all new" — footer button, posts every ready/deleted cell
+- [x] "Update all drifted" — footer button, updates every drifted cell
+- [x] Preflight dialog with per-item checkboxes + draft toggle + dry-run
+- [x] Progress panel with live per-item status + cancel + close-and-refresh
+- [x] Frontend-only (no backend changes, no SSE) per PHASE_6D_PLAN.md
 
 ### Phase 6e — safety polish
 
@@ -92,11 +93,46 @@ Single-cell Post/Update works. Next:
 - [ ] Action result log per session (so you can see "last 5 posts" without refreshing)
 - [ ] Per-platform "posted at" clock display in the detail panel
 
-### Outside-editor work, still pending
+### Phase 7 — Settings sync + local-only mode (DESIGN PHASE)
 
-- [ ] PDFs: visual spot-check on Tombstone (existing task #71)
-- [ ] FA posting plan refactor if 6c surfaces issues (tasks #72, #73)
-- [ ] Tag DB audit continuing in parallel terminal session (user has the prompt)
+Two credential management modes for PawPoller:
+
+**Cloud mode** (convenience):
+- Desktop ↔ server settings sync via `/api/settings/sync` endpoint
+- Login once on either side, creds propagate automatically
+- Server stores settings in Docker volume; desktop pulls/pushes with API key auth
+- All platform credentials, session cookies, CF proxy keys synced
+- Encrypted in transit (HTTPS)
+
+**Local-only mode** (security):
+- All creds stay on the machine, encrypted at rest
+- Python `cryptography` library with machine-derived key (Windows DPAPI
+  via `win32crypt`, or `keyring` on macOS/Linux)
+- Settings file encrypted; only that specific machine can decrypt
+- No server sync, no cloud exposure — fully offline operation
+- Desktop setup wizard configures all platform logins locally
+
+Toggle: `"credential_mode": "cloud" | "local"` in settings.json.
+Touches: config system, dashboard auth flow, desktop setup wizard,
+settings.json schema. Needs its own design doc before implementation.
+
+### Tag audit
+
+- [x] Story-level tag audit across all 13 stories (~330 additions, ~45 removals)
+- [x] Per-chapter tag assignments for all ~70 chapters
+- [x] TAG_AUDIT_REPORT.md saved in archive root
+- [ ] Per-chapter tags for platform-specific arrays (SF/IB/WP tabs) — currently only tags.default populated; cascade handles the rest on publish
+
+### WeasyPrint CSS fix
+
+- [x] `@page { margin: 0 }` moved to top-level (was nested inside `@media print` — invalid CSS, WeasyPrint ignored it → double margins)
+- [ ] Stories need Regenerate to pick up the new CSS — existing `style.css` files still have the old rule
+
+### Other pending
+
+- [ ] Polling module audit fixes (13 findings from earlier audit — exc_info logging, session expiry, N+1 queries)
+- [ ] AO3 rate-limit retry (backoff on 429)
+- [ ] Weasyl testing (blocked on account verification)
 
 ---
 
