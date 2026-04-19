@@ -4,6 +4,38 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.10.4] - 2026-04-17
+
+### Added — Comprehensive tag audit across all 13 stories
+
+Full tag audit of every story in the archive using per-story content
+analysis agents. Each story's MASTER.md was read chapter by chapter
+and cross-referenced against the 4-file tag database (physical, acts,
+kink, meta) to identify missing tags, incorrect tags, and ambiguous
+tags.
+
+**Story-level tag updates (tags.default):**
+- ~330 tags added across 13 stories (acts, kinks, species, meta)
+- ~45 tags removed (redundant, not-in-DB, or content-unsupported)
+- Under-tagged stories saw the biggest gains: Abstinent Bet Naughty
+  (33→83), Velvet and Vice (46→94), Extra Credit (84→124)
+- Audit report saved at `TAG_AUDIT_REPORT.md` in the archive root
+
+**Per-chapter tag assignments (chapter_info[].tags.default):**
+- ~70 chapters across all 13 stories received per-chapter tag lists
+- Species/meta/genre tags distributed to all relevant chapters
+- Act/kink tags assigned only to chapters where depicted on-page
+- Tag counts range from 3 (quiet preludes) to 63 (explicit climaxes)
+
+**Tag categories addressed:**
+- Missing sexual acts (blowjob, anal_sex, rimming, edging, etc.)
+- Missing kink dynamics (dominance, submission, power_dynamics, etc.)
+- Missing physical traits (canine_penis, knot, claws, size_difference)
+- Missing meta tags (first_time_mm, bisexual_awakening, infidelity)
+- Redundant tags removed (duplicate phrasing, non-DB entries)
+
+---
+
 ## [2.10.3] - 2026-04-17
 
 ### Added — SoFurry chaptered posting, FA probe_exists, nested story paths, anchor fix
