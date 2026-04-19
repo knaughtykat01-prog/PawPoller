@@ -53,6 +53,8 @@ window.PublishCheck = (function () {
                         <span class="cell-legend cell-error">⚠</span> Error
                     </span>
                     <button class="btn btn-sm btn-outline" id="publish-check-verify" title="Probe each platform to detect deletions">Verify posted</button>
+                    <button class="btn btn-sm btn-outline" id="bulk-all-new" title="Post every ready cell">Publish all new</button>
+                    <button class="btn btn-sm btn-outline" id="bulk-all-drifted" title="Update every drifted cell">Update drifted</button>
                     <button class="btn btn-sm" id="publish-check-recheck">Re-check</button>
                 </div>
             </div>
@@ -68,7 +70,14 @@ window.PublishCheck = (function () {
         });
         modal.querySelector('#publish-check-verify').addEventListener('click', () => {
             if (_currentStory) verify(_currentStory);
-            // verify() sets its own .disabled on the button
+        });
+        modal.querySelector('#bulk-all-new').addEventListener('click', () => {
+            const targets = _collectTargets('all_new');
+            if (targets.length) _openBulkPreflight(targets, 'all_new');
+        });
+        modal.querySelector('#bulk-all-drifted').addEventListener('click', () => {
+            const targets = _collectTargets('all_drifted');
+            if (targets.length) _openBulkPreflight(targets, 'all_drifted');
         });
 
         document.addEventListener('keydown', (e) => {
@@ -176,6 +185,7 @@ window.PublishCheck = (function () {
             html += '<th class="plat-col" title="' + _escape(p.name) + '">' +
                 _escape(p.name) + '</th>';
         }
+        html += '<th class="bulk-col"></th>';
         html += '</tr></thead><tbody>';
 
         for (const row of data.matrix) {
@@ -193,6 +203,22 @@ window.PublishCheck = (function () {
                 const cell = row.cells[p.id] || { status: 'error', errors: ['Missing'] };
                 html += _renderCell(cell, p);
             }
+            // Row-end bulk button — count actionable cells
+            let rowActionable = 0;
+            for (const p of data.platforms) {
+                const c = row.cells[p.id];
+                if (c && (c.status === 'ready' || c.status === 'ready_retry' ||
+                    c.status === 'deleted_upstream' || c.status === 'posted_drifted')) {
+                    rowActionable++;
+                }
+            }
+            html += '<td class="bulk-col">';
+            if (rowActionable > 0) {
+                html += '<button class="btn btn-xs btn-outline bulk-row-btn" ' +
+                    'data-ch-idx="' + row.chapter_index + '" title="Bulk publish this row">' +
+                    rowActionable + '</button>';
+            }
+            html += '</td>';
             html += '</tr>';
         }
         html += '</tbody></table></div>';
@@ -204,8 +230,20 @@ window.PublishCheck = (function () {
 
         body.innerHTML = html;
 
+        // Cache matrix data for bulk target collection
+        _lastMatrixData = data;
+
         // Wire up cell clicks
         _bindCellClicks(body);
+
+        // Wire row-end bulk buttons
+        body.querySelectorAll('.bulk-row-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const chIdx = parseInt(btn.dataset.chIdx);
+                const targets = _collectTargets('row', chIdx);
+                if (targets.length) _openBulkPreflight(targets, 'row');
+            });
+        });
     }
 
     function _renderCell(cell, plat) {
@@ -516,6 +554,268 @@ window.PublishCheck = (function () {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+    }
+
+    // ── Phase 6d: Bulk publish ─────────────────────────────────
+    //
+    // Three entry points: row-end button, "Publish all new", "Update
+    // all drifted". Each collects actionable targets from the matrix
+    // data, shows a preflight dialog, then runs sequential requests.
+
+    let _lastMatrixData = null;  // cached from _render for bulk target collection
+
+    function _collectTargets(mode, chIdx) {
+        if (!_lastMatrixData) return [];
+        const targets = [];
+        for (const row of _lastMatrixData.matrix) {
+            if (mode === 'row' && row.chapter_index !== chIdx) continue;
+            for (const p of _lastMatrixData.platforms) {
+                const cell = row.cells[p.id];
+                if (!cell) continue;
+                if (mode === 'all_new' || mode === 'row') {
+                    if (cell.status === 'ready' || cell.status === 'ready_retry' || cell.status === 'deleted_upstream') {
+                        targets.push({
+                            platId: p.id, platName: p.name,
+                            chIdx: row.chapter_index, chTitle: row.chapter_title,
+                            action: 'post', cell: cell,
+                        });
+                    }
+                }
+                if (mode === 'all_drifted' || mode === 'row') {
+                    if (cell.status === 'posted_drifted') {
+                        targets.push({
+                            platId: p.id, platName: p.name,
+                            chIdx: row.chapter_index, chTitle: row.chapter_title,
+                            action: 'update', cell: cell,
+                        });
+                    }
+                }
+            }
+        }
+        return targets;
+    }
+
+    function _openBulkPreflight(targets, mode) {
+        if (!targets.length) return;
+        const storyName = _currentStory;
+        if (!storyName) return;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'bulk-preflight-overlay';
+
+        const modeLabel = mode === 'all_new' ? 'Publish all new'
+            : mode === 'all_drifted' ? 'Update all drifted'
+            : 'Publish row';
+
+        let html = '<div class="bulk-preflight-dialog">';
+        html += '<div class="bulk-preflight-header">';
+        html += '<strong>' + modeLabel + '</strong> — ' + targets.length + ' target(s)';
+        html += '<button class="bulk-preflight-close">&times;</button>';
+        html += '</div>';
+
+        html += '<div class="bulk-preflight-body">';
+        html += '<div class="bulk-preflight-list">';
+        for (let i = 0; i < targets.length; i++) {
+            const t = targets[i];
+            const verb = t.action === 'post' ? 'Post' : 'Update';
+            html += '<label class="bulk-target-row">' +
+                '<input type="checkbox" data-idx="' + i + '" checked> ' +
+                '<span class="bulk-target-verb">' + verb + '</span> ' +
+                _escape(t.chTitle || 'Full story') + ' → ' +
+                '<strong>' + _escape(t.platName) + '</strong>' +
+                '</label>';
+        }
+        html += '</div>';
+
+        html += '<div class="bulk-preflight-options">';
+        html += '<label><input type="checkbox" id="bulk-draft" checked> Save as draft</label>';
+        html += '</div>';
+        html += '</div>';
+
+        html += '<div class="bulk-preflight-footer">';
+        html += '<button class="btn btn-sm btn-outline" data-bulk="cancel">Cancel</button>';
+        html += '<button class="btn btn-sm btn-outline" data-bulk="dry_run">Dry Run All</button>';
+        html += '<button class="btn btn-sm btn-primary" data-bulk="go">' +
+            modeLabel + ' (' + targets.length + ')</button>';
+        html += '</div></div>';
+
+        overlay.innerHTML = html;
+        document.body.appendChild(overlay);
+
+        // Update count when checkboxes change
+        const updateCount = () => {
+            const checked = overlay.querySelectorAll('.bulk-target-row input:checked').length;
+            const goBtn = overlay.querySelector('[data-bulk="go"]');
+            if (goBtn) goBtn.textContent = modeLabel + ' (' + checked + ')';
+        };
+        overlay.querySelectorAll('.bulk-target-row input').forEach(cb => {
+            cb.addEventListener('change', updateCount);
+        });
+
+        overlay.querySelector('.bulk-preflight-close').addEventListener('click', () => {
+            overlay.remove();
+        });
+        overlay.querySelector('[data-bulk="cancel"]').addEventListener('click', () => {
+            overlay.remove();
+        });
+        overlay.querySelector('[data-bulk="dry_run"]').addEventListener('click', () => {
+            const selected = _getSelectedTargets(overlay, targets);
+            if (!selected.length) return;
+            overlay.remove();
+            _runBulk(storyName, selected, true);
+        });
+        overlay.querySelector('[data-bulk="go"]').addEventListener('click', () => {
+            const selected = _getSelectedTargets(overlay, targets);
+            if (!selected.length) return;
+            const draft = overlay.querySelector('#bulk-draft')?.checked ?? true;
+            const ok = confirm(
+                modeLabel + ': ' + selected.length + ' item(s)' +
+                (draft ? ' as DRAFT' : ' LIVE') +
+                '.\n\nThis will make real requests to external platforms.'
+            );
+            if (!ok) return;
+            overlay.remove();
+            _runBulk(storyName, selected, false, draft);
+        });
+    }
+
+    function _getSelectedTargets(overlay, targets) {
+        const selected = [];
+        overlay.querySelectorAll('.bulk-target-row input:checked').forEach(cb => {
+            const idx = parseInt(cb.dataset.idx);
+            if (targets[idx]) selected.push(targets[idx]);
+        });
+        return selected;
+    }
+
+    let _bulkAborted = false;
+
+    async function _runBulk(storyName, targets, dryRun, draft) {
+        _bulkAborted = false;
+
+        // Replace the detail panel with a progress view
+        const body = document.getElementById('publish-check-body');
+        if (!body) return;
+
+        let html = '<div class="bulk-progress">';
+        html += '<div class="bulk-progress-header" id="bulk-progress-header">' +
+            (dryRun ? 'Dry run' : 'Publishing') + ' 0/' + targets.length +
+            '</div>';
+        html += '<div class="bulk-progress-list" id="bulk-progress-list">';
+        for (let i = 0; i < targets.length; i++) {
+            const t = targets[i];
+            const verb = t.action === 'post' ? 'Post' : 'Update';
+            html += '<div class="bulk-progress-item" id="bulk-item-' + i + '">' +
+                '<span class="bulk-item-status">⏳</span> ' +
+                verb + ' ' + _escape(t.chTitle || 'Full story') +
+                ' → ' + _escape(t.platName) +
+                '<span class="bulk-item-result" id="bulk-result-' + i + '"></span>' +
+                '</div>';
+        }
+        html += '</div>';
+        html += '<div class="bulk-progress-footer">';
+        if (!dryRun) {
+            html += '<button class="btn btn-sm" id="bulk-cancel-btn">Cancel remaining</button>';
+        }
+        html += '<button class="btn btn-sm btn-outline" id="bulk-close-btn" disabled>Close & refresh</button>';
+        html += '</div></div>';
+
+        body.innerHTML = html;
+
+        if (!dryRun) {
+            document.getElementById('bulk-cancel-btn')?.addEventListener('click', () => {
+                _bulkAborted = true;
+                const btn = document.getElementById('bulk-cancel-btn');
+                if (btn) { btn.disabled = true; btn.textContent = 'Cancelling...'; }
+            });
+        }
+
+        let succeeded = 0, failed = 0, skipped = 0;
+
+        for (let i = 0; i < targets.length; i++) {
+            if (_bulkAborted) {
+                skipped += targets.length - i;
+                for (let j = i; j < targets.length; j++) {
+                    _updateBulkItem(j, '⊘', 'Cancelled');
+                }
+                break;
+            }
+
+            const t = targets[i];
+            _updateBulkItem(i, '⏳', 'Working...');
+            _updateBulkHeader(i, targets.length, succeeded, failed);
+
+            try {
+                const action = dryRun ? 'dry_run' : t.action;
+                const resp = await fetch(
+                    '/api/editor/stories/' + encodeURIComponent(storyName) + '/publish',
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            platform: t.platId,
+                            chapter: t.chIdx,
+                            action: action,
+                            draft: draft ?? true,
+                            confirm_live: !dryRun,
+                        }),
+                    }
+                );
+                const data = await resp.json();
+
+                if (dryRun) {
+                    _updateBulkItem(i, data.ok ? '✓' : '✗',
+                        data.ok ? 'OK' : (data.errors || []).join('; '));
+                    if (data.ok) succeeded++; else failed++;
+                } else if (data.ok) {
+                    const url = data.results?.[0]?.external_url;
+                    const queued = data.results?.[0]?.queued_desktop;
+                    _updateBulkItem(i, '✓',
+                        queued ? 'Queued for desktop' :
+                        url ? '<a href="' + _escape(url) + '" target="_blank">Posted</a>' : 'Done');
+                    succeeded++;
+                } else {
+                    const err = data.results?.[0]?.error || 'Failed';
+                    _updateBulkItem(i, '✗', _escape(err));
+                    failed++;
+                }
+            } catch (e) {
+                _updateBulkItem(i, '✗', _escape(e.message));
+                failed++;
+            }
+        }
+
+        _updateBulkHeader(targets.length, targets.length, succeeded, failed, skipped);
+
+        const closeBtn = document.getElementById('bulk-close-btn');
+        if (closeBtn) {
+            closeBtn.disabled = false;
+            closeBtn.addEventListener('click', () => {
+                if (_currentStory === storyName) load(storyName);
+            });
+        }
+        const cancelBtn = document.getElementById('bulk-cancel-btn');
+        if (cancelBtn) cancelBtn.style.display = 'none';
+    }
+
+    function _updateBulkItem(idx, icon, text) {
+        const item = document.getElementById('bulk-item-' + idx);
+        if (!item) return;
+        const status = item.querySelector('.bulk-item-status');
+        const result = document.getElementById('bulk-result-' + idx);
+        if (status) status.textContent = icon;
+        if (result) result.innerHTML = ' — ' + text;
+        item.className = 'bulk-progress-item ' +
+            (icon === '✓' ? 'bulk-success' : icon === '✗' ? 'bulk-fail' : '');
+    }
+
+    function _updateBulkHeader(current, total, ok, fail, skip) {
+        const h = document.getElementById('bulk-progress-header');
+        if (!h) return;
+        h.innerHTML = 'Progress: ' + current + '/' + total +
+            ' — <span class="stat-ready">' + ok + ' succeeded</span>' +
+            (fail ? ', <span class="stat-blocked">' + fail + ' failed</span>' : '') +
+            (skip ? ', ' + skip + ' cancelled' : '');
     }
 
     return { open, close };

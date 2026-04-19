@@ -2384,3 +2384,143 @@
     color: var(--text-secondary);
     font-size: 11px;
 }
+
+/* Phase 6d — Bulk publish */
+
+.bulk-col { width: 40px; text-align: center; }
+
+.btn-xs {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    min-width: 28px;
+}
+
+.bulk-preflight-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10020;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bulk-preflight-dialog {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    width: 480px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.bulk-preflight-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 14px;
+}
+
+.bulk-preflight-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 20px;
+    cursor: pointer;
+}
+
+.bulk-preflight-body {
+    flex: 1;
+    overflow: auto;
+    padding: 12px 18px;
+}
+
+.bulk-preflight-list {
+    max-height: 300px;
+    overflow: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 8px;
+}
+
+.bulk-target-row {
+    display: block;
+    padding: 4px 0;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.bulk-target-row:hover { background: var(--bg-hover); }
+
+.bulk-target-verb {
+    color: var(--text-secondary);
+    font-size: 11px;
+    text-transform: uppercase;
+    margin-right: 4px;
+}
+
+.bulk-preflight-options {
+    margin-top: 12px;
+    font-size: 12px;
+}
+
+.bulk-preflight-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 18px;
+    border-top: 1px solid var(--border-color);
+}
+
+.bulk-progress {
+    padding: 16px;
+}
+
+.bulk-progress-header {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.bulk-progress-list {
+    max-height: 400px;
+    overflow: auto;
+}
+
+.bulk-progress-item {
+    padding: 6px 8px;
+    font-size: 13px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.bulk-progress-item.bulk-success { color: #4a9; }
+.bulk-progress-item.bulk-fail { color: #c66; }
+
+.bulk-item-status {
+    display: inline-block;
+    width: 20px;
+    text-align: center;
+}
+
+.bulk-item-result {
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.bulk-item-result a { color: #69c; }
+
+.bulk-progress-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
