@@ -1348,11 +1348,6 @@ def _build_print_styles(theme: dict) -> str:
     return (
         "/* Print Styles */\n"
         "        @media print {\n"
-        "            @page {\n"
-        "                margin: 0;\n"
-        "                size: A4;\n"
-        "            }\n"
-        "\n"
         "            html {\n"
         "                -webkit-print-color-adjust: exact;\n"
         "                print-color-adjust: exact;\n"
