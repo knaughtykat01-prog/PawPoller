@@ -46,6 +46,109 @@ on both desktop and server.
 
 **Cache buster:** `app.js?v=242`.
 
+### Fixed — Path traversal, SF temp file leak, chapter tag init
+
+- `editor_api._resolve_story_dir()` now uses `resolve()` +
+  `relative_to()` to prevent `../` traversal in story_name URL param.
+- SoFurry poster tracks temp files from ch1 front-matter merge and
+  cleans them up in `finally` blocks after `post()` and `edit()`.
+- `metadata_editor._ensureChapterEntry()` initializes `inkbunny: []`
+  in chapter tags (was missing after platform extension).
+
+### Fixed — Publish Check: no_credentials status for unconfigured platforms
+
+Platforms without credentials show a lock icon and "No credentials
+configured" instead of confusing poster init errors. Per-platform
+credential requirements checked before the matrix loop. Action panel
+shows clear "Set up in Settings" message.
+
+### Changed — Skip startup polling
+
+- Desktop (`main.py`): all 11 poller threads no longer fire an
+  immediate poll on startup, preventing rate limiting on restarts.
+- Server (`server.py`): orchestrator checks `last_poll_completed_at`
+  and skips the first poll if the previous cycle was recent enough.
+
+### Added — Tag editor improvements
+
+- **Space→underscore auto-conversion**: typing a space in Default/FA/
+  Weasyl/Itaku tag inputs converts to underscore in real-time.
+- **"Fix spaces" button**: bulk-replaces spaces with underscores in
+  all underscore-platform tags (story + chapter level).
+- **"Sort A-Z" button**: sorts tags alphabetically across all
+  platforms.
+- **Tag format correction**: `_transformTagForPlatform()` fixed — FA
+  and Weasyl now correctly keep underscores (were wrongly converting
+  to spaces).
+- **Tag browser "Selected" filter**: new chip tab filters the grid to
+  show only currently-selected tags with descriptions.
+- **Platform badges on tag cards**: small pills (DEF, SF, IB, AO3...)
+  on each card showing which platforms have that tag.
+- **Grid layout fix**: removed double-nested grid wrapper that was
+  forcing single-column layout in the tag browser.
+
+### Added — Polling module backlog fixes
+
+**Session expiry recovery (3 pollers):**
+- SQW: resets `_logged_in` before `validate_session()` so
+  `ensure_logged_in()` attempts fresh login.
+- FA: validates cookies before gallery fetch, clear error message.
+- TW: empty credential check + clearer expired cookie message.
+
+**N+1 query batching (4 pollers):**
+- IB faving users, FA comments, SQW kudos, AO3 kudos all switched
+  from per-item INSERT loops to `executemany` + `INSERT OR IGNORE`.
+- Pre-existing set approach preserves notification detail tracking.
+
+**AO3 rate-limit retry:**
+- `_parse_retry_after()` extracts Retry-After header from 429s.
+- `_get_page()` 429 handling fixed (was broken — retried inline
+  without checking response status). Now retries within the loop
+  with escalating backoff.
+- `_post_with_retry()` wraps all 7 non-login POST operations.
+
+### Added — Editor quick wins
+
+**Regen staleness warning (12a):**
+- Publish Check compares MASTER.md mtime vs newest generated file.
+- Amber banner with inline "Regenerate now" button when stale.
+
+**Edit button from published stories (12b):**
+- Story detail page gains "Edit in Editor" link next to the title.
+
+**Anchor insertion toolbar (10a):**
+- 8 anchor buttons in the wysiwyg toolbar: Title, Sub, Body,
+  Warning, Text Sent (→), Text Received (←), Phone, End.
+- Inserts at CodeMirror cursor position.
+
+### Added — Selective format regeneration (10b)
+
+Regenerate button gains a dropdown with 7 options: All formats,
+HTML only, BBCode only, Styled HTML + CSS, SquidgeWorld only,
+PDF only, Chapter splits only. Backend `RegenerateRequest.formats`
+filters which sections run.
+
+### Added — Per-platform descriptions (10d)
+
+Metadata drawer Basics section gains collapsible "Per-platform
+descriptions" with Short (IB/SF, 1-2 sentences) and Announcement
+(Bluesky, 300 char limit) textareas. `build_package()` picks the
+right description per platform with fallback chain.
+
+### Added — Retry queue (12d)
+
+Failed posts/updates auto-queue for retry with exponential backoff
+(1min → 5min → 30min, max 3 attempts). Uses existing
+`posting_queue` infrastructure. Desktop-requiring platforms still
+queue for desktop. Deletion errors skip retry. Frontend shows
+"Will retry automatically" for queued retries.
+
+### Added — Public release roadmap
+
+`ROADMAP_PUBLIC.md` — Phases 8-15 covering auth UX (embedded browser
+login), first-run wizard, editor enhancements, image support,
+publishing UX, analytics, import, and GitHub packaging.
+
 **`APP_VERSION` bumped to `2.11.0`.**
 
 ---

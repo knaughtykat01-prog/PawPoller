@@ -57,6 +57,15 @@ The **Story Editor + Publish Check** system (documentation_guide.md §15) is fea
 | **AO3 CF proxy on desktop** | 2.10.3 | Routes through Worker to bypass Shields-up TLS fingerprinting |
 | **Per-chapter anchor processing** | 2.10.3 | /regenerate uses body converter directly so text-message anchors render |
 | **Phase 6e safety polish** | 2.10.5 | Live-publish warning banner, readable dry-run results, per-session action log, relative timestamps |
+| **Phase 7a settings sync** | 2.11.0 | Cloud sync endpoint, desktop startup pull, dashboard sync buttons |
+| **Polling backlog** | 2.11.0 | Session recovery, N+1 batching, AO3 429 retry, exc_info logging, Telegram error UX |
+| **Tag editor overhaul** | 2.11.0 | Space→underscore, sort A-Z, Selected filter, platform badges, format fix |
+| **Editor quick wins** | 2.11.0 | Anchor toolbar, regen staleness warning, edit button from posted stories |
+| **Selective regen** | 2.11.0 | Dropdown for HTML/BBCode/Styled/SQW/PDF/chapters |
+| **Per-platform descriptions** | 2.11.0 | Short (IB/SF) + Announcement (Bsky) fields in metadata drawer |
+| **Retry queue** | 2.11.0 | Auto-retry failed posts with 1min/5min/30min backoff |
+| **No-credentials status** | 2.11.0 | Lock icon for unconfigured platforms in Publish Check |
+| **Skip startup polling** | 2.11.0 | No more rate-limiting on app restart |
 
 ### What posted successfully during testing
 - Inkbunny draft of "Late Shift" full story — flipped cell from green ✓ → blue ✓ posted with URL.
