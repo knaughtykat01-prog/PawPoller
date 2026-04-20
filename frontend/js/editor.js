@@ -106,12 +106,12 @@ const Editor = {
                         </div>
                         <button id="editor-publish-btn" class="btn btn-sm btn-outline" title="Check publishability across all platforms">Publish</button>
                         <button id="editor-format-btn" class="btn btn-sm btn-outline" title="Format source code (Shift+Alt+F)">Format</button>
-                        <select id="editor-format-select">
-                            <option value="clean_html">Clean HTML (AO3)</option>
-                            <option value="sofurry_html">SoFurry HTML</option>
-                            <option value="bbcode">BBCode (IB)</option>
-                            <option value="styled_html">Styled HTML (PDF)</option>
-                        </select>
+                        <div class="format-tabs" id="format-tabs">
+                            <button class="format-tab active" data-fmt="clean_html">Clean HTML</button>
+                            <button class="format-tab" data-fmt="sofurry_html">SoFurry</button>
+                            <button class="format-tab" data-fmt="bbcode">BBCode</button>
+                            <button class="format-tab" data-fmt="styled_html">Styled</button>
+                        </div>
                     </div>
                 </div>
                 <div class="editor-quad" id="editor-quad">
@@ -191,7 +191,13 @@ const Editor = {
             this._initCodeMirror(initialContent);
 
             // Bind toolbar events
-            document.getElementById('editor-format-select')?.addEventListener('change', (e) => this.switchFormat(e.target.value));
+            document.querySelectorAll('#format-tabs .format-tab').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('#format-tabs .format-tab').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    this.switchFormat(btn.dataset.fmt);
+                });
+            });
             document.getElementById('editor-css-btn')?.addEventListener('click', () => this.toggleCssEditor());
             document.getElementById('editor-metadata-btn')?.addEventListener('click', () => MetaEditor.toggle());
             document.getElementById('editor-save-btn')?.addEventListener('click', () => this.save());

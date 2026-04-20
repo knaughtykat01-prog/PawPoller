@@ -265,6 +265,7 @@ class WeasylClient:
         rating: int = 40,
         subtype: int = 0,
         folder_id: int | None = None,
+        cover_path: str | None = None,
     ) -> dict:
         """Submit a literary work (story/text) to Weasyl.
 
@@ -291,6 +292,9 @@ class WeasylClient:
             form_data["folderid"] = str(folder_id)
 
         files = {"submitfile": (filename, file_data)}
+        if cover_path and os.path.isfile(cover_path):
+            with open(cover_path, "rb") as cf:
+                files["coverfile"] = (os.path.basename(cover_path), cf.read(), "image/png")
 
         # Use a client that follows redirects for this request
         resp = await self._http.post(

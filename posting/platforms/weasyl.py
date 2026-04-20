@@ -64,6 +64,7 @@ class WeasylPoster(PlatformPoster):
                 description=package.description,
                 tags=tags_str,
                 rating=rating,
+                cover_path=package.thumbnail_path,
             )
 
             return PostResult(

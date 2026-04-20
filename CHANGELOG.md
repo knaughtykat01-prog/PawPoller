@@ -4,6 +4,27 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.11.1] - 2026-04-19
+
+### Changed — Editor format selector: dropdown to tab bar
+
+Replaced the `<select>` dropdown for switching output formats (Clean HTML,
+SoFurry, BBCode, Styled HTML) with a compact inline tab bar. All four
+formats are now visible at a glance as clickable buttons with an active
+highlight, removing the extra click required by the old dropdown.
+
+- **`frontend/js/editor.js`**: Swapped `<select id="editor-format-select">`
+  for a `<div class="format-tabs">` with four `<button class="format-tab">`
+  elements. Updated event binding from a single `change` listener to
+  per-button `click` handlers that toggle the `.active` class and call
+  `switchFormat()`.
+- **`frontend/css/editor.css`**: Added `.format-tabs` (flex row, 2px gap)
+  and `.format-tab` styles (11px font, accent-colour active state,
+  hover highlight, smooth transition).
+- Cache busters: `editor.css?v=243`, `editor.js?v=279`.
+
+---
+
 ## [2.11.0] - 2026-04-20
 
 ### Added — Phase 7a: Settings sync (cloud mode)
