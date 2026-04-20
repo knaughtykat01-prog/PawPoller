@@ -89,6 +89,7 @@ class SoFurryPoster(PlatformPoster):
 
     def __init__(self):
         self._client: SoFurryClient | None = None
+        self._tmp_files: list[str] = []
 
     async def _ensure_client(self) -> SoFurryClient:
         if self._client and self._client._logged_in:
@@ -229,16 +230,25 @@ class SoFurryPoster(PlatformPoster):
         if ch_idx == 1:
             front_matter = self._read_sf_front_matter(story)
             if front_matter:
-                import tempfile, os
+                import tempfile
                 body = open(path, "r", encoding="utf-8").read()
-                # Write combined content to a temp file for upload
                 tmp = tempfile.NamedTemporaryFile(
                     mode="w", suffix=".html", encoding="utf-8", delete=False,
                 )
                 tmp.write(front_matter + "\n" + body)
                 tmp.close()
+                self._tmp_files.append(tmp.name)
                 return tmp.name
         return path
+
+    def _cleanup_tmp_files(self):
+        import os
+        for f in self._tmp_files:
+            try:
+                os.unlink(f)
+            except OSError:
+                pass
+        self._tmp_files.clear()
 
     async def post(self, package: StoryUploadPackage) -> PostResult:
         """Create a new SoFurry submission, with chaptered support.
@@ -404,6 +414,8 @@ class SoFurryPoster(PlatformPoster):
         except Exception as e:
             logger.error("SF post failed: %s", e, exc_info=True)
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
+        finally:
+            self._cleanup_tmp_files()
 
     async def edit(self, external_id: str, package: StoryUploadPackage) -> PostResult:
         """Edit metadata AND refresh content on an existing SoFurry submission.
@@ -534,6 +546,8 @@ class SoFurryPoster(PlatformPoster):
         except Exception as e:
             logger.error("SF edit failed for %s: %s", external_id, e, exc_info=True)
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
+        finally:
+            self._cleanup_tmp_files()
 
     async def probe_exists(self, external_id: str) -> bool | None:
         """Check whether an SF submission still exists.

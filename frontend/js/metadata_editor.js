@@ -2704,7 +2704,7 @@ const MetaEditor = {
         this.metadata.chapter_info = this.metadata.chapter_info || [];
         let entry = this.metadata.chapter_info.find(e => e && e.index === index);
         if (!entry) {
-            entry = { index, title: '', description: '', tags: { default: [], sofurry: [], wattpad: [] }, words: 0 };
+            entry = { index, title: '', description: '', tags: { default: [], sofurry: [], inkbunny: [], wattpad: [] }, words: 0 };
             this.metadata.chapter_info.push(entry);
             this.metadata.chapter_info.sort((a, b) => a.index - b.index);
         }

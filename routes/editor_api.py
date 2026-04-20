@@ -55,7 +55,11 @@ def _resolve_story_dir(story_name: str) -> Path:
     """Resolve a story name to its directory. Handles versioned stories
     like 'The_Abstinent_Bet/Nice_Version' via the :path converter."""
     archive = get_archive_path()
-    candidate = archive / story_name
+    candidate = (archive / story_name).resolve()
+    try:
+        candidate.relative_to(archive.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid story path")
     if candidate.is_dir():
         return candidate
     raise HTTPException(status_code=404, detail=f"Story not found: {story_name}")
