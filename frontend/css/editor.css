@@ -1039,6 +1039,17 @@
     border-bottom-color: var(--accent);
 }
 
+.metadata-chapter-thumb-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+.metadata-chapter-thumb-name {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
 .metadata-tag-fix-spaces {
     margin-left: auto;
     font-size: 11px;
@@ -2804,3 +2815,86 @@
     border-radius: 4px;
 }
 .regen-dropdown-menu button:hover { background: var(--bg-hover); }
+
+/* ===========================================================================
+ * Create Story Dialog
+ * =========================================================================== */
+
+.create-story-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 10010;
+    justify-content: center;
+    align-items: center;
+}
+
+.create-story-overlay.open {
+    display: flex;
+}
+
+.create-story-dialog {
+    background: var(--bg-primary, #1a1a2e);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+    border-radius: 10px;
+    padding: 24px 28px;
+    width: 90%;
+    max-width: 440px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+}
+
+.create-story-dialog h3 {
+    margin: 0 0 18px;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.create-story-label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 14px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.create-story-input {
+    background: var(--surface-primary, #12121e);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary, rgba(255,255,255,0.12));
+    border-radius: 5px;
+    padding: 7px 10px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.create-story-input:focus {
+    border-color: var(--accent, #4f8ff7);
+}
+
+.create-story-hint {
+    font-size: 0.72rem;
+    color: var(--text-tertiary, #888);
+}
+
+.create-story-error {
+    background: rgba(220, 50, 50, 0.12);
+    border: 1px solid rgba(220, 50, 50, 0.3);
+    border-radius: 5px;
+    padding: 8px 12px;
+    font-size: 0.82rem;
+    color: #f08080;
+    margin-bottom: 14px;
+}
+
+.create-story-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 6px;
+}

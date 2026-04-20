@@ -45,6 +45,14 @@ class RegenerateRequest(BaseModel):
     formats: list[str] | None = None  # None = all, or subset of: html, bbcode, styled, sqw, pdf, chapters
 
 
+class CreateStoryRequest(BaseModel):
+    name: str            # Folder name (e.g. "My_New_Story")
+    title: str           # Display title (e.g. "My New Story")
+    author: str = ""
+    chapters: int = 1    # Initial chapter count
+    rating: str = "explicit"  # general, mature, explicit
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -120,6 +128,158 @@ async def list_stories():
                         stories.append(info)
 
     return {"stories": stories}
+
+
+@editor_router.post("/stories/create")
+async def create_story(req: CreateStoryRequest):
+    """Create a new story with folder structure and template files."""
+    # Validate name: only alphanumeric + underscore, no leading/trailing spaces
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Story name cannot be empty")
+    if not re.match(r'^[A-Za-z0-9_]+$', name):
+        raise HTTPException(
+            status_code=400,
+            detail="Story name may only contain letters, digits, and underscores",
+        )
+    if len(name) > 200:
+        raise HTTPException(status_code=400, detail="Story name too long (max 200 chars)")
+
+    title = req.title.strip() or name.replace("_", " ")
+    author = req.author.strip()
+    chapters = max(1, min(req.chapters, 20))
+    rating = req.rating.strip().lower()
+    if rating not in ("general", "mature", "explicit"):
+        rating = "explicit"
+
+    archive = get_archive_path()
+    story_dir = archive / name
+
+    if story_dir.exists():
+        raise HTTPException(status_code=409, detail=f"Story '{name}' already exists")
+
+    # Create directory structure
+    dirs = [
+        story_dir / "Markdown",
+        story_dir / "BBCode",
+        story_dir / "HTML",
+        story_dir / "PDF",
+        story_dir / "SquidgeWorld",
+        story_dir / "Chapters" / "Markdown",
+        story_dir / "Chapters" / "BBCode",
+        story_dir / "Chapters" / "SoFurry_HTML",
+        story_dir / "Chapters" / "Styled_HTML",
+        story_dir / "Chapters" / "PDF",
+        story_dir / "Images",
+    ]
+    for d in dirs:
+        d.mkdir(parents=True, exist_ok=True)
+
+    # Generate template MASTER.md
+    chapter_blocks = ""
+    if chapters > 1:
+        for i in range(2, chapters + 1):
+            chapter_blocks += f"""
+---
+
+# Chapter {i}: Untitled
+
+Continue your story here...
+"""
+
+    master_content = f"""<!-- @title -->
+# {title}
+
+<!-- @subtitle -->
+*A story subtitle goes here*
+
+<!-- @byline -->
+by {author or 'Author Name'}
+
+<!-- @warning -->
+Content warnings go here.
+
+<!-- @disclaimer -->
+This is a work of fiction. All characters are fictional.
+
+<!-- @body -->
+
+Your story begins here. Everything above the @body anchor is front
+matter — it appears in styled formats but not in plain BBCode.
+
+## Using Section Breaks
+
+Use `---` on its own line to create a section break (renders as * * *).
+
+---
+
+## Text Messages
+
+<!-- @text-sent -->
+This appears as an outgoing text message bubble.
+<!-- @text-end -->
+
+<!-- @text-received -->
+This appears as an incoming text message bubble.
+<!-- @text-end -->
+
+## Phone Screens
+
+<!-- @phone -->
+Content inside a phone screen frame.
+<!-- @phone-end -->
+
+## Chapter Breaks
+
+Use `---` followed by `# Chapter N: Title` to start a new chapter.
+{chapter_blocks}
+<!-- @story-end -->
+"""
+    (story_dir / "Markdown" / "MASTER.md").write_text(master_content, encoding="utf-8")
+
+    # Generate story.json
+    story_json = {
+        "title": title,
+        "author": author,
+        "description": "",
+        "summary": "",
+        "rating": rating,
+        "category": "",
+        "fandom": "Original Work",
+        "warnings": [],
+        "characters": [],
+        "relationships": [],
+        "word_count": 0,
+        "chapters": chapters,
+        "tags": {"default": []},
+        "chapter_info": [],
+        "formats": {"bbcode": True, "html": True, "markdown": True, "squidgeworld": True},
+        "images": {"cover": ""},
+    }
+    (story_dir / "story.json").write_text(
+        json.dumps(story_json, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+    # Copy CHAPTER_STYLING.md from Reference_Guides if available
+    styling_src = archive / "Reference_Guides" / "Styling" / "HTML_CSS" / "STYLING_REFERENCE.md"
+    styling_dest = story_dir / "CHAPTER_STYLING.md"
+    if styling_src.is_file():
+        try:
+            styling_dest.write_text(styling_src.read_text(encoding="utf-8"), encoding="utf-8")
+        except Exception:
+            # Fallback: write a minimal placeholder
+            styling_dest.write_text(
+                "# Chapter Styling\n\nCopy STYLING_REFERENCE.md here or configure theme variables.\n",
+                encoding="utf-8",
+            )
+    else:
+        styling_dest.write_text(
+            "# Chapter Styling\n\nCopy STYLING_REFERENCE.md here or configure theme variables.\n",
+            encoding="utf-8",
+        )
+
+    logger.info("Created new story: %s at %s", name, story_dir)
+    return {"ok": True, "story_name": name}
 
 
 def _story_info(story_dir: Path, prefix: str = "") -> dict | None:
@@ -1482,6 +1642,50 @@ async def upload_cover(story_name: str, file: UploadFile = File(...)):
         "filename": dest.name,
         "size": len(data),
     }
+
+
+@editor_router.post("/stories/{story_name:path}/chapter-thumbnail")
+async def upload_chapter_thumbnail(
+    story_name: str,
+    file: UploadFile = File(...),
+    chapter_index: int = 0,
+):
+    """Upload a per-chapter thumbnail image."""
+    story_dir = _resolve_story_dir(story_name)
+
+    orig_name = file.filename or ""
+    ext = Path(orig_name).suffix.lower()
+    if ext not in _COVER_ALLOWED_EXTS:
+        raise HTTPException(status_code=400, detail=f"Unsupported image type: {ext}")
+
+    data = await file.read()
+    if len(data) > _COVER_MAX_BYTES:
+        raise HTTPException(status_code=400, detail=f"Image too large ({len(data):,} bytes)")
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    images_dir = story_dir / "Images"
+    images_dir.mkdir(exist_ok=True)
+    filename = f"ch{chapter_index}_thumbnail{ext}"
+    dest = images_dir / filename
+    dest.write_bytes(data)
+
+    rel_path = f"Images/{filename}"
+
+    sj = story_dir / "story.json"
+    if sj.is_file():
+        try:
+            raw = json.loads(sj.read_text(encoding="utf-8"))
+            if "images" not in raw:
+                raw["images"] = {}
+            if "chapter_thumbnails" not in raw["images"]:
+                raw["images"]["chapter_thumbnails"] = {}
+            raw["images"]["chapter_thumbnails"][str(chapter_index)] = rel_path
+            sj.write_text(json.dumps(raw, indent=4, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    return {"ok": True, "filename": rel_path, "size": len(data)}
 
 
 class SaveFormatRequest(BaseModel):

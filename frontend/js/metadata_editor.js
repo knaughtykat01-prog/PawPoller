@@ -2637,6 +2637,14 @@ const MetaEditor = {
                     <label for="meta-chapter-desc-${ch.index}">Description</label>
                     <textarea id="meta-chapter-desc-${ch.index}" data-chapter-field="description" data-chapter-index="${ch.index}" rows="3">${this._escape(desc)}</textarea>
                 </div>
+                <div class="metadata-field metadata-chapter-thumb-field">
+                    <label>Chapter thumbnail <span class="metadata-hint">(optional, falls back to story cover)</span></label>
+                    <div class="metadata-chapter-thumb-row">
+                        ${this._renderChapterThumb(ch.index)}
+                        <label class="btn btn-xs btn-outline" for="meta-chapter-thumb-${ch.index}">Upload</label>
+                        <input type="file" id="meta-chapter-thumb-${ch.index}" data-chapter-thumb="${ch.index}" accept="image/png,image/jpeg,image/webp" style="display:none" />
+                    </div>
+                </div>
                 <div class="metadata-field">
                     <label>Per-platform tags <span class="metadata-hint">(independent of story tags)</span></label>
                     <div class="metadata-chapter-tag-tabs" role="tablist">${tabs}</div>
@@ -2818,6 +2826,16 @@ const MetaEditor = {
             el.addEventListener('change', write);
         });
 
+        // Chapter thumbnail upload
+        rowEl.querySelectorAll('[data-chapter-thumb]').forEach(inp => {
+            inp.addEventListener('change', (e) => {
+                const idx = parseInt(inp.getAttribute('data-chapter-thumb'), 10);
+                const f = e.target.files?.[0];
+                if (f && !Number.isNaN(idx)) this._uploadChapterThumb(idx, f);
+                inp.value = '';
+            });
+        });
+
         // Sub-tab clicks — switch active platform for THIS chapter only.
         rowEl.querySelectorAll('[data-chapter-tag-tab]').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -2946,6 +2964,41 @@ const MetaEditor = {
     },
 
     // ---------------------------------------------------------------------
+    _renderChapterThumb(chIdx) {
+        const thumbs = this.metadata.images?.chapter_thumbnails || {};
+        const file = thumbs[String(chIdx)] || '';
+        if (!file) return '<span class="metadata-hint">None</span>';
+        return `<code class="metadata-chapter-thumb-name">${this._escape(file)}</code>`;
+    },
+
+    async _uploadChapterThumb(chIdx, file) {
+        if (!file || file.size > 5 * 1024 * 1024) {
+            this._setStatus('Thumbnail must be under 5 MB', 'error');
+            return;
+        }
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('chapter_index', String(chIdx));
+        try {
+            const resp = await fetch(
+                `/api/editor/stories/${encodeURIComponent(this.storyName)}/chapter-thumbnail`,
+                { method: 'POST', body: formData },
+            );
+            const data = await resp.json();
+            if (data.ok) {
+                if (!this.metadata.images) this.metadata.images = {};
+                if (!this.metadata.images.chapter_thumbnails) this.metadata.images.chapter_thumbnails = {};
+                this.metadata.images.chapter_thumbnails[String(chIdx)] = data.filename;
+                this._setStatus(`Chapter ${chIdx} thumbnail uploaded`, 'success');
+                this._rerenderChapterDetail(chIdx);
+            } else {
+                this._setStatus(data.detail || 'Upload failed', 'error');
+            }
+        } catch (e) {
+            this._setStatus('Upload failed: ' + e.message, 'error');
+        }
+    },
+
     // Section 7: Cover Image (Phase 5)
     // ---------------------------------------------------------------------
 

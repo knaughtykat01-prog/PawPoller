@@ -83,3 +83,29 @@ async def sync_status():
         "credential_mode": config.get_settings().get("credential_mode", "cloud"),
         "total_keys": len(config.get_settings()),
     }
+
+
+# ── Credential vault (Phase 7b) ────────────────────────────────
+
+@settings_router.post("/vault/enable")
+async def enable_vault():
+    """Switch to local-only encrypted credential mode."""
+    count = config.migrate_to_local_vault()
+    logger.info("Vault enabled: %d credential fields migrated to vault", count)
+    return {"ok": True, "mode": "local", "fields_migrated": count}
+
+
+@settings_router.post("/vault/disable")
+async def disable_vault():
+    """Switch back to cloud/plaintext credential mode."""
+    count = config.migrate_to_cloud()
+    logger.info("Vault disabled: %d credential fields migrated to plaintext", count)
+    return {"ok": True, "mode": "cloud", "fields_migrated": count}
+
+
+@settings_router.get("/vault/status")
+async def vault_status():
+    """Check vault status."""
+    mode = config.get_credential_mode()
+    vault_exists = config.VAULT_PATH.exists()
+    return {"mode": mode, "vault_exists": vault_exists}

@@ -5465,6 +5465,20 @@ const App = {
                     <div id="sync-result" style="font-size:12px;margin-top:8px"></div>
                 </div>
 
+                <div class="settings-section">
+                    <h3>Credential Security</h3>
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+                        Encrypt stored credentials at rest. When enabled, passwords and
+                        tokens are stored in an encrypted vault instead of plaintext.
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <button class="btn btn-secondary" id="vault-enable-btn">Enable encryption</button>
+                        <button class="btn btn-secondary" id="vault-disable-btn">Disable encryption</button>
+                        <button class="btn btn-secondary" id="vault-status-btn">Check status</button>
+                    </div>
+                    <div id="vault-result" style="font-size:12px;margin-top:8px"></div>
+                </div>
+
                 </div><!-- /tab:data -->
 
                 <!-- ═══ TAB: Logs ═══ -->
@@ -7765,6 +7779,52 @@ const App = {
                         data.total_keys + ' keys · mode: ' + Utils.escapeHtml(data.credential_mode);
                 } catch (err) {
                     syncResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';
+                }
+                e.target.disabled = false;
+            });
+
+            // Credential Vault
+            const vaultResult = document.getElementById('vault-result');
+            document.getElementById('vault-enable-btn')?.addEventListener('click', async (e) => {
+                e.target.disabled = true; e.target.textContent = 'Enabling...';
+                try {
+                    const resp = await fetch('/api/settings/vault/enable', {method: 'POST'});
+                    const data = await resp.json();
+                    if (data.ok) {
+                        vaultResult.innerHTML = '<span style="color:var(--success)">Vault enabled — ' + data.fields_migrated + ' fields encrypted</span>';
+                    } else {
+                        vaultResult.innerHTML = '<span style="color:var(--danger)">Failed to enable vault</span>';
+                    }
+                } catch (err) {
+                    vaultResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';
+                }
+                e.target.disabled = false; e.target.textContent = 'Enable encryption';
+            });
+            document.getElementById('vault-disable-btn')?.addEventListener('click', async (e) => {
+                if (!confirm('Disable credential encryption? Credentials will be stored in plaintext.')) return;
+                e.target.disabled = true; e.target.textContent = 'Disabling...';
+                try {
+                    const resp = await fetch('/api/settings/vault/disable', {method: 'POST'});
+                    const data = await resp.json();
+                    if (data.ok) {
+                        vaultResult.innerHTML = '<span style="color:var(--success)">Vault disabled — ' + data.fields_migrated + ' fields moved to plaintext</span>';
+                    } else {
+                        vaultResult.innerHTML = '<span style="color:var(--danger)">Failed to disable vault</span>';
+                    }
+                } catch (err) {
+                    vaultResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';
+                }
+                e.target.disabled = false; e.target.textContent = 'Disable encryption';
+            });
+            document.getElementById('vault-status-btn')?.addEventListener('click', async (e) => {
+                e.target.disabled = true;
+                try {
+                    const resp = await fetch('/api/settings/vault/status');
+                    const data = await resp.json();
+                    const modeLabel = data.mode === 'local' ? '<span style="color:var(--success)">encrypted</span>' : 'plaintext';
+                    vaultResult.innerHTML = 'Mode: ' + modeLabel + ' · Vault file: ' + (data.vault_exists ? 'present' : 'absent');
+                } catch (err) {
+                    vaultResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';
                 }
                 e.target.disabled = false;
             });

@@ -129,14 +129,26 @@ def _load_settings() -> dict:
     Returns an empty dict (rather than raising) on corrupt/missing files so
     the app can always start with sensible defaults.
 
+    When credential_mode is "local", credential fields are stored in an
+    encrypted vault file rather than plaintext settings.json.  This method
+    transparently merges decrypted vault contents into the returned dict so
+    the rest of the app sees a unified view.
+
     NOTE: Callers must hold _settings_lock before calling this function.
     """
     if SETTINGS_PATH.exists():
         try:
-            return json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+            settings = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return {}  # Corrupt file -- treat as empty and let next save fix it
-    return {}
+    else:
+        settings = {}
+    # Merge vault credentials when in local mode
+    if settings.get("credential_mode") == "local":
+        vault_creds = _decrypt_vault()
+        if vault_creds:
+            settings.update(vault_creds)
+    return settings
 
 
 def save_settings(data: dict) -> None:
@@ -144,6 +156,9 @@ def save_settings(data: dict) -> None:
 
     Uses read-merge-write so that keys not present in *data* are preserved.
     Thread-safe: acquires _settings_lock for the entire read-modify-write cycle.
+
+    When credential_mode is "local", credential fields are routed to the
+    encrypted vault instead of being stored in plaintext settings.json.
 
     Write is atomic: data goes to a temp file first, then os.replace() swaps it
     in.  os.replace() is atomic on the same filesystem, so a crash mid-write
@@ -153,12 +168,26 @@ def save_settings(data: dict) -> None:
     with _settings_lock:
         current = _load_settings()
         current.update(data)  # Overlay new values on top of existing ones
+
+        # In local mode, split credentials into vault vs plaintext
+        if current.get("credential_mode") == "local":
+            # Collect credential fields for the vault
+            vault_creds = {k: current[k] for k in CREDENTIAL_FIELDS
+                           if k in current and current[k]}
+            if vault_creds:
+                _encrypt_vault(vault_creds)
+            # Remove credential fields from the plaintext dict
+            plaintext = {k: v for k, v in current.items()
+                         if k not in CREDENTIAL_FIELDS}
+        else:
+            plaintext = current
+
         # Write to a temp file in the same directory, then atomically replace.
         # Same-directory ensures same filesystem so os.replace() is atomic.
         fd, tmp_path = tempfile.mkstemp(dir=SETTINGS_PATH.parent, suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(current, f, indent=2)
+                json.dump(plaintext, f, indent=2)
             os.replace(tmp_path, SETTINGS_PATH)
             _secure_file_permissions(SETTINGS_PATH)
         except BaseException:
@@ -171,7 +200,7 @@ def save_settings(data: dict) -> None:
 
 
 def delete_settings_keys(keys: list[str]) -> None:
-    """Remove *keys* from settings.json and write.
+    """Remove *keys* from settings.json (and vault if in local mode) and write.
 
     Thread-safe: acquires _settings_lock for the entire read-modify-write cycle.
     Keys that do not exist are silently ignored.
@@ -182,10 +211,22 @@ def delete_settings_keys(keys: list[str]) -> None:
         current = _load_settings()
         for key in keys:
             current.pop(key, None)
+
+        # In local mode, re-split credentials into vault vs plaintext
+        if current.get("credential_mode") == "local":
+            vault_creds = {k: current[k] for k in CREDENTIAL_FIELDS
+                           if k in current and current[k]}
+            if vault_creds:
+                _encrypt_vault(vault_creds)
+            plaintext = {k: v for k, v in current.items()
+                         if k not in CREDENTIAL_FIELDS}
+        else:
+            plaintext = current
+
         fd, tmp_path = tempfile.mkstemp(dir=SETTINGS_PATH.parent, suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(current, f, indent=2)
+                json.dump(plaintext, f, indent=2)
             os.replace(tmp_path, SETTINGS_PATH)
             _secure_file_permissions(SETTINGS_PATH)
         except BaseException:
@@ -310,6 +351,178 @@ SYNC_EXCLUDE = frozenset({
 })
 
 
+# ── Credential vault (Phase 7b) ────────────────────────────────
+
+VAULT_PATH = DATA_DIR / "settings.vault.json"
+
+
+def _get_vault_key() -> bytes:
+    """Derive or retrieve the encryption key for the credential vault.
+
+    Uses the system keyring if available, otherwise falls back to a
+    machine-derived key stored in a dotfile.
+    """
+    try:
+        import keyring
+        key = keyring.get_password("PawPoller", "vault_key")
+        if key:
+            return key.encode()
+        # Generate and store a new key
+        from cryptography.fernet import Fernet
+        new_key = Fernet.generate_key()
+        keyring.set_password("PawPoller", "vault_key", new_key.decode())
+        return new_key
+    except Exception:
+        # Fallback: store key in a dotfile in DATA_DIR
+        key_file = DATA_DIR / ".vault_key"
+        if key_file.exists():
+            return key_file.read_bytes().strip()
+        from cryptography.fernet import Fernet
+        new_key = Fernet.generate_key()
+        key_file.write_bytes(new_key)
+        _secure_file_permissions(key_file)
+        return new_key
+
+
+def _encrypt_vault(creds: dict) -> None:
+    """Encrypt credential fields to settings.vault.json.
+
+    NOTE: Callers must hold _settings_lock before calling this function.
+    """
+    from cryptography.fernet import Fernet
+    import tempfile
+    key = _get_vault_key()
+    f = Fernet(key)
+    payload = json.dumps(creds).encode("utf-8")
+    encrypted = f.encrypt(payload)
+    vault_data = {"version": 1, "encrypted": encrypted.decode("ascii")}
+
+    fd, tmp = tempfile.mkstemp(dir=VAULT_PATH.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fp:
+            json.dump(vault_data, fp, indent=2)
+        os.replace(tmp, str(VAULT_PATH))
+        _secure_file_permissions(VAULT_PATH)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _decrypt_vault() -> dict:
+    """Decrypt credential fields from settings.vault.json.
+
+    NOTE: Callers must hold _settings_lock before calling this function.
+    """
+    if not VAULT_PATH.exists():
+        return {}
+    try:
+        from cryptography.fernet import Fernet
+        vault = json.loads(VAULT_PATH.read_text(encoding="utf-8"))
+        key = _get_vault_key()
+        f = Fernet(key)
+        decrypted = f.decrypt(vault["encrypted"].encode("ascii"))
+        return json.loads(decrypted)
+    except Exception as e:
+        logger.error("Failed to decrypt vault: %s", e)
+        return {}
+
+
+def get_credential_mode() -> str:
+    """Return 'cloud' or 'local'.
+
+    Reads directly from settings.json (not the merged view) so we can
+    determine mode before deciding whether to merge the vault.
+    """
+    with _settings_lock:
+        raw = {}
+        if SETTINGS_PATH.exists():
+            try:
+                raw = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                pass
+        return raw.get("credential_mode", "cloud")
+
+
+def migrate_to_local_vault() -> int:
+    """Migrate credentials from plaintext settings.json to encrypted vault.
+
+    Returns count of fields migrated.
+    """
+    with _settings_lock:
+        settings = _load_settings()
+        creds = {k: settings[k] for k in CREDENTIAL_FIELDS if k in settings and settings[k]}
+        if not creds:
+            # Still switch mode even if no creds to migrate
+            settings["credential_mode"] = "local"
+            import tempfile
+            fd, tmp = tempfile.mkstemp(dir=SETTINGS_PATH.parent, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fp:
+                    json.dump(settings, fp, indent=2)
+                os.replace(tmp, str(SETTINGS_PATH))
+                _secure_file_permissions(SETTINGS_PATH)
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+            return 0
+        _encrypt_vault(creds)
+        # Remove credential fields from plaintext settings
+        for k in creds:
+            settings.pop(k, None)
+        settings["credential_mode"] = "local"
+        # Write cleaned settings
+        import tempfile
+        fd, tmp = tempfile.mkstemp(dir=SETTINGS_PATH.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fp:
+                json.dump(settings, fp, indent=2)
+            os.replace(tmp, str(SETTINGS_PATH))
+            _secure_file_permissions(SETTINGS_PATH)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+        return len(creds)
+
+
+def migrate_to_cloud() -> int:
+    """Migrate credentials from encrypted vault back to plaintext settings.json.
+
+    Returns count of fields migrated.
+    """
+    with _settings_lock:
+        creds = _decrypt_vault()
+        settings = _load_settings()
+        if creds:
+            settings.update(creds)
+        settings["credential_mode"] = "cloud"
+        import tempfile
+        fd, tmp = tempfile.mkstemp(dir=SETTINGS_PATH.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fp:
+                json.dump(settings, fp, indent=2)
+            os.replace(tmp, str(SETTINGS_PATH))
+            _secure_file_permissions(SETTINGS_PATH)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+    # Remove vault file
+    if VAULT_PATH.exists():
+        VAULT_PATH.unlink()
+    return len(creds) if creds else 0
+
+
 def get_settings_for_sync() -> tuple[dict, float]:
     """Return (settings_dict, mtime) for the sync endpoint.
 
@@ -335,7 +548,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.11.1"
+APP_VERSION = "2.12.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL
