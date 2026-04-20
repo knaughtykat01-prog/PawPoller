@@ -465,6 +465,7 @@ const MetaEditor = {
                 <div class="metadata-section-body">
                     <div class="metadata-tag-tabs" role="tablist">${tabs}
                         <button type="button" class="metadata-tag-fix-spaces" id="metadata-tag-fix-spaces" title="Replace spaces with underscores in Default tags">Fix spaces</button>
+                        <button type="button" class="metadata-tag-fix-spaces" id="metadata-tag-sort-alpha" title="Sort tags alphabetically on all platforms">Sort A-Z</button>
                     </div>
                     <div class="metadata-tag-tab-body" id="metadata-tag-tab-body">
                         ${this._renderTagTabBody(this._activeTagPlatform)}
@@ -1076,6 +1077,36 @@ const MetaEditor = {
             this._setStatus(`Fixed ${fixed} tag(s) — spaces replaced with underscores`, 'success');
         } else {
             this._setStatus('No spaces found in tags', 'info');
+        }
+    },
+
+    _sortTagsAlphabetically() {
+        let sorted = 0;
+        const allPlats = Object.keys(this.metadata.tags || {});
+        for (const p of allPlats) {
+            const tags = this.metadata.tags[p];
+            if (!Array.isArray(tags) || tags.length < 2) continue;
+            const before = tags.join(',');
+            tags.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+            if (tags.join(',') !== before) sorted++;
+        }
+        const chapters = this.metadata.chapter_info || [];
+        for (const ch of chapters) {
+            if (!ch.tags) continue;
+            for (const p of Object.keys(ch.tags)) {
+                const tags = ch.tags[p];
+                if (!Array.isArray(tags) || tags.length < 2) continue;
+                const before = tags.join(',');
+                tags.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+                if (tags.join(',') !== before) sorted++;
+            }
+        }
+        this._clearStatus();
+        this._rerenderTagTabBody();
+        if (sorted > 0) {
+            this._setStatus(`Sorted tags on ${sorted} platform(s) alphabetically`, 'success');
+        } else {
+            this._setStatus('Tags already sorted', 'info');
         }
     },
 
@@ -2313,6 +2344,9 @@ const MetaEditor = {
         // Fix spaces in default tags
         document.getElementById('metadata-tag-fix-spaces')?.addEventListener('click', () => {
             this._fixSpacesInTags();
+        });
+        document.getElementById('metadata-tag-sort-alpha')?.addEventListener('click', () => {
+            this._sortTagsAlphabetically();
         });
 
         // Platform toggle checkboxes
