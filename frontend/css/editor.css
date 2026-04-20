@@ -1411,8 +1411,31 @@
 
 .tag-browser-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+    width: 100%;
+}
+
+.tag-browser-card-platforms {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 2px;
+}
+
+.tag-browser-plat-badge {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(155, 125, 255, 0.12);
+    color: var(--text-secondary);
+    letter-spacing: 0.02em;
+}
+
+.tag-browser-plat-badge-active {
+    background: rgba(155, 125, 255, 0.25);
+    color: var(--accent);
+    font-weight: 600;
 }
 
 .tag-browser-e621-divider {
@@ -1463,14 +1486,13 @@
 .tag-browser-card {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 12px 14px;
+    gap: 6px;
+    padding: 10px 12px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
     border-radius: 8px;
     cursor: pointer;
     transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
-    min-height: 100px;
 }
 
 .tag-browser-card:hover {

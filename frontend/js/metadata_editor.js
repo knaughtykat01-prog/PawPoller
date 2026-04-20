@@ -1818,9 +1818,17 @@ const MetaEditor = {
         const platformTags = this._tagBrowserTargetTags().map(t => t.toLowerCase());
         const platformTagSet = new Set(platformTags);
 
+        const allPlatKeys = ['default', ...this.TAG_CASCADE_PLATFORMS];
+        const platLabels = { default: 'DEF', sofurry: 'SF', inkbunny: 'IB', wattpad: 'WP',
+            ao3: 'AO3', squidgeworld: 'SQW', weasyl: 'WS', furaffinity: 'FA',
+            deviantart: 'DA', itaku: 'IK' };
+        const platTagSets = {};
+        for (const p of allPlatKeys) {
+            const tags = (this.metadata.tags[p] || []).map(t => t.toLowerCase());
+            if (tags.length) platTagSets[p] = new Set(tags);
+        }
+
         const cards = shown.map(t => {
-            // A tag counts as "added" to the current platform if its name (or
-            // platform-transformed name) is in the platform's list.
             const canonical = t.name;
             const transformed = this._transformTagForPlatform(canonical, platform).toLowerCase();
             const isAdded = platformTagSet.has(canonical.toLowerCase()) || platformTagSet.has(transformed);
@@ -1828,13 +1836,25 @@ const MetaEditor = {
             const btnLabel = isAdded ? '&#10003; Added' : '+ Add';
             const btnCls = isAdded ? 'tag-browser-card-btn tag-browser-card-btn-added' : 'tag-browser-card-btn';
             const desc = t.desc ? `<div class="tag-browser-card-desc">${this._escape(t.desc)}</div>` : '';
+
+            const badges = allPlatKeys.map(p => {
+                const pTransformed = this._transformTagForPlatform(canonical, p).toLowerCase();
+                const pSet = platTagSets[p];
+                if (!pSet) return '';
+                const on = pSet.has(canonical.toLowerCase()) || pSet.has(pTransformed);
+                if (!on) return '';
+                const cls = p === platform ? 'tag-browser-plat-badge tag-browser-plat-badge-active' : 'tag-browser-plat-badge';
+                return `<span class="${cls}">${platLabels[p] || p}</span>`;
+            }).filter(Boolean).join('');
+            const badgeRow = badges ? `<div class="tag-browser-card-platforms">${badges}</div>` : '';
+
             return `
                 <div class="tag-browser-card${addedCls}" data-tb-tag="${this._escape(canonical)}">
                     <div class="tag-browser-card-head">
                         <div class="tag-browser-card-name">${this._escape(canonical)}</div>
                         <span class="tag-browser-card-cat metadata-tag-cat-${this._escape(t.category)}">${this._escape(t.category)}</span>
                     </div>
-                    ${desc}
+                    ${desc}${badgeRow}
                     <div class="tag-browser-card-footer">
                         <button type="button" class="${btnCls}" data-tb-toggle="${this._escape(canonical)}">${btnLabel}</button>
                     </div>
