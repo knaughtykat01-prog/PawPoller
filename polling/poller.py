@@ -382,12 +382,13 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
                     logger.info("Submission %d: fetching faving users (faves=%d, force=%s)", sub_id, faves, force_full)
                     await asyncio.sleep(config.FAVE_REQUEST_DELAY_SECONDS)
                     faving_users = await client.get_faving_users(sub_id)
+                    # Batch insert: get existing user_ids first to identify new ones
+                    existing_ids = {r["user_id"] for r in queries.get_faving_users(conn, sub_id)}
+                    new_count = queries.upsert_faving_users_batch(conn, sub_id, faving_users)
+                    conn.commit()
+                    stats["new_faves_found"] += new_count
                     for user in faving_users:
-                        # upsert_faving_user returns True if this is a
-                        # brand-new fave (not previously recorded).
-                        is_new = queries.upsert_faving_user(conn, sub_id, user["user_id"], user["username"])
-                        if is_new:
-                            stats["new_faves_found"] += 1
+                        if user["user_id"] not in existing_ids:
                             new_fave_details.append({"username": user["username"], "title": db_dict.get("title", "")})
 
                 # ── Step 6: Scrape comments (conditional) ──────

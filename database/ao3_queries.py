@@ -151,6 +151,19 @@ def upsert_ao3_kudos_user(conn: sqlite3.Connection, submission_id: int, username
     return True
 
 
+def upsert_ao3_kudos_users_batch(conn: sqlite3.Connection, submission_id: int, usernames: list[str]) -> int:
+    """Batch insert kudos users. Returns count of new kudos."""
+    if not usernames:
+        return 0
+    before = conn.execute("SELECT COUNT(*) FROM ao3_kudos_users WHERE submission_id = ?", (submission_id,)).fetchone()[0]
+    conn.executemany(
+        "INSERT OR IGNORE INTO ao3_kudos_users (submission_id, username) VALUES (?, ?)",
+        [(submission_id, u) for u in usernames],
+    )
+    after = conn.execute("SELECT COUNT(*) FROM ao3_kudos_users WHERE submission_id = ?", (submission_id,)).fetchone()[0]
+    return after - before
+
+
 def get_ao3_kudos_users(conn: sqlite3.Connection, submission_id: int) -> list[dict]:
     rows = conn.execute(
         "SELECT * FROM ao3_kudos_users WHERE submission_id = ? ORDER BY first_seen_at DESC",

@@ -235,6 +235,19 @@ def upsert_faving_user(conn: sqlite3.Connection, submission_id: int, user_id: in
         return False
 
 
+def upsert_faving_users_batch(conn: sqlite3.Connection, submission_id: int, users: list[dict]) -> int:
+    """Batch insert faving users. Returns count of new faves."""
+    if not users:
+        return 0
+    before = conn.execute("SELECT COUNT(*) FROM faving_users WHERE submission_id = ?", (submission_id,)).fetchone()[0]
+    conn.executemany(
+        "INSERT OR IGNORE INTO faving_users (submission_id, user_id, username, first_seen_at) VALUES (?, ?, ?, datetime('now'))",
+        [(submission_id, u["user_id"], u["username"]) for u in users],
+    )
+    after = conn.execute("SELECT COUNT(*) FROM faving_users WHERE submission_id = ?", (submission_id,)).fetchone()[0]
+    return after - before
+
+
 def get_faving_users(conn: sqlite3.Connection, submission_id: int) -> list[dict]:
     # Returns all users who faved a specific submission, newest first.
     rows = conn.execute(

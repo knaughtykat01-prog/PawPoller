@@ -276,10 +276,13 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
                 # Step 5: Track kudos users
                 try:
                     kudos_users = await client.get_kudos_users(wid)
+                    # Batch insert: get existing usernames first to identify new ones
+                    existing_usernames = {r["username"] for r in ao3_queries.get_ao3_kudos_users(conn, wid)}
+                    new_count = ao3_queries.upsert_ao3_kudos_users_batch(conn, wid, kudos_users)
+                    conn.commit()
+                    stats["new_kudos_found"] += new_count
                     for ku in kudos_users:
-                        is_new = ao3_queries.upsert_ao3_kudos_user(conn, wid, ku)
-                        if is_new:
-                            stats["new_kudos_found"] += 1
+                        if ku not in existing_usernames:
                             new_kudos_details.append({
                                 "username": ku,
                                 "title": detail.get("title", ""),

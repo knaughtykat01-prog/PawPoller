@@ -187,6 +187,23 @@ def upsert_fa_comment(conn: sqlite3.Connection, comment: dict) -> bool:
         return False
 
 
+def upsert_fa_comments_batch(conn: sqlite3.Connection, comments: list[dict]) -> int:
+    """Batch insert FA comments. Returns count of new comments."""
+    if not comments:
+        return 0
+    before = conn.total_changes
+    conn.executemany(
+        """INSERT OR IGNORE INTO fa_comments (comment_id, submission_id, username, comment_text,
+           commented_at, first_seen_at, reply_to, reply_level, is_deleted)
+           VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)""",
+        [(str(c["comment_id"]), c["submission_id"], c.get("username", ""),
+          c.get("comment_text", ""), c.get("commented_at"),
+          c.get("reply_to"), c.get("reply_level", 0),
+          1 if c.get("is_deleted") else 0) for c in comments],
+    )
+    return conn.total_changes - before
+
+
 def get_fa_comments(conn: sqlite3.Connection, submission_id: int) -> list[dict]:
     # Ordered by first_seen_at then comment_id to preserve chronological order.
     # comment_id is TEXT in FA, so lexicographic sorting would be incorrect.

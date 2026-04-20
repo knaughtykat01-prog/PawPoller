@@ -119,17 +119,17 @@ First-run flow: choose cloud/local, configure accordingly.
 - [x] TAG_AUDIT_REPORT.md saved in archive root
 - [x] Per-chapter tags for platform-specific arrays — chapter tag editor now shows Default/SF/IB/WP tabs (matching story-level); cascade still handles remaining platforms on publish
 
-### WeasyPrint CSS fix
+### WeasyPrint CSS fix (COMPLETE)
 
 - [x] `@page { margin: 0 }` moved to top-level (was nested inside `@media print` — invalid CSS, WeasyPrint ignored it → double margins)
-- [ ] Stories need Regenerate to pick up the new CSS — existing `style.css` files still have the old rule
+- [x] All stories regenerated with new CSS
 
 ### Other pending
 
 - [x] Polling module audit: exc_info logging fixes (10 pollers) + silent exception swallowing replaced with debug logging
-- [ ] Polling module: session expiry graceful recovery (3 pollers — needs careful testing)
-- [ ] Polling module: N+1 query batching (faving users, comments — needs batch DB functions)
-- [ ] AO3 rate-limit retry (backoff on 429)
+- [x] Polling module: session expiry recovery (SQW forces re-login, FA/TW detect expired cookies with clear messages)
+- [x] Polling module: N+1 query batching (IB faves, FA comments, SQW kudos, AO3 kudos — all use executemany now)
+- [x] AO3 rate-limit retry (_post_with_retry + Retry-After parsing + exponential backoff on all POST operations)
 - [ ] Weasyl testing (blocked on account verification)
 
 ---

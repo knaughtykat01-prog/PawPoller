@@ -274,6 +274,10 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
         # ── Step 1: Discover gallery submissions via FAExport ──
         # FAExport provides a JSON list of submission IDs for a user's
         # gallery, which avoids the need to scrape FA's HTML gallery pages.
+        _update_fa_progress("searching", message="Validating FA cookies...")
+        if not await client.validate_cookies():
+            raise ValueError("FA cookies expired — update cookie_a and cookie_b in Settings")
+
         _update_fa_progress("searching", message="Fetching gallery from FAExport...")
         gallery = await client.get_all_gallery_ids()
         submission_ids = [s["submission_id"] for s in gallery]
@@ -331,10 +335,13 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                     await asyncio.sleep(config.FA_REQUEST_DELAY_SECONDS)
                     try:
                         scraped = await client.get_submission_comments(sub_id)
+                        # Batch insert: get existing comment_ids first to identify new ones
+                        existing_cids = {r["comment_id"] for r in fa_queries.get_fa_comments(conn, sub_id)}
+                        new_count = fa_queries.upsert_fa_comments_batch(conn, scraped)
+                        conn.commit()
+                        stats["new_comments_found"] += new_count
                         for c in scraped:
-                            is_new = fa_queries.upsert_fa_comment(conn, c)
-                            if is_new:
-                                stats["new_comments_found"] += 1
+                            if str(c["comment_id"]) not in existing_cids:
                                 new_comment_details.append({
                                     "username": c.get("username", ""),
                                     "title": detail.get("title", ""),

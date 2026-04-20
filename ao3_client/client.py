@@ -116,18 +116,19 @@ class AO3Client:
             try:
                 resp = await self._http.get(url)
                 if resp.status_code == 403:
-                    # Could be a hard CF block OR AO3's "Shields are up!" defensive page
                     if "Shields are up" in resp.text:
                         logger.error("AO3: 'Shields are up!' page returned for %s", url)
                     else:
                         logger.error("AO3: 403 Forbidden for %s", url)
                     return None
                 if resp.status_code == 429:
-                    logger.warning("AO3: Rate limited (429), waiting 30s before retry...")
-                    await asyncio.sleep(30)
-                    resp = await self._http.get(url)
+                    wait = self._parse_retry_after(resp, default=30 * attempt)
+                    logger.warning("AO3: 429 rate limited on %s, waiting %ds (attempt %d/%d)",
+                                   url, wait, attempt, max_attempts)
+                    await asyncio.sleep(wait)
+                    last_exc = RuntimeError("429 rate limited")
+                    continue
                 if resp.status_code == 525:
-                    # CF↔origin SSL handshake fail. Retry-able.
                     logger.warning("AO3: 525 SSL handshake from origin (attempt %d/%d)", attempt, max_attempts)
                     last_exc = RuntimeError("525 origin SSL")
                     await asyncio.sleep(2 * attempt)
@@ -152,6 +153,34 @@ class AO3Client:
             url, max_attempts, type(last_exc).__name__ if last_exc else "?", last_exc,
         )
         return None
+
+    @staticmethod
+    def _parse_retry_after(resp: httpx.Response, default: int = 30) -> int:
+        """Extract wait time from Retry-After header, or use default."""
+        raw = resp.headers.get("Retry-After", "")
+        if raw:
+            try:
+                return max(int(raw), 5)
+            except ValueError:
+                pass
+        return default
+
+    async def _post_with_retry(self, url: str, max_attempts: int = 3,
+                                **kwargs) -> httpx.Response:
+        """POST with 429 retry + Retry-After parsing.
+
+        Returns the response on success. Raises on permanent failure.
+        """
+        for attempt in range(1, max_attempts + 1):
+            resp = await self._http.post(url, **kwargs)
+            if resp.status_code == 429:
+                wait = self._parse_retry_after(resp, default=30 * attempt)
+                logger.warning("AO3: 429 on POST %s, waiting %ds (attempt %d/%d)",
+                               url, wait, attempt, max_attempts)
+                await asyncio.sleep(wait)
+                continue
+            return resp
+        return resp
 
     # ── Authentication ──────────────────────────────────────────
 
@@ -646,7 +675,7 @@ class AO3Client:
         body = urlencode(form_data, doseq=True)
 
         await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
-        resp = await self._http.post(
+        resp = await self._post_with_retry(
             f"{_BASE}/works",
             content=body,
             headers={
@@ -836,7 +865,7 @@ class AO3Client:
         body = urlencode(submit_data, doseq=True)
 
         await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
-        resp = await self._http.post(
+        resp = await self._post_with_retry(
             f"{_BASE}/works/{work_id}",
             content=body,
             headers={
@@ -1029,7 +1058,7 @@ class AO3Client:
         body = urlencode(submit_data, doseq=True)
 
         await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
-        resp = await self._http.post(
+        resp = await self._post_with_retry(
             f"{_BASE}/works/{work_id}/chapters/{chapter_id}",
             content=body,
             headers={
@@ -1155,7 +1184,7 @@ class AO3Client:
         body = urlencode(form_data, doseq=True)
 
         await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
-        resp = await self._http.post(
+        resp = await self._post_with_retry(
             f"{_BASE}/works/{work_id}/chapters",
             content=body,
             headers={
@@ -1234,7 +1263,7 @@ class AO3Client:
         ])
 
         await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
-        resp = await self._http.post(
+        resp = await self._post_with_retry(
             f"{_BASE}/works/{work_id}",
             content=body,
             headers={
@@ -1384,7 +1413,7 @@ class AO3Client:
         body = urlencode(form_data, doseq=True)
 
         await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
-        resp = await self._http.post(
+        resp = await self._post_with_retry(
             f"{_BASE}/skins",
             content=body,
             headers={
@@ -1541,7 +1570,7 @@ class AO3Client:
         body = urlencode(submit_data, doseq=True)
 
         await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
-        resp = await self._http.post(
+        resp = await self._post_with_retry(
             f"{_BASE}/skins/{skin_id}",
             content=body,
             headers={

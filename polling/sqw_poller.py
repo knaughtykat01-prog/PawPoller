@@ -229,6 +229,8 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
         log_id = sqw_queries.start_sqw_poll_log(conn)
         # Step 1: Authenticate
         _update_sqw_progress("searching", message="Authenticating with SquidgeWorld...")
+        # Reset login state so ensure_logged_in() attempts a fresh login
+        client._logged_in = False
         target = await client.validate_session()
         if not target:
             raise ValueError("SquidgeWorld login failed -- check credentials")
@@ -275,10 +277,13 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
                 # Step 5: Track kudos users
                 try:
                     kudos_users = await client.get_kudos_users(wid)
+                    # Batch insert: get existing usernames first to identify new ones
+                    existing_usernames = {r["username"] for r in sqw_queries.get_sqw_kudos_users(conn, wid)}
+                    new_count = sqw_queries.upsert_sqw_kudos_users_batch(conn, wid, kudos_users)
+                    conn.commit()
+                    stats["new_kudos_found"] += new_count
                     for ku in kudos_users:
-                        is_new = sqw_queries.upsert_sqw_kudos_user(conn, wid, ku)
-                        if is_new:
-                            stats["new_kudos_found"] += 1
+                        if ku not in existing_usernames:
                             new_kudos_details.append({
                                 "username": ku,
                                 "title": detail.get("title", ""),
