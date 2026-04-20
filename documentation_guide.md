@@ -126,6 +126,10 @@ PawPoller/
 ├── tw_client/               # X/Twitter client (GraphQL scraping)
 │   └── client.py            #   TWClient class with cookie auth
 │
+├── auth/                    # Browser-based login helpers (Phase 8a)
+│   ├── __init__.py          #   Package init
+│   └── browser_login.py     #   pywebview popup login for cookie-based platforms (FA, DA, TW, SF, WS, AO3, SqW)
+│
 ├── polling/
 │   ├── poller.py            # Inkbunny poll cycle orchestration (6-step)
 │   ├── fa_poller.py         # FurAffinity poll cycle (5-step + spam filter)
@@ -181,7 +185,8 @@ PawPoller/
 │   ├── ik_api.py            # Itaku API endpoints
 │   ├── bsky_api.py          # Bluesky API endpoints
 │   ├── tw_api.py            # X/Twitter API endpoints
-│   └── dashboard_auth.py    # Dashboard auth endpoints (login, 2FA, API keys, Turnstile)
+│   ├── dashboard_auth.py    # Dashboard auth endpoints (login, 2FA, API keys, Turnstile)
+│   └── settings_api.py      # Settings sync, vault, setup wizard, browser login endpoints
 │
 ├── frontend/
 │   ├── index.html           # SPA shell (collapsible nav groups, bottom nav bar, sidebar overlay)
@@ -222,6 +227,11 @@ PawPoller/
 ├── assets/
 │   └── tray_icon.png        # System tray icon (fallback: procedurally generated)
 │
+├── .github/
+│   └── workflows/
+│       ├── build.yml        # CI build workflow
+│       └── lint.yml         # CI lint workflow
+│
 ├── Dockerfile               # Python 3.11 slim + HEALTHCHECK
 ├── docker-compose.yml       # Single service, 2 named volumes, .env file
 ├── .env.example             # 25+ environment variable template
@@ -231,7 +241,12 @@ PawPoller/
 ├── build.bat                # Windows build script
 ├── settings.json            # Runtime user settings (gitignored)
 ├── CHANGELOG.md             # Version history
-└── INDEX.md                 # Detailed codebase index (~35KB)
+├── INDEX.md                 # Detailed codebase index (~35KB)
+├── README.md                # Public-facing project overview
+├── LICENSE                  # Project licence
+├── CONTRIBUTING.md          # Contribution guidelines
+├── ROADMAP_PUBLIC.md        # Public release roadmap (Phases 8-15)
+└── PHASE_7_DESIGN.md        # Credential management design doc
 ```
 
 ---
@@ -1053,6 +1068,25 @@ elif prev_count is None and count > 0:
 
 This dramatically reduces API calls. A gallery with 100 submissions where only 3 have new comments results in 3 comment fetches instead of 100.
 
+### Session Expiry Recovery
+
+Three pollers now recover from expired sessions instead of crashing the poll cycle:
+- **SQW**: resets `_logged_in` flag before `validate_session()` so `ensure_logged_in()` attempts a fresh login.
+- **FA**: validates cookies before gallery fetch with a clear error message on failure.
+- **TW**: empty credential check + clearer expired-cookie error message.
+
+### N+1 Query Batching
+
+Four pollers switched from per-item INSERT loops to `executemany` + `INSERT OR IGNORE` for fan/interaction data:
+- IB faving users, FA comments, SQW kudos, AO3 kudos.
+- Pre-existing set approach preserved so notification detail tracking is unaffected.
+
+### AO3 Rate-Limit Retry
+
+- `_parse_retry_after()` extracts the `Retry-After` header from HTTP 429 responses.
+- `_get_page()` handles 429 within the retry loop with escalating backoff (was previously broken -- retried inline without checking response status).
+- `_post_with_retry()` wraps all 7 non-login POST operations with automatic retry on transient failures.
+
 ---
 
 ## 6. Database Layer
@@ -1780,6 +1814,13 @@ The digest aggregates stats deltas from 6 hours ago to now using snapshot data. 
 - Supports scopes: `"submission"` (specific submission), `"platform"` (all submissions on one platform), `"all"` (cross-platform total)
 - Uses `UPDATE ... SET completed_at = datetime('now') WHERE completed_at IS NULL` with `rowcount` check to prevent duplicate notifications from concurrent pollers reaching the goal simultaneously
 
+### Telegram Error Classification
+
+`_classify_error()` in `polling/telegram.py` maps raw exception strings to user-friendly `(label, hint)` pairs. 13 patterns cover: login blocks, rate limits, Cloudflare challenges, 403/404, timeouts, connection errors, SSL issues, and dropped connections. `send_poll_error()` now shows a bold label, italic hint explaining the likely cause, and the raw error in monospace for debugging. `send_consolidated_poll_summary()` uses the same classifier for failed platform lines.
+
+Before: `AO3: AO3 login failed -- check credentials`
+After: `AO3: Login blocked` / `Likely Cloudflare/rate-limit, not bad creds`
+
 ### Telegram Bot Commands (`polling/telegram_bot.py`)
 
 **Long-polling loop**:
@@ -1900,6 +1941,17 @@ The integration is transparent: `_load_settings()` merges decrypted vault data i
 **Key functions**: `_get_vault_key()`, `_encrypt_vault()`, `_decrypt_vault()`, `get_credential_mode()`, `migrate_to_local_vault()`, `migrate_to_cloud()`.
 
 **API endpoints**: `POST /api/settings/vault/enable`, `POST /api/settings/vault/disable`, `GET /api/settings/vault/status`.
+
+### Settings Sync (Phase 7a)
+
+Desktop and server instances can share credentials via `POST /api/settings/sync`. Supports `mode: "pull"` (fetch server settings) and `mode: "push"` (send local settings to server). Auth enforced by existing dashboard middleware.
+
+- `CREDENTIAL_FIELDS` — 35+ sensitive field names (passwords, cookies, API keys, tokens) eligible for sync.
+- `SYNC_EXCLUDE` — per-machine keys that must not sync (`credential_mode`, `auth_session_secret`, `minimize_to_tray`).
+- `get_settings_for_sync()` / `merge_synced_settings()` — filter and merge with SYNC_EXCLUDE enforcement.
+- `GET /api/settings/sync/status` — returns server version, settings timestamp, credential_mode, total key count.
+- Desktop startup pull (`main.py`): `_sync_settings_on_startup()` pulls from the server on launch if `credential_mode != "local"` and server URL is configured. Failures are non-fatal.
+- Dashboard UI: Settings > Data tab > "Settings Sync" section with Pull / Push / Status buttons.
 
 ### Three-Tier Credential Cascade
 
@@ -2722,6 +2774,8 @@ Chapter 2: tension, library
 
 All posters extend the `PlatformPoster` abstract base class, which enforces a consistent interface: `post()`, `edit()`, `replace_file()`, `validate()`. The manager treats all platforms identically.
 
+**Cover image upload**: All 4 platforms that support cover/thumbnail images are wired: IB (via `upload_submission(thumbnail_path=...)`), FA (via `changethumbnail` endpoint), SF (via `submission/{id}/content` cover slot), and WS (via `coverfile` multipart field). `story.json`'s `images.cover` path is resolved by `build_package()` with auto-detection fallback.
+
 **`PostResult` dataclass**: Every operation returns:
 ```python
 @dataclass
@@ -3113,6 +3167,19 @@ After initial posting, stories are often revised. The change detection system co
 
 **`/update all` command**: Iterates all stories with detected changes and pushes updates to every platform where they are published.
 
+### Retry Queue
+
+Failed posts and updates are automatically re-queued for retry with exponential backoff via `_schedule_retry()` in `manager.py`. Backoff schedule: 1 minute, 5 minutes, 30 minutes; maximum 3 attempts. Uses the existing `posting_queue` infrastructure. Desktop-requiring platforms (FA) still queue for desktop pickup. Deletion errors (`_looks_like_deletion()`) skip retry entirely to avoid re-posting to a platform that rejected the content. The Publish Check frontend shows "Will retry automatically" for queued retries.
+
+### Post Scheduling
+
+Three endpoints under `/api/editor/stories/{name}/` enable scheduling future publish/update actions:
+- `POST /schedule` -- validates story/platform/chapter, checks the scheduled time is in the future, runs poster validation, then inserts into `posting_queue` with `scheduled_at`. Returns queue_id and confirmed schedule time.
+- `GET /scheduled` -- returns all pending/processing queue items for the story.
+- `DELETE /scheduled/{queue_id}` -- cancels a pending scheduled item (verifies ownership by story name).
+
+The Publish Check action panel shows a "Schedule" button next to Post/Update with an inline `datetime-local` picker (defaults to 1 hour from now, rounded to next 5 minutes). No scheduler daemon changes were needed -- `posting/scheduler.py` already checks `scheduled_at` against `datetime('now')` each cycle.
+
 ### Desktop Queue Mode
 
 Some platforms (currently FA) require residential IPs and cannot be posted to from a server/datacenter. The posting module handles this through the `requires` field:
@@ -3309,6 +3376,10 @@ maintaining anchor state. Inline markdown (`*italic*`, `**bold**`,
 `---` section breaks, POV markers like `**⟨ Callum ⟩**`) is converted
 per-format using the `convert(content, format)` entry point.
 
+### Anchor Toolbar
+
+The WYSIWYG toolbar includes 8 anchor insertion buttons: Title, Sub, Body, Warning, Text Sent, Text Received, Phone, and End. Each calls `_insertAnchor(type)` which inserts the corresponding HTML-comment anchor at the CodeMirror cursor position. This replaces the need to manually type anchor comments.
+
 ### Format Converters
 
 `editor/converter.py` exposes these format keys:
@@ -3404,6 +3475,24 @@ platform-specific transforms (underscores → spaces for SF, camelCase
 for Wattpad, etc.). Adding directly to a specific platform's tab
 applies to that platform only.
 
+**Per-chapter tag platforms**: `_CHAPTER_TAG_PLATFORMS` now includes
+`inkbunny` alongside `default`, `sofurry`, and `wattpad`, matching the
+story-level tag editor.
+
+**Tag format correction**: `_transformTagForPlatform()` fixed so FA
+and Weasyl correctly keep underscores (were wrongly converting to
+spaces). Space-to-underscore auto-conversion fires in real-time on
+Default/FA/Weasyl/Itaku tag inputs.
+
+**Tag management buttons**: "Fix spaces" bulk-replaces spaces with
+underscores in all underscore-platform tags (story + chapter level).
+"Sort A-Z" sorts tags alphabetically across all platforms.
+
+**Tag browser enhancements**: "Selected" filter chip shows only
+currently-selected tags with descriptions. Platform badges (DEF, SF,
+IB, AO3, etc.) appear on each tag card showing which platforms have
+that tag.
+
 ### Regenerate Endpoint
 
 `POST /api/editor/stories/{name}/regenerate` rebuilds every derivative
@@ -3420,6 +3509,14 @@ file from `MASTER.md`. Sequence:
 7. Chapter splits — Markdown, Clean HTML, BBCode → `Chapters/{Markdown,SoFurry_HTML,BBCode}/`
 
 Returns `{ok, results: [...], errors: [...], word_count}`.
+
+### Selective Format Regeneration
+
+The Regenerate button includes a dropdown with 7 options: All formats, HTML only, BBCode only, Styled HTML + CSS, SquidgeWorld only, PDF only, and Chapter splits only. The backend `RegenerateRequest.formats` field accepts a list of format keys and filters which conversion steps run, avoiding unnecessary rebuilds when only one format has changed.
+
+### Format Tab Bar
+
+The output format selector in the editor preview pane was changed from a `<select>` dropdown to an inline tab bar (`<div class="format-tabs">` with four `<button class="format-tab">` elements). All four formats (Clean HTML, SoFurry, BBCode, Styled HTML) are now visible at a glance as clickable buttons with an active highlight.
 
 ### PDF Generation
 
@@ -3467,6 +3564,10 @@ button on the editor toolbar → modal) renders:
   - `failed_prev` (red ✗) — blocked + prior attempt failed
   - `not_supported` (grey –) — work-oriented platforms (AO3, SQW) show
     grey dashes on per-chapter rows because they post whole works
+  - `no_credentials` (grey 🔒) — platform has no credentials configured;
+    action panel shows "Set up in Settings" message. `PLATFORM_CREDS` map
+    in `publish_check.js` checks per-platform credential requirements
+    before the matrix loop.
   - `error` (red ⚠) — poster init / package build threw
   - `blocked` (red ✗) — fresh cell with validation errors
 
@@ -3511,6 +3612,52 @@ Verify posted button at the modal footer walks every `posted` publication
 for the story and calls `poster.probe_exists()` to detect upstream
 deletions. Confirmed deletions are flipped to `status='deleted'` in the
 registry; the matrix reloads and deleted cells flip to ⊘.
+
+**Live-publish warning**: Unchecking "Save as draft" reveals a yellow warning banner: "LIVE PUBLISH -- This will be immediately visible to the public." The `confirm()` dialog includes an extra warning paragraph.
+
+**Action result log**: Every post/update/dry-run action is recorded in a session-scoped log array (max 20 entries) rendered below the detail panel. Compact timestamped list with success/fail icons, platform names, and external links. Survives cell clicks and matrix reloads; clears on page refresh.
+
+**Relative timestamps**: The "Posted" and "Last updated" fields show a relative suffix (e.g. "2026-04-17 14:30 (2d ago)") via `_relativeTime()`.
+
+**Readable dry-run results**: Dry-run output is now a structured summary (title, rating, word count, file info, tag list) instead of raw JSON. Raw JSON still available under a collapsible.
+
+### Regen Staleness Warning
+
+The Publish Check compares `MASTER.md` mtime against the newest generated file's mtime. When the source is newer than the derived formats, an amber banner appears at the top of the matrix with an inline "Regenerate now" button. This prevents publishing stale formats that don't reflect the latest edits.
+
+### Per-Platform Descriptions
+
+The Metadata Drawer's Basics section includes a collapsible "Per-platform descriptions" panel with two textareas:
+- `descriptions.short` — for IB/SF listings (1-2 sentences).
+- `descriptions.announcement` — for Bluesky announcements (300-character limit).
+
+Stored in `story.json`. `build_package()` uses a fallback chain: platform-specific description > short description > main description.
+
+### Per-Chapter Thumbnails
+
+`POST /api/editor/stories/{name}/chapter-thumbnail` accepts a per-chapter cover image upload. Stored in `story.json` at `images.chapter_thumbnails.{index}`. The Metadata Drawer's Cover section supports drag-drop for both the full-series cover and per-chapter thumbnails.
+
+### Create New Story Wizard
+
+`POST /api/editor/stories/create` scaffolds a new story with the full folder structure (Markdown, BBCode, HTML, PDF, SquidgeWorld, Chapters/*, Images). Generates a template `MASTER.md` showing all anchor types, writes `story.json` with default metadata, and copies `STYLING_REFERENCE.md` as `CHAPTER_STYLING.md` when available. The editor's story list shows a "+ Create New Story" button that opens an overlay dialog with title, folder name (auto-generated), author, chapter count, and rating fields.
+
+### Setup Wizard (Phase 9a)
+
+First-run detection: when no `setup_complete` flag exists in `settings.json`, the dashboard redirects to a 4-step guided wizard (Welcome, Story Archive location, Platform Connections, Done). Existing users are unaffected.
+
+- `GET /api/settings/setup-status` — returns setup completion state, archive path presence, and count of connected platforms.
+- `POST /api/settings/setup-complete` — marks setup as done so the wizard is not shown again.
+- `renderSetupWizard()` in `app.js` drives the step UI with platform card grid and connecting-line step indicators.
+
+### Embedded Browser Login (Phase 8a)
+
+`auth/browser_login.py` provides pywebview-powered browser login for cookie-based platforms. In desktop mode, users click "Login via Browser" and a native popup opens the platform's real login page; after logging in, cookies are detected and saved automatically. Server mode falls back to helpful login-page links.
+
+- `PLATFORM_LOGIN` configs for 7 platforms (FA, DA, SF, TW, WS, AO3, SqW) with URL, success conditions, and cookie-to-setting mappings.
+- `login_via_browser()` opens a pywebview window in a daemon thread with a 5-minute timeout, captures cookies via `get_cookies()`, and saves credentials via `config.save_settings()`.
+- `GET /api/settings/browser-login/platforms` — lists supported platforms with availability flag (True in desktop mode only).
+- `POST /api/settings/browser-login/{platform}` — launches the popup and blocks until login completes or window closes. Runs in `run_in_executor` to avoid stalling the event loop.
+- Dashboard: FA, DA, and TW platform connect forms show "Login via Browser" as primary action in desktop mode, with a "Enter cookies manually" toggle for the existing cookie input form.
 
 ### Theme-Save Trailing Content
 
