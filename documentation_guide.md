@@ -1845,6 +1845,7 @@ Frozen (.exe):
     └── assets/
   %APPDATA%/PawPoller/   # Persistent user data
     ├── data/pawpoller.db
+    ├── data/settings.vault.json  # Encrypted credentials (Phase 7b, local mode only)
     ├── logs/app.log
     └── settings.json
 
@@ -1853,6 +1854,7 @@ Dev mode (python main.py):
     ├── frontend/
     ├── database/*.sql
     ├── data/pawpoller.db
+    ├── data/settings.vault.json  # Encrypted credentials (Phase 7b, local mode only)
     ├── logs/app.log
     └── settings.json
 ```
@@ -1883,6 +1885,21 @@ def save_settings(data: dict) -> None:
 ```
 
 The temp file is created in the same directory as settings.json to ensure `os.replace()` is atomic (same filesystem). This prevents a crash mid-write from leaving a truncated/corrupt settings.json.
+
+### Credential Vault (Phase 7b)
+
+When `credential_mode` is `"local"`, credential fields listed in `CREDENTIAL_FIELDS` are stored encrypted in `settings.vault.json` instead of plaintext in `settings.json`. The vault uses Fernet symmetric encryption with a key sourced from the system keyring (preferred) or a `.vault_key` dotfile with 0600 permissions.
+
+```
+settings.json   → non-credential settings only (credential_mode, poll intervals, etc.)
+settings.vault.json → Fernet-encrypted JSON blob containing all credential fields
+```
+
+The integration is transparent: `_load_settings()` merges decrypted vault data into the returned dict, and `save_settings()` splits credential fields into the vault on write. All consumers see a unified view without needing vault awareness.
+
+**Key functions**: `_get_vault_key()`, `_encrypt_vault()`, `_decrypt_vault()`, `get_credential_mode()`, `migrate_to_local_vault()`, `migrate_to_cloud()`.
+
+**API endpoints**: `POST /api/settings/vault/enable`, `POST /api/settings/vault/disable`, `GET /api/settings/vault/status`.
 
 ### Three-Tier Credential Cascade
 
