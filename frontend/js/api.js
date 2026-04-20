@@ -459,4 +459,14 @@ const API = {
     getSyncStatus() { return this.get('/api/posting/sync/status'); },
     getPostingChanges() { return this.get('/api/posting/changes'); },
     claimSubmissions(data = {}) { return this.post('/api/posting/claim', data); },
+
+    /* ── Setup wizard ─────────────────────────────────────────── */
+    getSetupStatus() { return this.get('/api/settings/setup-status'); },
+    markSetupComplete() { return this.post('/api/settings/setup-complete'); },
+
+    /* ── Browser login (embedded pywebview popup) ────────────── */
+    getBrowserLoginPlatforms() { return this.get('/api/settings/browser-login/platforms'); },
+    browserLogin(platform, extraFields = {}) {
+        return this.post(`/api/settings/browser-login/${platform}`, { extra_fields: extraFields });
+    },
 };

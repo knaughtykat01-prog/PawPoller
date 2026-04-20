@@ -109,3 +109,112 @@ async def vault_status():
     mode = config.get_credential_mode()
     vault_exists = config.VAULT_PATH.exists()
     return {"mode": mode, "vault_exists": vault_exists}
+
+
+# ── Setup wizard status (first-run detection) ────────────────
+
+@settings_router.get("/setup-status")
+async def setup_status():
+    """Check first-run setup wizard state.
+
+    Returns whether initial setup has been completed, plus a summary of
+    what has been configured so the wizard can pre-populate or skip steps.
+    """
+    settings = config.get_settings()
+    return {
+        "setup_complete": settings.get("setup_complete", False),
+        "has_archive_path": bool(settings.get("posting_story_archive_path")),
+        "platforms_connected": sum(
+            1 for key in (
+                "username", "fa_cookie_a", "sf_username", "ws_api_key",
+                "ao3_username", "sqw_username", "bsky_identifier",
+                "da_refresh_token", "wp_username", "ik_token", "tw_api_key",
+            )
+            if settings.get(key)
+        ),
+    }
+
+
+@settings_router.post("/setup-complete")
+async def mark_setup_complete():
+    """Mark the first-run setup wizard as completed.
+
+    Writes setup_complete=true into settings.json so the wizard is not
+    shown again on subsequent launches.
+    """
+    config.save_settings({"setup_complete": True})
+    return {"ok": True}
+
+
+# ── Browser login (embedded pywebview popup) ──────────────────
+
+class BrowserLoginRequest(BaseModel):
+    extra_fields: dict = {}
+
+
+@settings_router.get("/browser-login/platforms")
+async def browser_login_platforms():
+    """List platforms that support embedded browser login.
+
+    Returns availability status (True only in desktop mode where pywebview
+    is installed) and the per-platform config including any extra fields
+    the user needs to fill in before launching the login window.
+    """
+    from auth.browser_login import get_supported_platforms, is_browser_login_available
+    return {
+        "available": is_browser_login_available(),
+        "platforms": get_supported_platforms(),
+    }
+
+
+@settings_router.post("/browser-login/{platform}")
+async def browser_login(platform: str, req: BrowserLoginRequest | None = None):
+    """Launch an embedded browser window for platform authentication.
+
+    Only works in desktop mode (pywebview must be installed).  Opens the
+    platform's login page in a native popup window.  The user logs in
+    normally, and cookies/tokens are captured automatically on success.
+
+    The endpoint runs the login in a background thread and blocks until
+    the user completes login or closes the window (up to 5 minutes).
+
+    NOTE: This is a long-running request -- the response arrives only
+    after the login window closes.  The frontend should show a spinner.
+    """
+    from auth.browser_login import login_via_browser, is_browser_login_available, PLATFORM_LOGIN
+
+    if not is_browser_login_available():
+        raise HTTPException(
+            status_code=400,
+            detail="Browser login is only available in desktop mode (pywebview required).",
+        )
+
+    if platform not in PLATFORM_LOGIN:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Platform '{platform}' does not support browser login. "
+                   f"Supported: {', '.join(PLATFORM_LOGIN.keys())}",
+        )
+
+    extra_fields = req.extra_fields if req else {}
+
+    # Run the blocking login in a thread so we don't block the event loop
+    import asyncio
+    loop = asyncio.get_event_loop()
+    try:
+        creds = await loop.run_in_executor(
+            None, lambda: login_via_browser(platform, extra_fields)
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if creds is None:
+        return {"ok": False, "message": "Login cancelled or timed out."}
+
+    return {
+        "ok": True,
+        "message": f"Successfully logged in to {PLATFORM_LOGIN[platform]['name']}.",
+        "keys_saved": list(creds.keys()),
+    }

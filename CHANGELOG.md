@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.12.3] - 2026-04-19
+
+### Added -- First-run setup wizard
+
+Added a guided setup wizard that appears on first launch when no
+`setup_complete` flag exists in settings.json. Walks new users through
+four steps: Welcome, Story Archive location, Platform Connections, and
+a completion screen. Existing users are unaffected since the wizard
+auto-skips when `setup_complete` is already set.
+
+- **`routes/settings_api.py`**: Two new endpoints:
+  - `GET /api/settings/setup-status` -- returns setup completion state,
+    archive path presence, and count of connected platforms.
+  - `POST /api/settings/setup-complete` -- marks setup as done so the
+    wizard is not shown again.
+- **`frontend/js/app.js`**: Added `renderSetupWizard()` method with
+  4-step wizard (Welcome, Archive Path, Platforms, Done). Setup check
+  in `init()` redirects to `#/setup` on first run. `setup` added to
+  full-screen page list and route dispatch.
+- **`frontend/js/api.js`**: Added `getSetupStatus()` and
+  `markSetupComplete()` API methods.
+- **`frontend/css/components.css`**: Setup wizard styles -- step
+  indicator dots with connecting lines, platform card grid, responsive
+  breakpoints.
+- **`frontend/index.html`**: Cache busters bumped for components.css
+  (v241) and app.js (v244).
+
+---
+
 ## [2.12.2] - 2026-04-19
 
 ### Added -- Post scheduling in Publish Check

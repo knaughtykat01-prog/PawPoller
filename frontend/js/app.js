@@ -115,6 +115,21 @@ const App = {
             console.warn('[App] Dashboard status check failed:', err);
         }
 
+        /* First-run setup wizard — if setup_complete is not set, show
+         * the guided wizard instead of the normal dashboard. This check
+         * runs after dashboard auth (so the user is authenticated) but
+         * before any platform auth gates. */
+        try {
+            const setupResp = await API.getSetupStatus();
+            if (!setupResp.setup_complete) {
+                window.location.hash = '#/setup';
+                this.route();
+                return;  // Don't proceed with platform auth — wizard handles it
+            }
+        } catch (err) {
+            console.warn('[App] Setup status check failed:', err);
+        }
+
         /* Inkbunny platform auth gate — decide which screen the user should land on */
         try {
             const auth = await API.getAuthStatus();
@@ -297,7 +312,8 @@ const App = {
 
         /* Full-screen pages hide the sidebar, bottom nav, and remove left margin */
         const isFullScreen = parts[0] === 'login' || parts[0] === 'loading'
-            || parts[0] === 'dashboard-login' || parts[0] === 'dashboard-setup';
+            || parts[0] === 'dashboard-login' || parts[0] === 'dashboard-setup'
+            || parts[0] === 'setup';
         const sidebar = document.querySelector('.sidebar');
         const main = document.getElementById('app');
         const bottomNav = document.getElementById('bottom-nav');
@@ -333,6 +349,8 @@ const App = {
             this.renderDashboardLogin();
         } else if (parts[0] === 'dashboard-setup') {
             this.renderDashboardSetup();
+        } else if (parts[0] === 'setup') {
+            this.renderSetupWizard();
         } else if (parts[0] === 'login') {
             this.renderLogin();
         } else if (parts[0] === 'loading') {
@@ -812,6 +830,192 @@ const App = {
             if (e.key === 'Enter') submit();
         });
         document.getElementById('setup-username').focus();
+    },
+
+    /* ── Setup Wizard ─────────────────────────────────────────
+     * renderSetupWizard() — First-run guided experience for new users.
+     * Multi-step wizard: Welcome -> Story Archive -> Platform Connections -> Done.
+     * Shown when settings.json has no setup_complete flag. On completion,
+     * marks setup_complete=true and redirects to the main dashboard. */
+
+    async renderSetupWizard() {
+        /* Platform definitions for step 3 — reuses emoji + colour from the nav grid */
+        const platforms = [
+            { key: 'ib', name: 'Inkbunny', emoji: '&#128062;', color: 'var(--platform-ib)', url: 'https://inkbunny.net/login.php' },
+            { key: 'fa', name: 'FurAffinity', emoji: '&#129418;', color: 'var(--platform-fa)', url: 'https://www.furaffinity.net/login/' },
+            { key: 'ws', name: 'Weasyl', emoji: '&#129422;', color: 'var(--platform-ws)', url: 'https://www.weasyl.com/signin' },
+            { key: 'sf', name: 'SoFurry', emoji: '&#128220;', color: 'var(--platform-sf)', url: 'https://www.sofurry.com/user/login' },
+            { key: 'sqw', name: 'SquidgeWorld', emoji: '&#129433;', color: 'var(--platform-sqw)', url: 'https://squidgeworld.org/users/login' },
+            { key: 'ao3', name: 'AO3', emoji: '&#128214;', color: 'var(--platform-ao3)', url: 'https://archiveofourown.org/users/login' },
+            { key: 'da', name: 'DeviantArt', emoji: '&#127912;', color: 'var(--platform-da)', url: 'https://www.deviantart.com/users/login' },
+            { key: 'wp', name: 'Wattpad', emoji: '&#128211;', color: 'var(--platform-wp)', url: 'https://www.wattpad.com/login' },
+            { key: 'ik', name: 'Itaku', emoji: '&#128444;', color: 'var(--platform-ik)', url: 'https://itaku.ee/login' },
+            { key: 'bsky', name: 'Bluesky', emoji: '&#129419;', color: 'var(--platform-bsky)', url: 'https://bsky.app/' },
+            { key: 'tw', name: 'X / Twitter', emoji: '&#128038;', color: 'var(--platform-tw)', url: 'https://twitter.com/login' },
+        ];
+
+        /* Fetch current state so we can pre-populate step 2 and show
+         * connection status in step 3 */
+        let archivePath = '';
+        let connectedPlatforms = 0;
+        try {
+            const posting = await API.getPostingSettings().catch(() => ({}));
+            archivePath = posting.posting_story_archive_path || '';
+        } catch { /* ignore */ }
+        try {
+            const status = await API.getSetupStatus().catch(() => ({}));
+            connectedPlatforms = status.platforms_connected || 0;
+        } catch { /* ignore */ }
+
+        /* Fetch per-platform auth status for step 3 */
+        const authStatus = {};
+        try {
+            const [ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw] = await Promise.all([
+                API.getAuthStatus().catch(() => ({})),
+                API.getFAAuthStatus().catch(() => ({})),
+                API.getWSAuthStatus().catch(() => ({})),
+                API.getSFAuthStatus().catch(() => ({})),
+                API.getSQWAuthStatus().catch(() => ({})),
+                API.getAO3AuthStatus().catch(() => ({})),
+                API.getDAAuthStatus().catch(() => ({})),
+                API.getWPAuthStatus().catch(() => ({})),
+                API.getIKAuthStatus().catch(() => ({})),
+                API.getBSKYAuthStatus().catch(() => ({})),
+                API.getTWAuthStatus().catch(() => ({})),
+            ]);
+            authStatus.ib = ib.has_credentials;
+            authStatus.fa = fa.has_cookies;
+            authStatus.ws = ws.has_key;
+            authStatus.sf = sf.has_credentials;
+            authStatus.sqw = sqw.has_credentials;
+            authStatus.ao3 = ao3.has_credentials;
+            authStatus.da = da.has_credentials;
+            authStatus.wp = wp.has_credentials;
+            authStatus.ik = ik.has_credentials;
+            authStatus.bsky = bsky.has_credentials;
+            authStatus.tw = tw.has_credentials;
+        } catch { /* ignore — all default to undefined/false */ }
+
+        /* Current step state — managed via closure */
+        let currentStep = 1;
+
+        const renderStep = () => {
+            const stepsHtml = `
+                <div class="setup-steps">
+                    <div class="setup-step-dot ${currentStep >= 1 ? 'active' : ''} ${currentStep > 1 ? 'done' : ''}">1</div>
+                    <div class="setup-step-line ${currentStep > 1 ? 'active' : ''}"></div>
+                    <div class="setup-step-dot ${currentStep >= 2 ? 'active' : ''} ${currentStep > 2 ? 'done' : ''}">2</div>
+                    <div class="setup-step-line ${currentStep > 2 ? 'active' : ''}"></div>
+                    <div class="setup-step-dot ${currentStep >= 3 ? 'active' : ''} ${currentStep > 3 ? 'done' : ''}">3</div>
+                    <div class="setup-step-line ${currentStep > 3 ? 'active' : ''}"></div>
+                    <div class="setup-step-dot ${currentStep >= 4 ? 'active' : ''}">4</div>
+                </div>`;
+
+            let body = '';
+
+            if (currentStep === 1) {
+                /* ── Step 1: Welcome ──────────────────────────────── */
+                body = `
+                    <h1 style="font-size:26px;font-weight:700;color:var(--accent);margin-bottom:8px">Welcome to PawPoller</h1>
+                    <p style="color:var(--text-secondary);margin-bottom:8px;font-size:15px">Multi-platform story analytics for furry fiction writers.</p>
+                    <p style="color:var(--text-muted);margin-bottom:28px;font-size:13px">Let's get you set up in a few quick steps.</p>
+                    <button class="btn btn-primary login-btn" id="setup-next">Get Started</button>`;
+            } else if (currentStep === 2) {
+                /* ── Step 2: Story Archive ────────────────────────── */
+                body = `
+                    <h2 style="font-size:20px;font-weight:700;color:var(--text-primary);margin-bottom:8px">Story Archive Location</h2>
+                    <p style="color:var(--text-secondary);margin-bottom:20px;font-size:13px">Where do your stories live? PawPoller will look here for stories to publish.</p>
+                    <div class="login-field">
+                        <label>Archive path</label>
+                        <input type="text" id="setup-archive-path" class="search-input" value="${Utils.escapeHtml(archivePath)}" placeholder="e.g. C:\\Stories or /home/user/stories" style="width:100%">
+                        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Each story gets its own folder with Markdown, HTML, BBCode, and PDF files.</div>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:8px">
+                        <button class="btn btn-primary login-btn" id="setup-next" style="flex:1">Next</button>
+                        <button class="btn" id="setup-skip" style="flex:0 0 auto;background:transparent;color:var(--text-muted);border:1px solid var(--border)">Skip</button>
+                    </div>`;
+            } else if (currentStep === 3) {
+                /* ── Step 3: Platform Connections ─────────────────── */
+                const platformCards = platforms.map(p => {
+                    const connected = authStatus[p.key];
+                    return `
+                        <div class="setup-platform-card ${connected ? 'connected' : ''}">
+                            <span class="setup-platform-emoji" style="border-color:${p.color}">${p.emoji}</span>
+                            <span class="setup-platform-name">${p.name}</span>
+                            <span class="setup-platform-status">${connected ? 'Connected' : 'Not connected'}</span>
+                            <a href="${p.url}" target="_blank" rel="noopener" class="btn btn-sm" style="font-size:11px;padding:4px 10px;margin-top:4px;background:${connected ? 'var(--bg-hover)' : 'var(--accent-dim)'};color:#fff;text-decoration:none;border-radius:var(--radius-sm)">${connected ? 'Open site' : 'Connect'}</a>
+                        </div>`;
+                }).join('');
+
+                body = `
+                    <h2 style="font-size:20px;font-weight:700;color:var(--text-primary);margin-bottom:8px">Connect Your Platforms</h2>
+                    <p style="color:var(--text-secondary);margin-bottom:16px;font-size:13px">Connect the platforms you publish on. You can skip any and add them later in Settings.</p>
+                    <div class="setup-platforms">${platformCards}</div>
+                    <div style="display:flex;gap:8px;margin-top:16px">
+                        <button class="btn btn-primary login-btn" id="setup-next" style="flex:1">Next</button>
+                        <button class="btn" id="setup-skip" style="flex:0 0 auto;background:transparent;color:var(--text-muted);border:1px solid var(--border)">Skip for now</button>
+                    </div>`;
+            } else if (currentStep === 4) {
+                /* ── Step 4: Done ─────────────────────────────────── */
+                body = `
+                    <h2 style="font-size:20px;font-weight:700;color:var(--accent);margin-bottom:8px">You're all set!</h2>
+                    <p style="color:var(--text-secondary);margin-bottom:16px;font-size:13px">PawPoller is ready. Here's what you can do next:</p>
+                    <ul style="text-align:left;color:var(--text-secondary);font-size:13px;line-height:1.8;margin-bottom:24px;list-style:none;padding:0">
+                        <li style="padding:6px 0;border-bottom:1px solid var(--border)">Create a new story in the <strong style="color:var(--text-primary)">Editor</strong></li>
+                        <li style="padding:6px 0;border-bottom:1px solid var(--border)">Check your <strong style="color:var(--text-primary)">analytics</strong> on the dashboard</li>
+                        <li style="padding:6px 0">Configure more platforms in <strong style="color:var(--text-primary)">Settings</strong></li>
+                    </ul>
+                    <button class="btn btn-primary login-btn" id="setup-finish">Go to Dashboard</button>`;
+            }
+
+            this._setContent(`
+                <div class="login-screen">
+                    <div class="login-card setup-wizard">
+                        ${stepsHtml}
+                        ${body}
+                    </div>
+                </div>`);
+
+            /* Wire up event handlers for the current step */
+            document.getElementById('setup-next')?.addEventListener('click', async () => {
+                if (currentStep === 2) {
+                    /* Save archive path before advancing */
+                    const path = document.getElementById('setup-archive-path')?.value.trim();
+                    if (path) {
+                        try {
+                            await API.savePostingSettings({ posting_story_archive_path: path });
+                            archivePath = path;
+                        } catch (err) {
+                            console.warn('[Setup] Failed to save archive path:', err);
+                        }
+                    }
+                }
+                currentStep++;
+                renderStep();
+            });
+
+            document.getElementById('setup-skip')?.addEventListener('click', () => {
+                currentStep++;
+                renderStep();
+            });
+
+            document.getElementById('setup-finish')?.addEventListener('click', async () => {
+                const btn = document.getElementById('setup-finish');
+                btn.disabled = true;
+                btn.textContent = 'Saving...';
+                try {
+                    await API.markSetupComplete();
+                } catch (err) {
+                    console.warn('[Setup] Failed to mark setup complete:', err);
+                }
+                /* Navigate to the main dashboard and re-run init to
+                 * go through the normal auth gates */
+                window.location.hash = '#/';
+                window.location.reload();
+            });
+        };
+
+        renderStep();
     },
 
     /* ── Login Screen ──────────────────────────────────────────
@@ -4984,7 +5188,7 @@ const App = {
         try {
             // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
             // Polling tab data is loaded lazily when the user clicks into it.
-            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, updateInfo, postingSettings] = await Promise.all([
+            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, updateInfo, postingSettings, browserLoginInfo] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
@@ -5002,10 +5206,14 @@ const App = {
                 API.getTWAuthStatus().catch(() => ({ has_credentials: false })),
                 API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' })),
                 API.getPostingSettings().catch(() => ({ posting_enabled: false, posting_default_platforms: [], posting_default_rating: 'adult', posting_server_url: '', posting_server_api_key: '', posting_story_archive_path: '' })),
+                API.getBrowserLoginPlatforms().catch(() => ({ available: false, platforms: [] })),
             ]);
 
             // Store auth state for lazy-loaded polling tab
             this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth };
+
+            // Store browser login availability for platform connect forms
+            const _browserLoginAvailable = browserLoginInfo.available;
 
             const _settingsTab = (window.location.hash.match(/^#\/settings\/(\w+)/) || [])[1] || 'general';
 
@@ -5755,7 +5963,27 @@ const App = {
                         <span id="fa-msg" style="font-size:13px"></span>
                     </div>
                     ` : `
-                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect your FurAffinity account using browser cookies. Open FA in your browser, find your <code style="background:var(--bg-tertiary);padding:2px 4px;border-radius:3px">a</code> and <code style="background:var(--bg-tertiary);padding:2px 4px;border-radius:3px">b</code> cookie values.</p>
+                    ${_browserLoginAvailable ? `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Log in to FurAffinity in the popup window. Your cookies will be captured automatically.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="fa-browser-username" class="search-input" placeholder="FA username">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="fa-browser-login-btn">Login via Browser</button>
+                        <button class="btn btn-outline" id="fa-manual-toggle" style="font-size:12px">Enter cookies manually</button>
+                        <span id="fa-msg" style="font-size:13px"></span>
+                    </div>
+                    <div id="fa-manual-section" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+                        <p style="color:var(--text-muted);font-size:12px;margin-bottom:8px">Manual entry: open FA in your browser, find your <code style="background:var(--bg-tertiary);padding:2px 4px;border-radius:3px">a</code> and <code style="background:var(--bg-tertiary);padding:2px 4px;border-radius:3px">b</code> cookie values.</p>
+                        <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                            <input type="text" id="fa-username" class="search-input" placeholder="FA username">
+                            <input type="text" id="fa-cookie-a" class="search-input" placeholder="Cookie a value">
+                            <input type="text" id="fa-cookie-b" class="search-input" placeholder="Cookie b value">
+                        </div>
+                        <div style="margin-top:8px"><button class="btn btn-primary" id="fa-connect-btn">Connect</button></div>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect your FurAffinity account using browser cookies. <a href="https://www.furaffinity.net/login/" target="_blank" style="color:var(--accent)">Open FA login page</a>, log in, then find your <code style="background:var(--bg-tertiary);padding:2px 4px;border-radius:3px">a</code> and <code style="background:var(--bg-tertiary);padding:2px 4px;border-radius:3px">b</code> cookie values in DevTools (F12 > Application > Cookies).</p>
                     <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
                         <input type="text" id="fa-username" class="search-input" placeholder="FA username">
                         <input type="text" id="fa-cookie-a" class="search-input" placeholder="Cookie a value">
@@ -5765,6 +5993,7 @@ const App = {
                         <button class="btn btn-primary" id="fa-connect-btn">Connect</button>
                         <span id="fa-msg" style="font-size:13px"></span>
                     </div>
+                    `}
                     `}
                     </div>
                 </details>
@@ -5957,7 +6186,26 @@ const App = {
                         <span id="da-msg" style="font-size:13px"></span>
                     </div>
                     ` : `
-                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect your DeviantArt account using your full browser cookie string and specify the username to track.</p>
+                    ${_browserLoginAvailable ? `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Log in to DeviantArt in the popup window. Your cookies will be captured automatically.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="da-browser-username" class="search-input" placeholder="DeviantArt username to track">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="da-browser-login-btn">Login via Browser</button>
+                        <button class="btn btn-outline" id="da-manual-toggle" style="font-size:12px">Enter cookies manually</button>
+                        <span id="da-msg" style="font-size:13px"></span>
+                    </div>
+                    <div id="da-manual-section" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+                        <p style="color:var(--text-muted);font-size:12px;margin-bottom:8px">Manual entry: paste the full cookie string from DevTools.</p>
+                        <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                            <textarea id="da-cookie" class="search-input" placeholder="Full cookie string from browser" rows="3" style="resize:vertical;font-family:monospace;font-size:12px"></textarea>
+                            <input type="text" id="da-target-user" class="search-input" placeholder="DeviantArt username to track">
+                        </div>
+                        <div style="margin-top:8px"><button class="btn btn-primary" id="da-connect-btn">Connect</button></div>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect your DeviantArt account using your full browser cookie string. <a href="https://www.deviantart.com/users/login" target="_blank" style="color:var(--accent)">Open DA login page</a>, log in, then copy your cookie string from DevTools (F12 > Application > Cookies).</p>
                     <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
                         <textarea id="da-cookie" class="search-input" placeholder="Full cookie string from browser" rows="3" style="resize:vertical;font-family:monospace;font-size:12px"></textarea>
                         <input type="text" id="da-target-user" class="search-input" placeholder="DeviantArt username to track">
@@ -5966,6 +6214,7 @@ const App = {
                         <button class="btn btn-primary" id="da-connect-btn">Connect</button>
                         <span id="da-msg" style="font-size:13px"></span>
                     </div>
+                    `}
                     `}
                     </div>
                 </details>
@@ -6115,7 +6364,27 @@ const App = {
                         <span id="tw-msg" style="font-size:13px"></span>
                     </div>
                     ` : `
-                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to X/Twitter using browser cookies. Open x.com, press F12, go to Application > Cookies, and copy the auth_token and ct0 values.</p>
+                    ${_browserLoginAvailable ? `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Log in to X/Twitter in the popup window. Your auth cookies will be captured automatically.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="tw-browser-username" class="search-input" placeholder="Username to track (without @)">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="tw-browser-login-btn">Login via Browser</button>
+                        <button class="btn btn-outline" id="tw-manual-toggle" style="font-size:12px">Enter cookies manually</button>
+                        <span id="tw-msg" style="font-size:13px"></span>
+                    </div>
+                    <div id="tw-manual-section" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+                        <p style="color:var(--text-muted);font-size:12px;margin-bottom:8px">Manual entry: open x.com, press F12, go to Application > Cookies, and copy the auth_token and ct0 values.</p>
+                        <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                            <input type="text" id="tw-auth-token" class="search-input" placeholder="auth_token cookie">
+                            <input type="text" id="tw-ct0" class="search-input" placeholder="ct0 cookie">
+                            <input type="text" id="tw-target-user" class="search-input" placeholder="Username to track (without @)">
+                        </div>
+                        <div style="margin-top:8px"><button class="btn btn-primary" id="tw-connect-btn">Connect</button></div>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to X/Twitter using browser cookies. <a href="https://x.com/i/flow/login" target="_blank" style="color:var(--accent)">Open X login page</a>, log in, then press F12, go to Application > Cookies, and copy the auth_token and ct0 values.</p>
                     <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
                         <input type="text" id="tw-auth-token" class="search-input" placeholder="auth_token cookie">
                         <input type="text" id="tw-ct0" class="search-input" placeholder="ct0 cookie">
@@ -6125,6 +6394,7 @@ const App = {
                         <button class="btn btn-primary" id="tw-connect-btn">Connect</button>
                         <span id="tw-msg" style="font-size:13px"></span>
                     </div>
+                    `}
                     `}
                     </div>
                 </details>
