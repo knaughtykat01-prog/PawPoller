@@ -22,6 +22,20 @@ import re
 from dataclasses import dataclass, field
 
 
+def _default_author() -> str:
+    """Return the default author from settings, or empty string if unavailable.
+
+    Lazy import of config avoids coupling this pure-formatting module to the
+    application config at import time.  Falls back to empty string so byline
+    rendering degrades gracefully when no default is configured.
+    """
+    try:
+        import config
+        return config.get_settings().get("default_author", "")
+    except Exception:
+        return ""
+
+
 # ---------------------------------------------------------------------------
 # Core parser — handles *, **, *** correctly
 # ---------------------------------------------------------------------------
@@ -366,7 +380,7 @@ def render_front_matter_sqw(fm: FrontMatter, chapter_title: str,
     parts: list[str] = []
     parts.append('<div class="warning-page">')
     parts.append(f'    <h1 class="story-title">{_escape_html(fm.title)}</h1>')
-    parts.append(f'    <p class="byline">by {_escape_html(fm.byline or "KnaughtyKat")}</p>')
+    parts.append(f'    <p class="byline">by {_escape_html(fm.byline or _default_author())}</p>')
     parts.append('    <hr class="title-rule">')
     parts.append(f'    <h2 class="chapter-subtitle">{_escape_html(chapter_title)}</h2>')
     parts.append("")
@@ -1134,7 +1148,9 @@ def convert_to_sqw_chapters(markdown_text: str, warning_icon: str = "&#9888;") -
             if fm.byline:
                 parts.append(f'<p class="byline">{_escape_html(fm.byline)}</p>')
             else:
-                parts.append('<p class="byline">by KnaughtyKat</p>')
+                fallback = _default_author()
+                if fallback:
+                    parts.append(f'<p class="byline">by {_escape_html(fallback)}</p>')
             parts.append('<hr class="title-rule">')
             parts.append(f'<h2 class="chapter-subtitle">{_escape_html(ch["title"])}</h2>')
 
@@ -1495,7 +1511,7 @@ def _fill_template(template: str, theme: dict, fm: FrontMatter,
     # --- Story content ---
     title_escaped = _escape_html(fm.title)
     # Strip "by " prefix — the template already includes "by {{AUTHOR_NAME}}"
-    raw_byline = fm.byline or "KnaughtyKat"
+    raw_byline = fm.byline or _default_author()
     if raw_byline.lower().startswith("by "):
         raw_byline = raw_byline[3:].strip()
     author = _escape_html(raw_byline)
@@ -1847,7 +1863,7 @@ def _replace_warning_page_with_header(doc: str, fm: FrontMatter,
     wp_end += len("</div>")
 
     title_escaped = _escape_html(fm.title)
-    raw_byline = fm.byline or "KnaughtyKat"
+    raw_byline = fm.byline or _default_author()
     if raw_byline.lower().startswith("by "):
         raw_byline = raw_byline[3:].strip()
     author = _escape_html(raw_byline)

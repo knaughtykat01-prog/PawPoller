@@ -452,7 +452,7 @@ def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) ->
         path=story_path,
         total_chapters=data.get("chapters", len(chapters)),
         total_words=data.get("word_count", 0),
-        author=data.get("author", "KnaughtyKat"),
+        author=data.get("author", config.get_settings().get("default_author", "")),
         chapters=chapters,
         description=data.get("description", ""),
         tags_by_platform=tags_by_platform,

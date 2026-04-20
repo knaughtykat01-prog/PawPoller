@@ -74,6 +74,21 @@ const Editor = {
                             Author
                             <input type="text" id="create-story-author" class="create-story-input" placeholder="Author name" autocomplete="off">
                         </label>
+                        <label class="create-story-label">
+                            Genre template <span class="create-story-hint">(optional — pre-fills tags + rating)</span>
+                            <select id="create-story-genre" class="create-story-input">
+                                <option value="">None</option>
+                                <option value="romance">Romance</option>
+                                <option value="erotica">Erotica</option>
+                                <option value="adventure">Adventure</option>
+                                <option value="comedy">Comedy</option>
+                                <option value="drama">Drama</option>
+                                <option value="fantasy">Fantasy</option>
+                                <option value="sci_fi">Sci-Fi</option>
+                                <option value="slice_of_life">Slice of Life</option>
+                                <option value="horror">Horror</option>
+                            </select>
+                        </label>
                         <div style="display:flex;gap:12px">
                             <label class="create-story-label" style="flex:1">
                                 Chapters
@@ -104,11 +119,19 @@ const Editor = {
             const titleInput = document.getElementById('create-story-title');
             const nameInput = document.getElementById('create-story-name');
 
+            // Genre template rating map — keeps frontend in sync with backend GENRE_TEMPLATES
+            const genreRatings = {
+                romance: 'mature', erotica: 'explicit', adventure: 'general',
+                comedy: 'general', drama: 'mature', fantasy: 'general',
+                sci_fi: 'general', slice_of_life: 'general', horror: 'mature',
+            };
+
             document.getElementById('create-story-btn').addEventListener('click', () => {
                 overlay.classList.add('open');
                 titleInput.value = '';
                 nameInput.value = '';
                 document.getElementById('create-story-author').value = '';
+                document.getElementById('create-story-genre').value = '';
                 document.getElementById('create-story-chapters').value = '1';
                 document.getElementById('create-story-rating').value = 'explicit';
                 document.getElementById('create-story-error').style.display = 'none';
@@ -118,6 +141,14 @@ const Editor = {
             // Auto-generate folder name from title
             titleInput.addEventListener('input', () => {
                 nameInput.value = titleInput.value.trim().replace(/[^A-Za-z0-9_ ]/g, '').replace(/ +/g, '_');
+            });
+
+            // When genre changes, auto-update rating to the template default
+            document.getElementById('create-story-genre').addEventListener('change', (e) => {
+                const genre = e.target.value;
+                if (genre && genreRatings[genre]) {
+                    document.getElementById('create-story-rating').value = genreRatings[genre];
+                }
             });
 
             document.getElementById('create-story-cancel').addEventListener('click', () => {
@@ -146,6 +177,7 @@ const Editor = {
         const name = (document.getElementById('create-story-name').value || '').trim();
         const title = (document.getElementById('create-story-title').value || '').trim();
         const author = (document.getElementById('create-story-author').value || '').trim();
+        const genre = document.getElementById('create-story-genre').value || '';
         const chapters = parseInt(document.getElementById('create-story-chapters').value, 10) || 1;
         const rating = document.getElementById('create-story-rating').value || 'explicit';
 
@@ -174,7 +206,7 @@ const Editor = {
             const resp = await fetch('/api/editor/stories/create', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ name, title, author, chapters, rating }),
+                body: JSON.stringify({ name, title, author, genre, chapters, rating }),
             });
             const data = await resp.json();
             if (!resp.ok) {

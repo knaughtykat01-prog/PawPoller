@@ -19,6 +19,15 @@ import sys
 from pathlib import Path
 
 
+def _default_author() -> str:
+    """Return the default author from settings, or empty string if unavailable."""
+    try:
+        import config
+        return config.get_settings().get("default_author", "")
+    except Exception:
+        return ""
+
+
 def find_archive() -> Path:
     """Find the story archive directory."""
     candidates = [
@@ -43,7 +52,7 @@ def generate_story_json(story_path: Path) -> dict:
 
     result = {
         "title": display_name,
-        "author": "KnaughtyKat",
+        "author": _default_author(),
         "description": "",
         "summary": "",
         "rating": "explicit",
@@ -67,7 +76,7 @@ def generate_story_json(story_path: Path) -> dict:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         result["word_count"] = manifest.get("total_words", 0)
         result["chapters"] = manifest.get("total_chapters", 0)
-        result["author"] = manifest.get("author", "KnaughtyKat")
+        result["author"] = manifest.get("author", _default_author())
         for ch in manifest.get("chapters", []):
             result["chapter_info"].append({
                 "index": ch.get("index", 0),

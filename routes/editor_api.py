@@ -52,6 +52,69 @@ class CreateStoryRequest(BaseModel):
     author: str = ""
     chapters: int = 1    # Initial chapter count
     rating: str = "explicit"  # general, mature, explicit
+    genre: str = ""      # Optional genre template preset
+
+
+# ---------------------------------------------------------------------------
+# Genre template presets — pre-fill tags, rating, warnings, category
+# ---------------------------------------------------------------------------
+
+GENRE_TEMPLATES = {
+    "romance": {
+        "tags": ["romance", "love", "relationship", "emotional", "passion", "first_kiss", "dating", "affection"],
+        "rating": "mature",
+        "warnings": [],
+        "category": "F/M",
+    },
+    "erotica": {
+        "tags": ["erotica", "explicit", "sexual_content", "nsfw", "adult", "passion", "desire", "intimacy"],
+        "rating": "explicit",
+        "warnings": [],
+        "category": "F/M",
+    },
+    "adventure": {
+        "tags": ["adventure", "action", "quest", "journey", "exploration", "danger", "heroism", "travel"],
+        "rating": "general",
+        "warnings": [],
+        "category": "Gen",
+    },
+    "comedy": {
+        "tags": ["comedy", "humor", "funny", "lighthearted", "jokes", "slapstick", "witty_dialogue"],
+        "rating": "general",
+        "warnings": [],
+        "category": "Gen",
+    },
+    "drama": {
+        "tags": ["drama", "emotional", "conflict", "tension", "character_development", "angst", "relationships"],
+        "rating": "mature",
+        "warnings": [],
+        "category": "Gen",
+    },
+    "fantasy": {
+        "tags": ["fantasy", "magic", "mythical", "supernatural", "worldbuilding", "quest", "enchantment"],
+        "rating": "general",
+        "warnings": [],
+        "category": "Gen",
+    },
+    "sci_fi": {
+        "tags": ["science_fiction", "technology", "futuristic", "space", "cyberpunk", "artificial_intelligence"],
+        "rating": "general",
+        "warnings": [],
+        "category": "Gen",
+    },
+    "slice_of_life": {
+        "tags": ["slice_of_life", "everyday", "mundane", "character_study", "friendship", "daily_life", "cozy"],
+        "rating": "general",
+        "warnings": [],
+        "category": "Gen",
+    },
+    "horror": {
+        "tags": ["horror", "dark", "suspense", "fear", "thriller", "gore", "psychological_horror"],
+        "rating": "mature",
+        "warnings": ["Graphic Depictions Of Violence"],
+        "category": "Gen",
+    },
+}
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +194,12 @@ async def list_stories():
     return {"stories": stories}
 
 
+@editor_router.get("/genre-templates")
+async def genre_templates():
+    """Return available genre template presets for the create-story wizard."""
+    return {"templates": GENRE_TEMPLATES}
+
+
 @editor_router.post("/stories/create")
 async def create_story(req: CreateStoryRequest):
     """Create a new story with folder structure and template files."""
@@ -149,9 +218,15 @@ async def create_story(req: CreateStoryRequest):
     title = req.title.strip() or name.replace("_", " ")
     author = req.author.strip()
     chapters = max(1, min(req.chapters, 20))
+
+    # Resolve genre template (if any) before rating so template can supply default
+    genre = req.genre.strip().lower()
+    genre_tmpl = GENRE_TEMPLATES.get(genre, {})
+
+    # User-supplied rating takes priority; fall back to genre template default
     rating = req.rating.strip().lower()
     if rating not in ("general", "mature", "explicit"):
-        rating = "explicit"
+        rating = genre_tmpl.get("rating", "explicit")
 
     archive = get_archive_path()
     story_dir = archive / name
@@ -238,21 +313,22 @@ Use `---` followed by `# Chapter N: Title` to start a new chapter.
 """
     (story_dir / "Markdown" / "MASTER.md").write_text(master_content, encoding="utf-8")
 
-    # Generate story.json
+    # Generate story.json — merge genre template if one was selected
     story_json = {
         "title": title,
         "author": author,
         "description": "",
         "summary": "",
         "rating": rating,
-        "category": "",
+        "category": genre_tmpl.get("category", ""),
         "fandom": "Original Work",
-        "warnings": [],
+        "genre": genre if genre_tmpl else "",
+        "warnings": list(genre_tmpl.get("warnings", [])),
         "characters": [],
         "relationships": [],
         "word_count": 0,
         "chapters": chapters,
-        "tags": {"default": []},
+        "tags": {"default": list(genre_tmpl.get("tags", []))},
         "chapter_info": [],
         "formats": {"bbcode": True, "html": True, "markdown": True, "squidgeworld": True},
         "images": {"cover": ""},
