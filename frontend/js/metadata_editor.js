@@ -62,7 +62,7 @@ const MetaEditor = {
     _chaptersLoaded: false,       // flip true once we have data at least once
     _expandedChapter: null,       // chapter index currently expanded (or null)
     _activeChapterTagPlatform: 'default', // sub-tab within chapter detail
-    _CHAPTER_TAG_PLATFORMS: ['default', 'sofurry', 'wattpad'],
+    _CHAPTER_TAG_PLATFORMS: ['default', 'sofurry', 'inkbunny', 'wattpad'],
 
     // Phase 5: Cover + Raw JSON
     _coverFilename: null,         // current metadata.images.cover

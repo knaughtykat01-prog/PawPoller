@@ -228,7 +228,7 @@ async def _send_telegram(new_fave_details: list[dict], new_comment_details: list
                 json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception as e:
-        logger.warning("Failed to send Telegram notification: %s", e)
+        logger.warning("Failed to send Telegram notification: %s", e, exc_info=True)
 
 
 async def run_poll_cycle(force_full: bool = False) -> dict:
@@ -414,12 +414,12 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
                     except Exception as ce:
                         # Comment scraping failures are non-fatal --
                         # the rest of the submission data is still valid.
-                        logger.warning("Failed to scrape comments for %d: %s", sub_id, ce)
+                        logger.warning("Failed to scrape comments for %d: %s", sub_id, ce, exc_info=True)
 
             except Exception as e:
                 # Per-submission error handling: log and continue so one
                 # bad submission doesn't prevent the rest from being polled.
-                logger.warning("Error processing submission %s: %s", detail.submission_id, e)
+                logger.warning("Error processing submission %s: %s", detail.submission_id, e, exc_info=True)
 
         # Commit all upserts and snapshots in a single transaction.
         conn.commit()
@@ -442,7 +442,7 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
                     logger.info("Pruned %d stale watchers from DB", removed)
             conn.commit()
         except Exception as we:
-            logger.warning("Failed to scrape watchers: %s", we)
+            logger.warning("Failed to scrape watchers: %s", we, exc_info=True)
 
         # ── Notifications ──────────────────────────────────────
         # Fire-and-forget: notification failures are logged but never
@@ -458,12 +458,12 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
             try:
                 _send_notifications(new_fave_details, new_comment_details, new_watcher_details)
             except Exception as ne:
-                logger.warning("Failed to send notifications: %s", ne)
+                logger.warning("Failed to send notifications: %s", ne, exc_info=True)
 
             try:
                 await _send_telegram(new_fave_details, new_comment_details, new_watcher_details)
             except Exception as te:
-                logger.warning("Failed to send Telegram notification: %s", te)
+                logger.warning("Failed to send Telegram notification: %s", te, exc_info=True)
 
         # ── Finalise ───────────────────────────────────────────
         duration = time.time() - start_time
@@ -480,15 +480,15 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
             try:
                 await send_poll_summary("ib", stats, duration)
             except Exception as te:
-                logger.warning("Failed to send IB Telegram summary: %s", te)
+                logger.warning("Failed to send IB Telegram summary: %s", te, exc_info=True)
             try:
                 await check_milestones_batch("ib", "snapshots", "submissions")
             except Exception as me:
-                logger.warning("Failed to check IB milestones: %s", me)
+                logger.warning("Failed to check IB milestones: %s", me, exc_info=True)
             try:
                 await check_goals()
             except Exception as ge:
-                logger.warning("Failed to check goals: %s", ge)
+                logger.warning("Failed to check goals: %s", ge, exc_info=True)
 
         return stats
 
@@ -497,7 +497,7 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         # partial stats and re-raise so the scheduler knows the cycle failed.
         duration = time.time() - start_time
         _update_progress("error", message=str(e))
-        logger.error("Poll failed: %s", e)
+        logger.error("Poll failed: %s", e, exc_info=True)
         if conn and log_id:
             queries.finish_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
             conn.commit()
@@ -506,7 +506,7 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         try:
             await send_poll_error("ib", e)
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
         # Always release the concurrency guard, close the HTTP client, and

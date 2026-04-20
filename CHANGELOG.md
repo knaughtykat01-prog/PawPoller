@@ -4,6 +4,124 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.10.5] - 2026-04-19
+
+### Added — Phase 6e: Publish Check safety polish
+
+Four UX improvements to the Publish Check matrix, all frontend-only
+(no backend changes).
+
+**Live-publish re-confirm warning:**
+- Unchecking "Save as draft" reveals a yellow warning banner in the
+  action panel: "⚠ LIVE PUBLISH — This will be immediately visible
+  to the public on <Platform>."
+- The `confirm()` dialog for live (non-draft) actions now includes an
+  extra warning paragraph urging the user to re-check the draft box
+  if they didn't mean to go public.
+
+**Readable dry-run results:**
+- Dry-run output is now a structured summary (title, rating, word
+  count, file name + size, tag count + full list, extras) instead of
+  raw `<details><pre>` JSON. The raw JSON is still available under a
+  "Raw JSON" collapsible at the bottom.
+
+**Per-session action result log:**
+- Every post/update/dry-run action is recorded in a session-scoped
+  log array (max 20 entries). Rendered below the detail panel as a
+  compact timestamped list with success/fail icons, platform names,
+  and external links. Survives cell clicks and matrix reloads; clears
+  on page refresh. Bulk operations log a single summary entry.
+
+**Relative timestamps on posted publications:**
+- The detail panel's "Posted" and "Last updated" fields now show a
+  relative time suffix — e.g. "2026-04-17 14:30 (2d ago)". Uses a
+  `_relativeTime()` helper: just now → Xm → Xh → Xd → locale date.
+
+**Cache buster:** `publish_check.js?v=10`.
+
+### Fixed — AO3 login retry + better Telegram error messages
+
+**AO3 login retry with backoff (`ao3_client/client.py`):**
+- Login page fetch now retries up to 3 times with 5s/10s exponential
+  backoff. AO3's Cloudflare layer was returning transient non-200
+  responses that cleared on retry. Previously a single failure killed
+  the entire poll cycle.
+- Logs the actual HTTP status code and first 200 chars of the response
+  body on non-200 responses, replacing the opaque "Failed to fetch
+  login page" message.
+- Error message updated from "check credentials" to "check credentials
+  or AO3 may be blocking (see logs for HTTP status)" to stop
+  misleading the user when the creds are fine.
+
+**Telegram error classification (`polling/telegram.py`):**
+- New `_classify_error()` maps raw exception strings to user-friendly
+  `(label, hint)` pairs. 13 patterns covering login blocks, rate
+  limits, Cloudflare challenges, 403/404, timeouts, connection errors,
+  SSL issues, and dropped connections.
+- `send_poll_error()` now shows: bold label, italic hint explaining
+  the likely cause, and the raw error in monospace for debugging.
+- Consolidated poll summary (`send_consolidated_poll_summary`) uses
+  the same classifier for failed platform lines.
+- Before: `❌ 📖 AO3: AO3 login failed -- check credentials`
+- After: `❌ 📖 AO3: Login blocked` / `Likely Cloudflare/rate-limit, not bad creds`
+
+### Added — Polling module audit fixes (exc_info + silent exception handling)
+
+Fresh audit of all 11 pollers rediscovered 16 findings from the
+original (undocumented) audit. This release fixes the safe categories;
+session expiry recovery and N+1 query batching are deferred for
+hands-on testing.
+
+**exc_info logging (120 additions across 11 pollers):**
+- Every `logger.warning()` and `logger.error()` call inside an
+  `except` block now includes `exc_info=True`. Previously, exception
+  handlers logged the message string but discarded the stack trace,
+  making production debugging impossible. Covers: comment/follower/
+  watcher scraping failures, Telegram notification sends, toast
+  notification sends, per-submission processing errors, milestone/
+  summary/goal Telegram sends, and top-level poll cycle failures.
+
+**Silent exception swallowing (19 replacements across 11 pollers):**
+- `except Exception: pass` blocks in `send_poll_error()` wrappers and
+  `_cleanup_*_client()` atexit handlers replaced with
+  `logger.debug("Error alert send failed", exc_info=True)`. These
+  were silently masking real failures in error-reporting and cleanup
+  paths.
+
+**Deferred (needs careful testing):**
+- Session expiry graceful recovery (FA, SQW, TW) — currently hard-
+  crashes on auth failure instead of attempting re-login.
+- N+1 query batching (IB faving users, FA comments) — individual DB
+  writes in loops instead of batch upsert.
+
+### Added — Per-chapter tag platform parity
+
+- `_CHAPTER_TAG_PLATFORMS` in `metadata_editor.js` extended from
+  `['default', 'sofurry', 'wattpad']` to
+  `['default', 'sofurry', 'inkbunny', 'wattpad']`, matching the
+  story-level tag editor. Users can now set Inkbunny-specific tags
+  per chapter in the metadata drawer.
+- No backend changes — `story_reader.py` already cascades chapter
+  `default` tags to all platform IDs on publish.
+
+**Cache buster:** `metadata_editor.js?v=15`.
+
+### Added — Phase 7 design document (`PHASE_7_DESIGN.md`)
+
+Comprehensive design doc for the credential management system:
+- Credential inventory: 35+ sensitive fields across 12 contexts
+- Cloud mode: `POST /api/settings/sync` endpoint with push/pull,
+  last-write-wins per-key conflict resolution, sync exclusion set
+- Local-only mode: `settings.vault.json` encrypted via Fernet,
+  key derived from Windows DPAPI or system keyring
+- Migration path between modes (atomic swap)
+- 3-phase implementation plan (7a cloud sync, 7b vault, 7c wizard)
+- 5 open questions for user review
+
+**`APP_VERSION` bumped to `2.10.5`.**
+
+---
+
 ## [2.10.4] - 2026-04-17
 
 ### Added — Comprehensive tag audit across all 13 stories

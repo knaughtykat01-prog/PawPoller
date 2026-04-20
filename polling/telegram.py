@@ -145,6 +145,46 @@ async def send_poll_summary(platform: str, stats: dict, duration: float) -> None
     await send_telegram("\n".join(lines))
 
 
+# ── Poll error classification ───────────────────────────────
+
+_ERROR_PATTERNS: list[tuple[str, str, str]] = [
+    # (substring to match, short label, hint)
+    ("login failed", "Login blocked", "Likely Cloudflare/rate-limit, not bad creds"),
+    ("Shields are up", "Cloudflare challenge", "AO3 is blocking automated access"),
+    ("429 Too Many Requests", "Rate limited", "Will back off automatically"),
+    ("429", "Rate limited", "Platform is throttling requests"),
+    ("403 Forbidden", "Access denied", "Platform may be blocking datacenter IPs"),
+    ("403", "Blocked", "May need proxy or updated cookies"),
+    ("404 Not Found", "Not found", "API endpoint may have changed"),
+    ("check credentials", "Auth issue", "Verify creds in dashboard if this persists"),
+    ("timeout", "Timed out", "Platform may be slow or unreachable"),
+    ("ConnectError", "Connection failed", "Platform may be down"),
+    ("ConnectTimeout", "Connection timed out", "Platform unreachable"),
+    ("RemoteProtocolError", "Connection dropped", "Platform closed the connection"),
+    ("SSL", "SSL error", "Certificate or TLS issue"),
+]
+
+
+def _classify_error(error_str: str) -> tuple[str, str]:
+    """Map a raw error string to a user-friendly (label, hint) pair."""
+    lower = error_str.lower()
+    for pattern, label, hint in _ERROR_PATTERNS:
+        if pattern.lower() in lower:
+            return label, hint
+    return "Error", ""
+
+
+def _format_error_for_telegram(platform: str, error_str: str) -> str:
+    """Build a user-friendly error line for Telegram messages."""
+    label, hint = _classify_error(error_str)
+    name = PLATFORM_NAME.get(platform, platform.upper())
+    emoji = PLATFORM_EMOJI.get(platform, "")
+    line = f"❌ {emoji} {name}: {_esc(label)}"
+    if hint:
+        line += f"\n     <i>{_esc(hint)}</i>"
+    return line
+
+
 # ── Poll error alert ─────────────────────────────────────────
 
 async def send_poll_error(platform: str, error: Exception) -> None:
@@ -161,9 +201,14 @@ async def send_poll_error(platform: str, error: Exception) -> None:
 
     emoji = PLATFORM_EMOJI.get(platform, "")
     name = PLATFORM_NAME.get(platform, platform.upper())
-    err_msg = _esc(str(error)[:200])  # Truncate long errors, escape HTML
-    text = f"<b>{emoji} {name} Poll Failed</b>\n  {err_msg}"
-    await send_telegram(text)
+    error_str = str(error)[:200]
+    label, hint = _classify_error(error_str)
+    lines = [f"<b>{emoji} {name} Poll Failed</b>"]
+    lines.append(f"  {_esc(label)}")
+    if hint:
+        lines.append(f"  <i>{_esc(hint)}</i>")
+    lines.append(f"  <code>{_esc(error_str[:120])}</code>")
+    await send_telegram("\n".join(lines))
 
 
 # ── Consolidated poll summary (used by orchestrator) ─────────
@@ -219,11 +264,9 @@ async def send_consolidated_poll_summary(results: list[dict], duration: float) -
     if activity:
         lines.append(f"  {', '.join(activity)}")
 
-    # Failed platforms
+    # Failed platforms — classified error messages
     for r in failed:
-        emoji = PLATFORM_EMOJI.get(r["platform"], "")
-        name = PLATFORM_NAME.get(r["platform"], r["platform"].upper())
-        lines.append(f"  ❌ {emoji} {name}: {_esc(r['error'][:100])}")
+        lines.append(_format_error_for_telegram(r["platform"], r["error"]))
 
     await send_telegram("\n".join(lines))
 

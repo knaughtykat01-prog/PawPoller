@@ -227,8 +227,10 @@ window.PublishCheck = (function () {
         html += '<div class="publish-check-detail" id="publish-check-detail">' +
             '<div class="publish-check-detail-empty">Click any cell for details.</div>' +
             '</div>';
+        html += '<div class="action-log" id="publish-action-log"></div>';
 
         body.innerHTML = html;
+        _renderActionLog();
 
         // Cache matrix data for bulk target collection
         _lastMatrixData = data;
@@ -328,10 +330,14 @@ window.PublishCheck = (function () {
                     '" target="_blank" rel="noopener">' + _escape(cell.existing.external_url) + '</a></li>';
             }
             if (cell.existing.posted_at) {
-                html += '<li>Posted: ' + _escape(cell.existing.posted_at) + '</li>';
+                const rel = _relativeTime(cell.existing.posted_at);
+                html += '<li>Posted: ' + _escape(cell.existing.posted_at) +
+                    (rel ? ' <span class="time-relative">(' + rel + ')</span>' : '') + '</li>';
             }
             if (cell.existing.updated_at) {
-                html += '<li>Last updated: ' + _escape(cell.existing.updated_at) + '</li>';
+                const rel = _relativeTime(cell.existing.updated_at);
+                html += '<li>Last updated: ' + _escape(cell.existing.updated_at) +
+                    (rel ? ' <span class="time-relative">(' + rel + ')</span>' : '') + '</li>';
             }
             html += '</ul></div>';
         }
@@ -380,6 +386,10 @@ window.PublishCheck = (function () {
         html += '<label><input type="checkbox" id="publish-opt-draft" checked> ' +
             'Save as draft (where supported)</label>';
         html += '</div>';
+        html += '<div class="publish-action-live-banner" id="publish-live-banner" style="display:none">' +
+            '<strong>&#9888; LIVE PUBLISH</strong> — This will be immediately visible to ' +
+            'the public on ' + _escape(platName) +
+            '. Check &ldquo;Save as draft&rdquo; if you are not ready.</div>';
 
         html += '<div class="publish-action-buttons">';
 
@@ -425,6 +435,13 @@ window.PublishCheck = (function () {
                 _executeAction(action, platId, platName, chIdx, chTitle);
             });
         });
+        const draftCb = document.getElementById('publish-opt-draft');
+        const liveBanner = document.getElementById('publish-live-banner');
+        if (draftCb && liveBanner) {
+            draftCb.addEventListener('change', () => {
+                liveBanner.style.display = draftCb.checked ? 'none' : '';
+            });
+        }
     }
 
     async function _executeAction(action, platId, platName, chIdx, chTitle) {
@@ -444,10 +461,14 @@ window.PublishCheck = (function () {
             const verb = action === 'post' ? 'Post'
                 : action === 'update_metadata' ? 'Update metadata only'
                 : 'Update';
-            const ok = confirm(
-                verb + ' "' + chTitle + '" to ' + platName + draftLabel + '?\n\n' +
-                'This will make a real request to the platform.'
-            );
+            let confirmMsg = verb + ' "' + chTitle + '" to ' + platName + draftLabel + '?\n\n' +
+                'This will make a real request to the platform.';
+            if (!draft) {
+                confirmMsg += '\n\n\u26A0 WARNING: This is a LIVE publish \u2014 it will be ' +
+                    'immediately visible to the public. If you meant to save as ' +
+                    'a draft, click Cancel and check the draft checkbox.';
+            }
+            const ok = confirm(confirmMsg);
             if (!ok) return;
         }
 
@@ -472,6 +493,7 @@ window.PublishCheck = (function () {
             );
             const data = await resp.json();
             _renderActionResult(data, action);
+            _logAction(action, platName, chTitle, data);
             if (action !== 'dry_run' && data.ok) {
                 // Refresh the matrix on success — only if the user is still
                 // looking at the same story. Prevents a late success callback
@@ -485,6 +507,7 @@ window.PublishCheck = (function () {
                 resultBox.innerHTML = '<div class="publish-action-error">Failed: ' +
                     _escape(e.message) + '</div>';
             }
+            _logAction(action, platName, chTitle, { ok: false, error: e.message });
         }
     }
 
@@ -502,9 +525,34 @@ window.PublishCheck = (function () {
                 html += '</ul>';
             }
             if (data.package) {
-                html += '<details><summary>Package</summary><pre>' +
-                    _escape(JSON.stringify(data.package, null, 2)) +
-                    '</pre></details>';
+                const pkg = data.package;
+                html += '<div class="dry-run-summary">';
+                html += '<div class="dry-run-field"><span class="dry-run-label">Title</span>' +
+                    _escape(pkg.title) + '</div>';
+                html += '<div class="dry-run-field"><span class="dry-run-label">Rating</span>' +
+                    _escape(pkg.rating) + '</div>';
+                html += '<div class="dry-run-field"><span class="dry-run-label">Words</span>' +
+                    (pkg.word_count || 0).toLocaleString() + '</div>';
+                if (pkg.file_path) {
+                    const sizeKB = pkg.file_size
+                        ? (pkg.file_size / 1024).toFixed(0) + ' KB' : '\u2014';
+                    html += '<div class="dry-run-field"><span class="dry-run-label">File</span>' +
+                        '<code>' + _escape(pkg.file_path.split(/[/\\]/).pop()) +
+                        '</code> (' + sizeKB + ')</div>';
+                }
+                if (pkg.tags && pkg.tags.length) {
+                    html += '<div class="dry-run-field dry-run-tags-row">' +
+                        '<span class="dry-run-label">Tags (' + pkg.tags.length + ')</span>' +
+                        '<span class="dry-run-tags">' +
+                        pkg.tags.map(t => _escape(t)).join(', ') + '</span></div>';
+                }
+                if (pkg.extra && Object.keys(pkg.extra).length) {
+                    html += '<div class="dry-run-field"><span class="dry-run-label">Extras</span>' +
+                        _escape(JSON.stringify(pkg.extra)) + '</div>';
+                }
+                html += '<details><summary>Raw JSON</summary><pre>' +
+                    _escape(JSON.stringify(pkg, null, 2)) +
+                    '</pre></details></div>';
             }
             box.innerHTML = html;
             return;
@@ -556,6 +604,68 @@ window.PublishCheck = (function () {
             .replace(/'/g, '&#39;');
     }
 
+    function _relativeTime(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        const diff = Date.now() - d.getTime();
+        if (diff < 0) return 'just now';
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return 'just now';
+        if (mins < 60) return mins + 'm ago';
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return hrs + 'h ago';
+        const days = Math.floor(hrs / 24);
+        if (days < 30) return days + 'd ago';
+        return d.toLocaleDateString();
+    }
+
+    function _logAction(action, platName, chTitle, data) {
+        _actionLog.unshift({
+            time: new Date().toLocaleTimeString(),
+            action: action,
+            platform: platName,
+            chapter: chTitle || 'Full story',
+            ok: !!data.ok,
+            url: data.results?.[0]?.external_url || '',
+            error: data.results?.[0]?.error || data.error || '',
+            queued: !!data.results?.[0]?.queued_desktop,
+        });
+        if (_actionLog.length > 20) _actionLog.length = 20;
+        _renderActionLog();
+    }
+
+    function _renderActionLog() {
+        const el = document.getElementById('publish-action-log');
+        if (!el || !_actionLog.length) return;
+        let html = '<div class="action-log-header">Recent actions (' +
+            _actionLog.length + ')</div><div class="action-log-list">';
+        for (const entry of _actionLog) {
+            const icon = entry.action === 'dry_run' ? '&#128269;' :
+                entry.ok ? '&#10003;' : '&#10007;';
+            const cls = entry.ok ? 'log-ok' :
+                (entry.action === 'dry_run' ? '' : 'log-fail');
+            html += '<div class="action-log-entry ' + cls + '">' +
+                '<span class="log-time">' + _escape(entry.time) + '</span> ' +
+                '<span class="log-icon">' + icon + '</span> ' +
+                _escape(entry.action) + ' ' +
+                _escape(entry.chapter) + ' &rarr; ' +
+                '<strong>' + _escape(entry.platform) + '</strong>';
+            if (entry.url) {
+                html += ' <a href="' + _escape(entry.url) +
+                    '" target="_blank" rel="noopener">&nearr;</a>';
+            }
+            if (entry.queued) html += ' (queued for desktop)';
+            if (entry.error && !entry.ok) {
+                html += ' <span class="log-error">' +
+                    _escape(entry.error) + '</span>';
+            }
+            html += '</div>';
+        }
+        html += '</div>';
+        el.innerHTML = html;
+    }
+
     // ── Phase 6d: Bulk publish ─────────────────────────────────
     //
     // Three entry points: row-end button, "Publish all new", "Update
@@ -563,6 +673,7 @@ window.PublishCheck = (function () {
     // data, shows a preflight dialog, then runs sequential requests.
 
     let _lastMatrixData = null;  // cached from _render for bulk target collection
+    let _actionLog = [];         // per-session action history (Phase 6e)
 
     function _collectTargets(mode, chIdx) {
         if (!_lastMatrixData) return [];
@@ -786,6 +897,13 @@ window.PublishCheck = (function () {
         }
 
         _updateBulkHeader(targets.length, targets.length, succeeded, failed, skipped);
+
+        _logAction(
+            dryRun ? 'bulk_dry_run' : 'bulk',
+            targets.length + ' targets',
+            succeeded + ' ok, ' + failed + ' failed' + (skipped ? ', ' + skipped + ' skipped' : ''),
+            { ok: failed === 0 && skipped === 0 }
+        );
 
         const closeBtn = document.getElementById('bulk-close-btn');
         if (closeBtn) {

@@ -206,7 +206,7 @@ async def _send_fa_telegram(new_comment_details: list[dict],
                 json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception as e:
-        logger.warning("Failed to send FA Telegram notification: %s", e)
+        logger.warning("Failed to send FA Telegram notification: %s", e, exc_info=True)
 
 
 async def run_fa_poll_cycle(force_full: bool = False) -> dict:
@@ -341,11 +341,11 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                                 })
                     except Exception as ce:
                         # Comment fetch failure is non-fatal.
-                        logger.warning("Failed to fetch FA comments for %d: %s", sub_id, ce)
+                        logger.warning("Failed to fetch FA comments for %d: %s", sub_id, ce, exc_info=True)
 
             except Exception as e:
                 # Per-submission error: log and continue with the next one.
-                logger.warning("Error processing FA submission %s: %s", detail.get("submission_id"), e)
+                logger.warning("Error processing FA submission %s: %s", detail.get("submission_id"), e, exc_info=True)
 
         conn.commit()
 
@@ -413,10 +413,10 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                             logger.info("FA profile sniff: %d/%d confirmed watchers flagged as bots (zero activity)",
                                         len(profile_spam), len(to_sniff))
                     except Exception as pe:
-                        logger.warning("FA profile sniff failed (non-fatal): %s", pe)
+                        logger.warning("FA profile sniff failed (non-fatal): %s", pe, exc_info=True)
 
         except Exception as we:
-            logger.warning("Failed to fetch FA watchers: %s", we)
+            logger.warning("Failed to fetch FA watchers: %s", we, exc_info=True)
 
         # ── Step 6: Fetch profile pageviews ───────────────────────
         # FAExport's /user/{name}.json returns a "pageviews" field representing
@@ -432,7 +432,7 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                 conn.commit()
                 logger.info("FA: Profile pageviews recorded: %d", pv)
         except Exception as pe:
-            logger.warning("Failed to fetch FA profile stats: %s", pe)
+            logger.warning("Failed to fetch FA profile stats: %s", pe, exc_info=True)
 
         # ── Notifications (comments + confirmed watchers) ───────────
         # Skip on first poll after startup (silent baseline).
@@ -454,12 +454,12 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
             try:
                 _send_fa_notifications(new_comment_details, notify_watchers)
             except Exception as ne:
-                logger.warning("Failed to send FA notifications: %s", ne)
+                logger.warning("Failed to send FA notifications: %s", ne, exc_info=True)
 
             try:
                 await _send_fa_telegram(new_comment_details, notify_watchers)
             except Exception as te:
-                logger.warning("Failed to send FA Telegram notification: %s", te)
+                logger.warning("Failed to send FA Telegram notification: %s", te, exc_info=True)
 
             # Mark as notified so we don't re-send
             if notify_watchers:
@@ -481,15 +481,15 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
             try:
                 await send_poll_summary("fa", stats, duration)
             except Exception as te:
-                logger.warning("Failed to send FA Telegram summary: %s", te)
+                logger.warning("Failed to send FA Telegram summary: %s", te, exc_info=True)
             try:
                 await check_milestones_batch("fa", "fa_snapshots", "fa_submissions")
             except Exception as me:
-                logger.warning("Failed to check FA milestones: %s", me)
+                logger.warning("Failed to check FA milestones: %s", me, exc_info=True)
             try:
                 await check_goals()
             except Exception as ge:
-                logger.warning("Failed to check goals: %s", ge)
+                logger.warning("Failed to check goals: %s", ge, exc_info=True)
 
         return stats
 
@@ -497,7 +497,7 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
         # Top-level failure -- record partial stats and propagate.
         duration = time.time() - start_time
         _update_fa_progress("error", message=str(e))
-        logger.error("FA poll failed: %s", e)
+        logger.error("FA poll failed: %s", e, exc_info=True)
         if conn and log_id:
             fa_queries.finish_fa_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
             conn.commit()
@@ -506,7 +506,7 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
         try:
             await send_poll_error("fa", e)
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
         # Always clear the guard and release resources.
@@ -558,7 +558,7 @@ async def send_fa_watcher_digest() -> None:
                     json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
                 )
         except Exception as e:
-            logger.warning("Failed to send FA watcher digest: %s", e)
+            logger.warning("Failed to send FA watcher digest: %s", e, exc_info=True)
             return
 
         fa_queries.mark_watchers_notified(conn, pending)

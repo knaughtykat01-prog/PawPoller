@@ -1,7 +1,7 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-04-17
-**Current version:** 2.10.3
+**Last updated:** 2026-04-19
+**Current version:** 2.10.5
 **Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`)
 
 Living document — update as the roadmap shifts. Read this first when picking up a fresh session.
@@ -56,6 +56,7 @@ The **Story Editor + Publish Check** system (documentation_guide.md §15) is fea
 | **Nested story path fix** | 2.10.3 | publish-check/publish/verify now resolve The_Abstinent_Bet/Nice_Version correctly |
 | **AO3 CF proxy on desktop** | 2.10.3 | Routes through Worker to bypass Shields-up TLS fingerprinting |
 | **Per-chapter anchor processing** | 2.10.3 | /regenerate uses body converter directly so text-message anchors render |
+| **Phase 6e safety polish** | 2.10.5 | Live-publish warning banner, readable dry-run results, per-session action log, relative timestamps |
 
 ### What posted successfully during testing
 - Inkbunny draft of "Late Shift" full story — flipped cell from green ✓ → blue ✓ posted with URL.
@@ -86,42 +87,30 @@ drift detection, deletion probe, re-post.
 - [x] Progress panel with live per-item status + cancel + close-and-refresh
 - [x] Frontend-only (no backend changes, no SSE) per PHASE_6D_PLAN.md
 
-### Phase 6e — safety polish
+### Phase 6e — safety polish (COMPLETE)
 
-- [ ] Require re-confirm for "live" (non-draft) publishes in the confirm dialog (extra yellow banner)
-- [ ] Dry-run results should be readable inline, not just `<details><pre>`
-- [ ] Action result log per session (so you can see "last 5 posts" without refreshing)
-- [ ] Per-platform "posted at" clock display in the detail panel
+- [x] Require re-confirm for "live" (non-draft) publishes in the confirm dialog (extra yellow banner)
+- [x] Dry-run results should be readable inline, not just `<details><pre>`
+- [x] Action result log per session (so you can see "last 5 posts" without refreshing)
+- [x] Per-platform "posted at" clock display in the detail panel
 
-### Phase 7 — Settings sync + local-only mode (DESIGN PHASE)
+### Phase 7 — Settings sync + local-only mode (DESIGN COMPLETE)
 
-Two credential management modes for PawPoller:
-
-**Cloud mode** (convenience):
-- Desktop ↔ server settings sync via `/api/settings/sync` endpoint
-- Login once on either side, creds propagate automatically
-- Server stores settings in Docker volume; desktop pulls/pushes with API key auth
-- All platform credentials, session cookies, CF proxy keys synced
-- Encrypted in transit (HTTPS)
-
-**Local-only mode** (security):
-- All creds stay on the machine, encrypted at rest
-- Python `cryptography` library with machine-derived key (Windows DPAPI
-  via `win32crypt`, or `keyring` on macOS/Linux)
-- Settings file encrypted; only that specific machine can decrypt
-- No server sync, no cloud exposure — fully offline operation
-- Desktop setup wizard configures all platform logins locally
+Design doc: `PHASE_7_DESIGN.md` — covers credential inventory (35+
+fields), cloud sync API (`POST /api/settings/sync`), local-only vault
+(`settings.vault.json` encrypted via DPAPI/keyring), migration path
+between modes, and 3-phase implementation plan (7a cloud sync, 7b
+vault encryption, 7c desktop setup wizard).
 
 Toggle: `"credential_mode": "cloud" | "local"` in settings.json.
-Touches: config system, dashboard auth flow, desktop setup wizard,
-settings.json schema. Needs its own design doc before implementation.
+Awaiting user review of design doc before implementation begins.
 
 ### Tag audit
 
 - [x] Story-level tag audit across all 13 stories (~330 additions, ~45 removals)
 - [x] Per-chapter tag assignments for all ~70 chapters
 - [x] TAG_AUDIT_REPORT.md saved in archive root
-- [ ] Per-chapter tags for platform-specific arrays (SF/IB/WP tabs) — currently only tags.default populated; cascade handles the rest on publish
+- [x] Per-chapter tags for platform-specific arrays — chapter tag editor now shows Default/SF/IB/WP tabs (matching story-level); cascade still handles remaining platforms on publish
 
 ### WeasyPrint CSS fix
 
@@ -130,7 +119,9 @@ settings.json schema. Needs its own design doc before implementation.
 
 ### Other pending
 
-- [ ] Polling module audit fixes (13 findings from earlier audit — exc_info logging, session expiry, N+1 queries)
+- [x] Polling module audit: exc_info logging fixes (10 pollers) + silent exception swallowing replaced with debug logging
+- [ ] Polling module: session expiry graceful recovery (3 pollers — needs careful testing)
+- [ ] Polling module: N+1 query batching (faving users, comments — needs batch DB functions)
 - [ ] AO3 rate-limit retry (backoff on 429)
 - [ ] Weasyl testing (blocked on account verification)
 
@@ -148,8 +139,9 @@ settings.json schema. Needs its own design doc before implementation.
 - `PawPoller/posting/platforms/{ib,fa,ws,sf,sqw,ao3,da,ik,bsky}.py` — 9 posters
 - `PawPoller/database/posting_queries.py` — `publications` table CRUD
 - `PawPoller/frontend/js/editor.js` — page-level editor UI (~275 vers)
-- `PawPoller/frontend/js/metadata_editor.js` — drawer + tag autocomplete (~2900 lines, v13)
-- `PawPoller/frontend/js/publish_check.js` — matrix + action panel (v4)
+- `PawPoller/frontend/js/metadata_editor.js` — drawer + tag autocomplete (~2900 lines, v15)
+- `PawPoller/frontend/js/publish_check.js` — matrix + action panel + bulk actions + action log (v10)
+- `PawPoller/PHASE_7_DESIGN.md` — credential management design doc (cloud sync + local-only vault)
 - `PawPoller/frontend/css/editor.css` — all editor/drawer/matrix styles
 - `PawPoller/tag_database/` — 5 tag files + aliases.json + e621_lookup.tsv (**bundled in Docker image, NOT under data/**)
 

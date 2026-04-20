@@ -144,7 +144,7 @@ async def _send_ws_telegram(new_details: list[dict]) -> None:
                 json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception as e:
-        logger.warning("Failed to send WS Telegram notification: %s", e)
+        logger.warning("Failed to send WS Telegram notification: %s", e, exc_info=True)
 
 
 async def run_ws_poll_cycle(force_full: bool = False) -> dict:
@@ -255,7 +255,7 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
             except Exception as e:
                 # Per-submission error handling -- same resilience pattern
                 # as IB/FA: log and continue with the next submission.
-                logger.warning("Error processing WS submission %s: %s", detail.get("submission_id"), e)
+                logger.warning("Error processing WS submission %s: %s", detail.get("submission_id"), e, exc_info=True)
 
         conn.commit()
 
@@ -267,11 +267,11 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
             try:
                 _send_ws_notifications(new_activity_details)
             except Exception as ne:
-                logger.warning("Failed to send WS notifications: %s", ne)
+                logger.warning("Failed to send WS notifications: %s", ne, exc_info=True)
             try:
                 await _send_ws_telegram(new_activity_details)
             except Exception as te:
-                logger.warning("Failed to send WS Telegram notification: %s", te)
+                logger.warning("Failed to send WS Telegram notification: %s", te, exc_info=True)
 
         # ── Finalise ───────────────────────────────────────────
         duration = time.time() - start_time
@@ -287,15 +287,15 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
             try:
                 await send_poll_summary("ws", stats, duration)
             except Exception as te:
-                logger.warning("Failed to send WS Telegram summary: %s", te)
+                logger.warning("Failed to send WS Telegram summary: %s", te, exc_info=True)
             try:
                 await check_milestones_batch("ws", "ws_snapshots", "ws_submissions")
             except Exception as me:
-                logger.warning("Failed to check WS milestones: %s", me)
+                logger.warning("Failed to check WS milestones: %s", me, exc_info=True)
             try:
                 await check_goals()
             except Exception as ge:
-                logger.warning("Failed to check goals: %s", ge)
+                logger.warning("Failed to check goals: %s", ge, exc_info=True)
 
         return stats
 
@@ -303,7 +303,7 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
         # Top-level failure -- record partial stats and propagate.
         duration = time.time() - start_time
         _update_ws_progress("error", message=str(e))
-        logger.error("WS poll failed: %s", e)
+        logger.error("WS poll failed: %s", e, exc_info=True)
         if conn and log_id:
             ws_queries.finish_ws_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
             conn.commit()
@@ -312,7 +312,7 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
         try:
             await send_poll_error("ws", e)
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
         # Always clear the guard and release resources.

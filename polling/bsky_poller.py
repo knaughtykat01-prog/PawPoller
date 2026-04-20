@@ -50,7 +50,7 @@ def _cleanup_bsky_client():
         try:
             asyncio.get_event_loop().run_until_complete(_bsky_client.close())
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
 
 
 atexit.register(_cleanup_bsky_client)
@@ -116,7 +116,7 @@ async def _send_bsky_telegram(new_details: list[dict]) -> None:
                 json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception as e:
-        logger.warning("Failed to send BSKY Telegram notification: %s", e)
+        logger.warning("Failed to send BSKY Telegram notification: %s", e, exc_info=True)
 
 
 def _get_or_create_client(settings: dict) -> BskyClient:
@@ -221,7 +221,7 @@ async def run_bsky_poll_cycle(force_full: bool = False) -> dict:
 
             except Exception as e:
                 logger.warning("Error processing BSKY post %s: %s",
-                               detail.get("post_uri", "")[:50], e)
+                               detail.get("post_uri", "")[:50], e, exc_info=True)
 
         conn.commit()
 
@@ -233,11 +233,11 @@ async def run_bsky_poll_cycle(force_full: bool = False) -> dict:
             try:
                 _send_bsky_notifications(new_activity_details)
             except Exception as ne:
-                logger.warning("Failed to send BSKY notifications: %s", ne)
+                logger.warning("Failed to send BSKY notifications: %s", ne, exc_info=True)
             try:
                 await _send_bsky_telegram(new_activity_details)
             except Exception as te:
-                logger.warning("Failed to send BSKY Telegram notification: %s", te)
+                logger.warning("Failed to send BSKY Telegram notification: %s", te, exc_info=True)
 
         # Finalise
         duration = time.time() - start_time
@@ -254,22 +254,22 @@ async def run_bsky_poll_cycle(force_full: bool = False) -> dict:
             try:
                 await send_poll_summary("bsky", stats, duration)
             except Exception as te:
-                logger.warning("Failed to send BSKY Telegram summary: %s", te)
+                logger.warning("Failed to send BSKY Telegram summary: %s", te, exc_info=True)
             try:
                 await check_milestones_batch("bsky", "bsky_snapshots", "bsky_submissions")
             except Exception as me:
-                logger.warning("Failed to check BSKY milestones: %s", me)
+                logger.warning("Failed to check BSKY milestones: %s", me, exc_info=True)
             try:
                 await check_goals()
             except Exception as ge:
-                logger.warning("Failed to check goals: %s", ge)
+                logger.warning("Failed to check goals: %s", ge, exc_info=True)
 
         return stats
 
     except Exception as e:
         duration = time.time() - start_time
         _update_bsky_progress("error", message=str(e))
-        logger.error("BSKY poll failed: %s", e)
+        logger.error("BSKY poll failed: %s", e, exc_info=True)
         if conn and log_id:
             bsky_queries.finish_bsky_poll_log(conn, log_id, "error",
                                               error_message=str(e),
@@ -279,7 +279,7 @@ async def run_bsky_poll_cycle(force_full: bool = False) -> dict:
         try:
             await send_poll_error("bsky", e)
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
         if _bsky_first_poll:

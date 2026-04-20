@@ -51,7 +51,7 @@ def _cleanup_sqw_client():
         try:
             asyncio.get_event_loop().run_until_complete(_sqw_client.close())
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
 
 
 atexit.register(_cleanup_sqw_client)
@@ -117,7 +117,7 @@ async def _send_sqw_telegram(new_details: list[dict]) -> None:
                 json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception as e:
-        logger.warning("Failed to send SqW Telegram notification: %s", e)
+        logger.warning("Failed to send SqW Telegram notification: %s", e, exc_info=True)
 
 
 def _send_sqw_kudos_notifications(new_kudos: list[dict]) -> None:
@@ -171,7 +171,7 @@ async def _send_sqw_kudos_telegram(new_kudos: list[dict]) -> None:
                 json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception as e:
-        logger.warning("Failed to send SqW kudos Telegram notification: %s", e)
+        logger.warning("Failed to send SqW kudos Telegram notification: %s", e, exc_info=True)
 
 
 def _get_or_create_client(settings: dict) -> SquidgeWorldClient:
@@ -284,11 +284,11 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
                                 "title": detail.get("title", ""),
                             })
                 except Exception as ke:
-                    logger.warning("Error fetching kudos for work %s: %s", wid, ke)
+                    logger.warning("Error fetching kudos for work %s: %s", wid, ke, exc_info=True)
 
             except Exception as e:
                 logger.warning("Error processing SqW work %s: %s",
-                               detail.get("work_id"), e)
+                               detail.get("work_id"), e, exc_info=True)
 
         conn.commit()
 
@@ -301,11 +301,11 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
                 try:
                     _send_sqw_kudos_notifications(new_kudos_details)
                 except Exception as ne:
-                    logger.warning("Failed to send SqW kudos notifications: %s", ne)
+                    logger.warning("Failed to send SqW kudos notifications: %s", ne, exc_info=True)
                 try:
                     await _send_sqw_kudos_telegram(new_kudos_details)
                 except Exception as te:
-                    logger.warning("Failed to send SqW kudos Telegram: %s", te)
+                    logger.warning("Failed to send SqW kudos Telegram: %s", te, exc_info=True)
 
         # Finalise
         duration = time.time() - start_time
@@ -324,22 +324,22 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
             try:
                 await send_poll_summary("sqw", stats, duration)
             except Exception as te:
-                logger.warning("Failed to send SqW Telegram summary: %s", te)
+                logger.warning("Failed to send SqW Telegram summary: %s", te, exc_info=True)
             try:
                 await check_milestones_batch("sqw", "sqw_snapshots", "sqw_submissions")
             except Exception as me:
-                logger.warning("Failed to check SqW milestones: %s", me)
+                logger.warning("Failed to check SqW milestones: %s", me, exc_info=True)
             try:
                 await check_goals()
             except Exception as ge:
-                logger.warning("Failed to check goals: %s", ge)
+                logger.warning("Failed to check goals: %s", ge, exc_info=True)
 
         return stats
 
     except Exception as e:
         duration = time.time() - start_time
         _update_sqw_progress("error", message=str(e))
-        logger.error("SqW poll failed: %s", e)
+        logger.error("SqW poll failed: %s", e, exc_info=True)
         if conn and log_id:
             sqw_queries.finish_sqw_poll_log(conn, log_id, "error",
                                              error_message=str(e),
@@ -349,7 +349,7 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
         try:
             await send_poll_error("sqw", e)
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
         if _sqw_first_poll:

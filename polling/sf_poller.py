@@ -51,7 +51,7 @@ def _cleanup_sf_client():
         try:
             asyncio.get_event_loop().run_until_complete(_sf_client.close())
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
 
 
 atexit.register(_cleanup_sf_client)
@@ -136,7 +136,7 @@ async def _send_sf_telegram(new_details: list[dict]) -> None:
                 json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception as e:
-        logger.warning("Failed to send SF Telegram notification: %s", e)
+        logger.warning("Failed to send SF Telegram notification: %s", e, exc_info=True)
 
 
 def _send_sf_follower_notifications(new_follower_names: list[str]) -> None:
@@ -191,7 +191,7 @@ async def _send_sf_follower_telegram(new_follower_names: list[str]) -> None:
                 json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception as e:
-        logger.warning("Failed to send SF follower Telegram notification: %s", e)
+        logger.warning("Failed to send SF follower Telegram notification: %s", e, exc_info=True)
 
 
 def _get_or_create_client(settings: dict) -> SoFurryClient:
@@ -321,7 +321,7 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
 
             except Exception as e:
                 logger.warning("Error processing SF submission %s: %s",
-                               detail.get("submission_id"), e)
+                               detail.get("submission_id"), e, exc_info=True)
 
         conn.commit()
 
@@ -342,7 +342,7 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
                     logger.info("SF: pruned %d stale followers from DB", removed)
             conn.commit()
         except Exception as we:
-            logger.warning("Failed to scrape SF followers: %s", we)
+            logger.warning("Failed to scrape SF followers: %s", we, exc_info=True)
 
         # ── Notifications (followers) ────────────────────────────
         if _sf_first_poll:
@@ -353,11 +353,11 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
                 try:
                     _send_sf_follower_notifications(new_follower_names)
                 except Exception as ne:
-                    logger.warning("Failed to send SF follower notifications: %s", ne)
+                    logger.warning("Failed to send SF follower notifications: %s", ne, exc_info=True)
                 try:
                     await _send_sf_follower_telegram(new_follower_names)
                 except Exception as te:
-                    logger.warning("Failed to send SF follower Telegram notification: %s", te)
+                    logger.warning("Failed to send SF follower Telegram notification: %s", te, exc_info=True)
 
         # Finalise
         duration = time.time() - start_time
@@ -375,22 +375,22 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
             try:
                 await send_poll_summary("sf", stats, duration)
             except Exception as te:
-                logger.warning("Failed to send SF Telegram summary: %s", te)
+                logger.warning("Failed to send SF Telegram summary: %s", te, exc_info=True)
             try:
                 await check_milestones_batch("sf", "sf_snapshots", "sf_submissions")
             except Exception as me:
-                logger.warning("Failed to check SF milestones: %s", me)
+                logger.warning("Failed to check SF milestones: %s", me, exc_info=True)
             try:
                 await check_goals()
             except Exception as ge:
-                logger.warning("Failed to check goals: %s", ge)
+                logger.warning("Failed to check goals: %s", ge, exc_info=True)
 
         return stats
 
     except Exception as e:
         duration = time.time() - start_time
         _update_sf_progress("error", message=str(e))
-        logger.error("SF poll failed: %s", e)
+        logger.error("SF poll failed: %s", e, exc_info=True)
         if conn and log_id:
             sf_queries.finish_sf_poll_log(conn, log_id, "error",
                                           error_message=str(e),
@@ -401,7 +401,7 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
         try:
             await send_poll_error("sf", e)
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
         if _sf_first_poll:

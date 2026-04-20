@@ -54,7 +54,7 @@ def _cleanup_ik_client():
         try:
             asyncio.get_event_loop().run_until_complete(_ik_client.close())
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
 
 
 atexit.register(_cleanup_ik_client)
@@ -120,7 +120,7 @@ async def _send_ik_telegram(new_details: list[dict]) -> None:
                 json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception as e:
-        logger.warning("Failed to send IK Telegram notification: %s", e)
+        logger.warning("Failed to send IK Telegram notification: %s", e, exc_info=True)
 
 
 def _get_or_create_client(settings: dict) -> IKClient:
@@ -219,7 +219,7 @@ async def run_ik_poll_cycle(force_full: bool = False) -> dict:
 
             except Exception as e:
                 logger.warning("Error processing IK item %s: %s",
-                               detail.get("content_id"), e)
+                               detail.get("content_id"), e, exc_info=True)
 
         conn.commit()
 
@@ -231,11 +231,11 @@ async def run_ik_poll_cycle(force_full: bool = False) -> dict:
             try:
                 _send_ik_notifications(new_activity_details)
             except Exception as ne:
-                logger.warning("Failed to send IK notifications: %s", ne)
+                logger.warning("Failed to send IK notifications: %s", ne, exc_info=True)
             try:
                 await _send_ik_telegram(new_activity_details)
             except Exception as te:
-                logger.warning("Failed to send IK Telegram notification: %s", te)
+                logger.warning("Failed to send IK Telegram notification: %s", te, exc_info=True)
 
         # Finalise
         duration = time.time() - start_time
@@ -252,22 +252,22 @@ async def run_ik_poll_cycle(force_full: bool = False) -> dict:
             try:
                 await send_poll_summary("ik", stats, duration)
             except Exception as te:
-                logger.warning("Failed to send IK Telegram summary: %s", te)
+                logger.warning("Failed to send IK Telegram summary: %s", te, exc_info=True)
             try:
                 await check_milestones_batch("ik", "ik_snapshots", "ik_submissions")
             except Exception as me:
-                logger.warning("Failed to check IK milestones: %s", me)
+                logger.warning("Failed to check IK milestones: %s", me, exc_info=True)
             try:
                 await check_goals()
             except Exception as ge:
-                logger.warning("Failed to check goals: %s", ge)
+                logger.warning("Failed to check goals: %s", ge, exc_info=True)
 
         return stats
 
     except Exception as e:
         duration = time.time() - start_time
         _update_ik_progress("error", message=str(e))
-        logger.error("IK poll failed: %s", e)
+        logger.error("IK poll failed: %s", e, exc_info=True)
         if conn and log_id:
             ik_queries.finish_ik_poll_log(conn, log_id, "error",
                                           error_message=str(e),
@@ -277,7 +277,7 @@ async def run_ik_poll_cycle(force_full: bool = False) -> dict:
         try:
             await send_poll_error("ik", e)
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
         if _ik_first_poll:

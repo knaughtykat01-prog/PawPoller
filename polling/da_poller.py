@@ -51,7 +51,7 @@ def _cleanup_da_client():
         try:
             asyncio.get_event_loop().run_until_complete(_da_client.close())
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
 
 
 atexit.register(_cleanup_da_client)
@@ -117,7 +117,7 @@ async def _send_da_telegram(new_details: list[dict]) -> None:
                 json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception as e:
-        logger.warning("Failed to send DA Telegram notification: %s", e)
+        logger.warning("Failed to send DA Telegram notification: %s", e, exc_info=True)
 
 
 def _get_or_create_client(settings: dict) -> DAClient:
@@ -224,7 +224,7 @@ async def run_da_poll_cycle(force_full: bool = False) -> dict:
 
             except Exception as e:
                 logger.warning("Error processing DA deviation %s: %s",
-                               detail.get("deviation_id"), e)
+                               detail.get("deviation_id"), e, exc_info=True)
 
         conn.commit()
 
@@ -236,11 +236,11 @@ async def run_da_poll_cycle(force_full: bool = False) -> dict:
             try:
                 _send_da_notifications(new_activity_details)
             except Exception as ne:
-                logger.warning("Failed to send DA notifications: %s", ne)
+                logger.warning("Failed to send DA notifications: %s", ne, exc_info=True)
             try:
                 await _send_da_telegram(new_activity_details)
             except Exception as te:
-                logger.warning("Failed to send DA Telegram notification: %s", te)
+                logger.warning("Failed to send DA Telegram notification: %s", te, exc_info=True)
 
         # Finalise
         duration = time.time() - start_time
@@ -258,22 +258,22 @@ async def run_da_poll_cycle(force_full: bool = False) -> dict:
             try:
                 await send_poll_summary("da", stats, duration)
             except Exception as te:
-                logger.warning("Failed to send DA Telegram summary: %s", te)
+                logger.warning("Failed to send DA Telegram summary: %s", te, exc_info=True)
             try:
                 await check_milestones_batch("da", "da_snapshots", "da_submissions")
             except Exception as me:
-                logger.warning("Failed to check DA milestones: %s", me)
+                logger.warning("Failed to check DA milestones: %s", me, exc_info=True)
             try:
                 await check_goals()
             except Exception as ge:
-                logger.warning("Failed to check goals: %s", ge)
+                logger.warning("Failed to check goals: %s", ge, exc_info=True)
 
         return stats
 
     except Exception as e:
         duration = time.time() - start_time
         _update_da_progress("error", message=str(e))
-        logger.error("DA poll failed: %s", e)
+        logger.error("DA poll failed: %s", e, exc_info=True)
         if conn and log_id:
             da_queries.finish_da_poll_log(conn, log_id, "error",
                                           error_message=str(e),
@@ -283,7 +283,7 @@ async def run_da_poll_cycle(force_full: bool = False) -> dict:
         try:
             await send_poll_error("da", e)
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
         if _da_first_poll:

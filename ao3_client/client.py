@@ -176,23 +176,42 @@ class AO3Client:
             "Referer": _BASE + "/",
             "Sec-Fetch-Site": "same-origin",
         }
-        try:
-            resp = await self._http.get(
-                _BASE + "/users/login",
-                headers=login_nav_headers,
-            )
-            html = resp.text if resp.status_code == 200 else None
-            if resp.status_code == 403 or (html and "Shields are up" in html):
-                logger.error(
-                    "AO3: 'Shields are up!' page returned for %s/users/login",
-                    _BASE,
+
+        # Retry login page fetch up to 3 times with backoff — AO3's
+        # Cloudflare layer sometimes returns transient 429/503/challenge
+        # responses that clear on retry.
+        html = None
+        last_status = 0
+        for attempt in range(3):
+            if attempt > 0:
+                delay = 5 * (2 ** (attempt - 1))
+                logger.info("AO3: login page retry %d/2 after %ds", attempt, delay)
+                await asyncio.sleep(delay)
+            try:
+                resp = await self._http.get(
+                    _BASE + "/users/login",
+                    headers=login_nav_headers,
                 )
-                return False
-        except Exception as e:
-            logger.error("AO3: Login page fetch failed: %s", e)
-            return False
+                last_status = resp.status_code
+                if resp.status_code == 200:
+                    html = resp.text
+                    break
+                if resp.status_code == 403 or "Shields are up" in (resp.text or ""):
+                    logger.error(
+                        "AO3: 'Shields are up!' page returned (HTTP %d) for %s/users/login",
+                        resp.status_code, _BASE,
+                    )
+                    return False
+                logger.warning(
+                    "AO3: login page returned HTTP %d (attempt %d/3), body prefix: %.200s",
+                    resp.status_code, attempt + 1, (resp.text or "")[:200],
+                )
+            except Exception as e:
+                logger.error("AO3: Login page fetch failed: %s", e, exc_info=True)
+                last_status = 0
+
         if not html:
-            logger.error("AO3: Failed to fetch login page")
+            logger.error("AO3: Failed to fetch login page after 3 attempts (last HTTP %d)", last_status)
             return False
 
         # Extract authenticity_token

@@ -50,7 +50,7 @@ def _cleanup_ao3_client():
         try:
             asyncio.get_event_loop().run_until_complete(_ao3_client.close())
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
 
 
 atexit.register(_cleanup_ao3_client)
@@ -116,7 +116,7 @@ async def _send_ao3_telegram(new_details: list[dict]) -> None:
                 json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception as e:
-        logger.warning("Failed to send AO3 Telegram notification: %s", e)
+        logger.warning("Failed to send AO3 Telegram notification: %s", e, exc_info=True)
 
 
 def _send_ao3_kudos_notifications(new_kudos: list[dict]) -> None:
@@ -170,7 +170,7 @@ async def _send_ao3_kudos_telegram(new_kudos: list[dict]) -> None:
                 json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception as e:
-        logger.warning("Failed to send AO3 kudos Telegram notification: %s", e)
+        logger.warning("Failed to send AO3 kudos Telegram notification: %s", e, exc_info=True)
 
 
 def _get_or_create_client(settings: dict) -> AO3Client:
@@ -232,7 +232,7 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
         _update_ao3_progress("searching", message="Authenticating with AO3...")
         target = await client.validate_session()
         if not target:
-            raise ValueError("AO3 login failed -- check credentials")
+            raise ValueError("AO3 login failed -- check credentials or AO3 may be blocking (see logs for HTTP status)")
 
         # Step 2: Discover works
         _update_ao3_progress("searching", message="Fetching works list...")
@@ -285,11 +285,11 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
                                 "title": detail.get("title", ""),
                             })
                 except Exception as ke:
-                    logger.warning("Error fetching kudos for work %s: %s", wid, ke)
+                    logger.warning("Error fetching kudos for work %s: %s", wid, ke, exc_info=True)
 
             except Exception as e:
                 logger.warning("Error processing AO3 work %s: %s",
-                               detail.get("work_id"), e)
+                               detail.get("work_id"), e, exc_info=True)
 
         conn.commit()
 
@@ -302,11 +302,11 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
                 try:
                     _send_ao3_kudos_notifications(new_kudos_details)
                 except Exception as ne:
-                    logger.warning("Failed to send AO3 kudos notifications: %s", ne)
+                    logger.warning("Failed to send AO3 kudos notifications: %s", ne, exc_info=True)
                 try:
                     await _send_ao3_kudos_telegram(new_kudos_details)
                 except Exception as te:
-                    logger.warning("Failed to send AO3 kudos Telegram: %s", te)
+                    logger.warning("Failed to send AO3 kudos Telegram: %s", te, exc_info=True)
 
         # Finalise
         duration = time.time() - start_time
@@ -325,22 +325,22 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
             try:
                 await send_poll_summary("ao3", stats, duration)
             except Exception as te:
-                logger.warning("Failed to send AO3 Telegram summary: %s", te)
+                logger.warning("Failed to send AO3 Telegram summary: %s", te, exc_info=True)
             try:
                 await check_milestones_batch("ao3", "ao3_snapshots", "ao3_submissions")
             except Exception as me:
-                logger.warning("Failed to check AO3 milestones: %s", me)
+                logger.warning("Failed to check AO3 milestones: %s", me, exc_info=True)
             try:
                 await check_goals()
             except Exception as ge:
-                logger.warning("Failed to check goals: %s", ge)
+                logger.warning("Failed to check goals: %s", ge, exc_info=True)
 
         return stats
 
     except Exception as e:
         duration = time.time() - start_time
         _update_ao3_progress("error", message=str(e))
-        logger.error("AO3 poll failed: %s", e)
+        logger.error("AO3 poll failed: %s", e, exc_info=True)
         if conn and log_id:
             ao3_queries.finish_ao3_poll_log(conn, log_id, "error",
                                              error_message=str(e),
@@ -350,7 +350,7 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
         try:
             await send_poll_error("ao3", e)
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
         if _ao3_first_poll:

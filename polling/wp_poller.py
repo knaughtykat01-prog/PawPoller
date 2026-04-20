@@ -52,7 +52,7 @@ def _cleanup_wp_client():
         try:
             asyncio.get_event_loop().run_until_complete(_wp_client.close())
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
 
 
 atexit.register(_cleanup_wp_client)
@@ -118,7 +118,7 @@ async def _send_wp_telegram(new_details: list[dict]) -> None:
                 json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception as e:
-        logger.warning("Failed to send WP Telegram notification: %s", e)
+        logger.warning("Failed to send WP Telegram notification: %s", e, exc_info=True)
 
 
 def _get_or_create_client(settings: dict) -> WPClient:
@@ -219,7 +219,7 @@ async def run_wp_poll_cycle(force_full: bool = False) -> dict:
 
             except Exception as e:
                 logger.warning("Error processing WP story %s: %s",
-                               detail.get("story_id"), e)
+                               detail.get("story_id"), e, exc_info=True)
 
         conn.commit()
 
@@ -231,11 +231,11 @@ async def run_wp_poll_cycle(force_full: bool = False) -> dict:
             try:
                 _send_wp_notifications(new_activity_details)
             except Exception as ne:
-                logger.warning("Failed to send WP notifications: %s", ne)
+                logger.warning("Failed to send WP notifications: %s", ne, exc_info=True)
             try:
                 await _send_wp_telegram(new_activity_details)
             except Exception as te:
-                logger.warning("Failed to send WP Telegram notification: %s", te)
+                logger.warning("Failed to send WP Telegram notification: %s", te, exc_info=True)
 
         # Finalise
         duration = time.time() - start_time
@@ -252,22 +252,22 @@ async def run_wp_poll_cycle(force_full: bool = False) -> dict:
             try:
                 await send_poll_summary("wp", stats, duration)
             except Exception as te:
-                logger.warning("Failed to send WP Telegram summary: %s", te)
+                logger.warning("Failed to send WP Telegram summary: %s", te, exc_info=True)
             try:
                 await check_milestones_batch("wp", "wp_snapshots", "wp_submissions")
             except Exception as me:
-                logger.warning("Failed to check WP milestones: %s", me)
+                logger.warning("Failed to check WP milestones: %s", me, exc_info=True)
             try:
                 await check_goals()
             except Exception as ge:
-                logger.warning("Failed to check goals: %s", ge)
+                logger.warning("Failed to check goals: %s", ge, exc_info=True)
 
         return stats
 
     except Exception as e:
         duration = time.time() - start_time
         _update_wp_progress("error", message=str(e))
-        logger.error("WP poll failed: %s", e)
+        logger.error("WP poll failed: %s", e, exc_info=True)
         if conn and log_id:
             wp_queries.finish_wp_poll_log(conn, log_id, "error",
                                           error_message=str(e),
@@ -277,7 +277,7 @@ async def run_wp_poll_cycle(force_full: bool = False) -> dict:
         try:
             await send_poll_error("wp", e)
         except Exception:
-            pass
+            logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
         if _wp_first_poll:
