@@ -66,6 +66,11 @@ The **Story Editor + Publish Check** system (documentation_guide.md §15) is fea
 | **Retry queue** | 2.11.0 | Auto-retry failed posts with 1min/5min/30min backoff |
 | **No-credentials status** | 2.11.0 | Lock icon for unconfigured platforms in Publish Check |
 | **Skip startup polling** | 2.11.0 | No more rate-limiting on app restart |
+| **Format tab bar** | 2.11.1 | Compact tabs replace format dropdown in editor |
+| **Weasyl cover upload** | 2.11.1 | coverfile support in submit_literary |
+| **Credential vault (7b)** | 2.12.0 | Fernet encryption, keyring/dotfile key, vault enable/disable API + UI |
+| **New story wizard (9b)** | 2.12.1 | Create New Story button, template MASTER.md, folder scaffolding |
+| **Per-chapter thumbnails** | 2.12.1 | Upload per-chapter covers in metadata drawer, auto-updates story.json |
 
 ### What posted successfully during testing
 - Inkbunny draft of "Late Shift" full story — flipped cell from green ✓ → blue ✓ posted with URL.

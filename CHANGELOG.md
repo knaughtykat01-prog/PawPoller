@@ -4,6 +4,78 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.12.1] - 2026-04-19
+
+### Added -- Create New Story wizard in Story Editor
+
+Added a "Create New Story" button to the editor story list that opens a
+form dialog and scaffolds the full folder structure with template files.
+
+- **`routes/editor_api.py`**: New `POST /api/editor/stories/create`
+  endpoint with `CreateStoryRequest` model. Validates folder name
+  (alphanumeric + underscore, no duplicates), creates the directory tree
+  (Markdown, BBCode, HTML, PDF, SquidgeWorld, Chapters/*, Images),
+  generates a template MASTER.md showing all anchor types (@title,
+  @subtitle, @byline, @body, @text-sent/received, @phone, @story-end),
+  writes story.json with default metadata, and copies STYLING_REFERENCE.md
+  as CHAPTER_STYLING.md when available.
+- **`frontend/js/editor.js`**: Added "+ Create New Story" button to
+  `renderStoryList()` with an overlay dialog containing title, folder
+  name (auto-generated from title), author, chapter count (1-20), and
+  rating (General/Mature/Explicit) fields. On success, navigates
+  directly to the new story's editor. New `_submitCreateStory()` method
+  handles validation and the API call.
+- **`frontend/css/editor.css`**: Added `.create-story-overlay`,
+  `.create-story-dialog`, `.create-story-label`, `.create-story-input`,
+  `.create-story-error`, and `.create-story-actions` styles.
+- Cache busters: `editor.css?v=244`, `editor.js?v=280`.
+
+---
+
+## [2.12.0] - 2026-04-19
+
+### Added — Phase 7b: Local credential encryption at rest
+
+Credentials can now be encrypted at rest using Fernet symmetric encryption.
+When `credential_mode` is set to `"local"`, sensitive fields (passwords,
+cookies, API keys, tokens) are stored in `settings.vault.json` instead of
+plaintext in `settings.json`.
+
+**Backend (`config.py`):**
+- `VAULT_PATH` — path to `settings.vault.json` alongside the main settings.
+- `_get_vault_key()` — retrieves or generates the Fernet encryption key
+  (prefers system keyring, falls back to a `.vault_key` dotfile with 0600
+  permissions).
+- `_encrypt_vault()` / `_decrypt_vault()` — Fernet encrypt/decrypt of the
+  credential payload, with atomic writes.
+- `get_credential_mode()` — reads `credential_mode` from raw settings.json.
+- `migrate_to_local_vault()` — moves credential fields from plaintext to
+  encrypted vault; strips them from settings.json.
+- `migrate_to_cloud()` — reverses migration, restoring creds to plaintext
+  and deleting the vault file.
+- `_load_settings()` — now transparently merges decrypted vault credentials
+  when in local mode, so all consumers see a unified view.
+- `save_settings()` — now splits credential fields into the vault when in
+  local mode, writing only non-credential data to settings.json.
+- `delete_settings_keys()` — vault-aware: re-encrypts remaining credentials
+  after deletion in local mode.
+
+**API (`routes/settings_api.py`):**
+- `POST /api/settings/vault/enable` — switches to encrypted mode.
+- `POST /api/settings/vault/disable` — switches back to plaintext mode.
+- `GET /api/settings/vault/status` — returns current mode and vault
+  file presence.
+
+**Frontend (`frontend/js/app.js`):**
+- "Credential Security" section in the Data tab with Enable/Disable/Status
+  buttons and result display.
+
+**Dependencies:**
+- `cryptography~=46.0.7` added to `requirements-server.txt`.
+- `cryptography>=44.0.0` added to `requirements.txt`.
+
+---
+
 ## [2.11.1] - 2026-04-19
 
 ### Changed — Editor format selector: dropdown to tab bar
