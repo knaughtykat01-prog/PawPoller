@@ -242,8 +242,18 @@ def _start_poll_orchestrator():
         # Brief startup delay so uvicorn is ready and settings are seeded.
         await asyncio.sleep(5)
         _first_cycle = True
+        poll_interval = _get_poll_interval()
         logger.info("Poll orchestrator started (interval: %d min)",
-                     _get_poll_interval() // 60)
+                     poll_interval // 60)
+
+        # Skip the immediate first poll if the last cycle was recent enough.
+        # This prevents hammering platforms on every app restart / deploy.
+        secs_until = _seconds_until_next("last_poll_completed_at", poll_interval)
+        if secs_until > 60:
+            wait_min = int(secs_until / 60)
+            logger.info("Skipping startup poll — last cycle was recent, next in %d min", wait_min)
+            _first_cycle = False
+            await asyncio.sleep(secs_until)
 
         while True:
             paused = config.get_settings().get("polling_paused", False)
@@ -252,6 +262,11 @@ def _start_poll_orchestrator():
                 start = _time.time()
                 results = await _poll_all()
                 duration = _time.time() - start
+
+                # Record completion time so next restart knows when we last polled
+                config.save_settings({
+                    "last_poll_completed_at": datetime.now(timezone.utc).isoformat(),
+                })
 
                 if _first_cycle:
                     logger.info("First poll cycle complete — notifications suppressed "
