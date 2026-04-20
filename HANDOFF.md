@@ -1,7 +1,7 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-04-19
-**Current version:** 2.11.0
+**Last updated:** 2026-04-20
+**Current version:** 2.12.4
 **Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`)
 
 Living document — update as the roadmap shifts. Read this first when picking up a fresh session.
@@ -21,7 +21,12 @@ Port 8420. Story archive mounted at `/app/story-archive` on server, `../m_x/Arch
 
 ## Where we are right now
 
-The **Story Editor + Publish Check** system (documentation_guide.md §15) is feature-complete for **Phase 6b (POC)** and has drift detection on top. Successfully posted "Late Shift" (Test Story) to an Inkbunny draft end-to-end via the UI.
+**Public beta ready.** All must-have and should-have items from
+`ROADMAP_PUBLIC.md` are implemented. The app has a setup wizard,
+embedded browser login, credential encryption, story creation wizard,
+multi-format editor with anchor toolbar, selective regeneration,
+publish check with scheduling, retry queue, per-platform descriptions,
+cover/chapter thumbnail uploads, and GitHub release packaging.
 
 ### What's working live on the server
 
@@ -117,14 +122,65 @@ drift detection, deletion probe, re-post.
 - [x] Desktop startup pull in `main.py` (`_sync_settings_on_startup()`)
 - [x] Dashboard UI: Settings → Data tab → Sync section (Pull/Push/Status buttons)
 
-### Phase 7b — Local-only vault (NOT STARTED)
+### Phase 7b — Credential vault (COMPLETE)
 
-Design doc: `PHASE_7_DESIGN.md`. Fernet encryption with DPAPI/keyring
-key derivation. `settings.vault.json` for credential fields.
+- [x] Fernet encryption with keyring/dotfile key derivation
+- [x] `settings.vault.json` encrypted credential storage
+- [x] `migrate_to_local_vault()` / `migrate_to_cloud()` mode switching
+- [x] API: `/vault/enable`, `/vault/disable`, `/vault/status`
+- [x] Dashboard UI: Credential Security section
 
-### Phase 7c — Desktop setup wizard (NOT STARTED)
+### Phase 8a — Embedded browser login (COMPLETE)
 
-First-run flow: choose cloud/local, configure accordingly.
+- [x] `auth/browser_login.py` — pywebview popup for 7 platforms
+- [x] Cookie/URL monitoring for login success detection
+- [x] Desktop mode: "Login via Browser" as primary for FA/DA/TW
+- [x] Server mode: manual entry with "Open login page" links
+- [x] API: `/browser-login/{platform}`, `/browser-login/platforms`
+
+### Phase 9a — Setup wizard (COMPLETE)
+
+- [x] First-run detection via `setup_complete` flag
+- [x] 4-step flow: Welcome → Archive path → Platform connections → Done
+- [x] 11 platform cards with connection status
+- [x] API: `/setup-status`, `/setup-complete`
+
+### Phase 9b — New story wizard (COMPLETE)
+
+- [x] "Create New Story" button on story list
+- [x] Dialog with title, author, chapters, rating
+- [x] Template MASTER.md showing all anchor types
+- [x] Full folder structure scaffolding
+- [x] API: `POST /stories/create`
+
+### Phase 10 — Editor enhancements (COMPLETE)
+
+- [x] Anchor insertion toolbar (8 buttons)
+- [x] Selective format regeneration (7-option dropdown)
+- [x] Format tab bar (replaces dropdown)
+- [x] Per-platform descriptions (Short + Announcement)
+- [x] Regen staleness warning in Publish Check
+
+### Phase 11 — Image support (COMPLETE)
+
+- [x] Cover upload wired to all 4 platforms (IB, FA, SF, WS)
+- [x] Per-chapter thumbnails in metadata drawer
+- [x] `POST /chapter-thumbnail` endpoint
+
+### Phase 12 — Publishing UX (COMPLETE)
+
+- [x] Regen staleness warning with inline Regenerate button
+- [x] Edit button from published stories
+- [x] Post scheduling (datetime picker + queue)
+- [x] Retry queue (exponential backoff, max 3 attempts)
+- [x] No-credentials status for unconfigured platforms
+
+### Phase 15 — GitHub packaging (COMPLETE)
+
+- [x] README.md, LICENSE (MIT), CONTRIBUTING.md
+- [x] .gitignore + .env.example updated
+- [x] GitHub Actions: build.yml (PyInstaller → release), lint.yml (ruff + JS syntax)
+- [x] Credential audit — no secrets in tracked files
 
 ### Tag audit
 
@@ -159,9 +215,11 @@ First-run flow: choose cloud/local, configure accordingly.
 - `PawPoller/posting/sync.py` — `hash_file()` for drift detection
 - `PawPoller/posting/platforms/{ib,fa,ws,sf,sqw,ao3,da,ik,bsky}.py` — 9 posters
 - `PawPoller/database/posting_queries.py` — `publications` table CRUD
-- `PawPoller/frontend/js/editor.js` — page-level editor UI (~275 vers)
-- `PawPoller/frontend/js/metadata_editor.js` — drawer + tag autocomplete (~2900 lines, v15)
-- `PawPoller/frontend/js/publish_check.js` — matrix + action panel + bulk actions + action log (v10)
+- `PawPoller/auth/browser_login.py` — embedded browser login module (pywebview cookie capture)
+- `PawPoller/routes/settings_api.py` — settings sync + vault + browser login + setup wizard endpoints
+- `PawPoller/frontend/js/editor.js` — editor UI + anchor toolbar + format tabs + create story wizard
+- `PawPoller/frontend/js/metadata_editor.js` — drawer + tags + per-platform descriptions + chapter thumbnails
+- `PawPoller/frontend/js/publish_check.js` — matrix + actions + bulk + scheduling + action log
 - `PawPoller/PHASE_7_DESIGN.md` — credential management design doc (cloud sync + local-only vault)
 - `PawPoller/ROADMAP_PUBLIC.md` — public release roadmap (Phases 8-15: auth UX, setup wizard, editor, images, publishing, analytics, import, GitHub packaging)
 - `PawPoller/deploy/pawpush.bat` — push story archive local → server (alias for pawsync.bat)
@@ -239,18 +297,25 @@ gcloud compute ssh pawpoller --zone=us-east1-c --command="curl -s -H 'Authorizat
 
 If the user asks to resume, the most useful things to read first are:
 1. This file (HANDOFF.md)
-2. `CHANGELOG.md` top section — covers 2.10.5+ which is current
-3. `ROADMAP_PUBLIC.md` — the public release plan (Phases 8-15)
-4. `documentation_guide.md` §14 (Posting Module) + §15 (Story Editor)
-5. `routes/editor_api.py` — `/publish-check` and `/publish` endpoints
+2. `CHANGELOG.md` top section — covers 2.10.5 through 2.12.4
+3. `ROADMAP_PUBLIC.md` — public release plan (most items now COMPLETE)
+4. `documentation_guide.md` — full technical reference (updated 2026-04-20)
+5. `routes/editor_api.py` + `routes/settings_api.py` — main API surface
 
-If the user says "what's next?" — **ROADMAP_PUBLIC.md** has the
-priority list. The must-haves for public beta are: setup wizard (9a),
-embedded browser login (8a), credential encryption (8c), new story
-wizard (9b), cover image upload (11a), regen staleness warning (12a),
-and GitHub packaging (15a-c).
+If the user says "what's next?" — all must-have and should-have items
+from the roadmap are complete. Remaining nice-to-haves:
+- Import from platforms (14a) — pull existing stories from platforms
+- Story templates / genre presets (9b extension)
+- Analytics export (charts, CSV reports)
+- Auto-update mechanism (in-app update download)
+- Hardcoded author references → configurable (converter.py, etc.)
+- Weasyl testing (blocked on account verification)
 
 Story archive sync commands:
 - `deploy/pawpush.bat` — local → server (push)
 - `deploy/pawpull.bat` — server → local (pull)
 - `deploy/pawpull.bat Story_Name` — pull single story
+
+GitHub release workflow:
+- `git tag v2.12.4 && git push --tags` → triggers build + release
+- PAT needs `workflow` scope for pushing `.github/workflows/` changes
