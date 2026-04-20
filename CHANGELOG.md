@@ -4,6 +4,46 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.12.4] - 2026-04-19
+
+### Added -- Embedded browser login for cookie-based platforms
+
+Added a pywebview-powered browser login popup for platforms that require
+cookie extraction (FA, DA, X/Twitter). In desktop mode, users click
+"Login via Browser" and a native popup opens the platform's real login
+page. After logging in, cookies are detected and saved automatically --
+no more copying cookies from DevTools. Server mode falls back to
+helpful login-page links.
+
+- **`auth/browser_login.py`** (new): Core browser login module with
+  per-platform config for 7 platforms (FA, DA, SF, TW, WS, AO3, SqW).
+  Uses pywebview's `get_cookies()` to capture `SimpleCookie` objects,
+  flattens them into `{name: value}` dicts, and checks success via
+  URL/cookie conditions. Login runs in a daemon thread with a 5-minute
+  timeout. `login_via_browser()` saves credentials via
+  `config.save_settings()` on success.
+- **`auth/__init__.py`** (new): Package init.
+- **`routes/settings_api.py`**: Two new endpoints:
+  - `GET /api/settings/browser-login/platforms` -- lists supported
+    platforms with availability flag (True in desktop mode only).
+  - `POST /api/settings/browser-login/{platform}` -- launches the
+    pywebview popup and blocks until login completes or window closes.
+    Runs the blocking call in `run_in_executor` to avoid stalling the
+    event loop.
+- **`frontend/js/api.js`**: Added `getBrowserLoginPlatforms()` and
+  `browserLogin(platform, extraFields)` API methods.
+- **`frontend/js/app.js`**: Updated FA, DA, and TW platform connect
+  forms in the Platforms settings tab:
+  - Desktop mode: shows "Login via Browser" as primary action with a
+    "Enter cookies manually" toggle for the existing cookie input form.
+  - Server mode: adds login page links to the instruction text for
+    easier cookie extraction workflow.
+  - Browser login availability is fetched in the `renderSettings()`
+    parallel load and drives the conditional UI via
+    `_browserLoginAvailable`.
+
+---
+
 ## [2.12.3] - 2026-04-19
 
 ### Added -- First-run setup wizard

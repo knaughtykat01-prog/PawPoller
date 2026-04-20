@@ -6831,6 +6831,120 @@ const App = {
                 });
             }
 
+            // ── Browser Login buttons ─────────────────────────────────
+            // Toggle manual-entry sections when "Enter cookies manually" is clicked.
+            document.getElementById('fa-manual-toggle')?.addEventListener('click', () => {
+                const section = document.getElementById('fa-manual-section');
+                if (section) section.style.display = section.style.display === 'none' ? '' : 'none';
+            });
+            document.getElementById('da-manual-toggle')?.addEventListener('click', () => {
+                const section = document.getElementById('da-manual-section');
+                if (section) section.style.display = section.style.display === 'none' ? '' : 'none';
+            });
+            document.getElementById('tw-manual-toggle')?.addEventListener('click', () => {
+                const section = document.getElementById('tw-manual-section');
+                if (section) section.style.display = section.style.display === 'none' ? '' : 'none';
+            });
+
+            // FA Browser Login: opens pywebview popup, auto-captures cookies
+            const faBrowserLoginBtn = document.getElementById('fa-browser-login-btn');
+            if (faBrowserLoginBtn) {
+                faBrowserLoginBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('fa-msg');
+                    const username = document.getElementById('fa-browser-username')?.value.trim();
+                    if (!username) {
+                        if (msg) { msg.textContent = 'Username is required'; msg.style.color = 'var(--danger)'; }
+                        return;
+                    }
+                    faBrowserLoginBtn.disabled = true;
+                    faBrowserLoginBtn.textContent = 'Waiting for login...';
+                    if (msg) { msg.textContent = 'A login window will open. Log in to FurAffinity, then it will close automatically.'; msg.style.color = 'var(--text-muted)'; }
+                    try {
+                        const result = await API.browserLogin('fa', { fa_username: username });
+                        if (result.ok) {
+                            if (msg) { msg.textContent = 'Connected!'; msg.style.color = 'var(--success)'; }
+                            setTimeout(() => this.renderSettings(), 1000);
+                        } else {
+                            if (msg) { msg.textContent = result.message || 'Login cancelled.'; msg.style.color = 'var(--text-muted)'; }
+                            faBrowserLoginBtn.textContent = 'Login via Browser';
+                            faBrowserLoginBtn.disabled = false;
+                        }
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        if (msg) { msg.textContent = detail; msg.style.color = 'var(--danger)'; }
+                        faBrowserLoginBtn.textContent = 'Login via Browser';
+                        faBrowserLoginBtn.disabled = false;
+                    }
+                });
+            }
+
+            // DA Browser Login: opens pywebview popup for DeviantArt
+            const daBrowserLoginBtn = document.getElementById('da-browser-login-btn');
+            if (daBrowserLoginBtn) {
+                daBrowserLoginBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('da-msg');
+                    const username = document.getElementById('da-browser-username')?.value.trim();
+                    if (!username) {
+                        if (msg) { msg.textContent = 'Username is required'; msg.style.color = 'var(--danger)'; }
+                        return;
+                    }
+                    daBrowserLoginBtn.disabled = true;
+                    daBrowserLoginBtn.textContent = 'Waiting for login...';
+                    if (msg) { msg.textContent = 'A login window will open. Log in to DeviantArt, then it will close automatically.'; msg.style.color = 'var(--text-muted)'; }
+                    try {
+                        const result = await API.browserLogin('da', { da_username: username });
+                        if (result.ok) {
+                            if (msg) { msg.textContent = 'Connected!'; msg.style.color = 'var(--success)'; }
+                            setTimeout(() => this.renderSettings(), 1000);
+                        } else {
+                            if (msg) { msg.textContent = result.message || 'Login cancelled.'; msg.style.color = 'var(--text-muted)'; }
+                            daBrowserLoginBtn.textContent = 'Login via Browser';
+                            daBrowserLoginBtn.disabled = false;
+                        }
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        if (msg) { msg.textContent = detail; msg.style.color = 'var(--danger)'; }
+                        daBrowserLoginBtn.textContent = 'Login via Browser';
+                        daBrowserLoginBtn.disabled = false;
+                    }
+                });
+            }
+
+            // TW Browser Login: opens pywebview popup for X/Twitter
+            const twBrowserLoginBtn = document.getElementById('tw-browser-login-btn');
+            if (twBrowserLoginBtn) {
+                twBrowserLoginBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('tw-msg');
+                    const username = document.getElementById('tw-browser-username')?.value.trim();
+                    if (!username) {
+                        if (msg) { msg.textContent = 'Username is required'; msg.style.color = 'var(--danger)'; }
+                        return;
+                    }
+                    twBrowserLoginBtn.disabled = true;
+                    twBrowserLoginBtn.textContent = 'Waiting for login...';
+                    if (msg) { msg.textContent = 'A login window will open. Log in to X, then it will close automatically.'; msg.style.color = 'var(--text-muted)'; }
+                    try {
+                        const result = await API.browserLogin('tw', { tw_username: username });
+                        if (result.ok) {
+                            if (msg) { msg.textContent = 'Connected!'; msg.style.color = 'var(--success)'; }
+                            setTimeout(() => this.renderSettings(), 1000);
+                        } else {
+                            if (msg) { msg.textContent = result.message || 'Login cancelled.'; msg.style.color = 'var(--text-muted)'; }
+                            twBrowserLoginBtn.textContent = 'Login via Browser';
+                            twBrowserLoginBtn.disabled = false;
+                        }
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        if (msg) { msg.textContent = detail; msg.style.color = 'var(--danger)'; }
+                        twBrowserLoginBtn.textContent = 'Login via Browser';
+                        twBrowserLoginBtn.disabled = false;
+                    }
+                });
+            }
+
             // FA Connect: sends username + cookie_a + cookie_b to authenticate
             // with FurAffinity via browser cookies. All three fields required.
             const faConnectBtn = document.getElementById('fa-connect-btn');
