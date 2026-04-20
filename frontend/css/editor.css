@@ -2984,3 +2984,246 @@
     gap: 10px;
     margin-top: 6px;
 }
+
+
+/* ---------------------------------------------------------------------------
+   Import from Platform overlay
+   --------------------------------------------------------------------------- */
+
+.import-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 10010;
+    justify-content: center;
+    align-items: center;
+}
+
+.import-overlay.open {
+    display: flex;
+}
+
+.import-dialog {
+    background: var(--bg-primary, #1a1a2e);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+    border-radius: 10px;
+    padding: 24px 28px;
+    width: 94%;
+    max-width: 600px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+}
+
+.import-dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.import-dialog-header h3 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.import-close-btn {
+    background: none;
+    border: none;
+    color: var(--text-tertiary, #888);
+    font-size: 1.4rem;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+}
+
+.import-close-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255,255,255,0.06);
+}
+
+.import-subtitle {
+    font-size: 0.82rem;
+    color: var(--text-tertiary, #888);
+    margin: 0 0 16px;
+}
+
+#import-content {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 100px;
+}
+
+.import-empty {
+    text-align: center;
+    color: var(--text-tertiary, #888);
+    font-size: 0.88rem;
+    padding: 24px 0;
+}
+
+.import-error {
+    color: #f08080;
+    font-size: 0.88rem;
+    text-align: center;
+    padding: 16px 0;
+}
+
+.import-platform-group {
+    margin-bottom: 18px;
+}
+
+.import-platform-header {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.import-count {
+    font-weight: 400;
+    color: var(--text-tertiary, #888);
+    font-size: 0.8rem;
+}
+
+.import-platform-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.08);
+    color: var(--text-secondary);
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+    min-width: 28px;
+    text-align: center;
+}
+
+.import-badge-ib { background: rgba(55,130,245,0.15); color: #5ea0ff; }
+.import-badge-sf { background: rgba(245,140,55,0.15); color: #f5a040; }
+
+.import-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.import-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid transparent;
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.import-row:hover {
+    background: rgba(255,255,255,0.045);
+    border-color: rgba(255,255,255,0.06);
+}
+
+.import-row-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.import-title {
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.import-author {
+    font-size: 0.75rem;
+    color: var(--text-tertiary, #888);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.import-rating {
+    font-size: 0.68rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.06);
+    color: var(--text-tertiary, #888);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.import-btn {
+    flex-shrink: 0;
+}
+
+.import-btn.importing {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.import-btn.import-done {
+    background: rgba(70,180,100,0.15);
+    color: #6ddb8a;
+    border-color: rgba(70,180,100,0.25);
+    pointer-events: none;
+}
+
+.import-btn.import-error-btn {
+    background: rgba(220,50,50,0.12);
+    color: #f08080;
+    border-color: rgba(220,50,50,0.25);
+}
+
+.import-open-btn {
+    background: rgba(70,180,100,0.15);
+    color: #6ddb8a;
+    border: 1px solid rgba(70,180,100,0.25);
+    text-decoration: none;
+    flex-shrink: 0;
+}
+
+.import-open-btn:hover {
+    background: rgba(70,180,100,0.25);
+}
+
+.import-row-success {
+    background: rgba(70,180,100,0.05);
+    border-color: rgba(70,180,100,0.15);
+}
+
+.import-row-error {
+    font-size: 0.75rem;
+    color: #f08080;
+    margin-top: 4px;
+    width: 100%;
+}
+
+.import-coming-soon {
+    opacity: 0.5;
+}
+
+.import-coming-soon-label {
+    font-size: 0.82rem;
+    color: var(--text-tertiary, #888);
+    margin: 4px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}

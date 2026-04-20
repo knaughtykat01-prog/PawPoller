@@ -2446,3 +2446,147 @@ async def add_tag(req: AddTagRequest):
         "added_to": target_file.name,
         "category": target,
     }
+
+
+# ---------------------------------------------------------------------------
+# Import from platforms
+# ---------------------------------------------------------------------------
+
+# Platforms that support story import (code, label, content_type_filter)
+IMPORT_PLATFORMS = {
+    "ib": {"label": "Inkbunny", "filter_field": "type_name", "filter_value": "Writing"},
+    "sf": {"label": "SoFurry", "filter_field": "content_type", "filter_value": "story"},
+}
+
+# Platforms with placeholder "coming soon" status
+IMPORT_COMING_SOON = ["fa", "sqw", "ao3"]
+
+
+@editor_router.get("/import/available")
+async def list_importable():
+    """List submissions from all platforms that could be imported.
+
+    Cross-references polled submissions against existing story folders to
+    find submissions not yet in the local archive. Only includes writing/story
+    submissions (filters out artwork, music, etc.).
+    """
+    from database.db import get_connection
+    from database import queries as ib_queries
+    from database import sf_queries
+
+    archive = get_archive_path()
+
+    # Build a set of already-imported submission IDs per platform by scanning
+    # story.json files in the archive for import_source metadata.
+    imported: dict[str, set[str]] = {"ib": set(), "sf": set()}
+    if archive.is_dir():
+        for entry in archive.iterdir():
+            if not entry.is_dir() or entry.name.startswith("."):
+                continue
+            sj = entry / "story.json"
+            if sj.is_file():
+                try:
+                    data = json.loads(sj.read_text(encoding="utf-8"))
+                    src = data.get("import_source", {})
+                    plat = src.get("platform", "")
+                    sid = src.get("submission_id", "")
+                    if plat and sid and plat in imported:
+                        imported[plat].add(str(sid))
+                except Exception:
+                    pass
+
+    conn = get_connection()
+    result: list[dict] = []
+
+    try:
+        # --- Inkbunny ---
+        ib_subs = ib_queries.get_all_submissions(conn, sort_by="title", order="asc")
+        for sub in ib_subs:
+            # Only include writing submissions
+            type_name = (sub.get("type_name") or "").lower()
+            if "writing" not in type_name:
+                continue
+            sid = str(sub.get("submission_id", ""))
+            if sid in imported["ib"]:
+                continue
+            result.append({
+                "platform": "ib",
+                "platform_label": "Inkbunny",
+                "submission_id": sid,
+                "title": sub.get("title", ""),
+                "author": sub.get("username", ""),
+                "url": sub.get("url", f"https://inkbunny.net/s/{sid}"),
+                "word_count": 0,  # IB doesn't store word count in the DB
+                "rating": sub.get("rating_name", ""),
+                "thumbnail_url": sub.get("thumb_url", ""),
+            })
+
+        # --- SoFurry ---
+        sf_subs = sf_queries.get_all_sf_submissions(conn, sort_by="title", order="asc")
+        for sub in sf_subs:
+            content_type = (sub.get("content_type") or "").lower()
+            if content_type != "story":
+                continue
+            sid = str(sub.get("submission_id", ""))
+            if sid in imported["sf"]:
+                continue
+            result.append({
+                "platform": "sf",
+                "platform_label": "SoFurry",
+                "submission_id": sid,
+                "title": sub.get("title", ""),
+                "author": sub.get("username", ""),
+                "url": sub.get("link", f"https://sofurry.com/s/{sid}"),
+                "word_count": 0,
+                "rating": sub.get("rating", ""),
+                "thumbnail_url": sub.get("thumbnail_url", ""),
+            })
+    finally:
+        conn.close()
+
+    # Add coming-soon placeholders
+    coming_soon = [
+        {"platform": p, "label": p.upper()} for p in IMPORT_COMING_SOON
+    ]
+
+    return {
+        "ok": True,
+        "submissions": result,
+        "total": len(result),
+        "coming_soon": coming_soon,
+    }
+
+
+@editor_router.post("/import/{platform}/{submission_id}")
+async def import_submission(platform: str, submission_id: str):
+    """Import a single submission from a platform into the local archive.
+
+    Downloads the content, creates the folder structure, and generates
+    story.json from the submission metadata.
+    """
+    from posting.importer import import_from_inkbunny, import_from_sofurry
+
+    if platform not in IMPORT_PLATFORMS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Import not supported for platform: {platform}",
+        )
+
+    try:
+        if platform == "ib":
+            result = await import_from_inkbunny(submission_id)
+        elif platform == "sf":
+            result = await import_from_sofurry(submission_id)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.exception("Import failed for %s/%s", platform, submission_id)
+        raise HTTPException(status_code=500, detail=f"Import failed: {e}")
+
+    return {
+        "ok": True,
+        "story_name": result["story_name"],
+        "title": result["title"],
+    }

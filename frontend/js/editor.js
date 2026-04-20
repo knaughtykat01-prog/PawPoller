@@ -53,10 +53,24 @@ const Editor = {
                     <h2>Story Editor</h2>
                     <p class="subtitle">Select a story to edit MASTER.md and preview in all formats</p>
                 </div>
-                <div style="margin-bottom:16px">
+                <div style="margin-bottom:16px;display:flex;gap:10px">
                     <button class="btn btn-sm" id="create-story-btn">+ Create New Story</button>
+                    <button class="btn btn-sm btn-outline" id="import-story-btn">Import from Platform</button>
                 </div>
                 <div class="card-grid">${cards || '<p>No stories found in the archive.</p>'}</div>
+
+                <div class="import-overlay" id="import-overlay">
+                    <div class="import-dialog">
+                        <div class="import-dialog-header">
+                            <h3>Import from Platform</h3>
+                            <button class="import-close-btn" id="import-close-btn" title="Close">&times;</button>
+                        </div>
+                        <p class="import-subtitle">Import existing stories from your polled platforms into the local archive.</p>
+                        <div id="import-content">
+                            <div class="loading-spinner">Loading available submissions...</div>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="create-story-overlay" id="create-story-overlay">
                     <div class="create-story-dialog">
@@ -167,6 +181,22 @@ const Editor = {
                 if (e.key === 'Escape') overlay.classList.remove('open');
             });
 
+            // Bind import dialog
+            const importOverlay = document.getElementById('import-overlay');
+            document.getElementById('import-story-btn').addEventListener('click', () => {
+                importOverlay.classList.add('open');
+                Editor._loadImportable();
+            });
+            document.getElementById('import-close-btn').addEventListener('click', () => {
+                importOverlay.classList.remove('open');
+            });
+            importOverlay.addEventListener('click', (e) => {
+                if (e.target === importOverlay) importOverlay.classList.remove('open');
+            });
+            importOverlay.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') importOverlay.classList.remove('open');
+            });
+
         } catch (err) {
             App._setContent(`<div class="empty-state"><h3>Error loading stories</h3><p>${err.message}</p></div>`);
         }
@@ -220,6 +250,135 @@ const Editor = {
         } finally {
             submitBtn.disabled = false;
             submitBtn.textContent = 'Create';
+        }
+    },
+
+    // ---------------------------------------------------------------------------
+    // Import from platform
+    // ---------------------------------------------------------------------------
+
+    async _loadImportable() {
+        const container = document.getElementById('import-content');
+        container.innerHTML = '<div class="loading-spinner">Loading available submissions...</div>';
+
+        try {
+            const resp = await fetch('/api/editor/import/available');
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || 'Failed to load');
+
+            const subs = data.submissions || [];
+            const comingSoon = data.coming_soon || [];
+
+            if (subs.length === 0 && comingSoon.length === 0) {
+                container.innerHTML = '<p class="import-empty">No importable submissions found. Make sure your platforms have been polled at least once.</p>';
+                return;
+            }
+
+            // Group by platform
+            const grouped = {};
+            for (const s of subs) {
+                if (!grouped[s.platform]) grouped[s.platform] = { label: s.platform_label, items: [] };
+                grouped[s.platform].items.push(s);
+            }
+
+            // Platform icons (reuse existing platform badge classes if available)
+            const platformIcons = {
+                ib: 'IB', sf: 'SF', fa: 'FA', sqw: 'SQW', ao3: 'AO3',
+            };
+
+            let html = '';
+
+            for (const [plat, group] of Object.entries(grouped)) {
+                html += `<div class="import-platform-group">`;
+                html += `<h4 class="import-platform-header"><span class="import-platform-badge import-badge-${plat}">${platformIcons[plat] || plat.toUpperCase()}</span> ${Utils.escapeHtml(group.label)} <span class="import-count">(${group.items.length})</span></h4>`;
+                html += `<div class="import-list">`;
+                for (const s of group.items) {
+                    const ratingBadge = s.rating ? `<span class="import-rating">${Utils.escapeHtml(s.rating)}</span>` : '';
+                    html += `
+                        <div class="import-row" id="import-row-${plat}-${s.submission_id}">
+                            <div class="import-row-info">
+                                <span class="import-title">${Utils.escapeHtml(s.title || 'Untitled')}</span>
+                                ${ratingBadge}
+                                <span class="import-author">by ${Utils.escapeHtml(s.author || 'unknown')}</span>
+                            </div>
+                            <button class="btn btn-sm import-btn" data-platform="${plat}" data-id="${s.submission_id}" data-title="${Utils.escapeHtml(s.title)}">Import</button>
+                        </div>`;
+                }
+                html += `</div></div>`;
+            }
+
+            // Coming soon platforms
+            if (comingSoon.length > 0) {
+                html += `<div class="import-platform-group import-coming-soon">`;
+                html += `<h4 class="import-platform-header" style="opacity:0.5">Coming soon</h4>`;
+                for (const cs of comingSoon) {
+                    html += `<p class="import-coming-soon-label"><span class="import-platform-badge">${Utils.escapeHtml(cs.label)}</span> Import not yet available</p>`;
+                }
+                html += `</div>`;
+            }
+
+            container.innerHTML = html;
+
+            // Bind import buttons
+            container.querySelectorAll('.import-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const platform = btn.dataset.platform;
+                    const id = btn.dataset.id;
+                    Editor._doImport(platform, id, btn);
+                });
+            });
+
+        } catch (err) {
+            container.innerHTML = `<p class="import-error">Failed to load: ${Utils.escapeHtml(err.message)}</p>`;
+        }
+    },
+
+    async _doImport(platform, submissionId, btn) {
+        const row = document.getElementById(`import-row-${platform}-${submissionId}`);
+        btn.disabled = true;
+        btn.textContent = 'Importing...';
+        btn.classList.add('importing');
+
+        try {
+            const resp = await fetch(`/api/editor/import/${platform}/${submissionId}`, {
+                method: 'POST',
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || 'Import failed');
+
+            // Success — mark the row and offer navigation
+            btn.textContent = 'Done';
+            btn.classList.remove('importing');
+            btn.classList.add('import-done');
+
+            if (row) {
+                row.classList.add('import-row-success');
+                const link = document.createElement('a');
+                link.href = `#/editor/${data.story_name}`;
+                link.className = 'btn btn-sm import-open-btn';
+                link.textContent = 'Open';
+                link.addEventListener('click', () => {
+                    document.getElementById('import-overlay').classList.remove('open');
+                });
+                btn.replaceWith(link);
+            }
+
+        } catch (err) {
+            btn.disabled = false;
+            btn.textContent = 'Retry';
+            btn.classList.remove('importing');
+            btn.classList.add('import-error-btn');
+
+            // Show error message in row
+            if (row) {
+                let errEl = row.querySelector('.import-row-error');
+                if (!errEl) {
+                    errEl = document.createElement('div');
+                    errEl.className = 'import-row-error';
+                    row.appendChild(errEl);
+                }
+                errEl.textContent = err.message;
+            }
         }
     },
 
