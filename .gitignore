@@ -13,6 +13,8 @@ __pycache__/
 settings.json
 data/
 logs/
+.vault_key
+settings.vault.json
 
 # IDE
 .idea/
