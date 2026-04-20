@@ -463,7 +463,9 @@ const MetaEditor = {
                     <span>Per-Platform Tags</span>
                 </button>
                 <div class="metadata-section-body">
-                    <div class="metadata-tag-tabs" role="tablist">${tabs}</div>
+                    <div class="metadata-tag-tabs" role="tablist">${tabs}
+                        <button type="button" class="metadata-tag-fix-spaces" id="metadata-tag-fix-spaces" title="Replace spaces with underscores in Default tags">Fix spaces</button>
+                    </div>
                     <div class="metadata-tag-tab-body" id="metadata-tag-tab-body">
                         ${this._renderTagTabBody(this._activeTagPlatform)}
                     </div>
@@ -1039,8 +1041,53 @@ const MetaEditor = {
         return canonicalTag.replace(/_/g, ' ');
     },
 
+    _fixSpacesInTags() {
+        let fixed = 0;
+        const platforms = ['default', 'itaku'];
+        for (const p of platforms) {
+            const tags = this.metadata.tags[p];
+            if (!Array.isArray(tags)) continue;
+            for (let i = 0; i < tags.length; i++) {
+                if (tags[i].includes(' ')) {
+                    tags[i] = tags[i].replace(/\s+/g, '_');
+                    fixed++;
+                }
+            }
+        }
+        // Also fix chapter tags
+        const chapters = this.metadata.chapter_info || [];
+        for (const ch of chapters) {
+            if (!ch.tags) continue;
+            for (const p of platforms) {
+                const tags = ch.tags[p];
+                if (!Array.isArray(tags)) continue;
+                for (let i = 0; i < tags.length; i++) {
+                    if (tags[i].includes(' ')) {
+                        tags[i] = tags[i].replace(/\s+/g, '_');
+                        fixed++;
+                    }
+                }
+            }
+        }
+        if (fixed > 0) {
+            this._clearStatus();
+            this._rerenderTagTabBody();
+            this._setStatus(`Fixed ${fixed} tag(s) — spaces replaced with underscores`, 'success');
+        } else {
+            this._setStatus('No spaces found in tags', 'info');
+        }
+    },
+
+    _normalizeTagName(rawName, platform) {
+        let name = (rawName || '').trim();
+        if (platform === 'default' || platform === 'itaku') {
+            name = name.replace(/\s+/g, '_');
+        }
+        return name;
+    },
+
     _addTagToPlatform(platform, rawName) {
-        const name = (rawName || '').trim();
+        const name = this._normalizeTagName(rawName, platform);
         if (!name) return;
         const tags = this.metadata.tags[platform] || [];
         // Case-insensitive dedup
@@ -1111,7 +1158,7 @@ const MetaEditor = {
     // -----------------------------------------------------------------
 
     _addTagToChapter(chapterIdx, platform, rawName) {
-        const name = (rawName || '').trim();
+        const name = this._normalizeTagName(rawName, platform);
         if (!name) return;
         const entry = this._ensureChapterEntry(chapterIdx);
         if (!entry.tags || typeof entry.tags !== 'object') entry.tags = {};
@@ -1221,6 +1268,14 @@ const MetaEditor = {
         });
 
         input.addEventListener('input', () => {
+            if (platform === 'default' || platform === 'itaku') {
+                const pos = input.selectionStart;
+                const fixed = input.value.replace(/ /g, '_');
+                if (fixed !== input.value) {
+                    input.value = fixed;
+                    input.selectionStart = input.selectionEnd = pos;
+                }
+            }
             this._openDropdownFor(platform, input.value, storyContext);
         });
 
@@ -2196,6 +2251,11 @@ const MetaEditor = {
         // Initial tag body bindings (pills + input for active tab)
         this._bindTagTabBodyEvents();
 
+        // Fix spaces in default tags
+        document.getElementById('metadata-tag-fix-spaces')?.addEventListener('click', () => {
+            this._fixSpacesInTags();
+        });
+
         // Platform toggle checkboxes
         document.querySelectorAll('[data-platform-toggle]').forEach(cb => {
             cb.addEventListener('change', () => {
@@ -2650,6 +2710,14 @@ const MetaEditor = {
         });
 
         input.addEventListener('input', () => {
+            if (platform === 'default' || platform === 'itaku') {
+                const pos = input.selectionStart;
+                const fixed = input.value.replace(/ /g, '_');
+                if (fixed !== input.value) {
+                    input.value = fixed;
+                    input.selectionStart = input.selectionEnd = pos;
+                }
+            }
             this._openDropdownFor(platform, input.value, ctx);
         });
 

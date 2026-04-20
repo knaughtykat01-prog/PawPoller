@@ -935,6 +935,18 @@
     border-bottom-color: var(--accent);
 }
 
+.metadata-tag-fix-spaces {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+.metadata-tag-fix-spaces:hover { color: var(--accent); border-color: var(--accent); }
+
 .metadata-tag-tab-body {
     display: flex;
     flex-direction: column;
