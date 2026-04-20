@@ -1537,9 +1537,10 @@ const MetaEditor = {
             titlePrefix = `Browse Tags &mdash; Chapter ${bctx.chapterIdx}: ${this._escape(chTitle)}`;
         }
 
-        const chips = ['all', ...this._TAG_BROWSER_CATEGORIES].map(cat => {
+        const chipKeys = ['all', 'selected', ...this._TAG_BROWSER_CATEGORIES];
+        const chips = chipKeys.map(cat => {
             const active = (cat === 'all' && filters.size === 0) || filters.has(cat);
-            const label = cat === 'all' ? 'All' : (cat.charAt(0).toUpperCase() + cat.slice(1));
+            const label = cat === 'all' ? 'All' : cat === 'selected' ? 'Selected' : (cat.charAt(0).toUpperCase() + cat.slice(1));
             return `<button type="button" class="tag-browser-chip${active ? ' tag-browser-chip-active' : ''}" data-tb-filter="${this._escape(cat)}"><span class="tag-browser-chip-label">${this._escape(label)}</span> <span class="tag-browser-chip-count" data-tb-count="${this._escape(cat)}"></span></button>`;
         }).join('');
 
@@ -1611,7 +1612,15 @@ const MetaEditor = {
                 const cat = btn.getAttribute('data-tb-filter');
                 if (cat === 'all') {
                     this._tagBrowserFilters.clear();
+                } else if (cat === 'selected') {
+                    if (this._tagBrowserFilters.has('selected')) {
+                        this._tagBrowserFilters.clear();
+                    } else {
+                        this._tagBrowserFilters.clear();
+                        this._tagBrowserFilters.add('selected');
+                    }
                 } else {
+                    this._tagBrowserFilters.delete('selected');
                     if (this._tagBrowserFilters.has(cat)) {
                         this._tagBrowserFilters.delete(cat);
                     } else {
@@ -1646,7 +1655,12 @@ const MetaEditor = {
         const q = (this._tagBrowserQuery || '').toLowerCase().trim();
         const filters = this._tagBrowserFilters;
         const hasCat = filters.size > 0;
+        const isSelectedFilter = filters.has('selected');
         const { names } = this._tagDb;
+
+        const selectedSet = isSelectedFilter
+            ? new Set(this._tagBrowserTargetTags().map(t => t.toLowerCase()))
+            : null;
 
         // Ranking: exact match → prefix → substring → alphabetical (within buckets)
         const exact = [];
@@ -1655,7 +1669,9 @@ const MetaEditor = {
         const all = [];
 
         for (const entry of names) {
-            if (hasCat && !filters.has(entry.tag.category)) continue;
+            if (isSelectedFilter) {
+                if (!selectedSet.has(entry.lower)) continue;
+            } else if (hasCat && !filters.has(entry.tag.category)) continue;
             if (!q) {
                 all.push(entry.tag);
             } else if (entry.lower === q) {
@@ -1676,15 +1692,28 @@ const MetaEditor = {
             return a.name.localeCompare(b.name);
         };
 
+        let results;
         if (!q) {
             all.sort(sortByCatThenName);
-            return all;
+            results = all;
+        } else {
+            exact.sort(sortByCatThenName);
+            prefix.sort(sortByCatThenName);
+            substring.sort(sortByCatThenName);
+            results = [...exact, ...prefix, ...substring];
         }
-        // Bias each ranking bucket toward fiction first
-        exact.sort(sortByCatThenName);
-        prefix.sort(sortByCatThenName);
-        substring.sort(sortByCatThenName);
-        return [...exact, ...prefix, ...substring];
+
+        if (isSelectedFilter) {
+            const dbLower = new Set(results.map(t => t.name.toLowerCase()));
+            for (const t of this._tagBrowserTargetTags()) {
+                if (!dbLower.has(t.toLowerCase())) {
+                    if (!q || t.toLowerCase().includes(q)) {
+                        results.push({ name: t, desc: '', category: 'user' });
+                    }
+                }
+            }
+        }
+        return results;
     },
 
     _renderE621CardsBlock() {
@@ -1965,11 +1994,20 @@ const MetaEditor = {
         const root = document.getElementById('tag-browser-root');
         if (!root || !this._tagDb) return;
         const q = (this._tagBrowserQuery || '').toLowerCase().trim();
-        const counts = { all: 0, physical: 0, acts: 0, kink: 0, meta: 0, image: 0 };
+        const counts = { all: 0, selected: 0, physical: 0, acts: 0, kink: 0, meta: 0, image: 0 };
+        const selectedSet = new Set(this._tagBrowserTargetTags().map(t => t.toLowerCase()));
         for (const entry of this._tagDb.names) {
             if (q && !entry.lower.includes(q)) continue;
             counts.all += 1;
             if (counts[entry.tag.category] !== undefined) counts[entry.tag.category] += 1;
+            if (selectedSet.has(entry.lower)) counts.selected += 1;
+        }
+        // Also count selected tags not in the DB (user-added/arbitrary)
+        const dbNames = new Set(this._tagDb.names.map(e => e.lower));
+        for (const t of this._tagBrowserTargetTags()) {
+            if (!dbNames.has(t.toLowerCase()) && (!q || t.toLowerCase().includes(q))) {
+                counts.selected += 1;
+            }
         }
         root.querySelectorAll('[data-tb-count]').forEach(el => {
             const cat = el.getAttribute('data-tb-count');
