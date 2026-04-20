@@ -53,10 +53,141 @@ const Editor = {
                     <h2>Story Editor</h2>
                     <p class="subtitle">Select a story to edit MASTER.md and preview in all formats</p>
                 </div>
+                <div style="margin-bottom:16px">
+                    <button class="btn btn-sm" id="create-story-btn">+ Create New Story</button>
+                </div>
                 <div class="card-grid">${cards || '<p>No stories found in the archive.</p>'}</div>
+
+                <div class="create-story-overlay" id="create-story-overlay">
+                    <div class="create-story-dialog">
+                        <h3>Create New Story</h3>
+                        <label class="create-story-label">
+                            Title
+                            <input type="text" id="create-story-title" class="create-story-input" placeholder="My New Story" autocomplete="off">
+                        </label>
+                        <label class="create-story-label">
+                            Folder name
+                            <input type="text" id="create-story-name" class="create-story-input" placeholder="My_New_Story" autocomplete="off">
+                            <span class="create-story-hint">Letters, digits, and underscores only</span>
+                        </label>
+                        <label class="create-story-label">
+                            Author
+                            <input type="text" id="create-story-author" class="create-story-input" placeholder="Author name" autocomplete="off">
+                        </label>
+                        <div style="display:flex;gap:12px">
+                            <label class="create-story-label" style="flex:1">
+                                Chapters
+                                <select id="create-story-chapters" class="create-story-input">
+                                    ${Array.from({length: 20}, (_, i) => `<option value="${i+1}"${i === 0 ? ' selected' : ''}>${i+1}</option>`).join('')}
+                                </select>
+                            </label>
+                            <label class="create-story-label" style="flex:1">
+                                Rating
+                                <select id="create-story-rating" class="create-story-input">
+                                    <option value="general">General</option>
+                                    <option value="mature">Mature</option>
+                                    <option value="explicit" selected>Explicit</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div id="create-story-error" class="create-story-error" style="display:none"></div>
+                        <div class="create-story-actions">
+                            <button class="btn btn-sm btn-outline" id="create-story-cancel">Cancel</button>
+                            <button class="btn btn-sm" id="create-story-submit">Create</button>
+                        </div>
+                    </div>
+                </div>
             `);
+
+            // Bind create-story dialog
+            const overlay = document.getElementById('create-story-overlay');
+            const titleInput = document.getElementById('create-story-title');
+            const nameInput = document.getElementById('create-story-name');
+
+            document.getElementById('create-story-btn').addEventListener('click', () => {
+                overlay.classList.add('open');
+                titleInput.value = '';
+                nameInput.value = '';
+                document.getElementById('create-story-author').value = '';
+                document.getElementById('create-story-chapters').value = '1';
+                document.getElementById('create-story-rating').value = 'explicit';
+                document.getElementById('create-story-error').style.display = 'none';
+                titleInput.focus();
+            });
+
+            // Auto-generate folder name from title
+            titleInput.addEventListener('input', () => {
+                nameInput.value = titleInput.value.trim().replace(/[^A-Za-z0-9_ ]/g, '').replace(/ +/g, '_');
+            });
+
+            document.getElementById('create-story-cancel').addEventListener('click', () => {
+                overlay.classList.remove('open');
+            });
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) overlay.classList.remove('open');
+            });
+
+            document.getElementById('create-story-submit').addEventListener('click', () => {
+                Editor._submitCreateStory();
+            });
+            // Enter key submits
+            overlay.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); Editor._submitCreateStory(); }
+                if (e.key === 'Escape') overlay.classList.remove('open');
+            });
+
         } catch (err) {
             App._setContent(`<div class="empty-state"><h3>Error loading stories</h3><p>${err.message}</p></div>`);
+        }
+    },
+
+    async _submitCreateStory() {
+        const errEl = document.getElementById('create-story-error');
+        const name = (document.getElementById('create-story-name').value || '').trim();
+        const title = (document.getElementById('create-story-title').value || '').trim();
+        const author = (document.getElementById('create-story-author').value || '').trim();
+        const chapters = parseInt(document.getElementById('create-story-chapters').value, 10) || 1;
+        const rating = document.getElementById('create-story-rating').value || 'explicit';
+
+        if (!title) {
+            errEl.textContent = 'Title is required.';
+            errEl.style.display = 'block';
+            return;
+        }
+        if (!name) {
+            errEl.textContent = 'Folder name is required.';
+            errEl.style.display = 'block';
+            return;
+        }
+        if (!/^[A-Za-z0-9_]+$/.test(name)) {
+            errEl.textContent = 'Folder name may only contain letters, digits, and underscores.';
+            errEl.style.display = 'block';
+            return;
+        }
+
+        const submitBtn = document.getElementById('create-story-submit');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Creating...';
+        errEl.style.display = 'none';
+
+        try {
+            const resp = await fetch('/api/editor/stories/create', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name, title, author, chapters, rating }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                throw new Error(data.detail || 'Failed to create story');
+            }
+            document.getElementById('create-story-overlay').classList.remove('open');
+            location.hash = '#/editor/' + data.story_name;
+        } catch (err) {
+            errEl.textContent = err.message;
+            errEl.style.display = 'block';
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Create';
         }
     },
 
