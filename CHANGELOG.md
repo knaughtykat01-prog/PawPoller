@@ -4,6 +4,39 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.12.2] - 2026-04-19
+
+### Added -- Post scheduling in Publish Check
+
+Added the ability to schedule publish/update actions for a future
+date/time directly from the Publish Check matrix. The posting scheduler
+daemon (already running) picks up scheduled items when the time arrives.
+
+- **`routes/editor_api.py`**: Three new endpoints under
+  `/api/editor/stories/{name}/`:
+  - `POST /schedule` — validates story/platform/chapter, checks the
+    scheduled time is in the future, runs poster validation, then
+    inserts into `posting_queue` with `scheduled_at`. Returns queue_id
+    and confirmed schedule time.
+  - `GET /scheduled` — returns all pending/processing queue items for
+    the story.
+  - `DELETE /scheduled/{queue_id}` — cancels a pending scheduled item
+    (verifies ownership by story name first).
+- **`frontend/js/publish_check.js`**: Added "Schedule" button next to
+  Post/Update in `_renderActionPanel()`. Clicking it reveals an inline
+  `datetime-local` picker (defaults to 1 hour from now, rounded to next
+  5 minutes). "Confirm schedule" submits to `/schedule`. The detail
+  panel now loads and displays any pending scheduled items for the
+  selected cell with per-item Cancel buttons.
+- **`frontend/css/editor.css`**: Added Phase 6f schedule styles:
+  `.schedule-form`, `.schedule-datetime`, `.schedule-pending`,
+  `.schedule-pending-item`, `.schedule-cancel-btn` and related classes.
+- **No scheduler changes needed** — `posting/scheduler.py` already
+  processes the `posting_queue` table, checking `scheduled_at` against
+  `datetime('now')` each cycle.
+
+---
+
 ## [2.12.1] - 2026-04-19
 
 ### Added -- Create New Story wizard in Story Editor

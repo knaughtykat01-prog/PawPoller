@@ -445,6 +445,8 @@ window.PublishCheck = (function () {
             // Re-post creates a brand new submission (goes through post, not edit)
             html += '<button class="btn btn-sm btn-primary" data-publish-action="post">' +
                 'Re-post to ' + _escape(platName) + '</button>';
+            html += '<button class="btn btn-sm btn-outline" data-schedule-action="post">' +
+                'Schedule</button>';
         } else if (isPosted) {
             const updateClass = isDrifted ? 'btn btn-sm btn-primary' : 'btn btn-sm';
             html += '<button class="' + updateClass + '" data-publish-action="update"' +
@@ -454,6 +456,10 @@ window.PublishCheck = (function () {
             html += '<button class="btn btn-sm btn-outline" data-publish-action="update_metadata"' +
                 (canEdit ? '' : ' disabled title="Platform does not support edit"') + '>' +
                 'Metadata only</button>';
+            if (canEdit && isDrifted) {
+                html += '<button class="btn btn-sm btn-outline" data-schedule-action="update">' +
+                    'Schedule update</button>';
+            }
             if (cell.existing && cell.existing.external_url) {
                 html += '<a class="btn btn-sm btn-outline" href="' +
                     _escape(cell.existing.external_url) +
@@ -462,9 +468,26 @@ window.PublishCheck = (function () {
         } else if (isReady) {
             html += '<button class="btn btn-sm btn-primary" data-publish-action="post">' +
                 'Post to ' + _escape(platName) + '</button>';
+            html += '<button class="btn btn-sm btn-outline" data-schedule-action="post">' +
+                'Schedule</button>';
         }
 
         html += '</div>';
+
+        // Inline schedule form (hidden by default)
+        html += '<div class="schedule-form" id="schedule-form" style="display:none">';
+        html += '<div class="schedule-form-inner">';
+        html += '<label class="schedule-label">Schedule for:</label>';
+        html += '<input type="datetime-local" class="schedule-datetime" id="schedule-datetime">';
+        html += '<div class="schedule-form-actions">';
+        html += '<button class="btn btn-sm btn-primary" id="schedule-confirm">Confirm schedule</button>';
+        html += '<button class="btn btn-sm btn-outline" id="schedule-cancel-form">Cancel</button>';
+        html += '</div>';
+        html += '</div></div>';
+
+        // Scheduled items for this cell
+        html += '<div class="schedule-pending" id="schedule-pending"></div>';
+
         html += '<div class="publish-action-result" id="publish-action-result"></div>';
         html += '</div>';
         return html;
@@ -486,6 +509,46 @@ window.PublishCheck = (function () {
                 liveBanner.style.display = draftCb.checked ? 'none' : '';
             });
         }
+
+        // Schedule buttons — toggle inline form
+        const schedForm = document.getElementById('schedule-form');
+        const schedDatetime = document.getElementById('schedule-datetime');
+        const schedConfirm = document.getElementById('schedule-confirm');
+        const schedCancelForm = document.getElementById('schedule-cancel-form');
+        let _scheduleAction = 'post';
+
+        detail.querySelectorAll('[data-schedule-action]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                _scheduleAction = btn.dataset.scheduleAction;
+                if (schedForm) {
+                    schedForm.style.display = '';
+                    // Default to 1 hour from now, rounded to next 5 minutes
+                    const d = new Date(Date.now() + 3600000);
+                    d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
+                    if (schedDatetime) {
+                        schedDatetime.value = _toLocalISOString(d);
+                        schedDatetime.focus();
+                    }
+                }
+            });
+        });
+
+        if (schedCancelForm) {
+            schedCancelForm.addEventListener('click', () => {
+                if (schedForm) schedForm.style.display = 'none';
+            });
+        }
+
+        if (schedConfirm) {
+            schedConfirm.addEventListener('click', () => {
+                const val = schedDatetime ? schedDatetime.value : '';
+                if (!val) { alert('Pick a date and time.'); return; }
+                _submitSchedule(_scheduleAction, platId, platName, chIdx, chTitle, val);
+            });
+        }
+
+        // Load any scheduled items for this cell
+        _loadScheduledItems(platId, chIdx);
     }
 
     async function _executeAction(action, platId, platName, chIdx, chTitle) {
@@ -980,6 +1043,154 @@ window.PublishCheck = (function () {
             ' — <span class="stat-ready">' + ok + ' succeeded</span>' +
             (fail ? ', <span class="stat-blocked">' + fail + ' failed</span>' : '') +
             (skip ? ', ' + skip + ' cancelled' : '');
+    }
+
+    // ── Phase 6f: Scheduling helpers ────────────────────────────
+
+    function _toLocalISOString(date) {
+        // Format as YYYY-MM-DDTHH:MM for datetime-local input
+        const pad = n => String(n).padStart(2, '0');
+        return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' +
+            pad(date.getDate()) + 'T' + pad(date.getHours()) + ':' +
+            pad(date.getMinutes());
+    }
+
+    async function _submitSchedule(action, platId, platName, chIdx, chTitle, datetimeLocalVal) {
+        const storyName = _currentStory;
+        if (!storyName) return;
+
+        const draftCb = document.getElementById('publish-opt-draft');
+        const draft = draftCb ? draftCb.checked : true;
+        const resultBox = document.getElementById('publish-action-result');
+
+        // Convert local datetime-local value to ISO 8601 with timezone
+        const localDate = new Date(datetimeLocalVal);
+        if (isNaN(localDate.getTime())) {
+            if (resultBox) {
+                resultBox.innerHTML = '<div class="publish-action-error">Invalid date/time.</div>';
+            }
+            return;
+        }
+        const isoStr = localDate.toISOString();
+
+        if (resultBox) {
+            resultBox.innerHTML = '<div class="publish-action-loading">Scheduling...</div>';
+        }
+
+        try {
+            const resp = await fetch(
+                '/api/editor/stories/' + encodeURIComponent(storyName) + '/schedule',
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        platform: platId,
+                        chapter: chIdx,
+                        action: action,
+                        scheduled_at: isoStr,
+                        draft: draft,
+                    }),
+                }
+            );
+            const data = await resp.json();
+            if (!resp.ok) {
+                throw new Error(data.detail || 'HTTP ' + resp.status);
+            }
+            if (resultBox) {
+                const when = new Date(data.scheduled_at + 'Z');
+                resultBox.innerHTML =
+                    '<div class="publish-action-success">' +
+                    '<strong>Scheduled!</strong> ' +
+                    _escape(action) + ' to ' + _escape(platName) +
+                    ' at ' + when.toLocaleString() +
+                    ' (queue #' + data.queue_id + ')' +
+                    '</div>';
+            }
+            // Hide the form
+            const schedForm = document.getElementById('schedule-form');
+            if (schedForm) schedForm.style.display = 'none';
+
+            // Refresh the scheduled items list
+            _loadScheduledItems(platId, chIdx);
+
+            _logAction('schedule', platName, chTitle || 'Full story', { ok: true });
+        } catch (e) {
+            if (resultBox) {
+                resultBox.innerHTML =
+                    '<div class="publish-action-error">Schedule failed: ' +
+                    _escape(e.message) + '</div>';
+            }
+            _logAction('schedule', platName, chTitle || 'Full story', { ok: false, error: e.message });
+        }
+    }
+
+    async function _loadScheduledItems(platId, chIdx) {
+        const container = document.getElementById('schedule-pending');
+        if (!container) return;
+        const storyName = _currentStory;
+        if (!storyName) return;
+
+        try {
+            const resp = await fetch(
+                '/api/editor/stories/' + encodeURIComponent(storyName) + '/scheduled'
+            );
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            // Filter to items matching this cell
+            const items = (data.items || []).filter(
+                i => i.platform === platId && i.chapter_index === chIdx
+            );
+
+            if (!items.length) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let html = '<div class="schedule-pending-header">Scheduled:</div>';
+            for (const item of items) {
+                const when = item.scheduled_at
+                    ? new Date(item.scheduled_at + 'Z').toLocaleString()
+                    : 'Immediate';
+                const statusCls = item.status === 'processing' ? 'schedule-processing' : '';
+                html += '<div class="schedule-pending-item ' + statusCls + '">' +
+                    '<span class="schedule-pending-icon">&#128340;</span> ' +
+                    _escape(item.action) + ' — ' + when +
+                    ' <span class="schedule-pending-status">(' + _escape(item.status) + ')</span>';
+                if (item.status === 'pending') {
+                    html += ' <button class="btn btn-xs btn-outline schedule-cancel-btn" ' +
+                        'data-queue-id="' + item.queue_id + '">Cancel</button>';
+                }
+                html += '</div>';
+            }
+            container.innerHTML = html;
+
+            // Bind cancel buttons
+            container.querySelectorAll('.schedule-cancel-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const queueId = btn.dataset.queueId;
+                    btn.disabled = true;
+                    btn.textContent = '...';
+                    try {
+                        const resp = await fetch(
+                            '/api/editor/stories/' + encodeURIComponent(storyName) +
+                            '/scheduled/' + queueId,
+                            { method: 'DELETE' }
+                        );
+                        if (!resp.ok) {
+                            const d = await resp.json();
+                            throw new Error(d.detail || 'HTTP ' + resp.status);
+                        }
+                        _loadScheduledItems(platId, chIdx);
+                    } catch (e) {
+                        btn.textContent = 'Error';
+                        setTimeout(() => { btn.textContent = 'Cancel'; btn.disabled = false; }, 2000);
+                    }
+                });
+            });
+        } catch (e) {
+            // Silently fail — scheduled display is supplementary
+        }
     }
 
     return { open, close };

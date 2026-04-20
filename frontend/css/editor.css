@@ -2558,6 +2558,92 @@
     font-size: 11px;
 }
 
+/* Phase 6f — Schedule publish */
+
+.schedule-form {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: rgba(100, 140, 200, 0.1);
+    border: 1px solid rgba(100, 140, 200, 0.25);
+    border-radius: 6px;
+}
+
+.schedule-form-inner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.schedule-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.schedule-datetime {
+    font-size: 13px;
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: inherit;
+}
+
+.schedule-datetime:focus {
+    outline: none;
+    border-color: var(--accent, #69c);
+    box-shadow: 0 0 0 2px rgba(100, 150, 200, 0.2);
+}
+
+.schedule-form-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.schedule-pending {
+    margin-top: 8px;
+}
+
+.schedule-pending-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.schedule-pending-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    background: rgba(100, 140, 200, 0.08);
+    border-radius: 4px;
+    margin-bottom: 3px;
+}
+
+.schedule-pending-item.schedule-processing {
+    background: rgba(200, 180, 50, 0.12);
+    border-left: 2px solid #db4;
+}
+
+.schedule-pending-icon {
+    flex-shrink: 0;
+}
+
+.schedule-pending-status {
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.schedule-cancel-btn {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
 /* Phase 6d — Bulk publish */
 
 .bulk-col { width: 40px; text-align: center; }

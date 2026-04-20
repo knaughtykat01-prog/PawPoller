@@ -1120,6 +1120,159 @@ async def publish(story_name: str, req: PublishRequest):
     }
 
 
+# ---------------------------------------------------------------------------
+# Scheduling (Phase 6f — deferred publish via posting_queue)
+# ---------------------------------------------------------------------------
+
+class ScheduleRequest(BaseModel):
+    platform: str                 # 'sf', 'ib', 'fa', etc.
+    chapter: int                  # 0 = full story; 1+ = specific chapter
+    action: str = "post"          # 'post' | 'update'
+    scheduled_at: str             # ISO 8601 datetime string
+    draft: bool = True
+
+
+@editor_router.post("/stories/{story_name:path}/schedule")
+async def schedule_publish(story_name: str, req: ScheduleRequest):
+    """Schedule a post/update for a future date/time.
+
+    Validates the story exists and the platform/chapter is valid, then
+    inserts a row into the posting_queue with a scheduled_at timestamp.
+    The posting scheduler daemon picks it up when the time arrives.
+    """
+    from datetime import datetime, timezone
+    from posting import story_reader, manager
+    from database.db import get_connection
+    from database import posting_queries
+
+    story_dir = _resolve_story_dir(story_name)
+    canonical = str(story_dir.relative_to(get_archive_path()))
+
+    if req.action not in ("post", "update"):
+        raise HTTPException(status_code=400, detail=f"Schedulable actions: post, update (got '{req.action}')")
+
+    # Validate the scheduled time
+    try:
+        scheduled_dt = datetime.fromisoformat(req.scheduled_at)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid datetime format — use ISO 8601")
+
+    # Ensure the time is in the future (with 30s grace for clock skew)
+    now = datetime.now(timezone.utc)
+    if scheduled_dt.tzinfo is None:
+        # Treat naive datetimes as UTC
+        scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
+    if (scheduled_dt - now).total_seconds() < -30:
+        raise HTTPException(status_code=400, detail="Scheduled time must be in the future")
+
+    # Validate story + platform + chapter
+    try:
+        story = story_reader.load_story(canonical)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Story not found: {e}")
+
+    try:
+        poster = manager._get_poster(req.platform)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Unknown platform: {e}")
+
+    try:
+        package = story_reader.build_package(story, req.chapter, req.platform)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Package build failed: {e}")
+
+    errors = poster.validate(package)
+    if errors:
+        raise HTTPException(status_code=400, detail=f"Validation errors: {'; '.join(errors)}")
+
+    # Format scheduled_at as UTC string for SQLite
+    scheduled_str = scheduled_dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    # Determine runtime requirement from the poster
+    requires = getattr(poster, "requires_mode", "any")
+
+    conn = get_connection()
+    try:
+        queue_id = posting_queries.add_to_queue(
+            conn,
+            canonical,
+            req.chapter,
+            req.platform,
+            action=req.action,
+            scheduled_at=scheduled_str,
+            requires=requires,
+        )
+    finally:
+        conn.close()
+
+    logger.info(
+        "Scheduled queue item #%d: %s %s ch%d on %s at %s",
+        queue_id, req.action, canonical, req.chapter, req.platform, scheduled_str,
+    )
+
+    return {
+        "ok": True,
+        "queue_id": queue_id,
+        "scheduled_at": scheduled_str,
+        "action": req.action,
+        "platform": req.platform,
+        "chapter": req.chapter,
+    }
+
+
+@editor_router.get("/stories/{story_name:path}/scheduled")
+async def get_scheduled(story_name: str):
+    """Return pending/scheduled queue items for this story."""
+    from database.db import get_connection
+    from database import posting_queries
+
+    story_dir = _resolve_story_dir(story_name)
+    canonical = str(story_dir.relative_to(get_archive_path()))
+
+    conn = get_connection()
+    try:
+        items = posting_queries.get_queue(conn, include_completed=False, story_name=canonical)
+    finally:
+        conn.close()
+
+    return {
+        "ok": True,
+        "items": items,
+    }
+
+
+@editor_router.delete("/stories/{story_name:path}/scheduled/{queue_id:int}")
+async def cancel_scheduled(story_name: str, queue_id: int):
+    """Cancel a pending scheduled queue item."""
+    from database.db import get_connection
+    from database import posting_queries
+
+    # Validate story exists (prevents arbitrary queue_id cancellation)
+    story_dir = _resolve_story_dir(story_name)
+    canonical = str(story_dir.relative_to(get_archive_path()))
+
+    conn = get_connection()
+    try:
+        # Verify the queue item belongs to this story
+        items = posting_queries.get_queue(conn, include_completed=False, story_name=canonical)
+        matching = [i for i in items if i["queue_id"] == queue_id]
+        if not matching:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Queue item #{queue_id} not found for story '{canonical}'",
+            )
+        ok = posting_queries.cancel_queue_item(conn, queue_id)
+    finally:
+        conn.close()
+
+    if not ok:
+        raise HTTPException(status_code=409, detail="Item is no longer pending (may have already been processed)")
+
+    logger.info("Cancelled scheduled queue item #%d for %s", queue_id, canonical)
+
+    return {"ok": True, "queue_id": queue_id}
+
+
 class ThemeSaveRequest(BaseModel):
     variables: dict
 
