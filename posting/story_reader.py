@@ -77,6 +77,7 @@ class StoryInfo:
     chapter_descriptions: dict[int, str]             # chapter_index → description
     title: str = ""                                   # display title from story.json (falls back to name.replace('_', ' '))
     summary: str = ""                                 # detailed summary (SUMMARY section, for SQW/AO3)
+    descriptions: dict[str, str] = None               # per-platform overrides: short, announcement
     thumbnail_path: str | None = None                 # full-series thumbnail
     chapter_thumbnails: dict[int, str] = None         # chapter_index → thumbnail path
     # OTW Archive / SQW / AO3 metadata fields (used by SquidgeWorld poster)
@@ -90,6 +91,8 @@ class StoryInfo:
     work_skin_path: Path | None = None                # path to Work_Skin.css if present
 
     def __post_init__(self):
+        if self.descriptions is None:
+            self.descriptions = {}
         if self.chapter_thumbnails is None:
             self.chapter_thumbnails = {}
         if self.categories is None:
@@ -457,6 +460,7 @@ def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) ->
         chapter_descriptions=chapter_descriptions,
         title=data.get("title", ""),
         summary=data.get("summary", ""),
+        descriptions=data.get("descriptions", {}),
         thumbnail_path=thumbnail_path,
         chapter_thumbnails=chapter_thumbnails,
         rating=data.get("rating", ""),
@@ -571,16 +575,26 @@ def build_package(
     else:
         title = base_title
 
-    # Description — platform-specific selection:
+    # Description — platform-specific selection with per-platform overrides:
     #   SQW/AO3: use detailed summary (SUMMARY section) for work-level, chapter desc for chapters
-    #   FA: use per-chapter description (DESCRIPTION under each PART section)
-    #   IB/SF/WS/BSKY: use short blurb (STORY DESCRIPTION)
+    #   IB/SF/FA/WS: use descriptions.short if set, else short blurb (STORY DESCRIPTION)
+    #   BSKY: use descriptions.announcement if set, else truncated description (300 chars)
+    descs = story.descriptions or {}
     if description_override:
         description = description_override
     elif chapter_index > 0 and chapter_index in story.chapter_descriptions:
         description = story.chapter_descriptions[chapter_index]
     elif platform in ("sqw", "ao3") and story.summary:
         description = story.summary
+    elif platform == "bsky":
+        announcement = descs.get("announcement", "").strip()
+        if announcement:
+            description = announcement
+        else:
+            description = (story.description or "")[:300]
+    elif platform in ("ib", "sf", "fa", "ws"):
+        short = descs.get("short", "").strip()
+        description = short if short else story.description
     else:
         description = story.description
 

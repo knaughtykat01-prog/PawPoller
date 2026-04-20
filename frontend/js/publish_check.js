@@ -627,6 +627,8 @@ window.PublishCheck = (function () {
                     if (r.queued_desktop) {
                         html += '<div>Queued for desktop (server unable to post). ' +
                             'Open desktop PawPoller to flush queue.</div>';
+                    } else if (r.retry_queued) {
+                        html += '<div>Will retry automatically with backoff.</div>';
                     }
                     if (r.error) {
                         html += '<div class="publish-action-error-msg">' +

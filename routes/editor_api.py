@@ -42,6 +42,7 @@ class PreviewRequest(BaseModel):
 
 class RegenerateRequest(BaseModel):
     skip_pdf: bool = False  # WeasyPrint is fast enough to be on by default
+    formats: list[str] | None = None  # None = all, or subset of: html, bbcode, styled, sqw, pdf, chapters
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +306,9 @@ async def regenerate(story_name: str, req: RegenerateRequest):
     results: list[str] = []
     errors: list[str] = []
 
+    # Format selector: None = generate everything, or a subset list
+    should_gen = lambda fmt: req.formats is None or fmt in req.formats
+
     stem = story_dir.name
     html_dir = story_dir / "HTML"
     bb_dir = story_dir / "BBCode"
@@ -312,109 +316,114 @@ async def regenerate(story_name: str, req: RegenerateRequest):
     bb_dir.mkdir(exist_ok=True)
 
     # --- Full-story Clean HTML ---
-    try:
-        html_result = convert(content, "clean_html")
-        (html_dir / f"{stem}_Clean.html").write_text(html_result.output, encoding="utf-8")
-        results.append(f"HTML/{stem}_Clean.html ({len(html_result.output):,} bytes)")
-    except Exception as e:
-        errors.append(f"Clean HTML: {e}")
+    if should_gen("html"):
+        try:
+            html_result = convert(content, "clean_html")
+            (html_dir / f"{stem}_Clean.html").write_text(html_result.output, encoding="utf-8")
+            results.append(f"HTML/{stem}_Clean.html ({len(html_result.output):,} bytes)")
+        except Exception as e:
+            errors.append(f"Clean HTML: {e}")
 
     # --- Full-story SoFurry HTML ---
-    try:
-        sf_result = convert(content, "sofurry_html")
-        (html_dir / f"{stem}_SoFurry.html").write_text(sf_result.output, encoding="utf-8")
-        results.append(f"HTML/{stem}_SoFurry.html ({len(sf_result.output):,} bytes)")
-    except Exception as e:
-        errors.append(f"SoFurry HTML: {e}")
+    if should_gen("html"):
+        try:
+            sf_result = convert(content, "sofurry_html")
+            (html_dir / f"{stem}_SoFurry.html").write_text(sf_result.output, encoding="utf-8")
+            results.append(f"HTML/{stem}_SoFurry.html ({len(sf_result.output):,} bytes)")
+        except Exception as e:
+            errors.append(f"SoFurry HTML: {e}")
 
     # --- Full-story BBCode ---
-    try:
-        bb_result = convert(content, "bbcode")
-        (bb_dir / f"{stem}_bbcode.txt").write_text(bb_result.output, encoding="utf-8")
-        results.append(f"BBCode/{stem}_bbcode.txt ({len(bb_result.output):,} bytes)")
-    except Exception as e:
-        errors.append(f"BBCode: {e}")
+    if should_gen("bbcode"):
+        try:
+            bb_result = convert(content, "bbcode")
+            (bb_dir / f"{stem}_bbcode.txt").write_text(bb_result.output, encoding="utf-8")
+            results.append(f"BBCode/{stem}_bbcode.txt ({len(bb_result.output):,} bytes)")
+        except Exception as e:
+            errors.append(f"BBCode: {e}")
 
     # --- SquidgeWorld chapters (from anchored source) ---
-    try:
-        from editor.converter import convert_to_sqw_chapters
-        # Read warning icon from CHAPTER_STYLING.md if available
-        warning_icon = "&#9888;"  # default
-        styling_path = story_dir / "CHAPTER_STYLING.md"
-        if styling_path.is_file():
-            styling_text = styling_path.read_text(encoding="utf-8")
-            icon_m = re.search(r"Warning icon.*?`(&#\d+;)`", styling_text, re.IGNORECASE)
-            if icon_m:
-                warning_icon = icon_m.group(1)
+    if should_gen("sqw"):
+        try:
+            from editor.converter import convert_to_sqw_chapters
+            # Read warning icon from CHAPTER_STYLING.md if available
+            warning_icon = "&#9888;"  # default
+            styling_path = story_dir / "CHAPTER_STYLING.md"
+            if styling_path.is_file():
+                styling_text = styling_path.read_text(encoding="utf-8")
+                icon_m = re.search(r"Warning icon.*?`(&#\d+;)`", styling_text, re.IGNORECASE)
+                if icon_m:
+                    warning_icon = icon_m.group(1)
 
-        sqw_chapters = convert_to_sqw_chapters(content, warning_icon=warning_icon)
-        if sqw_chapters:
-            sqw_dir = story_dir / "SquidgeWorld"
-            sqw_dir.mkdir(exist_ok=True)
-            for ch_result in sqw_chapters:
-                ch_idx = ch_result.stats["chapter_index"]
-                ch_title = ch_result.stats["chapter_title"]
-                ch_title_safe = re.sub(r"^(Chapter|Part|Prelude|Epilogue)\s*\d*:?\s*", "", ch_title).strip()
-                ch_title_safe = re.sub(r"[^\w\s()-]", "", ch_title_safe).replace(" ", "_")
-                ch_filename = f"Chapter_{ch_idx + 1}_{ch_title_safe}.html"
-                (sqw_dir / ch_filename).write_text(ch_result.output, encoding="utf-8")
-            results.append(f"SquidgeWorld: {len(sqw_chapters)} chapters generated")
-    except Exception as e:
-        errors.append(f"SquidgeWorld: {e}")
+            sqw_chapters = convert_to_sqw_chapters(content, warning_icon=warning_icon)
+            if sqw_chapters:
+                sqw_dir = story_dir / "SquidgeWorld"
+                sqw_dir.mkdir(exist_ok=True)
+                for ch_result in sqw_chapters:
+                    ch_idx = ch_result.stats["chapter_index"]
+                    ch_title = ch_result.stats["chapter_title"]
+                    ch_title_safe = re.sub(r"^(Chapter|Part|Prelude|Epilogue)\s*\d*:?\s*", "", ch_title).strip()
+                    ch_title_safe = re.sub(r"[^\w\s()-]", "", ch_title_safe).replace(" ", "_")
+                    ch_filename = f"Chapter_{ch_idx + 1}_{ch_title_safe}.html"
+                    (sqw_dir / ch_filename).write_text(ch_result.output, encoding="utf-8")
+                results.append(f"SquidgeWorld: {len(sqw_chapters)} chapters generated")
+        except Exception as e:
+            errors.append(f"SquidgeWorld: {e}")
 
     # --- Styled HTML (full + chapters + CSS) ---
-    try:
-        from editor.converter import (
-            convert_to_styled_html_external_css, generate_styled_css,
-            parse_chapter_styling,
-        )
-        archive = get_archive_path()
-        template_path = archive / "Reference_Guides" / "Styling" / "HTML_CSS" / "STYLING_REFERENCE.md"
-        styling_path = story_dir / "CHAPTER_STYLING.md"
-
-        if template_path.is_file() and styling_path.is_file():
-            theme = parse_chapter_styling(styling_path.read_text(encoding="utf-8"))
-            template = template_path.read_text(encoding="utf-8")
-
-            # CSS
-            css = generate_styled_css(theme, template)
-            (html_dir / "style.css").write_text(css, encoding="utf-8")
-
-            ch_styled_dir = story_dir / "Chapters" / "Styled_HTML"
-            if ch_styled_dir.is_dir():
-                (ch_styled_dir / "style.css").write_text(css, encoding="utf-8")
-
-            # Full story
-            full_result = convert_to_styled_html_external_css(
-                content, theme, template, mode="full", css_href="style.css"
+    if should_gen("styled"):
+        try:
+            from editor.converter import (
+                convert_to_styled_html_external_css, generate_styled_css,
+                parse_chapter_styling,
             )
-            if full_result.full_story:
-                (html_dir / f"{stem}_Styled.html").write_text(
-                    full_result.full_story.output, encoding="utf-8"
+            archive = get_archive_path()
+            template_path = archive / "Reference_Guides" / "Styling" / "HTML_CSS" / "STYLING_REFERENCE.md"
+            styling_path = story_dir / "CHAPTER_STYLING.md"
+
+            if template_path.is_file() and styling_path.is_file():
+                theme = parse_chapter_styling(styling_path.read_text(encoding="utf-8"))
+                template = template_path.read_text(encoding="utf-8")
+
+                # CSS
+                css = generate_styled_css(theme, template)
+                (html_dir / "style.css").write_text(css, encoding="utf-8")
+
+                ch_styled_dir = story_dir / "Chapters" / "Styled_HTML"
+                if ch_styled_dir.is_dir():
+                    (ch_styled_dir / "style.css").write_text(css, encoding="utf-8")
+
+                # Full story
+                full_result = convert_to_styled_html_external_css(
+                    content, theme, template, mode="full", css_href="style.css"
                 )
-                results.append(f"HTML/{stem}_Styled.html ({len(full_result.full_story.output):,} bytes)")
+                if full_result.full_story:
+                    (html_dir / f"{stem}_Styled.html").write_text(
+                        full_result.full_story.output, encoding="utf-8"
+                    )
+                    results.append(f"HTML/{stem}_Styled.html ({len(full_result.full_story.output):,} bytes)")
 
-            # Per-chapter styled HTML
-            ch_result = convert_to_styled_html_external_css(
-                content, theme, template, mode="chapters", css_href="style.css"
-            )
-            if ch_result.chapters:
-                ch_styled_dir.mkdir(parents=True, exist_ok=True)
-                for ch_r in ch_result.chapters:
-                    ch_title = ch_r.stats.get("chapter_title", "")
-                    ch_title_safe = re.sub(
-                        r"^(Chapter|Part|Prelude|Epilogue)\s*\d*:?\s*", "", ch_title
-                    ).strip()
-                    ch_title_safe = re.sub(r"[^\w\s()-]", "", ch_title_safe).replace(" ", "_")
-                    ch_idx = ch_r.stats.get("chapter_index", 0)
-                    ch_filename = f"Chapter_{ch_idx + 1}_{ch_title_safe}.html"
-                    (ch_styled_dir / ch_filename).write_text(ch_r.output, encoding="utf-8")
-                results.append(f"Styled HTML: {len(ch_result.chapters)} chapters + full story + style.css")
-    except Exception as e:
-        errors.append(f"Styled HTML: {e}")
+                # Per-chapter styled HTML
+                ch_result = convert_to_styled_html_external_css(
+                    content, theme, template, mode="chapters", css_href="style.css"
+                )
+                if ch_result.chapters:
+                    ch_styled_dir.mkdir(parents=True, exist_ok=True)
+                    for ch_r in ch_result.chapters:
+                        ch_title = ch_r.stats.get("chapter_title", "")
+                        ch_title_safe = re.sub(
+                            r"^(Chapter|Part|Prelude|Epilogue)\s*\d*:?\s*", "", ch_title
+                        ).strip()
+                        ch_title_safe = re.sub(r"[^\w\s()-]", "", ch_title_safe).replace(" ", "_")
+                        ch_idx = ch_r.stats.get("chapter_index", 0)
+                        ch_filename = f"Chapter_{ch_idx + 1}_{ch_title_safe}.html"
+                        (ch_styled_dir / ch_filename).write_text(ch_r.output, encoding="utf-8")
+                    results.append(f"Styled HTML: {len(ch_result.chapters)} chapters + full story + style.css")
+        except Exception as e:
+            errors.append(f"Styled HTML: {e}")
 
     # --- PDF (full + per-chapter) ---
-    if not req.skip_pdf:
+    if should_gen("pdf") and not req.skip_pdf:
         try:
             from editor.pdf_generator import html_to_pdf, get_backend
             backend = get_backend()
@@ -452,50 +461,51 @@ async def regenerate(story_name: str, req: RegenerateRequest):
             errors.append(f"PDF: {e}")
 
     # --- Chapter splits (Markdown, SoFurry HTML, BBCode) ---
-    from editor.converter import detect_chapters
-    chapters = detect_chapters(content)
-    lines = content.split("\n")
+    if should_gen("chapters"):
+        from editor.converter import detect_chapters
+        chapters = detect_chapters(content)
+        lines = content.split("\n")
 
-    if len(chapters) > 1:
-        md_dir = story_dir / "Chapters" / "Markdown"
-        sf_dir = story_dir / "Chapters" / "SoFurry_HTML"
-        bb_ch_dir = story_dir / "Chapters" / "BBCode"
-        for d in [md_dir, sf_dir, bb_ch_dir]:
-            d.mkdir(parents=True, exist_ok=True)
+        if len(chapters) > 1:
+            md_dir = story_dir / "Chapters" / "Markdown"
+            sf_dir = story_dir / "Chapters" / "SoFurry_HTML"
+            bb_ch_dir = story_dir / "Chapters" / "BBCode"
+            for d in [md_dir, sf_dir, bb_ch_dir]:
+                d.mkdir(parents=True, exist_ok=True)
 
-        for ch in chapters[1:]:  # Skip the title "chapter" (index 0)
-            ch_idx = ch["index"]
-            ch_title = re.sub(r"^(Chapter|Part|Prelude|Epilogue)\s*\d*:?\s*", "", ch["title"]).strip()
-            ch_title_safe = re.sub(r"[^\w\s()-]", "", ch_title).replace(" ", "_")
-            ch_filename = f"Chapter_{ch_idx}_{ch_title_safe}"
-            ch_content = "\n".join(lines[ch["line_start"]:ch["line_end"] + 1])
+            for ch in chapters[1:]:  # Skip the title "chapter" (index 0)
+                ch_idx = ch["index"]
+                ch_title = re.sub(r"^(Chapter|Part|Prelude|Epilogue)\s*\d*:?\s*", "", ch["title"]).strip()
+                ch_title_safe = re.sub(r"[^\w\s()-]", "", ch_title).replace(" ", "_")
+                ch_filename = f"Chapter_{ch_idx}_{ch_title_safe}"
+                ch_content = "\n".join(lines[ch["line_start"]:ch["line_end"] + 1])
 
-            # Chapter markdown
-            ch_md_path = md_dir / f"{ch_filename}.md"
-            ch_md_path.write_text(ch_content, encoding="utf-8")
+                # Chapter markdown
+                ch_md_path = md_dir / f"{ch_filename}.md"
+                ch_md_path.write_text(ch_content, encoding="utf-8")
 
-            # Chapter SoFurry HTML — use the body converter directly so
-            # semantic anchors (text-sent, text-received, phone, etc.)
-            # get processed. The top-level convert() falls through to the
-            # heuristic parser for fragments without <!-- @body -->, which
-            # escapes anchors as literal HTML.
-            try:
-                from editor.converter import _convert_body_clean_html, ConversionResult
-                ch_lines = ch_content.split("\n")
-                ch_parts, ch_stats = _convert_body_clean_html(ch_lines, 0)
-                ch_html_output = "\n".join(ch_parts)
-                (sf_dir / f"{ch_filename}.html").write_text(ch_html_output, encoding="utf-8")
-            except Exception:
-                pass
+                # Chapter SoFurry HTML — use the body converter directly so
+                # semantic anchors (text-sent, text-received, phone, etc.)
+                # get processed. The top-level convert() falls through to the
+                # heuristic parser for fragments without <!-- @body -->, which
+                # escapes anchors as literal HTML.
+                try:
+                    from editor.converter import _convert_body_clean_html, ConversionResult
+                    ch_lines = ch_content.split("\n")
+                    ch_parts, ch_stats = _convert_body_clean_html(ch_lines, 0)
+                    ch_html_output = "\n".join(ch_parts)
+                    (sf_dir / f"{ch_filename}.html").write_text(ch_html_output, encoding="utf-8")
+                except Exception:
+                    pass
 
-            # Chapter BBCode
-            try:
-                ch_bb = convert(ch_content, "bbcode")
-                (bb_ch_dir / f"{ch_filename}.txt").write_text(ch_bb.output, encoding="utf-8")
-            except Exception:
-                pass
+                # Chapter BBCode
+                try:
+                    ch_bb = convert(ch_content, "bbcode")
+                    (bb_ch_dir / f"{ch_filename}.txt").write_text(ch_bb.output, encoding="utf-8")
+                except Exception:
+                    pass
 
-        results.append(f"{len(chapters) - 1} chapters split + converted (Markdown, HTML, BBCode)")
+            results.append(f"{len(chapters) - 1} chapters split + converted (Markdown, HTML, BBCode)")
 
     return {
         "ok": True,

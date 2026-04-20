@@ -734,6 +734,81 @@
     color: var(--warning);
 }
 
+/* Per-platform description overrides (collapsible inside Description & Summary) */
+
+.metadata-desc-details {
+    margin-top: 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-secondary, var(--bg-glass));
+}
+
+.metadata-desc-toggle {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    padding: 8px 10px;
+    user-select: none;
+    list-style: none;
+}
+
+.metadata-desc-toggle::-webkit-details-marker {
+    display: none;
+}
+
+.metadata-desc-toggle::before {
+    content: '\25B6';
+    display: inline-block;
+    font-size: 9px;
+    margin-right: 6px;
+    transition: transform 0.15s ease;
+}
+
+.metadata-desc-details[open] > .metadata-desc-toggle::before {
+    transform: rotate(90deg);
+}
+
+.metadata-desc-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 4px 10px 0;
+}
+
+.metadata-desc-tab {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.metadata-desc-tab:hover {
+    background: var(--bg-hover);
+}
+
+.metadata-desc-tab.active {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+.metadata-desc-pane {
+    padding: 8px 10px 12px;
+}
+
+.metadata-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    line-height: 1.4;
+}
+
 /* Error / warning helper text */
 
 .metadata-error {
@@ -2676,3 +2751,33 @@
     font-family: monospace;
     word-break: break-all;
 }
+
+/* Regenerate dropdown */
+.regen-dropdown { position: relative; display: inline-block; }
+.regen-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 100;
+    min-width: 200px;
+    padding: 4px;
+}
+.regen-dropdown-menu.open { display: block; }
+.regen-dropdown-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 12px;
+    border: none;
+    background: none;
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+.regen-dropdown-menu button:hover { background: var(--bg-hover); }

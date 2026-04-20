@@ -8,6 +8,7 @@ platform posters (which handle the actual HTTP uploads).
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from database.db import get_connection
@@ -16,6 +17,38 @@ from posting import story_reader
 from posting.platforms.base import PlatformPoster
 
 logger = logging.getLogger(__name__)
+
+# Retry backoff schedule: attempt 1 → 1min, attempt 2 → 5min, attempt 3 → 30min
+_RETRY_DELAYS = [60, 300, 1800]
+
+
+def _schedule_retry(story_name: str, ch_idx: int, platform: str, action: str,
+                    attempt: int, error: str) -> bool:
+    """Queue a retry for a failed post/update if under max attempts.
+
+    Returns True if a retry was queued, False if max attempts exceeded.
+    """
+    max_attempts = 3
+    if attempt >= max_attempts:
+        logger.info("Retry: %s ch%d on %s — max attempts (%d) reached, giving up",
+                     story_name, ch_idx, platform, max_attempts)
+        return False
+
+    delay = _RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)]
+    scheduled = (datetime.now(timezone.utc) + timedelta(seconds=delay)).strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_connection()
+    try:
+        posting_queries.add_to_queue(
+            conn, story_name, ch_idx, platform, action,
+            scheduled_at=scheduled,
+            priority=-1,
+        )
+        logger.info("Retry: %s ch%d on %s queued for %s (attempt %d, error: %s)",
+                     story_name, ch_idx, platform, scheduled, attempt + 1, error[:100])
+    finally:
+        conn.close()
+    return True
 
 # Platform poster registry — lazy-loaded to avoid circular imports
 _posters: dict[str, PlatformPoster] = {}
@@ -167,11 +200,14 @@ async def post_story(
             from posting.sync import hash_file
             current_hash = hash_file(package.file_path) if package.file_path else ""
 
-            # If the post failed on the server, auto-queue for desktop
+            # If the post failed, try to auto-recover:
+            # 1. Desktop-requiring platforms → queue for desktop
+            # 2. Rate limit / transient errors → schedule retry with backoff
             queued_for_desktop = False
+            retry_queued = False
             if not result.success:
                 from posting.scheduler import _runtime_mode
-                if _runtime_mode == "server":
+                if poster.requires_mode == "desktop" and _runtime_mode == "server":
                     conn = get_connection()
                     try:
                         posting_queries.add_to_queue(
@@ -185,6 +221,10 @@ async def post_story(
                         )
                     finally:
                         conn.close()
+                elif not queued_for_desktop:
+                    retry_queued = _schedule_retry(
+                        story_name, ch_idx, platform, "post", 0, result.error or "unknown",
+                    )
 
             # Record in database
             conn = get_connection()
@@ -221,6 +261,7 @@ async def post_story(
                 "chapter_title": package.chapter_title,
                 "success": result.success,
                 "queued_desktop": queued_for_desktop,
+                "retry_queued": retry_queued,
                 "external_id": result.external_id,
                 "external_url": result.external_url,
                 "error": result.error,
@@ -315,9 +356,10 @@ async def update_story(
         # for desktop as a fallback. Deletion errors skip the queue — desktop
         # would hit the same wall.
         queued_for_desktop = False
+        retry_queued = False
         if not result.success and not was_deleted:
             from posting.scheduler import _runtime_mode
-            if _runtime_mode == "server":
+            if poster.requires_mode == "desktop" and _runtime_mode == "server":
                 conn = get_connection()
                 try:
                     posting_queries.add_to_queue(
@@ -331,6 +373,10 @@ async def update_story(
                     )
                 finally:
                     conn.close()
+            elif not queued_for_desktop:
+                retry_queued = _schedule_retry(
+                    story_name, ch_idx, plat, "update", 0, result.error or "unknown",
+                )
         elif was_deleted:
             logger.info(
                 "Publication %s ch%d on %s was deleted upstream — marking registry",
@@ -394,6 +440,7 @@ async def update_story(
             "chapter_title": package.chapter_title,
             "success": result.success,
             "queued_desktop": queued_for_desktop,
+            "retry_queued": retry_queued,
             "deleted_upstream": was_deleted,
             "external_id": result.external_id or ext_id,
             "external_url": result.external_url or pub["external_url"],

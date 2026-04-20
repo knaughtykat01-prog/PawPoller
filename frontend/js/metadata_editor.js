@@ -132,6 +132,7 @@ const MetaEditor = {
     // Character limits (soft — warns in counter, no hard validation)
     DESC_MAX: 500,
     SUMMARY_MAX: 2000,
+    ANNOUNCEMENT_MAX: 300,
 
     // ---------------------------------------------------------------------
     // Public entry point
@@ -317,6 +318,7 @@ const MetaEditor = {
                         <label for="meta-summary">Summary <span class="metadata-char-counter" id="meta-summary-counter"></span></label>
                         <textarea id="meta-summary" data-field="summary" rows="8">${this._escape(summaryVal)}</textarea>
                     </div>
+                    ${this._renderPerPlatformDescs()}
                 </div>
             </section>
 
@@ -330,6 +332,8 @@ const MetaEditor = {
 
         this._updateCharCounter('meta-description', 'meta-desc-counter', this.DESC_MAX);
         this._updateCharCounter('meta-summary', 'meta-summary-counter', this.SUMMARY_MAX);
+        this._updateCharCounter('meta-desc-short', 'meta-desc-short-counter', this.DESC_MAX);
+        this._updateCharCounter('meta-desc-announcement', 'meta-desc-announcement-counter', this.ANNOUNCEMENT_MAX);
     },
 
     /**
@@ -372,11 +376,48 @@ const MetaEditor = {
         // Phase 4: chapter_info — list of { index, title, description, tags, words }
         if (!Array.isArray(md.chapter_info)) md.chapter_info = [];
 
+        // Per-platform description overrides (short, announcement)
+        if (!md.descriptions || typeof md.descriptions !== 'object' || Array.isArray(md.descriptions)) {
+            md.descriptions = {};
+        }
+
         // Phase 5: images map (cover filename lives at images.cover)
         if (!md.images || typeof md.images !== 'object' || Array.isArray(md.images)) {
             md.images = {};
         }
         this._coverFilename = (typeof md.images.cover === 'string' && md.images.cover.trim()) ? md.images.cover.trim() : null;
+    },
+
+    // ---------------------------------------------------------------------
+    // Per-platform description overrides (collapsible sub-section)
+    // ---------------------------------------------------------------------
+
+    _renderPerPlatformDescs() {
+        const descs = (this.metadata && this.metadata.descriptions) || {};
+        const shortVal = descs.short || '';
+        const announcementVal = descs.announcement || '';
+        return `
+            <details class="metadata-desc-details">
+                <summary class="metadata-desc-toggle">Per-platform descriptions (optional overrides)</summary>
+                <div class="metadata-desc-tabs">
+                    <button type="button" data-desc-tab="short" class="metadata-desc-tab active">Short (IB/SF)</button>
+                    <button type="button" data-desc-tab="announcement" class="metadata-desc-tab">Announcement (Bsky)</button>
+                </div>
+                <div class="metadata-desc-pane" data-desc-pane="short">
+                    <div class="metadata-field">
+                        <label for="meta-desc-short">Short description <span class="metadata-char-counter" id="meta-desc-short-counter"></span></label>
+                        <textarea id="meta-desc-short" rows="3" placeholder="1-2 sentences for listing pages (IB, SF, FA, WS)...">${this._escape(shortVal)}</textarea>
+                        <div class="metadata-hint">Overrides the default description for Inkbunny, SoFurry, FurAffinity, and Weasyl.</div>
+                    </div>
+                </div>
+                <div class="metadata-desc-pane" data-desc-pane="announcement" style="display:none">
+                    <div class="metadata-field">
+                        <label for="meta-desc-announcement">Announcement <span class="metadata-char-counter" id="meta-desc-announcement-counter"></span></label>
+                        <textarea id="meta-desc-announcement" rows="2" placeholder="Quick announcement, 300 chars max..." maxlength="300">${this._escape(announcementVal)}</textarea>
+                        <div class="metadata-hint">Short text for Bluesky posts. Falls back to truncated description if empty.</div>
+                    </div>
+                </div>
+            </details>`;
     },
 
     // ---------------------------------------------------------------------
@@ -2249,6 +2290,38 @@ const MetaEditor = {
                 }
             });
         });
+
+        // Per-platform description tabs
+        document.querySelectorAll('[data-desc-tab]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.getAttribute('data-desc-tab');
+                // Toggle active tab button
+                document.querySelectorAll('[data-desc-tab]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                // Toggle visible pane
+                document.querySelectorAll('[data-desc-pane]').forEach(p => {
+                    p.style.display = p.getAttribute('data-desc-pane') === tab ? '' : 'none';
+                });
+            });
+        });
+
+        // Per-platform description textareas — write into metadata.descriptions
+        const descShortEl = document.getElementById('meta-desc-short');
+        const descAnnouncementEl = document.getElementById('meta-desc-announcement');
+        if (descShortEl) {
+            descShortEl.addEventListener('input', () => {
+                this.metadata.descriptions.short = descShortEl.value;
+                this._clearStatus();
+                this._updateCharCounter('meta-desc-short', 'meta-desc-short-counter', this.DESC_MAX);
+            });
+        }
+        if (descAnnouncementEl) {
+            descAnnouncementEl.addEventListener('input', () => {
+                this.metadata.descriptions.announcement = descAnnouncementEl.value;
+                this._clearStatus();
+                this._updateCharCounter('meta-desc-announcement', 'meta-desc-announcement-counter', this.ANNOUNCEMENT_MAX);
+            });
+        }
 
         // Field inputs — live-update this.metadata + counters
         document.querySelectorAll('[data-field]').forEach(el => {

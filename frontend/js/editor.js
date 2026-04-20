@@ -92,7 +92,18 @@ const Editor = {
                         <button id="editor-save-btn" class="btn btn-sm">Save</button>
                         <button id="editor-metadata-btn" class="btn btn-sm btn-outline">Metadata</button>
                         <button id="editor-css-btn" class="btn btn-sm btn-outline">CSS</button>
-                        <button id="editor-regen-btn" class="btn btn-sm btn-outline">Regenerate</button>
+                        <div class="regen-dropdown" id="regen-dropdown">
+                            <button id="editor-regen-btn" class="btn btn-sm btn-outline">Regenerate &#9662;</button>
+                            <div class="regen-dropdown-menu" id="regen-dropdown-menu">
+                                <button data-regen="all">All formats</button>
+                                <button data-regen="html">HTML only (SF/AO3/SQW)</button>
+                                <button data-regen="bbcode">BBCode only (IB/WS)</button>
+                                <button data-regen="styled">Styled HTML + CSS</button>
+                                <button data-regen="sqw">SquidgeWorld only</button>
+                                <button data-regen="pdf">PDF only</button>
+                                <button data-regen="chapters">Chapter splits only</button>
+                            </div>
+                        </div>
                         <button id="editor-publish-btn" class="btn btn-sm btn-outline" title="Check publishability across all platforms">Publish</button>
                         <button id="editor-format-btn" class="btn btn-sm btn-outline" title="Format source code (Shift+Alt+F)">Format</button>
                         <select id="editor-format-select">
@@ -184,7 +195,22 @@ const Editor = {
             document.getElementById('editor-css-btn')?.addEventListener('click', () => this.toggleCssEditor());
             document.getElementById('editor-metadata-btn')?.addEventListener('click', () => MetaEditor.toggle());
             document.getElementById('editor-save-btn')?.addEventListener('click', () => this.save());
-            document.getElementById('editor-regen-btn')?.addEventListener('click', () => this.regenerate());
+            // Regen dropdown toggle + menu items
+            document.getElementById('editor-regen-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.getElementById('regen-dropdown-menu')?.classList.toggle('open');
+            });
+            document.querySelectorAll('#regen-dropdown-menu button[data-regen]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    document.getElementById('regen-dropdown-menu')?.classList.remove('open');
+                    this.regenerate(btn.dataset.regen === 'all' ? null : [btn.dataset.regen]);
+                });
+            });
+            // Close dropdown on outside click
+            document.addEventListener('click', () => {
+                document.getElementById('regen-dropdown-menu')?.classList.remove('open');
+            });
             document.getElementById('editor-publish-btn')?.addEventListener('click', () => PublishCheck.open(storyName));
             document.getElementById('editor-format-btn')?.addEventListener('click', () => this.formatSource());
             document.getElementById('editor-chapter-nav')?.addEventListener('change', (e) => this._jumpToChapter(parseInt(e.target.value)));
@@ -950,7 +976,8 @@ const Editor = {
     // Regenerate
     // ---------------------------------------------------------------------------
 
-    async regenerate() {
+    async regenerate(formats) {
+        // formats: null = all (skip_pdf still true), or array e.g. ["html"], ["bbcode"]
         const btn = document.getElementById('editor-regen-btn');
         if (btn) btn.disabled = true;
 
@@ -959,12 +986,19 @@ const Editor = {
             await this.save();
         }
 
-        this._updateStatus('Regenerating...');
+        const label = formats ? formats.join(', ') : 'all';
+        this._updateStatus(`Regenerating ${label}...`);
         try {
+            const body = { skip_pdf: true };
+            if (formats) {
+                body.formats = formats;
+                // If explicitly requesting PDF, don't skip it
+                if (formats.includes('pdf')) body.skip_pdf = false;
+            }
             const resp = await fetch(`/api/editor/stories/${encodeURIComponent(this.storyName)}/regenerate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ skip_pdf: true }),
+                body: JSON.stringify(body),
             });
             const data = await resp.json();
 
