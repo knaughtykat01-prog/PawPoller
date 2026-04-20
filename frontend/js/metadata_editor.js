@@ -1031,19 +1031,20 @@ const MetaEditor = {
     // form expected by each target platform.
     _transformTagForPlatform(canonicalTag, platform) {
         if (platform === 'default') return canonicalTag;
-        if (platform === 'itaku') return canonicalTag;  // underscores like default
+        // Underscore platforms — keep as-is
+        if (platform === 'furaffinity' || platform === 'weasyl' || platform === 'itaku') {
+            return canonicalTag;
+        }
         if (platform === 'wattpad') {
-            // camelCase: "slow_burn" → "slowBurn"
             return canonicalTag.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
         }
-        // sofurry, inkbunny, ao3, squidgeworld, weasyl, furaffinity, deviantart:
-        // spaces instead of underscores.
+        // Space platforms: sofurry, inkbunny, ao3, squidgeworld, deviantart
         return canonicalTag.replace(/_/g, ' ');
     },
 
     _fixSpacesInTags() {
         let fixed = 0;
-        const platforms = ['default', 'itaku'];
+        const platforms = ['default', 'furaffinity', 'weasyl', 'itaku'];
         for (const p of platforms) {
             const tags = this.metadata.tags[p];
             if (!Array.isArray(tags)) continue;
@@ -1080,7 +1081,7 @@ const MetaEditor = {
 
     _normalizeTagName(rawName, platform) {
         let name = (rawName || '').trim();
-        if (platform === 'default' || platform === 'itaku') {
+        if (platform === 'default' || platform === 'furaffinity' || platform === 'weasyl' || platform === 'itaku') {
             name = name.replace(/\s+/g, '_');
         }
         return name;
@@ -1268,7 +1269,7 @@ const MetaEditor = {
         });
 
         input.addEventListener('input', () => {
-            if (platform === 'default' || platform === 'itaku') {
+            if (platform === 'default' || platform === 'furaffinity' || platform === 'weasyl' || platform === 'itaku') {
                 const pos = input.selectionStart;
                 const fixed = input.value.replace(/ /g, '_');
                 if (fixed !== input.value) {
@@ -2748,7 +2749,7 @@ const MetaEditor = {
         });
 
         input.addEventListener('input', () => {
-            if (platform === 'default' || platform === 'itaku') {
+            if (platform === 'default' || platform === 'furaffinity' || platform === 'weasyl' || platform === 'itaku') {
                 const pos = input.selectionStart;
                 const fixed = input.value.replace(/ /g, '_');
                 if (fixed !== input.value) {
