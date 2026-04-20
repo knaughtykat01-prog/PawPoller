@@ -149,6 +149,9 @@ First-run flow: choose cloud/local, configure accordingly.
 - `PawPoller/frontend/js/metadata_editor.js` — drawer + tag autocomplete (~2900 lines, v15)
 - `PawPoller/frontend/js/publish_check.js` — matrix + action panel + bulk actions + action log (v10)
 - `PawPoller/PHASE_7_DESIGN.md` — credential management design doc (cloud sync + local-only vault)
+- `PawPoller/ROADMAP_PUBLIC.md` — public release roadmap (Phases 8-15: auth UX, setup wizard, editor, images, publishing, analytics, import, GitHub packaging)
+- `PawPoller/deploy/pawpush.bat` — push story archive local → server (alias for pawsync.bat)
+- `PawPoller/deploy/pawpull.bat` — pull story archive server → local (supports single-story: `pawpull.bat Story_Name`)
 - `PawPoller/frontend/css/editor.css` — all editor/drawer/matrix styles
 - `PawPoller/tag_database/` — 5 tag files + aliases.json + e621_lookup.tsv (**bundled in Docker image, NOT under data/**)
 
@@ -175,8 +178,13 @@ git commit -m "..."
 git push
 gcloud compute ssh pawpoller --zone=us-east1-c --command="cd /home/kithetiger/PawPoller && sudo -u kithetiger git pull && sudo docker compose up -d --build"
 
-# Sync story archive only (after story file changes)
-C:/Users/rhysc/claude/PawPoller/deploy/pawsync.bat
+# Push story archive to server (local -> server)
+deploy/pawpush.bat
+# or: deploy/pawsync.bat  (same thing, original name)
+
+# Pull story archive from server (server -> local)
+deploy/pawpull.bat                    # full sync
+deploy/pawpull.bat Extra_Credit       # single story
 
 # Verify
 gcloud compute ssh pawpoller --zone=us-east1-c --command="sudo docker compose -f /home/kithetiger/PawPoller/docker-compose.yml logs --tail=30 pawpoller"
@@ -217,8 +225,18 @@ gcloud compute ssh pawpoller --zone=us-east1-c --command="curl -s -H 'Authorizat
 
 If the user asks to resume, the most useful things to read first are:
 1. This file (HANDOFF.md)
-2. `CHANGELOG.md` top section — covers 2.9.0 onwards, which is where the publish check system lives
-3. `documentation_guide.md` §14 (Posting Module) + §15 (Story Editor)
-4. `routes/editor_api.py` — `/publish-check` and `/publish` endpoints are the tight loop
+2. `CHANGELOG.md` top section — covers 2.10.5+ which is current
+3. `ROADMAP_PUBLIC.md` — the public release plan (Phases 8-15)
+4. `documentation_guide.md` §14 (Posting Module) + §15 (Story Editor)
+5. `routes/editor_api.py` — `/publish-check` and `/publish` endpoints
 
-If the user says "what's next?" — **Phase 6c** (test the other 8 platforms end-to-end) is the obvious answer. If they want to keep the matrix UX moving, **Phase 6d** (bulk actions) is the other direction.
+If the user says "what's next?" — **ROADMAP_PUBLIC.md** has the
+priority list. The must-haves for public beta are: setup wizard (9a),
+embedded browser login (8a), credential encryption (8c), new story
+wizard (9b), cover image upload (11a), regen staleness warning (12a),
+and GitHub packaging (15a-c).
+
+Story archive sync commands:
+- `deploy/pawpush.bat` — local → server (push)
+- `deploy/pawpull.bat` — server → local (pull)
+- `deploy/pawpull.bat Story_Name` — pull single story
