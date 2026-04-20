@@ -2208,6 +2208,7 @@
 .cell-blocked { background: rgba(200, 90, 90, 0.18); color: #c66; }
 .cell-error { background: rgba(200, 90, 90, 0.30); color: #d77; }
 .cell-na { background: rgba(120, 120, 120, 0.10); color: var(--text-secondary); cursor: default; }
+.cell-no-creds { background: rgba(120, 120, 120, 0.15); color: var(--text-secondary); cursor: default; }
 
 .cell-legend {
     display: inline-block;

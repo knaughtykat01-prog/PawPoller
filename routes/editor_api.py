@@ -575,6 +575,27 @@ async def publish_check(story_name: str):
     # one (and internally handles multi-chapter creation).
     WORK_ORIENTED = {"ao3", "sqw", "sf"}
 
+    # Required credentials per platform — if any key is empty/missing,
+    # the platform is shown as "no_credentials" instead of "blocked".
+    PLATFORM_CREDS = {
+        "ib":   ("username", "password"),
+        "fa":   ("fa_cookie_a", "fa_cookie_b"),
+        "ws":   ("ws_api_key",),
+        "sf":   ("sf_username", "sf_password"),
+        "sqw":  ("sqw_author_username", "sqw_author_password"),
+        "ao3":  ("ao3_username", "ao3_password"),
+        "da":   ("da_cookie",),
+        "ik":   (),
+        "bsky": ("bsky_identifier", "bsky_app_password"),
+    }
+    settings = config.get_settings()
+    platform_has_creds = {}
+    for plat_id, _ in PUBLISH_PLATFORMS:
+        required = PLATFORM_CREDS.get(plat_id, ())
+        platform_has_creds[plat_id] = all(
+            settings.get(k) for k in required
+        ) if required else True
+
     # Build the matrix
     matrix = []
     for ch in chapters:
@@ -585,6 +606,14 @@ async def publish_check(story_name: str):
             "cells": {},
         }
         for plat_id, _ in PUBLISH_PLATFORMS:
+            # No credentials configured — show as unavailable
+            if not platform_has_creds[plat_id]:
+                row["cells"][plat_id] = {
+                    "status": "no_credentials",
+                    "errors": ["No credentials configured — set up in Settings"],
+                }
+                continue
+
             # Work-oriented platforms: per-chapter rows aren't valid; use
             # the full-story row instead. Only applies to chaptered stories
             # (single-chapter stories only have the full-story row anyway).

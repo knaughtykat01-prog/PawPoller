@@ -19,6 +19,7 @@ window.PublishCheck = (function () {
         ready_retry: { icon: '↻', cls: 'cell-retry', label: 'Failed prev — retry?' },
         failed_prev: { icon: '✗', cls: 'cell-blocked', label: 'Blocked + prev failed' },
         not_supported: { icon: '–', cls: 'cell-na', label: 'N/A — per-chapter only' },
+        no_credentials: { icon: '🔒', cls: 'cell-no-creds', label: 'No credentials configured' },
         error: { icon: '⚠', cls: 'cell-error', label: 'Error' },
     };
 
@@ -50,6 +51,7 @@ window.PublishCheck = (function () {
                         <span class="cell-legend cell-posted-stale">!</span> Stale
                         <span class="cell-legend cell-retry">↻</span> Retry
                         <span class="cell-legend cell-blocked">✗</span> Blocked
+                        <span class="cell-legend cell-no-creds">🔒</span> No creds
                         <span class="cell-legend cell-error">⚠</span> Error
                     </span>
                     <button class="btn btn-sm btn-outline" id="publish-check-verify" title="Probe each platform to detect deletions">Verify posted</button>
@@ -360,6 +362,13 @@ window.PublishCheck = (function () {
 
         let html = '<div class="publish-check-detail-section publish-action-panel">';
         html += '<strong>Actions:</strong>';
+
+        if (cell.status === 'no_credentials') {
+            html += '<div class="publish-action-disabled">' +
+                'No credentials configured for this platform. Set up in Settings.' +
+                '</div></div>';
+            return html;
+        }
 
         if (!isReady && !isPosted) {
             html += '<div class="publish-action-disabled">' +
