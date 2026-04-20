@@ -5451,6 +5451,20 @@ const App = {
                     <span id="backup-msg" style="font-size:13px;margin-top:8px;display:block"></span>
                 </div>
 
+                <div class="settings-section">
+                    <h3>Settings Sync</h3>
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+                        Sync credentials and settings between desktop and server.
+                        Requires a configured API key.
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <button class="btn btn-secondary" id="sync-pull-btn">Pull from server</button>
+                        <button class="btn btn-secondary" id="sync-push-btn">Push to server</button>
+                        <button class="btn btn-secondary" id="sync-status-btn">Check status</button>
+                    </div>
+                    <div id="sync-result" style="font-size:12px;margin-top:8px"></div>
+                </div>
+
                 </div><!-- /tab:data -->
 
                 <!-- ═══ TAB: Logs ═══ -->
@@ -7697,6 +7711,63 @@ const App = {
                     }
                 });
             }
+
+            // Settings Sync
+            const syncResult = document.getElementById('sync-result');
+            document.getElementById('sync-pull-btn')?.addEventListener('click', async (e) => {
+                e.target.disabled = true; e.target.textContent = 'Pulling...';
+                try {
+                    const resp = await fetch('/api/settings/sync', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({mode: 'pull'}),
+                    });
+                    const data = await resp.json();
+                    if (data.ok) {
+                        syncResult.innerHTML = '<span style="color:var(--success)">Pulled ' + Object.keys(data.settings).length + ' keys from server</span>';
+                    } else {
+                        syncResult.innerHTML = '<span style="color:var(--danger)">Pull failed</span>';
+                    }
+                } catch (err) {
+                    syncResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';
+                }
+                e.target.disabled = false; e.target.textContent = 'Pull from server';
+            });
+            document.getElementById('sync-push-btn')?.addEventListener('click', async (e) => {
+                e.target.disabled = true; e.target.textContent = 'Pushing...';
+                try {
+                    const pullResp = await fetch('/api/settings/sync', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({mode: 'pull'}),
+                    });
+                    const local = await pullResp.json();
+                    if (!local.ok) throw new Error('Failed to read local settings');
+                    const pushResp = await fetch('/api/settings/sync', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({mode: 'push', settings: local.settings, timestamp: local.timestamp}),
+                    });
+                    const data = await pushResp.json();
+                    if (data.ok) {
+                        syncResult.innerHTML = '<span style="color:var(--success)">Pushed ' + data.keys_merged + ' keys to server</span>';
+                    } else {
+                        syncResult.innerHTML = '<span style="color:var(--danger)">Push failed</span>';
+                    }
+                } catch (err) {
+                    syncResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';
+                }
+                e.target.disabled = false; e.target.textContent = 'Push to server';
+            });
+            document.getElementById('sync-status-btn')?.addEventListener('click', async (e) => {
+                e.target.disabled = true;
+                try {
+                    const resp = await fetch('/api/settings/sync/status');
+                    const data = await resp.json();
+                    syncResult.innerHTML = '<code>v' + Utils.escapeHtml(data.version) + '</code> · ' +
+                        data.total_keys + ' keys · mode: ' + Utils.escapeHtml(data.credential_mode);
+                } catch (err) {
+                    syncResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';
+                }
+                e.target.disabled = false;
+            });
 
             // Auto-Update
             const applyUpdateBtn = document.getElementById('apply-update-btn');

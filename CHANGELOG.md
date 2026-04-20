@@ -4,6 +4,52 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.11.0] - 2026-04-20
+
+### Added — Phase 7a: Settings sync (cloud mode)
+
+Desktop ↔ server credential sharing via a single sync endpoint.
+Login on one side, pull to the other — no more re-entering credentials
+on both desktop and server.
+
+**Backend (`config.py`):**
+- `CREDENTIAL_FIELDS` — 35+ sensitive field names (all platform
+  passwords, cookies, API keys, tokens, dashboard auth, integrations).
+- `SYNC_EXCLUDE` — keys that are per-machine and must not sync
+  (`credential_mode`, `auth_session_secret`, `minimize_to_tray`).
+- `get_settings_for_sync()` — returns settings dict + file mtime,
+  filtering out SYNC_EXCLUDE keys.
+- `merge_synced_settings()` — merges incoming push into local
+  settings, filtering SYNC_EXCLUDE.
+
+**Sync endpoint (`routes/settings_api.py`):**
+- `POST /api/settings/sync` — accepts `{mode: "pull"|"push",
+  settings: {...}, timestamp: float}`. Pull returns server settings;
+  push merges incoming keys and returns the merged result. Auth
+  enforced by existing dashboard middleware (session cookie or
+  `Bearer pp_xxx`).
+- `GET /api/settings/sync/status` — server version, settings
+  timestamp, credential_mode, total key count.
+
+**Desktop startup sync (`main.py`):**
+- `_sync_settings_on_startup()` — if `credential_mode != "local"`
+  and `posting_server_url` + `posting_server_api_key` are configured,
+  pulls settings from the server on startup via httpx. Failures are
+  non-fatal (warning log, app continues with local settings).
+
+**Dashboard UI (`frontend/js/app.js`):**
+- Settings → Data tab → "Settings Sync" section with three buttons:
+  - **Pull from server** — fetches server settings and merges locally
+  - **Push to server** — reads local settings, sends to server
+  - **Check status** — shows server version, key count, credential mode
+- Result display shows key count or error inline.
+
+**Cache buster:** `app.js?v=242`.
+
+**`APP_VERSION` bumped to `2.11.0`.**
+
+---
+
 ## [2.10.5] - 2026-04-19
 
 ### Added — Phase 6e: Publish Check safety polish

@@ -761,12 +761,51 @@ def _on_closing():
 #   6. webview.start() blocks the main thread until the window is destroyed
 #   7. On exit, clean up the tray icon and let daemon threads die
 
+def _sync_settings_on_startup():
+    """Pull settings from server if credential_mode is 'cloud' and a server URL is configured."""
+    import httpx
+
+    settings = config.get_settings()
+    if settings.get("credential_mode") == "local":
+        logger.info("Settings sync: local-only mode, skipping")
+        return
+
+    server_url = settings.get("posting_server_url", "").rstrip("/")
+    api_key = settings.get("posting_server_api_key", "")
+    if not server_url or not api_key:
+        logger.debug("Settings sync: no server URL or API key configured, skipping")
+        return
+
+    try:
+        resp = httpx.post(
+            f"{server_url}/api/settings/sync",
+            json={"mode": "pull"},
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            logger.warning("Settings sync pull failed: HTTP %d", resp.status_code)
+            return
+        data = resp.json()
+        if data.get("ok") and data.get("settings"):
+            pulled = data["settings"]
+            config.merge_synced_settings(pulled)
+            logger.info("Settings sync: pulled %d keys from server", len(pulled))
+        else:
+            logger.warning("Settings sync: server returned ok=false")
+    except Exception as e:
+        logger.warning("Settings sync: pull failed (server unreachable?): %s", e)
+
+
 def main():
     global _tray_icon, _window
 
     # --- Step 1: Database initialisation ---
     logger.info("Initialising database...")
     init_db()  # Creates tables/schema if the DB file does not exist yet
+
+    # --- Step 1b: Sync settings from server (cloud mode) ---
+    _sync_settings_on_startup()
 
     # --- Step 2: Launch daemon threads ---
     # All threads are daemon=True so they terminate automatically when

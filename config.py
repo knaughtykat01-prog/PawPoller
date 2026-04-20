@@ -266,8 +266,76 @@ BSKY_REQUEST_DELAY_SECONDS = 1.0  # Bluesky AT Protocol — generous rate limits
 # ── X/Twitter settings ──
 TW_REQUEST_DELAY_SECONDS = 2.0  # X GraphQL — aggressive rate limiting, needs higher delay
 
+# ── Settings sync (Phase 7a) ────────────────────────────────
+
+CREDENTIAL_FIELDS = frozenset({
+    # Inkbunny
+    "username", "password",
+    # FurAffinity
+    "fa_cookie_a", "fa_cookie_b",
+    # Weasyl
+    "ws_api_key",
+    # SoFurry
+    "sf_username", "sf_password", "sf_session_cookies",
+    # SquidgeWorld
+    "sqw_username", "sqw_password",
+    "sqw_author_username", "sqw_author_password",
+    # AO3
+    "ao3_username", "ao3_password",
+    # DeviantArt
+    "da_cookie",
+    # Bluesky
+    "bsky_identifier", "bsky_app_password",
+    # X/Twitter
+    "tw_auth_token", "tw_ct0",
+    # CF proxy
+    "cf_worker_url", "cf_worker_key",
+    # Dashboard auth
+    "auth_password_hash", "auth_api_keys",
+    "auth_session_secret", "auth_totp_secret",
+    "auth_totp_enabled", "auth_totp_pending_secret",
+    "dashboard_password", "dashboard_user",
+    # Integrations
+    "telegram_bot_token", "telegram_chat_id",
+    "github_pat",
+    "turnstile_site_key", "turnstile_secret_key",
+    # Server ↔ desktop
+    "posting_server_url", "posting_server_api_key",
+})
+
+SYNC_EXCLUDE = frozenset({
+    "credential_mode",
+    "auth_session_secret",
+    "minimize_to_tray",
+})
+
+
+def get_settings_for_sync() -> tuple[dict, float]:
+    """Return (settings_dict, mtime) for the sync endpoint.
+
+    Excludes keys in SYNC_EXCLUDE.
+    """
+    with _settings_lock:
+        data = _load_settings()
+    mtime = SETTINGS_PATH.stat().st_mtime if SETTINGS_PATH.exists() else 0
+    return {k: v for k, v in data.items() if k not in SYNC_EXCLUDE}, mtime
+
+
+def merge_synced_settings(incoming: dict, client_timestamp: float | None = None) -> dict:
+    """Merge incoming settings from a sync push.
+
+    Applies SYNC_EXCLUDE filtering, then merges into current settings.
+    Returns the merged result.
+    """
+    filtered = {k: v for k, v in incoming.items() if k not in SYNC_EXCLUDE}
+    if not filtered:
+        return get_settings()
+    save_settings(filtered)
+    return get_settings()
+
+
 # ── App metadata ──
-APP_VERSION = "2.10.5"
+APP_VERSION = "2.11.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

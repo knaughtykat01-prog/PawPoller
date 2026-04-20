@@ -1,7 +1,7 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-04-19
-**Current version:** 2.10.5
+**Current version:** 2.11.0
 **Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`)
 
 Living document — update as the roadmap shifts. Read this first when picking up a fresh session.
@@ -94,16 +94,23 @@ drift detection, deletion probe, re-post.
 - [x] Action result log per session (so you can see "last 5 posts" without refreshing)
 - [x] Per-platform "posted at" clock display in the detail panel
 
-### Phase 7 — Settings sync + local-only mode (DESIGN COMPLETE)
+### Phase 7a — Cloud sync (COMPLETE)
 
-Design doc: `PHASE_7_DESIGN.md` — covers credential inventory (35+
-fields), cloud sync API (`POST /api/settings/sync`), local-only vault
-(`settings.vault.json` encrypted via DPAPI/keyring), migration path
-between modes, and 3-phase implementation plan (7a cloud sync, 7b
-vault encryption, 7c desktop setup wizard).
+- [x] `CREDENTIAL_FIELDS` + `SYNC_EXCLUDE` sets in `config.py`
+- [x] `get_settings_for_sync()` / `merge_synced_settings()` helpers
+- [x] `POST /api/settings/sync` endpoint (pull/push modes)
+- [x] `GET /api/settings/sync/status` endpoint
+- [x] Desktop startup pull in `main.py` (`_sync_settings_on_startup()`)
+- [x] Dashboard UI: Settings → Data tab → Sync section (Pull/Push/Status buttons)
 
-Toggle: `"credential_mode": "cloud" | "local"` in settings.json.
-Awaiting user review of design doc before implementation begins.
+### Phase 7b — Local-only vault (NOT STARTED)
+
+Design doc: `PHASE_7_DESIGN.md`. Fernet encryption with DPAPI/keyring
+key derivation. `settings.vault.json` for credential fields.
+
+### Phase 7c — Desktop setup wizard (NOT STARTED)
+
+First-run flow: choose cloud/local, configure accordingly.
 
 ### Tag audit
 
