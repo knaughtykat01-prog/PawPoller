@@ -44,6 +44,12 @@
     margin: 0 4px;
 }
 
+.wysiwyg-toolbar button[data-anchor] {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    border: 1px dashed var(--border-primary);
+}
+
 /* WYSIWYG contenteditable body */
 #editor-preview-rendered-body[contenteditable="true"] {
     outline: none;
@@ -2133,6 +2139,29 @@
 .publish-check-subtitle .stat-blocked { color: #c66; }
 .publish-check-subtitle .stat-drifted { color: #b8d; }
 .publish-check-subtitle .stat-deleted { color: #d88; }
+
+.publish-check-stale-banner {
+    background: rgba(220, 170, 40, 0.18);
+    border: 1px solid rgba(220, 170, 40, 0.45);
+    border-radius: 6px;
+    padding: 10px 16px;
+    margin: 0 20px 4px;
+    font-size: 13px;
+    color: #d9a020;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+.publish-check-stale-banner .btn {
+    white-space: nowrap;
+    margin-left: auto;
+}
+.publish-check-stale-banner--success {
+    background: rgba(60, 180, 100, 0.15);
+    border-color: rgba(60, 180, 100, 0.40);
+    color: #4a9;
+}
 
 .publish-check-close {
     background: none;

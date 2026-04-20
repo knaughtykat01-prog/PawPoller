@@ -710,7 +710,29 @@ async def publish_check(story_name: str):
 
         matrix.append(row)
 
-    return {
+    # ---- Regeneration staleness check ----
+    # Compare MASTER.md mtime against the newest generated format file.
+    # If MASTER.md is newer, the user may be about to publish stale content.
+    regen_stale = False
+    master_mtime: float | None = None
+    newest_gen_mtime: float | None = None
+    master_path = _get_master_path(story_dir)
+    if master_path.is_file():
+        master_mtime = master_path.stat().st_mtime
+        gen_dirs = ["HTML", "BBCode", "SquidgeWorld", "PDF", "Styled_HTML"]
+        for dname in gen_dirs:
+            d = story_dir / dname
+            if not d.is_dir():
+                continue
+            for f in d.iterdir():
+                if f.is_file():
+                    fmt = f.stat().st_mtime
+                    if newest_gen_mtime is None or fmt > newest_gen_mtime:
+                        newest_gen_mtime = fmt
+        if newest_gen_mtime is not None and master_mtime > newest_gen_mtime:
+            regen_stale = True
+
+    resp: dict = {
         "ok": True,
         "story_name": canonical,
         "story_title": story.title or canonical,
@@ -719,6 +741,11 @@ async def publish_check(story_name: str):
         "chapters": chapters,
         "matrix": matrix,
     }
+    if regen_stale:
+        resp["regen_stale"] = True
+        resp["master_mtime"] = master_mtime
+        resp["newest_gen_mtime"] = newest_gen_mtime
+    return resp
 
 
 @editor_router.post("/stories/{story_name:path}/verify")

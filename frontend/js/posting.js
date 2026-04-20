@@ -192,7 +192,10 @@ const Posting = {
                 <div class="story-detail-info card">
                     ${coverHtml}
                     <div class="story-detail-info-body">
-                        <h2>${title}</h2>
+                        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                            <h2 style="margin:0">${title}</h2>
+                            <a href="#/editor/${Utils.escapeHtml(storyName)}" class="btn btn-sm btn-outline">Edit in Editor</a>
+                        </div>
                         <p class="page-subtitle">by ${Utils.escapeHtml(data.author || 'Unknown')}</p>
                         <div class="story-detail-meta">
                             <span>${(data.total_words || 0).toLocaleString()} words</span>

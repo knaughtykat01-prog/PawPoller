@@ -180,6 +180,41 @@ window.PublishCheck = (function () {
             '<span class="stat-ready">' + ready + ' ready</span> &nbsp;|&nbsp; ' +
             '<span class="stat-blocked">' + blocked + ' blocked</span>';
 
+        // Regeneration staleness warning — MASTER.md newer than generated files
+        const staleBanner = document.getElementById('publish-check-stale-banner');
+        if (staleBanner) staleBanner.remove();
+        if (data.regen_stale) {
+            const banner = document.createElement('div');
+            banner.className = 'publish-check-stale-banner';
+            banner.id = 'publish-check-stale-banner';
+            banner.innerHTML =
+                '\u26A0 MASTER.md has been modified since the last regeneration. ' +
+                '<button class="btn btn-sm" id="publish-check-regen">Regenerate now</button>';
+            body.parentNode.insertBefore(banner, body);
+            // Use event delegation so Retry buttons work without re-binding
+            banner.addEventListener('click', async function (ev) {
+                const btn = ev.target.closest('#publish-check-regen');
+                if (!btn) return;
+                btn.disabled = true;
+                btn.textContent = 'Regenerating\u2026';
+                try {
+                    const resp = await fetch(
+                        '/api/editor/stories/' + encodeURIComponent(data.story_name) + '/regenerate',
+                        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ skip_pdf: false }) }
+                    );
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    banner.innerHTML = '\u2714 Regeneration complete. Refreshing matrix\u2026';
+                    banner.classList.add('publish-check-stale-banner--success');
+                    setTimeout(function () { load(data.story_name); }, 600);
+                } catch (e) {
+                    banner.innerHTML =
+                        '\u26A0 Regeneration failed: ' + _escape(e.message) +
+                        ' <button class="btn btn-sm" id="publish-check-regen">Retry</button>';
+                }
+            });
+        }
+
         // Build matrix table
         let html = '<div class="publish-check-table-wrap"><table class="publish-check-table">';
         html += '<thead><tr><th class="ch-col">Chapter</th>';

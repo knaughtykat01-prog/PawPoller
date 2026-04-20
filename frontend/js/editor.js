@@ -119,6 +119,15 @@ const Editor = {
                             <span class="toolbar-sep"></span>
                             <button data-cmd="heading" title="Chapter Heading">H1</button>
                             <button data-cmd="hr" title="Section Break">&#8213;</button>
+                            <span class="toolbar-sep"></span>
+                            <button data-anchor="title" title="Insert @title anchor">T</button>
+                            <button data-anchor="subtitle" title="Insert @subtitle anchor">Sub</button>
+                            <button data-anchor="body" title="Insert @body anchor">Body</button>
+                            <button data-anchor="warning" title="Insert @warning anchor">&#9888;</button>
+                            <button data-anchor="text-sent" title="Insert text-sent block">&#8594;</button>
+                            <button data-anchor="text-received" title="Insert text-received block">&#8592;</button>
+                            <button data-anchor="phone" title="Insert phone block">&#9742;</button>
+                            <button data-anchor="story-end" title="Insert story-end anchor">End</button>
                         </div>
                         <div class="preview-panel-body preview-html" id="editor-preview-rendered-body" contenteditable="true" spellcheck="true">
                             <p style="color:var(--text-secondary)">Loading...</p>
@@ -1166,10 +1175,37 @@ const Editor = {
         if (!toolbar) return;
         toolbar.querySelectorAll('button[data-cmd]').forEach(btn => {
             btn.addEventListener('mousedown', (e) => {
-                e.preventDefault(); // keep focus in contenteditable
+                e.preventDefault();
                 this._execWysiwygCmd(btn.dataset.cmd);
             });
         });
+        toolbar.querySelectorAll('button[data-anchor]').forEach(btn => {
+            btn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                this._insertAnchor(btn.dataset.anchor);
+            });
+        });
+    },
+
+    _insertAnchor(type) {
+        const anchors = {
+            'title': '<!-- @title -->',
+            'subtitle': '<!-- @subtitle -->',
+            'body': '<!-- @body -->',
+            'warning': '<!-- @warning -->',
+            'text-sent': '<!-- @text-sent -->\n\n<!-- @text-end -->',
+            'text-received': '<!-- @text-received -->\n\n<!-- @text-end -->',
+            'phone': '<!-- @phone -->\n\n<!-- @phone-end -->',
+            'story-end': '<!-- @story-end -->',
+        };
+        const text = anchors[type];
+        if (!text || !this._cm) return;
+        const cursor = this._cm.state.selection.main.head;
+        this._cm.dispatch({
+            changes: { from: cursor, insert: '\n' + text + '\n' },
+            selection: { anchor: cursor + text.indexOf('\n\n') + 1 || cursor + text.length + 1 },
+        });
+        this._cm.focus();
     },
 
     _execWysiwygCmd(cmd) {
