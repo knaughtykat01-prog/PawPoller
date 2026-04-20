@@ -1865,7 +1865,7 @@ const MetaEditor = {
         // Append e621 suggestions only when we've reached the last page
         // (so they appear at the very bottom, after everything else loaded)
         const e621Block = (shown.length === all.length) ? this._renderE621CardsBlock() : '';
-        host.innerHTML = `<div class="tag-browser-grid">${cards}</div>${e621Block}`;
+        host.innerHTML = cards + e621Block;
         this._bindE621CardActions(host);
 
         // "Load more" button
