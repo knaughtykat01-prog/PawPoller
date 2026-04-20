@@ -17,6 +17,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+import config
 from posting.story_reader import get_archive_path
 
 logger = logging.getLogger(__name__)
