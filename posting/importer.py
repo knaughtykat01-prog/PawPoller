@@ -409,9 +409,8 @@ async def import_from_sofurry(submission_id: str) -> dict:
     sf_password = settings.get("sf_password", "")
     sf_display = settings.get("sf_display_name", "")
 
-    # SF proxy settings (needed for server/datacenter IPs)
-    proxy_url = settings.get("sf_proxy_url", "")
-    proxy_key = settings.get("sf_proxy_key", "")
+    proxy_url = settings.get("cf_worker_url", "")
+    proxy_key = settings.get("cf_worker_key", "")
 
     if not sf_username or not sf_password:
         raise RuntimeError("SoFurry credentials not configured — set up in Settings")
