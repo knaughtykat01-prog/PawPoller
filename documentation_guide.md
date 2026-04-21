@@ -3641,6 +3641,25 @@ Stored in `story.json`. `build_package()` uses a fallback chain: platform-specif
 
 `POST /api/editor/stories/create` scaffolds a new story with the full folder structure (Markdown, BBCode, HTML, PDF, SquidgeWorld, Chapters/*, Images). Generates a template `MASTER.md` showing all anchor types, writes `story.json` with default metadata, and copies `STYLING_REFERENCE.md` as `CHAPTER_STYLING.md` when available. The editor's story list shows a "+ Create New Story" button that opens an overlay dialog with title, folder name (auto-generated), author, chapter count, and rating fields.
 
+**Genre templates**: Optional genre dropdown pre-fills tags, rating, warnings, and category from 9 presets (romance, erotica, adventure, comedy, drama, fantasy, sci_fi, slice_of_life, horror). `GET /api/editor/genre-templates` returns the full preset dict. User-supplied rating always overrides the template default.
+
+**File upload**: Optional file input accepts `.md`, `.txt`, `.html`, `.bbcode`, `.rtf`. Uploaded content replaces the template `MASTER.md` with proper anchor wrapping. Format converters: `_convert_html_to_md()` (strips tags, preserves headings/bold/italic/hr), `_convert_bbcode_to_md()` (strips BBCode tags), `_strip_rtf()` (strips RTF control codes). Markdown and plain text are used as-is.
+
+### Import from Platforms
+
+`posting/importer.py` downloads published submissions from platforms and creates local story folders. The editor's story list shows an "Import from Platform" button.
+
+**Supported platforms:**
+- **Inkbunny**: `import_from_inkbunny()` — fetches submission details via API with `show_writing=yes`, downloads BBCode text file (follows CDN redirects), converts BBCode→Markdown via `_bbcode_to_markdown()`.
+- **SoFurry**: `import_from_sofurry()` — fetches metadata from `/ui/submission/{id}` JSON API, scrapes story content from the `/s/{id}` page (extracted after the chapter divider in `story-content-holder`), converts HTML→Markdown via `_html_to_markdown()`.
+- **FurAffinity**: `import_from_furaffinity()` — fetches submission details from FAExport API, downloads story file via `download_url` (TXT files get full text; PDF files get description fallback since PDF parsing is not included).
+
+**Endpoints:**
+- `GET /api/editor/import/available` — cross-references polled submissions against local archive `import_source` metadata to find importable submissions.
+- `POST /api/editor/import/{platform}/{submission_id}` — triggers download + folder creation, returns `{story_name, title}`.
+
+**Folder creation** (`_create_story_folder()`): creates full archive structure, generates `story.json` with `import_source` provenance (platform, submission_id, url), saves original format file alongside `MASTER.md`. Name collisions handled by appending `_2`, `_3` suffix.
+
 ### Setup Wizard (Phase 9a)
 
 First-run detection: when no `setup_complete` flag exists in `settings.json`, the dashboard redirects to a 4-step guided wizard (Welcome, Story Archive location, Platform Connections, Done). Existing users are unaffected.

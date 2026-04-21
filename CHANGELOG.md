@@ -4,6 +4,55 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.13.0] - 2026-04-21
+
+### Added — Genre templates, import from platforms, file upload in story wizard
+
+**Genre templates (9 presets):**
+- Romance, Erotica, Adventure, Comedy, Drama, Fantasy, Sci-Fi,
+  Slice of Life, Horror — each pre-fills tags, rating, warnings,
+  and category when creating a new story.
+- Genre dropdown in Create New Story dialog auto-updates rating.
+- `GET /genre-templates` endpoint for frontend consumption.
+
+**Import from platforms (14a — IB, SF, FA):**
+- "Import from Platform" button on story list shows polled submissions
+  not yet in the local archive, grouped by platform.
+- `posting/importer.py`: `import_from_inkbunny()` downloads BBCode
+  text files and converts to Markdown (~14k words verified).
+  `import_from_sofurry()` scrapes story content from the submission
+  page after the chapter divider (~9.8k words verified).
+  `import_from_furaffinity()` downloads story files via FAExport
+  download URL (TXT/RTF full text; PDF gets description fallback).
+- BBCode→Markdown and HTML→Markdown converters handle formatting.
+- Name collision handling appends `_2`, `_3` suffix.
+- `import_source` in story.json tracks provenance (platform, ID, URL).
+- AO3/SQW listed as "coming soon" in the import dialog.
+
+**File upload in Create New Story wizard:**
+- Optional file upload field accepts `.md`, `.txt`, `.html`, `.bbcode`,
+  `.rtf` — content replaces the template MASTER.md.
+- Format converters: HTML→Markdown (strips tags, preserves structure),
+  BBCode→Markdown, RTF→plaintext. Markdown and TXT used as-is.
+
+**Hardcoded author cleanup:**
+- 7 occurrences of hardcoded author name in `converter.py`,
+  `generate_story_json.py`, `story_reader.py` replaced with
+  configurable `default_author` setting. Users set it in
+  settings.json; empty string fallback.
+
+**GitHub release packaging (15a-c):**
+- `README.md` — features, platform table, quick start, architecture
+- `LICENSE` — MIT, 2026
+- `CONTRIBUTING.md` — dev setup, platform module pattern, PR guidelines
+- `.github/workflows/build.yml` — PyInstaller build on version tags
+- `.github/workflows/lint.yml` — Ruff + JS syntax on push/PR
+- `.gitignore` + `.env.example` updated
+
+**`APP_VERSION` bumped to `2.13.0`.**
+
+---
+
 ## [2.12.4] - 2026-04-19
 
 ### Added -- Embedded browser login for cookie-based platforms
