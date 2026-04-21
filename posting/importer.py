@@ -19,6 +19,8 @@ import logging
 import re
 from pathlib import Path
 
+import httpx
+
 import config
 from posting.story_reader import get_archive_path
 
@@ -356,10 +358,10 @@ async def import_from_inkbunny(submission_id: str) -> dict:
             )
 
             if file_url:
-                # Download the file content
-                file_resp = await client._http.get(file_url, timeout=60.0)
-                file_resp.raise_for_status()
-                content = file_resp.text
+                async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as dl:
+                    file_resp = await dl.get(file_url)
+                    file_resp.raise_for_status()
+                    content = file_resp.text
             else:
                 # Fallback: use writing_text if available from the API
                 content = file_info.get("writing_text", "")
