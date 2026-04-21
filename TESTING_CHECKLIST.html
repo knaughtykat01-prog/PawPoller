@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PawPoller v2.13.0 — Testing Checklist</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; max-width: 1200px; margin: 0 auto; }
+h1 { margin-bottom: 8px; color: #b8a0ff; }
+h2 { margin: 24px 0 12px; color: #9b7dff; border-bottom: 1px solid #333; padding-bottom: 6px; }
+.summary { margin-bottom: 20px; font-size: 14px; color: #999; }
+.summary span { font-weight: bold; }
+.summary .pass { color: #4a9; }
+.summary .fail { color: #e55; }
+.summary .untested { color: #888; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; }
+th { background: #252545; text-align: left; padding: 8px 10px; border-bottom: 2px solid #444; position: sticky; top: 0; }
+td { padding: 6px 10px; border-bottom: 1px solid #2a2a3e; vertical-align: top; }
+tr:hover { background: #1e1e38; }
+tr.pass { background: rgba(70, 170, 100, 0.08); }
+tr.fail { background: rgba(230, 80, 80, 0.12); }
+.test-name { font-weight: 600; min-width: 140px; }
+.steps { color: #bbb; min-width: 200px; }
+.expected { color: #999; min-width: 200px; font-size: 12px; }
+.status-cell { text-align: center; white-space: nowrap; }
+.status-cell label { cursor: pointer; margin: 0 4px; font-size: 12px; }
+.status-cell input[type="radio"] { margin-right: 2px; }
+.result-input { width: 100%; background: #1a1a2e; border: 1px solid #333; border-radius: 4px; color: #e0e0e0; padding: 4px 8px; font-size: 12px; font-family: inherit; resize: vertical; min-height: 28px; }
+.result-input:focus { border-color: #9b7dff; outline: none; }
+.num { color: #666; text-align: center; width: 30px; }
+.actions { margin: 16px 0; display: flex; gap: 8px; }
+.btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.btn-primary { background: #9b7dff; color: white; }
+.btn-secondary { background: #333; color: #ccc; }
+.btn:hover { opacity: 0.85; }
+@media print { body { background: white; color: black; } td, th { border-color: #ccc; } .result-input { border-color: #ccc; } }
+</style>
+</head>
+<body>
+
+<h1>PawPoller v2.13.0 — Testing Checklist</h1>
+<div class="summary" id="summary">
+    <span class="pass" id="pass-count">0</span> passed &nbsp;|&nbsp;
+    <span class="fail" id="fail-count">0</span> failed &nbsp;|&nbsp;
+    <span class="untested" id="untested-count">109</span> untested &nbsp;|&nbsp;
+    <span id="progress">0%</span> complete
+</div>
+<div class="actions">
+    <button class="btn btn-primary" onclick="saveResults()">Save to localStorage</button>
+    <button class="btn btn-secondary" onclick="loadResults()">Load saved</button>
+    <button class="btn btn-secondary" onclick="clearResults()">Clear all</button>
+    <button class="btn btn-secondary" onclick="exportCSV()">Export CSV</button>
+</div>
+
+<script>
+const sections = [
+    { title: "Editor — Story Management", tests: [
+        { id: 1, name: "Create New Story", steps: `Story list → "+ Create New Story" → enter title + author → Create`, expected: "New folder created, editor opens with template MASTER.md containing all anchor examples" },
+        { id: 2, name: "Genre template", steps: `Create new story → select "Erotica" genre`, expected: "Rating auto-switches to Explicit. story.json tags.default contains erotica-related tags" },
+        { id: 3, name: "Genre rating override", steps: `Select "Horror" genre (mature) → manually switch rating to Explicit → Create`, expected: "story.json has rating=explicit (user override), but Horror tags/warnings" },
+        { id: 4, name: "File upload — Markdown", steps: `Create new story → upload a .md file → Create`, expected: "MASTER.md contains uploaded content wrapped in @title/@body anchors" },
+        { id: 5, name: "File upload — HTML", steps: `Create new story → upload a .html file → Create`, expected: "MASTER.md has HTML converted to Markdown (# headings, **bold**, tags stripped)" },
+        { id: 6, name: "File upload — BBCode", steps: `Create new story → upload a .bbcode file → Create`, expected: "MASTER.md has BBCode converted to Markdown ([b]→**, [i]→*)" },
+        { id: 7, name: "File upload — Plain text", steps: `Create new story → upload a .txt file → Create`, expected: "MASTER.md has the raw text content as-is" },
+        { id: 8, name: "Folder name auto-gen", steps: `Type title "My Great Story"`, expected: `Folder name auto-fills as "My_Great_Story"` },
+        { id: 9, name: "Folder name validation", steps: `Try folder name with special chars (test@story!)`, expected: `Error: "letters, digits, and underscores only"` },
+        { id: 10, name: "Duplicate folder name", steps: `Try creating with name that already exists`, expected: "Error message about existing folder" },
+    ]},
+    { title: "Editor — Editing Features", tests: [
+        { id: 11, name: "Anchor — Title", steps: `Place cursor in CodeMirror → click "T" button`, expected: "<!-- @title --> inserted at cursor" },
+        { id: 12, name: "Anchor — Subtitle", steps: `Click "Sub" button`, expected: "<!-- @subtitle --> inserted" },
+        { id: 13, name: "Anchor — Body", steps: `Click "Body" button`, expected: "<!-- @body --> inserted" },
+        { id: 14, name: "Anchor — Warning", steps: `Click warning button (⚠)`, expected: "<!-- @warning --> inserted" },
+        { id: 15, name: "Anchor — Text Sent", steps: `Click → button`, expected: "<!-- @text-sent --> + blank line + <!-- @text-end --> inserted" },
+        { id: 16, name: "Anchor — Text Received", steps: `Click ← button`, expected: "<!-- @text-received --> + blank + <!-- @text-end -->" },
+        { id: 17, name: "Anchor — Phone", steps: `Click phone button`, expected: "<!-- @phone --> + blank + <!-- @phone-end -->" },
+        { id: 18, name: "Anchor — Story End", steps: `Click "End" button`, expected: "<!-- @story-end --> inserted" },
+        { id: 19, name: "Format tab — Clean HTML", steps: `Click "Clean HTML" tab`, expected: "Source + preview update to Clean HTML" },
+        { id: 20, name: "Format tab — SoFurry", steps: `Click "SoFurry" tab`, expected: "SoFurry-specific HTML formatting" },
+        { id: 21, name: "Format tab — BBCode", steps: `Click "BBCode" tab`, expected: "Source shows BBCode with [b], [i], [hr]" },
+        { id: 22, name: "Format tab — Styled", steps: `Click "Styled" tab`, expected: "Styled HTML with theme colours" },
+        { id: 23, name: "Selective regen — All", steps: `Regenerate ▾ → "All formats"`, expected: "All format files regenerated" },
+        { id: 24, name: "Selective regen — HTML only", steps: `Regenerate ▾ → "HTML only"`, expected: "Only Clean HTML + SoFurry HTML" },
+        { id: 25, name: "Selective regen — BBCode", steps: `Regenerate ▾ → "BBCode only"`, expected: "Only BBCode file regenerated" },
+        { id: 26, name: "Selective regen — PDF", steps: `Regenerate ▾ → "PDF only"`, expected: "Only PDF files regenerated" },
+        { id: 27, name: "Regen staleness warning", steps: `Edit MASTER.md → Save → open Publish Check`, expected: `Amber banner with "Regenerate now" button` },
+        { id: 28, name: "Regen from Publish Check", steps: `Click "Regenerate now" in amber banner`, expected: "Files rebuild → banner disappears → matrix reloads" },
+    ]},
+    { title: "Editor — Metadata Drawer", tests: [
+        { id: 29, name: "Per-platform descriptions", steps: `Metadata → Basics → expand "Per-platform descriptions"`, expected: "Short (IB/SF) and Announcement (Bsky) textareas" },
+        { id: 30, name: "Short description save", steps: `Type in Short textarea → save metadata`, expected: "story.json has descriptions.short" },
+        { id: 31, name: "Announcement char limit", steps: `Type in Announcement textarea`, expected: "Character counter, maxlength=300" },
+        { id: 32, name: "Tag space→underscore (Default)", steps: `Default tab → type "slow burn"`, expected: `Auto-converts to "slow_burn" instantly` },
+        { id: 33, name: "Tag space→underscore (FA)", steps: `FA tab → type "slow burn"`, expected: "Same auto-conversion to underscore" },
+        { id: 34, name: "Tag NO conversion (SF)", steps: `SoFurry tab → type "slow burn"`, expected: `Stays as "slow burn" (SF uses spaces)` },
+        { id: 35, name: "Fix spaces button", steps: `Have tags with spaces → click "Fix spaces"`, expected: `"Fixed N tag(s)" message. Tags updated.` },
+        { id: 36, name: "Fix spaces — none", steps: `All tags already underscored → "Fix spaces"`, expected: `"No spaces found in tags"` },
+        { id: 37, name: "Sort A-Z", steps: `Tags in random order → click "Sort A-Z"`, expected: `Tags reorder. "Sorted tags on N platform(s)"` },
+        { id: 38, name: "Tag browser — open", steps: `Click "Browse all matches" link`, expected: "Expanded tag browser modal opens" },
+        { id: 39, name: "Tag browser — Selected", steps: `Click "Selected" chip`, expected: "Grid shows only currently-added tags" },
+        { id: 40, name: "Selected exclusive", steps: `Click "Selected" then "Physical"`, expected: "Selected deactivates, Physical activates" },
+        { id: 41, name: "Platform badges", steps: `Look at an added tag card in browser`, expected: "Small pills: DEF, SF, IB, AO3, etc." },
+        { id: 42, name: "Tag browser grid", steps: `Open browser with many tags`, expected: "3-5 columns, fills full width" },
+        { id: 43, name: "Chapter tags — 4 tabs", steps: `Expand chapter → check tag tabs`, expected: "Default, SoFurry, Inkbunny, Wattpad" },
+        { id: 44, name: "Chapter thumbnail", steps: `Expand chapter → Upload → select image`, expected: "Filename appears. story.json updated." },
+        { id: 45, name: "Cover image", steps: `Cover section → upload image`, expected: "Preview shows. story.json images.cover updated." },
+    ]},
+    { title: "Publish Check", tests: [
+        { id: 46, name: "No-credentials status", steps: `Open Publish Check → unconfigured platform`, expected: "Lock icon (🔒), not red error" },
+        { id: 47, name: "No-credentials detail", steps: `Click a lock cell`, expected: `"No credentials configured. Set up in Settings."` },
+        { id: 48, name: "Live-publish warning", steps: `Ready cell → uncheck "Save as draft"`, expected: "Yellow ⚠ LIVE PUBLISH banner appears" },
+        { id: 49, name: "Re-check draft", steps: `Re-check "Save as draft"`, expected: "Yellow banner disappears" },
+        { id: 50, name: "Live confirm dialog", steps: `Draft unchecked → click Post`, expected: `Extra "⚠ WARNING: LIVE publish" in confirm()` },
+        { id: 51, name: "Dry run — readable", steps: `Click Dry Run on ready cell`, expected: "Structured: Title, Rating, Words, File, Tags list. Raw JSON collapsible." },
+        { id: 52, name: "Action result log", steps: `Do 3-4 dry runs`, expected: `"Recent actions" section with timestamps` },
+        { id: 53, name: "Log persists", steps: `Click different cells`, expected: "Log stays (doesn't reset on cell switch)" },
+        { id: 54, name: "Relative timestamps", steps: `Click a posted cell`, expected: `"Posted: ... (3d ago)" relative time` },
+        { id: 55, name: "Edit from posted", steps: `Posting → story detail page`, expected: `"Edit in Editor" button → navigates to editor` },
+        { id: 56, name: "Schedule — picker", steps: `Ready cell → click "Schedule"`, expected: "Datetime picker (defaults ~1hr from now)" },
+        { id: 57, name: "Schedule — confirm", steps: `Set future time → Confirm`, expected: "Queue item appears in detail panel" },
+        { id: 58, name: "Schedule — cancel", steps: `Cancel a pending scheduled item`, expected: "Item removed from pending list" },
+        { id: 59, name: "Retry queue", steps: `If a post fails → check result`, expected: `"Will retry automatically with backoff"` },
+    ]},
+    { title: "Bulk Actions", tests: [
+        { id: 60, name: "Publish all new", steps: `Footer → "Publish all new"`, expected: "Preflight with checkboxes, draft toggle, Go button" },
+        { id: 61, name: "Update drifted", steps: `Footer → "Update drifted"`, expected: "Only drifted cells shown" },
+        { id: 62, name: "Row publish", steps: `Click row number badge`, expected: "Preflight for that row's cells only" },
+        { id: 63, name: "Bulk dry run", steps: `Preflight → "Dry Run All"`, expected: "Progress panel, per-item ✓/✗" },
+        { id: 64, name: "Bulk cancel", steps: `During bulk → "Cancel remaining"`, expected: "Remaining show ⊘ Cancelled" },
+    ]},
+    { title: "Polling & Notifications", tests: [
+        { id: 65, name: "No startup poll", steps: `Restart app/container`, expected: `Logs: "Skipping startup poll"` },
+        { id: 66, name: "AO3 login retry", steps: `Wait for poll → check logs`, expected: `"login page retry 1/2 after 5s" with HTTP status` },
+        { id: 67, name: "AO3 429 handling", steps: `If AO3 returns 429`, expected: `"429 rate limited, waiting Xs"` },
+        { id: 68, name: "Telegram classified error", steps: `Trigger platform failure`, expected: `"Login blocked" + hint, not raw exception` },
+        { id: 69, name: "Telegram consolidated", steps: `Orchestrated poll with failure`, expected: `"⚠️ 8/9 Polls Complete" with classified error` },
+    ]},
+    { title: "Settings", tests: [
+        { id: 70, name: "Sync — Status", steps: `Settings → Data → Sync → "Check status"`, expected: "Version, key count, credential mode" },
+        { id: 71, name: "Sync — Pull", steps: `"Pull from server"`, expected: `"Pulled X keys from server"` },
+        { id: 72, name: "Sync — Push", steps: `"Push to server"`, expected: `"Pushed X keys to server"` },
+        { id: 73, name: "Vault — Enable", steps: `Credential Security → "Enable encryption"`, expected: "Success + settings.vault.json created" },
+        { id: 74, name: "Vault — Status", steps: `"Check status"`, expected: "mode=local, vault_exists=true" },
+        { id: 75, name: "Vault — settings.json clean", steps: `Open settings.json while vault enabled`, expected: "No passwords/cookies/tokens in plaintext" },
+        { id: 76, name: "Vault — app works", steps: `Navigate app with vault enabled`, expected: "Platform auth still works (loaded from vault)" },
+        { id: 77, name: "Vault — Disable", steps: `"Disable encryption" → confirm`, expected: "Creds back in settings.json, vault deleted" },
+        { id: 78, name: "Browser login — desktop", steps: `Platforms → FA → "Login via Browser"`, expected: "Pywebview popup → FA login page → auto-close" },
+        { id: 79, name: "Browser login — manual", steps: `"Enter cookies manually" toggle`, expected: "Expands to cookie_a/cookie_b fields" },
+        { id: 80, name: "Browser login — server", steps: `Server dashboard → FA section`, expected: `"Open login page" link (no browser popup)` },
+    ]},
+    { title: "Setup Wizard", tests: [
+        { id: 81, name: "First-run trigger", steps: `Remove setup_complete from settings → reload`, expected: "Wizard appears, sidebar hidden" },
+        { id: 82, name: "Step 1 — Welcome", steps: `Click "Get Started"`, expected: "Advances to Step 2, dot 1 fills" },
+        { id: 83, name: "Step 2 — Archive path", steps: `Enter path → Next`, expected: "Path saved, advances to Step 3" },
+        { id: 84, name: "Step 3 — Platforms", steps: `View platform cards`, expected: "11 platforms, green=connected, grey=not" },
+        { id: 85, name: "Step 3 — Skip", steps: `Click Next without connecting`, expected: "Advances to Step 4 (skip is OK)" },
+        { id: 86, name: "Step 4 — Finish", steps: `"Go to Dashboard"`, expected: "setup_complete saved, normal dashboard loads" },
+        { id: 87, name: "No re-appear", steps: `Reload after completing setup`, expected: "Normal dashboard, no wizard" },
+    ]},
+    { title: "Import from Platforms", tests: [
+        { id: 88, name: "Import dialog", steps: `Story list → "Import from Platform"`, expected: "Submissions grouped by IB/SF/FA" },
+        { id: 89, name: "IB import", steps: `Import an IB Writing submission`, expected: "MASTER.md with full BBCode→Markdown content" },
+        { id: 90, name: "SF import", steps: `Import an SF story submission`, expected: "MASTER.md with full HTML→Markdown content" },
+        { id: 91, name: "FA import — PDF", steps: `Import FA story (PDF upload)`, expected: "story.json with tags/rating, description as content" },
+        { id: 92, name: "FA import — TXT", steps: `Import FA story (TXT upload)`, expected: "MASTER.md with full text content" },
+        { id: 93, name: "Already imported filter", steps: `Import → close → reopen dialog`, expected: "Imported story no longer listed" },
+        { id: 94, name: "Name collision", steps: `Import story with existing folder name`, expected: "Creates with _2 suffix, no overwrite" },
+        { id: 95, name: "Import provenance", steps: `Check imported story.json`, expected: "import_source: {platform, submission_id, url}" },
+        { id: 96, name: "Coming soon", steps: `Check AO3/SQW in dialog`, expected: `"Coming soon" — no import button` },
+    ]},
+    { title: "Desktop Build", tests: [
+        { id: 97, name: "PyInstaller build", steps: `python -m PyInstaller inkbunny_analytics.spec --noconfirm`, expected: "Build completes, dist/PawPoller/PawPoller.exe exists" },
+        { id: 98, name: "App launches", steps: `Double-click PawPoller.exe`, expected: "Native window opens with dashboard" },
+        { id: 99, name: "Tray icon", steps: `Check system tray`, expected: "Icon visible, right-click menu works" },
+        { id: 100, name: "Desktop polling", steps: `Wait for poll interval`, expected: "Stats update on dashboard" },
+    ]},
+    { title: "Server Deploy", tests: [
+        { id: 101, name: "Docker build", steps: `docker compose up -d --build`, expected: "Container starts without errors" },
+        { id: 102, name: "Health check", steps: `curl localhost:8420/api/health`, expected: "200 OK with version" },
+        { id: 103, name: "Logs clean", steps: `docker compose logs --tail=30`, expected: "No ERROR on startup" },
+        { id: 104, name: "Server polling", steps: `Wait for poll cycle`, expected: "Telegram summary arrives" },
+    ]},
+    { title: "GitHub & CI/CD", tests: [
+        { id: 105, name: "README renders", steps: `Visit repo on GitHub`, expected: "README displays correctly" },
+        { id: 106, name: "LICENSE visible", steps: `Check repo root`, expected: "MIT license present" },
+        { id: 107, name: "CONTRIBUTING", steps: `Check repo root`, expected: "Contributing guide present" },
+        { id: 108, name: "Lint on push", steps: `Push commit → Actions tab`, expected: "Ruff + JS syntax pass" },
+        { id: 109, name: "Build on tag", steps: `git tag v2.13.0 && git push --tags`, expected: ".zip artifact on release page" },
+    ]},
+];
+
+function render() {
+    let html = '';
+    for (const s of sections) {
+        html += `<h2>${s.title}</h2><table>
+        <tr><th style="width:30px">#</th><th style="width:150px">Test</th><th>Steps</th><th>Expected</th><th style="width:100px">Result</th><th style="width:220px">Notes / Actual Result</th></tr>`;
+        for (const t of s.tests) {
+            html += `<tr id="row-${t.id}">
+                <td class="num">${t.id}</td>
+                <td class="test-name">${t.name}</td>
+                <td class="steps">${t.steps}</td>
+                <td class="expected">${t.expected}</td>
+                <td class="status-cell">
+                    <label><input type="radio" name="s${t.id}" value="pass" onchange="updateRow(${t.id})">✓</label>
+                    <label><input type="radio" name="s${t.id}" value="fail" onchange="updateRow(${t.id})">✗</label>
+                </td>
+                <td><textarea class="result-input" id="note-${t.id}" placeholder="Write results here..." oninput="autoSave()"></textarea></td>
+            </tr>`;
+        }
+        html += '</table>';
+    }
+    document.getElementById('content').innerHTML = html;
+}
+
+function updateRow(id) {
+    const row = document.getElementById('row-' + id);
+    const val = document.querySelector(`input[name="s${id}"]:checked`)?.value;
+    row.className = val || '';
+    updateSummary();
+    autoSave();
+}
+
+function updateSummary() {
+    let pass = 0, fail = 0, total = 109;
+    for (let i = 1; i <= total; i++) {
+        const v = document.querySelector(`input[name="s${i}"]:checked`)?.value;
+        if (v === 'pass') pass++;
+        else if (v === 'fail') fail++;
+    }
+    document.getElementById('pass-count').textContent = pass;
+    document.getElementById('fail-count').textContent = fail;
+    document.getElementById('untested-count').textContent = total - pass - fail;
+    document.getElementById('progress').textContent = Math.round((pass + fail) / total * 100) + '%';
+}
+
+let _saveTimer;
+function autoSave() { clearTimeout(_saveTimer); _saveTimer = setTimeout(saveResults, 2000); }
+
+function saveResults() {
+    const data = {};
+    for (let i = 1; i <= 109; i++) {
+        const v = document.querySelector(`input[name="s${i}"]:checked`)?.value || '';
+        const n = document.getElementById('note-' + i)?.value || '';
+        if (v || n) data[i] = { status: v, note: n };
+    }
+    localStorage.setItem('pawpoller_test_results', JSON.stringify(data));
+}
+
+function loadResults() {
+    const raw = localStorage.getItem('pawpoller_test_results');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    for (const [id, d] of Object.entries(data)) {
+        if (d.status) {
+            const radio = document.querySelector(`input[name="s${id}"][value="${d.status}"]`);
+            if (radio) radio.checked = true;
+        }
+        if (d.note) {
+            const note = document.getElementById('note-' + id);
+            if (note) note.value = d.note;
+        }
+        updateRow(parseInt(id));
+    }
+    updateSummary();
+}
+
+function clearResults() {
+    if (!confirm('Clear all test results?')) return;
+    localStorage.removeItem('pawpoller_test_results');
+    for (let i = 1; i <= 109; i++) {
+        document.querySelectorAll(`input[name="s${i}"]`).forEach(r => r.checked = false);
+        const n = document.getElementById('note-' + i);
+        if (n) n.value = '';
+        const row = document.getElementById('row-' + i);
+        if (row) row.className = '';
+    }
+    updateSummary();
+}
+
+function exportCSV() {
+    let csv = 'ID,Test,Status,Notes\n';
+    for (const s of sections) {
+        for (const t of s.tests) {
+            const v = document.querySelector(`input[name="s${t.id}"]:checked`)?.value || 'untested';
+            const n = (document.getElementById('note-' + t.id)?.value || '').replace(/"/g, '""');
+            csv += `${t.id},"${t.name}",${v},"${n}"\n`;
+        }
+    }
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'pawpoller_test_results.csv';
+    a.click();
+}
+</script>
+
+<div id="content"></div>
+<script>render(); loadResults();</script>
+
+</body>
+</html>
