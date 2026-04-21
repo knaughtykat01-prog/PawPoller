@@ -452,10 +452,8 @@ async def import_from_sofurry(submission_id: str) -> dict:
         cover_url = data.get("coverUrl", "") or data.get("thumbUrl", "")
         url = f"{SOFURRY_BASE}/s/{submission_id}"
 
-        # Fetch the actual story content from the submission page
-        # SoFurry renders story text in a specific div on the page
         import asyncio
-        await asyncio.sleep(0.5)  # Rate limit
+        await asyncio.sleep(0.5)
 
         page_resp = await client._http.get(f"{SOFURRY_BASE}/s/{submission_id}")
         if page_resp.status_code != 200:
@@ -464,45 +462,30 @@ async def import_from_sofurry(submission_id: str) -> dict:
         page_html = page_resp.text
         content = ""
 
-        # SoFurry renders story content in a div with id="sfContentBody"
-        # or in a <div class="sf-story-content"> or similar container.
-        # Try multiple patterns since the page structure may vary.
-        patterns = [
-            r'<div[^>]*id="sfContentBody"[^>]*>(.*?)</div>\s*(?:</div>|<div)',
-            r'<div[^>]*class="[^"]*sfContentBody[^"]*"[^>]*>(.*?)</div>',
-            r'<div[^>]*class="[^"]*story-content[^"]*"[^>]*>(.*?)</div>',
-            r'<div[^>]*class="[^"]*submission-content[^"]*"[^>]*>(.*?)</div>',
-            r'<div[^>]*id="sfTextBody"[^>]*>(.*?)</div>',
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, page_html, re.DOTALL | re.IGNORECASE)
-            if match:
-                content = match.group(1).strip()
-                break
-
-        if not content:
-            # Broader fallback: look for the main content area between
-            # known SF page landmarks
-            body_match = re.search(
-                r'<!-- content start -->(.*?)<!-- content end -->',
-                page_html, re.DOTALL | re.IGNORECASE,
-            )
-            if body_match:
-                content = body_match.group(1).strip()
+        # SF renders story text after a chapter divider line inside
+        # the story-content-holder div. Extract everything between the
+        # divider and the next major page section (comments/footer).
+        divider_idx = page_html.find('background-color: #575757')
+        if divider_idx > 0:
+            # Skip past the closing </div> of the divider
+            start = page_html.find('>', divider_idx + 30)
+            if start > 0:
+                start += 1
+                # Find the end — look for comment section or footer
+                end_markers = ['id="comments"', 'class="comment-', '<footer', 'id="submission-actions"']
+                end = len(page_html)
+                for marker in end_markers:
+                    m_idx = page_html.find(marker, start)
+                    if m_idx > 0 and m_idx < end:
+                        end = m_idx
+                # Walk back to find the enclosing tag start
+                content = page_html[start:end].strip()
+                # Strip trailing closing divs
+                while content.endswith('</div>'):
+                    content = content[:-6].strip()
 
         if not content:
-            # Final fallback: use contentUrl from API if available
-            content_url = data.get("contentUrl", "")
-            if content_url:
-                if not content_url.startswith("http"):
-                    content_url = f"{SOFURRY_BASE}{content_url}"
-                content_resp = await client._http.get(content_url)
-                if content_resp.status_code == 200:
-                    content = content_resp.text
-
-        if not content:
-            content = description or "(No content available — story text could not be extracted)"
+            content = description or "(No content available)"
             logger.warning("SF import %s: no story content found, using description", submission_id)
 
     finally:
