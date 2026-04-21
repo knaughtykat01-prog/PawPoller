@@ -119,6 +119,11 @@ const Editor = {
                                 </select>
                             </label>
                         </div>
+                        <label class="create-story-label">
+                            Import content from file <span class="create-story-hint">(optional — replaces template)</span>
+                            <input type="file" id="create-story-file" class="create-story-input" accept=".md,.txt,.html,.htm,.bbcode,.rtf">
+                            <span class="create-story-hint">.md, .txt, .html, .bbcode, .rtf</span>
+                        </label>
                         <div id="create-story-error" class="create-story-error" style="display:none"></div>
                         <div class="create-story-actions">
                             <button class="btn btn-sm btn-outline" id="create-story-cancel">Cancel</button>
@@ -232,11 +237,30 @@ const Editor = {
         submitBtn.textContent = 'Creating...';
         errEl.style.display = 'none';
 
+        // Read optional file content
+        let file_content = '';
+        let file_format = '';
+        const fileInput = document.getElementById('create-story-file');
+        if (fileInput && fileInput.files.length > 0) {
+            const file = fileInput.files[0];
+            const ext = file.name.split('.').pop().toLowerCase();
+            file_format = ext;
+            try {
+                file_content = await file.text();
+            } catch (e) {
+                errEl.textContent = 'Could not read file: ' + e.message;
+                errEl.style.display = 'block';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create';
+                return;
+            }
+        }
+
         try {
             const resp = await fetch('/api/editor/stories/create', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ name, title, author, genre, chapters, rating }),
+                body: JSON.stringify({ name, title, author, genre, chapters, rating, file_content, file_format }),
             });
             const data = await resp.json();
             if (!resp.ok) {

@@ -53,6 +53,50 @@ class CreateStoryRequest(BaseModel):
     chapters: int = 1    # Initial chapter count
     rating: str = "explicit"  # general, mature, explicit
     genre: str = ""      # Optional genre template preset
+    file_content: str = ""   # Optional uploaded file content
+    file_format: str = ""    # File extension: md, txt, html, bbcode, rtf
+
+
+# ---------------------------------------------------------------------------
+# Simple format converters for file upload in Create Story
+# ---------------------------------------------------------------------------
+
+def _convert_html_to_md(html: str) -> str:
+    """Basic HTML to Markdown: strip tags, preserve structure."""
+    text = re.sub(r'<br\s*/?\s*>', '\n', html)
+    text = re.sub(r'<p[^>]*>', '\n\n', text)
+    text = re.sub(r'</p>', '', text)
+    text = re.sub(r'<h([1-6])[^>]*>(.*?)</h\1>', lambda m: '#' * int(m.group(1)) + ' ' + m.group(2), text)
+    text = re.sub(r'<strong>(.*?)</strong>', r'**\1**', text)
+    text = re.sub(r'<b>(.*?)</b>', r'**\1**', text)
+    text = re.sub(r'<em>(.*?)</em>', r'*\1*', text)
+    text = re.sub(r'<i>(.*?)</i>', r'*\1*', text)
+    text = re.sub(r'<hr\s*/?\s*>', '\n---\n', text)
+    text = re.sub(r'<[^>]+>', '', text)
+    from html import unescape
+    text = unescape(text)
+    return text.strip()
+
+
+def _convert_bbcode_to_md(bbcode: str) -> str:
+    """Basic BBCode to Markdown."""
+    text = re.sub(r'\[b\](.*?)\[/b\]', r'**\1**', bbcode, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'\[i\](.*?)\[/i\]', r'*\1*', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'\[u\](.*?)\[/u\]', r'\1', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'\[url=([^\]]+)\](.*?)\[/url\]', r'[\2](\1)', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'\[url\](.*?)\[/url\]', r'\1', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'\[hr\]', '\n---\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'\[(?:size|color|font|quote|center|right|left)[^\]]*\]', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\[/(?:size|color|font|quote|center|right|left)\]', '', text, flags=re.IGNORECASE)
+    return text.strip()
+
+
+def _strip_rtf(rtf: str) -> str:
+    """Strip RTF control codes to extract plain text."""
+    text = re.sub(r'\{\\[^}]+\}', '', rtf)
+    text = re.sub(r'\\[a-z]+\d*\s?', '', text)
+    text = re.sub(r'[{}]', '', text)
+    return text.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +355,32 @@ Use `---` followed by `# Chapter N: Title` to start a new chapter.
 {chapter_blocks}
 <!-- @story-end -->
 """
+
+    # If user uploaded a file, use its content instead of the template
+    if req.file_content:
+        imported = req.file_content
+        fmt = req.file_format.lower()
+        if fmt in ("html", "htm"):
+            imported = _convert_html_to_md(imported)
+        elif fmt == "bbcode":
+            imported = _convert_bbcode_to_md(imported)
+        elif fmt == "rtf":
+            imported = _strip_rtf(imported)
+        # md and txt are used as-is
+
+        master_content = f"""<!-- @title -->
+# {title}
+
+<!-- @byline -->
+by {author or 'Author Name'}
+
+<!-- @body -->
+
+{imported}
+
+<!-- @story-end -->
+"""
+
     (story_dir / "Markdown" / "MASTER.md").write_text(master_content, encoding="utf-8")
 
     # Generate story.json — merge genre template if one was selected
