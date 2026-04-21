@@ -2456,10 +2456,10 @@ async def add_tag(req: AddTagRequest):
 IMPORT_PLATFORMS = {
     "ib": {"label": "Inkbunny", "filter_field": "type_name", "filter_value": "Writing"},
     "sf": {"label": "SoFurry", "filter_field": "content_type", "filter_value": "story"},
+    "fa": {"label": "FurAffinity", "filter_field": "category", "filter_value": "Story"},
 }
 
-# Platforms with placeholder "coming soon" status
-IMPORT_COMING_SOON = ["fa", "sqw", "ao3"]
+IMPORT_COMING_SOON = ["sqw", "ao3"]
 
 
 @editor_router.get("/import/available")
@@ -2473,12 +2473,11 @@ async def list_importable():
     from database.db import get_connection
     from database import queries as ib_queries
     from database import sf_queries
+    from database import fa_queries
 
     archive = get_archive_path()
 
-    # Build a set of already-imported submission IDs per platform by scanning
-    # story.json files in the archive for import_source metadata.
-    imported: dict[str, set[str]] = {"ib": set(), "sf": set()}
+    imported: dict[str, set[str]] = {"ib": set(), "sf": set(), "fa": set()}
     if archive.is_dir():
         for entry in archive.iterdir():
             if not entry.is_dir() or entry.name.startswith("."):
@@ -2541,6 +2540,27 @@ async def list_importable():
                 "rating": sub.get("rating", ""),
                 "thumbnail_url": sub.get("thumbnail_url", ""),
             })
+
+        # --- FurAffinity ---
+        fa_subs = fa_queries.get_all_fa_submissions(conn, sort_by="title", order="asc")
+        for sub in fa_subs:
+            category = (sub.get("category") or "").lower()
+            if "story" not in category:
+                continue
+            sid = str(sub.get("submission_id", ""))
+            if sid in imported["fa"]:
+                continue
+            result.append({
+                "platform": "fa",
+                "platform_label": "FurAffinity",
+                "submission_id": sid,
+                "title": sub.get("title", ""),
+                "author": sub.get("username", ""),
+                "url": f"https://www.furaffinity.net/view/{sid}/",
+                "word_count": 0,
+                "rating": sub.get("rating", ""),
+                "thumbnail_url": sub.get("thumbnail_url", ""),
+            })
     finally:
         conn.close()
 
@@ -2564,7 +2584,7 @@ async def import_submission(platform: str, submission_id: str):
     Downloads the content, creates the folder structure, and generates
     story.json from the submission metadata.
     """
-    from posting.importer import import_from_inkbunny, import_from_sofurry
+    from posting.importer import import_from_inkbunny, import_from_sofurry, import_from_furaffinity
 
     if platform not in IMPORT_PLATFORMS:
         raise HTTPException(
@@ -2577,6 +2597,8 @@ async def import_submission(platform: str, submission_id: str):
             result = await import_from_inkbunny(submission_id)
         elif platform == "sf":
             result = await import_from_sofurry(submission_id)
+        elif platform == "fa":
+            result = await import_from_furaffinity(submission_id)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
     except RuntimeError as e:

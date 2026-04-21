@@ -508,3 +508,81 @@ async def import_from_sofurry(submission_id: str) -> dict:
     )
 
     return {"story_name": story_name, "title": title}
+
+
+async def import_from_furaffinity(submission_id: str) -> dict:
+    """Import a story from FurAffinity via FAExport API.
+
+    Downloads the story file (TXT/PDF/DOC) from the download URL,
+    extracts text content, and creates a local story folder.
+    """
+    from fa_client.client import FAClient
+
+    settings = config.get_settings()
+    fa_username = settings.get("fa_username", "")
+    cookie_a = settings.get("fa_cookie_a", "")
+    cookie_b = settings.get("fa_cookie_b", "")
+
+    if not cookie_a or not cookie_b:
+        raise RuntimeError("FA cookies not configured — set up in Settings")
+
+    client = FAClient(username=fa_username, cookie_a=cookie_a, cookie_b=cookie_b)
+
+    try:
+        detail = await client.get_submission_detail(int(submission_id))
+    except Exception as e:
+        raise RuntimeError(f"Could not fetch FA submission {submission_id}: {e}")
+
+    title = detail.get("title", f"FA_{submission_id}")
+    author = detail.get("username", "")
+    description = detail.get("description", "")
+    tags = detail.get("keywords", [])
+    fa_rating = detail.get("rating", "").lower()
+    if "adult" in fa_rating:
+        rating = "explicit"
+    elif "mature" in fa_rating:
+        rating = "mature"
+    else:
+        rating = "general"
+
+    download_url = detail.get("download_url", "")
+    cover_url = detail.get("thumbnail_url", "")
+    url = detail.get("link", f"https://www.furaffinity.net/view/{submission_id}/")
+
+    content = ""
+    if download_url:
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as dl:
+                file_resp = await dl.get(download_url)
+                file_resp.raise_for_status()
+                if download_url.lower().endswith(".txt"):
+                    content = file_resp.text
+                elif download_url.lower().endswith(".pdf"):
+                    content = f"(PDF file downloaded — manual conversion needed)\n\nDescription:\n{description}"
+                    logger.info("FA import %s: PDF file — saving raw, needs manual conversion", submission_id)
+                else:
+                    content = file_resp.text
+        except Exception as e:
+            logger.warning("FA import %s: file download failed: %s", submission_id, e)
+
+    if not content:
+        content = description or "(No content available)"
+        logger.warning("FA import %s: no downloadable file, using description", submission_id)
+
+    folder_name = _sanitize_folder_name(title)
+    story_name = _create_story_folder(
+        name=folder_name,
+        title=title,
+        author=author,
+        description=description,
+        tags=tags,
+        rating=rating,
+        content=content,
+        content_format="text",
+        cover_url=cover_url,
+        platform="fa",
+        submission_id=str(submission_id),
+        source_url=url,
+    )
+
+    return {"story_name": story_name, "title": title}
