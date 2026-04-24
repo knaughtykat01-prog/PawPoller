@@ -38,11 +38,13 @@ PawPoller is a desktop app and self-hosted server for publishing fiction across 
 
 ## Quick Start
 
+Full walkthrough: [**SETUP.md**](SETUP.md) — covers desktop, Docker self-hosting (including reverse proxy / Cloudflare Tunnel for public access), and running from source.
+
 ### Option A: Download the release (Windows)
 
 1. Download the latest `PawPoller-windows-x64.zip` from [Releases](../../releases)
 2. Extract and run `PawPoller.exe`
-3. The Settings page guides you through connecting your platforms
+3. The setup wizard guides you through connecting your platforms
 4. Add stories and start publishing
 
 ### Option B: Run from source
@@ -59,11 +61,12 @@ python main.py
 ```bash
 git clone https://github.com/knaughtykat01-prog/PawPoller.git
 cd PawPoller
-cp .env.example .env    # Edit with your credentials
-docker compose up -d
+cp .env.example .env    # Edit with your credentials — set DASHBOARD_PASSWORD!
+# Edit docker-compose.yml: change the story-archive bind-mount path to yours
+docker compose up -d --build
 ```
 
-The dashboard is available at `http://localhost:8420`.
+The dashboard is available at `http://localhost:8420`. For public/web access behind TLS, see [SETUP.md §2.5](SETUP.md#25-exposing-it-to-the-web).
 
 ---
 
