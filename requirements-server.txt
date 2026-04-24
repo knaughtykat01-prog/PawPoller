@@ -11,3 +11,6 @@ pyotp~=2.9.0
 itsdangerous~=2.2.0
 weasyprint~=68.1
 cryptography~=46.0.7
+
+# Test dependencies (needed by CI test job — not runtime)
+pytest~=8.3
