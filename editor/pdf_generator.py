@@ -65,8 +65,16 @@ def html_to_pdf(html_path: str | Path, pdf_path: str | Path) -> tuple[bool, str]
         html_url = "file:///" + str(html_path.resolve()).replace("\\", "/")
         pdf_fwd = str(pdf_path.resolve()).replace("\\", "/")
         try:
+            # --no-pdf-header-footer suppresses the browser-added page
+            # header (date) and footer (title/URL) that Chromium adds by
+            # default. Without it the PDF shows "DD/MM/YYYY, HH:MM" at
+            # the top-left and the filename/URL at the bottom — harmless
+            # on screen but destroys print output.
+            # --no-margins tells Chromium to defer entirely to the CSS
+            # `@page` rule instead of overlaying its own ~0.5" default.
             subprocess.run(
-                [edge, "--headless", "--disable-gpu", "--no-margins",
+                [edge, "--headless", "--disable-gpu",
+                 "--no-margins", "--no-pdf-header-footer",
                  f"--print-to-pdf={pdf_fwd}", html_url],
                 capture_output=True, text=True, timeout=120,
             )

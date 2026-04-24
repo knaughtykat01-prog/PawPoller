@@ -8177,7 +8177,8 @@ const App = {
                     if (data.ok) {
                         vaultResult.innerHTML = '<span style="color:var(--success)">Vault enabled — ' + data.fields_migrated + ' fields encrypted</span>';
                     } else {
-                        vaultResult.innerHTML = '<span style="color:var(--danger)">Failed to enable vault</span>';
+                        const detail = data.error || ('HTTP ' + resp.status);
+                        vaultResult.innerHTML = '<span style="color:var(--danger)">Failed to enable vault: ' + Utils.escapeHtml(detail) + '</span>';
                     }
                 } catch (err) {
                     vaultResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';
@@ -8193,7 +8194,8 @@ const App = {
                     if (data.ok) {
                         vaultResult.innerHTML = '<span style="color:var(--success)">Vault disabled — ' + data.fields_migrated + ' fields moved to plaintext</span>';
                     } else {
-                        vaultResult.innerHTML = '<span style="color:var(--danger)">Failed to disable vault</span>';
+                        const detail = data.error || ('HTTP ' + resp.status);
+                        vaultResult.innerHTML = '<span style="color:var(--danger)">Failed to disable vault: ' + Utils.escapeHtml(detail) + '</span>';
                     }
                 } catch (err) {
                     vaultResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';

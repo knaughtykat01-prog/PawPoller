@@ -90,7 +90,11 @@ async def sync_status():
 @settings_router.post("/vault/enable")
 async def enable_vault():
     """Switch to local-only encrypted credential mode."""
-    count = config.migrate_to_local_vault()
+    try:
+        count = config.migrate_to_local_vault()
+    except Exception as e:
+        logger.error("Vault enable failed: %s", e, exc_info=True)
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
     logger.info("Vault enabled: %d credential fields migrated to vault", count)
     return {"ok": True, "mode": "local", "fields_migrated": count}
 
@@ -98,7 +102,11 @@ async def enable_vault():
 @settings_router.post("/vault/disable")
 async def disable_vault():
     """Switch back to cloud/plaintext credential mode."""
-    count = config.migrate_to_cloud()
+    try:
+        count = config.migrate_to_cloud()
+    except Exception as e:
+        logger.error("Vault disable failed: %s", e, exc_info=True)
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
     logger.info("Vault disabled: %d credential fields migrated to plaintext", count)
     return {"ok": True, "mode": "cloud", "fields_migrated": count}
 

@@ -1,4 +1,4 @@
-# PawPoller v2.13.0 — Testing Checklist
+# PawPoller v2.13.8 — Testing Checklist
 
 Test each item and mark with [x] when verified. Notes column for issues found.
 
@@ -23,14 +23,14 @@ Test each item and mark with [x] when verified. Notes column for issues found.
 
 | # | Test | Steps | Expected Result | Status | Notes |
 |---|------|-------|-----------------|--------|-------|
-| 11 | Anchor — Title | Place cursor in CodeMirror → click "T" button | `<!-- @title -->` inserted at cursor position | [ ] | |
-| 12 | Anchor — Subtitle | Click "Sub" button | `<!-- @subtitle -->` inserted | [ ] | |
-| 13 | Anchor — Body | Click "Body" button | `<!-- @body -->` inserted | [ ] | |
-| 14 | Anchor — Warning | Click warning button (⚠) | `<!-- @warning -->` inserted | [ ] | |
-| 15 | Anchor — Text Sent | Click → button | `<!-- @text-sent -->` + blank line + `<!-- @text-end -->` inserted | [ ] | |
-| 16 | Anchor — Text Received | Click ← button | `<!-- @text-received -->` + blank line + `<!-- @text-end -->` inserted | [ ] | |
-| 17 | Anchor — Phone | Click phone button | `<!-- @phone -->` + blank line + `<!-- @phone-end -->` inserted | [ ] | |
-| 18 | Anchor — Story End | Click "End" button | `<!-- @story-end -->` inserted | [ ] | |
+| 11 | Anchor — Title | Place cursor on a line in Markdown Source → click "T" button | `<!-- @title -->` inserted on its own line above the cursor's line | [ ] | |
+| 12 | Anchor — Subtitle | Click "Sub" button | `<!-- @subtitle -->` inserted on own line above | [ ] | |
+| 13 | Anchor — Body | Click "Body" button | `<!-- @body -->` inserted on own line above | [ ] | |
+| 14 | Anchor — Warning | Click warning button (⚠) | `<!-- @warning -->` inserted on own line above | [ ] | |
+| 15 | Anchor — Text Sent | Click "→ Sent" button | `<!-- @text-sent -->` on own line above. NO `@text-end` (the real format is single-line label, no close tag) | [ ] | |
+| 16 | Anchor — Text Received | Click "← Recv" button | `<!-- @text-received -->` on own line above. No close tag | [ ] | |
+| 17 | Anchor — Phone Incoming | Click "☎ Phone" button | `<!-- @phone-incoming -->` on own line above (not `@phone` — that's the fake name). No close tag | [ ] | |
+| 18 | Anchor tooltip — hover delay | Hover any anchor button ~1.2s without moving | Tooltip pops up showing label + purpose + before/after example | [ ] | |
 | 19 | Format tab — Clean HTML | Click "Clean HTML" tab | Source and preview panels update to show Clean HTML output | [ ] | |
 | 20 | Format tab — SoFurry | Click "SoFurry" tab | Preview shows SoFurry-specific HTML formatting | [ ] | |
 | 21 | Format tab — BBCode | Click "BBCode" tab | Source shows BBCode with [b], [i], [hr] tags | [ ] | |
@@ -149,7 +149,7 @@ Test each item and mark with [x] when verified. Notes column for issues found.
 
 | # | Test | Steps | Expected Result | Status | Notes |
 |---|------|-------|-----------------|--------|-------|
-| 97 | PyInstaller build | Run `python -m PyInstaller inkbunny_analytics.spec --noconfirm` | Build completes. `dist/PawPoller/PawPoller.exe` exists. | [ ] | |
+| 97 | PyInstaller build | Run `python -m PyInstaller pawpoller.spec --noconfirm` | Build completes. `dist/PawPoller/PawPoller.exe` exists. | [ ] | |
 | 98 | App launches | Double-click `PawPoller.exe` | Native window opens with dashboard. No crash. | [ ] | |
 | 99 | Tray icon | Check system tray after launch | PawPoller icon visible. Right-click shows menu (Show/Hide, Quit). | [ ] | |
 | 100 | Desktop polling | Wait for one poll interval | Poll cycle runs, stats update on dashboard | [ ] | |
@@ -172,3 +172,15 @@ Test each item and mark with [x] when verified. Notes column for issues found.
 | 107 | CONTRIBUTING visible | Check repo root | Contributing guide present | [ ] | |
 | 108 | Lint on push | Push a commit → check Actions tab | Lint workflow runs: ruff passes, JS syntax passes | [ ] | |
 | 109 | Build on tag | `git tag v2.13.0 && git push --tags` | Build workflow triggers → PyInstaller runs → .zip artifact on release page | [ ] | |
+
+## Editor — Anchor Toolbar additions (2.13.7 / 2.13.8)
+
+| # | Test | Steps | Expected Result | Status | Notes |
+|---|------|-------|-----------------|--------|-------|
+| 110 | Anchor — Byline | Click "By" button | `<!-- @byline -->` on own line above cursor line | [ ] | |
+| 111 | Anchor — Disclaimer | Click "Disc" button | `<!-- @disclaimer -->` on own line above | [ ] | |
+| 112 | Anchor — Fanfiction | Click "FF" button | `<!-- @fanfiction -->` on own line above | [ ] | |
+| 113 | Anchor wrap — CM selection | Select a line in Markdown Source → click "→ Sent" | `<!-- @text-sent -->` appears on a new line immediately above the selected line; selection stays intact | [ ] | |
+| 114 | Anchor wrap — Rich Editor selection | Select unique text in the Rich Editor panel → click any anchor button | Anchor appears on line above the matching Markdown source line (text must appear exactly once for the match to take) | [ ] | |
+| 115 | Tooltip — content | Let the hover tooltip appear on an anchor button | Four elements visible: label, purpose, "Without anchor" block, "With anchor" block (green left border) | [ ] | |
+| 116 | Tooltip — cancel on click | Tooltip showing → click the button | Tooltip hides immediately; anchor is inserted | [ ] | |

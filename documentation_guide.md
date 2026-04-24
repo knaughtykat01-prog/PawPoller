@@ -96,7 +96,6 @@ User's browser (pywebview on desktop, regular browser on server)
 PawPoller/
 ├── main.py                  # Desktop entry point (pywebview + pystray)
 ├── server.py                # Headless entry point (Docker / server, unified poll orchestrator)
-├── poll_service.py          # Legacy/alternative (APScheduler, --once, --status)
 ├── config.py                # Paths, credentials, settings.json helpers
 ├── dashboard.py             # FastAPI app factory, session auth middleware, rate limiting, security headers, SPA serving
 ├── updater.py               # Auto-update (desktop only)
@@ -237,16 +236,14 @@ PawPoller/
 ├── .env.example             # 25+ environment variable template
 ├── requirements.txt         # Desktop dependencies (pywebview, pystray, Pillow, winotify, etc.)
 ├── requirements-server.txt  # Headless/Docker dependencies (no GUI): fastapi, uvicorn, httpx, bcrypt, pyotp, itsdangerous
-├── inkbunny_analytics.spec  # PyInstaller build spec
-├── build.bat                # Windows build script
-├── settings.json            # Runtime user settings (gitignored)
-├── CHANGELOG.md             # Version history
-├── INDEX.md                 # Detailed codebase index (~35KB)
+├── pawpoller.spec          # PyInstaller build spec
+├── build.bat               # Windows build script
+├── settings.json           # Runtime user settings (gitignored)
+├── CHANGELOG.md            # Version history
 ├── README.md                # Public-facing project overview
 ├── LICENSE                  # Project licence
 ├── CONTRIBUTING.md          # Contribution guidelines
-├── ROADMAP_PUBLIC.md        # Public release roadmap (Phases 8-15)
-└── PHASE_7_DESIGN.md        # Credential management design doc
+└── ROADMAP_PUBLIC.md        # Public release roadmap (Phases 8-15)
 ```
 
 ---
@@ -375,16 +372,6 @@ Key differences from `main.py`:
 - Signal handler for graceful shutdown (SIGINT/SIGTERM)
 - CF proxy debug logging gated behind `PAWPOLLER_DEBUG_PROXY` env var
 - No pywebview, pystray, Pillow, or winotify dependencies
-
-### `poll_service.py` — Legacy/Alternative
-
-Three modes via argparse:
-
-**Continuous mode** (default): APScheduler `AsyncIOScheduler` with `IntervalTrigger(hours=1)`. Forces an immediate first poll via `next_run_time=datetime.now()`. Main loop is `while True: await asyncio.sleep(1)` to keep the event loop alive for APScheduler. Only polls Inkbunny.
-
-**Once mode** (`--once`): `asyncio.run(do_poll_once())` — single poll cycle then exit. Designed for Windows Task Scheduler or cron where the OS handles scheduling. Exit code 1 on failure so the scheduler can detect errors.
-
-**Status mode** (`--status`): Synchronous SQLite reads (no event loop needed). Prints: database path, submission count, total views/favorites, snapshot count, faving user count, last poll time/status/duration/error.
 
 ---
 

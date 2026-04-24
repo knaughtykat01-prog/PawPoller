@@ -4,6 +4,249 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.13.8] - 2026-04-24
+
+### Changed — Anchor toolbar tweaks
+
+- Inline semantic anchor buttons (text-sent / text-received /
+  phone-incoming) now carry text labels alongside the Unicode icon:
+  `→ Sent`, `← Recv`, `☎ Phone`. The bare arrows/phone glyph from
+  2.13.7 rendered small inside Chromium's embedded webview and
+  blended into the separators, making the buttons easy to miss.
+- Hover tooltip delay dropped from 2000ms to 1200ms so the before/
+  after hint shows up without feeling like it's lagging.
+- Cache buster: `editor.js?v=285`.
+
+**`APP_VERSION` bumped to `2.13.8`.**
+
+---
+
+## [2.13.7] - 2026-04-24
+
+### Changed — Anchor toolbar overhaul: real anchors only, hover tooltips
+
+Audited the editor's anchor toolbar against the canonical
+`FILE_FORMAT_STANDARDS.md` spec and `editor/converter.py`. The
+toolbar shipped three fake anchors that the converter silently
+ignored (`@story-end`, `@text-end`, `@phone-end`), one misspelled
+anchor (`@phone` instead of `@phone-incoming`), and was missing
+three real front-matter anchors (`@byline`, `@disclaimer`,
+`@fanfiction`) that appear in live stories (HC, Chosen, Silk).
+The paired-wrap semantics introduced in 2.13.6 for text-sent /
+text-received / phone were based on those fake close anchors and
+produced output the converter couldn't parse.
+
+- **`frontend/js/editor.js`**: Toolbar now exposes 10 buttons
+  grouped by function — Title / Sub / Byline / Warning / Disclaimer
+  / FF / Body / → (text-sent) / ← (text-received) / ☎
+  (phone-incoming). `@story-end` removed entirely (the real
+  end-of-story marker is `*End of [Title]*`, plain italic, not an
+  anchor). `_insertAnchor()` rewritten as a single code path: every
+  anchor is a single-line label inserted at the start of the line
+  containing the cursor/selection, which matches how the converter
+  actually reads them.
+- **`_ANCHOR_HINTS`**: per-anchor metadata (label, purpose,
+  before/after example). Drives the new tooltip.
+- **Hover tooltips**: `_initAnchorTooltips()` wires a 2-second
+  `mouseenter` timer on every anchor button. After the delay a
+  positioned tooltip shows the anchor's purpose and a
+  before/after code snippet. Cancelled on `mouseleave` / click.
+- **`frontend/css/editor.css`**: `.anchor-tooltip` styles
+  (fixed-position panel with dark background, accent label,
+  monospace `<pre>` blocks for before/after, green left border on
+  the after block).
+- Cache busters: `editor.css?v=247`, `editor.js?v=284`.
+
+**`APP_VERSION` bumped to `2.13.7`.**
+
+---
+
+## [2.13.6] - 2026-04-24
+
+### Changed — Anchor toolbar wraps the current selection
+
+Previously the anchor buttons always inserted at the cursor, leaving
+the user to manually cut/paste a block of text into the middle of a
+newly-inserted paired anchor like `<!-- @phone --> ... <!-- @phone-end -->`.
+The buttons now honour the active text selection.
+
+- **Paired anchors** (text-sent, text-received, phone): if text is
+  selected, the opening tag is inserted on the line above and the
+  closing tag on the line below, with the selected text preserved
+  between them and re-selected. With no selection, the existing
+  empty-block behaviour is kept.
+- **Standalone anchors** (title, subtitle, body, warning, story-end):
+  with a selection, the anchor is inserted on its own line
+  immediately before the selection (so "make this a chapter title"
+  works from a highlight); the selection stays intact. With no
+  selection, the anchor is inserted at the cursor as before.
+- Selections made in the **Rich Editor** (contenteditable) are
+  accepted if the selected plain text appears exactly once in the
+  Markdown source — the wrap is then applied to that unique
+  occurrence in CodeMirror. Ambiguous matches fall back to
+  CodeMirror's own selection.
+
+- **`frontend/js/editor.js`**: `_insertAnchor()` now splits on the
+  `\n\n` gap for paired anchors and inserts open/close around the
+  selection. Cache buster `editor.js?v=283`.
+
+**`APP_VERSION` bumped to `2.13.6`.**
+
+---
+
+## [2.13.5] - 2026-04-24
+
+### Fixed — Full-bleed print background on Windows (Edge)
+
+The 2.13.4 fix (setting `html { background }` inside `@media print`)
+painted the body box to the page edges but Chromium still honoured
+the template's top-level `@page { margin: 2cm }`, leaving a thin
+white rim around the themed content. The screen-mode template has
+its own `@page` for on-screen print-preview parity, so we can't
+remove it — but inside `@media print` we can declare a second
+`@page` rule that wins by cascade.
+
+- **`editor/converter.py`**: `_build_print_styles()` now prepends
+  `@page { margin: 0; size: A4 }` inside the `@media print` block
+  for both the colour-preserve and grayscale branches. The visual
+  breathing room users expect is preserved by the existing
+  `.print-container { padding: 2cm 2.5cm }` inside the same block,
+  so only the outer rim changes — full-bleed on Edge, matching the
+  WeasyPrint behaviour on the server.
+
+**`APP_VERSION` bumped to `2.13.5`.**
+
+---
+
+## [2.13.4] - 2026-04-24
+
+### Fixed — PDF print CSS on Windows (Edge fallback)
+
+Side-by-side comparison of Edge-rendered (Windows desktop) vs
+WeasyPrint-rendered (server / Docker) PDFs showed the Edge output:
+- Carried a browser-added header ("DD/MM/YYYY, HH:MM" + title)
+  that polluted every page
+- Left the page background white in the 2cm `@page` margin so the
+  themed body colour was boxed inside a white frame instead of
+  running edge-to-edge like the WeasyPrint output
+
+Both are rendering-engine differences that only affect the Chromium
+headless fallback used on Windows desktops without WeasyPrint's GTK
+runtime — the server path was already correct.
+
+- **`editor/pdf_generator.py`**: Added `--no-pdf-header-footer` to
+  the Chromium headless invocation so the date header / URL footer
+  are suppressed. Kept `--no-margins` so CSS `@page` remains the
+  single source of truth for page geometry.
+- **`editor/converter.py`**: `_build_print_styles()` now sets the
+  theme background on both `html` and `body` inside `@media print`.
+  By default Chromium only paints the body box (inside the `@page`
+  margin), leaving a white border on themed stories; painting the
+  html element too fills the full printable area so the theme
+  background is continuous. WeasyPrint already behaved this way.
+
+**`APP_VERSION` bumped to `2.13.4`.**
+
+---
+
+## [2.13.3] - 2026-04-24
+
+### Changed — Error reporting for vault + PDF regeneration
+
+Two of the 2.13.0 QA failures (#23 and #73) were untraceable because
+the backends swallowed exceptions into the generic
+`{"error":"Internal server error"}` envelope or added a terse
+"render failed" line with no context. Both paths now surface the
+actual failure reason so the next retest pass points at the real
+root cause.
+
+- **`routes/settings_api.py`**: `/vault/enable` and `/vault/disable`
+  wrap `migrate_to_local_vault()` / `migrate_to_cloud()` in try/except,
+  log the full exception with `exc_info=True`, and return
+  `{"ok": false, "error": "<ExceptionType>: <message>"}` instead of
+  letting the global handler mask the detail.
+- **`frontend/js/app.js`**: The vault enable/disable buttons now render
+  the `data.error` string (or `HTTP {status}` fallback) inline instead
+  of the generic "Failed to enable vault" banner.
+- **`routes/editor_api.py`**: PDF regeneration now distinguishes three
+  failure modes for the full-story PDF:
+  1. Missing Styled HTML precursor → explicit "regenerate Styled HTML
+     first" error
+  2. Render attempted but output is empty/missing → include attempted
+     backend and output file size
+  3. Per-chapter PDF failures keep their existing format
+  This should diagnose why "Selective regen — All" left the full-story
+  PDF out (test #23) on the next retest.
+
+- **Cache busters**: `app.js?v=245`.
+
+**`APP_VERSION` bumped to `2.13.3`.**
+
+---
+
+## [2.13.2] - 2026-04-24
+
+### Fixed — Publish Check 500 on new / single-piece stories
+
+`GET /api/editor/stories/{name}/publish-check` raised `IndexError` and
+returned `{"error":"Internal server error"}` whenever the story's
+`story.json` declared a `chapters` count but had an empty `chapter_info`
+list. This affected every story created via the "Create New Story"
+wizard (which writes `chapters: N` + `chapter_info: []`) and every
+pre-existing single-piece story like `Blank` (which uses
+`chapters: 1` + `chapter_info: []` by convention).
+
+The publish-check endpoint iterates `range(1, story.total_chapters + 1)`
+and indexes `story.chapters[i-1]` to build per-chapter rows. When
+`_load_from_story_json` used `data.get("chapters", len(chapters))` for
+`total_chapters`, the declared count (e.g. 1) outran the actual
+`chapter_info` length (0), so `story.chapters[0]` raised.
+
+This also killed the regen-staleness warning flow (tests #27 and #28 in
+the checklist) because that banner is only rendered when
+publish-check succeeds.
+
+- **`posting/story_reader.py`**: `_load_from_story_json()` now sets
+  `total_chapters = len(chapters)` unconditionally. `chapter_info` is
+  the authoritative source of truth; the legacy `chapters` field in
+  story.json is informational only. Existing multi-chapter stories
+  (Chosen, Drumheller_Detour, etc.) already have matching lengths, so
+  they're unaffected. Single-piece stories (Blank, wizard-created) now
+  correctly render with only the "Full story" row in Publish Check.
+
+**`APP_VERSION` bumped to `2.13.2`.**
+
+---
+
+## [2.13.1] - 2026-04-24
+
+### Fixed — Anchor insertion toolbar buttons
+
+All 8 anchor insertion buttons in the editor's rich-editor toolbar
+(Title, Subtitle, Body, Warning, Text Sent, Text Received, Phone,
+Story End) were silently dead clicks. `_insertAnchor()` referenced
+`this._cm`, which is never assigned — the CodeMirror `EditorView` is
+stored on `this.cmView`. The early-return guard `if (!text || !this._cm)`
+always tripped, so nothing was ever dispatched to the editor.
+
+The Title button's test (#11) was a false pass during QA because the
+Create New Story template MASTER.md already contains `<!-- @title -->`,
+so the tester saw the anchor in the document and didn't realise the
+button hadn't actually inserted it.
+
+- **`frontend/js/editor.js`**: `_insertAnchor()` now uses
+  `this.cmView` consistently. Also rewrote the broken selection
+  precedence (`cursor + text.indexOf('\n\n') + 1 || cursor + text.length + 1`
+  collapsed incorrectly because `+` binds tighter than `||`) to an
+  explicit branch — places the caret in the gap between opening and
+  closing anchors for paired blocks (text-sent/phone/etc.), otherwise
+  past the end of the inserted block.
+- **`frontend/index.html`**: `editor.js` cache buster bumped to `v=282`.
+
+**`APP_VERSION` bumped to `2.13.1`.**
+
+---
+
 ## [2.13.0] - 2026-04-21
 
 ### Added — Genre templates, import from platforms, file upload in story wizard

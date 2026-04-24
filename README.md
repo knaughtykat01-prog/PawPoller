@@ -141,7 +141,7 @@ pip install -r requirements-server.txt
 
 ```bash
 pip install pyinstaller
-python -m PyInstaller inkbunny_analytics.spec --noconfirm
+python -m PyInstaller pawpoller.spec --noconfirm
 # Output: dist/PawPoller/PawPoller.exe
 ```
 

@@ -477,14 +477,19 @@ const Editor = {
                             <button data-cmd="heading" title="Chapter Heading">H1</button>
                             <button data-cmd="hr" title="Section Break">&#8213;</button>
                             <span class="toolbar-sep"></span>
-                            <button data-anchor="title" title="Insert @title anchor">T</button>
-                            <button data-anchor="subtitle" title="Insert @subtitle anchor">Sub</button>
-                            <button data-anchor="body" title="Insert @body anchor">Body</button>
-                            <button data-anchor="warning" title="Insert @warning anchor">&#9888;</button>
-                            <button data-anchor="text-sent" title="Insert text-sent block">&#8594;</button>
-                            <button data-anchor="text-received" title="Insert text-received block">&#8592;</button>
-                            <button data-anchor="phone" title="Insert phone block">&#9742;</button>
-                            <button data-anchor="story-end" title="Insert story-end anchor">End</button>
+                            <button data-anchor="title">T</button>
+                            <button data-anchor="subtitle">Sub</button>
+                            <button data-anchor="byline">By</button>
+                            <span class="toolbar-sep"></span>
+                            <button data-anchor="warning">&#9888;</button>
+                            <button data-anchor="disclaimer">Disc</button>
+                            <button data-anchor="fanfiction">FF</button>
+                            <span class="toolbar-sep"></span>
+                            <button data-anchor="body">Body</button>
+                            <span class="toolbar-sep"></span>
+                            <button data-anchor="text-sent">&#8594; Sent</button>
+                            <button data-anchor="text-received">&#8592; Recv</button>
+                            <button data-anchor="phone-incoming">&#9742; Phone</button>
                         </div>
                         <div class="preview-panel-body preview-html" id="editor-preview-rendered-body" contenteditable="true" spellcheck="true">
                             <p style="color:var(--text-secondary)">Loading...</p>
@@ -1556,6 +1561,69 @@ const Editor = {
         }
     },
 
+    _ANCHOR_HINTS: {
+        'title': {
+            label: 'Title  — @title',
+            purpose: 'Marks the line immediately below as the story title.',
+            before: '# Late Shift',
+            after: '<!-- @title -->\n# Late Shift',
+        },
+        'subtitle': {
+            label: 'Subtitle  — @subtitle',
+            purpose: 'Marks the line below as a subtitle or tagline.',
+            before: '*A Convenience Store Romance*',
+            after: '<!-- @subtitle -->\n*A Convenience Store Romance*',
+        },
+        'byline': {
+            label: 'Byline  — @byline',
+            purpose: 'Author attribution line. Rendered centered below the title/subtitle.',
+            before: '*by KnaughtyKat*',
+            after: '<!-- @byline -->\n*by KnaughtyKat*',
+        },
+        'warning': {
+            label: 'Content Warning  — @warning',
+            purpose: 'Opens a content-warning block. Everything below (until the next anchor) is the warning.',
+            before: '**Content Warning**: Explicit content, themes, etc.',
+            after: '<!-- @warning -->\n**Content Warning**: Explicit content, themes, etc.',
+        },
+        'disclaimer': {
+            label: 'Disclaimer  — @disclaimer',
+            purpose: 'Opens a disclaimer block (fiction notice, character age attestation, etc.). Runs until the next anchor.',
+            before: '**DISCLAIMER**\n\nThis is a work of fiction...',
+            after: '<!-- @disclaimer -->\n**DISCLAIMER**\n\nThis is a work of fiction...',
+        },
+        'fanfiction': {
+            label: 'Fan Fiction Notice  — @fanfiction',
+            purpose: 'IP attribution block for fan fiction. Runs until the next anchor.',
+            before: '**FAN FICTION NOTICE**\n\nThis story is set in...',
+            after: '<!-- @fanfiction -->\n**FAN FICTION NOTICE**\n\nThis story is set in...',
+        },
+        'body': {
+            label: 'Body  — @body',
+            purpose: 'Boundary marker. Everything BEFORE is front matter (title page etc.); everything AFTER is the story body.',
+            before: '(end of front matter)\n\n# Chapter 1: The Counter',
+            after: '<!-- @body -->\n\n# Chapter 1: The Counter',
+        },
+        'text-sent': {
+            label: 'Sent text message  — @text-sent',
+            purpose: 'Renders the line below as an outgoing text-message bubble.',
+            before: '**Ryan:** *See you at seven.*',
+            after: '<!-- @text-sent -->\n**Ryan:** *See you at seven.*',
+        },
+        'text-received': {
+            label: 'Received text message  — @text-received',
+            purpose: 'Renders the line below as an incoming text-message bubble.',
+            before: '**Marcus:** *On my way.*',
+            after: '<!-- @text-received -->\n**Marcus:** *On my way.*',
+        },
+        'phone-incoming': {
+            label: 'Phone display  — @phone-incoming',
+            purpose: 'Renders the line below inside a phone-screen frame (caller ID, call status, etc.).',
+            before: '**Unknown Caller**',
+            after: '<!-- @phone-incoming -->\n**Unknown Caller**',
+        },
+    },
+
     _initWysiwygToolbar() {
         const toolbar = document.getElementById('wysiwyg-toolbar');
         if (!toolbar) return;
@@ -1571,27 +1639,113 @@ const Editor = {
                 this._insertAnchor(btn.dataset.anchor);
             });
         });
+        this._initAnchorTooltips();
+    },
+
+    _initAnchorTooltips() {
+        let tip = document.getElementById('anchor-tooltip');
+        if (!tip) {
+            tip = document.createElement('div');
+            tip.className = 'anchor-tooltip';
+            tip.id = 'anchor-tooltip';
+            document.body.appendChild(tip);
+        }
+        this._anchorTooltipEl = tip;
+        this._anchorTooltipTimer = null;
+
+        const toolbar = document.getElementById('wysiwyg-toolbar');
+        if (!toolbar) return;
+        toolbar.querySelectorAll('button[data-anchor]').forEach(btn => {
+            const type = btn.dataset.anchor;
+            const hint = this._ANCHOR_HINTS[type];
+            if (!hint) return;
+            btn.addEventListener('mouseenter', () => {
+                clearTimeout(this._anchorTooltipTimer);
+                this._anchorTooltipTimer = setTimeout(() => {
+                    this._showAnchorTooltip(btn, hint);
+                }, 1200);
+            });
+            btn.addEventListener('mouseleave', () => {
+                clearTimeout(this._anchorTooltipTimer);
+                this._hideAnchorTooltip();
+            });
+            btn.addEventListener('mousedown', () => {
+                clearTimeout(this._anchorTooltipTimer);
+                this._hideAnchorTooltip();
+            });
+        });
+    },
+
+    _showAnchorTooltip(btn, hint) {
+        const tip = this._anchorTooltipEl;
+        if (!tip) return;
+        const esc = Utils.escapeHtml;
+        tip.innerHTML =
+            `<div class="anchor-tooltip-label">${esc(hint.label)}</div>` +
+            `<div class="anchor-tooltip-purpose">${esc(hint.purpose)}</div>` +
+            `<h6>Without anchor</h6>` +
+            `<pre>${esc(hint.before)}</pre>` +
+            `<h6>With anchor</h6>` +
+            `<pre class="anchor-tooltip-after">${esc(hint.after)}</pre>`;
+        tip.classList.add('visible');
+        const rect = btn.getBoundingClientRect();
+        const tipW = tip.offsetWidth;
+        const tipH = tip.offsetHeight;
+        let left = Math.max(8, Math.min(rect.left, window.innerWidth - tipW - 8));
+        let top = rect.bottom + 8;
+        if (top + tipH > window.innerHeight - 8) {
+            top = Math.max(8, rect.top - tipH - 8);
+        }
+        tip.style.left = `${left}px`;
+        tip.style.top = `${top}px`;
+    },
+
+    _hideAnchorTooltip() {
+        if (this._anchorTooltipEl) {
+            this._anchorTooltipEl.classList.remove('visible');
+        }
     },
 
     _insertAnchor(type) {
-        const anchors = {
-            'title': '<!-- @title -->',
-            'subtitle': '<!-- @subtitle -->',
-            'body': '<!-- @body -->',
-            'warning': '<!-- @warning -->',
-            'text-sent': '<!-- @text-sent -->\n\n<!-- @text-end -->',
-            'text-received': '<!-- @text-received -->\n\n<!-- @text-end -->',
-            'phone': '<!-- @phone -->\n\n<!-- @phone-end -->',
-            'story-end': '<!-- @story-end -->',
-        };
-        const text = anchors[type];
-        if (!text || !this._cm) return;
-        const cursor = this._cm.state.selection.main.head;
-        this._cm.dispatch({
-            changes: { from: cursor, insert: '\n' + text + '\n' },
-            selection: { anchor: cursor + text.indexOf('\n\n') + 1 || cursor + text.length + 1 },
+        if (!this._ANCHOR_HINTS[type] || !this.cmView) return;
+        const anchorText = `<!-- @${type} -->`;
+
+        // Resolve the target range. If the Rich Editor has a text selection
+        // whose plain-text content appears exactly once in the Markdown
+        // source, target that occurrence; otherwise fall back to CodeMirror's
+        // own selection/cursor.
+        let { from, to } = this.cmView.state.selection.main;
+        const wysiwygBody = document.getElementById('editor-preview-rendered-body');
+        const winSel = window.getSelection && window.getSelection();
+        if (
+            wysiwygBody && winSel && winSel.rangeCount &&
+            wysiwygBody.contains(winSel.anchorNode) &&
+            winSel.toString().length > 0
+        ) {
+            const picked = winSel.toString();
+            const docStr = this.cmView.state.doc.toString();
+            const hit = docStr.indexOf(picked);
+            if (hit >= 0 && docStr.indexOf(picked, hit + picked.length) === -1) {
+                from = hit;
+                to = hit + picked.length;
+            }
+        }
+
+        // All canonical anchors are single-line labels that tag the line(s)
+        // immediately below them (the converter reads semantics this way).
+        // So: insert `<!-- @foo -->\n` at the start of the line containing
+        // `from`. Selections shift down intact; bare cursors end up below
+        // the newly-inserted anchor on the original content line.
+        const line = this.cmView.state.doc.lineAt(from);
+        const insert = anchorText + '\n';
+        const shift = insert.length;
+        this.cmView.dispatch({
+            changes: { from: line.from, insert },
+            selection: from !== to
+                ? { anchor: from + shift, head: to + shift }
+                : { anchor: from + shift },
         });
-        this._cm.focus();
+        this.cmView.focus();
     },
 
     _execWysiwygCmd(cmd) {

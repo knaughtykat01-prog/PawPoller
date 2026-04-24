@@ -1,8 +1,8 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-04-20
-**Current version:** 2.12.4
-**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`)
+**Last updated:** 2026-04-24
+**Current version:** 2.13.8
+**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — note: 2.13.1+ is **desktop-only** so far; server still runs 2.13.0 until next deploy
 
 Living document — update as the roadmap shifts. Read this first when picking up a fresh session.
 
@@ -76,6 +76,19 @@ cover/chapter thumbnail uploads, and GitHub release packaging.
 | **Credential vault (7b)** | 2.12.0 | Fernet encryption, keyring/dotfile key, vault enable/disable API + UI |
 | **New story wizard (9b)** | 2.12.1 | Create New Story button, template MASTER.md, folder scaffolding |
 | **Per-chapter thumbnails** | 2.12.1 | Upload per-chapter covers in metadata drawer, auto-updates story.json |
+| **Genre templates (9b ext)** | 2.13.0 | 9 presets (Romance, Erotica, Adventure, Comedy, Drama, Fantasy, Sci-Fi, Slice of Life, Horror) pre-fill tags/rating/warnings in story wizard |
+| **Import from platforms (14a)** | 2.13.0 | IB/SF/FA — downloads content, converts BBCode/HTML→Markdown, tracks `import_source` in story.json. AO3/SQW "coming soon" |
+| **Story wizard file upload** | 2.13.0 | Optional `.md`/`.txt`/`.html`/`.bbcode`/`.rtf` upload replaces template MASTER.md |
+| **Configurable default author** | 2.13.0 | 7 hardcoded author references in `converter.py`, `generate_story_json.py`, `story_reader.py` replaced with `default_author` setting |
+| **GitHub release packaging (15a-c)** | 2.13.0 | README, MIT LICENSE, CONTRIBUTING, `.github/workflows/build.yml` + `lint.yml`, `.env.example` |
+| **Anchor toolbar fix** | 2.13.1 | `_insertAnchor` was calling `this._cm` (never assigned) instead of `this.cmView`. All 8 buttons were silent no-ops since 2.11.0 |
+| **Publish-check IndexError fix** | 2.13.2 | `_load_from_story_json` derived `total_chapters` from `data["chapters"]` (declared), but the subsequent index loop used `story.chapters[i-1]` (from `chapter_info`). Wizard-created + single-piece stories (`chapters: N, chapter_info: []`) crashed. Now `total_chapters = len(chapter_info)` |
+| **Vault + regen diagnostic errors** | 2.13.3 | `/vault/enable`, `/vault/disable`, and PDF regen now surface the actual exception type + message instead of a masked 500. `errors[]` gets a specific reason when full-story PDF is skipped (missing Styled HTML precursor vs. empty render output). Frontend vault buttons show the detail inline |
+| **PDF Edge fallback polish** | 2.13.4 | `--no-pdf-header-footer` added so Edge-rendered PDFs no longer get browser date/URL banners. `_build_print_styles()` sets theme background on `html` too so the theme colour runs past the `@page` margin |
+| **Full-bleed print background** | 2.13.5 | `@page { margin: 0; size: A4 }` inserted inside `@media print` in both colour-preserve and grayscale branches. `.print-container` padding (2cm 2.5cm) keeps the visual margin while the theme colour goes edge-to-edge |
+| **Anchor toolbar wraps selection** | 2.13.6 | Buttons act on the active selection: paired anchors wrap the selected text, standalone anchors sit on the line above. CM selection and unique-match Rich Editor selection both supported |
+| **Anchor toolbar realignment + tooltips** | 2.13.7 | Toolbar audited against `FILE_FORMAT_STANDARDS.md`. `@story-end`, `@text-end`, `@phone-end` removed (all fake); `@phone` → `@phone-incoming` (converter's real name); Byline/Disclaimer/Fanfiction buttons added. Every anchor now inserts a single-line label at the start of the target line — no more paired wraps (the converter never supported them). 1.2s hover tooltip (2.13.8) with label / purpose / before-after preview |
+| **Inline anchor labels + tooltip pacing** | 2.13.8 | Inline buttons relabelled `→ Sent` / `← Recv` / `☎ Phone`; tooltip delay dropped from 2000ms to 1200ms |
 
 ### What posted successfully during testing
 - Inkbunny draft of "Late Shift" full story — flipped cell from green ✓ → blue ✓ posted with URL.
@@ -104,7 +117,7 @@ drift detection, deletion probe, re-post.
 - [x] "Update all drifted" — footer button, updates every drifted cell
 - [x] Preflight dialog with per-item checkboxes + draft toggle + dry-run
 - [x] Progress panel with live per-item status + cancel + close-and-refresh
-- [x] Frontend-only (no backend changes, no SSE) per PHASE_6D_PLAN.md
+- [x] Frontend-only (no backend changes, no SSE)
 
 ### Phase 6e — safety polish (COMPLETE)
 
@@ -220,7 +233,6 @@ drift detection, deletion probe, re-post.
 - `PawPoller/frontend/js/editor.js` — editor UI + anchor toolbar + format tabs + create story wizard
 - `PawPoller/frontend/js/metadata_editor.js` — drawer + tags + per-platform descriptions + chapter thumbnails
 - `PawPoller/frontend/js/publish_check.js` — matrix + actions + bulk + scheduling + action log
-- `PawPoller/PHASE_7_DESIGN.md` — credential management design doc (cloud sync + local-only vault)
 - `PawPoller/ROADMAP_PUBLIC.md` — public release roadmap (Phases 8-15: auth UX, setup wizard, editor, images, publishing, analytics, import, GitHub packaging)
 - `PawPoller/deploy/pawpush.bat` — push story archive local → server (alias for pawsync.bat)
 - `PawPoller/deploy/pawpull.bat` — pull story archive server → local (supports single-story: `pawpull.bat Story_Name`)
@@ -297,19 +309,34 @@ gcloud compute ssh pawpoller --zone=us-east1-c --command="curl -s -H 'Authorizat
 
 If the user asks to resume, the most useful things to read first are:
 1. This file (HANDOFF.md)
-2. `CHANGELOG.md` top section — covers 2.10.5 through 2.12.4
-3. `ROADMAP_PUBLIC.md` — public release plan (most items now COMPLETE)
-4. `documentation_guide.md` — full technical reference (updated 2026-04-20)
-5. `routes/editor_api.py` + `routes/settings_api.py` — main API surface
+2. `CHANGELOG.md` top section — covers 2.10.5 through 2.13.8
+3. `ROADMAP_PUBLIC.md` — public release plan (all must/should-haves + most nice-to-haves now COMPLETE)
+4. `documentation_guide.md` — full technical reference
+5. `TESTING_CHECKLIST.md` / `.html` — 109-row QA pass. HTML stores progress in localStorage; Export CSV / Import CSV buttons exist (Import added 2.13.x QA work)
+6. `routes/editor_api.py` + `routes/settings_api.py` — main API surface
+
+### QA status as of 2026-04-24
+
+Mid-way through the first full QA pass against `TESTING_CHECKLIST`. Last
+CSV snapshot lives at `C:\Users\rhysc\Downloads\pawpoller_test_results.csv`.
+Issues found + fixes shipped during 2.13.1–2.13.8:
+- **#11–18 anchor buttons**: silent no-ops (wrong `this._cm` reference) — fixed in 2.13.1, toolbar restructured in 2.13.7/8
+- **#23 full-story PDF missing**: diagnostics improved in 2.13.3 (shows specific reason). Awaiting user retest to confirm fix
+- **#26 PDF CSS**: fixed 2.13.4+2.13.5 (header/footer suppressed, full-bleed theme background)
+- **#27/#28 regen staleness 500**: fixed in 2.13.2 (stories with `chapter_info: []` no longer crash publish-check)
+- **#73 vault enable**: diagnostics improved in 2.13.3 (real exception shown in UI). Awaiting user retest
+
+Next retest pass should rerun those, then cover the ~75 untested items.
 
 If the user says "what's next?" — all must-have and should-have items
-from the roadmap are complete. Remaining nice-to-haves:
-- Import from platforms (14a) — pull existing stories from platforms
-- Story templates / genre presets (9b extension)
+from the roadmap are complete, plus most nice-to-haves (import, genre
+templates, configurable author, GitHub packaging all shipped in 2.13.0).
+Remaining:
+- AO3/SQW import (second half of 14a — listed "coming soon" in 2.13.0)
 - Analytics export (charts, CSV reports)
-- Auto-update mechanism (in-app update download)
-- Hardcoded author references → configurable (converter.py, etc.)
-- Weasyl testing (blocked on account verification)
+- Auto-update mechanism (15d — in-app update download)
+- Weasyl testing (blocked on account verification, not code)
+- Deploy 2.13.1+ to GCP server (currently desktop-only)
 
 Story archive sync commands:
 - `deploy/pawpush.bat` — local → server (push)

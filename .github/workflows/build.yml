@@ -25,7 +25,7 @@ jobs:
           pip install pyinstaller
 
       - name: Build executable
-        run: python -m PyInstaller inkbunny_analytics.spec --noconfirm
+        run: python -m PyInstaller pawpoller.spec --noconfirm
 
       - name: Package release
         run: |

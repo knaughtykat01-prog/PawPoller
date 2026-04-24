@@ -447,10 +447,16 @@ def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) ->
     work_skin = story_path / "SquidgeWorld" / "Work_Skin.css"
     work_skin_path = work_skin if work_skin.is_file() else None
 
+    # `total_chapters` must always match the actual `chapter_info` list
+    # length — consumers (publish_check, posting.manager, AO3/SQW posters)
+    # iterate `range(1, total_chapters + 1)` and index `story.chapters[i-1]`.
+    # `chapters` in story.json can lag (e.g. wizard-created stories and
+    # single-piece works save `chapters: N` with an empty `chapter_info`,
+    # which used to raise IndexError during publish-check).
     return StoryInfo(
         name=story_name,
         path=story_path,
-        total_chapters=data.get("chapters", len(chapters)),
+        total_chapters=len(chapters),
         total_words=data.get("word_count", 0),
         author=data.get("author", config.get_settings().get("default_author", "")),
         chapters=chapters,

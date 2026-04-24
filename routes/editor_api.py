@@ -744,11 +744,20 @@ async def regenerate(story_name: str, req: RegenerateRequest):
                 full_styled = html_dir / f"{stem}_Styled.html"
                 if full_styled.is_file():
                     full_pdf = pdf_dir / f"{stem}.pdf"
-                    ok, _ = html_to_pdf(full_styled, full_pdf)
+                    ok, used = html_to_pdf(full_styled, full_pdf)
                     if ok:
                         pdf_count += 1
                     else:
-                        errors.append(f"PDF: full-story render failed ({backend})")
+                        size = full_pdf.stat().st_size if full_pdf.is_file() else 0
+                        errors.append(
+                            f"PDF: full-story render failed (tried {backend}, "
+                            f"wrote {size}B from {full_styled.name})"
+                        )
+                else:
+                    errors.append(
+                        f"PDF: full-story Styled HTML missing ({full_styled.name}) "
+                        f"— regenerate 'Styled HTML' first"
+                    )
 
                 ch_styled_dir = story_dir / "Chapters" / "Styled_HTML"
                 ch_pdf_dir = story_dir / "Chapters" / "PDF"
@@ -756,7 +765,7 @@ async def regenerate(story_name: str, req: RegenerateRequest):
                     ch_pdf_dir.mkdir(parents=True, exist_ok=True)
                     for ch_html in sorted(ch_styled_dir.glob("Chapter_*.html")):
                         ch_pdf = ch_pdf_dir / (ch_html.stem + ".pdf")
-                        ok, _ = html_to_pdf(ch_html, ch_pdf)
+                        ok, used = html_to_pdf(ch_html, ch_pdf)
                         if ok:
                             pdf_count += 1
                         else:
