@@ -19,6 +19,24 @@ All notable changes to PawPoller are documented here.
 
 **`APP_VERSION` bumped to `2.13.8`.**
 
+### CI — release pipeline fixes (2026-04-25)
+
+The first v2.13.8 tag push triggered a Build & Release run where the
+`test` job failed with `ModuleNotFoundError` on four test modules.
+Pre-existing issue: `requirements-server.txt` never pinned the test
+dependencies. Windows build succeeded either way, so the release
+artifact was fine — but the red X on the tag was misleading. Fixed
+by pinning `pytest~=8.3` and `respx~=0.22` in
+`requirements-server.txt`, then force-moving the `v2.13.8` tag to the
+CI-fix commit. Final tag points at `7517ad3`; all jobs green.
+
+Known latent issue: `test_integration_posting` and
+`test_platform_posters` are pytest-style (async fixtures + respx) and
+are silently skipped by `python -m unittest discover` — they import
+cleanly but contribute no `TestCase` subclasses. Switching the CI
+command to `pytest` would actually execute them. Not urgent, not a
+regression.
+
 ---
 
 ## [2.13.7] - 2026-04-24

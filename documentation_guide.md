@@ -6,7 +6,12 @@ Comprehensive technical reference for the PawPoller codebase. Covers architectur
 
 ## 1. Overview & Architecture
 
-PawPoller is a multi-platform furry art analytics dashboard. It periodically polls 11 art/writing platforms, stores submission statistics in SQLite, and serves a real-time analytics dashboard. The tech stack is FastAPI + SQLite (WAL mode) + Vanilla JS SPA + pywebview + pystray.
+PawPoller is a multi-platform furry art/fiction **analytics + publishing** app. It has two major subsystems that share a database, dashboard, and settings surface:
+
+1. **Polling / analytics** — periodically polls 11 art/writing platforms, stores submission stats in SQLite, and renders real-time charts in the dashboard.
+2. **Publishing pipeline** — reads canonical `MASTER.md` files from the local story archive, converts to per-platform formats (BBCode, SoFurry HTML, Styled HTML, SquidgeWorld work-skin HTML, WeasyPrint/Edge-rendered PDFs), and posts/updates stories across 9 publishing platforms. Includes a Markdown editor with anchor toolbar, metadata drawer, publish-check matrix, drift detection, retry queue, scheduling, credential vault, browser-login popups, and import from IB/SF/FA.
+
+The tech stack is FastAPI + SQLite (WAL mode) + Vanilla JS SPA + pywebview + pystray. Desktop uses PyInstaller (`pawpoller.spec`); server runs under Docker Compose on a GCP VM. Entry points: `main.py` (desktop) or `server.py` (headless).
 
 ### Supported Platforms
 
@@ -99,8 +104,6 @@ PawPoller/
 ├── config.py                # Paths, credentials, settings.json helpers
 ├── dashboard.py             # FastAPI app factory, session auth middleware, rate limiting, security headers, SPA serving
 ├── updater.py               # Auto-update (desktop only)
-├── test_sf_proxy.py         # SoFurry proxy diagnostic tool
-├── test_sf_direct.py        # SoFurry direct login + cookie persistence test
 │
 ├── api_client/              # Inkbunny API client
 │   └── client.py            #   InkbunnyClient class with SID caching
@@ -185,7 +188,9 @@ PawPoller/
 │   ├── bsky_api.py          # Bluesky API endpoints
 │   ├── tw_api.py            # X/Twitter API endpoints
 │   ├── dashboard_auth.py    # Dashboard auth endpoints (login, 2FA, API keys, Turnstile)
-│   └── settings_api.py      # Settings sync, vault, setup wizard, browser login endpoints
+│   ├── settings_api.py      # Settings sync, vault, setup wizard, browser login endpoints
+│   ├── editor_api.py        # Editor endpoints (load/save MASTER.md, theme save, regenerate formats, PDF, metadata drawer, create story wizard, import)
+│   └── posting_api.py       # Posting endpoints (publish-check matrix, publish, dry-run, verify, scheduling, retry queue, bulk actions)
 │
 ├── frontend/
 │   ├── index.html           # SPA shell (collapsible nav groups, bottom nav bar, sidebar overlay)
@@ -214,8 +219,26 @@ PawPoller/
 │       ├── furaffinity.py   # FA poster (form scraping, desktop-only)
 │       ├── weasyl.py        # WS poster (CSRF form + API key)
 │       ├── sofurry.py       # SF poster (REST + CSRF)
-│       ├── squidgeworld.py  # SqW poster (OTW Rails form)
+│       ├── squidgeworld.py  # SqW poster (OTW Rails form + work skin)
+│       ├── ao3.py           # AO3 poster (OTW Rails, CF-proxy on desktop, work skin)
+│       ├── deviantart.py    # DA poster (Eclipse stash flow)
+│       ├── itaku.py         # Itaku poster (REST API)
 │       └── bluesky.py       # BSKY poster (AT Protocol announcements)
+│
+├── editor/                  # MASTER.md → multi-format conversion
+│   ├── __init__.py
+│   ├── converter.py         # Markdown → BBCode / SoFurry HTML / Styled HTML / SquidgeWorld work-skin HTML; anchor-aware
+│   ├── pdf_generator.py     # WeasyPrint primary (Linux/server), Edge headless fallback (Windows/desktop)
+│   └── slop.py              # EQ-Bench slop scoring (optional quality check)
+│
+├── tag_database/            # Canonical tag DB (bundled, copied to /app/tag_database/ in container — NOT under /app/data/)
+│   ├── tags_fiction.json
+│   ├── tags_images.json
+│   ├── aliases.json
+│   └── e621_lookup.tsv
+│
+├── scripts_utils/           # One-off maintenance scripts (story archive audits, etc.)
+├── tests/                   # unittest + pytest test suite (CI discovers via `python -m unittest`)
 │
 ├── deploy/
 │   ├── cf-worker.js         # Cloudflare Worker proxy (3 modes: normal, chain, login)
@@ -2047,7 +2070,7 @@ Uses `HKCU` (not `HKLM`) so no admin privileges are needed.
 ### Other App Constants
 
 ```python
-APP_VERSION = "1.5.0"
+APP_VERSION = "2.13.8"  # check config.py for current — bumped on every ship
 INKBUNNY_API_BASE = "https://inkbunny.net"
 FA_BASE = "https://www.furaffinity.net"
 FAEXPORT_BASE = "https://faexport.spangle.org.uk"

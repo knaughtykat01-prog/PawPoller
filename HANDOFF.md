@@ -1,8 +1,9 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-04-24
-**Current version:** 2.13.8
+**Last updated:** 2026-04-25
+**Current version:** 2.13.8 (tag published, green CI, Windows x64 artifact attached)
 **Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — note: 2.13.1+ is **desktop-only** so far; server still runs 2.13.0 until next deploy
+**GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.13.8 — tag points at commit `7517ad3`, Build & Release run `24916514109` green (test + build-windows)
 
 Living document — update as the roadmap shifts. Read this first when picking up a fresh session.
 
@@ -314,6 +315,19 @@ If the user asks to resume, the most useful things to read first are:
 4. `documentation_guide.md` — full technical reference
 5. `TESTING_CHECKLIST.md` / `.html` — 109-row QA pass. HTML stores progress in localStorage; Export CSV / Import CSV buttons exist (Import added 2.13.x QA work)
 6. `routes/editor_api.py` + `routes/settings_api.py` — main API surface
+
+### CI / release pipeline state (2026-04-25)
+
+The `Build & Release` workflow fires on `v*` tag pushes and has two
+jobs: `test` (Ubuntu, unittest discover) and `build-windows`
+(PyInstaller → zip → `softprops/action-gh-release@v2`). The `Lint`
+workflow fires on every push to master (ruff + JS syntax).
+
+`requirements-server.txt` now pins the test deps (`pytest~=8.3`,
+`respx~=0.22`) — before that the test job always failed on ModuleNotFoundError.
+Latent issue: `test_integration_posting` and `test_platform_posters` are
+pytest-style so `unittest discover` skips them silently. Switching the
+workflow `test` step to `pytest` would actually run them; not urgent.
 
 ### QA status as of 2026-04-24
 
