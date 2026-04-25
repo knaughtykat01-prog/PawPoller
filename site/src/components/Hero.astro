@@ -1,0 +1,75 @@
+---
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+<section class="relative overflow-hidden">
+  <div class="container-prose grid gap-16 py-24 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-center md:py-32">
+    <div class="max-w-xl">
+      <span class="chip mb-6 border-copper-700/50 text-copper-300">
+        <span class="h-1.5 w-1.5 rounded-full bg-copper-400"></span>
+        v2.13.9 · public beta
+      </span>
+      <h1 class="text-5xl leading-[1.05] text-ink-50 sm:text-6xl md:text-7xl">
+        Write once.<br />
+        <span class="text-copper-400">Publish everywhere.</span>
+      </h1>
+      <p class="mt-8 text-lg leading-relaxed text-ink-200">
+        PawPoller is a publishing pipeline for furry fiction writers. Draft your chaptered story in Markdown, and it generates every format your platforms need — BBCode, styled HTML, SoFurry, PDFs, SquidgeWorld work skins — then posts to nine platforms with per-chapter tags, descriptions, and thumbnails.
+      </p>
+      <p class="mt-4 text-ink-400">
+        Think of it as <a class="link-accent" href="https://www.postybirb.com/">PostyBirb</a>, reimagined for people who publish <em class="font-serif">novels</em>, not illustrations.
+      </p>
+      <div class="mt-10 flex flex-wrap items-center gap-4">
+        <a href="#get" class="btn-primary">
+          Download for Windows
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3a1 1 0 011 1v8.586l3.293-3.293a1 1 0 111.414 1.414l-5 5a1 1 0 01-1.414 0l-5-5a1 1 0 111.414-1.414L9 12.586V4a1 1 0 011-1z"/></svg>
+        </a>
+        <a href="#get" class="btn-secondary">Self-host with Docker</a>
+        <a href="https://github.com/knaughtykat01-prog/PawPoller" class="text-sm text-ink-300 transition hover:text-copper-300">
+          View the source →
+        </a>
+      </div>
+      <dl class="mt-12 grid grid-cols-3 gap-6 border-t border-ink-800 pt-8 text-left">
+        <div>
+          <dt class="text-2xl font-serif font-semibold text-copper-300">9</dt>
+          <dd class="text-xs uppercase tracking-wider text-ink-400">Posting targets</dd>
+        </div>
+        <div>
+          <dt class="text-2xl font-serif font-semibold text-copper-300">11</dt>
+          <dd class="text-xs uppercase tracking-wider text-ink-400">Polled platforms</dd>
+        </div>
+        <div>
+          <dt class="text-2xl font-serif font-semibold text-copper-300">1</dt>
+          <dd class="text-xs uppercase tracking-wider text-ink-400">Source of truth</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="relative">
+      <div class="relative overflow-hidden rounded-xl border border-ink-700 bg-ink-800 shadow-glow">
+        <div class="flex items-center gap-2 border-b border-ink-700 px-4 py-2">
+          <span class="h-3 w-3 rounded-full bg-ink-700"></span>
+          <span class="h-3 w-3 rounded-full bg-ink-700"></span>
+          <span class="h-3 w-3 rounded-full bg-copper-500/80"></span>
+          <span class="ml-3 text-xs text-ink-400">MASTER.md</span>
+        </div>
+        <pre class="overflow-x-auto p-6 font-mono text-sm leading-relaxed text-ink-100"><code><span class="text-ink-500">&lt;!-- @title --&gt;</span>
+<span class="text-copper-300"># Late Shift</span>
+
+<span class="text-ink-500">&lt;!-- @subtitle --&gt;</span>
+*A novella in seven chapters*
+
+<span class="text-ink-500">&lt;!-- @byline --&gt;</span>
+by Your Name
+
+<span class="text-ink-500">&lt;!-- @body --&gt;</span>
+
+<span class="text-copper-300">## Chapter 1: The Last Call</span>
+
+The bar had cleared out an hour ago.
+Dane was still wiping down the same
+patch of counter...</code></pre>
+      </div>
+      <div class="pointer-events-none absolute -inset-4 -z-10 rounded-2xl bg-copper-500/10 blur-3xl"></div>
+    </div>
+  </div>
+</section>

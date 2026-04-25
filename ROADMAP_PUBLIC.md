@@ -68,6 +68,21 @@ Polling-side improvements (outside the original phase plan but shipped as part o
 - [ ] **Thumbnail auto-resize** — Pillow is already a dep; fall back to auto-resize when an uploaded cover exceeds a platform's size cap instead of surfacing an error.
 - [ ] **Story template library** — beyond the 9 genre presets, let users save their own starting templates (e.g. "my chaptered m/m romance template with these 12 tags pre-selected").
 
+### Cloud / hosted access — separate development stream
+
+Surface a "use it in the browser" story without rewriting the world. Three layered options, picked up in order as demand proves out:
+
+**Stage 1 — Demo mode** (low effort, low commitment). Add a `DEMO_MODE=1` flag that short-circuits writes and ships a public sandbox instance hosted by the maintainer. Visitors click around the dashboard/editor, can't save or post. Feeds the "Try it" button on the marketing site. ~1 day of work.
+
+**Stage 2 — One-click deploy (Option A in the site's "Cloud" tier)**. Polish Fly.io / Railway / DigitalOcean deploy manifests so users can spin up their own PawPoller instance with one click. They own their data, they pay the PaaS, the maintainer holds zero credentials. Needs: a `fly.toml` / `railway.json`, a cleaner empty-state first-run flow, a "Deploy your own" button on the site. ~1–2 days of work.
+
+**Stage 3 — Multi-tenant SaaS (Option B)** — *deferred, not planned*. True "sign up and write" hosted service. Requires rewriting every query for per-user scoping, per-user credential vaults, quota/billing, terms of service, security review — and makes the maintainer a credential custodian for everyone who signs up. Gated on real demand + funding for the ongoing liability. Kept open in the roadmap so architectural decisions don't close the door on it (e.g. don't hardcode single-user assumptions in new code), but no work planned.
+
+Design decisions that keep Stage 3 achievable later without breaking Stage 1/2:
+- New database tables should carry an optional `owner_id` column (nullable for single-user mode).
+- New routes should accept (but not yet require) an authenticated user identity.
+- Avoid sprinkling `/app/data/` paths into new code — use `config.DATA_DIR` so it can be per-user later.
+
 ### Long-term / "nice someday"
 
 - [ ] **Goal tracking UI** — set targets for views / faves / comments per story, render progress bars, Telegram notification on hit.

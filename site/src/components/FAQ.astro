@@ -1,0 +1,52 @@
+---
+const faqs = [
+  {
+    q: 'Is it free?',
+    a: 'Yes. MIT licensed, no accounts, no telemetry, no feature gates. Fork it, audit it, run it forever.',
+  },
+  {
+    q: 'Where do my platform passwords live?',
+    a: 'On your own machine or your own server. The optional encrypted vault (Fernet + OS keyring or a dotfile key) stores credentials separately from your plaintext settings.json. No PawPoller-operated service ever sees them.',
+  },
+  {
+    q: 'Does it post things automatically?',
+    a: 'Only when you confirm. Every publish action has an explicit confirmation dialog; live (non-draft) posts require a second confirmation. There is also a full dry-run mode that shows exactly what would be submitted without submitting it.',
+  },
+  {
+    q: 'Does it work on Mac or Linux?',
+    a: 'The headless Docker / server mode runs anywhere. The native desktop app is Windows-only right now (pywebview + Edge for PDF rendering). Linux and macOS desktop builds are possible but not prioritised — run the server mode in Docker and you get the same dashboard in any browser.',
+  },
+  {
+    q: 'Why nine posting platforms but eleven polled?',
+    a: 'Wattpad, Itaku, X/Twitter and similar are either public read-only or have posting APIs that discourage third-party automation. PawPoller can read their stats for your analytics; it won\'t pretend to post where it shouldn\'t.',
+  },
+  {
+    q: 'Can I eventually use it from the browser without self-hosting?',
+    a: 'That\'s the plan for the Cloud tier — a one-click hosted instance owned by you, not a shared service. A true multi-tenant SaaS tier is possible further out but needs real demand first; holding credentials for many users at once is a serious responsibility.',
+  },
+  {
+    q: 'Can I help?',
+    a: 'Yes. Bug reports, feature requests, and platform additions are all welcome via GitHub Issues. CONTRIBUTING.md has the platform-adding walkthrough.',
+  },
+];
+---
+<section id="faq" class="py-24">
+  <div class="container-prose">
+    <div class="mx-auto max-w-2xl text-center">
+      <span class="chip">FAQ</span>
+      <h2 class="mt-4 text-4xl text-ink-50 md:text-5xl">Short answers to honest questions.</h2>
+    </div>
+
+    <div class="mx-auto mt-14 max-w-3xl divide-y divide-ink-800 rounded-lg border border-ink-800 bg-ink-900/50">
+      {faqs.map((f) => (
+        <details class="group p-6 open:bg-ink-900/80">
+          <summary class="flex cursor-pointer items-center justify-between text-ink-100 transition hover:text-copper-300">
+            <span class="font-serif text-lg">{f.q}</span>
+            <span class="ml-4 text-copper-400 transition group-open:rotate-45">+</span>
+          </summary>
+          <p class="mt-4 text-sm leading-relaxed text-ink-300">{f.a}</p>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>

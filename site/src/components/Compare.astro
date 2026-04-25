@@ -1,0 +1,47 @@
+---
+const rows = [
+  { row: 'Content type',             pb: 'Illustrations',                pp: 'Chaptered fiction' },
+  { row: 'Per-post unit',            pb: 'A single image + description', pp: 'A whole story with N chapters' },
+  { row: 'Format conversion',        pb: 'Text descriptions',            pp: 'BBCode, HTML, work-skin CSS, PDF' },
+  { row: 'Per-chapter metadata',     pb: 'N/A',                          pp: 'Tags, descriptions, thumbnails per chapter' },
+  { row: 'Drift detection',          pb: 'N/A',                          pp: 'Flags stale posts when the source changes' },
+  { row: 'Analytics',                pb: 'None',                         pp: 'Views, faves, comments over time' },
+  { row: 'Primary audience',         pb: 'Visual artists',               pp: 'Fiction writers' },
+];
+---
+<section class="py-24">
+  <div class="container-prose">
+    <div class="mx-auto max-w-2xl text-center">
+      <span class="chip">Comparison</span>
+      <h2 class="mt-4 text-4xl text-ink-50 md:text-5xl">PostyBirb is great — for illustrators.</h2>
+      <p class="mt-6 text-ink-300">
+        PawPoller takes the same "one source, many platforms" idea and rebuilds it for the specific pains of publishing chaptered fiction. Different tool, different audience, same respect for multi-platform posting.
+      </p>
+    </div>
+
+    <div class="mt-14 overflow-hidden rounded-lg border border-ink-800">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-ink-800/60 text-xs uppercase tracking-wider text-ink-400">
+          <tr>
+            <th class="px-6 py-4"></th>
+            <th class="px-6 py-4">PostyBirb</th>
+            <th class="px-6 py-4 text-copper-300">PawPoller</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-ink-800">
+          {rows.map((r) => (
+            <tr>
+              <td class="px-6 py-4 text-ink-400">{r.row}</td>
+              <td class="px-6 py-4 text-ink-200">{r.pb}</td>
+              <td class="px-6 py-4 font-medium text-ink-50">{r.pp}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <p class="mt-6 text-center text-sm text-ink-400">
+      If you post illustrations, go to <a class="link-accent" href="https://www.postybirb.com/">postybirb.com</a>. It's genuinely the right tool.
+    </p>
+  </div>
+</section>

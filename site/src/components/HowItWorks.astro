@@ -1,0 +1,40 @@
+---
+const steps = [
+  {
+    n: '01',
+    title: 'Write in Markdown',
+    body:
+      'A single MASTER.md per story, with HTML-comment anchors marking the title, byline, warnings, body, and any inline semantic blocks (text messages, phone calls). An in-app editor with a toolbar inserts them for you.',
+  },
+  {
+    n: '02',
+    title: 'Regenerate every format',
+    body:
+      'One click rebuilds BBCode, SoFurry HTML, styled HTML, SquidgeWorld work skins, and PDFs. WeasyPrint does the heavy lifting on Linux; Edge handles it on Windows. All generated files land in the same folder as your MASTER.md.',
+  },
+  {
+    n: '03',
+    title: 'Publish with confidence',
+    body:
+      'The publish-check matrix shows every chapter-platform combination at a glance. Dry-run to see what would post, or confirm and push. Retry queue handles transient failures; drift detection flags stale posts months later.',
+  },
+];
+---
+<section class="border-t border-ink-800/60 bg-ink-950/30 py-24">
+  <div class="container-prose">
+    <div class="mx-auto max-w-2xl text-center">
+      <span class="chip">How it works</span>
+      <h2 class="mt-4 text-4xl text-ink-50 md:text-5xl">Three steps. One source of truth.</h2>
+    </div>
+
+    <div class="mt-16 grid gap-8 md:grid-cols-3">
+      {steps.map((step) => (
+        <div class="card p-8">
+          <div class="font-mono text-xs tracking-widest text-copper-400">{step.n}</div>
+          <h3 class="mt-3 text-2xl text-ink-50">{step.title}</h3>
+          <p class="mt-4 text-sm leading-relaxed text-ink-300">{step.body}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

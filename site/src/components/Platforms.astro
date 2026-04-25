@@ -1,0 +1,59 @@
+---
+const platforms = [
+  { name: 'Inkbunny',    poll: true, post: true, note: 'Chaptered, official API' },
+  { name: 'FurAffinity', poll: true, post: true, note: 'Scraping, desktop-only for posting' },
+  { name: 'SoFurry',     poll: true, post: true, note: 'Chaptered' },
+  { name: 'Weasyl',      poll: true, post: true, note: 'Official API' },
+  { name: 'AO3',         poll: true, post: true, note: 'Chaptered + work skins' },
+  { name: 'SquidgeWorld',poll: true, post: true, note: 'Chaptered + work skins' },
+  { name: 'DeviantArt',  poll: true, post: true, note: 'Eclipse API' },
+  { name: 'Wattpad',     poll: true, post: false, note: 'Read-only analytics' },
+  { name: 'Itaku',       poll: true, post: false, note: 'Read-only analytics' },
+  { name: 'Bluesky',     poll: true, post: false, note: 'Announcements (coming soon)' },
+  { name: 'X / Twitter', poll: true, post: false, note: 'Read-only analytics' },
+];
+---
+<section id="platforms" class="border-t border-ink-800/60 bg-ink-950/30 py-24">
+  <div class="container-prose">
+    <div class="mx-auto max-w-2xl text-center">
+      <span class="chip">Platforms</span>
+      <h2 class="mt-4 text-4xl text-ink-50 md:text-5xl">Eleven polled. Nine posted.</h2>
+      <p class="mt-6 text-ink-300">
+        Polling tracks views, favourites and comments across all eleven. Posting supports nine of them today; the last two are on the roadmap.
+      </p>
+    </div>
+
+    <div class="mt-14 overflow-hidden rounded-lg border border-ink-800">
+      <table class="w-full text-left">
+        <thead class="bg-ink-800/60 text-xs uppercase tracking-wider text-ink-400">
+          <tr>
+            <th class="px-6 py-4">Platform</th>
+            <th class="px-6 py-4">Poll</th>
+            <th class="px-6 py-4">Post</th>
+            <th class="hidden px-6 py-4 md:table-cell">Notes</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-ink-800 text-sm">
+          {platforms.map((p) => (
+            <tr class="transition hover:bg-ink-800/30">
+              <td class="px-6 py-4 font-medium text-ink-50">{p.name}</td>
+              <td class="px-6 py-4">
+                {p.poll
+                  ? <span class="inline-flex h-2 w-2 rounded-full bg-sage-500"></span>
+                  : <span class="inline-flex h-2 w-2 rounded-full bg-ink-700"></span>
+                }
+              </td>
+              <td class="px-6 py-4">
+                {p.post
+                  ? <span class="inline-flex h-2 w-2 rounded-full bg-copper-400"></span>
+                  : <span class="inline-flex h-2 w-2 rounded-full bg-ink-700"></span>
+                }
+              </td>
+              <td class="hidden px-6 py-4 text-ink-300 md:table-cell">{p.note}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,37 @@
+---
+// Placeholder panel — drop real screenshots into /public/screens/ and reference them here.
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+const shots = [
+  { title: 'Publish-check matrix',  caption: 'Every chapter × platform combination at a glance.' },
+  { title: 'Editor with anchor toolbar',  caption: 'Insert semantic anchors without remembering their names.' },
+  { title: 'Metadata drawer',  caption: 'Per-platform descriptions, tags, and chapter thumbnails in one place.' },
+  { title: 'Analytics dashboard', caption: 'Views, favourites, and comments across every platform you post to.' },
+];
+---
+<section class="py-24">
+  <div class="container-prose">
+    <div class="mx-auto max-w-2xl text-center">
+      <span class="chip">See it</span>
+      <h2 class="mt-4 text-4xl text-ink-50 md:text-5xl">The interface writers actually use.</h2>
+      <p class="mt-6 text-ink-300">
+        Screenshots coming in the next release. Below is a sketch of what each view does.
+      </p>
+    </div>
+
+    <div class="mt-14 grid gap-6 md:grid-cols-2">
+      {shots.map((s) => (
+        <figure class="card overflow-hidden">
+          <div class="relative flex aspect-video items-center justify-center bg-gradient-to-br from-ink-800 via-ink-900 to-ink-950">
+            <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(208,129,54,0.10),transparent_60%)]"></div>
+            <div class="relative text-center">
+              <div class="font-mono text-xs uppercase tracking-widest text-copper-400">Preview</div>
+              <div class="mt-3 font-serif text-2xl text-ink-100">{s.title}</div>
+            </div>
+          </div>
+          <figcaption class="border-t border-ink-700/60 bg-ink-900/60 px-6 py-4 text-sm text-ink-300">{s.caption}</figcaption>
+        </figure>
+      ))}
+    </div>
+  </div>
+</section>

@@ -1,0 +1,73 @@
+---
+const tiers = [
+  {
+    status: 'Available now',
+    statusColor: 'bg-sage-500',
+    title: 'Desktop',
+    subtitle: 'Windows x64 · native app',
+    body:
+      'The simplest path. One .exe with the dashboard, all pollers, the editor, and the full publishing pipeline bundled. Ideal for personal use on one machine.',
+    cta: { label: 'Download v2.13.9', href: 'https://github.com/knaughtykat01-prog/PawPoller/releases/latest' },
+    footnote: 'MIT licensed · free forever',
+  },
+  {
+    status: 'Available now',
+    statusColor: 'bg-sage-500',
+    title: 'Self-hosted',
+    subtitle: 'Docker · headless · your server',
+    body:
+      'Run PawPoller 24/7 on a VPS, home server, or Raspberry Pi. Poll while you sleep, access the dashboard from any device. Setup guide covers Cloudflare Tunnel, Caddy, and nginx reverse proxies.',
+    cta: { label: 'Read the setup guide', href: 'https://github.com/knaughtykat01-prog/PawPoller/blob/master/SETUP.md' },
+    footnote: 'Hosting cost: $0–10/mo',
+  },
+  {
+    status: 'Coming soon',
+    statusColor: 'bg-copper-500/80',
+    title: 'Cloud',
+    subtitle: 'One-click hosted · pay-as-you-go',
+    body:
+      'Deploy your own PawPoller instance to Railway, Fly.io, or DigitalOcean with a single click. You own your data and credentials; you pay the PaaS directly. No central service holding your secrets.',
+    cta: { label: 'Join the waitlist', href: 'https://github.com/knaughtykat01-prog/PawPoller/discussions' },
+    footnote: 'Eventually: browser-only SaaS tier',
+  },
+];
+---
+<section id="get" class="border-t border-ink-800/60 bg-ink-950/30 py-24">
+  <div class="container-prose">
+    <div class="mx-auto max-w-2xl text-center">
+      <span class="chip">Get PawPoller</span>
+      <h2 class="mt-4 text-4xl text-ink-50 md:text-5xl">Three ways to run it.</h2>
+      <p class="mt-6 text-ink-300">
+        Same app, same database format, same feature set. Pick whichever shape fits your workflow.
+      </p>
+    </div>
+
+    <div class="mt-16 grid gap-6 md:grid-cols-3">
+      {tiers.map((t) => (
+        <div class="card flex flex-col p-8">
+          <div class="flex items-center gap-2 text-xs uppercase tracking-wider">
+            <span class={`h-1.5 w-1.5 rounded-full ${t.statusColor}`}></span>
+            <span class="text-ink-400">{t.status}</span>
+          </div>
+          <h3 class="mt-4 text-2xl text-ink-50">{t.title}</h3>
+          <p class="mt-1 text-sm text-copper-300">{t.subtitle}</p>
+          <p class="mt-5 flex-1 text-sm leading-relaxed text-ink-300">{t.body}</p>
+          <a href={t.cta.href} class="mt-6 btn-secondary justify-center">{t.cta.label} →</a>
+          <p class="mt-3 text-center text-xs text-ink-400">{t.footnote}</p>
+        </div>
+      ))}
+    </div>
+
+    <div class="mt-12 rounded-lg border border-ink-800 bg-ink-900/70 p-6 font-mono text-sm text-ink-200">
+      <div class="mb-3 flex items-center gap-2 text-xs uppercase tracking-wider text-ink-400">
+        <span class="h-1.5 w-1.5 rounded-full bg-copper-400"></span>
+        Fastest Docker quick-start
+      </div>
+      <pre class="overflow-x-auto"><code>git clone https://github.com/knaughtykat01-prog/PawPoller.git
+cd PawPoller
+cp .env.example .env         <span class="text-ink-500"># set DASHBOARD_PASSWORD before exposing publicly</span>
+docker compose up -d --build
+<span class="text-ink-500"># Dashboard: http://localhost:8420</span></code></pre>
+    </div>
+  </div>
+</section>
