@@ -4,6 +4,30 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.13.9] - 2026-04-25
+
+### Fixed — server startup crash when vault mode is on
+
+`config.py`'s module-level `_settings = _load_settings()` ran at import
+time, and `_load_settings` calls `_decrypt_vault()` whenever
+`settings.json` has `credential_mode: "local"`. But `_decrypt_vault`
+was defined ~300 lines further down, so on any server with vault mode
+on, `import config` raised `NameError: name '_decrypt_vault' is not
+defined` before the app could even start. The desktop was unaffected
+because its settings.json defaults to `credential_mode: "cloud"`.
+
+This hit us on the GCP deploy — server had vault enabled from an
+earlier QA session and crash-looped on startup after the 2.13.1+ push.
+
+Fix: moved the vault block (`VAULT_PATH`, `_get_vault_key`,
+`_encrypt_vault`, `_decrypt_vault`) above `_load_settings` so all
+helpers are defined before the module-level init runs. Left a comment
+explaining the ordering constraint so nobody moves them back.
+
+**`APP_VERSION` bumped to `2.13.9`.**
+
+---
+
 ## [2.13.8] - 2026-04-24
 
 ### Changed — Anchor toolbar tweaks

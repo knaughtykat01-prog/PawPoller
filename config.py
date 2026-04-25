@@ -112,6 +112,89 @@ def _secure_file_permissions(path) -> None:
             pass  # Best-effort — don't crash if permissions can't be set
 
 
+# ── Credential vault (Phase 7b) ────────────────────────────────
+# Must be declared BEFORE _load_settings because the module-level
+# `_settings = _load_settings()` at import time calls _decrypt_vault()
+# when settings.json has credential_mode="local". If these live below
+# that init line Python raises NameError at import on vault-mode servers.
+
+VAULT_PATH = DATA_DIR / "settings.vault.json"
+
+
+def _get_vault_key() -> bytes:
+    """Derive or retrieve the encryption key for the credential vault.
+
+    Uses the system keyring if available, otherwise falls back to a
+    machine-derived key stored in a dotfile.
+    """
+    try:
+        import keyring
+        key = keyring.get_password("PawPoller", "vault_key")
+        if key:
+            return key.encode()
+        # Generate and store a new key
+        from cryptography.fernet import Fernet
+        new_key = Fernet.generate_key()
+        keyring.set_password("PawPoller", "vault_key", new_key.decode())
+        return new_key
+    except Exception:
+        # Fallback: store key in a dotfile in DATA_DIR
+        key_file = DATA_DIR / ".vault_key"
+        if key_file.exists():
+            return key_file.read_bytes().strip()
+        from cryptography.fernet import Fernet
+        new_key = Fernet.generate_key()
+        key_file.write_bytes(new_key)
+        _secure_file_permissions(key_file)
+        return new_key
+
+
+def _encrypt_vault(creds: dict) -> None:
+    """Encrypt credential fields to settings.vault.json.
+
+    NOTE: Callers must hold _settings_lock before calling this function.
+    """
+    from cryptography.fernet import Fernet
+    import tempfile
+    key = _get_vault_key()
+    f = Fernet(key)
+    payload = json.dumps(creds).encode("utf-8")
+    encrypted = f.encrypt(payload)
+    vault_data = {"version": 1, "encrypted": encrypted.decode("ascii")}
+
+    fd, tmp = tempfile.mkstemp(dir=VAULT_PATH.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fp:
+            json.dump(vault_data, fp, indent=2)
+        os.replace(tmp, str(VAULT_PATH))
+        _secure_file_permissions(VAULT_PATH)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _decrypt_vault() -> dict:
+    """Decrypt credential fields from settings.vault.json.
+
+    NOTE: Callers must hold _settings_lock before calling this function.
+    """
+    if not VAULT_PATH.exists():
+        return {}
+    try:
+        from cryptography.fernet import Fernet
+        vault = json.loads(VAULT_PATH.read_text(encoding="utf-8"))
+        key = _get_vault_key()
+        f = Fernet(key)
+        decrypted = f.decrypt(vault["encrypted"].encode("ascii"))
+        return json.loads(decrypted)
+    except Exception as e:
+        logger.error("Failed to decrypt vault: %s", e)
+        return {}
+
+
 # ── Settings.json helpers ─────────────────────────────────────
 # settings.json is the single source of truth for user preferences and
 # credentials once the app has been configured through the UI.  It uses a
@@ -351,85 +434,6 @@ SYNC_EXCLUDE = frozenset({
 })
 
 
-# ── Credential vault (Phase 7b) ────────────────────────────────
-
-VAULT_PATH = DATA_DIR / "settings.vault.json"
-
-
-def _get_vault_key() -> bytes:
-    """Derive or retrieve the encryption key for the credential vault.
-
-    Uses the system keyring if available, otherwise falls back to a
-    machine-derived key stored in a dotfile.
-    """
-    try:
-        import keyring
-        key = keyring.get_password("PawPoller", "vault_key")
-        if key:
-            return key.encode()
-        # Generate and store a new key
-        from cryptography.fernet import Fernet
-        new_key = Fernet.generate_key()
-        keyring.set_password("PawPoller", "vault_key", new_key.decode())
-        return new_key
-    except Exception:
-        # Fallback: store key in a dotfile in DATA_DIR
-        key_file = DATA_DIR / ".vault_key"
-        if key_file.exists():
-            return key_file.read_bytes().strip()
-        from cryptography.fernet import Fernet
-        new_key = Fernet.generate_key()
-        key_file.write_bytes(new_key)
-        _secure_file_permissions(key_file)
-        return new_key
-
-
-def _encrypt_vault(creds: dict) -> None:
-    """Encrypt credential fields to settings.vault.json.
-
-    NOTE: Callers must hold _settings_lock before calling this function.
-    """
-    from cryptography.fernet import Fernet
-    import tempfile
-    key = _get_vault_key()
-    f = Fernet(key)
-    payload = json.dumps(creds).encode("utf-8")
-    encrypted = f.encrypt(payload)
-    vault_data = {"version": 1, "encrypted": encrypted.decode("ascii")}
-
-    fd, tmp = tempfile.mkstemp(dir=VAULT_PATH.parent, suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fp:
-            json.dump(vault_data, fp, indent=2)
-        os.replace(tmp, str(VAULT_PATH))
-        _secure_file_permissions(VAULT_PATH)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
-
-
-def _decrypt_vault() -> dict:
-    """Decrypt credential fields from settings.vault.json.
-
-    NOTE: Callers must hold _settings_lock before calling this function.
-    """
-    if not VAULT_PATH.exists():
-        return {}
-    try:
-        from cryptography.fernet import Fernet
-        vault = json.loads(VAULT_PATH.read_text(encoding="utf-8"))
-        key = _get_vault_key()
-        f = Fernet(key)
-        decrypted = f.decrypt(vault["encrypted"].encode("ascii"))
-        return json.loads(decrypted)
-    except Exception as e:
-        logger.error("Failed to decrypt vault: %s", e)
-        return {}
-
-
 def get_credential_mode() -> str:
     """Return 'cloud' or 'local'.
 
@@ -548,7 +552,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.13.8"
+APP_VERSION = "2.13.9"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL
