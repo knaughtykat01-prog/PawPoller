@@ -2,6 +2,8 @@
 
 **Multi-platform story publishing pipeline for furry fiction writers.**
 
+🌐 **[pawpoller.pages.dev](https://pawpoller.pages.dev)** — features, screenshots, download
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB.svg)](https://python.org)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-0078D6.svg)](#quick-start)
