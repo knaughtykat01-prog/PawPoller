@@ -4,6 +4,67 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.14.2] - 2026-04-26
+
+### Added — Automatic settings sync across devices
+
+The cloud-sync infrastructure has existed since 2.13.x (the manual
+push/pull endpoint at `/api/settings/sync`), but actually using it
+required either restarting the desktop app (one-shot pull at boot)
+or hitting the API by hand. 2.14.2 closes that loop: every settings
+change propagates between devices on its own.
+
+**What changed:**
+
+- **Desktop auto-push.** `config.save_settings()` now schedules a
+  debounced (~2s) background push to the cloud server whenever a
+  `posting_server_url` + API key is configured. Bursts of saves
+  (e.g. flipping five toggles in the wizard) collapse into one HTTP
+  request. Fire-and-forget — failures log at debug level and never
+  block the save.
+- **Desktop periodic auto-pull.** New daemon thread polls the cloud
+  server every 5 minutes and merges anything newer than the local
+  copy. Last-writer-wins via mtime, so an in-flight push isn't
+  immediately stomped by a stale pull. Bootstrapped from `main.py`
+  alongside the existing one-shot startup pull.
+- **Browser focus refresh.** Tabs now listen for `visibilitychange`
+  and re-pull preferences when refocused (throttled to once per 3s).
+  So changing the theme in the desktop app causes any open browser
+  tab to repaint with the new theme as soon as you switch to it.
+- **Loop protection.** A thread-local `_in_pull_merge` flag prevents
+  the pull → merge → save → push cascade. Without it, a desktop
+  pulling from the server would echo every pulled key back as a push.
+- **`auto_sync_enabled` toggle** (default `true`) on **Settings →
+  Appearance**, plus exposed through `GET /api/settings/preferences`
+  and accepted by the POST handler. Set to `false` to disable both
+  push and pull on this device.
+- **Bug fix: theme actually persists now.** `applyTheme()` was
+  POSTing `{ theme: <id> }` to `/api/settings/preferences`, but the
+  server-side handler whitelisted known keys and silently dropped
+  `theme`. So the chosen theme was localStorage-only and never made
+  it into `settings.json` (and therefore never synced). The handler
+  now accepts `theme` against the known THEMES set, so the
+  cross-device sync above can actually do its job for the appearance
+  setting that motivated this work.
+
+**What's excluded:**
+
+- `credential_mode` (per-device decision — vault vs plaintext)
+- `auth_session_secret` (per-device cookie-signing key, must not
+  match across devices)
+- `minimize_to_tray` (per-device preference)
+- Anything resolving to `localhost`/`127.0.0.1` is treated as a
+  loopback target and skipped (so the cloud server never tries to
+  sync to itself)
+
+**Files touched:** `auto_sync.py` (new), `config.py`, `main.py`,
+`routes/api.py`, `frontend/js/app.js`, `frontend/index.html`.
+Cache buster on `app.js` bumped to `v=311`.
+
+**`APP_VERSION` bumped to `2.14.2`.**
+
+---
+
 ## [2.14.1] - 2026-04-26
 
 ### Changed — Vibe Pack: app aesthetic aligned with marketing site

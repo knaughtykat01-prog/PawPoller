@@ -763,6 +763,17 @@ def main():
     # --- Step 1b: Sync settings from server (cloud mode) ---
     _sync_settings_on_startup()
 
+    # --- Step 1c: Start the recurring background pull thread so settings
+    # changed on another device flow back into this desktop install
+    # without requiring a restart.
+    try:
+        import auto_sync
+        auto_sync.start_pull_thread()
+        logger.info("Auto-sync pull thread started (every %ds)",
+                    auto_sync.AUTO_SYNC_PULL_INTERVAL_SECONDS)
+    except Exception as e:
+        logger.warning("Auto-sync pull thread failed to start: %s", e)
+
     # --- Step 2: Launch daemon threads ---
     # All threads are daemon=True so they terminate automatically when
     # the main thread (pywebview) exits.  No explicit shutdown is needed.

@@ -281,6 +281,10 @@ def save_settings(data: dict) -> None:
                 pass
             raise
 
+    # Fire a debounced push to the cloud server (no-op when not configured
+    # or when this save originated from a pull merge — auto_sync handles both).
+    _schedule_auto_sync_push()
+
 
 def delete_settings_keys(keys: list[str]) -> None:
     """Remove *keys* from settings.json (and vault if in local mode) and write.
@@ -318,6 +322,21 @@ def delete_settings_keys(keys: list[str]) -> None:
             except OSError:
                 pass
             raise
+
+    _schedule_auto_sync_push()
+
+
+def _schedule_auto_sync_push() -> None:
+    """Trigger a debounced auto-sync push if available.
+
+    Imported lazily and exception-swallowed so config.py stays usable when
+    auto_sync isn't importable (e.g. unit tests that stub modules).
+    """
+    try:
+        import auto_sync
+        auto_sync.schedule_push()
+    except Exception:
+        pass
 
 
 def get_settings() -> dict:
@@ -552,7 +571,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.14.1"
+APP_VERSION = "2.14.2"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

@@ -229,6 +229,36 @@ const App = {
 
         /* Sidebar version + update check */
         this._initSidebarVersion();
+
+        /* Cross-device sync: when the tab regains focus (user comes back
+           after editing settings on another device or in the desktop app),
+           refresh the theme + general prefs so changes flow through without
+           requiring a manual reload. Throttled to once per 3 seconds so
+           rapid alt-tabs don't hammer the API. */
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) return;
+            const now = Date.now();
+            if (this._lastFocusSync && now - this._lastFocusSync < 3000) return;
+            this._lastFocusSync = now;
+            this._refreshPrefsFromServer();
+        });
+    },
+
+    /* Pull the latest preferences from the server and apply any drift.
+       Currently only the theme has a visible effect — but pulling all
+       prefs keeps client-side caches honest if we add more later. */
+    async _refreshPrefsFromServer() {
+        try {
+            const prefs = await API.getPreferences();
+            const serverTheme = prefs && prefs.theme;
+            if (serverTheme && serverTheme !== this.getCurrentTheme()
+                && this.THEMES.some(t => t.id === serverTheme)) {
+                document.documentElement.dataset.theme = serverTheme;
+                localStorage.setItem('pawpoller-theme', serverTheme);
+                if (typeof Charts !== 'undefined' && Charts.destroyAll) Charts.destroyAll();
+                if (this.route) this.route();
+            }
+        } catch (e) { /* offline, ignore */ }
     },
 
     /* ── Theme catalog ───────────────────────────────────────
@@ -5301,6 +5331,23 @@ const App = {
                         }).join('')}
                     </div>
                 </div>
+
+                <div class="settings-section">
+                    <h3>Sync</h3>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
+                        When enabled, this device pushes preference changes to your cloud server within seconds and pulls remote changes every 5 minutes. Browser tabs also refresh on focus. Credentials and your session secret are excluded.
+                    </p>
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Auto-sync settings across devices</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Requires <code>posting_server_url</code> + API key on the Publishing tab</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-auto-sync" ${prefs.auto_sync_enabled !== false ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
                 </div>
 
                 <!-- ═══ TAB: General ═══ -->
@@ -6586,6 +6633,9 @@ const App = {
                     prefs.run_on_startup = !!chk('pref-startup');
                     prefs.notifications_enabled = !!chk('pref-notifications');
                     prefs.watcher_notifications_enabled = !!chk('pref-watcher-notif');
+                    if (document.getElementById('pref-auto-sync')) {
+                        prefs.auto_sync_enabled = !!chk('pref-auto-sync');
+                    }
 
                     // Poll intervals
                     prefs.poll_interval_minutes = parseInt(val('pref-poll-interval')) || 60;
@@ -6757,6 +6807,16 @@ const App = {
             document.getElementById('pref-tray').addEventListener('change', async (e) => {
                 try {
                     await API.savePreferences({ minimize_to_tray: e.target.checked });
+                } catch (err) {
+                    e.target.checked = !e.target.checked;
+                    alert('Failed to save preference: ' + err.message);
+                }
+            });
+
+            // Auto-sync toggle (Appearance tab — only present when that tab rendered)
+            document.getElementById('pref-auto-sync')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ auto_sync_enabled: e.target.checked });
                 } catch (err) {
                     e.target.checked = !e.target.checked;
                     alert('Failed to save preference: ' + err.message);

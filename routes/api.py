@@ -604,6 +604,8 @@ def get_preferences():
         "minimize_to_tray": settings.get("minimize_to_tray", False),
         "run_on_startup": config.get_run_on_startup(),
         "display_timezone": settings.get("display_timezone", "UTC"),
+        "theme": settings.get("theme", "dark"),
+        "auto_sync_enabled": settings.get("auto_sync_enabled", True),
         # ── Per-platform notification master toggles ───────────────
         "notifications_enabled": settings.get("notifications_enabled", True),
         "fa_notifications_enabled": settings.get("fa_notifications_enabled", True),
@@ -669,6 +671,16 @@ def save_preferences(body: dict):
         update["minimize_to_tray"] = bool(body["minimize_to_tray"])
     if "telegram_enabled" in body:
         update["telegram_enabled"] = bool(body["telegram_enabled"])
+    if "auto_sync_enabled" in body:
+        update["auto_sync_enabled"] = bool(body["auto_sync_enabled"])
+    # Theme — accepted as opaque string; client-side validates against the
+    # THEMES catalogue so unknown ids never reach here. Whitelist anyway as
+    # belt-and-braces against rogue clients.
+    if "theme" in body:
+        theme_val = str(body["theme"])
+        if theme_val in {"dark", "light", "ink_copper", "parchment",
+                         "midnight_press", "forest", "velvet", "high_contrast"}:
+            update["theme"] = theme_val
 
     # ── Per-platform notification master toggles ───────────────
     # Each platform poller checks its own *_notifications_enabled flag
