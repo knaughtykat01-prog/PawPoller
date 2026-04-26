@@ -13,10 +13,17 @@
         document.documentElement.dataset.theme = t;
       })();
     </script>
-    <link rel="stylesheet" href="/css/tokens.css?v=300">
-    <link rel="stylesheet" href="/css/components.css?v=300">
-    <link rel="stylesheet" href="/css/layout.css?v=300">
-    <link rel="stylesheet" href="/css/editor.css?v=300">
+    <!-- Vibe Pack typography (matches pawpoller.pages.dev). Crimson Pro
+         for headings, Inter for body, JetBrains Mono for code. Loaded
+         once and cached; the desktop pywebview bundle has internet
+         access on first launch same as a browser. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+    <link rel="stylesheet" href="/css/tokens.css?v=310">
+    <link rel="stylesheet" href="/css/components.css?v=310">
+    <link rel="stylesheet" href="/css/layout.css?v=310">
+    <link rel="stylesheet" href="/css/editor.css?v=310">
     <script src="/js/vendor/chart.umd.min.js"></script>
     <script src="/js/vendor/chartjs-plugin-annotation.min.js"></script>
     <script src="/js/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -32,7 +39,7 @@
         <div class="sidebar-header">
             <button class="hamburger-btn" id="hamburger-btn" aria-label="Toggle menu">&#9776;</button>
             <span class="sidebar-logo">&#128062;</span>
-            <h1>PawPoller</h1>
+            <h1><span class="brand-mark">&#9670;</span> PawPoller</h1>
         </div>
 
         <ul class="nav-links">
@@ -457,6 +464,6 @@
     <script src="/js/editor.js?v=285"></script>
     <script src="/js/metadata_editor.js?v=22"></script>
     <script src="/js/publish_check.js?v=13"></script>
-    <script src="/js/app.js?v=300"></script>
+    <script src="/js/app.js?v=310"></script>
 </body>
 </html>

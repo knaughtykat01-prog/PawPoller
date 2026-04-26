@@ -4,6 +4,53 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.14.1] - 2026-04-26
+
+### Changed — Vibe Pack: app aesthetic aligned with marketing site
+
+The 2.14.0 themes brought the marketing site's palette into the app
+(via Ink & Copper). 2.14.1 closes the rest of the cohesion gap by
+borrowing four specific stylistic moves from pawpoller.pages.dev,
+without sacrificing dashboard density on work surfaces.
+
+- **Crimson Pro for headings.** All `h1`/`h2`/`h3`, plus page-header
+  titles, modal titles, settings-section heads, sidebar wordmark,
+  login/setup-step headings now render in Crimson Pro (the same
+  serif as the site). Body text, labels, table cells, and buttons
+  stay in Inter so dashboard-density screens remain readable.
+- **Subtle radial body wash.** The body background is no longer flat
+  slate — it gets a faint copper top-left + sage bottom-right
+  gradient via two new theme-aware tokens (`--bg-glow-warm`,
+  `--bg-glow-cool`). Anchored with `background-attachment: fixed` so
+  it doesn't move with scroll. Pure-black themes (Midnight Press,
+  High Contrast) opt out by setting both tokens to `transparent`.
+- **Refined `.chip` component.** New site-style pill chip with
+  optional dot indicator, plus accent/warm/success/warning/danger
+  modifiers. Existing badges keep working; new chips going forward
+  use this pattern.
+- **Brand mark.** Small copper diamond (◆) added next to the
+  PawPoller wordmark in the sidebar header, matching the site's nav.
+- **Three new font tokens** — `--font-serif` (Crimson Pro fallback
+  Georgia), `--font-sans` (Inter fallback system), `--font-mono`
+  (JetBrains Mono fallback ui-monospace). Loaded once from Google
+  Fonts with `display=swap` so first paint never blocks.
+
+### Notes
+
+- No layout changes on dense work surfaces (publish-check matrix,
+  story list, editor, analytics, settings tables). Those keep their
+  productivity density — only the *typography* of their headings and
+  the ambient body wash shifts.
+- Cache busters bumped to `v=310` for tokens / components / layout /
+  editor CSS and `app.js`.
+- Cohesion score (per the brand audit): bumped from "color-aligned,
+  typography-divergent" to "fully cohesive cross-surface family"
+  while preserving the marketing-vs-dashboard density distinction.
+
+**`APP_VERSION` bumped to `2.14.1`.**
+
+---
+
 ## [2.14.0] - 2026-04-26
 
 ### Added — 8-theme picker (browser + native)
