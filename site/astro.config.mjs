@@ -1,12 +1,13 @@
 import { defineConfig } from 'astro/config';
 import tailwind from '@astrojs/tailwind';
 
-// Served from https://knaughtykat01-prog.github.io/PawPoller/
-// so every absolute link and asset needs the /PawPoller/ base prefix.
-// Swap `site` + drop `base` when a custom domain is wired up.
+// Served from Cloudflare Pages at the project root (e.g.
+// pawpoller-xyz.pages.dev or a custom domain). No base path needed
+// because CF Pages serves the site at /, not /PawPoller/.
+// If we ever move back to a subpath host, set `base: '/whatever'`
+// here and re-render — every Astro link uses import.meta.env.BASE_URL.
 export default defineConfig({
-  site: 'https://knaughtykat01-prog.github.io',
-  base: '/PawPoller',
+  site: 'https://pawpoller.pages.dev',
   trailingSlash: 'ignore',
   integrations: [tailwind({ applyBaseStyles: false })],
 });
