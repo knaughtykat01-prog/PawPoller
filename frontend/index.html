@@ -4,10 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>PawPoller</title>
-    <link rel="stylesheet" href="/css/tokens.css?v=240">
-    <link rel="stylesheet" href="/css/components.css?v=241">
-    <link rel="stylesheet" href="/css/layout.css?v=240">
-    <link rel="stylesheet" href="/css/editor.css?v=247">
+    <!-- Apply persisted theme BEFORE CSS evaluates so the page never flashes
+         the default-dark palette before swapping. localStorage is used so
+         the theme is available synchronously without an API roundtrip. -->
+    <script>
+      (function () {
+        var t = localStorage.getItem('pawpoller-theme') || 'dark';
+        document.documentElement.dataset.theme = t;
+      })();
+    </script>
+    <link rel="stylesheet" href="/css/tokens.css?v=300">
+    <link rel="stylesheet" href="/css/components.css?v=300">
+    <link rel="stylesheet" href="/css/layout.css?v=300">
+    <link rel="stylesheet" href="/css/editor.css?v=300">
     <script src="/js/vendor/chart.umd.min.js"></script>
     <script src="/js/vendor/chartjs-plugin-annotation.min.js"></script>
     <script src="/js/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -300,7 +309,7 @@
 
         <div class="sidebar-footer">
             <div id="poll-status-mini" class="poll-badge">--</div>
-            <button class="btn-theme-toggle" id="theme-toggle-btn" title="Toggle light/dark theme">&#9788;</button>
+            <button class="btn-theme-toggle" id="theme-toggle-btn" title="Choose theme (opens Settings → Appearance)">&#127912;</button>
             <button class="btn-logout" id="logout-btn" title="Sign out">&#x2190;</button>
             <div id="sidebar-version" class="sidebar-version"></div>
         </div>
@@ -448,6 +457,6 @@
     <script src="/js/editor.js?v=285"></script>
     <script src="/js/metadata_editor.js?v=22"></script>
     <script src="/js/publish_check.js?v=13"></script>
-    <script src="/js/app.js?v=245"></script>
+    <script src="/js/app.js?v=300"></script>
 </body>
 </html>

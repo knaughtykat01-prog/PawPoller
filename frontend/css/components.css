@@ -35,7 +35,7 @@ body {
     background: var(--bg-glass);
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--card-border-inner);
     border-left: 3px solid var(--accent);
     border-radius: var(--radius);
     padding: 20px;
@@ -45,11 +45,11 @@ body {
 
 .stat-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-strong);
 }
 
 a.stat-card:hover {
-    box-shadow: 0 0 0 1px var(--primary), 0 8px 40px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 0 0 1px var(--primary), var(--shadow-strong);
 }
 
 [data-theme="light"] .stat-card {
@@ -89,7 +89,7 @@ a.stat-card:hover {
     background: var(--bg-glass);
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--card-border-inner);
     border-radius: var(--radius-lg);
     padding: 20px;
     box-shadow: var(--shadow-glass);
@@ -98,7 +98,7 @@ a.stat-card:hover {
 
 .card-glass:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-strong);
 }
 
 [data-theme="light"] .card-glass {
@@ -138,7 +138,7 @@ a.stat-card:hover {
     background: var(--bg-glass);
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--card-border-inner);
     border-radius: var(--radius);
     padding: 20px;
     margin-bottom: 20px;
@@ -170,7 +170,7 @@ a.stat-card:hover {
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: rgba(0, 0, 0, 0.75);
+    background: var(--overlay-backdrop);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
     align-items: center;
@@ -187,7 +187,7 @@ a.stat-card:hover {
     width: 100%;
     max-width: 1200px;
     max-height: 90vh;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-strong);
     position: relative;
 }
 
@@ -317,7 +317,7 @@ a.stat-card:hover {
     background: var(--bg-glass);
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--card-border-inner);
     border-radius: var(--radius);
     overflow: hidden;
     box-shadow: var(--shadow-glass);
@@ -327,7 +327,7 @@ a.stat-card:hover {
 
 .submission-card:hover {
     transform: translateY(-3px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-strong);
 }
 
 [data-theme="light"] .submission-card {
@@ -594,7 +594,7 @@ a.stat-card:hover {
     background: var(--bg-glass);
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--card-border-inner);
     border-radius: var(--radius);
     font-size: 12px;
     cursor: pointer;
@@ -614,7 +614,7 @@ a.stat-card:hover {
     background: var(--bg-glass);
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--card-border-inner);
     border-radius: var(--radius);
     padding: 20px;
     margin-bottom: 20px;
@@ -650,7 +650,7 @@ a.stat-card:hover {
     background: var(--bg-glass);
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--card-border-inner);
     border-radius: var(--radius);
     margin-bottom: 12px;
     box-shadow: var(--shadow-glass);
@@ -897,7 +897,7 @@ a.stat-card:hover {
     background: var(--bg-glass);
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--card-border-inner);
     border-radius: var(--radius-lg);
     padding: 36px 32px;
     width: 100%;
@@ -1088,7 +1088,7 @@ a.stat-card:hover {
     background: var(--bg-glass);
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--card-border-inner);
     border-radius: var(--radius-lg);
     padding: 36px 32px;
     width: 100%;
@@ -1427,7 +1427,7 @@ a.stat-card:hover {
     background: var(--bg-glass);
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--card-border-inner);
     border-radius: var(--radius);
     padding: 14px;
     box-shadow: var(--shadow-glass);
@@ -1490,7 +1490,7 @@ a.stat-card:hover {
     background: var(--bg-glass);
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--card-border-inner);
     border-left: 3px solid var(--accent);
     border-radius: var(--radius);
     padding: 16px 20px;
@@ -1527,7 +1527,7 @@ a.stat-card:hover {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-backdrop);
     z-index: 50;
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
@@ -1539,7 +1539,7 @@ a.stat-card:hover {
     background: var(--bg-glass);
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--card-border-inner);
     border-radius: var(--radius-lg);
     padding: 24px;
     box-shadow: var(--shadow-glass);

@@ -1,8 +1,24 @@
 /* ── PawPoller Design Tokens ──────────────────────────────────
-   Warm Fandom + Glass Minimal hybrid design system.
-   All colours, spacing, and styling values defined here.
+   Eight themes — every UI surface reads from these custom properties
+   so swapping a single `data-theme="..."` attribute on <html> retones
+   the entire app without re-rendering anything.
+
+   Adding a theme = copy a block, rename, change colours. Components
+   should NEVER hardcode colours; if you need a shade these tokens
+   don't cover, add a new token and define it in EVERY theme block.
+
+   Themes:
+     dark            — default, charcoal + violet
+     light           — bright, neutral
+     ink_copper      — matches pawpoller.pages.dev (slate + copper)
+     parchment       — warm sepia paper, brown ink
+     midnight_press  — pure black OLED with cool steel accents
+     forest          — pine + sage + cream, low-stim
+     velvet          — aubergine + dusty rose + amber
+     high_contrast   — pure black/white + saturated yellow (a11y)
    ──────────────────────────────────────────────────────────── */
 
+/* ── Default Dark (root) ─────────────────────────────────── */
 :root {
     /* ── Backgrounds ─────────────────────────────────────── */
     --bg-primary:    #13111a;
@@ -13,7 +29,9 @@
     --bg-glass:      rgba(36, 31, 48, 0.65);
 
     /* ── Borders & Dividers ──────────────────────────────── */
-    --border:        #3d3556;
+    --border:             #3d3556;
+    --card-border-inner:  rgba(255, 255, 255, 0.08);   /* subtle inset edge */
+    --overlay-backdrop:   rgba(0, 0, 0, 0.5);          /* modal scrim */
 
     /* ── Text ────────────────────────────────────────────── */
     --text-primary:  #f0edf5;
@@ -43,8 +61,9 @@
     --radius-pill:   999px;
 
     /* ── Shadows ─────────────────────────────────────────── */
-    --shadow:        0 4px 20px rgba(0, 0, 0, 0.25);
-    --shadow-glass:  0 8px 32px rgba(0, 0, 0, 0.20);
+    --shadow:         0 4px 20px rgba(0, 0, 0, 0.25);
+    --shadow-strong:  0 8px 40px rgba(0, 0, 0, 0.30);
+    --shadow-glass:   0 8px 32px rgba(0, 0, 0, 0.20);
 
     /* ── Glass ───────────────────────────────────────────── */
     --blur:          12px;
@@ -53,7 +72,7 @@
     --transition:    0.2s ease;
     --transition-slow: 0.3s ease;
 
-    /* ── Platform brand colours ──────────────────────────── */
+    /* ── Platform brand colours (theme-invariant) ────────── */
     --platform-ib:   #6c8cff;
     --platform-fa:   #faaf3a;
     --platform-ws:   #89c33f;
@@ -67,7 +86,7 @@
     --platform-tw:   #1d9bf0;
 }
 
-/* ── Light Theme ─────────────────────────────────────────── */
+/* ── Light ───────────────────────────────────────────────── */
 [data-theme="light"] {
     --bg-primary:    #f8f6fb;
     --bg-secondary:  #ffffff;
@@ -75,7 +94,9 @@
     --bg-tertiary:   #f0ecf5;
     --bg-hover:      #e8e2f0;
     --bg-glass:      rgba(255, 255, 255, 0.70);
-    --border:        #ddd5e8;
+    --border:             #ddd5e8;
+    --card-border-inner:  rgba(0, 0, 0, 0.06);
+    --overlay-backdrop:   rgba(40, 30, 60, 0.35);
     --text-primary:  #1c1926;
     --text-secondary:#5a4f70;
     --text-muted:    #8a80a0;
@@ -86,8 +107,165 @@
     --warning:       #d97706;
     --danger:        #dc2626;
     --info:          #2563eb;
-    --shadow:        0 4px 20px rgba(100, 80, 150, 0.08);
-    --shadow-glass:  0 8px 32px rgba(100, 80, 150, 0.06);
+    --shadow:         0 4px 20px rgba(100, 80, 150, 0.08);
+    --shadow-strong:  0 8px 40px rgba(100, 80, 150, 0.12);
+    --shadow-glass:   0 8px 32px rgba(100, 80, 150, 0.06);
+}
+
+/* ── Ink & Copper (matches pawpoller.pages.dev) ──────────── */
+[data-theme="ink_copper"] {
+    --bg-primary:    #13110e;
+    --bg-secondary:  #1f1c17;
+    --bg-card:       #241f1a;
+    --bg-tertiary:   #332e26;
+    --bg-hover:      #3d3730;
+    --bg-glass:      rgba(36, 31, 26, 0.65);
+    --border:             #4a4138;
+    --card-border-inner:  rgba(245, 239, 228, 0.07);
+    --overlay-backdrop:   rgba(10, 9, 7, 0.60);
+    --text-primary:  #f5efe4;
+    --text-secondary:#c4b9a3;
+    --text-muted:    #8a7e69;
+    --accent:        #d08136;
+    --accent-dim:    #a8652a;
+    --accent-warm:   #e5a05a;
+    --success:       #7d9a7a;
+    --warning:       #e5a05a;
+    --danger:        #c44b4b;
+    --info:          #6b8fa8;
+    --shadow:         0 4px 20px rgba(0, 0, 0, 0.40);
+    --shadow-strong:  0 8px 40px rgba(208, 129, 54, 0.18);
+    --shadow-glass:   0 8px 32px rgba(0, 0, 0, 0.30);
+}
+
+/* ── Parchment (warm sepia paper) ────────────────────────── */
+[data-theme="parchment"] {
+    --bg-primary:    #f4ead7;
+    --bg-secondary:  #faf3e3;
+    --bg-card:       #faf3e3;
+    --bg-tertiary:   #ede1c5;
+    --bg-hover:      #e6d8b8;
+    --bg-glass:      rgba(250, 243, 227, 0.78);
+    --border:             #c8b896;
+    --card-border-inner:  rgba(58, 47, 31, 0.08);
+    --overlay-backdrop:   rgba(58, 47, 31, 0.30);
+    --text-primary:  #3a2f1f;
+    --text-secondary:#6b5a3e;
+    --text-muted:    #8f7e60;
+    --accent:        #8a4a1c;
+    --accent-dim:    #6e3a14;
+    --accent-warm:   #b8742e;
+    --success:       #4d7c4d;
+    --warning:       #c47a1d;
+    --danger:        #a83838;
+    --info:          #4d6b8a;
+    --shadow:         0 4px 20px rgba(120, 90, 50, 0.10);
+    --shadow-strong:  0 8px 40px rgba(120, 90, 50, 0.16);
+    --shadow-glass:   0 8px 32px rgba(120, 90, 50, 0.08);
+}
+
+/* ── Midnight Press (pure black, OLED, cool steel) ──────── */
+[data-theme="midnight_press"] {
+    --bg-primary:    #000000;
+    --bg-secondary:  #0a0a0a;
+    --bg-card:       #121212;
+    --bg-tertiary:   #1a1a1a;
+    --bg-hover:      #222222;
+    --bg-glass:      rgba(18, 18, 18, 0.72);
+    --border:             #2a2a2a;
+    --card-border-inner:  rgba(240, 240, 240, 0.06);
+    --overlay-backdrop:   rgba(0, 0, 0, 0.75);
+    --text-primary:  #f0f0f0;
+    --text-secondary:#a0a0a0;
+    --text-muted:    #666666;
+    --accent:        #8aabc2;
+    --accent-dim:    #6a8aa0;
+    --accent-warm:   #d4a574;
+    --success:       #5ac88a;
+    --warning:       #f0b850;
+    --danger:        #f06868;
+    --info:          #80a0e0;
+    --shadow:         0 4px 20px rgba(0, 0, 0, 0.50);
+    --shadow-strong:  0 8px 40px rgba(0, 0, 0, 0.60);
+    --shadow-glass:   0 8px 32px rgba(0, 0, 0, 0.40);
+}
+
+/* ── Forest (pine + sage + cream, low-stim) ──────────────── */
+[data-theme="forest"] {
+    --bg-primary:    #1a2620;
+    --bg-secondary:  #243530;
+    --bg-card:       #2c3e37;
+    --bg-tertiary:   #364c44;
+    --bg-hover:      #405a51;
+    --bg-glass:      rgba(44, 62, 55, 0.65);
+    --border:             #4d6359;
+    --card-border-inner:  rgba(236, 240, 232, 0.07);
+    --overlay-backdrop:   rgba(13, 22, 18, 0.60);
+    --text-primary:  #ecf0e8;
+    --text-secondary:#b5c5b9;
+    --text-muted:    #7a8a7e;
+    --accent:        #8db588;
+    --accent-dim:    #6b9067;
+    --accent-warm:   #d8b67a;
+    --success:       #7fb377;
+    --warning:       #d4a060;
+    --danger:        #c47878;
+    --info:          #80b5b0;
+    --shadow:         0 4px 20px rgba(0, 0, 0, 0.30);
+    --shadow-strong:  0 8px 40px rgba(0, 0, 0, 0.35);
+    --shadow-glass:   0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+/* ── Velvet (aubergine + dusty rose + amber) ─────────────── */
+[data-theme="velvet"] {
+    --bg-primary:    #1a1018;
+    --bg-secondary:  #261826;
+    --bg-card:       #2e1f30;
+    --bg-tertiary:   #3c2940;
+    --bg-hover:      #4a3450;
+    --bg-glass:      rgba(46, 31, 48, 0.65);
+    --border:             #5a4060;
+    --card-border-inner:  rgba(245, 232, 238, 0.07);
+    --overlay-backdrop:   rgba(15, 8, 14, 0.65);
+    --text-primary:  #f5e8ee;
+    --text-secondary:#c5a0b3;
+    --text-muted:    #886478;
+    --accent:        #c47a9a;
+    --accent-dim:    #a05a78;
+    --accent-warm:   #e5a060;
+    --success:       #8aa078;
+    --warning:       #d4a060;
+    --danger:        #d05870;
+    --info:          #9070b0;
+    --shadow:         0 4px 20px rgba(0, 0, 0, 0.35);
+    --shadow-strong:  0 8px 40px rgba(196, 122, 154, 0.16);
+    --shadow-glass:   0 8px 32px rgba(0, 0, 0, 0.30);
+}
+
+/* ── High Contrast (a11y, pure black/white + yellow) ─────── */
+[data-theme="high_contrast"] {
+    --bg-primary:    #000000;
+    --bg-secondary:  #000000;
+    --bg-card:       #0a0a0a;
+    --bg-tertiary:   #1a1a1a;
+    --bg-hover:      #2a2a2a;
+    --bg-glass:      rgba(0, 0, 0, 0.95);
+    --border:             #ffffff;
+    --card-border-inner:  #ffffff;
+    --overlay-backdrop:   rgba(0, 0, 0, 0.90);
+    --text-primary:  #ffffff;
+    --text-secondary:#ffffff;
+    --text-muted:    #cccccc;
+    --accent:        #ffeb3b;
+    --accent-dim:    #ffd600;
+    --accent-warm:   #ff9800;
+    --success:       #00ff00;
+    --warning:       #ffeb3b;
+    --danger:        #ff5252;
+    --info:          #00bfff;
+    --shadow:         0 0 0 2px #ffffff;
+    --shadow-strong:  0 0 0 3px #ffeb3b;
+    --shadow-glass:   0 0 0 1px #ffffff;
 }
 
 /* ── Glass Utility ───────────────────────────────────────── */
@@ -95,12 +273,8 @@
     background: var(--bg-glass);
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--card-border-inner);
     box-shadow: var(--shadow-glass);
-}
-
-[data-theme="light"] .glass {
-    border-color: rgba(0, 0, 0, 0.06);
 }
 
 /* ── Theme Transition Smoothing ──────────────────────────── */
@@ -118,4 +292,103 @@ body,
     transition: background-color var(--transition-slow),
                 color var(--transition-slow),
                 border-color var(--transition-slow);
+}
+
+/* ── Theme Picker — preview swatches ─────────────────────── */
+/* Used by the Settings → Appearance card grid. Each card has the
+   actual theme's tokens applied locally so users see a real
+   miniature of what they'd be switching to. */
+.theme-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+}
+
+.theme-card {
+    cursor: pointer;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--bg-card);
+    transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
+}
+
+.theme-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: var(--shadow);
+}
+
+.theme-card.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
+.theme-card-preview {
+    height: 100px;
+    position: relative;
+    overflow: hidden;
+}
+
+.theme-card-preview .preview-bg {
+    position: absolute;
+    inset: 0;
+}
+
+.theme-card-preview .preview-card {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    right: 50%;
+    bottom: 14px;
+    border-radius: 4px;
+    border: 1px solid;
+}
+
+.theme-card-preview .preview-accent {
+    position: absolute;
+    top: 14px;
+    bottom: 14px;
+    right: 14px;
+    width: 28px;
+    border-radius: 4px;
+}
+
+.theme-card-preview .preview-warm {
+    position: absolute;
+    bottom: 14px;
+    right: 50px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+}
+
+.theme-card-meta {
+    padding: 12px 14px;
+    border-top: 1px solid var(--card-border-inner);
+}
+
+.theme-card-meta .name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.theme-card-meta .desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.theme-card-meta .active-pill {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-pill);
 }

@@ -219,29 +219,60 @@ const App = {
             }
         });
 
-        /* Theme toggle — restore saved theme from localStorage */
-        const savedTheme = localStorage.getItem('pawpoller-theme') || 'dark';
-        document.documentElement.dataset.theme = savedTheme;
-        this._updateThemeButton(savedTheme);
+        /* Theme — initial application happens inline in index.html before
+           CSS evaluates (so no flash on load). Sidebar button now opens
+           the Settings → Appearance picker since 8 themes don't fit a
+           binary toggle. */
         document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
-            const current = document.documentElement.dataset.theme || 'dark';
-            const next = current === 'dark' ? 'light' : 'dark';
-            document.documentElement.dataset.theme = next;
-            localStorage.setItem('pawpoller-theme', next);
-            this._updateThemeButton(next);
-            Charts.destroyAll();
-            this.route(); // re-render current page with new theme colors
+            this.navigate('/settings/appearance');
         });
 
         /* Sidebar version + update check */
         this._initSidebarVersion();
     },
 
-    _updateThemeButton(theme) {
-        const btn = document.getElementById('theme-toggle-btn');
-        if (btn) {
-            btn.innerHTML = theme === 'dark' ? '&#9788; <span class="nav-label">Light</span>' : '&#9790; <span class="nav-label">Dark</span>';
-        }
+    /* ── Theme catalog ───────────────────────────────────────
+       Every theme defined here MUST also have a matching
+       `[data-theme="<id>"]` block in tokens.css. The preview swatch
+       colours are intentionally short (5 picks) — bg, card, accent,
+       accent-warm, text — used by the picker card to render a live
+       miniature without re-applying the full token block. */
+    THEMES: [
+        { id: 'dark',           name: 'Default Dark',   desc: 'Charcoal + violet, the original',
+          swatch: ['#13111a', '#241f30', '#9b7dff', '#f0a050', '#f0edf5'] },
+        { id: 'light',          name: 'Default Light',  desc: 'Bright neutral for daytime',
+          swatch: ['#f8f6fb', '#ffffff', '#7c5cd6', '#d08030', '#1c1926'] },
+        { id: 'ink_copper',     name: 'Ink & Copper',   desc: 'Slate + copper. Matches the marketing site.',
+          swatch: ['#13110e', '#241f1a', '#d08136', '#e5a05a', '#f5efe4'] },
+        { id: 'parchment',      name: 'Parchment',      desc: 'Warm sepia paper, brown ink',
+          swatch: ['#f4ead7', '#faf3e3', '#8a4a1c', '#b8742e', '#3a2f1f'] },
+        { id: 'midnight_press', name: 'Midnight Press', desc: 'True black for OLED, cool steel accents',
+          swatch: ['#000000', '#121212', '#8aabc2', '#d4a574', '#f0f0f0'] },
+        { id: 'forest',         name: 'Forest',         desc: 'Pine + sage + cream. Calm.',
+          swatch: ['#1a2620', '#2c3e37', '#8db588', '#d8b67a', '#ecf0e8'] },
+        { id: 'velvet',         name: 'Velvet',         desc: 'Aubergine, dusty rose, amber',
+          swatch: ['#1a1018', '#2e1f30', '#c47a9a', '#e5a060', '#f5e8ee'] },
+        { id: 'high_contrast',  name: 'High Contrast',  desc: 'Pure black/white + saturated yellow (a11y)',
+          swatch: ['#000000', '#0a0a0a', '#ffeb3b', '#ff9800', '#ffffff'] },
+    ],
+
+    applyTheme(themeId) {
+        const valid = this.THEMES.some(t => t.id === themeId);
+        const id = valid ? themeId : 'dark';
+        document.documentElement.dataset.theme = id;
+        localStorage.setItem('pawpoller-theme', id);
+        // Best-effort sync to settings.json so the choice follows the user
+        // across devices when cloud sync is set up. Silent on failure —
+        // localStorage already covers the local case.
+        try { API.savePreferences({ theme: id }); } catch (e) { /* ignore */ }
+        // Charts read CSS variables at draw time, so destroy + re-render
+        // any current page so colours pick up.
+        if (typeof Charts !== 'undefined' && Charts.destroyAll) Charts.destroyAll();
+        if (this.route) this.route();
+    },
+
+    getCurrentTheme() {
+        return document.documentElement.dataset.theme || 'dark';
     },
 
     async _initSidebarVersion() {
@@ -5230,6 +5261,7 @@ const App = {
 
                 <div class="settings-tabs" id="settings-tabs">
                     <button class="settings-tab ${_settingsTab === 'general' ? 'active' : ''}" data-stab="general">General</button>
+                    <button class="settings-tab ${_settingsTab === 'appearance' ? 'active' : ''}" data-stab="appearance">Appearance</button>
                     <button class="settings-tab ${_settingsTab === 'platforms' ? 'active' : ''}" data-stab="platforms">Platforms</button>
                     <button class="settings-tab ${_settingsTab === 'polling' ? 'active' : ''}" data-stab="polling">Polling</button>
                     <button class="settings-tab ${_settingsTab === 'telegram' ? 'active' : ''}" data-stab="telegram">Telegram</button>
@@ -5238,6 +5270,37 @@ const App = {
                     <button class="settings-tab ${_settingsTab === 'about' ? 'active' : ''}" data-stab="about">About</button>
                     <button class="settings-tab ${_settingsTab === 'security' ? 'active' : ''}" data-stab="security">Security</button>
                     <button class="settings-tab ${_settingsTab === 'publishing' ? 'active' : ''}" data-stab="publishing">Publishing</button>
+                </div>
+
+                <!-- ═══ TAB: Appearance ═══ -->
+                <div class="settings-tab-content" data-tab-content="appearance" ${_settingsTab !== 'appearance' ? 'style="display:none"' : ''}>
+                <div class="settings-section">
+                    <h3>Theme</h3>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
+                        Click any theme to apply it instantly. The choice persists across sessions and (when cloud sync is enabled) syncs to other devices.
+                    </p>
+                    <div class="theme-picker" id="theme-picker">
+                        ${this.THEMES.map(t => {
+                            const isActive = t.id === this.getCurrentTheme();
+                            const [bg, card, accent, accentWarm, text] = t.swatch;
+                            return `
+                              <div class="theme-card ${isActive ? 'active' : ''}" data-theme-id="${t.id}" role="button" tabindex="0" aria-label="Apply ${Utils.escapeHtml(t.name)} theme">
+                                <div class="theme-card-preview">
+                                  <div class="preview-bg" style="background:${bg}"></div>
+                                  <div class="preview-card" style="background:${card};border-color:${text}22"></div>
+                                  <div class="preview-warm" style="background:${accentWarm}"></div>
+                                  <div class="preview-accent" style="background:${accent}"></div>
+                                </div>
+                                <div class="theme-card-meta">
+                                  <div class="name">${Utils.escapeHtml(t.name)}</div>
+                                  <div class="desc">${Utils.escapeHtml(t.desc)}</div>
+                                  ${isActive ? '<span class="active-pill">Active</span>' : ''}
+                                </div>
+                              </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
                 </div>
 
                 <!-- ═══ TAB: General ═══ -->
@@ -6455,6 +6518,28 @@ const App = {
             this._pollingTabLoaded = false;
             if (_settingsTab === 'logs') this._loadLogs();
             if (_settingsTab === 'polling') this._loadPollingTab();
+
+            // ── Theme picker (Appearance tab) ─────────────────────────
+            // Click any card to apply the theme. applyTheme() persists +
+            // re-renders the current page, which redraws this picker with
+            // the freshly-active card highlighted.
+            const picker = document.getElementById('theme-picker');
+            if (picker) {
+                picker.addEventListener('click', (e) => {
+                    const card = e.target.closest('.theme-card');
+                    if (!card) return;
+                    const themeId = card.dataset.themeId;
+                    if (!themeId) return;
+                    this.applyTheme(themeId);
+                });
+                picker.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    const card = e.target.closest('.theme-card');
+                    if (!card) return;
+                    e.preventDefault();
+                    this.applyTheme(card.dataset.themeId);
+                });
+            }
 
             // Log tab event handlers
             document.getElementById('log-refresh-btn')?.addEventListener('click', () => this._loadLogs());

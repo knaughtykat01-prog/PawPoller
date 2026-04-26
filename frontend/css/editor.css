@@ -2270,7 +2270,7 @@
 .publish-check-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--overlay-backdrop);
 }
 
 .publish-check-dialog {
@@ -2719,7 +2719,7 @@
     position: fixed;
     inset: 0;
     z-index: 10020;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--overlay-backdrop);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2970,7 +2970,7 @@
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--overlay-backdrop);
     z-index: 10010;
     justify-content: center;
     align-items: center;
@@ -3054,7 +3054,7 @@
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--overlay-backdrop);
     z-index: 10010;
     justify-content: center;
     align-items: center;

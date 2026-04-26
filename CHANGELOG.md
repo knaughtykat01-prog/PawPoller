@@ -4,6 +4,64 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.14.0] - 2026-04-26
+
+### Added — 8-theme picker (browser + native)
+
+PawPoller had `dark` + `light` themes wired up via CSS custom properties
+and a binary toggle in the sidebar. Generalised to 8 curated themes,
+selectable from a new **Settings → Appearance** tab. Same code applies
+in both browser/server mode and the native pywebview desktop app
+because both render the same frontend.
+
+**The eight themes:**
+
+| ID | Name | Vibe |
+|----|------|------|
+| `dark` | Default Dark | Charcoal + violet (existing default) |
+| `light` | Default Light | Bright neutral (existing alternative) |
+| `ink_copper` | Ink & Copper | Deep slate + copper + parchment text — matches pawpoller.pages.dev |
+| `parchment` | Parchment | Warm sepia paper, brown ink — long-session writer mood |
+| `midnight_press` | Midnight Press | True black for OLED, cool steel accents |
+| `forest` | Forest | Pine + sage + cream — calm, low-stim |
+| `velvet` | Velvet | Aubergine + dusty rose + amber |
+| `high_contrast` | High Contrast | Pure black/white + saturated yellow (a11y) |
+
+**Implementation:**
+
+- **`frontend/css/tokens.css`** — full rewrite. Each theme is a single
+  `[data-theme="<id>"]` block defining ~20 token values. Adding a 9th
+  theme = copy block, rename, swap colours. Every UI surface now reads
+  from these tokens; no per-theme component overrides needed.
+- **Three new adaptive tokens** introduced to clean up old hardcoded
+  patterns: `--card-border-inner` (the subtle inset edge on glass
+  cards), `--overlay-backdrop` (modal scrims), `--shadow-strong`
+  (hover/elevation). Hardcoded `rgba(255,255,255,0.08)`,
+  `rgba(0,0,0,0.5)`, etc. in `components.css` / `editor.css` /
+  `layout.css` replaced with these tokens so all 8 themes get correct
+  contrast automatically.
+- **`frontend/js/app.js`** — `THEMES` catalog (8 entries with id, name,
+  description, 5-colour preview swatch). `applyTheme(id)` sets
+  `data-theme` attribute, persists to localStorage, calls
+  `API.savePreferences({theme: id})` (so the choice rides cloud sync
+  if enabled), destroys + redraws charts so they pick up new colours.
+  Sidebar palette button now navigates to Settings → Appearance instead
+  of cycling (8 themes don't fit a binary toggle).
+- **Settings → Appearance tab** — card grid (auto-fit 220px columns),
+  each card shows a real miniature of the theme's actual colours
+  (background, card surface, accent stripe, warm dot, text). Active
+  theme has a copper border + "Active" pill. Click or Enter/Space to
+  apply.
+- **No-flash on load** — inline `<script>` in `index.html` reads
+  localStorage and sets `data-theme` BEFORE the CSS link tags evaluate.
+  The page never paints in the wrong theme.
+- **Cache busters** bumped: tokens / components / layout / editor CSS
+  to `v=300`, `app.js` to `v=300`.
+
+**`APP_VERSION` bumped to `2.14.0`.**
+
+---
+
 ## [2.13.9] - 2026-04-25
 
 ### Fixed — server startup crash when vault mode is on
