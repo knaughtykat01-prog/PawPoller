@@ -9,6 +9,7 @@ __pycache__/
 
 # User data & secrets
 .env
+.env.test
 settings.json
 data/
 logs/

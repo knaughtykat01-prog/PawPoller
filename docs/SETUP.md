@@ -216,6 +216,29 @@ Three things to snapshot:
    ```
 3. Your story archive directory (the bind mount).
 
+### 2.9 Throwaway test instance (QA)
+
+For testing the first-run wizard and empty-state UI without touching your real instance, there's a parallel compose file that brings up a separate `pawpoller-test` container on port **8421** with its own throwaway volumes.
+
+```bash
+cp .env.test.example .env.test                                # one-time setup
+docker compose -f docker-compose.test.yml up -d --build       # launch on :8421
+```
+
+Now hit `http://localhost:8421` — fresh database, no settings, you'll go through the setup wizard like a brand-new install.
+
+To wipe and start over:
+
+```bash
+docker compose -f docker-compose.test.yml down -v             # -v drops the volumes too
+docker compose -f docker-compose.test.yml up -d --build       # back to zero
+```
+
+Notes:
+- The test instance has no `story-archive` bind mount, so testing publishing flows uses files inside the container only.
+- Your prod instance on `:8420` is completely unaffected — separate container name, separate volumes.
+- `.env.test` is gitignored. Never paste real platform credentials in it; the whole point is exercising the empty-state setup.
+
 ---
 
 ## 3. From source (Linux / macOS / Windows dev)
