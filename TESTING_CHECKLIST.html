@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>PawPoller v2.13.8 — Testing Checklist</title>
+    <title>PawPoller v2.14.2 — Testing Checklist</title>
     <style>
         * {
             box-sizing: border-box;
@@ -191,11 +191,11 @@
 
 <body>
 
-    <h1>PawPoller v2.13.8 — Testing Checklist</h1>
+    <h1>PawPoller v2.14.2 — Testing Checklist</h1>
     <div class="summary" id="summary">
         <span class="pass" id="pass-count">0</span> passed &nbsp;|&nbsp;
         <span class="fail" id="fail-count">0</span> failed &nbsp;|&nbsp;
-        <span class="untested" id="untested-count">116</span> untested &nbsp;|&nbsp;
+        <span class="untested" id="untested-count">128</span> untested &nbsp;|&nbsp;
         <span id="progress">0%</span> complete
     </div>
     <div class="actions">
@@ -377,6 +377,26 @@
                     { id: 116, name: "Tooltip — cancel on click", steps: `Tooltip showing → click the button`, expected: "Tooltip hides immediately; anchor is inserted" },
                 ]
             },
+            {
+                title: "Settings — Appearance & Themes (2.14.0 / 2.14.1)", tests: [
+                    { id: 117, name: "Theme picker — apply Ink & Copper", steps: `Settings → Appearance → click "Ink & Copper" card`, expected: `<html data-theme="ink_copper">; body repaints copper + slate; Active pill moves to that card; charts redraw with new accent` },
+                    { id: 118, name: "Theme persists across reload", steps: `Pick "Forest" → hard reload (Ctrl+F5)`, expected: `Forest theme still active before/after reload — no flash of dark theme (inline script in <head> applies before CSS evaluates)` },
+                    { id: 119, name: "Theme persists in settings.json", steps: `Pick "Velvet" → curl -H "Authorization: Bearer pp_..." http://localhost:8420/api/settings/preferences | jq .theme`, expected: `Returns "velvet" — confirms POST handler whitelist accepts theme key (was a silent drop pre-2.14.2)` },
+                    { id: 120, name: "All 8 themes selectable", steps: `Click each card: dark / light / ink_copper / parchment / midnight_press / forest / velvet / high_contrast`, expected: `Each applies a distinct palette; sidebar wordmark, body wash, accents, focus rings all flip together` },
+                    { id: 121, name: "High Contrast a11y theme", steps: `Apply "High Contrast"`, expected: `Pure black background, saturated yellow accents, no body wash gradient (theme opts both --bg-glow tokens to transparent), no Crimson Pro on headings (sticks with system sans for readability)` },
+                ]
+            },
+            {
+                title: "Settings — Auto-Sync (2.14.2)", tests: [
+                    { id: 122, name: "Toggle visible on Appearance tab", steps: `Settings → Appearance → scroll to "Sync" section`, expected: `"Auto-sync settings across devices" toggle present, default ON. Helper copy mentions posting_server_url + API key requirement` },
+                    { id: 123, name: "Auto-push: desktop → server", steps: `Confirm desktop has posting_server_url + posting_server_api_key set in Publishing tab. Pick a new theme on desktop → wait ~3s → on server: \`docker exec pawpoller-pawpoller-1 cat /app/data/settings.json | jq .theme\``, expected: `Server's settings.json shows the new theme within ~3-5s of desktop save (debounce + HTTP roundtrip). Desktop logs show "Auto-sync push: N keys merged on server"` },
+                    { id: 124, name: "Auto-pull: server → desktop (5-min cycle)", steps: `On server: change a setting via curl POST /api/settings/preferences. Wait up to 5 min. On desktop: check logs.`, expected: `Desktop log line "Auto-sync pull: applied N keys from server" within the next pull cycle. Setting reflects new value` },
+                    { id: 125, name: "Browser focus refresh", steps: `Open dashboard in browser tab. Switch to another app for 5+ seconds. On desktop, change theme. Switch back to browser tab.`, expected: `Tab repaints with the new theme within ~1s of regaining focus (visibilitychange handler pulls /api/settings/preferences). Throttled — re-focusing within 3s does NOT re-fetch` },
+                    { id: 126, name: "Loop protection (no echo)", steps: `Trigger a manual pull from desktop while watching server logs (\`docker logs -f\`)`, expected: `Server logs ONE settings sync pull request, NOT a follow-up push from the same client. The _in_pull_merge thread-local flag suppresses the post-merge push` },
+                    { id: 127, name: "Localhost loopback skip", steps: `On the cloud server itself: check that posting_server_url is empty (or set to localhost) and trigger a save (e.g. flip a notification toggle).`, expected: `Server does NOT push to itself. No outbound HTTP request from server to localhost:8420/api/settings/sync. _sync_target() returns None for empty/localhost URLs` },
+                    { id: 128, name: "auto_sync_enabled=false disables both", steps: `Toggle "Auto-sync settings across devices" OFF on desktop. Change theme. Wait 10s.`, expected: `Server settings.json does NOT update (push skipped). Pull thread keeps running but pull_once() exits early via _sync_target() returning None when auto_sync_enabled=false` },
+                ]
+            },
         ];
 
         function render() {
@@ -411,7 +431,7 @@
         }
 
         function updateSummary() {
-            let pass = 0, fail = 0, total = 116;
+            let pass = 0, fail = 0, total = 128;
             for (let i = 1; i <= total; i++) {
                 const v = document.querySelector(`input[name="s${i}"]:checked`)?.value;
                 if (v === 'pass') pass++;
@@ -428,7 +448,7 @@
 
         function saveResults() {
             const data = {};
-            for (let i = 1; i <= 116; i++) {
+            for (let i = 1; i <= 128; i++) {
                 const v = document.querySelector(`input[name="s${i}"]:checked`)?.value || '';
                 const n = document.getElementById('note-' + i)?.value || '';
                 if (v || n) data[i] = { status: v, note: n };
@@ -457,7 +477,7 @@
         function clearResults() {
             if (!confirm('Clear all test results?')) return;
             localStorage.removeItem('pawpoller_test_results');
-            for (let i = 1; i <= 116; i++) {
+            for (let i = 1; i <= 128; i++) {
                 document.querySelectorAll(`input[name="s${i}"]`).forEach(r => r.checked = false);
                 const n = document.getElementById('note-' + i);
                 if (n) n.value = '';
@@ -517,7 +537,7 @@
                     const id = parseInt(cols[0], 10);
                     const status = (cols[2] || '').trim().toLowerCase();
                     const note = cols[3] || '';
-                    if (!id || id < 1 || id > 116) { skipped++; continue; }
+                    if (!id || id < 1 || id > 128) { skipped++; continue; }
                     document.querySelectorAll(`input[name="s${id}"]`).forEach(r => r.checked = false);
                     if (status === 'pass' || status === 'fail') {
                         const radio = document.querySelector(`input[name="s${id}"][value="${status}"]`);

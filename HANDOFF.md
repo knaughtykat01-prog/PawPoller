@@ -1,9 +1,9 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-04-25
-**Current version:** 2.13.8 (tag published, green CI, Windows x64 artifact attached)
-**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — note: 2.13.1+ is **desktop-only** so far; server still runs 2.13.0 until next deploy
-**GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.13.8 — tag points at commit `7517ad3`, Build & Release run `24916514109` green (test + build-windows)
+**Last updated:** 2026-04-26
+**Current version:** 2.14.2 (deployed; tag still at v2.13.8 — see "Release packaging" below)
+**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — server now on 2.14.2 (was crashing on 2.13.1+ because of a vault-mode init order bug; fixed in 2.13.9)
+**GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.13.8 — tag points at commit `7517ad3`. 2.13.9+ has shipped to master + GCP but no new tag has been cut yet (no Windows artifact published)
 
 Living document — update as the roadmap shifts. Read this first when picking up a fresh session.
 
@@ -90,6 +90,10 @@ cover/chapter thumbnail uploads, and GitHub release packaging.
 | **Anchor toolbar wraps selection** | 2.13.6 | Buttons act on the active selection: paired anchors wrap the selected text, standalone anchors sit on the line above. CM selection and unique-match Rich Editor selection both supported |
 | **Anchor toolbar realignment + tooltips** | 2.13.7 | Toolbar audited against `FILE_FORMAT_STANDARDS.md`. `@story-end`, `@text-end`, `@phone-end` removed (all fake); `@phone` → `@phone-incoming` (converter's real name); Byline/Disclaimer/Fanfiction buttons added. Every anchor now inserts a single-line label at the start of the target line — no more paired wraps (the converter never supported them). 1.2s hover tooltip (2.13.8) with label / purpose / before-after preview |
 | **Inline anchor labels + tooltip pacing** | 2.13.8 | Inline buttons relabelled `→ Sent` / `← Recv` / `☎ Phone`; tooltip delay dropped from 2000ms to 1200ms |
+| **Vault-mode init order fix** | 2.13.9 | Module-level `_settings = _load_settings()` was crashing with `NameError: _decrypt_vault` on servers with `credential_mode: "local"` because the vault helper block lived ~300 lines below the import-time call. Moved the vault block above `_load_settings`. Unblocked deploying 2.13.x to GCP |
+| **8-theme picker (browser + native)** | 2.14.0 | Generalised binary dark/light toggle into 8 cohesive themes via `[data-theme=...]` blocks: dark, light, ink_copper, parchment, midnight_press, forest, velvet, high_contrast. New Settings → Appearance tab with picker grid. Adaptive tokens (`--card-border-inner`, `--overlay-backdrop`, `--shadow-strong`) avoid per-component overrides. No-flash inline theme apply in `<head>` |
+| **Vibe Pack — typography cohesion** | 2.14.1 | Crimson Pro for h1/h2/h3 + page headers + sidebar wordmark, Inter for body, JetBrains Mono for code. Subtle radial body wash (copper top-left, sage bottom-right via theme-aware `--bg-glow-warm`/`--bg-glow-cool`). New `.chip` component, copper diamond brand mark on sidebar wordmark. Closes the cross-surface cohesion gap with the marketing site without sacrificing dashboard density |
+| **Settings auto-sync** | 2.14.2 | Built on the existing 7a sync endpoint. `auto_sync.py` schedules a debounced 2s push on every desktop save and runs a 5-min pull thread; thread-local `_in_pull_merge` guard prevents pull→save→push echoes; localhost-resolved targets skip (so the cloud server can't sync to itself). Browser tabs re-pull prefs on `visibilitychange` so theme changes flow between desktop and browser within seconds. New `auto_sync_enabled` toggle on Appearance tab (default true). Bug fix: `theme` was being silently dropped by the preferences POST handler so it was localStorage-only — now persists to settings.json properly |
 
 ### What posted successfully during testing
 - Inkbunny draft of "Late Shift" full story — flipped cell from green ✓ → blue ✓ posted with URL.
@@ -135,6 +139,16 @@ drift detection, deletion probe, re-post.
 - [x] `GET /api/settings/sync/status` endpoint
 - [x] Desktop startup pull in `main.py` (`_sync_settings_on_startup()`)
 - [x] Dashboard UI: Settings → Data tab → Sync section (Pull/Push/Status buttons)
+
+### Phase 7c — Auto-sync (COMPLETE — 2.14.2)
+
+- [x] `auto_sync.py` module with debounced push + 5-min pull thread
+- [x] `config.save_settings()` post-write hook → `schedule_push()`
+- [x] `_in_pull_merge` thread-local flag for echo prevention
+- [x] Localhost loopback skip in `_sync_target()`
+- [x] Browser `visibilitychange` listener re-pulls preferences
+- [x] `auto_sync_enabled` toggle on Settings → Appearance (default true)
+- [x] `theme` persists to settings.json (was dropped by POST handler before 2.14.2)
 
 ### Phase 7b — Credential vault (COMPLETE)
 
@@ -310,26 +324,33 @@ gcloud compute ssh pawpoller --zone=us-east1-c --command="curl -s -H 'Authorizat
 
 If the user asks to resume, the most useful things to read first are:
 1. This file (HANDOFF.md)
-2. `CHANGELOG.md` top section — covers 2.10.5 through 2.13.8
+2. `CHANGELOG.md` top section — covers 2.10.5 through 2.14.2
 3. `ROADMAP_PUBLIC.md` — public release plan (all must/should-haves + most nice-to-haves now COMPLETE)
-4. `documentation_guide.md` — full technical reference
-5. `TESTING_CHECKLIST.md` / `.html` — 109-row QA pass. HTML stores progress in localStorage; Export CSV / Import CSV buttons exist (Import added 2.13.x QA work)
+4. `documentation_guide.md` — full technical reference (now includes auto-sync architecture under "Settings Auto-Sync (2.14.2+)")
+5. `TESTING_CHECKLIST.html` — 128-row QA pass. HTML stores progress in localStorage; Export CSV / Import CSV buttons. Last update 2026-04-26 added 12 rows for 2.14.x themes + auto-sync
 6. `routes/editor_api.py` + `routes/settings_api.py` — main API surface
+7. `auto_sync.py` — new in 2.14.2; small (~170 LOC), worth a glance before touching settings persistence
 
-### CI / release pipeline state (2026-04-25)
+### CI / release pipeline state (2026-04-26)
 
 The `Build & Release` workflow fires on `v*` tag pushes and has two
 jobs: `test` (Ubuntu, unittest discover) and `build-windows`
 (PyInstaller → zip → `softprops/action-gh-release@v2`). The `Lint`
 workflow fires on every push to master (ruff + JS syntax).
 
-`requirements-server.txt` now pins the test deps (`pytest~=8.3`,
+`requirements-server.txt` pins the test deps (`pytest~=8.3`,
 `respx~=0.22`) — before that the test job always failed on ModuleNotFoundError.
 Latent issue: `test_integration_posting` and `test_platform_posters` are
 pytest-style so `unittest discover` skips them silently. Switching the
 workflow `test` step to `pytest` would actually run them; not urgent.
 
-### QA status as of 2026-04-24
+**Tag drift**: `v2.13.8` is still the most recent published release.
+2.13.9 / 2.14.0 / 2.14.1 / 2.14.2 have shipped to master + GCP but
+no Windows artifacts have been published. Cutting `v2.14.2` would
+require re-running the build job; do this once the auto-sync work has
+soaked for a day or two.
+
+### QA status as of 2026-04-26
 
 Mid-way through the first full QA pass against `TESTING_CHECKLIST`. Last
 CSV snapshot lives at `C:\Users\rhysc\Downloads\pawpoller_test_results.csv`.
@@ -340,7 +361,11 @@ Issues found + fixes shipped during 2.13.1–2.13.8:
 - **#27/#28 regen staleness 500**: fixed in 2.13.2 (stories with `chapter_info: []` no longer crash publish-check)
 - **#73 vault enable**: diagnostics improved in 2.13.3 (real exception shown in UI). Awaiting user retest
 
-Next retest pass should rerun those, then cover the ~75 untested items.
+New 2.14.x rows in the checklist:
+- **#117–121** Theme picker (8 themes, persistence, a11y theme)
+- **#122–128** Auto-sync (toggle visibility, push, pull, focus refresh, loop protection, loopback skip, opt-out)
+
+Next retest pass should rerun the 2.13.x items above, then cover the new 2.14.x rows and the ~75 untested items from the original sweep.
 
 If the user says "what's next?" — all must-have and should-have items
 from the roadmap are complete, plus most nice-to-haves (import, genre
@@ -350,7 +375,7 @@ Remaining:
 - Analytics export (charts, CSV reports)
 - Auto-update mechanism (15d — in-app update download)
 - Weasyl testing (blocked on account verification, not code)
-- Deploy 2.13.1+ to GCP server (currently desktop-only)
+- Cut `v2.14.2` GitHub release (currently undeployed to release page; master + GCP are ahead)
 
 Story archive sync commands:
 - `deploy/pawpush.bat` — local → server (push)
