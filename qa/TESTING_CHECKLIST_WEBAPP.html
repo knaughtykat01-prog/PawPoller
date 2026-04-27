@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>PawPoller v2.14.2 — Native Testing Checklist</title>
+    <title>PawPoller v2.14.2 — Webapp Testing Checklist</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; max-width: 1200px; margin: 0 auto; }
@@ -52,10 +52,10 @@
 
 <body>
 
-    <h1>PawPoller v2.14.2 — Testing Checklist <span class="mode-badge" style="background:#5a2e6e;color:#e8c0ff">NATIVE</span></h1>
+    <h1>PawPoller v2.14.2 — Testing Checklist <span class="mode-badge">WEBAPP</span></h1>
     <p style="color: #888; font-size: 13px; margin-bottom: 12px;">
-        This list covers the Windows desktop build of PawPoller (PyInstaller bundle launched as <code>PawPoller.exe</code>, pywebview window + pystray tray icon). For the browser/Docker/server flavour use <code>TESTING_CHECKLIST_WEBAPP.html</code>.
-        Sample upload files referenced below live in <code>test_fixtures/</code>.
+        This list covers the browser/Docker/server flavour of PawPoller. For the native desktop build (tray, run-on-startup, browser-login popups, auto-update, Edge PDF fallback) use <code>TESTING_CHECKLIST_NATIVE.html</code>.
+        Sample upload files referenced below live in <code>fixtures/</code>.
         Rows tagged <span class="badge-skip">SKIP</span> are for platforms the user has opted out of testing — login/connection rows still apply.
     </p>
     <div class="summary" id="summary">
@@ -90,23 +90,22 @@
     <details>
         <summary>How to run this sweep</summary>
         <div>
-            <p><strong>1.</strong> Build a fresh exe with <code>build.bat</code>, then launch <code>dist\PawPoller\PawPoller.exe</code>. The pywebview window + tray icon should appear within ~5s.</p>
-            <p><strong>2.</strong> Work through one section at a time. Mark each row pass / fail / skip as you go (autosave is on, results live in <code>localStorage</code> under <code>pawpoller_test_native</code>).</p>
-            <p><strong>3.</strong> File-upload rows reference <code>test_fixtures/sample_*.{md,html,bbcode,txt,rtf,jpg}</code>. Use those exact files so results stay reproducible.</p>
+            <p><strong>1.</strong> Start with a clean dashboard at <code>http://localhost:8420</code> (Docker) or wherever your server lives.</p>
+            <p><strong>2.</strong> Work through one section at a time. Mark each row pass / fail / skip as you go (autosave is on, results live in <code>localStorage</code> under <code>pawpoller_test_webapp</code>).</p>
+            <p><strong>3.</strong> File-upload rows reference <code>fixtures/sample_*.{md,html,bbcode,txt,rtf,jpg}</code>. Use those exact files so results stay reproducible.</p>
             <p><strong>4.</strong> For platform rows you've opted out of (DA, IK, Wattpad, Bsky, X), the login row still matters — mark posting/data rows as Skip with a brief note.</p>
-            <p><strong>5.</strong> Several native-only sections (tray, run-on-startup, browser-login popups, auto-update apply, Edge PDF fallback, native file dialogs) appear at the end — these have no equivalent in the webapp checklist.</p>
-            <p><strong>6.</strong> Export CSV at the end and stash it next to the previous snapshot at <code>C:\Users\rhysc\Downloads\pawpoller_test_native.csv</code>.</p>
+            <p><strong>5.</strong> Export CSV at the end and stash it next to the previous snapshot at <code>C:\Users\rhysc\Downloads\pawpoller_test_webapp.csv</code>.</p>
         </div>
     </details>
 
     <script>
-        const STORAGE_KEY = 'pawpoller_test_native';
+        const STORAGE_KEY = 'pawpoller_test_webapp';
         const sections = [
-            { title: "1. Boot & First-Run (Native)", tests: [
-                { id: 1, name: "PyInstaller build succeeds", steps: `python -m PyInstaller pawpoller.spec --noconfirm`, expected: `Build completes; dist/PawPoller/PawPoller.exe exists; warn-pawpoller.txt has no critical missing modules` },
-                { id: 2, name: "PawPoller.exe launches", steps: `Double-click dist/PawPoller/PawPoller.exe`, expected: `Native window appears within ~5s; tray icon shows in system tray; no Windows error dialog` },
-                { id: 3, name: "Internal server ready", steps: `In-app: navigate dashboard. Log file at %APPDATA%/PawPoller/logs/`, expected: `Log line "PawPoller server ready at http://0.0.0.0:8420". Dashboard renders without retry spinner` },
-                { id: 4, name: "No-flash theme on cold load", steps: `Set non-default theme → Quit → relaunch`, expected: `Theme applies before first paint via inline <head> script. No flash of default dark` },
+            { title: "1. Boot & First-Run (Webapp)", tests: [
+                { id: 1, name: "Server boots clean", steps: `docker compose up -d --build → wait → docker compose logs --tail=30`, expected: `No ERROR lines. "PawPoller server ready at http://0.0.0.0:8420" present` },
+                { id: 2, name: "Health endpoint", steps: `curl http://localhost:8420/api/health`, expected: `200 OK with JSON {"status": "ok", ...} including version 2.14.2` },
+                { id: 3, name: "Dashboard loads", steps: `Open http://localhost:8420/ in fresh tab`, expected: `Splash → SPA hydrates → either dashboard, login, or setup wizard renders. No console errors.` },
+                { id: 4, name: "No-flash theme on cold load", steps: `Hard reload (Ctrl+Shift+R) on saved theme other than dark`, expected: `Theme applies before first paint via inline <head> script. No flash of dark theme then repaint` },
                 { id: 5, name: "Setup wizard appears first run", steps: `Remove setup_complete from settings.json → reload`, expected: `Wizard renders, sidebar hidden, no platform pages reachable` },
                 { id: 6, name: "Setup — Step 1 Welcome", steps: `Click "Get Started"`, expected: `Advances to Step 2; step indicator updates (dot 1 fills)` },
                 { id: 7, name: "Setup — Step 2 Archive path", steps: `Enter path /app/story-archive (or local equivalent) → Next`, expected: `Path saved to posting_story_archive_path; advances to Step 3. Empty path triggers validation error` },
@@ -304,12 +303,12 @@
                 { id: 163, name: "Duplicate folder rejected", steps: `Use an existing folder name`, expected: `Inline error about existing folder; no overwrite` },
                 { id: 164, name: "Genre — Erotica template", steps: `Pick "Erotica" → Create`, expected: `Rating auto-Explicit; story.json tags.default has erotica preset tags` },
                 { id: 165, name: "Genre — Horror w/ override", steps: `Pick Horror → manually set Explicit → Create`, expected: `story.json rating=explicit (user override) but Horror tags/warnings retained` },
-                { id: 166, name: "Upload sample_story.md", steps: `Create with file <code>test_fixtures/sample_story.md</code>`, expected: `MASTER.md = uploaded content; @title and @body anchors preserved` },
-                { id: 167, name: "Upload sample_story.html", steps: `Create with <code>test_fixtures/sample_story.html</code>`, expected: `MASTER.md = HTML→Markdown (## headings, **bold**, *italic*, lists kept)` },
-                { id: 168, name: "Upload sample_story.bbcode", steps: `Create with <code>test_fixtures/sample_story.bbcode</code>`, expected: `MASTER.md = BBCode→Markdown ([b]→**, [i]→*, [hr]→---, [url]→[text](url))` },
-                { id: 169, name: "Upload sample_story.txt", steps: `Create with <code>test_fixtures/sample_story.txt</code>`, expected: `MASTER.md = raw text inside @body block` },
-                { id: 170, name: "Upload sample_story.rtf", steps: `Create with <code>test_fixtures/sample_story.rtf</code>`, expected: `MASTER.md has RTF runs converted to Markdown bold/italic` },
-                { id: 171, name: "Upload multi-chapter sample", steps: `Create from <code>test_fixtures/sample_multichapter.md</code>`, expected: `Three chapter folders/files detected on Editor open; chapter break (---) recognised; POV markers preserved` },
+                { id: 166, name: "Upload sample_story.md", steps: `Create with file <code>fixtures/sample_story.md</code>`, expected: `MASTER.md = uploaded content; @title and @body anchors preserved` },
+                { id: 167, name: "Upload sample_story.html", steps: `Create with <code>fixtures/sample_story.html</code>`, expected: `MASTER.md = HTML→Markdown (## headings, **bold**, *italic*, lists kept)` },
+                { id: 168, name: "Upload sample_story.bbcode", steps: `Create with <code>fixtures/sample_story.bbcode</code>`, expected: `MASTER.md = BBCode→Markdown ([b]→**, [i]→*, [hr]→---, [url]→[text](url))` },
+                { id: 169, name: "Upload sample_story.txt", steps: `Create with <code>fixtures/sample_story.txt</code>`, expected: `MASTER.md = raw text inside @body block` },
+                { id: 170, name: "Upload sample_story.rtf", steps: `Create with <code>fixtures/sample_story.rtf</code>`, expected: `MASTER.md has RTF runs converted to Markdown bold/italic` },
+                { id: 171, name: "Upload multi-chapter sample", steps: `Create from <code>fixtures/sample_multichapter.md</code>`, expected: `Three chapter folders/files detected on Editor open; chapter break (---) recognised; POV markers preserved` },
                 { id: 172, name: "Editor opens after create", steps: `After Create`, expected: `Routes to #/editor/<folder>; MASTER.md loaded in source pane` },
                 { id: 173, name: "Story rename", steps: `Story list → ⋯ → Rename`, expected: `Folder + story.json title both update` },
                 { id: 174, name: "Story delete (soft)", steps: `Story list → ⋯ → Delete → Confirm`, expected: `Story removed from list (folder moved to trash or marked deleted)` },
@@ -354,7 +353,7 @@
                 { id: 207, name: "Drawer opens", steps: `Editor → Metadata button`, expected: `Side drawer slides in with 8 collapsible sections` },
                 { id: 208, name: "Section — Basics", steps: `Expand Basics`, expected: `Title, author, rating, status, summary fields` },
                 { id: 209, name: "Section — Cover", steps: `Expand Cover`, expected: `Cover preview + Upload button` },
-                { id: 210, name: "Cover — upload sample", steps: `Upload <code>test_fixtures/sample_cover.jpg</code>`, expected: `Preview updates; story.json images.cover set` },
+                { id: 210, name: "Cover — upload sample", steps: `Upload <code>fixtures/sample_cover.jpg</code>`, expected: `Preview updates; story.json images.cover set` },
                 { id: 211, name: "Section — Classification", steps: `Expand Classification`, expected: `Rating dropdown, content warnings checklist, mature content flag` },
                 { id: 212, name: "Section — Characters", steps: `Expand Characters`, expected: `Add/remove character chips; species dropdown` },
                 { id: 213, name: "Section — Tags", steps: `Expand Tags`, expected: `Tabs: Default / SoFurry / Inkbunny / Wattpad / FA / DA / IK / Bsky` },
@@ -372,7 +371,7 @@
                 { id: 225, name: "Tag — platform badges", steps: `Look at a tag chip`, expected: `Small DEF/SF/IB/AO3/etc badges show which platforms have it` },
                 { id: 226, name: "Tag browser grid responsive", steps: `Resize`, expected: `3-5 columns adjusting to width` },
                 { id: 227, name: "Section — Chapter Tags", steps: `Expand chapter`, expected: `Same 4-tab tag editor (Default/SF/IB/WP) per chapter` },
-                { id: 228, name: "Chapter thumbnail upload", steps: `Expand chapter → Upload <code>test_fixtures/sample_chapter_thumb.jpg</code>`, expected: `Filename appears; story.json chapter_info[].thumbnail set` },
+                { id: 228, name: "Chapter thumbnail upload", steps: `Expand chapter → Upload <code>fixtures/sample_chapter_thumb.jpg</code>`, expected: `Filename appears; story.json chapter_info[].thumbnail set` },
                 { id: 229, name: "Section — Chapters", steps: `Expand Chapters`, expected: `Chapter list with reorder handles, edit titles inline` },
                 { id: 230, name: "Section — Advanced", steps: `Expand Advanced`, expected: `Custom JSON, raw story.json view, dangerous overrides` },
                 { id: 231, name: "Drawer save", steps: `Make changes → Save metadata`, expected: `story.json updated; drawer shows "Saved" toast` },
@@ -505,8 +504,8 @@
                 { id: 340, name: "General tab loads", steps: `Settings → General`, expected: `IB credentials section + App Preferences accordion + Poll intervals + Filters` },
                 { id: 341, name: "IB credentials save", steps: `Edit username/password → Save Credentials`, expected: `Saved message; settings.json updated` },
                 { id: 342, name: "IB sign out button", steps: `Sign Out → confirm`, expected: `Credentials cleared; routed to login` },
-                { id: 343, name: "Toggle — Minimize to tray (active on native)", steps: `Toggle ON → close window via X button`, expected: `Window hides instead of quitting; poller keeps running; tray icon stays. Toggle OFF → X button quits app` },
-                { id: 344, name: "Toggle — Run on startup (registry write)", steps: `Toggle ON → check HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run`, expected: `PawPoller entry exists pointing at PawPoller.exe. Toggle OFF removes the entry` },
+                { id: 343, name: "Toggle — Minimize to tray (web — no-op flag)", steps: `Flip toggle (webapp ignores at runtime; stored only)`, expected: `Saves but has no effect on webapp; native respects it` },
+                { id: 344, name: "Toggle — Run on startup (web no-op)", steps: `Flip toggle`, expected: `Saves; webapp ignores. Native modifies registry` },
                 { id: 345, name: "Toggle — Desktop notifications", steps: `Flip toggle → Save`, expected: `notifications_enabled persists; toast suppression respected per platform` },
                 { id: 346, name: "Toggle — Watcher notifications (IB)", steps: `Flip → Save`, expected: `watcher_notifications_enabled persists` },
                 { id: 347, name: "Toggle — Watcher notifications (FA)", steps: `Flip → Save`, expected: `fa_watcher_notifications_enabled persists` },
@@ -545,8 +544,8 @@
                 { id: 376, name: "Not-connected badge", steps: `For unconfigured`, expected: `Grey dot + "Not connected"` },
                 { id: 377, name: "Platform connect form expand", steps: `Click "Connect"`, expected: `Inline form with platform-appropriate fields` },
                 { id: 378, name: "Platform disconnect", steps: `Connected → Disconnect`, expected: `Confirmation; creds removed; badge flips grey` },
-                { id: 379, name: "Browser-login button visibility (native)", steps: `On native dashboard`, expected: `"Login via Browser" button VISIBLE for FA, DA, SF, SQW, AO3, Bsky, X (any platform with PLATFORM_LOGIN entry)` },
-                { id: 380, name: "Browser-login availability endpoint", steps: `curl /api/settings/browser-login/platforms (with Bearer)`, expected: `Returns available=true on native; false on webapp` },
+                { id: 379, name: "Browser-login button visibility (webapp)", steps: `On webapp dashboard`, expected: `"Login via Browser" button HIDDEN (only available in native pywebview mode)` },
+                { id: 380, name: "Open login page link", steps: `Webapp → FA card → "Open login page"`, expected: `Opens FA login in new tab; user logs in there, copies cookies back manually` },
             ]},
             { title: "34. Settings — Data", tests: [
                 { id: 381, name: "Data tab loads", steps: `Settings → Data`, expected: `Sync section + Export section + Import section` },
@@ -571,7 +570,7 @@
                 { id: 396, name: "Version matches APP_VERSION", steps: `Compare to config.APP_VERSION`, expected: `2.14.2` },
                 { id: 397, name: "Update check button", steps: `"Check for updates"`, expected: `Hits GitHub releases endpoint; shows latest version` },
                 { id: 398, name: "Update available state", steps: `When current < latest`, expected: `Sidebar shows "vX.Y.Z available" badge + Update Now button` },
-                { id: 399, name: "Apply Update — native flow", steps: `Click Apply when newer version available`, expected: `updater.py downloads release zip, replaces binaries, restarts the app. New version visible in About after relaunch` },
+                { id: 399, name: "Apply Update — webapp behaviour", steps: `Click Apply (webapp)`, expected: `Webapp explains the user must rebuild the Docker image (auto-update is desktop-only)` },
             ]},
             { title: "37. Settings — Security", tests: [
                 { id: 400, name: "Security tab loads", steps: `Settings → Security`, expected: `Password change + API keys + TOTP + Turnstile sections` },
@@ -609,7 +608,7 @@
                 { id: 428, name: "Vault — Disable", steps: `"Disable encryption" → confirm`, expected: `Creds back in settings.json; vault file deleted` },
                 { id: 429, name: "Vault — error handling", steps: `Tamper with vault file → reload`, expected: `App boots; vault decrypt fails gracefully; error shown in UI` },
             ]},
-            { title: "40. API Access (Bearer key)", tests: [
+            { title: "40. API Access (Bearer key — webapp specific)", tests: [
                 { id: 430, name: "Health unprotected", steps: `curl /api/health (no auth)`, expected: `200 OK` },
                 { id: 431, name: "Protected endpoint refused unauth", steps: `curl /api/settings/preferences`, expected: `401 / 403` },
                 { id: 432, name: "Bearer key access", steps: `curl -H "Authorization: Bearer pp_..." /api/settings/preferences`, expected: `200 with prefs JSON` },
@@ -618,84 +617,36 @@
                 { id: 435, name: "Bearer respects revocation", steps: `Revoke a key in UI → curl with that key`, expected: `401 immediately` },
                 { id: 436, name: "Bearer + dashboard cookie coexist", steps: `Both cookie and Bearer in same request`, expected: `Either grants access; no conflict` },
             ]},
-            { title: "41. Native-only — Tray icon", tests: [
-                { id: 437, name: "Tray icon visible on launch", steps: `Launch PawPoller.exe → look at tray`, expected: `PawPoller icon present (may be in overflow ^)` },
-                { id: 438, name: "Tray right-click menu", steps: `Right-click tray icon`, expected: `Menu with Show / Quit (and any other entries from main.py tray setup)` },
-                { id: 439, name: "Tray — Show restores window", steps: `Hide window → tray → Show`, expected: `Window restores in original position; receives focus` },
-                { id: 440, name: "Tray — Quit terminates daemon threads", steps: `Tray → Quit`, expected: `App exits cleanly; no zombie pythonw.exe in Task Manager` },
-                { id: 441, name: "Close button — hides to tray (when toggle ON)", steps: `Settings → Minimize to tray ON → click X`, expected: `Window hides; tray icon stays visible; poller continues` },
-                { id: 442, name: "Close button — quits (when toggle OFF)", steps: `Settings → Minimize to tray OFF → click X`, expected: `App quits; tray icon disappears` },
-                { id: 443, name: "Tray click restores window", steps: `Window hidden → left-click tray icon`, expected: `Window restores (if main.py wires single-click)` },
-                { id: 444, name: "Tray icon survives long idle", steps: `Leave hidden for 30+ min`, expected: `Icon doesn't disappear; restore still works` },
+            { title: "41. Webapp-only behaviour", tests: [
+                { id: 437, name: "Multi-tab — preferences sync via focus", steps: `Open dashboard in 2 tabs → change theme in A → focus B`, expected: `B repaints with new theme on visibilitychange` },
+                { id: 438, name: "Multi-tab — auth shared", steps: `Login in tab A`, expected: `Tab B has session immediately (cookie shared by browser)` },
+                { id: 439, name: "Multi-tab — logout shared", steps: `Logout in tab A → reload tab B`, expected: `Tab B redirected to login` },
+                { id: 440, name: "Cookie — HttpOnly enforced", steps: `In DevTools, try document.cookie`, expected: `pp_session NOT in JS-readable cookies (HttpOnly flag set)` },
+                { id: 441, name: "Cookie — SameSite=Strict", steps: `DevTools → Application → Cookies`, expected: `SameSite=Strict on pp_session` },
+                { id: 442, name: "Cookie — Secure when HTTPS", steps: `Behind HTTPS reverse proxy`, expected: `Secure flag set on pp_session` },
+                { id: 443, name: "CSP enforced", steps: `Try inline script via XSS → check CSP header`, expected: `CSP blocks unauthorised inline scripts; challenges.cloudflare.com whitelisted only when Turnstile configured` },
+                { id: 444, name: "Reverse proxy — X-Forwarded-Host", steps: `Behind nginx with X-Forwarded-Host`, expected: `Server respects header for URL generation` },
+                { id: 445, name: "Cloudflare Tunnel access", steps: `Hit pawpoller.<your-domain>`, expected: `Loads via Tunnel; SSL cert valid; sessions work` },
+                { id: 446, name: "CORS — same-origin only", steps: `From a different origin via fetch`, expected: `Blocked by CORS unless explicitly allowed (no wildcard *)` },
+                { id: 447, name: "Service worker — none", steps: `DevTools → Application → Service Workers`, expected: `No SW registered (intentional — no offline mode)` },
             ]},
-            { title: "42. Native-only — Run on Startup", tests: [
-                { id: 445, name: "Toggle ON adds registry entry", steps: `Settings → Run on startup ON → check HKCU\\...\\Run`, expected: `PawPoller value pointing at full path of PawPoller.exe` },
-                { id: 446, name: "Toggle OFF removes registry entry", steps: `Toggle OFF → re-check`, expected: `Value removed; no leftover keys` },
-                { id: 447, name: "Auto-launches on Windows login", steps: `Toggle ON → log out and back in (or restart)`, expected: `PawPoller launches automatically; tray icon appears within ~10s of login` },
-                { id: 448, name: "Auto-launch — minimizes to tray", steps: `Same with Minimize to tray ON`, expected: `Launches directly to tray, no visible window flash` },
+            { title: "42. GitHub & CI/CD", tests: [
+                { id: 448, name: "README renders on GitHub", steps: `Visit repo`, expected: `README displays correctly with all images/links` },
+                { id: 449, name: "LICENSE present", steps: `Repo root`, expected: `MIT LICENSE file` },
+                { id: 450, name: "CONTRIBUTING present", steps: `Repo root`, expected: `Contributing guide` },
+                { id: 451, name: "Lint workflow on push", steps: `Push to master → Actions tab`, expected: `Lint workflow runs ruff + JS syntax; passes` },
+                { id: 452, name: "Build workflow on tag", steps: `git tag v2.14.2 && git push --tags`, expected: `Build & Release runs; .zip artifact attached to release` },
+                { id: 453, name: "Test job in build workflow", steps: `Same workflow run`, expected: `unittest discover passes (after pytest + respx pinned to requirements-server.txt)` },
+                { id: 454, name: "Release notes — generated", steps: `Look at release page after tag`, expected: `Release notes match CHANGELOG.md entry` },
             ]},
-            { title: "43. Native-only — Browser-login popups (pywebview)", tests: [
-                { id: 449, name: "FA browser login", steps: `Settings → Platforms → FA → "Login via Browser"`, expected: `pywebview popup with FA login page; user logs in; cookies (a + b) auto-captured; popup closes; FA badge flips green` },
-                { id: 450, name: "DA browser login", steps: `DA → Login via Browser`, expected: `Pywebview popup → DA login → cookie captured` },
-                { id: 451, name: "SF browser login", steps: `SF → Login via Browser`, expected: `SF login popup → session cookies captured → badge green` },
-                { id: 452, name: "SQW browser login", steps: `SQW → Login via Browser`, expected: `SQW popup → poster + author logins captured` },
-                { id: 453, name: "AO3 browser login", steps: `AO3 → Login via Browser`, expected: `AO3 popup → session cookie captured (CF Worker bypass needed if Shields-up)` },
-                { id: 454, name: "Bsky browser login", steps: `Bsky → Login via Browser`, expected: `Bsky popup → identifier + app password captured` },
-                { id: 455, name: "X / Twitter browser login", steps: `X → Login via Browser`, expected: `X popup → auth_token + ct0 captured from cookies` },
-                { id: 456, name: "Browser login — cancel/close", steps: `Open any browser-login popup → close X`, expected: `Endpoint returns ok=false "Login cancelled or timed out"; no creds saved` },
-                { id: 457, name: "Browser login — 5-min timeout", steps: `Open popup → leave idle 5+ min`, expected: `Auto-closes; "timed out" message; no creds saved` },
-                { id: 458, name: "Browser login — extra fields", steps: `Platform that needs extra config (e.g. SF display name)`, expected: `Form prompts for extra fields BEFORE opening popup` },
-            ]},
-            { title: "44. Native-only — File dialogs & PDF", tests: [
-                { id: 459, name: "Story upload via native file picker", steps: `Create New Story → Upload → click file field`, expected: `Native Windows file dialog opens (not browser dialog); .md/.html/.bbcode/.txt/.rtf filter applied` },
-                { id: 460, name: "Cover upload via native picker", steps: `Metadata → Cover → Upload`, expected: `Native picker; image-only filter` },
-                { id: 461, name: "Edge PDF fallback (no GTK)", steps: `Trigger PDF regen on Windows without GTK runtime`, expected: `Falls back to Edge headless; "Edge fallback" log line. Output PDF still produced` },
-                { id: 462, name: "Edge PDF — no header/footer", steps: `Open Edge-rendered PDF`, expected: `--no-pdf-header-footer in effect; no date/URL banner` },
-                { id: 463, name: "Edge PDF — full bleed background", steps: `Compare to WeasyPrint output`, expected: `Theme background runs edge-to-edge; padding via .print-container, not @page margin` },
-                { id: 464, name: "WeasyPrint — opt-in if installed", steps: `Install GTK runtime → trigger PDF regen`, expected: `WeasyPrint used as primary; log shows "WeasyPrint render"` },
-            ]},
-            { title: "45. Native-only — Vault keyring", tests: [
-                { id: 465, name: "Vault enable — keyring storage", steps: `Enable vault → check Windows Credential Manager`, expected: `PawPoller / vault_key entry present (keyring backend)` },
-                { id: 466, name: "Vault enable — dotfile fallback", steps: `If keyring unavailable → check %APPDATA%/PawPoller/data/.vault_key`, expected: `Dotfile present with restricted permissions; vault still functional` },
-                { id: 467, name: "Vault key persists across reinstall", steps: `Uninstall → reinstall → check vault still decrypts`, expected: `Keyring entry survives reinstall; existing vault file decrypts cleanly` },
-                { id: 468, name: "Vault — keyring removal", steps: `Disable vault → remove keyring entry → re-enable`, expected: `Generates fresh key; old vault becomes unrecoverable (this is OK; user just disabled it)` },
-            ]},
-            { title: "46. Native-only — Auto-update mechanism", tests: [
-                { id: 469, name: "Update check — current", steps: `About → Check for Updates with no newer version`, expected: `"You're up to date" message` },
-                { id: 470, name: "Update check — new available", steps: `Older version installed than latest GitHub release`, expected: `Sidebar badge "vX.Y.Z available" + Update Now button` },
-                { id: 471, name: "Update download", steps: `Click Update Now → confirm`, expected: `Downloads release zip from GitHub; progress shown` },
-                { id: 472, name: "Update apply — restart", steps: `After download completes`, expected: `Existing PawPoller.exe replaced; app restarts; new version visible in About` },
-                { id: 473, name: "Update — preserves data", steps: `After update`, expected: `%APPDATA%/PawPoller/data/ contents intact (db, settings.json, vault, themes)` },
-                { id: 474, name: "Update — preserves settings.json migration", steps: `Update from old version with old settings.json location`, expected: `Migration logic in config.py copies to new /app/data/ location once on first boot` },
-                { id: 475, name: "Update — failure handling", steps: `Force a failure (e.g. block download URL)`, expected: `Friendly error toast; old binary remains; user can retry` },
-            ]},
-            { title: "47. Native-only — Process behaviour", tests: [
-                { id: 476, name: "Single-instance — second launch focuses first", steps: `Launch → launch again`, expected: `Second instance focuses first window instead of opening duplicate (or politely refuses)` },
-                { id: 477, name: "Native window resize persists", steps: `Resize → quit → relaunch`, expected: `Window opens at last size + position` },
-                { id: 478, name: "Window minimise to taskbar", steps: `Click _ minimize button`, expected: `Hides to taskbar; restore via taskbar click` },
-                { id: 479, name: "Native menu bar (if present)", steps: `Check window menu bar`, expected: `Either pywebview menu (File/Edit/etc.) or no menu bar — consistent with build config` },
-                { id: 480, name: "App icon in taskbar", steps: `Look at taskbar`, expected: `PawPoller icon (not generic Python icon); matches tray icon` },
-                { id: 481, name: "App in start menu", steps: `Search "PawPoller" in Start`, expected: `Launches the app correctly (if shortcut created during install)` },
-                { id: 482, name: "Native console hidden", steps: `Launch normally`, expected: `No black console window appears (PyInstaller --noconsole / runw.exe bootloader)` },
-            ]},
-            { title: "48. GitHub & CI/CD", tests: [
-                { id: 483, name: "README renders on GitHub", steps: `Visit repo`, expected: `README displays correctly with all images/links` },
-                { id: 484, name: "LICENSE present", steps: `Repo root`, expected: `MIT LICENSE file` },
-                { id: 485, name: "CONTRIBUTING present", steps: `Repo root`, expected: `Contributing guide` },
-                { id: 486, name: "Lint workflow on push", steps: `Push to master → Actions tab`, expected: `Lint workflow runs ruff + JS syntax; passes` },
-                { id: 487, name: "Build workflow on tag", steps: `git tag v2.14.2 && git push --tags`, expected: `Build & Release runs; .zip artifact attached to release` },
-                { id: 488, name: "Test job in build workflow", steps: `Same workflow run`, expected: `unittest discover passes (after pytest + respx pinned to requirements-server.txt)` },
-                { id: 489, name: "Release notes — generated", steps: `Look at release page after tag`, expected: `Release notes match CHANGELOG.md entry` },
-            ]},
-            { title: "49. Errors & Resilience", tests: [
-                { id: 490, name: "Network offline — graceful", steps: `Disable network → navigate`, expected: `Errors surfaced as toast, not console-only; UI doesn't lock up` },
-                { id: 491, name: "Server unreachable — retry (native: localhost)", steps: `Kill internal uvicorn thread → click around`, expected: `App detects server gone; doesn't lock up; offers restart` },
-                { id: 492, name: "Invalid JSON in settings.json", steps: `Quit → corrupt %APPDATA%/PawPoller/data/settings.json → relaunch`, expected: `App boots with empty defaults; log warning; UI shows reset state` },
-                { id: 493, name: "Database locked — retry", steps: `Hold sqlite lock externally → trigger a write`, expected: `Write retries / queues, doesn't crash` },
-                { id: 494, name: "Rate-limit display", steps: `Trigger AO3 429`, expected: `User-visible message about rate limiting + retry timer` },
-                { id: 495, name: "Console — no uncaught errors", steps: `Open pywebview DevTools (F12 if enabled)`, expected: `Browser console has no uncaught exceptions on happy path` },
-                { id: 496, name: "Hash route fallback", steps: `Manually edit URL to #/totally-fake-route`, expected: `Either 404 page OR redirects to dashboard; no white screen` },
-                { id: 497, name: "Crash recovery — daemon thread", steps: `Force a single poller thread to crash`, expected: `Other pollers + dashboard remain functional; restart resurrects the dead thread` },
+            { title: "43. Errors & Resilience", tests: [
+                { id: 455, name: "Network offline — graceful", steps: `Disable network → navigate`, expected: `Errors surfaced as toast, not console-only; UI doesn't lock up` },
+                { id: 456, name: "Server unreachable — retry", steps: `Stop server mid-session → click around`, expected: `Failed requests show user-friendly errors; auto-retry where appropriate` },
+                { id: 457, name: "Invalid JSON in settings.json", steps: `Manually corrupt settings.json → reload`, expected: `App boots with empty defaults; log warning; UI shows reset state` },
+                { id: 458, name: "Database locked — retry", steps: `Hold sqlite lock → trigger a write`, expected: `Write retries / queues, doesn't crash` },
+                { id: 459, name: "Rate-limit display", steps: `Trigger AO3 429`, expected: `User-visible message about rate limiting + retry timer` },
+                { id: 460, name: "Console — no uncaught errors", steps: `Navigate the entire app`, expected: `Browser console has no uncaught exceptions on happy path` },
+                { id: 461, name: "Hash route fallback", steps: `Visit #/totally-fake-route`, expected: `Either 404 page OR redirects to dashboard; no white screen` },
             ]},
         ];
 
@@ -816,7 +767,7 @@
             const blob = new Blob([csv], { type: 'text/csv' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = 'pawpoller_test_native.csv';
+            a.download = 'pawpoller_test_webapp.csv';
             a.click();
         }
 

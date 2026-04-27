@@ -327,12 +327,12 @@ If the user asks to resume, the most useful things to read first are:
 2. `CHANGELOG.md` top section — covers 2.10.5 through 2.14.2
 3. `ROADMAP_PUBLIC.md` — public release plan (all must/should-haves + most nice-to-haves now COMPLETE)
 4. `documentation_guide.md` — full technical reference (now includes auto-sync architecture under "Settings Auto-Sync (2.14.2+)")
-5. **Testing checklists** — split into two standalone HTML files at the repo root:
-   - `TESTING_CHECKLIST_WEBAPP.html` — 461 rows × 43 sections, browser/Docker/server flavour. localStorage key `pawpoller_test_webapp`. CSV exports as `pawpoller_test_webapp.csv`.
-   - `TESTING_CHECKLIST_NATIVE.html` — 497 rows × 49 sections, Windows desktop build (PyInstaller exe + pywebview + tray). localStorage key `pawpoller_test_native`. CSV exports as `pawpoller_test_native.csv`.
-   Both share ~430 universal rows (every nav link, every settings toggle, every platform's auth/list/poll/export, every editor anchor, the publish-check matrix, posting per platform, auto-sync, themes, vault, security, API). The native version adds 7 native-only sections (tray, run-on-startup, browser-login popups for 7 platforms, file dialogs, Edge PDF, vault keyring, auto-update, process behaviour). The webapp version adds 1 webapp-only section (multi-tab, HttpOnly cookies, CSP, reverse proxy, CF Tunnel, CORS).
-   - Both have a search/status filter bar + pass/fail/skip × 4 states + Import/Export CSV. Old single `TESTING_CHECKLIST.html` is now obsolete and was deleted.
-   - Test fixtures live in `test_fixtures/` — `sample_story.{md,html,bbcode,txt,rtf}`, `sample_multichapter.md`, `sample_cover.jpg`, `sample_chapter_thumb.jpg`. File-upload rows reference these by path so QA results stay reproducible.
+5. **Testing checklists** — all QA artefacts live under `qa/`:
+   - `qa/TESTING_CHECKLIST_WEBAPP.html` — 461 rows × 43 sections, browser/Docker/server flavour. localStorage key `pawpoller_test_webapp`. CSV exports as `pawpoller_test_webapp.csv`.
+   - `qa/TESTING_CHECKLIST_NATIVE.html` — 497 rows × 49 sections, Windows desktop build (PyInstaller exe + pywebview + tray). localStorage key `pawpoller_test_native`. CSV exports as `pawpoller_test_native.csv`.
+   - `qa/fixtures/` — sample upload payloads (`sample_story.{md,html,bbcode,txt,rtf}`, `sample_multichapter.md`, `sample_cover.jpg`, `sample_chapter_thumb.jpg`) referenced by file-upload rows so QA results stay reproducible. See `qa/fixtures/README.md` for the file/test mapping.
+   Both checklists share ~430 universal rows (every nav link, every settings toggle, every platform's auth/list/poll/export, every editor anchor, the publish-check matrix, posting per platform, auto-sync, themes, vault, security, API). The native version adds 7 native-only sections (tray, run-on-startup, browser-login popups for 7 platforms, file dialogs, Edge PDF, vault keyring, auto-update, process behaviour). The webapp version adds 1 webapp-only section (multi-tab, HttpOnly cookies, CSP, reverse proxy, CF Tunnel, CORS).
+   Both have a search/status filter bar + pass/fail/skip three-state + Import/Export CSV. Old single root-level `TESTING_CHECKLIST.html` was deleted in the same change that introduced the split. (The Python unit tests still live in `tests/` — different surface, don't confuse with `qa/`.)
 6. `routes/editor_api.py` + `routes/settings_api.py` — main API surface
 7. `auto_sync.py` — new in 2.14.2; small (~170 LOC), worth a glance before touching settings persistence
 

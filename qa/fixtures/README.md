@@ -32,5 +32,5 @@ Sample upload payloads referenced by `TESTING_CHECKLIST_WEBAPP.html` and
 
 1. Drop the file in this directory.
 2. Add a row to the table above explaining what it's for.
-3. If a checklist test references it, cite the path:
-   `test_fixtures/<filename>`.
+3. If a checklist test references it, cite the relative path
+   from the checklist file: `fixtures/<filename>`.
