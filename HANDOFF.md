@@ -327,7 +327,12 @@ If the user asks to resume, the most useful things to read first are:
 2. `CHANGELOG.md` top section — covers 2.10.5 through 2.14.2
 3. `ROADMAP_PUBLIC.md` — public release plan (all must/should-haves + most nice-to-haves now COMPLETE)
 4. `documentation_guide.md` — full technical reference (now includes auto-sync architecture under "Settings Auto-Sync (2.14.2+)")
-5. `TESTING_CHECKLIST.html` — 128-row QA pass. HTML stores progress in localStorage; Export CSV / Import CSV buttons. Last update 2026-04-26 added 12 rows for 2.14.x themes + auto-sync
+5. **Testing checklists** — split into two standalone HTML files at the repo root:
+   - `TESTING_CHECKLIST_WEBAPP.html` — 461 rows × 43 sections, browser/Docker/server flavour. localStorage key `pawpoller_test_webapp`. CSV exports as `pawpoller_test_webapp.csv`.
+   - `TESTING_CHECKLIST_NATIVE.html` — 497 rows × 49 sections, Windows desktop build (PyInstaller exe + pywebview + tray). localStorage key `pawpoller_test_native`. CSV exports as `pawpoller_test_native.csv`.
+   Both share ~430 universal rows (every nav link, every settings toggle, every platform's auth/list/poll/export, every editor anchor, the publish-check matrix, posting per platform, auto-sync, themes, vault, security, API). The native version adds 7 native-only sections (tray, run-on-startup, browser-login popups for 7 platforms, file dialogs, Edge PDF, vault keyring, auto-update, process behaviour). The webapp version adds 1 webapp-only section (multi-tab, HttpOnly cookies, CSP, reverse proxy, CF Tunnel, CORS).
+   - Both have a search/status filter bar + pass/fail/skip × 4 states + Import/Export CSV. Old single `TESTING_CHECKLIST.html` is now obsolete and was deleted.
+   - Test fixtures live in `test_fixtures/` — `sample_story.{md,html,bbcode,txt,rtf}`, `sample_multichapter.md`, `sample_cover.jpg`, `sample_chapter_thumb.jpg`. File-upload rows reference these by path so QA results stay reproducible.
 6. `routes/editor_api.py` + `routes/settings_api.py` — main API surface
 7. `auto_sync.py` — new in 2.14.2; small (~170 LOC), worth a glance before touching settings persistence
 
@@ -361,11 +366,12 @@ Issues found + fixes shipped during 2.13.1–2.13.8:
 - **#27/#28 regen staleness 500**: fixed in 2.13.2 (stories with `chapter_info: []` no longer crash publish-check)
 - **#73 vault enable**: diagnostics improved in 2.13.3 (real exception shown in UI). Awaiting user retest
 
-New 2.14.x rows in the checklist:
-- **#117–121** Theme picker (8 themes, persistence, a11y theme)
-- **#122–128** Auto-sync (toggle visibility, push, pull, focus refresh, loop protection, loopback skip, opt-out)
+The old 128-row checklist has been retired and replaced with the two ~470-row files described above. All previously-fixed 2.13.x items are still represented (under their new IDs in the WEBAPP checklist's Editor / Anchor Toolbar / Publish Check sections). The 2.14.x theme + auto-sync coverage is in sections 29–30 of WEBAPP and the same in NATIVE.
 
-Next retest pass should rerun the 2.13.x items above, then cover the new 2.14.x rows and the ~75 untested items from the original sweep.
+Next retest pass should:
+1. Import the previous CSV snapshot into WEBAPP via Import CSV (IDs have shifted — most rows will need re-running rather than mass-import). Keep the old CSV around as historical reference.
+2. Sweep WEBAPP first (it covers everything that runs in Docker — most of the surface).
+3. Sweep NATIVE only on a Windows machine with the PyInstaller build, focusing on sections 41–47 (the native-only blocks).
 
 If the user says "what's next?" — all must-have and should-have items
 from the roadmap are complete, plus most nice-to-haves (import, genre

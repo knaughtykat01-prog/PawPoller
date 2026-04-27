@@ -1,0 +1,26 @@
+The Late Train
+
+A short test story for PawPoller QA.
+
+By Test Author.
+
+
+There was a particular kind of disappointment to a train that was
+nearly on time. Sixteen minutes late was an event. Two minutes late
+was an insult. The 7:14 had pulled into platform three at 7:16, and
+Mira had spent both of those minutes watching the indicator board
+update itself in increments she could no longer trust.
+
+She got on anyway. There was nothing else to do.
+
+The carriage was almost empty. A man at the far end was eating cold
+chips from a paper bag with the studied calm of someone who had
+decided that the day was already over. A woman in the seat behind him
+was reading a paperback so battered that it had moved past being a
+book and into being an object of furniture.
+
+Mira sat down by the window. The doors closed. The train, having
+nothing to apologise for, did not.
+
+
+End of The Late Train.
