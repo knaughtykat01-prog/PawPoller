@@ -40,7 +40,7 @@ PawPoller is a desktop app and self-hosted server for publishing fiction across 
 
 ## Quick Start
 
-Full walkthrough: [**SETUP.md**](SETUP.md) — covers desktop, Docker self-hosting (including reverse proxy / Cloudflare Tunnel for public access), and running from source.
+Full walkthrough: [**docs/SETUP.md**](docs/SETUP.md) — covers desktop, Docker self-hosting (including reverse proxy / Cloudflare Tunnel for public access), and running from source.
 
 ### Option A: Download the release (Windows)
 
@@ -68,7 +68,7 @@ cp .env.example .env    # Edit with your credentials — set DASHBOARD_PASSWORD!
 docker compose up -d --build
 ```
 
-The dashboard is available at `http://localhost:8420`. For public/web access behind TLS, see [SETUP.md §2.5](SETUP.md#25-exposing-it-to-the-web).
+The dashboard is available at `http://localhost:8420`. For public/web access behind TLS, see [docs/SETUP.md §2.5](docs/SETUP.md#25-exposing-it-to-the-web).
 
 ---
 
@@ -158,7 +158,7 @@ python -m unittest discover -s tests -p "test_*.py" -v
 
 ### Project documentation
 
-See [`documentation_guide.md`](documentation_guide.md) for the full technical reference covering every module, database schema, API endpoint, and platform client.
+See [`docs/documentation_guide.md`](docs/documentation_guide.md) for the full technical reference covering every module, database schema, API endpoint, and platform client.
 
 ---
 

@@ -21,7 +21,7 @@ from html import escape as _esc
 import httpx
 
 import config
-from bsky_client.client import BskyClient
+from clients.bsky.client import BskyClient
 from database.db import get_connection
 from database import bsky_queries
 

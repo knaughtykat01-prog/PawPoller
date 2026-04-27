@@ -1,6 +1,6 @@
 """Inkbunny platform poster.
 
-Uses the existing InkbunnyClient (api_client/client.py) with the new
+Uses the existing InkbunnyClient (clients/ib/client.py) with the new
 upload_submission() and edit_submission() methods. Inkbunny has a fully
 documented public API for posting, making this the most reliable platform.
 
@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 
 import config
-from api_client.client import InkbunnyClient
+from clients.ib.client import InkbunnyClient
 from database.db import get_connection
 from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
 

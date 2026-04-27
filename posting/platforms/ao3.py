@@ -46,7 +46,7 @@ import re
 import config
 from posting import story_reader
 from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
-from ao3_client.client import AO3Client
+from clients.ao3.client import AO3Client
 
 logger = logging.getLogger(__name__)
 

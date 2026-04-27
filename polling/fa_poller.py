@@ -29,7 +29,7 @@ from html import escape as _esc
 import httpx
 
 import config
-from fa_client.client import FAClient
+from clients.fa.client import FAClient
 from database.db import get_connection
 from database import fa_queries
 
@@ -433,7 +433,7 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
             _update_fa_progress("fetching_profile", message="Fetching profile stats...")
             profile = await client.get_user_profile(client.username)
             if profile and "pageviews" in profile:
-                from fa_client.client import _safe_int
+                from clients.fa.client import _safe_int
                 pv = _safe_int(profile["pageviews"])
                 fa_queries.insert_fa_profile_stats(conn, pv, polled_at=poll_timestamp)
                 conn.commit()

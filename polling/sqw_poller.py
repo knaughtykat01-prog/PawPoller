@@ -22,7 +22,7 @@ from html import escape as _esc
 import httpx
 
 import config
-from sqw_client.client import SquidgeWorldClient
+from clients.sqw.client import SquidgeWorldClient
 from database.db import get_connection
 from database import sqw_queries
 

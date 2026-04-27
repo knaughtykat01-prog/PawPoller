@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from posting.platforms.base import StoryUploadPackage
 from posting.platforms.ao3 import AO3Poster
-from ao3_client.client import AO3Client
+from clients.ao3.client import AO3Client
 import config
 
 

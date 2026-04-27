@@ -262,12 +262,19 @@ PawPoller/
 ├── requirements-server.txt  # Headless/Docker dependencies (no GUI): fastapi, uvicorn, httpx, bcrypt, pyotp, itsdangerous
 ├── pawpoller.spec          # PyInstaller build spec
 ├── build.bat               # Windows build script
-├── settings.json           # Runtime user settings (gitignored)
-├── CHANGELOG.md            # Version history
+├── CHANGELOG.md             # Version history
 ├── README.md                # Public-facing project overview
 ├── LICENSE                  # Project licence
 ├── CONTRIBUTING.md          # Contribution guidelines
-└── ROADMAP_PUBLIC.md        # Public release roadmap (Phases 8-15)
+├── docs/                    # Internal-facing docs
+│   ├── HANDOFF.md           #   Session handoff (current state, recent work)
+│   ├── SETUP.md             #   New-user install guide (desktop / Docker / from source)
+│   ├── ROADMAP_PUBLIC.md    #   Public release roadmap (Phases 8-15)
+│   └── documentation_guide.md  # This file — full technical reference
+└── qa/                      # Manual QA artefacts
+    ├── TESTING_CHECKLIST_WEBAPP.html
+    ├── TESTING_CHECKLIST_NATIVE.html
+    └── fixtures/             # Sample upload payloads referenced by checklist file-upload tests
 ```
 
 ---

@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import sqw_queries
 from polling.sqw_poller import run_sqw_poll_cycle, sqw_poll_progress
-from sqw_client.client import SquidgeWorldClient
+from clients.sqw.client import SquidgeWorldClient
 import config
 
 logger = logging.getLogger(__name__)

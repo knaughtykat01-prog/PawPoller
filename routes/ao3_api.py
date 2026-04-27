@@ -19,7 +19,7 @@ import config
 from database.db import get_connection
 from database import ao3_queries
 from polling.ao3_poller import run_ao3_poll_cycle, ao3_poll_progress
-from ao3_client.client import AO3Client
+from clients.ao3.client import AO3Client
 import config
 
 logger = logging.getLogger(__name__)

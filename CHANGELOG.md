@@ -4,6 +4,72 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.14.3] - 2026-04-27
+
+### Changed — Repository file-tree cleanup (no behaviour changes)
+
+Pure organisation pass — zero runtime changes, just a tidier layout.
+The repo root went from ~30 entries (11 of which were platform
+client folders) down to ~18.
+
+**Three coordinated changes:**
+
+1. **All 11 platform clients consolidated under `clients/`.**
+   - `api_client/` → `clients/ib/` (also fixes the long-standing
+     naming inconsistency — the IB client was the only one not using
+     the `<xx>_client/` convention)
+   - `ao3_client/` → `clients/ao3/`, `bsky_client/` → `clients/bsky/`,
+     `da_client/` → `clients/da/`, `fa_client/` → `clients/fa/`,
+     `ik_client/` → `clients/ik/`, `sf_client/` → `clients/sf/`,
+     `sqw_client/` → `clients/sqw/`, `tw_client/` → `clients/tw/`,
+     `weasyl_client/` → `clients/weasyl/`, `wp_client/` → `clients/wp/`
+   - Used `git mv` so file history is preserved.
+   - 60 Python files had imports rewritten via a single sed pass:
+     `from <xx>_client.client import ...` → `from clients.<xx>.client import ...`
+     (covers top-level imports, lazy/conditional imports inside
+     functions, and 3 docstring references in `tests/test_posting_helpers.py`).
+   - Comment/docstring path references in `posting/platforms/*.py`
+     and `clients/ao3/client.py` updated for accuracy.
+   - PyInstaller spec didn't need updating (no client modules in
+     `hiddenimports` — the analysis discovers them via the import graph).
+   - Dockerfile didn't need updating (`COPY . .` picks up the new
+     layout automatically).
+
+2. **Internal docs moved to `docs/`.**
+   - `HANDOFF.md`, `SETUP.md`, `ROADMAP_PUBLIC.md`, `documentation_guide.md`
+     → `docs/<same name>`. README, LICENSE, CONTRIBUTING, CHANGELOG
+     stay at root for GitHub conventions.
+   - Cross-references updated in: `README.md` (3 links),
+     `CONTRIBUTING.md` (1 link), `site/src/components/Footer.astro`
+     (3 GitHub URLs), `site/src/components/GetIt.astro` (1 URL),
+     `docs/HANDOFF.md` (1 backref), `docs/documentation_guide.md`
+     (file-tree section refreshed with the new `docs/` and `qa/`
+     subtrees).
+   - Marketing site needs a redeploy to pick up the URL change in
+     the footer + GetIt CTA.
+
+3. **Orphan cleanup.**
+   - `112.png` (stray icon export at repo root) — deleted.
+   - `TESTING_CHECKLIST.md` (the markdown sibling of the html
+     checklist that should have died with the WEBAPP/NATIVE split in
+     2.14.2) — deleted.
+   - Local `settings.json` at repo root (legacy dev path; config.py
+     migrated it to `data/settings.json` once on first run already)
+     — deleted from disk; was already gitignored.
+
+**Validation gates run before commit:**
+
+- AST parse: 166 .py files, 0 errors.
+- Import smoke: 47 refactored modules import cleanly (every client,
+  every poller, every poster, every route, importer, server bits).
+- Unit test suite: 30/30 pass.
+- PyInstaller build: succeeds end-to-end, dist/PawPoller/PawPoller.exe
+  produced.
+
+**`APP_VERSION` bumped to `2.14.3`.**
+
+---
+
 ## [2.14.2] - 2026-04-26
 
 ### Added — Automatic settings sync across devices

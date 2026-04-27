@@ -248,7 +248,7 @@ drift detection, deletion probe, re-post.
 - `PawPoller/frontend/js/editor.js` — editor UI + anchor toolbar + format tabs + create story wizard
 - `PawPoller/frontend/js/metadata_editor.js` — drawer + tags + per-platform descriptions + chapter thumbnails
 - `PawPoller/frontend/js/publish_check.js` — matrix + actions + bulk + scheduling + action log
-- `PawPoller/ROADMAP_PUBLIC.md` — public release roadmap (Phases 8-15: auth UX, setup wizard, editor, images, publishing, analytics, import, GitHub packaging)
+- `PawPoller/docs/ROADMAP_PUBLIC.md` — public release roadmap (Phases 8-15: auth UX, setup wizard, editor, images, publishing, analytics, import, GitHub packaging)
 - `PawPoller/deploy/pawpush.bat` — push story archive local → server (alias for pawsync.bat)
 - `PawPoller/deploy/pawpull.bat` — pull story archive server → local (supports single-story: `pawpull.bat Story_Name`)
 - `PawPoller/frontend/css/editor.css` — all editor/drawer/matrix styles

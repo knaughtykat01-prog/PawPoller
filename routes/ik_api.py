@@ -21,7 +21,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import ik_queries
 from polling.ik_poller import run_ik_poll_cycle, ik_poll_progress
-from ik_client.client import IKClient
+from clients.ik.client import IKClient
 import config
 
 logger = logging.getLogger(__name__)

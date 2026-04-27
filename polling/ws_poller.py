@@ -28,7 +28,7 @@ from html import escape as _esc
 import httpx
 
 import config
-from weasyl_client.client import WeasylClient
+from clients.weasyl.client import WeasylClient
 from database.db import get_connection
 from database import ws_queries
 

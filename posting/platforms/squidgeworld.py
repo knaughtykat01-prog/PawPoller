@@ -40,7 +40,7 @@ import re
 import config
 from posting import story_reader
 from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
-from sqw_client.client import SquidgeWorldClient
+from clients.sqw.client import SquidgeWorldClient
 
 logger = logging.getLogger(__name__)
 

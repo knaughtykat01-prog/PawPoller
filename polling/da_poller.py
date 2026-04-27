@@ -22,7 +22,7 @@ from html import escape as _esc
 import httpx
 
 import config
-from da_client.client import DAClient
+from clients.da.client import DAClient
 from database.db import get_connection
 from database import da_queries
 

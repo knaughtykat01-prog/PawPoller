@@ -68,7 +68,7 @@ class AO3Client:
         # Use Cloudflare Worker proxy if configured — bypasses AO3's
         # "Shields are up!" Cloudflare TLS fingerprint check on
         # residential IPs. The Worker runs on CF's own edge so it
-        # won't challenge itself. Same pattern as sf_client.
+        # won't challenge itself. Same pattern as clients.sf.
         if proxy_url and proxy_key:
             from polling.cf_proxy import CloudflareProxyTransport
             transport = CloudflareProxyTransport(proxy_url, proxy_key)
@@ -940,7 +940,7 @@ class AO3Client:
     ) -> dict:
         """Edit a chapter using the safe form-fetch overlay pattern.
 
-        Ported from sqw_client — GETs /works/{w}/chapters/{c}/edit,
+        Ported from clients.sqw — GETs /works/{w}/chapters/{c}/edit,
         extracts every current chapter[*] field, overrides only the
         requested fields, and POSTs the full form back. Passing
         content=None preserves the existing content on AO3 — useful
@@ -1594,7 +1594,7 @@ class AO3Client:
 def _extract_work_form_fields(html: str) -> tuple[str, list[tuple[str, str]]]:
     """Parse all work[*] form fields from a /works/{id}/edit page.
 
-    Ported from sqw_client — AO3 runs the same OTW Archive software, so
+    Ported from clients.sqw — AO3 runs the same OTW Archive software, so
     the edit form layout is identical. Returns (csrf_token, list_of_
     (name, value)_tuples) so edit_work can resubmit the complete form
     without Rails clearing omitted fields.

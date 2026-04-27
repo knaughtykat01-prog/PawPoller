@@ -64,7 +64,7 @@ class TestInkbunnyFullPipeline:
         from posting import manager
         # Pre-create the IB poster with a client that has SID set
         from posting.platforms.inkbunny import InkbunnyPoster
-        from api_client.client import InkbunnyClient
+        from clients.ib.client import InkbunnyClient
         poster = InkbunnyPoster()
         client = InkbunnyClient(username="testuser", password="testpass")
         client.sid = "test_sid"
@@ -126,7 +126,7 @@ class TestInkbunnyFullPipeline:
 
         from posting import manager
         from posting.platforms.inkbunny import InkbunnyPoster
-        from api_client.client import InkbunnyClient
+        from clients.ib.client import InkbunnyClient
         poster = InkbunnyPoster()
         client = InkbunnyClient(username="testuser", password="testpass")
         client.sid = "test_sid"
@@ -321,7 +321,7 @@ class TestMultiPlatformUpload:
 
         from posting import manager
         from posting.platforms.inkbunny import InkbunnyPoster
-        from api_client.client import InkbunnyClient
+        from clients.ib.client import InkbunnyClient
         poster = InkbunnyPoster()
         client = InkbunnyClient(username="testuser", password="testpass")
         client.sid = "sid"
@@ -382,7 +382,7 @@ class TestMultiChapterUpload:
 
         from posting import manager
         from posting.platforms.inkbunny import InkbunnyPoster
-        from api_client.client import InkbunnyClient
+        from clients.ib.client import InkbunnyClient
         poster = InkbunnyPoster()
         client = InkbunnyClient(username="testuser", password="testpass")
         client.sid = "sid"
@@ -436,7 +436,7 @@ class TestErrorHandling:
 
         from posting import manager
         from posting.platforms.inkbunny import InkbunnyPoster
-        from api_client.client import InkbunnyClient
+        from clients.ib.client import InkbunnyClient
         poster = InkbunnyPoster()
         client = InkbunnyClient(username="testuser", password="testpass")
         client.sid = "sid"
@@ -491,7 +491,7 @@ class TestValidationIntegration:
 
         from posting import manager, story_reader
         from posting.platforms.inkbunny import InkbunnyPoster
-        from api_client.client import InkbunnyClient
+        from clients.ib.client import InkbunnyClient
 
         poster = InkbunnyPoster()
         client = InkbunnyClient(username="testuser", password="testpass")

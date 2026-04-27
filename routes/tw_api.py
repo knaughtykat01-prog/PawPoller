@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import tw_queries
 from polling.tw_poller import run_tw_poll_cycle, tw_poll_progress
-from tw_client.client import TWClient
+from clients.tw.client import TWClient
 import config
 
 logger = logging.getLogger(__name__)

@@ -27,7 +27,7 @@ import logging
 import time
 
 import config
-from da_client.client import DAClient
+from clients.da.client import DAClient
 from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
 
 logger = logging.getLogger(__name__)

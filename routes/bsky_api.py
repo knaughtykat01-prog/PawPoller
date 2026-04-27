@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import bsky_queries
 from polling.bsky_poller import run_bsky_poll_cycle, bsky_poll_progress
-from bsky_client.client import BskyClient
+from clients.bsky.client import BskyClient
 import config
 
 logger = logging.getLogger(__name__)

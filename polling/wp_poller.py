@@ -23,7 +23,7 @@ from html import escape as _esc
 import httpx
 
 import config
-from wp_client.client import WPClient
+from clients.wp.client import WPClient
 from database.db import get_connection
 from database import wp_queries
 

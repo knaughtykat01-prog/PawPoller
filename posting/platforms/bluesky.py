@@ -1,6 +1,6 @@
 """Bluesky platform poster.
 
-Uses the existing BskyClient (bsky_client/client.py) with the new
+Uses the existing BskyClient (clients/bsky/client.py) with the new
 create_post(), upload_blob(), and delete_post() methods.
 
 Bluesky is used for announcement posts (not full story uploads). Posts are
@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 
 import config
-from bsky_client.client import BskyClient
+from clients.bsky.client import BskyClient
 from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
 
 logger = logging.getLogger(__name__)

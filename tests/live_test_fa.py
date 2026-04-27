@@ -14,7 +14,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
-from fa_client.client import FAClient
+from clients.fa.client import FAClient
 
 
 PDF_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_upload.pdf")

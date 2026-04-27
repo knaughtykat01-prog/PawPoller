@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 
 import config
-from ik_client.client import IKClient
+from clients.ik.client import IKClient
 from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
 
 logger = logging.getLogger(__name__)

@@ -25,7 +25,7 @@ from html import escape as _esc
 import httpx
 
 import config
-from ik_client.client import IKClient
+from clients.ik.client import IKClient
 from database.db import get_connection
 from database import ik_queries
 

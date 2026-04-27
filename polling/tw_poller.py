@@ -22,7 +22,7 @@ from html import escape as _esc
 import httpx
 
 import config
-from tw_client.client import TWClient
+from clients.tw.client import TWClient
 from database.db import get_connection
 from database import tw_queries
 

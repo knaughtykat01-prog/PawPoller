@@ -15,7 +15,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
-from api_client.client import InkbunnyClient
+from clients.ib.client import InkbunnyClient
 from database.db import get_connection
 
 

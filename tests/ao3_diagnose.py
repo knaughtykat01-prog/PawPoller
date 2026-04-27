@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, "/app")
 
-from ao3_client.client import AO3Client
+from clients.ao3.client import AO3Client
 
 
 async def main() -> int:

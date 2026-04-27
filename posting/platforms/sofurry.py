@@ -1,6 +1,6 @@
 """SoFurry platform poster.
 
-Uses the existing SoFurryClient (sf_client/client.py) with session cookie +
+Uses the existing SoFurryClient (clients/sf/client.py) with session cookie +
 CSRF token auth. Supports post + edit + file replace.
 
 Post flow (3-step REST):
@@ -38,7 +38,7 @@ import re
 import config
 from posting import story_reader
 from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
-from sf_client.client import SoFurryClient
+from clients.sf.client import SoFurryClient
 
 logger = logging.getLogger(__name__)
 

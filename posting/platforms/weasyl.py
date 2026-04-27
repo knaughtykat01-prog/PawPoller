@@ -1,6 +1,6 @@
 """Weasyl platform poster.
 
-Uses the existing WeasylClient (weasyl_client/client.py) with API key auth.
+Uses the existing WeasylClient (clients/weasyl/client.py) with API key auth.
 The API key is sent on every request as X-Weasyl-API-Key header.
 
 Post flow:
@@ -20,7 +20,7 @@ import logging
 
 import config
 from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
-from weasyl_client.client import WeasylClient
+from clients.weasyl.client import WeasylClient
 
 logger = logging.getLogger(__name__)
 

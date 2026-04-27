@@ -35,7 +35,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import ws_queries
 from polling.ws_poller import run_ws_poll_cycle, ws_poll_progress
-from weasyl_client.client import WeasylClient
+from clients.weasyl.client import WeasylClient
 import config
 
 logger = logging.getLogger(__name__)

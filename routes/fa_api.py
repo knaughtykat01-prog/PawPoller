@@ -30,7 +30,7 @@ from fastapi.responses import Response, StreamingResponse
 from database.db import get_connection
 from database import fa_queries
 from polling.fa_poller import run_fa_poll_cycle, fa_poll_progress
-from fa_client.client import FAClient
+from clients.fa.client import FAClient
 import config
 
 logger = logging.getLogger(__name__)

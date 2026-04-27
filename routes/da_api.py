@@ -21,7 +21,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import da_queries
 from polling.da_poller import run_da_poll_cycle, da_poll_progress
-from da_client.client import DAClient
+from clients.da.client import DAClient
 import config
 
 logger = logging.getLogger(__name__)

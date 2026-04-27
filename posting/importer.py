@@ -291,7 +291,7 @@ async def import_from_inkbunny(submission_id: str) -> dict:
     Returns:
         Dict with 'story_name' and 'title'.
     """
-    from api_client.client import InkbunnyClient
+    from clients.ib.client import InkbunnyClient
     from database.db import get_connection
     from database import queries
 
@@ -402,7 +402,7 @@ async def import_from_sofurry(submission_id: str) -> dict:
     Returns:
         Dict with 'story_name' and 'title'.
     """
-    from sf_client.client import SoFurryClient, SOFURRY_BASE
+    from clients.sf.client import SoFurryClient, SOFURRY_BASE
 
     settings = config.get_settings()
     sf_username = settings.get("sf_username", "")
@@ -516,7 +516,7 @@ async def import_from_furaffinity(submission_id: str) -> dict:
     Downloads the story file (TXT/PDF/DOC) from the download URL,
     extracts text content, and creates a local story folder.
     """
-    from fa_client.client import FAClient
+    from clients.fa.client import FAClient
 
     settings = config.get_settings()
     fa_username = settings.get("fa_username", "")

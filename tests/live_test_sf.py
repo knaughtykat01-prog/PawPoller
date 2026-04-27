@@ -15,7 +15,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
-from sf_client.client import SoFurryClient
+from clients.sf.client import SoFurryClient
 
 
 async def main():

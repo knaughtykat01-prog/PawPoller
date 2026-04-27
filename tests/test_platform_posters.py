@@ -55,7 +55,7 @@ class TestInkbunnyPoster:
         from posting.platforms.inkbunny import InkbunnyPoster
         poster = InkbunnyPoster()
         # Pre-create client with SID already set — bypasses session_cache DB query
-        from api_client.client import InkbunnyClient
+        from clients.ib.client import InkbunnyClient
         client = InkbunnyClient(username="testuser", password="testpass")
         client.sid = "test_sid_123"
         poster._client = client

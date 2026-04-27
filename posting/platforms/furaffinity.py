@@ -1,6 +1,6 @@
 """FurAffinity platform poster.
 
-Uses the existing FAClient (fa_client/client.py) with cookie-based auth
+Uses the existing FAClient (clients/fa/client.py) with cookie-based auth
 (_fa_http with cookies a+b). FA has no official API — posting uses HTML
 form scraping (same approach as PostyBirb).
 
@@ -29,7 +29,7 @@ from __future__ import annotations
 import logging
 
 import config
-from fa_client.client import FAClient
+from clients.fa.client import FAClient
 from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
 
 logger = logging.getLogger(__name__)

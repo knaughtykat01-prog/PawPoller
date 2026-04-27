@@ -9,8 +9,8 @@ Lock in the behaviour of:
   - ``posting.manager._looks_like_deletion``
   - ``posting.platforms.ao3._strip_chapter_prefix``
   - ``posting.platforms.squidgeworld._strip_chapter_prefix``
-  - ``ao3_client.client._extract_work_form_fields``
-  - ``sqw_client.client._extract_work_form_fields``
+  - ``clients.ao3.client._extract_work_form_fields``
+  - ``clients.sqw.client._extract_work_form_fields``
 """
 
 from __future__ import annotations
@@ -155,8 +155,8 @@ class TestExtractWorkFormFields(unittest.TestCase):
     work[*] field out of the edit form. Fragile HTML; worth locking."""
 
     def setUp(self):
-        from sqw_client.client import _extract_work_form_fields as sqw_fn
-        from ao3_client.client import _extract_work_form_fields as ao3_fn
+        from clients.sqw.client import _extract_work_form_fields as sqw_fn
+        from clients.ao3.client import _extract_work_form_fields as ao3_fn
         self.sqw_fn = sqw_fn
         self.ao3_fn = ao3_fn
 

@@ -23,7 +23,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import sf_queries
 from polling.sf_poller import run_sf_poll_cycle, sf_poll_progress
-from sf_client.client import SoFurryClient
+from clients.sf.client import SoFurryClient
 import config
 
 logger = logging.getLogger(__name__)

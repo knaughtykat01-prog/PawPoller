@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config
-from sqw_client.client import SquidgeWorldClient
+from clients.sqw.client import SquidgeWorldClient
 
 
 # ── Check definitions ───────────────────────────────────────────

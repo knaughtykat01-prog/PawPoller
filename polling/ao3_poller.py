@@ -21,7 +21,7 @@ from html import escape as _esc
 import httpx
 
 import config
-from ao3_client.client import AO3Client
+from clients.ao3.client import AO3Client
 from database.db import get_connection
 from database import ao3_queries
 

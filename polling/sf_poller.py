@@ -21,7 +21,7 @@ from html import escape as _esc
 import httpx
 
 import config
-from sf_client.client import SoFurryClient
+from clients.sf.client import SoFurryClient
 from database.db import get_connection
 from database import sf_queries
 

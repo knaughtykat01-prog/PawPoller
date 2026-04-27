@@ -34,7 +34,7 @@ from fastapi.responses import Response, StreamingResponse
 from database.db import get_connection, init_db
 from database import queries, fa_queries, ws_queries, sf_queries, group_queries, analytics_queries
 from polling.poller import run_poll_cycle, poll_progress
-from api_client.client import InkbunnyClient
+from clients.ib.client import InkbunnyClient
 import config
 import updater
 

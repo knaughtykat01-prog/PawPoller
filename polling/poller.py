@@ -24,7 +24,7 @@ from html import escape as _esc
 import httpx
 
 import config
-from api_client.client import InkbunnyClient
+from clients.ib.client import InkbunnyClient
 from database.db import get_connection
 from database import queries
 

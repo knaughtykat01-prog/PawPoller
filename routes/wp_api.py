@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import wp_queries
 from polling.wp_poller import run_wp_poll_cycle, wp_poll_progress
-from wp_client.client import WPClient
+from clients.wp.client import WPClient
 import config
 
 logger = logging.getLogger(__name__)

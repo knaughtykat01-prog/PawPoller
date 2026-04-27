@@ -44,7 +44,7 @@ Start by reading an existing platform (e.g., `ws_poller.py` for a simple one,
 
 ## Architecture Overview
 
-See `documentation_guide.md` for the full technical reference.
+See `docs/documentation_guide.md` for the full technical reference.
 
 Key points:
 - `main.py` = desktop mode (pywebview + pystray + per-platform pollers)

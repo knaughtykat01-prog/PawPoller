@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config
 from posting.platforms.base import StoryUploadPackage
 from posting.platforms.squidgeworld import SquidgeWorldPoster
-from sqw_client.client import SquidgeWorldClient
+from clients.sqw.client import SquidgeWorldClient
 
 
 # Story folder name -> canonical title (from story.json)
