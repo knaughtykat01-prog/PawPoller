@@ -18,14 +18,15 @@ python server.py      # Headless/server mode
 
 Each platform follows a consistent pattern:
 
-1. **Client** (`{xx}_client/client.py`) — HTTP client for the platform's API
+1. **Client** (`clients/{xx}/client.py`) — HTTP client for the platform's API
 2. **Poller** (`polling/{xx}_poller.py`) — Poll cycle orchestration
 3. **Database** (`database/{xx}_queries.py` + `{xx}_schema.sql`) — DB schema + queries
 4. **Routes** (`routes/{xx}_api.py`) — Dashboard API endpoints
 5. **Poster** (`posting/platforms/{xx}.py`) — Upload/edit logic (optional)
 
-Start by reading an existing platform (e.g., `ws_poller.py` for a simple one,
-`sf_poller.py` for a more complex one with chaptered posting).
+Start by reading an existing platform (e.g., `polling/ws_poller.py` for a
+simple one, `polling/sf_poller.py` for a more complex one with chaptered
+posting). Imports look like `from clients.{xx}.client import {Class}`.
 
 ## Code Style
 

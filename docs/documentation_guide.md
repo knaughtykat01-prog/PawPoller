@@ -76,7 +76,7 @@ The tech stack is FastAPI + SQLite (WAL mode) + Vanilla JS SPA + pywebview + pys
 Platform API/Website
     │
     ▼
-Platform Client (api_client/, fa_client/, etc.)
+Platform Client (clients/ib/, clients/fa/, etc.)
     │  HTTP requests via httpx.AsyncClient
     │  (optionally through CF Worker proxy)
     ▼
@@ -106,28 +106,20 @@ PawPoller/
 ├── updater.py               # Auto-update (desktop only)
 ├── auto_sync.py             # Settings auto-sync: debounced push + 5-min pull thread (desktop ↔ server)
 │
-├── api_client/              # Inkbunny API client
-│   └── client.py            #   InkbunnyClient class with SID caching
-├── fa_client/               # FurAffinity client (FAExport + scraping)
-│   └── client.py            #   FAClient class with dual HTTP transports
-├── weasyl_client/           # Weasyl REST API client
-│   └── client.py            #   WeasylClient class with cursor pagination
-├── sf_client/               # SoFurry client (scraping + JSON hybrid)
-│   └── client.py            #   SoFurryClient class with CF proxy support
-├── sqw_client/              # SquidgeWorld client (OTW scraping)
-│   └── client.py            #   SqWClient class with Anubis challenge solving
-├── ao3_client/              # AO3 client (OTW scraping)
-│   └── client.py            #   AO3Client class with CSRF auth
-├── da_client/               # DeviantArt client (Eclipse _napi)
-│   └── client.py            #   DAClient class with cookie auth + proxy
-├── wp_client/               # Wattpad client (REST API)
-│   └── client.py            #   WPClient class (no auth, public API)
-├── ik_client/               # Itaku client (REST API)
-│   └── client.py            #   IKClient class (no auth, public API)
-├── bsky_client/             # Bluesky client (AT Protocol)
-│   └── client.py            #   BskyClient class with JWT session auth
-├── tw_client/               # X/Twitter client (GraphQL scraping)
-│   └── client.py            #   TWClient class with cookie auth
+├── clients/                 # Per-platform HTTP clients (all 11 platforms in one place — 2.14.3)
+│   ├── ib/                  #   Inkbunny — InkbunnyClient with SID caching
+│   ├── fa/                  #   FurAffinity — FAClient with dual HTTP transports
+│   ├── weasyl/              #   Weasyl — WeasylClient with cursor pagination
+│   ├── sf/                  #   SoFurry — SoFurryClient with CF proxy support
+│   ├── sqw/                 #   SquidgeWorld — SqWClient with Anubis challenge solving
+│   ├── ao3/                 #   AO3 — AO3Client with CSRF auth
+│   ├── da/                  #   DeviantArt — DAClient with cookie auth + proxy
+│   ├── wp/                  #   Wattpad — WPClient (no auth, public API)
+│   ├── ik/                  #   Itaku — IKClient (no auth, public API)
+│   ├── bsky/                #   Bluesky — BskyClient with JWT session auth
+│   └── tw/                  #   X/Twitter — TWClient with cookie auth
+│   # Each subfolder has client.py (sometimes models.py for ib).
+│   # Imports: `from clients.<platform>.client import <Class>`.
 │
 ├── auth/                    # Browser-based login helpers (Phase 8a)
 │   ├── __init__.py          #   Package init
@@ -537,7 +529,7 @@ The `except Exception` blocks around each thread's `loop.run_until_complete()` c
 
 Each platform has a dedicated async HTTP client using `httpx.AsyncClient`. All support context manager protocol (`async with client:`). Below are deep technical details for each.
 
-### Inkbunny (`api_client/client.py`) — `InkbunnyClient`
+### Inkbunny (`clients/ib/client.py`) — `InkbunnyClient`
 
 **Dual HTTP transport pattern**: The IB client maintains two separate httpx clients:
 - `_http` — API client for JSON endpoints (`/api_login.php`, `/api_search.php`, etc.)
@@ -600,7 +592,7 @@ Rating unlock calls `/api_userrating.php` with `tag[2]=yes&tag[3]=yes&tag[4]=yes
 }
 ```
 
-### FurAffinity (`fa_client/client.py`) — `FAClient`
+### FurAffinity (`clients/fa/client.py`) — `FAClient`
 
 **Dual HTTP transport pattern**:
 - `_http` — Unauthenticated FAExport client (`https://faexport.spangle.org.uk`) for JSON data
@@ -641,7 +633,7 @@ Rating unlock calls `/api_userrating.php` with `tag[2]=yes&tag[3]=yes&tag[4]=yes
 - Zero submissions + zero favorites + zero watches = likely bot
 - Returns `{username: is_spam}` dict, capped at 10 profiles per poll to avoid excessive API calls
 
-### Weasyl (`weasyl_client/client.py`) — `WeasylClient`
+### Weasyl (`clients/weasyl/client.py`) — `WeasylClient`
 
 The simplest client. Clean JSON responses, no scraping needed.
 
@@ -671,7 +663,7 @@ detail["media_url"] = data.get("media", {}).get("submission", [{}])[0].get("url"
 
 **Limitations**: No per-user comment text, no faving user lists, no watcher tracking — Weasyl's API only exposes aggregate counts.
 
-### SoFurry (`sf_client/client.py`) — `SoFurryClient`
+### SoFurry (`clients/sf/client.py`) — `SoFurryClient`
 
 **Authentication flow** (Laravel CSRF):
 ```
@@ -720,7 +712,7 @@ detail["media_url"] = data.get("media", {}).get("submission", [{}])[0].get("url"
 
 **Follower scraping**: Paginates `/u/{display_name}/followers`, extracting usernames from `user-card` div blocks. Public page (no login required).
 
-### SquidgeWorld (`sqw_client/client.py`) — `SqWClient`
+### SquidgeWorld (`clients/sqw/client.py`) — `SqWClient`
 
 **OTW Archive authentication** (same software as AO3, Rails form login):
 ```
@@ -737,7 +729,7 @@ detail["media_url"] = data.get("media", {}).get("submission", [{}])[0].get("url"
 
 **Stats fields**: hits, kudos, comments, bookmarks (same as AO3 since it's the same software).
 
-### AO3 (`ao3_client/client.py`) — `AO3Client`
+### AO3 (`clients/ao3/client.py`) — `AO3Client`
 
 Same OTW authentication as SquidgeWorld. Key differences:
 
@@ -757,7 +749,7 @@ def _extract_stat(stat_class: str) -> int:
 
 **Kudos user tracking**: `get_kudos_users(work_id)` extracts individual usernames from the kudos section (`id="kudos"`) — similar to IB's faving user tracking.
 
-### DeviantArt (`da_client/client.py`) — `DAClient`
+### DeviantArt (`clients/da/client.py`) — `DAClient`
 
 **Eclipse _napi endpoints**: DeviantArt's public frontend (Eclipse) uses internal JSON API endpoints that are undocumented. These were discovered by inspecting browser network traffic. There is no public gallery stats API.
 
@@ -774,7 +766,7 @@ def _extract_stat(stat_class: str) -> int:
 
 **Unique stat**: DeviantArt is the only platform that tracks `downloads` in addition to views/favorites/comments.
 
-### Wattpad (`wp_client/client.py`) — `WPClient`
+### Wattpad (`clients/wp/client.py`) — `WPClient`
 
 **No authentication required** — public REST API at `api.wattpad.com`.
 
@@ -800,7 +792,7 @@ def _extract_stat(stat_class: str) -> int:
 
 Rate limiting: 1s between requests, 429 handling with 30s backoff.
 
-### Itaku (`ik_client/client.py`) — `IKClient`
+### Itaku (`clients/ik/client.py`) — `IKClient`
 
 **No authentication required** — public API at `itaku.ee/api`.
 
@@ -812,7 +804,7 @@ Rate limiting: 1s between requests, 429 handling with 30s backoff.
 
 Rate limiting: 429 handling with 30s backoff.
 
-### Bluesky (`bsky_client/client.py`) — `BskyClient`
+### Bluesky (`clients/bsky/client.py`) — `BskyClient`
 
 **AT Protocol API** at `bsky.social/xrpc`. Authenticated via app password → JWT session tokens.
 
@@ -830,7 +822,7 @@ Rate limiting: 429 handling with 30s backoff.
 
 Rate limiting: 1s between requests, 429 handling with 30s backoff.
 
-### X/Twitter (`tw_client/client.py`) — `TWClient`
+### X/Twitter (`clients/tw/client.py`) — `TWClient`
 
 **Cookie-based GraphQL scraping** — same approach as DeviantArt. Uses internal GraphQL endpoints discovered from browser network inspection.
 
@@ -2550,7 +2542,7 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 | BSKY no posts found | Wrong identifier | `bsky_identifier` should be your handle (e.g. `user.bsky.social`) or DID (`did:plc:...`). |
 | TW polls return 403 | Cookies expired/invalid | Re-export `auth_token` and `ct0` cookies from browser DevTools → Application → Cookies on x.com. |
 | TW rate limited (429) | Polling too fast | X is aggressive about rate limiting. In `main.py`, increase `tw_poll_interval_minutes`. In `server.py`, increase `poll_interval_minutes`. Default 2s inter-request delay + 60s backoff. |
-| TW GraphQL fails | Query IDs rotated | X may update GraphQL query IDs when they deploy new frontend code. Check logs for 404s and update hardcoded IDs in `tw_client/client.py`. |
+| TW GraphQL fails | Query IDs rotated | X may update GraphQL query IDs when they deploy new frontend code. Check logs for 404s and update hardcoded IDs in `clients/tw/client.py`. |
 
 ### Known Limitations (Not Fixed)
 
@@ -2570,7 +2562,7 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 
 | Service | Endpoint | Client | Purpose |
 |---------|----------|--------|---------|
-| Inkbunny API | `/api_login.php` | `api_client/client.py` | Authentication |
+| Inkbunny API | `/api_login.php` | `clients/ib/client.py` | Authentication |
 | | `/api_userrating.php` | | Unlock content ratings |
 | | `/api_search.php` | | Gallery discovery |
 | | `/api_submissions.php` | | Batch detail fetch |
@@ -2578,34 +2570,34 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 | Inkbunny Web | `/login.php`, `/login_process.php` | | Web auth for scraping |
 | | `/s/{id}` | | Comment HTML scraping |
 | | `/usersviewall.php?mode=watched_by` | | Watcher list scraping |
-| FAExport | `/user/{u}/gallery.json` | `fa_client/client.py` | Gallery listing |
+| FAExport | `/user/{u}/gallery.json` | `clients/fa/client.py` | Gallery listing |
 | | `/submission/{id}.json` | | Submission detail |
 | | `/submission/{id}/comments.json` | | Comment thread |
 | | `/user/{u}.json` | | Profile (spam check) |
 | | `/user/{u}/watchers.json` | | Watcher list |
-| Weasyl API | `/api/whoami` | `weasyl_client/client.py` | Validate API key |
+| Weasyl API | `/api/whoami` | `clients/weasyl/client.py` | Validate API key |
 | | `/api/users/{u}/gallery` | | Gallery (cursor pagination) |
 | | `/api/submissions/{id}/view` | | Submission detail |
-| SoFurry | `/login` (GET/POST) | `sf_client/client.py` | CSRF auth flow |
+| SoFurry | `/login` (GET/POST) | `clients/sf/client.py` | CSRF auth flow |
 | | `/u/{u}/gallery` | | Gallery HTML scraping |
 | | `/ui/submission/{id}` | | JSON metadata |
 | | `/s/{id}` | | Stats HTML scraping |
 | | `/u/{u}/followers` | | Follower list |
-| AO3 | `/users/login` (GET/POST) | `ao3_client/client.py` | CSRF auth flow |
+| AO3 | `/users/login` (GET/POST) | `clients/ao3/client.py` | CSRF auth flow |
 | | `/users/{u}/works` | | Works listing |
 | | `/works/{id}?view_adult=true` | | Work detail + stats |
-| DeviantArt | `/_napi/da-user-profile/api/gallery/contents` | `da_client/client.py` | Gallery listing |
+| DeviantArt | `/_napi/da-user-profile/api/gallery/contents` | `clients/da/client.py` | Gallery listing |
 | | `/_napi/shared_api/deviation/extended_fetch` | | Deviation detail |
 | | `/{u}/gallery` | | HTML fallback |
-| Wattpad API | `/api/v3/users/{u}/stories/published` | `wp_client/client.py` | Story listing |
-| Itaku API | `/api/user_profiles/{u}/` | `ik_client/client.py` | User resolution |
+| Wattpad API | `/api/v3/users/{u}/stories/published` | `clients/wp/client.py` | Story listing |
+| Itaku API | `/api/user_profiles/{u}/` | `clients/ik/client.py` | User resolution |
 | | `/api/gallery_images/` | | Content discovery |
-| Bluesky AT Proto | `com.atproto.server.createSession` | `bsky_client/client.py` | JWT authentication |
+| Bluesky AT Proto | `com.atproto.server.createSession` | `clients/bsky/client.py` | JWT authentication |
 | | `com.atproto.server.refreshSession` | | Token refresh |
 | | `app.bsky.feed.getAuthorFeed` | | Post discovery |
 | | `app.bsky.feed.getPosts` | | Batch post details |
 | | `app.bsky.actor.getProfile` | | Session validation |
-| X/Twitter GraphQL | `/i/api/graphql/.../UserByScreenName` | `tw_client/client.py` | User ID resolution |
+| X/Twitter GraphQL | `/i/api/graphql/.../UserByScreenName` | `clients/tw/client.py` | User ID resolution |
 | | `/i/api/graphql/.../UserTweets` | | Tweet listing |
 | | `/i/api/graphql/.../TweetResultByRestId` | | Tweet detail |
 | Telegram | `/bot{token}/getUpdates` | `polling/telegram_bot.py` | Long-poll commands |

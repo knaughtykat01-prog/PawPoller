@@ -1,9 +1,11 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-04-26
-**Current version:** 2.14.2 (deployed; tag still at v2.13.8 — see "Release packaging" below)
-**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — server now on 2.14.2 (was crashing on 2.13.1+ because of a vault-mode init order bug; fixed in 2.13.9)
-**GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.13.8 — tag points at commit `7517ad3`. 2.13.9+ has shipped to master + GCP but no new tag has been cut yet (no Windows artifact published)
+**Last updated:** 2026-04-27
+**Current version:** 2.14.3 (deployed; tag still at v2.13.8)
+**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — server on 2.14.3 (verified clean boot 02:33 UTC).
+**GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.13.8 — tag points at commit `7517ad3`. 2.13.9 → 2.14.3 has shipped to master + GCP but no new tag cut yet.
+
+> **2.14.3 file-tree refactor — read this before navigating the codebase.** All 11 platform clients moved into `clients/` (e.g. `api_client/` → `clients/ib/`, `ao3_client/` → `clients/ao3/`, ...). Imports now look like `from clients.ib.client import InkbunnyClient`. Internal docs (HANDOFF, SETUP, ROADMAP_PUBLIC, documentation_guide) moved into `docs/`. Three orphans deleted from root (`112.png`, `TESTING_CHECKLIST.md`, legacy `settings.json`). Zero behaviour change. See CHANGELOG `[2.14.3]` for the full validation gates.
 
 Living document — update as the roadmap shifts. Read this first when picking up a fresh session.
 
@@ -94,6 +96,7 @@ cover/chapter thumbnail uploads, and GitHub release packaging.
 | **8-theme picker (browser + native)** | 2.14.0 | Generalised binary dark/light toggle into 8 cohesive themes via `[data-theme=...]` blocks: dark, light, ink_copper, parchment, midnight_press, forest, velvet, high_contrast. New Settings → Appearance tab with picker grid. Adaptive tokens (`--card-border-inner`, `--overlay-backdrop`, `--shadow-strong`) avoid per-component overrides. No-flash inline theme apply in `<head>` |
 | **Vibe Pack — typography cohesion** | 2.14.1 | Crimson Pro for h1/h2/h3 + page headers + sidebar wordmark, Inter for body, JetBrains Mono for code. Subtle radial body wash (copper top-left, sage bottom-right via theme-aware `--bg-glow-warm`/`--bg-glow-cool`). New `.chip` component, copper diamond brand mark on sidebar wordmark. Closes the cross-surface cohesion gap with the marketing site without sacrificing dashboard density |
 | **Settings auto-sync** | 2.14.2 | Built on the existing 7a sync endpoint. `auto_sync.py` schedules a debounced 2s push on every desktop save and runs a 5-min pull thread; thread-local `_in_pull_merge` guard prevents pull→save→push echoes; localhost-resolved targets skip (so the cloud server can't sync to itself). Browser tabs re-pull prefs on `visibilitychange` so theme changes flow between desktop and browser within seconds. New `auto_sync_enabled` toggle on Appearance tab (default true). Bug fix: `theme` was being silently dropped by the preferences POST handler so it was localStorage-only — now persists to settings.json properly |
+| **Repo file-tree cleanup** | 2.14.3 | Pure organisation. 11 platform clients consolidated under `clients/{ib,ao3,bsky,da,fa,ik,sf,sqw,tw,weasyl,wp}/` (60 .py files import-rewritten via one sed pass; PyInstaller spec + Dockerfile needed no changes). Internal docs moved to `docs/` (README/LICENSE/CONTRIBUTING/CHANGELOG stay at root). 3 root-level orphans deleted. Validation: 166 .py files parse, 47 modules import smoke-test, 30/30 unit tests pass, PyInstaller bundle builds end-to-end |
 
 ### What posted successfully during testing
 - Inkbunny draft of "Late Shift" full story — flipped cell from green ✓ → blue ✓ posted with URL.
@@ -242,6 +245,7 @@ drift detection, deletion probe, re-post.
 - `PawPoller/posting/story_reader.py` — `load_story()`, `build_package()`, platform name cascade
 - `PawPoller/posting/sync.py` — `hash_file()` for drift detection
 - `PawPoller/posting/platforms/{ib,fa,ws,sf,sqw,ao3,da,ik,bsky}.py` — 9 posters
+- `PawPoller/clients/{ib,fa,weasyl,sf,sqw,ao3,da,wp,ik,bsky,tw}/client.py` — 11 platform HTTP clients (consolidated under `clients/` in 2.14.3)
 - `PawPoller/database/posting_queries.py` — `publications` table CRUD
 - `PawPoller/auth/browser_login.py` — embedded browser login module (pywebview cookie capture)
 - `PawPoller/routes/settings_api.py` — settings sync + vault + browser login + setup wizard endpoints
@@ -324,7 +328,7 @@ gcloud compute ssh pawpoller --zone=us-east1-c --command="curl -s -H 'Authorizat
 
 If the user asks to resume, the most useful things to read first are:
 1. This file (HANDOFF.md)
-2. `CHANGELOG.md` top section — covers 2.10.5 through 2.14.2
+2. `../CHANGELOG.md` top section — covers 2.10.5 through 2.14.3
 3. `ROADMAP_PUBLIC.md` — public release plan (all must/should-haves + most nice-to-haves now COMPLETE)
 4. `documentation_guide.md` — full technical reference (now includes auto-sync architecture under "Settings Auto-Sync (2.14.2+)")
 5. **Testing checklists** — all QA artefacts live under `qa/`:
@@ -336,7 +340,7 @@ If the user asks to resume, the most useful things to read first are:
 6. `routes/editor_api.py` + `routes/settings_api.py` — main API surface
 7. `auto_sync.py` — new in 2.14.2; small (~170 LOC), worth a glance before touching settings persistence
 
-### CI / release pipeline state (2026-04-26)
+### CI / release pipeline state (2026-04-27)
 
 The `Build & Release` workflow fires on `v*` tag pushes and has two
 jobs: `test` (Ubuntu, unittest discover) and `build-windows`
@@ -350,10 +354,10 @@ pytest-style so `unittest discover` skips them silently. Switching the
 workflow `test` step to `pytest` would actually run them; not urgent.
 
 **Tag drift**: `v2.13.8` is still the most recent published release.
-2.13.9 / 2.14.0 / 2.14.1 / 2.14.2 have shipped to master + GCP but
-no Windows artifacts have been published. Cutting `v2.14.2` would
-require re-running the build job; do this once the auto-sync work has
-soaked for a day or two.
+2.13.9 → 2.14.3 has shipped to master + GCP but no Windows artifacts
+have been published. Cutting `v2.14.3` would require re-running the
+build job; worth doing once the file-tree refactor + auto-sync work
+have soaked for a day or two.
 
 ### QA status as of 2026-04-26
 
@@ -381,7 +385,7 @@ Remaining:
 - Analytics export (charts, CSV reports)
 - Auto-update mechanism (15d — in-app update download)
 - Weasyl testing (blocked on account verification, not code)
-- Cut `v2.14.2` GitHub release (currently undeployed to release page; master + GCP are ahead)
+- Cut `v2.14.3` GitHub release (currently undeployed to release page; master + GCP are 5 versions ahead of v2.13.8)
 
 Story archive sync commands:
 - `deploy/pawpush.bat` — local → server (push)

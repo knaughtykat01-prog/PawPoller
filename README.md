@@ -105,7 +105,7 @@ Both modes share:
 
 Each platform follows a consistent file pattern:
 ```
-{xx}_client/client.py      -- HTTP client for the platform API
+clients/{xx}/client.py     -- HTTP client for the platform API
 polling/{xx}_poller.py     -- Poll cycle orchestration
 database/{xx}_queries.py   -- Database queries
 database/{xx}_schema.sql   -- SQL schema

@@ -371,9 +371,9 @@ Adds a Turnstile challenge to the login form. Useful if you've exposed the dashb
 
 ## 7. Where to go next
 
-- `documentation_guide.md` — full technical reference (architecture, threading, database schema, every API endpoint)
-- `CHANGELOG.md` — what shipped in each version
-- `CONTRIBUTING.md` — dev setup, adding a new platform, code style
-- `ROADMAP_PUBLIC.md` — what's planned
+- [`documentation_guide.md`](documentation_guide.md) — full technical reference (architecture, threading, database schema, every API endpoint, every platform client under `clients/`)
+- [`../CHANGELOG.md`](../CHANGELOG.md) — what shipped in each version
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — dev setup, adding a new platform, code style
+- [`ROADMAP_PUBLIC.md`](ROADMAP_PUBLIC.md) — what's planned
 
 If something's missing or wrong, open an issue — this guide gets updated as the app evolves.

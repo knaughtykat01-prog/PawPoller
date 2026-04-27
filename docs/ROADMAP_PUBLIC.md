@@ -118,4 +118,4 @@ What's live right now on GitHub:
 - MIT license, .env.example, `.gitignore` hardened, no secrets in tracked files
 - Single `v2.13.8` release with structured release notes (old v1.x releases from the pre-rename era deleted)
 
-See `CHANGELOG.md` for the per-version detail.
+See [`../CHANGELOG.md`](../CHANGELOG.md) for the per-version detail.
