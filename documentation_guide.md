@@ -104,6 +104,7 @@ PawPoller/
 ├── config.py                # Paths, credentials, settings.json helpers
 ├── dashboard.py             # FastAPI app factory, session auth middleware, rate limiting, security headers, SPA serving
 ├── updater.py               # Auto-update (desktop only)
+├── auto_sync.py             # Settings auto-sync: debounced push + 5-min pull thread (desktop ↔ server)
 │
 ├── api_client/              # Inkbunny API client
 │   └── client.py            #   InkbunnyClient class with SID caching
@@ -1546,6 +1547,8 @@ Platform-specific extras:
 | `minimize_to_tray` | bool | false | — | Hide to tray on close (desktop) |
 | `run_on_startup` | bool | false | — | Windows registry entry (desktop) |
 | `display_timezone` | string | "UTC" | — | Timezone for Telegram messages |
+| `theme` | string | "dark" | one of {dark, light, ink_copper, parchment, midnight_press, forest, velvet, high_contrast} | UI theme; persists to settings.json so it syncs cross-device |
+| `auto_sync_enabled` | bool | true | — | Master toggle for the desktop ↔ server settings auto-sync (see "Settings auto-sync") |
 | `notifications_enabled` | bool | true | — | IB master notification toggle |
 | `fa_notifications_enabled` | bool | true | — | FA master notification toggle |
 | `ws_notifications_enabled` | bool | true | — | WS master notification toggle |
@@ -1962,6 +1965,26 @@ Desktop and server instances can share credentials via `POST /api/settings/sync`
 - `GET /api/settings/sync/status` — returns server version, settings timestamp, credential_mode, total key count.
 - Desktop startup pull (`main.py`): `_sync_settings_on_startup()` pulls from the server on launch if `credential_mode != "local"` and server URL is configured. Failures are non-fatal.
 - Dashboard UI: Settings > Data tab > "Settings Sync" section with Pull / Push / Status buttons.
+
+### Settings Auto-Sync (2.14.2+)
+
+Built on top of the Phase 7a sync endpoint, but runs automatically without manual button presses. Lives in `auto_sync.py`. Activates only when `posting_server_url` + `posting_server_api_key` are set AND `auto_sync_enabled` is true (default).
+
+**Three moving parts:**
+
+1. **Push side (desktop → server).** `config.save_settings()` calls `auto_sync.schedule_push()` after every successful write. The push is debounced ~2s on a daemon `threading.Timer` so bursts (wizard steps, multi-toggle saves) collapse into one HTTP request. Fire-and-forget — failures log at debug level only.
+2. **Pull side (desktop ← server).** `auto_sync.start_pull_thread()` is launched once from `main.py` after the existing one-shot startup pull. Loop interval: `AUTO_SYNC_PULL_INTERVAL_SECONDS = 300` (5 min). Each iteration calls `pull_once()`, which compares server `mtime` against local `mtime` (last-writer-wins) and only merges when the server is newer.
+3. **Browser focus refresh.** `App.init()` registers a `visibilitychange` listener (throttled to once per 3s) that pulls `/api/settings/preferences` and reapplies the theme if it changed. So a desktop theme switch repaints any open browser tab on next focus.
+
+**Loop protection.** Because `merge_synced_settings()` calls `save_settings()`, and `save_settings()` triggers a push, a pulled merge would echo every key right back to the server. The `_in_pull_merge` thread-local flag is set inside `pull_once()` for the duration of the merge, and `schedule_push()` skips when the flag is active.
+
+**Loopback skip.** `_sync_target()` returns `None` when the configured `posting_server_url` resolves to `localhost` or `127.0.0.1`, so the cloud server can't try to sync to itself.
+
+**Excluded from auto-sync** (same `SYNC_EXCLUDE` set as manual sync): `credential_mode`, `auth_session_secret`, `minimize_to_tray`.
+
+**Toggle.** `auto_sync_enabled` (default `true`) is exposed in **Settings → Appearance**. Setting `false` disables both push scheduling and the pull loop's effective work (the thread keeps running but no-ops).
+
+**Server side is unchanged.** The cloud server has no `posting_server_url` set, so `_sync_target()` returns `None` for it — the auto-sync hooks become quiet no-ops. All sync traffic still goes through `POST /api/settings/sync`.
 
 ### Three-Tier Credential Cascade
 
