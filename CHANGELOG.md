@@ -80,6 +80,26 @@ expanded `SYNC_EXCLUDE`), `main.py` (gated 11-thread block),
 `frontend/js/app.js` (wizard rebuild + Setup Mode panel + handler
 gating), `frontend/css/components.css` (mode-picker cards).
 
+### Update button hidden on server runtime
+
+Follow-up to the scope-tagging pass: the in-app self-update flow only
+works on a frozen PyInstaller .exe (Windows-only batch script,
+`os.startfile`, `robocopy /MIR /XD data logs`). On the Docker server
+the "Update Now" button rendered but clicking it returned a 500 from
+the underlying `updater.apply_update()` guard. Now both apply
+affordances are hidden when `runtime_mode == "server"`:
+
+- Sidebar "v2.14.x available" banner: button replaced with a small
+  "rebuild on host" hint.
+- Settings → About "Update Available" panel: button removed, replaced
+  with a one-line note pointing at `pawupdate` / `docker compose up
+  -d --build`.
+
+The version-check call still runs on both runtimes so admins see at
+a glance when there's a newer release upstream — only the apply
+button is gated. Cached `this._runtimeMode` after the first
+`getSetupStatus` call so the sidebar render stays cheap.
+
 ---
 
 ## [2.14.5] - 2026-04-27

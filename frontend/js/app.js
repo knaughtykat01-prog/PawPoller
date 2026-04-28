@@ -309,6 +309,20 @@ const App = {
         const container = document.getElementById('sidebar-version');
         if (!container) return;
         try {
+            // Resolve runtime mode once at init. The auto-update apply
+            // path only works on a frozen PyInstaller .exe — server
+            // (Docker) installs are updated by `pawupdate` on the host.
+            // Cache the value so _renderSidebarVersion can decide
+            // whether to show the apply button or a "rebuild on host"
+            // hint without re-fetching every check.
+            if (this._runtimeMode === undefined) {
+                try {
+                    const status = await API.getSetupStatus();
+                    this._runtimeMode = status.runtime_mode || 'desktop';
+                } catch {
+                    this._runtimeMode = 'desktop';
+                }
+            }
             const info = await API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' }));
             this._renderSidebarVersion(container, info);
         } catch {
@@ -317,10 +331,18 @@ const App = {
     },
 
     _renderSidebarVersion(container, info) {
+        const isServer = this._runtimeMode === 'server';
         if (info.available) {
+            // On server runtime the in-app apply path can't work
+            // (it needs a frozen .exe + Windows batch script), so
+            // show only the version banner — admin updates via
+            // `pawupdate` / `docker compose up --build` on the host.
+            const updateBtn = isServer
+                ? `<span class="version-text" title="Update with pawupdate / docker compose --build on the host" style="font-size:10px;color:var(--text-muted)">rebuild on host</span>`
+                : `<button class="btn-update-now" id="sidebar-update-btn">Update Now</button>`;
             container.innerHTML = `
                 <span class="update-available">v${Utils.escapeHtml(info.latest)} available</span>
-                <button class="btn-update-now" id="sidebar-update-btn">Update Now</button>`;
+                ${updateBtn}`;
             document.getElementById('sidebar-update-btn')?.addEventListener('click', async () => {
                 if (!confirm('Download and apply the update? The app will restart.')) return;
                 const btn = document.getElementById('sidebar-update-btn');
@@ -6028,8 +6050,9 @@ const App = {
                     <div class="settings-row">
                         <div>
                             <span class="settings-label">Current: ${Utils.escapeHtml(updateInfo.current)} &rarr; Latest: ${Utils.escapeHtml(updateInfo.latest)}</span>
+                            ${_isServer ? '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">This is a server install — update by running <code>pawupdate</code> (or <code>git pull &amp;&amp; docker compose up -d --build</code>) on the host.</div>' : ''}
                         </div>
-                        <button class="btn btn-primary" id="apply-update-btn">Update Now</button>
+                        ${_isServer ? '' : '<button class="btn btn-primary" id="apply-update-btn">Update Now</button>'}
                     </div>
                 </div>` : `
                 <div class="settings-section">
