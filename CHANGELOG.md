@@ -4,6 +4,84 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.14.6] - 2026-04-28
+
+### Coordinated desktop ↔ server architecture (no more dual polling)
+
+Closes the asynchronicity gap users hit when running the desktop app
+alongside the Docker container: both instances were polling on their
+own schedules, racing to update the same database, and double-firing
+"all polls complete" notifications. Now there is exactly one polling
+owner at any time, decided by an explicit `setup_mode` setting.
+
+**Three modes.** The setting takes one of three values:
+
+- `standalone` — desktop runs solo, polls + posts locally. The default
+  for fresh installs that pick "Just on this computer" in the wizard.
+- `paired_desktop` — desktop runs alongside a remote server. Settings
+  flow server → desktop via the existing auto-sync pull, polling is
+  delegated to the server, but the desktop still posts (since posting
+  reads from the local story archive).
+- `server` — the headless Docker container. Always polls. Stamped
+  unconditionally on `server.py` startup so the wizard never has to
+  ask, and so it can never wander into the standalone branch.
+
+**Polling-owner gate.** `config.get_polling_owner(runtime)` returns
+`"local"` if the running process should own the poll loop, `"server"`
+if a remote one does. `main.py` reads this on startup; when the answer
+is `"server"`, it skips the 11 per-platform poller threads + digest
+scheduler entirely. Telegram bot, posting scheduler, and uvicorn still
+start (they're independent of polling). The decision is logged at
+INFO so you can see at a glance which side is doing the work.
+
+**Wizard rebuilt around mode-first branching.** Desktop installs now
+hit a Q1 — "How are you running PawPoller?" — with two cards
+("Just on this computer" / "Pair with my server"). The paired branch
+collects URL + API key, validates them via a new `/api/settings/pair-test`
+endpoint (HTTPS-required for non-localhost; reuses the same rule as the
+auto-sync push guard), and triggers an immediate first-pull on success
+so the user doesn't wait 5 minutes for their server's settings to land.
+Pairing completion sets `auto_sync_enabled = true` and skips the
+archive + platform-connection steps — those settings come down with the
+sync pull. Server runtime skips Q1 entirely (it's always "server").
+
+**Re-run wizard from Settings.** New "Setup Mode" panel at the top of
+the General tab shows the current mode badge + polling-owner status +
+remote URL (when paired). A Re-run setup button clears
+`setup_complete` and bounces back to `#/setup` so users can flip
+between standalone and paired without reinstalling. Hidden on the
+server runtime where the mode is fixed.
+
+**Setting scope tagging.** `SYNC_EXCLUDE` expanded to cover
+desktop-only fields (`run_on_startup`, `setup_mode`) so they never
+leak into the server's settings dump. Three desktop-only preference
+rows (`Minimize to tray`, `Start with Windows`, `Desktop notifications`)
+are conditionally rendered in Settings — visible on desktop, hidden on
+server. Their event handlers all use `?.` in case the runtime mode
+changes mid-session.
+
+**`auto_sync` server self-protection.** The push path now refuses to
+fire when `setup_mode == "server"`, regardless of what
+`posting_server_url` says. Closes a foot-gun where a server with a
+stray pairing URL (e.g. accidentally set during testing) would push to
+that target on every settings change.
+
+**Why now.** The user flagged duplicate "all polls complete"
+notifications and asked us to scope the underlying coordination
+problem. This is the resolution: one explicit owner, simple branching
+in the wizard, no more racing pollers.
+
+**Files touched.** `config.py` (mode constants, `get_polling_owner`,
+expanded `SYNC_EXCLUDE`), `main.py` (gated 11-thread block),
+`server.py` (force-set `setup_mode = server` on boot),
+`auto_sync.py` (server self-push guard), `routes/settings_api.py`
+(`setup-mode`, `pair-test`, `setup-reset` endpoints; richer
+`setup-status`), `frontend/js/api.js` (3 new methods),
+`frontend/js/app.js` (wizard rebuild + Setup Mode panel + handler
+gating), `frontend/css/components.css` (mode-picker cards).
+
+---
+
 ## [2.14.5] - 2026-04-27
 
 ### Refactor pass — audit-pass debt cleanup

@@ -782,54 +782,70 @@ def main():
     server_thread = threading.Thread(target=_start_server, daemon=True)
     server_thread.start()
 
-    logger.info("Starting background poller...")
-    poller_thread = threading.Thread(target=_start_poller, daemon=True)
-    poller_thread.start()
+    # --- Polling ownership gate ---
+    # If this desktop install is paired with a remote server, the server
+    # owns the poll loop. Starting our own pollers would duplicate every
+    # request and double-fire "all polls complete" notifications.
+    polling_owner = config.get_polling_owner("desktop")
+    setup_mode = config.get_settings().get("setup_mode") or "(inferred)"
+    if polling_owner == "local":
+        logger.info("Polling owner: local desktop (mode=%s) — starting %d poller threads",
+                    setup_mode, 11)
 
-    logger.info("Starting FA background poller...")
-    fa_poller_thread = threading.Thread(target=_start_fa_poller, daemon=True)
-    fa_poller_thread.start()
+        logger.info("Starting background poller...")
+        poller_thread = threading.Thread(target=_start_poller, daemon=True)
+        poller_thread.start()
 
-    logger.info("Starting WS background poller...")
-    ws_poller_thread = threading.Thread(target=_start_ws_poller, daemon=True)
-    ws_poller_thread.start()
+        logger.info("Starting FA background poller...")
+        fa_poller_thread = threading.Thread(target=_start_fa_poller, daemon=True)
+        fa_poller_thread.start()
 
-    logger.info("Starting SF background poller...")
-    sf_poller_thread = threading.Thread(target=_start_sf_poller, daemon=True)
-    sf_poller_thread.start()
+        logger.info("Starting WS background poller...")
+        ws_poller_thread = threading.Thread(target=_start_ws_poller, daemon=True)
+        ws_poller_thread.start()
 
-    logger.info("Starting SqW background poller...")
-    sqw_poller_thread = threading.Thread(target=_start_sqw_poller, daemon=True)
-    sqw_poller_thread.start()
+        logger.info("Starting SF background poller...")
+        sf_poller_thread = threading.Thread(target=_start_sf_poller, daemon=True)
+        sf_poller_thread.start()
 
-    logger.info("Starting AO3 background poller...")
-    ao3_poller_thread = threading.Thread(target=_start_ao3_poller, daemon=True)
-    ao3_poller_thread.start()
+        logger.info("Starting SqW background poller...")
+        sqw_poller_thread = threading.Thread(target=_start_sqw_poller, daemon=True)
+        sqw_poller_thread.start()
 
-    logger.info("Starting DA background poller...")
-    da_poller_thread = threading.Thread(target=_start_da_poller, daemon=True)
-    da_poller_thread.start()
+        logger.info("Starting AO3 background poller...")
+        ao3_poller_thread = threading.Thread(target=_start_ao3_poller, daemon=True)
+        ao3_poller_thread.start()
 
-    logger.info("Starting WP background poller...")
-    wp_poller_thread = threading.Thread(target=_start_wp_poller, daemon=True)
-    wp_poller_thread.start()
+        logger.info("Starting DA background poller...")
+        da_poller_thread = threading.Thread(target=_start_da_poller, daemon=True)
+        da_poller_thread.start()
 
-    logger.info("Starting IK background poller...")
-    ik_poller_thread = threading.Thread(target=_start_ik_poller, daemon=True)
-    ik_poller_thread.start()
+        logger.info("Starting WP background poller...")
+        wp_poller_thread = threading.Thread(target=_start_wp_poller, daemon=True)
+        wp_poller_thread.start()
 
-    logger.info("Starting BSKY background poller...")
-    bsky_poller_thread = threading.Thread(target=_start_bsky_poller, daemon=True)
-    bsky_poller_thread.start()
+        logger.info("Starting IK background poller...")
+        ik_poller_thread = threading.Thread(target=_start_ik_poller, daemon=True)
+        ik_poller_thread.start()
 
-    logger.info("Starting TW background poller...")
-    tw_poller_thread = threading.Thread(target=_start_tw_poller, daemon=True)
-    tw_poller_thread.start()
+        logger.info("Starting BSKY background poller...")
+        bsky_poller_thread = threading.Thread(target=_start_bsky_poller, daemon=True)
+        bsky_poller_thread.start()
 
-    logger.info("Starting Telegram digest scheduler...")
-    digest_thread = threading.Thread(target=_start_digest_scheduler, daemon=True)
-    digest_thread.start()
+        logger.info("Starting TW background poller...")
+        tw_poller_thread = threading.Thread(target=_start_tw_poller, daemon=True)
+        tw_poller_thread.start()
 
+        logger.info("Starting Telegram digest scheduler...")
+        digest_thread = threading.Thread(target=_start_digest_scheduler, daemon=True)
+        digest_thread.start()
+    else:
+        logger.info("Polling owner: remote server (mode=%s) — local pollers + digest skipped",
+                    setup_mode)
+
+    # The Telegram bot, posting scheduler, and uvicorn server run regardless
+    # of polling ownership. The bot listens for /poll commands the user might
+    # send manually, and posting is a desktop-side action even when paired.
     logger.info("Starting Telegram bot command listener...")
     bot_thread = threading.Thread(target=_start_telegram_bot, daemon=True)
     bot_thread.start()

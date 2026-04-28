@@ -128,10 +128,18 @@ async def setup_status():
 
     Returns whether initial setup has been completed, plus a summary of
     what has been configured so the wizard can pre-populate or skip steps.
+    Also reports ``runtime_mode`` (desktop vs server) so the frontend can
+    skip the local-vs-server question on the headless container — there
+    the answer is always "server".
     """
     settings = config.get_settings()
+    from auth.browser_login import is_browser_login_available
+    runtime_mode = "desktop" if is_browser_login_available() else "server"
     return {
         "setup_complete": settings.get("setup_complete", False),
+        "setup_mode": settings.get("setup_mode"),
+        "runtime_mode": runtime_mode,
+        "polling_owner": config.get_polling_owner(runtime_mode),
         "has_archive_path": bool(settings.get("posting_story_archive_path")),
         "platforms_connected": sum(
             1 for key in (
@@ -144,6 +152,18 @@ async def setup_status():
     }
 
 
+@settings_router.post("/setup-reset")
+async def reset_setup():
+    """Clear ``setup_complete`` so the user goes back through the wizard.
+
+    Doesn't touch credentials, the chosen mode, or pairing config — just
+    flips the "first-run done" flag. Used by the Settings page's
+    "Re-run setup wizard" button.
+    """
+    config.save_settings({"setup_complete": False})
+    return {"ok": True}
+
+
 @settings_router.post("/setup-complete")
 async def mark_setup_complete():
     """Mark the first-run setup wizard as completed.
@@ -153,6 +173,134 @@ async def mark_setup_complete():
     """
     config.save_settings({"setup_complete": True})
     return {"ok": True}
+
+
+class SetupModeRequest(BaseModel):
+    mode: str  # standalone | paired_desktop | server
+    posting_server_url: str | None = None
+    posting_server_api_key: str | None = None
+
+
+@settings_router.post("/setup-mode")
+async def set_setup_mode(req: SetupModeRequest):
+    """Persist the chosen setup mode (and pairing creds, if paired_desktop).
+
+    Validates the mode is one of the known values. For ``paired_desktop``,
+    requires ``posting_server_url`` + ``posting_server_api_key``. The
+    polling-owner gate in main.py reads ``setup_mode`` on startup, so the
+    user must restart for the gate to take effect — but auto-sync picks
+    up the new server URL immediately.
+    """
+    if req.mode not in config.VALID_SETUP_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown setup_mode: {req.mode}. "
+                   f"Valid: {', '.join(sorted(config.VALID_SETUP_MODES))}",
+        )
+
+    update: dict = {"setup_mode": req.mode}
+    if req.mode == config.SETUP_MODE_PAIRED:
+        url = (req.posting_server_url or "").strip().rstrip("/")
+        api_key = (req.posting_server_api_key or "").strip()
+        if not url or not api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="paired_desktop mode requires posting_server_url and posting_server_api_key",
+            )
+        update["posting_server_url"] = url
+        update["posting_server_api_key"] = api_key
+        update["auto_sync_enabled"] = True
+    elif req.mode == config.SETUP_MODE_STANDALONE:
+        # Pure standalone — explicitly clear any stale pairing config so
+        # auto-sync stops trying to talk to a server the user no longer
+        # wants paired. We deliberately leave the API key alone (the user
+        # may have minted it for another purpose).
+        update["posting_server_url"] = ""
+        update["auto_sync_enabled"] = False
+
+    config.save_settings(update)
+    logger.info("setup_mode set to %r (paired_url=%r)",
+                req.mode, update.get("posting_server_url"))
+
+    # Immediate first-pull on paired-desktop so the user sees the server's
+    # settings right away instead of waiting for the 5-minute pull cadence.
+    pulled_keys = 0
+    if req.mode == config.SETUP_MODE_PAIRED:
+        try:
+            import auto_sync
+            if auto_sync.pull_once():
+                # pull_once doesn't surface a count, so re-read settings to
+                # tell the user how much actually arrived. Approximate but
+                # informative.
+                pulled_keys = len(config.get_settings())
+        except Exception as e:
+            logger.warning("Initial pairing pull failed: %s", e)
+
+    return {
+        "ok": True,
+        "setup_mode": req.mode,
+        "pulled_keys": pulled_keys,
+    }
+
+
+class PairingTestRequest(BaseModel):
+    posting_server_url: str
+    posting_server_api_key: str
+
+
+@settings_router.post("/pair-test")
+async def pair_test(req: PairingTestRequest):
+    """Validate pairing credentials by probing the remote server.
+
+    Calls ``GET /api/settings/sync/status`` on the target. Used by the
+    setup wizard to give immediate feedback before the user commits to
+    the pairing. Returns the remote ``version`` and ``timestamp`` on
+    success so the wizard can warn about version mismatches.
+
+    Requires HTTPS for non-localhost targets — same rule as auto_sync's
+    push path, since this endpoint asks the user to send their bearer
+    token to a URL we're about to validate.
+    """
+    import httpx
+
+    url = req.posting_server_url.strip().rstrip("/")
+    api_key = req.posting_server_api_key.strip()
+    if not url or not api_key:
+        return {"ok": False, "error": "URL and API key are required"}
+
+    is_loopback = "localhost" in url or "127.0.0.1" in url
+    if not is_loopback and not url.lower().startswith("https://"):
+        return {
+            "ok": False,
+            "error": "Server URL must use https:// (the API key is sent as a bearer token).",
+        }
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{url}/api/settings/sync/status",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+    except Exception as e:
+        return {"ok": False, "error": f"Could not reach server: {e}"}
+
+    if resp.status_code == 401:
+        return {"ok": False, "error": "API key rejected (HTTP 401). Check the key on the server."}
+    if resp.status_code != 200:
+        return {"ok": False, "error": f"Server returned HTTP {resp.status_code}"}
+
+    try:
+        body = resp.json()
+    except Exception:
+        return {"ok": False, "error": "Server returned non-JSON response"}
+
+    return {
+        "ok": True,
+        "remote_version": body.get("version"),
+        "remote_timestamp": body.get("timestamp"),
+        "local_version": config.APP_VERSION,
+        "version_match": body.get("version") == config.APP_VERSION,
+    }
 
 
 # ── Browser login (embedded pywebview popup) ──────────────────

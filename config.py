@@ -450,7 +450,64 @@ SYNC_EXCLUDE = frozenset({
     "credential_mode",
     "auth_session_secret",
     "minimize_to_tray",
+    # Desktop-only — never leak to the server settings dump
+    "run_on_startup",
+    # Setup mode is decided per-device (server is always "server"; desktop
+    # is "standalone" or "paired_desktop"). Syncing it would let one side
+    # overwrite the other's mode, which is exactly what we don't want.
+    "setup_mode",
 })
+
+
+# ── Setup mode + polling ownership ────────────────────────────
+# `setup_mode` tells each instance what role it plays. Three values:
+#
+#   "standalone"     — Desktop only; no server. Polls locally.
+#   "paired_desktop" — Desktop running alongside a remote server; pulls
+#                      settings from the server, defers polling to it,
+#                      but can still post stories from the local archive.
+#   "server"         — Headless container. Always polls.
+#
+# When `setup_mode` is unset (existing installs upgraded from < 2.14.6),
+# we infer from runtime + presence of `posting_server_url` so behaviour
+# matches what the user already had.
+
+SETUP_MODE_STANDALONE = "standalone"
+SETUP_MODE_PAIRED = "paired_desktop"
+SETUP_MODE_SERVER = "server"
+VALID_SETUP_MODES = frozenset({SETUP_MODE_STANDALONE, SETUP_MODE_PAIRED, SETUP_MODE_SERVER})
+
+
+def get_polling_owner(runtime: str) -> str:
+    """Return ``"local"`` if this process should run the poll loop, else ``"server"``.
+
+    ``runtime`` is the entry point: ``"desktop"`` (main.py) or
+    ``"server"`` (server.py). The server is always the polling owner on
+    its own box — there's no other PawPoller that could run there. The
+    desktop is the polling owner only when it knows it's standalone.
+
+    Inference rules for unset ``setup_mode`` (back-compat with installs
+    that predate the mode setting):
+
+    * Desktop with ``posting_server_url`` set → assume paired; server polls.
+    * Desktop with no server URL → assume standalone; desktop polls.
+    """
+    if runtime == "server":
+        return "local"  # this process *is* the server, it polls
+    settings = get_settings()
+    mode = settings.get("setup_mode")
+    if mode == SETUP_MODE_PAIRED:
+        return "server"
+    if mode == SETUP_MODE_STANDALONE:
+        return "local"
+    if mode == SETUP_MODE_SERVER:
+        # Defensive: a desktop install shouldn't have mode=server, but if
+        # it somehow does we don't want it polling and racing the real one.
+        return "server"
+    # No mode set — fall back to the implicit pairing signal.
+    if settings.get("posting_server_url") and settings.get("posting_server_api_key"):
+        return "server"
+    return "local"
 
 
 def get_credential_mode() -> str:
@@ -571,7 +628,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.14.5"
+APP_VERSION = "2.14.6"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

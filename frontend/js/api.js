@@ -463,6 +463,9 @@ const API = {
     /* ── Setup wizard ─────────────────────────────────────────── */
     getSetupStatus() { return this.get('/api/settings/setup-status'); },
     markSetupComplete() { return this.post('/api/settings/setup-complete'); },
+    setSetupMode(payload) { return this.post('/api/settings/setup-mode', payload); },
+    pairTest(payload) { return this.post('/api/settings/pair-test', payload); },
+    resetSetupWizard() { return this.post('/api/settings/setup-reset'); },
 
     /* ── Browser login (embedded pywebview popup) ────────────── */
     getBrowserLoginPlatforms() { return this.get('/api/settings/browser-login/platforms'); },

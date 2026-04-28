@@ -68,6 +68,32 @@ Polling-side improvements (outside the original phase plan but shipped as part o
 - [ ] **Thumbnail auto-resize** — Pillow is already a dep; fall back to auto-resize when an uploaded cover exceeds a platform's size cap instead of surfacing an error.
 - [ ] **Story template library** — beyond the 9 genre presets, let users save their own starting templates (e.g. "my chaptered m/m romance template with these 12 tags pre-selected").
 
+### Coordinated desktop ↔ server (2.14.6 — done)
+
+Closes the dual-polling problem reported by the user: explicit
+`setup_mode` ∈ `{standalone, paired_desktop, server}`, polling-owner
+gate in `main.py`, server runtime force-stamps `setup_mode = server`.
+Wizard rebuilt around a Q1 mode question with a paired-pairing flow
+that validates URL+API key and triggers an immediate first-pull.
+Settings page gets a Setup Mode panel + Re-run wizard button. See
+HANDOFF.md and CHANGELOG `[2.14.6]` for the full story.
+
+- [x] **`polling_owner` gate** — `get_polling_owner(runtime)` returns
+  `"local"` or `"server"`; `main.py` skips the 11-thread block when
+  the answer is `"server"`.
+- [x] **Three-mode setup wizard** — desktop installs answer "Just on
+  this computer" or "Pair with my server"; server runtime skips Q1
+  entirely.
+- [x] **Setting scope tagging** — `SYNC_EXCLUDE` expanded for
+  desktop-only fields; tray/startup/notifications hidden on server
+  runtime.
+- [x] **`auto_sync` server self-protection** — push refuses when
+  `setup_mode == "server"` regardless of `posting_server_url`.
+- [ ] **Re-pair flow for switching servers** — current Re-run wizard
+  works for the standalone↔paired flip but assumes one server at a
+  time. If users start running multiple PawPoller boxes a "Switch
+  server" affordance with old-pairing-cleanup makes sense.
+
 ### Audit-pass debt
 
 Came out of the 2026-04-27 audit pass. Three resolved in 2.14.5,

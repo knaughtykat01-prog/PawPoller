@@ -377,6 +377,17 @@ def main():
     # Step 2b: Migrate legacy plaintext password to bcrypt hash
     config.migrate_dashboard_auth()
 
+    # Step 2c: Force setup_mode = "server" on first run. The headless
+    # container is unambiguously the server side of any pairing — we
+    # never want it to fall through to "standalone" inference and stop
+    # polling for itself, and we never want it to try to push settings
+    # to a configured posting_server_url (that'd be a loopback storm).
+    _settings_now = config.get_settings()
+    if _settings_now.get("setup_mode") != config.SETUP_MODE_SERVER:
+        config.save_settings({"setup_mode": config.SETUP_MODE_SERVER})
+        logger.info("setup_mode set to 'server' (was %r)",
+                    _settings_now.get("setup_mode"))
+
     # Step 3: Launch daemon threads
     # The poll orchestrator replaces the old 11 per-platform poller threads
     # and the digest scheduler with a single unified clock thread.

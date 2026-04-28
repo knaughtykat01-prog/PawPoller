@@ -65,6 +65,14 @@ def _sync_target():
     settings = config.get_settings()
     if not settings.get("auto_sync_enabled", True):
         return None
+    # The headless server never pushes anywhere — it is the source of
+    # truth in any pairing. Without this guard a server with a stray
+    # `posting_server_url` value (e.g. accidentally set during setup,
+    # or pointing at itself) tries to push to that target every time
+    # settings change, which is wasted work at best and a config loop
+    # at worst.
+    if settings.get("setup_mode") == config.SETUP_MODE_SERVER:
+        return None
     server_url = (settings.get("posting_server_url") or "").rstrip("/")
     api_key = settings.get("posting_server_api_key") or ""
     if not server_url or not api_key:

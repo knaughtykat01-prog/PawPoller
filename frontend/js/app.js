@@ -894,13 +894,28 @@ const App = {
     },
 
     /* ── Setup Wizard ─────────────────────────────────────────
-     * renderSetupWizard() — First-run guided experience for new users.
-     * Multi-step wizard: Welcome -> Story Archive -> Platform Connections -> Done.
-     * Shown when settings.json has no setup_complete flag. On completion,
-     * marks setup_complete=true and redirects to the main dashboard. */
+     * renderSetupWizard() — First-run guided experience.
+     *
+     * Branching by runtime + chosen mode:
+     *
+     *   server runtime (Docker container):
+     *     1 Welcome -> 3 Archive -> 4 Platforms -> 5 Done
+     *     (no mode question — server is always 'server')
+     *
+     *   desktop runtime, standalone:
+     *     1 Welcome -> 2 Mode -> 3 Archive -> 4 Platforms -> 5 Done
+     *
+     *   desktop runtime, paired_desktop:
+     *     1 Welcome -> 2 Mode -> 2b Pairing -> 5 Done
+     *     (archive path + platform creds get pulled from the server in
+     *      the pairing step, no need to ask twice)
+     *
+     * On completion, marks setup_complete=true and redirects to the
+     * main dashboard. The polling-owner gate in main.py reads
+     * setup_mode at startup, so a fresh restart applies. */
 
     async renderSetupWizard() {
-        /* Platform definitions for step 3 — reuses emoji + colour from the nav grid */
+        /* Platform definitions for the platform-connect step — reuses emoji + colour from the nav grid */
         const platforms = [
             { key: 'ib', name: 'Inkbunny', emoji: '&#128062;', color: 'var(--platform-ib)', url: 'https://inkbunny.net/login.php' },
             { key: 'fa', name: 'FurAffinity', emoji: '&#129418;', color: 'var(--platform-fa)', url: 'https://www.furaffinity.net/login/' },
@@ -915,20 +930,20 @@ const App = {
             { key: 'tw', name: 'X / Twitter', emoji: '&#128038;', color: 'var(--platform-tw)', url: 'https://twitter.com/login' },
         ];
 
-        /* Fetch current state so we can pre-populate step 2 and show
-         * connection status in step 3 */
+        /* Detect runtime and pre-load existing state so the wizard can
+         * pre-populate fields and show "already connected" badges. */
+        let runtimeMode = 'desktop';
         let archivePath = '';
-        let connectedPlatforms = 0;
+        try {
+            const status = await API.getSetupStatus().catch(() => ({}));
+            runtimeMode = status.runtime_mode || 'desktop';
+        } catch { /* ignore */ }
         try {
             const posting = await API.getPostingSettings().catch(() => ({}));
             archivePath = posting.posting_story_archive_path || '';
         } catch { /* ignore */ }
-        try {
-            const status = await API.getSetupStatus().catch(() => ({}));
-            connectedPlatforms = status.platforms_connected || 0;
-        } catch { /* ignore */ }
 
-        /* Fetch per-platform auth status for step 3 */
+        /* Per-platform connection status (used in the platforms step) */
         const authStatus = {};
         try {
             const [ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw] = await Promise.all([
@@ -957,32 +972,104 @@ const App = {
             authStatus.tw = tw.has_credentials;
         } catch { /* ignore — all default to undefined/false */ }
 
-        /* Current step state — managed via closure */
-        let currentStep = 1;
+        /* Wizard state */
+        let currentStep = 'welcome';
+        // Server runtime skips mode + pairing entirely — it's always 'server'.
+        let selectedMode = runtimeMode === 'server' ? 'server' : null;
+        let pairingUrl = '';
+        let pairingKey = '';
+        let pairingError = '';
+        let pairingBusy = false;
+
+        /* Step ordering — recomputed each render so paired_desktop's
+         * "skip archive + platforms" branch falls out naturally. */
+        const stepOrder = () => {
+            if (runtimeMode === 'server') {
+                return ['welcome', 'archive', 'platforms', 'done'];
+            }
+            if (selectedMode === 'paired_desktop') {
+                return ['welcome', 'mode', 'pairing', 'done'];
+            }
+            // standalone (or undecided) — full flow
+            return ['welcome', 'mode', 'archive', 'platforms', 'done'];
+        };
+
+        const stepIndex = () => {
+            const order = stepOrder();
+            const i = order.indexOf(currentStep);
+            return i === -1 ? 0 : i;
+        };
 
         const renderStep = () => {
-            const stepsHtml = `
-                <div class="setup-steps">
-                    <div class="setup-step-dot ${currentStep >= 1 ? 'active' : ''} ${currentStep > 1 ? 'done' : ''}">1</div>
-                    <div class="setup-step-line ${currentStep > 1 ? 'active' : ''}"></div>
-                    <div class="setup-step-dot ${currentStep >= 2 ? 'active' : ''} ${currentStep > 2 ? 'done' : ''}">2</div>
-                    <div class="setup-step-line ${currentStep > 2 ? 'active' : ''}"></div>
-                    <div class="setup-step-dot ${currentStep >= 3 ? 'active' : ''} ${currentStep > 3 ? 'done' : ''}">3</div>
-                    <div class="setup-step-line ${currentStep > 3 ? 'active' : ''}"></div>
-                    <div class="setup-step-dot ${currentStep >= 4 ? 'active' : ''}">4</div>
-                </div>`;
+            const order = stepOrder();
+            const total = order.length;
+            const currentIdx = stepIndex();
+
+            // Step indicator dots — one per step in the current path.
+            const dots = [];
+            for (let i = 0; i < total; i++) {
+                const cls = i < currentIdx ? 'active done'
+                    : i === currentIdx ? 'active' : '';
+                dots.push(`<div class="setup-step-dot ${cls}">${i + 1}</div>`);
+                if (i < total - 1) {
+                    const lineCls = i < currentIdx ? 'active' : '';
+                    dots.push(`<div class="setup-step-line ${lineCls}"></div>`);
+                }
+            }
+            const stepsHtml = `<div class="setup-steps">${dots.join('')}</div>`;
 
             let body = '';
 
-            if (currentStep === 1) {
-                /* ── Step 1: Welcome ──────────────────────────────── */
+            if (currentStep === 'welcome') {
                 body = `
                     <h1 style="font-size:26px;font-weight:700;color:var(--accent);margin-bottom:8px">Welcome to PawPoller</h1>
                     <p style="color:var(--text-secondary);margin-bottom:8px;font-size:15px">Multi-platform story analytics for furry fiction writers.</p>
                     <p style="color:var(--text-muted);margin-bottom:28px;font-size:13px">Let's get you set up in a few quick steps.</p>
                     <button class="btn btn-primary login-btn" id="setup-next">Get Started</button>`;
-            } else if (currentStep === 2) {
-                /* ── Step 2: Story Archive ────────────────────────── */
+            } else if (currentStep === 'mode') {
+                /* ── Step 2: How are you running PawPoller? ─────────── */
+                body = `
+                    <h2 style="font-size:20px;font-weight:700;color:var(--text-primary);margin-bottom:8px">How are you running PawPoller?</h2>
+                    <p style="color:var(--text-secondary);margin-bottom:20px;font-size:13px">Pick the option that matches your setup. You can change this later in Settings.</p>
+                    <div class="setup-mode-cards">
+                        <button class="setup-mode-card ${selectedMode === 'standalone' ? 'selected' : ''}" data-mode="standalone">
+                            <div class="setup-mode-emoji">&#128187;</div>
+                            <div class="setup-mode-title">Just on this computer</div>
+                            <div class="setup-mode-desc">PawPoller polls and posts from your laptop. Nothing else needed.</div>
+                        </button>
+                        <button class="setup-mode-card ${selectedMode === 'paired_desktop' ? 'selected' : ''}" data-mode="paired_desktop">
+                            <div class="setup-mode-emoji">&#9729;&#65039;</div>
+                            <div class="setup-mode-title">Pair with my server</div>
+                            <div class="setup-mode-desc">I already have a Docker container running. This app reads its settings.</div>
+                        </button>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:20px">
+                        <button class="btn" id="setup-back" style="flex:0 0 auto;background:transparent;color:var(--text-muted);border:1px solid var(--border)">Back</button>
+                        <button class="btn btn-primary login-btn" id="setup-next" style="flex:1" ${selectedMode ? '' : 'disabled'}>Next</button>
+                    </div>`;
+            } else if (currentStep === 'pairing') {
+                /* ── Step 2b: Pairing credentials ──────────────────── */
+                const errBlock = pairingError
+                    ? `<div class="login-error" style="margin-top:8px">${Utils.escapeHtml(pairingError)}</div>`
+                    : '';
+                body = `
+                    <h2 style="font-size:20px;font-weight:700;color:var(--text-primary);margin-bottom:8px">Connect to your server</h2>
+                    <p style="color:var(--text-secondary);margin-bottom:16px;font-size:13px">Enter your PawPoller server URL and an API key. Find or create the key under <em>Settings &rarr; Authentication</em> on the server.</p>
+                    <div class="login-field">
+                        <label>Server URL</label>
+                        <input type="text" id="setup-pair-url" class="search-input" value="${Utils.escapeHtml(pairingUrl)}" placeholder="https://pawpoller.example.com" style="width:100%">
+                    </div>
+                    <div class="login-field">
+                        <label>API key</label>
+                        <input type="text" id="setup-pair-key" class="search-input" value="${Utils.escapeHtml(pairingKey)}" placeholder="pp_..." style="width:100%">
+                    </div>
+                    ${errBlock}
+                    <div style="display:flex;gap:8px;margin-top:16px">
+                        <button class="btn" id="setup-back" style="flex:0 0 auto;background:transparent;color:var(--text-muted);border:1px solid var(--border)" ${pairingBusy ? 'disabled' : ''}>Back</button>
+                        <button class="btn btn-primary login-btn" id="setup-pair-test" style="flex:1" ${pairingBusy ? 'disabled' : ''}>${pairingBusy ? 'Testing...' : 'Connect'}</button>
+                    </div>`;
+            } else if (currentStep === 'archive') {
+                /* ── Story archive ────────────────────────────────── */
                 body = `
                     <h2 style="font-size:20px;font-weight:700;color:var(--text-primary);margin-bottom:8px">Story Archive Location</h2>
                     <p style="color:var(--text-secondary);margin-bottom:20px;font-size:13px">Where do your stories live? PawPoller will look here for stories to publish.</p>
@@ -992,11 +1079,12 @@ const App = {
                         <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Each story gets its own folder with Markdown, HTML, BBCode, and PDF files.</div>
                     </div>
                     <div style="display:flex;gap:8px;margin-top:8px">
+                        ${currentIdx > 0 ? '<button class="btn" id="setup-back" style="flex:0 0 auto;background:transparent;color:var(--text-muted);border:1px solid var(--border)">Back</button>' : ''}
                         <button class="btn btn-primary login-btn" id="setup-next" style="flex:1">Next</button>
                         <button class="btn" id="setup-skip" style="flex:0 0 auto;background:transparent;color:var(--text-muted);border:1px solid var(--border)">Skip</button>
                     </div>`;
-            } else if (currentStep === 3) {
-                /* ── Step 3: Platform Connections ─────────────────── */
+            } else if (currentStep === 'platforms') {
+                /* ── Platform connections ─────────────────────────── */
                 const platformCards = platforms.map(p => {
                     const connected = authStatus[p.key];
                     return `
@@ -1013,14 +1101,19 @@ const App = {
                     <p style="color:var(--text-secondary);margin-bottom:16px;font-size:13px">Connect the platforms you publish on. You can skip any and add them later in Settings.</p>
                     <div class="setup-platforms">${platformCards}</div>
                     <div style="display:flex;gap:8px;margin-top:16px">
+                        <button class="btn" id="setup-back" style="flex:0 0 auto;background:transparent;color:var(--text-muted);border:1px solid var(--border)">Back</button>
                         <button class="btn btn-primary login-btn" id="setup-next" style="flex:1">Next</button>
                         <button class="btn" id="setup-skip" style="flex:0 0 auto;background:transparent;color:var(--text-muted);border:1px solid var(--border)">Skip for now</button>
                     </div>`;
-            } else if (currentStep === 4) {
-                /* ── Step 4: Done ─────────────────────────────────── */
+            } else if (currentStep === 'done') {
+                const summaryByMode = {
+                    'standalone': 'PawPoller is set up to run locally. It\'ll poll and post from this machine.',
+                    'paired_desktop': 'Paired with your server. Settings will sync automatically; the server handles polling.',
+                    'server': 'Server is ready. Pair a desktop install with the API key generated in Settings.',
+                };
                 body = `
                     <h2 style="font-size:20px;font-weight:700;color:var(--accent);margin-bottom:8px">You're all set!</h2>
-                    <p style="color:var(--text-secondary);margin-bottom:16px;font-size:13px">PawPoller is ready. Here's what you can do next:</p>
+                    <p style="color:var(--text-secondary);margin-bottom:16px;font-size:13px">${Utils.escapeHtml(summaryByMode[selectedMode] || 'PawPoller is ready.')}</p>
                     <ul style="text-align:left;color:var(--text-secondary);font-size:13px;line-height:1.8;margin-bottom:24px;list-style:none;padding:0">
                         <li style="padding:6px 0;border-bottom:1px solid var(--border)">Create a new story in the <strong style="color:var(--text-primary)">Editor</strong></li>
                         <li style="padding:6px 0;border-bottom:1px solid var(--border)">Check your <strong style="color:var(--text-primary)">analytics</strong> on the dashboard</li>
@@ -1037,10 +1130,42 @@ const App = {
                     </div>
                 </div>`);
 
-            /* Wire up event handlers for the current step */
+            const goNext = () => {
+                const order = stepOrder();
+                const i = order.indexOf(currentStep);
+                if (i >= 0 && i < order.length - 1) {
+                    currentStep = order[i + 1];
+                    renderStep();
+                }
+            };
+            const goBack = () => {
+                const order = stepOrder();
+                const i = order.indexOf(currentStep);
+                if (i > 0) {
+                    currentStep = order[i - 1];
+                    renderStep();
+                }
+            };
+
+            /* Mode picker — pick a card, click Next */
+            document.querySelectorAll('.setup-mode-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    selectedMode = card.dataset.mode;
+                    renderStep();  // re-render to update selection + Next-enabled
+                });
+            });
+
+            document.getElementById('setup-back')?.addEventListener('click', goBack);
+
             document.getElementById('setup-next')?.addEventListener('click', async () => {
-                if (currentStep === 2) {
-                    /* Save archive path before advancing */
+                if (currentStep === 'mode' && selectedMode === 'standalone') {
+                    // Persist standalone mode immediately so the polling
+                    // gate kicks in on next restart even if the user
+                    // closes the wizard early.
+                    try { await API.setSetupMode({ mode: 'standalone' }); }
+                    catch (err) { console.warn('[Setup] save standalone failed:', err); }
+                }
+                if (currentStep === 'archive') {
                     const path = document.getElementById('setup-archive-path')?.value.trim();
                     if (path) {
                         try {
@@ -1051,13 +1176,51 @@ const App = {
                         }
                     }
                 }
-                currentStep++;
-                renderStep();
+                goNext();
             });
 
-            document.getElementById('setup-skip')?.addEventListener('click', () => {
-                currentStep++;
+            document.getElementById('setup-skip')?.addEventListener('click', goNext);
+
+            /* Pairing test — validate credentials, save mode + creds, advance to 'done' */
+            document.getElementById('setup-pair-test')?.addEventListener('click', async () => {
+                pairingUrl = document.getElementById('setup-pair-url')?.value.trim() || '';
+                pairingKey = document.getElementById('setup-pair-key')?.value.trim() || '';
+                if (!pairingUrl || !pairingKey) {
+                    pairingError = 'Both fields are required.';
+                    renderStep();
+                    return;
+                }
+                pairingError = '';
+                pairingBusy = true;
                 renderStep();
+                try {
+                    const result = await API.pairTest({
+                        posting_server_url: pairingUrl,
+                        posting_server_api_key: pairingKey,
+                    });
+                    if (!result.ok) {
+                        pairingError = result.error || 'Pairing failed.';
+                        pairingBusy = false;
+                        renderStep();
+                        return;
+                    }
+                    if (result.version_match === false) {
+                        pairingError = `Version mismatch: server is ${result.remote_version}, this app is ${result.local_version}. ` +
+                                       `Continue anyway, but updating one side may resolve sync issues.`;
+                        // Soft warning — keep going.
+                    }
+                    await API.setSetupMode({
+                        mode: 'paired_desktop',
+                        posting_server_url: pairingUrl,
+                        posting_server_api_key: pairingKey,
+                    });
+                    pairingBusy = false;
+                    goNext();
+                } catch (err) {
+                    pairingError = err.message || 'Pairing failed.';
+                    pairingBusy = false;
+                    renderStep();
+                }
             });
 
             document.getElementById('setup-finish')?.addEventListener('click', async () => {
@@ -5249,7 +5412,7 @@ const App = {
         try {
             // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
             // Polling tab data is loaded lazily when the user clicks into it.
-            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, updateInfo, postingSettings, browserLoginInfo] = await Promise.all([
+            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, updateInfo, postingSettings, browserLoginInfo, setupStatus] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
@@ -5268,7 +5431,18 @@ const App = {
                 API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' })),
                 API.getPostingSettings().catch(() => ({ posting_enabled: false, posting_default_platforms: [], posting_default_rating: 'adult', posting_server_url: '', posting_server_api_key: '', posting_story_archive_path: '' })),
                 API.getBrowserLoginPlatforms().catch(() => ({ available: false, platforms: [] })),
+                API.getSetupStatus().catch(() => ({ runtime_mode: 'desktop', setup_mode: null, polling_owner: 'local' })),
             ]);
+
+            // Resolve effective mode for hide/show logic. Falls back to inferred
+            // values when setup_mode is unset (existing installs from < 2.14.6).
+            const _runtimeMode = setupStatus.runtime_mode || 'desktop';
+            const _setupMode = setupStatus.setup_mode
+                || (_runtimeMode === 'server' ? 'server'
+                    : (postingSettings.posting_server_url ? 'paired_desktop' : 'standalone'));
+            const _isServer = _runtimeMode === 'server';
+            const _isPaired = _setupMode === 'paired_desktop';
+            const _pollingOwner = setupStatus.polling_owner || (_isServer ? 'local' : (_isPaired ? 'server' : 'local'));
 
             // Store auth state for lazy-loaded polling tab
             this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth };
@@ -5354,6 +5528,22 @@ const App = {
                 <div class="settings-tab-content" data-tab-content="general" ${_settingsTab !== 'general' ? 'style="display:none"' : ''}>
 
                 <details class="settings-accordion" open>
+                    <summary>Setup Mode <span class="summary-meta">— ${_isServer ? 'Server (Docker)' : (_isPaired ? 'Paired with server' : 'Standalone')}</span></summary>
+                    <div class="accordion-body">
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">${_isServer ? 'This is the server.' : (_isPaired ? 'Paired with a remote server.' : 'Standalone — running locally only.')}</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
+                                Polling owner: <strong>${_pollingOwner === 'local' ? (_isServer ? 'this server' : 'this computer') : 'remote server'}</strong>
+                                ${_isPaired && postingSettings.posting_server_url ? `&middot; Server: <code>${Utils.escapeHtml(postingSettings.posting_server_url)}</code>` : ''}
+                            </div>
+                        </div>
+                        ${_isServer ? '' : '<button class="btn btn-secondary" id="btn-rerun-wizard" title="Switch between standalone and paired modes">Re-run setup</button>'}
+                    </div>
+                    </div>
+                </details>
+
+                <details class="settings-accordion" open>
                     <summary>Inkbunny Credentials <span class="summary-meta">${creds.username ? '— ' + Utils.escapeHtml(creds.username) : ''}</span></summary>
                     <div class="accordion-body">
                     <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
@@ -5375,6 +5565,7 @@ const App = {
                 <details class="settings-accordion" open>
                     <summary>App Preferences</summary>
                     <div class="accordion-body">
+                    ${_isServer ? '' : `
                     <div class="settings-row">
                         <div>
                             <span class="settings-label">Minimize to system tray on close</span>
@@ -5405,6 +5596,7 @@ const App = {
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
+                    `}
                     <div class="settings-row">
                         <div>
                             <span class="settings-label">Watcher notifications</span>
@@ -6803,8 +6995,25 @@ const App = {
 
             // Preference toggles — each saves immediately via API. On failure,
             // the toggle reverts to its previous state and shows an alert.
-            // Minimize to tray toggle
-            document.getElementById('pref-tray').addEventListener('change', async (e) => {
+            // The desktop-only ones (tray/startup/notifications) are rendered
+            // conditionally based on _isServer, so we use ?. to no-op on the
+            // server runtime where those elements don't exist.
+
+            // "Re-run setup" button — clears setup_complete and routes back to
+            // the wizard so the user can switch between standalone and paired.
+            document.getElementById('btn-rerun-wizard')?.addEventListener('click', async () => {
+                if (!confirm('Re-run the setup wizard? This won\'t delete any settings — you\'ll just go back through the questions.')) return;
+                try {
+                    await API.resetSetupWizard();
+                } catch (err) {
+                    alert('Failed: ' + err.message);
+                    return;
+                }
+                window.location.hash = '#/setup';
+                window.location.reload();
+            });
+
+            document.getElementById('pref-tray')?.addEventListener('change', async (e) => {
                 try {
                     await API.savePreferences({ minimize_to_tray: e.target.checked });
                 } catch (err) {
@@ -6823,7 +7032,7 @@ const App = {
                 }
             });
 
-            document.getElementById('pref-startup').addEventListener('change', async (e) => {
+            document.getElementById('pref-startup')?.addEventListener('change', async (e) => {
                 try {
                     await API.savePreferences({ run_on_startup: e.target.checked });
                 } catch (err) {
@@ -6832,7 +7041,7 @@ const App = {
                 }
             });
 
-            document.getElementById('pref-notifications').addEventListener('change', async (e) => {
+            document.getElementById('pref-notifications')?.addEventListener('change', async (e) => {
                 try {
                     await API.savePreferences({ notifications_enabled: e.target.checked });
                 } catch (err) {
