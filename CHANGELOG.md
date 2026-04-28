@@ -4,6 +4,101 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.14.4] - 2026-04-27
+
+### Security & robustness from a self-audit pass
+
+A four-angle audit pass (dead code / security / refactor / reference
+rot) surfaced a handful of real issues alongside several false alarms.
+This release ships the fixes that were both *real* and *small enough
+not to need a focused refactor session*. The bigger refactor candidates
+(N+1 query batching across the 11 platforms, per-poller notification
+helper extraction, redundant `config.get_settings()` calls) are noted
+in HANDOFF for a future pass.
+
+**What changed:**
+
+- **Auto-sync refuses non-HTTPS targets.** `auto_sync._sync_target()`
+  now rejects `posting_server_url` values that don't start with
+  `https://` for non-localhost hosts. Localhost keeps `http://` because
+  the loopback never leaves the machine. Without this guard a user who
+  configured a plain `http://my-server.tld:8420` would have been
+  posting their `Authorization: Bearer pp_xxx` API key (and the full
+  settings dump including platform credentials) over the wire in
+  cleartext on every save. Now logs a one-time warning and disables
+  sync until the URL is fixed.
+
+- **Auto-sync pull loop now has exponential backoff.** Steady state is
+  unchanged at 5 minutes between cycles, BUT consecutive *transport*
+  failures (connection refused, timeout, non-200) now back off
+  5m → 10m → 20m → 40m → 60m cap instead of hammering an unreachable
+  server every 5 minutes forever. Crucial detail: a 200 response that
+  says "I have nothing newer for you" — the common case — does NOT
+  count as a failure and stays on the regular cadence. Implemented by
+  splitting the old `pull_once()` into a richer `_pull_attempt()` that
+  returns `(reachable, applied)`; `pull_once()` stays around as a
+  backwards-compat shim.
+
+- **Path traversal on `/api/posting/stories/{story_name}` closed.**
+  `posting.story_reader.load_story()` previously joined the user-
+  supplied `story_name` straight onto the archive root. Because the
+  FastAPI route uses the `:path` converter, `..` segments passed
+  through unchanged — an authenticated dashboard user could request
+  e.g. `/api/posting/stories/../../etc/passwd` and the loader would
+  happily try to read it. Adopted the same `Path.resolve()` +
+  `relative_to(archive)` guard already in
+  `routes/editor_api._resolve_story_dir`, so paths that escape the
+  archive root now return a clean 404. Auth-protected endpoint, so
+  this was post-auth path-disclosure not unauthenticated, but worth
+  closing.
+
+- **`deploy/pawpull.py` argv whitelist.** The deploy helper passes
+  `sys.argv[1]` through to `gcloud --command="..."` with `shell=True`,
+  with no quoting. A typo or a malicious paste of a story name with
+  `;` or `$()` would have run as bash on the GCP VM. Locked the
+  argument to `^[A-Za-z0-9_./-]+$`; anything else exits 1 with a
+  descriptive error. This is a developer-run script (so attacker =
+  you) but the fix is two lines and the next person to grab the
+  pattern shouldn't inherit the trap.
+
+- **QA checklists bumped to 2.14.4.** Title strings, hero headers, and
+  the three "expected APP_VERSION" / "git tag" example commands in
+  both `qa/TESTING_CHECKLIST_WEBAPP.html` and
+  `qa/TESTING_CHECKLIST_NATIVE.html`. The historical reference to
+  "post-2.14.2 fix" in the theme-persistence test stays as-is — that
+  one's pointing at when the bug was fixed, not the current version.
+
+### Audit findings *not* fixed in this release (logged for next pass)
+
+These came up in the audit and are real, but didn't fit the
+"small enough to ship between QA runs" bar:
+
+- **Vault key on Windows lacks ACL hardening.** `_secure_file_permissions`
+  is a no-op on Windows, so the `.vault_key` dotfile fallback is created
+  with default ACLs. Mostly theoretical — keyring almost always works
+  on Windows so the dotfile is the rare fallback path — but the proper
+  fix wants DPAPI or `icacls`, which isn't a one-liner.
+
+- **`config.py` is ~800 lines mixing paths / vault / auth / logging /
+  settings I/O.** Splitting into focused modules is a refactor pass,
+  not a fix.
+
+- **N+1 `get_*_comparison_snapshots()` across all 11 `database/*_queries.py`
+  files.** Loops one SELECT per submission instead of `WHERE ... IN (...)`.
+  Visible perf win on comparison-chart loads, but touching 11 files at
+  once is its own commit.
+
+- **Per-poller toast + Telegram notification logic duplicated 11×.** ~80
+  lines per platform doing identical work. Worth extracting to
+  `polling/notifications.py`, again as its own commit.
+
+**Validation gates:** AST parse + importlib smoke + 30/30 unit tests
+pass on the touched modules.
+
+**`APP_VERSION` bumped to `2.14.4`.**
+
+---
+
 ## [2.14.3] - 2026-04-27
 
 ### Changed — Repository file-tree cleanup (no behaviour changes)

@@ -217,11 +217,24 @@ def load_story(story_name: str) -> StoryInfo:
 
     Reads from story.json if available (preferred), falling back to
     tags_upload.txt + split_manifest.json parsing.
+
+    Security: ``story_name`` arrives from the request URL via FastAPI's
+    ``:path`` converter, which means ``../`` segments are passed through
+    unchanged. Resolve and re-anchor against the archive root so a
+    crafted path can't escape into the host filesystem. Mirrors the
+    same check in routes/editor_api.py::_resolve_story_dir.
     """
-    archive = get_archive_path()
-    story_path = archive / story_name
-    if not story_path.is_dir():
-        raise FileNotFoundError(f"Story folder not found: {story_path}")
+    archive = get_archive_path().resolve()
+    candidate = (archive / story_name).resolve()
+    try:
+        candidate.relative_to(archive)
+    except ValueError:
+        raise FileNotFoundError(
+            f"Story folder not found: {story_name}"
+        ) from None
+    if not candidate.is_dir():
+        raise FileNotFoundError(f"Story folder not found: {candidate}")
+    story_path = candidate
 
     story_json_path = story_path / "story.json"
     if story_json_path.is_file():

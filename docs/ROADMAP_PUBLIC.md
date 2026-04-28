@@ -63,10 +63,40 @@ Polling-side improvements (outside the original phase plan but shipped as part o
 ### Medium-term
 
 - [ ] **Cloud sync polish** — Phase 7a shipped the pull/push flow. Outstanding: delta conflict resolution (right now "push" is authoritative), audit log of what synced when, "sync health" badge on the Settings page.
-- [ ] **Plugin-ish platform registration** — formalize the per-platform file pattern (`{xx}_client/`, `polling/{xx}_poller.py`, `database/{xx}_queries.py`, `routes/{xx}_api.py`, `posting/platforms/{xx}.py`) into a contributor-friendly cookiecutter or template command so adding a new platform is a single scaffold step. No dynamic loader — still statically imported.
+- [ ] **Plugin-ish platform registration** — formalize the per-platform file pattern (`clients/{xx}/`, `polling/{xx}_poller.py`, `database/{xx}_queries.py`, `routes/{xx}_api.py`, `posting/platforms/{xx}.py`) into a contributor-friendly cookiecutter or template command so adding a new platform is a single scaffold step. No dynamic loader — still statically imported.
 - [ ] **CI test modernization** — switch the test job from `python -m unittest discover` to `pytest`. Two test modules (`test_integration_posting`, `test_platform_posters`) are pytest-style today and get silently skipped by unittest discovery. Changing the command gets them actually executed.
 - [ ] **Thumbnail auto-resize** — Pillow is already a dep; fall back to auto-resize when an uploaded cover exceeds a platform's size cap instead of surfacing an error.
 - [ ] **Story template library** — beyond the 9 genre presets, let users save their own starting templates (e.g. "my chaptered m/m romance template with these 12 tags pre-selected").
+
+### Audit-pass debt (surfaced 2.14.4, not yet fixed)
+
+These came out of the 2026-04-27 audit pass and are real but didn't fit
+the "ship between QA runs" bar. Each is its own focused commit:
+
+- [ ] **N+1 query batching across `database/*_queries.py`** —
+  `get_*_comparison_snapshots()` in 11 files runs one SELECT per
+  submission. Convert to `WHERE submission_id IN (...)` + Python-side
+  group. Visible perf win on comparison-chart load.
+- [ ] **Per-poller toast + Telegram notification helper** — ~80 lines of
+  identical Windows toast / Telegram async post / HTML escaping
+  duplicated across all 11 `polling/*_poller.py` files. Extract to
+  `polling/notifications.py:send_activity_notification()`.
+- [ ] **Cache `config.get_settings()` at top of route handlers** —
+  several `routes/*_api.py` handlers call it 2-3× within one function
+  body. Read once at entry, reuse.
+- [ ] **`config.py` split** — ~800 lines mixing paths, vault crypto,
+  auth helpers, settings I/O, logging setup. Split into
+  `paths.py` / `vault.py` / `auth.py` / `settings_io.py`.
+- [ ] **Vault key ACL hardening on Windows** — `_secure_file_permissions`
+  is a Unix-only no-op, so the `.vault_key` dotfile fallback inherits
+  default ACLs on Windows. Mostly theoretical (Windows keyring almost
+  always works so the dotfile path is rarely taken), but worth
+  closing with DPAPI or `icacls`.
+- [ ] **Dashboard frontend cache-buster consistency** — JS files in
+  `frontend/index.html` are scattered across `v=240, 285, 22, 13, 311`
+  while CSS files are uniformly at `v=310`. Either move to a single
+  global constant or hash-bust on file-mtime so a forgotten bump
+  doesn't ship stale JS.
 
 ### Cloud / hosted access — separate development stream
 

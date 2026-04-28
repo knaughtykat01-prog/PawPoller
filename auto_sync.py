@@ -36,6 +36,11 @@ logger = logging.getLogger(__name__)
 AUTO_SYNC_PUSH_DEBOUNCE_SECONDS = 2.0
 AUTO_SYNC_PULL_INTERVAL_SECONDS = 300  # 5 minutes
 AUTO_SYNC_HTTP_TIMEOUT = 10
+# Cap exponential backoff at 1 hour. After this many consecutive failures
+# we plateau instead of growing further — avoids drifting into "next
+# attempt in 12 hours" territory but stops pestering an unreachable
+# server every 5 minutes forever.
+AUTO_SYNC_PULL_MAX_BACKOFF_SECONDS = 3600
 
 _push_lock = threading.Lock()
 _push_timer: threading.Timer | None = None
@@ -50,7 +55,12 @@ def _is_pull_merge() -> bool:
 
 
 def _sync_target():
-    """Return (server_url, api_key) if auto-sync is configured, else None."""
+    """Return (server_url, api_key) if auto-sync is configured, else None.
+
+    Security: rejects non-HTTPS URLs for non-localhost targets so the
+    bearer token never crosses the network in plaintext. Localhost
+    keeps http:// because the loopback never leaves the machine.
+    """
     import config
     settings = config.get_settings()
     if not settings.get("auto_sync_enabled", True):
@@ -61,7 +71,18 @@ def _sync_target():
         return None
     # A server pointing at itself would create a loopback storm. Cheap guard:
     # treat anything resolving to localhost as "we are the server, don't sync".
-    if "localhost" in server_url or "127.0.0.1" in server_url:
+    is_loopback = "localhost" in server_url or "127.0.0.1" in server_url
+    if is_loopback:
+        return None
+    # Refuse to push the bearer token over plain HTTP. The cost of a
+    # misconfigured http:// target is the API key (and full settings dump
+    # including platform credentials) on the wire in cleartext — much
+    # worse than just not syncing.
+    if not server_url.lower().startswith("https://"):
+        logger.warning(
+            "Auto-sync disabled: posting_server_url must use https:// "
+            "for non-localhost targets (got %r)", server_url,
+        )
         return None
     return server_url, api_key
 
@@ -115,14 +136,28 @@ def schedule_push() -> None:
         _push_timer.start()
 
 
-def pull_once() -> bool:
-    """One-shot pull from the cloud server. Returns True on success."""
+def _pull_attempt() -> tuple[bool, bool]:
+    """Pull from the cloud server.
+
+    Returns ``(reachable, applied)``:
+      - ``reachable`` is True when the request completed at the HTTP
+        layer (any 200, including "I have nothing newer for you"). False
+        only on transport errors or non-200 responses.
+      - ``applied`` is True when fresh settings were merged into the
+        local copy.
+
+    The loop in ``_pull_loop`` only backs off when ``reachable`` is
+    False, so the common case of "server reachable but nothing new"
+    doesn't get treated as a failure.
+    """
     import httpx
     import config
 
     target = _sync_target()
     if target is None:
-        return False
+        # Not configured — treat as reachable so we don't back off
+        # waiting for a sync that's been turned off.
+        return True, False
     server_url, api_key = target
 
     try:
@@ -132,41 +167,79 @@ def pull_once() -> bool:
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=AUTO_SYNC_HTTP_TIMEOUT,
         )
-        if resp.status_code != 200:
-            logger.warning("Auto-sync pull failed: HTTP %d", resp.status_code)
-            return False
-        body = resp.json()
-        if not body.get("ok") or not body.get("settings"):
-            return False
-        pulled = body["settings"]
-        server_mtime = body.get("timestamp", 0)
-        local_mtime = (config.SETTINGS_PATH.stat().st_mtime
-                       if config.SETTINGS_PATH.exists() else 0)
-        # Last-writer-wins: only apply if the server is newer than us.
-        # Skipping when server is older avoids stomping a push we just sent
-        # that the server hasn't fully echoed back yet.
-        if server_mtime <= local_mtime:
-            return False
-        _in_pull_merge.active = True
-        try:
-            config.merge_synced_settings(pulled, client_timestamp=server_mtime)
-        finally:
-            _in_pull_merge.active = False
-        logger.info("Auto-sync pull: applied %d keys from server", len(pulled))
-        return True
     except Exception as e:
         logger.debug("Auto-sync pull: server unreachable (%s)", e)
-        return False
+        return False, False
+
+    if resp.status_code != 200:
+        logger.warning("Auto-sync pull failed: HTTP %d", resp.status_code)
+        return False, False
+
+    body = resp.json()
+    if not body.get("ok") or not body.get("settings"):
+        return True, False
+    pulled = body["settings"]
+    server_mtime = body.get("timestamp", 0)
+    local_mtime = (config.SETTINGS_PATH.stat().st_mtime
+                   if config.SETTINGS_PATH.exists() else 0)
+    # Last-writer-wins: only apply if the server is newer than us.
+    # Skipping when server is older avoids stomping a push we just sent
+    # that the server hasn't fully echoed back yet.
+    if server_mtime <= local_mtime:
+        return True, False
+    _in_pull_merge.active = True
+    try:
+        config.merge_synced_settings(pulled, client_timestamp=server_mtime)
+    finally:
+        _in_pull_merge.active = False
+    logger.info("Auto-sync pull: applied %d keys from server", len(pulled))
+    return True, True
+
+
+def pull_once() -> bool:
+    """One-shot pull. Returns True iff fresh settings were applied.
+
+    Kept for the backwards-compat surface (main.py / tests). Internally
+    delegates to ``_pull_attempt`` which exposes the richer state the
+    pull loop needs to make backoff decisions.
+    """
+    _reachable, applied = _pull_attempt()
+    return applied
 
 
 def _pull_loop():
-    """Background loop: pull from server every AUTO_SYNC_PULL_INTERVAL_SECONDS."""
+    """Background loop: pull from server, with backoff on transport failure.
+
+    Steady state sleeps AUTO_SYNC_PULL_INTERVAL_SECONDS (5 min) between
+    cycles. Only true *transport* failures (connection refused, timeout,
+    non-200 response) increase the sleep — getting back a 200 with "no
+    new settings for you" is the common case and resets the counter.
+
+    Schedule: 5m → 10m → 20m → 40m → 60m cap. So an unreachable server
+    isn't pestered every 5 minutes forever, but a server that's just
+    quiet stays on the regular cadence and picks up changes promptly.
+    """
+    base = AUTO_SYNC_PULL_INTERVAL_SECONDS
+    cap = AUTO_SYNC_PULL_MAX_BACKOFF_SECONDS
+    consecutive_failures = 0
     while True:
         try:
-            pull_once()
+            reachable, _applied = _pull_attempt()
         except Exception:
             logger.exception("Auto-sync pull loop iteration failed")
-        time.sleep(AUTO_SYNC_PULL_INTERVAL_SECONDS)
+            reachable = False
+
+        if reachable:
+            consecutive_failures = 0
+            sleep_for = base
+        else:
+            consecutive_failures += 1
+            sleep_for = min(base * (2 ** (consecutive_failures - 1)), cap)
+            logger.debug(
+                "Auto-sync pull: backing off %ds after %d consecutive failures",
+                sleep_for, consecutive_failures,
+            )
+        time.sleep(sleep_for)
 
 
 def start_pull_thread() -> threading.Thread:

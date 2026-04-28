@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>PawPoller v2.14.2 — Native Testing Checklist</title>
+    <title>PawPoller v2.14.4 — Native Testing Checklist</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; max-width: 1200px; margin: 0 auto; }
@@ -52,7 +52,7 @@
 
 <body>
 
-    <h1>PawPoller v2.14.2 — Testing Checklist <span class="mode-badge" style="background:#5a2e6e;color:#e8c0ff">NATIVE</span></h1>
+    <h1>PawPoller v2.14.4 — Testing Checklist <span class="mode-badge" style="background:#5a2e6e;color:#e8c0ff">NATIVE</span></h1>
     <p style="color: #888; font-size: 13px; margin-bottom: 12px;">
         This list covers the Windows desktop build of PawPoller (PyInstaller bundle launched as <code>PawPoller.exe</code>, pywebview window + pystray tray icon). For the browser/Docker/server flavour use <code>TESTING_CHECKLIST_WEBAPP.html</code>.
         Sample upload files referenced below live in <code>fixtures/</code>.
@@ -568,7 +568,7 @@
             ]},
             { title: "36. Settings — About", tests: [
                 { id: 395, name: "About tab loads", steps: `Settings → About`, expected: `Version, build hash, links to docs/changelog, third-party credits` },
-                { id: 396, name: "Version matches APP_VERSION", steps: `Compare to config.APP_VERSION`, expected: `2.14.2` },
+                { id: 396, name: "Version matches APP_VERSION", steps: `Compare to config.APP_VERSION`, expected: `2.14.4` },
                 { id: 397, name: "Update check button", steps: `"Check for updates"`, expected: `Hits GitHub releases endpoint; shows latest version` },
                 { id: 398, name: "Update available state", steps: `When current < latest`, expected: `Sidebar shows "vX.Y.Z available" badge + Update Now button` },
                 { id: 399, name: "Apply Update — native flow", steps: `Click Apply when newer version available`, expected: `updater.py downloads release zip, replaces binaries, restarts the app. New version visible in About after relaunch` },
@@ -683,7 +683,7 @@
                 { id: 484, name: "LICENSE present", steps: `Repo root`, expected: `MIT LICENSE file` },
                 { id: 485, name: "CONTRIBUTING present", steps: `Repo root`, expected: `Contributing guide` },
                 { id: 486, name: "Lint workflow on push", steps: `Push to master → Actions tab`, expected: `Lint workflow runs ruff + JS syntax; passes` },
-                { id: 487, name: "Build workflow on tag", steps: `git tag v2.14.2 && git push --tags`, expected: `Build & Release runs; .zip artifact attached to release` },
+                { id: 487, name: "Build workflow on tag", steps: `git tag v2.14.4 && git push --tags`, expected: `Build & Release runs; .zip artifact attached to release` },
                 { id: 488, name: "Test job in build workflow", steps: `Same workflow run`, expected: `unittest discover passes (after pytest + respx pinned to requirements-server.txt)` },
                 { id: 489, name: "Release notes — generated", steps: `Look at release page after tag`, expected: `Release notes match CHANGELOG.md entry` },
             ]},

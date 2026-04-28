@@ -16,11 +16,21 @@ Behaviour:
 from __future__ import annotations
 
 import os
+import re
 import sys
 import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
+
+# Story folder names in the archive are alphanumeric + a small set of
+# safe punctuation (underscores, hyphens, forward slashes for nested
+# variants like "The_Abstinent_Bet/Nice_Version"). Reject anything else
+# so a wonky argv value can't inject shell metacharacters into the
+# remote ssh command — `gcloud --command="..."` runs through cmd.exe
+# locally AND bash on the server, so two layers of escaping to get
+# wrong. A whitelist is simpler and stricter than shlex.quote().
+_SAFE_STORY_NAME = re.compile(r"^[A-Za-z0-9_./-]+$")
 
 # ── Configuration ──────────────────────────────────────────────────────────
 
@@ -117,6 +127,14 @@ def main() -> int:
     print("=" * 70)
 
     story = sys.argv[1] if len(sys.argv) > 1 else None
+    if story and not _SAFE_STORY_NAME.match(story):
+        print(
+            f"ERROR: story name {story!r} contains unsafe characters. "
+            "Only letters, digits, underscores, hyphens, dots and "
+            "forward slashes are allowed.",
+            file=sys.stderr,
+        )
+        return 1
     local_tar = _local_tarball()
 
     try:
