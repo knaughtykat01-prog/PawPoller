@@ -76,12 +76,13 @@ async def sync_settings(req: SyncRequest) -> SyncResponse:
 async def sync_status():
     """Check sync readiness — returns server version and settings timestamp."""
     mtime = config.SETTINGS_PATH.stat().st_mtime if config.SETTINGS_PATH.exists() else 0
+    settings = config.get_settings()
     return {
         "ok": True,
         "version": config.APP_VERSION,
         "timestamp": mtime,
-        "credential_mode": config.get_settings().get("credential_mode", "cloud"),
-        "total_keys": len(config.get_settings()),
+        "credential_mode": settings.get("credential_mode", "cloud"),
+        "total_keys": len(settings),
     }
 
 

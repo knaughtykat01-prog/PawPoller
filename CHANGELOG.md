@@ -4,6 +4,78 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.14.5] - 2026-04-27
+
+### Refactor pass — audit-pass debt cleanup
+
+Pure cleanup pass cashing in three of the four refactor candidates
+queued in the 2.14.4 audit-pass-debt list. Behaviour-preserving across
+the board; 91 tests passing (up from 30 — see below).
+
+**1. `polling/notifications.py` extracted.** ~80 lines of identical
+Windows-toast + Telegram-async-post + HTML-escape boilerplate were
+duplicated across all 11 platform pollers. Three new helpers capture
+the actual duplication:
+
+- `show_toast(title, lines)` — primitive that lazy-imports `winotify`
+  and no-ops on Linux/server builds.
+- `send_telegram(token, chat_id, text)` — primitive that swallows
+  network errors with a warning. Returns ``bool`` so callers with
+  follow-up state (e.g. FA's "mark watcher digest delivered" path)
+  can branch on success.
+- `format_telegram_summary(header_html, items)` — string-builder for
+  the `<b>HEADER</b>\n  • item\n  ...and N more` pattern every poller
+  was rebuilding by hand.
+- Plus two convenience wrappers (`maybe_show_toast`,
+  `maybe_send_telegram_summary`) that fold in the per-platform
+  enabled-flag check.
+
+**Result:** 489 lines deleted across `polling/{ib,fa,sf,ws,da,ao3,sqw,
+bsky,ik,tw,wp}_poller.py`, plus ~150 lines added in the new helper.
+Net ~340 lines simpler. Per-platform filters (comments-only,
+fave-thresholds, watcher-toggle) stay in their respective pollers
+where they belong.
+
+**2. CI test runner switched from `unittest discover` to `pytest`.**
+Two of our test modules (`tests/test_integration_posting.py`,
+`tests/test_platform_posters.py`) are pytest-style and were silently
+skipped by `python -m unittest discover` for ages. The build workflow
+now runs `pytest tests/ -v` — and CI suddenly has 91 passing tests
+instead of 30. No new failures surfaced; the previously-skipped modules
+were green on first run.
+
+**3. N+1 query batching for `get_*_comparison_snapshots`.** Eleven
+near-identical functions (`database/queries.py` plus
+`{ao3,bsky,da,fa,ik,sf,sqw,tw,wp,ws}_queries.py`) all looped one
+`SELECT ... WHERE submission_id = ?` per submission, which the
+comparison-chart UI hits with up to ~10 sids at once. Replaced with a
+single `SELECT ... WHERE submission_id IN (?,?,?...)` query plus
+Python-side group. Same return shape, same key-type-per-platform
+quirks (some keep raw int sids, others stringify — preserved
+verbatim). Visible perf win on every comparison chart load — was a
+~10× wire-time multiplier on a hot read path.
+
+**4. `config.get_settings()` route caching.** The audit flagged this
+as duplication "across many routes/*_api.py handlers". Closer reading
+showed most apparent duplicates are in *separate* route handlers each
+calling once, which is correct. Only `routes/settings_api.py::sync_status`
+had a real double-call — the `total_keys` and `credential_mode` fields
+each called `get_settings()` independently. Fixed. Other suspect cases
+all turned out to be genuine separate-handler calls and were left
+alone.
+
+**Validation gates:**
+
+- AST parse: 11 poller files + 11 query files + helper module + config
+- Importlib smoke: every refactored module loads
+- Test suite: 91/91 pass under pytest (was 30/30 under unittest, with
+  61 silently skipped)
+- No call-site signatures changed; helper extraction is internal
+
+**`APP_VERSION` bumped to `2.14.5`.**
+
+---
+
 ## [2.14.4] - 2026-04-27
 
 ### Security & robustness from a self-audit pass

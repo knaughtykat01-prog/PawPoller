@@ -202,11 +202,25 @@ def get_comparison_snapshots(conn: sqlite3.Connection, submission_ids: list[int]
 
     Used by the comparison chart view to overlay multiple submissions' trends
     on the same axes. Returns a dict so the frontend can map each series to
-    its submission metadata.
+    its submission metadata. One IN-clause query for all submissions instead
+    of N per-submission SELECTs (was a per-platform N+1 hot path on the
+    comparison chart).
     """
-    result: dict[int, list[dict]] = {}
-    for sid in submission_ids:
-        result[sid] = get_snapshots(conn, sid, start, end)
+    result: dict[int, list[dict]] = {sid: [] for sid in submission_ids}
+    if not submission_ids:
+        return result
+    placeholders = ",".join("?" * len(submission_ids))
+    sql = f"SELECT * FROM snapshots WHERE submission_id IN ({placeholders})"
+    params: list[Any] = list(submission_ids)
+    if start:
+        sql += " AND polled_at >= ?"
+        params.append(start)
+    if end:
+        sql += " AND polled_at <= ?"
+        params.append(end)
+    sql += " ORDER BY submission_id, polled_at ASC"
+    for row in conn.execute(sql, params).fetchall():
+        result[row["submission_id"]].append(dict(row))
     return result
 
 

@@ -123,9 +123,22 @@ def get_bsky_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = N
 
 def get_bsky_comparison_snapshots(conn: sqlite3.Connection, submission_ids: list[str],
                                    start: str | None = None, end: str | None = None) -> dict[str, list[dict]]:
-    result: dict[str, list[dict]] = {}
-    for sid in submission_ids:
-        result[sid] = get_bsky_snapshots(conn, sid, start, end)
+    """Multi-submission time-series. One IN-clause query instead of N SELECTs."""
+    result: dict[str, list[dict]] = {sid: [] for sid in submission_ids}
+    if not submission_ids:
+        return result
+    placeholders = ",".join("?" * len(submission_ids))
+    sql = f"SELECT * FROM bsky_snapshots WHERE submission_id IN ({placeholders})"
+    params: list[Any] = list(submission_ids)
+    if start:
+        sql += " AND polled_at >= ?"
+        params.append(start)
+    if end:
+        sql += " AND polled_at <= ?"
+        params.append(end)
+    sql += " ORDER BY submission_id, polled_at ASC"
+    for row in conn.execute(sql, params).fetchall():
+        result[row["submission_id"]].append(dict(row))
     return result
 
 

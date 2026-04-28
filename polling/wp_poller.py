@@ -20,12 +20,11 @@ import time
 from datetime import datetime, timezone
 from html import escape as _esc
 
-import httpx
-
 import config
 from clients.wp.client import WPClient
 from database.db import get_connection
 from database import wp_queries
+from polling import notifications
 
 logger = logging.getLogger(__name__)
 
@@ -69,56 +68,25 @@ def _update_wp_progress(phase: str, current: int = 0, total: int = 0, message: s
 def _send_wp_notifications(new_details: list[dict]) -> None:
     """Send Windows toast notifications for Wattpad activity."""
     settings = config.get_settings()
-    if not settings.get("wp_notifications_enabled", True):
-        return
-    if not new_details:
-        return
-
-    try:
-        from winotify import Notification
-    except ImportError:
-        logger.debug("winotify not installed -- skipping WP notifications")
-        return
-
-    shown = new_details[:3]
-    lines = [f"{d['title']} gained activity" for d in shown]
-    if len(new_details) > 3:
-        lines.append(f"...and {len(new_details) - 3} more")
-    toast = Notification(
-        app_id="PawPoller",
-        title=f"WP: {len(new_details)} Stor{'ies' if len(new_details) != 1 else 'y'} Updated",
-        msg="\n".join(lines),
+    n = len(new_details)
+    notifications.maybe_show_toast(
+        settings,
+        "wp_notifications_enabled",
+        f"WP: {n} Stor{'ies' if n != 1 else 'y'} Updated",
+        [f"{d['title']} gained activity" for d in new_details],
     )
-    toast.show()
 
 
 async def _send_wp_telegram(new_details: list[dict]) -> None:
     """Send Telegram notification for Wattpad activity."""
     settings = config.get_settings()
-    if not settings.get("telegram_enabled", False):
-        return
-    token = settings.get("telegram_bot_token")
-    chat_id = settings.get("telegram_chat_id")
-    if not token or not chat_id:
-        return
-    if not new_details:
-        return
-
-    lines = [f"<b>\U0001f4d9 WP: {len(new_details)} Stor{'ies' if len(new_details) != 1 else 'y'} Updated</b>"]
-    for d in new_details[:5]:
-        lines.append(f"  \u2022 {_esc(d['title'])}")
-    if len(new_details) > 5:
-        lines.append(f"  ...and {len(new_details) - 5} more")
-
-    text = "\n".join(lines)
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.post(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
-            )
-    except Exception as e:
-        logger.warning("Failed to send WP Telegram notification: %s", e, exc_info=True)
+    n = len(new_details)
+    await notifications.maybe_send_telegram_summary(
+        settings,
+        f"<b>\U0001f4d9 WP: {n} Stor{'ies' if n != 1 else 'y'} Updated</b>",
+        [_esc(d['title']) for d in new_details],
+        log_label="WP",
+    )
 
 
 def _get_or_create_client(settings: dict) -> WPClient:

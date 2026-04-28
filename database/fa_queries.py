@@ -144,11 +144,22 @@ def get_fa_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = Non
 
 
 def get_fa_comparison_snapshots(conn: sqlite3.Connection, submission_ids: list[int], start: str | None = None, end: str | None = None) -> dict[int, list[dict]]:
-    """Multi-submission time-series for comparison charts.
-    Mirrors queries.get_comparison_snapshots for the fa_snapshots table."""
-    result: dict[int, list[dict]] = {}
-    for sid in submission_ids:
-        result[sid] = get_fa_snapshots(conn, sid, start, end)
+    """Multi-submission time-series for comparison charts. One IN-clause query."""
+    result: dict[int, list[dict]] = {sid: [] for sid in submission_ids}
+    if not submission_ids:
+        return result
+    placeholders = ",".join("?" * len(submission_ids))
+    sql = f"SELECT * FROM fa_snapshots WHERE submission_id IN ({placeholders})"
+    params: list[Any] = list(submission_ids)
+    if start:
+        sql += " AND polled_at >= ?"
+        params.append(start)
+    if end:
+        sql += " AND polled_at <= ?"
+        params.append(end)
+    sql += " ORDER BY submission_id, polled_at ASC"
+    for row in conn.execute(sql, params).fetchall():
+        result[row["submission_id"]].append(dict(row))
     return result
 
 

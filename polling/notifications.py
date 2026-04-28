@@ -1,0 +1,177 @@
+"""Shared Windows-toast and Telegram notification primitives for pollers.
+
+Each platform poller has its own filter logic — per-platform "notifications
+enabled" toggles, comments-only mode, fave-thresholds — but the mechanics
+of actually firing a toast or a Telegram message are identical everywhere.
+This module captures the mechanics; the filtering stays in each poller.
+
+Three layers, smallest first:
+
+  1. Primitives — ``show_toast`` and ``send_telegram``. Dumb side-effect
+     wrappers; both no-op cleanly when their dependency is missing
+     (winotify on non-Windows builds; httpx network errors swallowed
+     with a warning).
+
+  2. Formatters — ``truncate_with_overflow`` and
+     ``format_telegram_summary``. String-builders shared by every
+     poller's summary message.
+
+  3. Convenience — ``maybe_show_toast`` and
+     ``maybe_send_telegram_summary``. Combine the per-platform settings
+     check with the formatter+primitive call in one shot. Most pollers
+     can call straight into these and skip the boilerplate.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+TOAST_DEFAULT_VISIBLE = 3
+TELEGRAM_DEFAULT_VISIBLE = 5
+TELEGRAM_HTTP_TIMEOUT = 10.0
+
+
+# ── Formatters ────────────────────────────────────────────────────────
+
+def truncate_with_overflow(items: list[str], max_visible: int) -> list[str]:
+    """Return at most ``max_visible`` items, with an "...and N more" tail.
+
+    >>> truncate_with_overflow(["a", "b", "c"], 3)
+    ['a', 'b', 'c']
+    >>> truncate_with_overflow(["a", "b", "c", "d", "e"], 3)
+    ['a', 'b', 'c', '...and 2 more']
+    """
+    if len(items) <= max_visible:
+        return list(items)
+    return [*items[:max_visible], f"...and {len(items) - max_visible} more"]
+
+
+def format_telegram_summary(
+    header_html: str,
+    items: list[str],
+    max_visible: int = TELEGRAM_DEFAULT_VISIBLE,
+) -> str:
+    """Build a Telegram HTML summary: header + bulleted items + overflow tail.
+
+    Items are rendered as ``  • <item>`` lines (the leading two spaces
+    match the existing per-poller formatting). The overflow line uses
+    the same truncation rule as ``truncate_with_overflow`` but with the
+    Telegram-style indent.
+    """
+    lines = [header_html]
+    for item in items[:max_visible]:
+        lines.append(f"  • {item}")
+    if len(items) > max_visible:
+        lines.append(f"  ...and {len(items) - max_visible} more")
+    return "\n".join(lines)
+
+
+# ── Primitives ────────────────────────────────────────────────────────
+
+def show_toast(
+    title: str,
+    lines: list[str],
+    max_visible: int = TOAST_DEFAULT_VISIBLE,
+) -> bool:
+    """Fire a Windows toast. Returns True iff actually shown.
+
+    Lazy-imports winotify so server/Linux builds and the test
+    environment can load this module without crashing on the missing
+    dep. An empty ``lines`` list is treated as a no-op (returns False).
+    """
+    if not lines:
+        return False
+    try:
+        from winotify import Notification
+    except ImportError:
+        logger.debug("winotify not available — toast suppressed: %s", title)
+        return False
+    msg = "\n".join(truncate_with_overflow(lines, max_visible))
+    Notification(app_id="PawPoller", title=title, msg=msg).show()
+    return True
+
+
+async def send_telegram(
+    token: str,
+    chat_id: str,
+    text: str,
+    *,
+    log_label: str = "notification",
+) -> bool:
+    """POST a Telegram message via the Bot API. Returns True on success.
+
+    Errors are logged and swallowed (returns False) — notifications are
+    best-effort and a transient network failure shouldn't crash the
+    poll cycle. The bool return lets callers branch on success when
+    they have follow-up state to update (e.g. the FA watcher digest's
+    "mark watchers notified" step that must NOT run if delivery failed).
+    """
+    try:
+        async with httpx.AsyncClient(timeout=TELEGRAM_HTTP_TIMEOUT) as client:
+            await client.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+            )
+        return True
+    except Exception as e:
+        logger.warning(
+            "Failed to send %s Telegram message: %s",
+            log_label, e, exc_info=True,
+        )
+        return False
+
+
+# ── Convenience layer ─────────────────────────────────────────────────
+
+def maybe_show_toast(
+    settings: dict[str, Any],
+    settings_key: str,
+    title: str,
+    lines: list[str],
+    *,
+    max_visible: int = TOAST_DEFAULT_VISIBLE,
+    default_enabled: bool = True,
+) -> bool:
+    """Show a Windows toast iff the per-platform toggle is on and there's content.
+
+    ``settings_key`` is the platform-specific "notifications enabled"
+    flag (e.g. ``"sf_notifications_enabled"``, ``"notifications_enabled"``
+    for Inkbunny). ``default_enabled`` is the value used when the key
+    isn't present in settings — match each poller's historical default.
+    """
+    if not lines:
+        return False
+    if not settings.get(settings_key, default_enabled):
+        return False
+    return show_toast(title, lines, max_visible)
+
+
+async def maybe_send_telegram_summary(
+    settings: dict[str, Any],
+    header_html: str,
+    items: list[str],
+    *,
+    max_visible: int = TELEGRAM_DEFAULT_VISIBLE,
+    log_label: str = "notification",
+) -> None:
+    """Send a Telegram summary iff Telegram is enabled, configured, and items present.
+
+    The shared filter chain — ``telegram_enabled`` flag, bot token +
+    chat id presence, non-empty items — runs here so callers stay
+    focused on their platform-specific filtering (comments-only mode,
+    fave-delta thresholds, etc) which they apply *before* calling in.
+    """
+    if not items:
+        return
+    if not settings.get("telegram_enabled", False):
+        return
+    token = settings.get("telegram_bot_token")
+    chat_id = settings.get("telegram_chat_id")
+    if not token or not chat_id:
+        return
+    text = format_telegram_summary(header_html, items, max_visible)
+    await send_telegram(token, chat_id, text, log_label=log_label)

@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from html import escape as _esc
 
-import httpx
+from polling import notifications
 
 import config
 from clients.fa.client import FAClient
@@ -107,61 +107,38 @@ def _send_fa_notifications(new_comment_details: list[dict],
                            new_watcher_names: list[str] | None = None) -> None:
     """Send Windows toast notifications for new FA comments and watchers.
 
-    Unlike the IB poller, this does not handle faves -- there is no fave
-    notification because FA does not expose per-submission fave lists.
-    The toast is prefixed with "FA:" so users can distinguish it from
-    IB notifications at a glance.  Truncated to 3 items like the IB version.
+    Unlike the IB poller, this does not handle faves — FA doesn't expose
+    per-submission fave lists. Comments and watchers are emitted as two
+    separate toasts so the user can distinguish at a glance.
     """
     if new_watcher_names is None:
         new_watcher_names = []
 
     settings = config.get_settings()
-    if not settings.get("fa_notifications_enabled", True):
-        return
-    if not new_comment_details and not new_watcher_names:
-        return
-
-    try:
-        from winotify import Notification
-    except ImportError:
-        logger.debug("winotify not installed — skipping FA notifications")
-        return
-
-    # --- Comment toast (truncated to 3 items) ---
-    if new_comment_details:
-        shown = new_comment_details[:3]
-        lines = [f"{d['username']} commented on {d['title']}" for d in shown]
-        if len(new_comment_details) > 3:
-            lines.append(f"...and {len(new_comment_details) - 3} more")
-        toast = Notification(
-            app_id="PawPoller",
-            title=f"FA: {len(new_comment_details)} New Comment{'s' if len(new_comment_details) != 1 else ''}",
-            msg="\n".join(lines),
+    notifications.maybe_show_toast(
+        settings,
+        "fa_notifications_enabled",
+        f"FA: {len(new_comment_details)} New Comment"
+        f"{'s' if len(new_comment_details) != 1 else ''}",
+        [f"{d['username']} commented on {d['title']}" for d in new_comment_details],
+    )
+    # Watchers gated on a second per-platform flag.
+    if settings.get("fa_watcher_notifications_enabled", True):
+        notifications.maybe_show_toast(
+            settings,
+            "fa_notifications_enabled",
+            f"FA: {len(new_watcher_names)} New Watcher"
+            f"{'s' if len(new_watcher_names) != 1 else ''}",
+            [f"{name} started watching you" for name in new_watcher_names],
         )
-        toast.show()
-
-    # --- Watcher toast (pre-filtered confirmed watchers) ---
-    if new_watcher_names and settings.get("fa_watcher_notifications_enabled", True):
-        shown = new_watcher_names[:3]
-        lines = [f"{name} started watching you" for name in shown]
-        if len(new_watcher_names) > 3:
-            lines.append(f"...and {len(new_watcher_names) - 3} more")
-        toast = Notification(
-            app_id="PawPoller",
-            title=f"FA: {len(new_watcher_names)} New Watcher{'s' if len(new_watcher_names) != 1 else ''}",
-            msg="\n".join(lines),
-        )
-        toast.show()
 
 
 async def _send_fa_telegram(new_comment_details: list[dict],
                             new_watcher_names: list[str] | None = None) -> None:
     """Send Telegram notification for new FA comments and watchers.
 
-    Format differs from the IB Telegram message: no faves section, and
-    the header uses a fox emoji to visually distinguish FA alerts from IB
-    alerts in the chat.  Truncated to 5 items, same as IB.  Uses Telegram
-    HTML parse_mode for bold formatting.
+    Combined into one message (with a blank-line separator) when both
+    sections present, so the chat doesn't get two pings for one cycle.
     """
     if new_watcher_names is None:
         new_watcher_names = []
@@ -176,37 +153,25 @@ async def _send_fa_telegram(new_comment_details: list[dict],
     if not new_comment_details and not new_watcher_names:
         return
 
-    lines = []
-    # --- Comments section ---
+    sections: list[str] = []
     if new_comment_details:
-        lines.append(f"<b>🦊 FA: {len(new_comment_details)} New Comment{'s' if len(new_comment_details) != 1 else ''}</b>")
-        for d in new_comment_details[:5]:
-            lines.append(f"  • <b>{_esc(d['username'])}</b> commented on {_esc(d['title'])}")
-        if len(new_comment_details) > 5:
-            lines.append(f"  ...and {len(new_comment_details) - 5} more")
-
-    # --- Watchers section (pre-filtered: confirmed, non-spam, un-notified) ---
+        sections.append(notifications.format_telegram_summary(
+            f"<b>🦊 FA: {len(new_comment_details)} New Comment"
+            f"{'s' if len(new_comment_details) != 1 else ''}</b>",
+            [f"<b>{_esc(d['username'])}</b> commented on {_esc(d['title'])}"
+             for d in new_comment_details],
+        ))
     if new_watcher_names and settings.get("fa_watcher_notifications_enabled", True):
-        if lines:
-            lines.append("")  # Visual separator before watchers
-        lines.append(f"<b>🦊 FA: {len(new_watcher_names)} New Watcher{'s' if len(new_watcher_names) != 1 else ''}</b>")
-        for name in new_watcher_names[:5]:
-            lines.append(f"  • <b>{_esc(name)}</b> started watching")
-        if len(new_watcher_names) > 5:
-            lines.append(f"  ...and {len(new_watcher_names) - 5} more")
-
-    if not lines:
-        return  # Everything was filtered out — nothing to send
-
-    text = "\n".join(lines)
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.post(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
-            )
-    except Exception as e:
-        logger.warning("Failed to send FA Telegram notification: %s", e, exc_info=True)
+        sections.append(notifications.format_telegram_summary(
+            f"<b>🦊 FA: {len(new_watcher_names)} New Watcher"
+            f"{'s' if len(new_watcher_names) != 1 else ''}</b>",
+            [f"<b>{_esc(name)}</b> started watching" for name in new_watcher_names],
+        ))
+    if not sections:
+        return
+    await notifications.send_telegram(
+        token, chat_id, "\n\n".join(sections), log_label="FA",
+    )
 
 
 async def run_fa_poll_cycle(force_full: bool = False) -> dict:
@@ -551,21 +516,19 @@ async def send_fa_watcher_digest() -> None:
         if not pending:
             return
 
-        lines = [f"<b>🦊 FA Daily Watcher Digest: {len(pending)} New Watcher{'s' if len(pending) != 1 else ''}</b>"]
-        for name in pending[:10]:
-            lines.append(f"  • <b>{_esc(name)}</b>")
-        if len(pending) > 10:
-            lines.append(f"  ...and {len(pending) - 10} more")
-
-        text = "\n".join(lines)
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as http:
-                await http.post(
-                    f"https://api.telegram.org/bot{token}/sendMessage",
-                    json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
-                )
-        except Exception as e:
-            logger.warning("Failed to send FA watcher digest: %s", e, exc_info=True)
+        text = notifications.format_telegram_summary(
+            f"<b>🦊 FA Daily Watcher Digest: {len(pending)} New Watcher"
+            f"{'s' if len(pending) != 1 else ''}</b>",
+            [f"<b>{_esc(name)}</b>" for name in pending],
+            max_visible=10,
+        )
+        # Use the lower-level send_telegram primitive so we can branch on
+        # delivery success — a failed send must NOT mark watchers notified
+        # (otherwise tomorrow's digest would skip them).
+        ok = await notifications.send_telegram(
+            token, chat_id, text, log_label="FA digest",
+        )
+        if not ok:
             return
 
         fa_queries.mark_watchers_notified(conn, pending)

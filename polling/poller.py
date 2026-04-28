@@ -21,12 +21,11 @@ import time
 from datetime import datetime, timezone
 from html import escape as _esc
 
-import httpx
-
 import config
 from clients.ib.client import InkbunnyClient
 from database.db import get_connection
 from database import queries
+from polling import notifications
 
 logger = logging.getLogger(__name__)
 
@@ -77,93 +76,61 @@ def _update_progress(phase: str, current: int = 0, total: int = 0, message: str 
 
 def _send_notifications(new_fave_details: list[dict], new_comment_details: list[dict],
                         new_watcher_details: list[dict] | None = None) -> None:
-    """Send Windows toast notifications for new faves/comments/watchers, respecting filters.
+    """Send Windows toast notifications for new faves/comments/watchers.
 
-    Each toast shows at most 3 items with an "...and N more" overflow line.
-    Separate toasts are fired for faves, comments, and watchers so the user
-    can distinguish at a glance.
+    Three separate toasts so the user can distinguish at a glance.
+    Filters applied per-section:
+
+      - ``notification_comments_only``: drops the fave toast entirely
+        (lets users with high fave volume mute that channel while still
+        getting comment alerts).
+      - ``notification_min_faves_delta``: drops the fave toast when the
+        new-fave count is below the threshold.
+      - ``watcher_notifications_enabled``: gates the watcher toast.
     """
     if new_watcher_details is None:
         new_watcher_details = []
 
     settings = config.get_settings()
-    if not settings.get("notifications_enabled", True):
-        return
-
-    # When notification_comments_only is True, suppress fave notifications
-    # entirely.  This lets users who get high fave volume avoid toast spam
-    # while still being alerted to comments (which are rarer and more
-    # actionable).
     if settings.get("notification_comments_only", False):
         new_fave_details = []
-
-    # notification_min_faves_delta: suppress fave notifications unless the
-    # number of new faves in this cycle meets or exceeds the threshold.
-    # A value of 0 (default) means no minimum -- all faves are notified.
     min_faves = settings.get("notification_min_faves_delta", 0)
     if min_faves > 0 and len(new_fave_details) < min_faves:
         new_fave_details = []
 
-    if not new_fave_details and not new_comment_details and not new_watcher_details:
-        return
-
-    # Lazy-import winotify so the module can load on non-Windows platforms
-    # (e.g. during tests) without crashing.
-    try:
-        from winotify import Notification
-    except ImportError:
-        logger.debug("winotify not installed — skipping notifications")
-        return
-
-    # --- Fave toast (truncated to 3 items) ---
-    if new_fave_details:
-        shown = new_fave_details[:3]
-        lines = [f"{d['username']} faved {d['title']}" for d in shown]
-        if len(new_fave_details) > 3:
-            lines.append(f"...and {len(new_fave_details) - 3} more")
-        toast = Notification(
-            app_id="PawPoller",
-            title=f"{len(new_fave_details)} New Fave{'s' if len(new_fave_details) != 1 else ''}",
-            msg="\n".join(lines),
+    notifications.maybe_show_toast(
+        settings,
+        "notifications_enabled",
+        f"{len(new_fave_details)} New Fave"
+        f"{'s' if len(new_fave_details) != 1 else ''}",
+        [f"{d['username']} faved {d['title']}" for d in new_fave_details],
+    )
+    notifications.maybe_show_toast(
+        settings,
+        "notifications_enabled",
+        f"{len(new_comment_details)} New Comment"
+        f"{'s' if len(new_comment_details) != 1 else ''}",
+        [f"{d['username']} commented on {d['title']}"
+         for d in new_comment_details],
+    )
+    if settings.get("watcher_notifications_enabled", True):
+        notifications.maybe_show_toast(
+            settings,
+            "notifications_enabled",
+            f"{len(new_watcher_details)} New Watcher"
+            f"{'s' if len(new_watcher_details) != 1 else ''}",
+            [f"{d['username']} started watching you"
+             for d in new_watcher_details],
         )
-        toast.show()
-
-    # --- Comment toast (truncated to 3 items) ---
-    if new_comment_details:
-        shown = new_comment_details[:3]
-        lines = [f"{d['username']} commented on {d['title']}" for d in shown]
-        if len(new_comment_details) > 3:
-            lines.append(f"...and {len(new_comment_details) - 3} more")
-        toast = Notification(
-            app_id="PawPoller",
-            title=f"{len(new_comment_details)} New Comment{'s' if len(new_comment_details) != 1 else ''}",
-            msg="\n".join(lines),
-        )
-        toast.show()
-
-    # --- Watcher toast (truncated to 3 items) ---
-    if new_watcher_details and settings.get("watcher_notifications_enabled", True):
-        shown = new_watcher_details[:3]
-        lines = [f"{d['username']} started watching you" for d in shown]
-        if len(new_watcher_details) > 3:
-            lines.append(f"...and {len(new_watcher_details) - 3} more")
-        toast = Notification(
-            app_id="PawPoller",
-            title=f"{len(new_watcher_details)} New Watcher{'s' if len(new_watcher_details) != 1 else ''}",
-            msg="\n".join(lines),
-        )
-        toast.show()
 
 
 async def _send_telegram(new_fave_details: list[dict], new_comment_details: list[dict],
                          new_watcher_details: list[dict] | None = None) -> None:
-    """Send a single Telegram message summarising new faves/comments/watchers.
+    """Send a single Telegram message summarising the cycle's activity.
 
-    The message body uses Telegram's HTML parse mode for bold headers and
-    bullet points.  Faves, comments, and watchers are each truncated to 5
-    items to keep the message compact on mobile screens.  The
-    ``notification_comments_only`` filter is applied here independently so
-    that Telegram and Windows toast settings stay in sync.
+    Faves, comments, watchers go in three sections separated by blank
+    lines so the chat doesn't get three pings for one cycle. Filters
+    mirror the toast path for parity (comments-only, min-faves-delta).
     """
     if new_watcher_details is None:
         new_watcher_details = []
@@ -176,59 +143,39 @@ async def _send_telegram(new_fave_details: list[dict], new_comment_details: list
     if not token or not chat_id:
         return
 
-    # Same comments_only filter as _send_notifications -- suppress fave
-    # lines if the user only wants comment alerts.
     if settings.get("notification_comments_only", False):
         new_fave_details = []
-
-    # Same min_faves_delta filter as _send_notifications -- suppress fave
-    # section if the new-fave count is below the user's threshold.
     min_faves = settings.get("notification_min_faves_delta", 0)
     if min_faves > 0 and len(new_fave_details) < min_faves:
         new_fave_details = []
 
-    if not new_fave_details and not new_comment_details and not new_watcher_details:
-        return
-
-    # Build a single HTML-formatted message.  Faves section comes first,
-    # then a blank-line separator, then comments, then watchers.  Each
-    # section is capped at 5 items to avoid hitting Telegram's message
-    # length limits and to keep notifications readable.
-    lines = []
+    sections: list[str] = []
     if new_fave_details:
-        lines.append(f"<b>❤️ {len(new_fave_details)} New Fave{'s' if len(new_fave_details) != 1 else ''}</b>")
-        for d in new_fave_details[:5]:
-            lines.append(f"  • <b>{_esc(d['username'])}</b> faved {_esc(d['title'])}")
-        if len(new_fave_details) > 5:
-            lines.append(f"  ...and {len(new_fave_details) - 5} more")
-
+        sections.append(notifications.format_telegram_summary(
+            f"<b>❤️ {len(new_fave_details)} New Fave"
+            f"{'s' if len(new_fave_details) != 1 else ''}</b>",
+            [f"<b>{_esc(d['username'])}</b> faved {_esc(d['title'])}"
+             for d in new_fave_details],
+        ))
     if new_comment_details:
-        if lines:
-            lines.append("")  # Visual separator between faves and comments
-        lines.append(f"<b>💬 {len(new_comment_details)} New Comment{'s' if len(new_comment_details) != 1 else ''}</b>")
-        for d in new_comment_details[:5]:
-            lines.append(f"  • <b>{_esc(d['username'])}</b> commented on {_esc(d['title'])}")
-        if len(new_comment_details) > 5:
-            lines.append(f"  ...and {len(new_comment_details) - 5} more")
-
+        sections.append(notifications.format_telegram_summary(
+            f"<b>💬 {len(new_comment_details)} New Comment"
+            f"{'s' if len(new_comment_details) != 1 else ''}</b>",
+            [f"<b>{_esc(d['username'])}</b> commented on {_esc(d['title'])}"
+             for d in new_comment_details],
+        ))
     if new_watcher_details:
-        if lines:
-            lines.append("")  # Visual separator before watchers
-        lines.append(f"<b>👀 {len(new_watcher_details)} New Watcher{'s' if len(new_watcher_details) != 1 else ''}</b>")
-        for d in new_watcher_details[:5]:
-            lines.append(f"  • <b>{_esc(d['username'])}</b> started watching")
-        if len(new_watcher_details) > 5:
-            lines.append(f"  ...and {len(new_watcher_details) - 5} more")
-
-    text = "\n".join(lines)
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.post(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
-            )
-    except Exception as e:
-        logger.warning("Failed to send Telegram notification: %s", e, exc_info=True)
+        sections.append(notifications.format_telegram_summary(
+            f"<b>👀 {len(new_watcher_details)} New Watcher"
+            f"{'s' if len(new_watcher_details) != 1 else ''}</b>",
+            [f"<b>{_esc(d['username'])}</b> started watching"
+             for d in new_watcher_details],
+        ))
+    if not sections:
+        return
+    await notifications.send_telegram(
+        token, chat_id, "\n\n".join(sections), log_label="IB",
+    )
 
 
 async def run_poll_cycle(force_full: bool = False) -> dict:

@@ -68,25 +68,25 @@ Polling-side improvements (outside the original phase plan but shipped as part o
 - [ ] **Thumbnail auto-resize** — Pillow is already a dep; fall back to auto-resize when an uploaded cover exceeds a platform's size cap instead of surfacing an error.
 - [ ] **Story template library** — beyond the 9 genre presets, let users save their own starting templates (e.g. "my chaptered m/m romance template with these 12 tags pre-selected").
 
-### Audit-pass debt (surfaced 2.14.4, not yet fixed)
+### Audit-pass debt
 
-These came out of the 2026-04-27 audit pass and are real but didn't fit
-the "ship between QA runs" bar. Each is its own focused commit:
+Came out of the 2026-04-27 audit pass. Three resolved in 2.14.5,
+two left as their own focused passes:
 
-- [ ] **N+1 query batching across `database/*_queries.py`** —
-  `get_*_comparison_snapshots()` in 11 files runs one SELECT per
-  submission. Convert to `WHERE submission_id IN (...)` + Python-side
-  group. Visible perf win on comparison-chart load.
-- [ ] **Per-poller toast + Telegram notification helper** — ~80 lines of
-  identical Windows toast / Telegram async post / HTML escaping
-  duplicated across all 11 `polling/*_poller.py` files. Extract to
-  `polling/notifications.py:send_activity_notification()`.
-- [ ] **Cache `config.get_settings()` at top of route handlers** —
-  several `routes/*_api.py` handlers call it 2-3× within one function
-  body. Read once at entry, reuse.
+- [x] **N+1 query batching across `database/*_queries.py`** — done in
+  2.14.5. `get_*_comparison_snapshots()` across all 11 query files now
+  uses one `WHERE submission_id IN (...)` query instead of N SELECTs.
+- [x] **Per-poller toast + Telegram notification helper** — done in
+  2.14.5. `polling/notifications.py` extracted; 489 lines deleted from
+  the 11 pollers, ~150 added in the shared module.
+- [x] **Cache `config.get_settings()` at top of route handlers** — done
+  in 2.14.5, but most "duplication" turned out to be separate route
+  handlers each correctly calling once. Only one true double-call in
+  `settings_api.sync_status` — fixed.
 - [ ] **`config.py` split** — ~800 lines mixing paths, vault crypto,
   auth helpers, settings I/O, logging setup. Split into
-  `paths.py` / `vault.py` / `auth.py` / `settings_io.py`.
+  `paths.py` / `vault.py` / `auth.py` / `settings_io.py`. Has
+  boundary decisions that want a focused pass.
 - [ ] **Vault key ACL hardening on Windows** — `_secure_file_permissions`
   is a Unix-only no-op, so the `.vault_key` dotfile fallback inherits
   default ACLs on Windows. Mostly theoretical (Windows keyring almost
