@@ -182,6 +182,43 @@ class FurAffinityPoster(PlatformPoster):
             logger.warning("FA probe_exists(%s) failed: %s", external_id, e)
             return None
 
+    async def probe_draft_state(self, external_id: str) -> bool | None:
+        """True if the submission is in Scraps (FA's closest equivalent of draft).
+
+        Scraps are hidden from the main gallery, browse, and search results,
+        but watchers still get notifications and the profile's Scraps tab
+        lists them. Reads the changeinfo form's scrap checkbox; returns
+        None on transient errors so a flapping network doesn't paint live
+        cells as drafts.
+        """
+        try:
+            client = await self._ensure_client()
+            return await client.probe_scrap_state(external_id)
+        except Exception as e:
+            logger.warning("FA probe_draft_state(%s) failed: %s", external_id, e)
+            return None
+
+    async def publish_draft(self, external_id: str) -> PostResult:
+        """Flip a scrapped submission into the main gallery.
+
+        Calls edit_submission with scrap=False, which omits the scrap field
+        from the changeinfo POST and clears the checkbox. All other metadata
+        is preserved (the edit form re-emits scraped values).
+        """
+        _t = self._start_timer()
+        try:
+            client = await self._ensure_client()
+            await client.edit_submission(external_id, scrap=False)
+            return PostResult(
+                success=True,
+                external_id=external_id,
+                external_url=f"https://www.furaffinity.net/view/{external_id}/",
+                duration_seconds=self._elapsed(_t),
+            )
+        except Exception as e:
+            logger.error("FA publish_draft(%s) failed: %s", external_id, e, exc_info=True)
+            return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
+
     async def replace_file(self, external_id: str, file_path: str) -> PostResult:
         """Replace the story file via FA's changestory endpoint."""
         _t = self._start_timer()

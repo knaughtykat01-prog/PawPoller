@@ -2308,6 +2308,7 @@
 .publish-check-subtitle .stat-blocked { color: #c66; }
 .publish-check-subtitle .stat-drifted { color: #b8d; }
 .publish-check-subtitle .stat-deleted { color: #d88; }
+.publish-check-subtitle .stat-draft { color: #d9a; }
 
 .publish-check-stale-banner {
     background: rgba(220, 170, 40, 0.18);
@@ -2435,6 +2436,7 @@
 .cell-posted { background: rgba(80, 130, 200, 0.18); color: #69c; }
 .cell-posted-stale { background: rgba(220, 160, 60, 0.20); color: #d96; }
 .cell-posted-drifted { background: rgba(180, 130, 220, 0.20); color: #b8d; }
+.cell-posted-draft { background: rgba(220, 180, 90, 0.20); color: #d9a; border: 1px dashed rgba(220, 180, 90, 0.5); }
 .cell-deleted { background: rgba(160, 80, 80, 0.22); color: #d88; border: 1px dashed rgba(200, 120, 120, 0.4); }
 .cell-retry { background: rgba(220, 160, 60, 0.20); color: #d96; }
 .cell-blocked { background: rgba(200, 90, 90, 0.18); color: #c66; }

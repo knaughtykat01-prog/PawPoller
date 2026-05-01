@@ -13,6 +13,7 @@ window.PublishCheck = (function () {
         ready: { icon: '✓', cls: 'cell-ready', label: 'Ready' },
         blocked: { icon: '✗', cls: 'cell-blocked', label: 'Blocked' },
         posted: { icon: '✓', cls: 'cell-posted', label: 'Posted' },
+        posted_draft: { icon: '✎', cls: 'cell-posted-draft', label: 'Posted as draft (FA: in Scraps)' },
         posted_drifted: { icon: '↑', cls: 'cell-posted-drifted', label: 'Posted (local content changed)' },
         posted_stale: { icon: '!', cls: 'cell-posted-stale', label: 'Posted (now blocked)' },
         deleted_upstream: { icon: '⊘', cls: 'cell-deleted', label: 'Deleted on platform — re-post?' },
@@ -46,6 +47,7 @@ window.PublishCheck = (function () {
                     <span class="publish-check-legend">
                         <span class="cell-legend cell-ready">✓</span> Ready
                         <span class="cell-legend cell-posted">✓</span> Posted
+                        <span class="cell-legend cell-posted-draft">✎</span> Draft
                         <span class="cell-legend cell-posted-drifted">↑</span> Drifted
                         <span class="cell-legend cell-deleted">⊘</span> Deleted
                         <span class="cell-legend cell-posted-stale">!</span> Stale
@@ -55,6 +57,7 @@ window.PublishCheck = (function () {
                         <span class="cell-legend cell-error">⚠</span> Error
                     </span>
                     <button class="btn btn-sm btn-outline" id="publish-check-verify" title="Probe each platform to detect deletions">Verify posted</button>
+                    <button class="btn btn-sm btn-outline" id="publish-check-drafts" title="Probe each platform to detect drafts (FA: Scraps)">Check drafts</button>
                     <button class="btn btn-sm btn-outline" id="bulk-all-new" title="Post every ready cell">Publish all new</button>
                     <button class="btn btn-sm btn-outline" id="bulk-all-drifted" title="Update every drifted cell">Update drifted</button>
                     <button class="btn btn-sm" id="publish-check-recheck">Re-check</button>
@@ -72,6 +75,9 @@ window.PublishCheck = (function () {
         });
         modal.querySelector('#publish-check-verify').addEventListener('click', () => {
             if (_currentStory) verify(_currentStory);
+        });
+        modal.querySelector('#publish-check-drafts').addEventListener('click', () => {
+            if (_currentStory) probeDrafts(_currentStory);
         });
         modal.querySelector('#bulk-all-new').addEventListener('click', () => {
             const targets = _collectTargets('all_new');
@@ -132,6 +138,59 @@ window.PublishCheck = (function () {
                 btn.textContent = 'Probe failed';
                 setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2000);
             }
+        }
+    }
+
+    async function probeDrafts(storyName) {
+        // Probe every posted publication for draft state and overlay the
+        // results onto cells in-place. No DB writes — purely an ephemeral
+        // overlay so the user can see "this is sitting as a draft" at a
+        // glance and click through to flip it live.
+        const btn = document.getElementById('publish-check-drafts');
+        const original = btn ? btn.textContent : 'Check drafts';
+        if (btn) { btn.disabled = true; btn.textContent = 'Probing...'; }
+        try {
+            const resp = await fetch(
+                '/api/editor/stories/' + encodeURIComponent(storyName) + '/probe-drafts',
+                { method: 'POST' },
+            );
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            const msg = data.drafts + ' draft, ' + data.live +
+                ' live, ' + data.not_probed + ' not probed';
+            if (btn) { btn.textContent = msg; setTimeout(() => {
+                btn.textContent = original; btn.disabled = false;
+            }, 2400); }
+            _overlayDraftResults(data.results || []);
+        } catch (e) {
+            if (btn) {
+                btn.textContent = 'Probe failed';
+                setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2000);
+            }
+        }
+    }
+
+    function _overlayDraftResults(results) {
+        // Mutate cell DOM + the JSON blob on dataset.cell so subsequent
+        // detail-panel renders see the new status. Keeps the matrix in a
+        // single source of truth (the DOM) without re-fetching.
+        const body = document.getElementById('publish-check-body');
+        if (!body) return;
+        for (const r of results) {
+            const td = body.querySelector(
+                'tr[data-ch-idx="' + r.chapter_index + '"] td[data-plat-id="' + r.platform + '"]'
+            );
+            if (!td) continue;
+            const cell = JSON.parse(td.dataset.cell || '{}');
+            cell.is_draft = r.is_draft === true;
+            if (cell.is_draft) {
+                cell.status = 'posted_draft';
+                const meta = STATUS_LABELS.posted_draft;
+                td.className = 'publish-check-cell ' + meta.cls;
+                td.textContent = meta.icon;
+                td.title = meta.label;
+            }
+            td.dataset.cell = JSON.stringify(cell);
         }
     }
 
@@ -448,6 +507,12 @@ window.PublishCheck = (function () {
             html += '<button class="btn btn-sm btn-outline" data-schedule-action="post">' +
                 'Schedule</button>';
         } else if (isPosted) {
+            // If the draft probe flagged this as scrapped/drafted, lead with
+            // "Publish draft" — the most likely reason the user is here.
+            if (cell.is_draft) {
+                html += '<button class="btn btn-sm btn-primary" data-publish-action="publish_draft">' +
+                    'Publish draft (move out of Scraps)</button>';
+            }
             const updateClass = isDrifted ? 'btn btn-sm btn-primary' : 'btn btn-sm';
             html += '<button class="' + updateClass + '" data-publish-action="update"' +
                 (canEdit ? '' : ' disabled title="Platform does not support edit"') + '>' +
@@ -576,6 +641,15 @@ window.PublishCheck = (function () {
                     'a draft, click Cancel and check the draft checkbox.';
             }
             const ok = confirm(confirmMsg);
+            if (!ok) return;
+        }
+
+        if (action === 'publish_draft') {
+            const ok = confirm(
+                'Move "' + chTitle + '" out of Scraps on ' + platName + '?\n\n' +
+                'It will become visible in the main gallery, browse, and search ' +
+                'results. This is a real edit to a live submission.'
+            );
             if (!ok) return;
         }
 

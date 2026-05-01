@@ -78,6 +78,22 @@ class PlatformPoster(ABC):
         """
         return None
 
+    async def probe_draft_state(self, external_id: str) -> bool | None:
+        """Check whether a previously-posted submission is sitting as a draft.
+
+        "Draft" semantics vary by platform: FA has no real drafts, so its
+        implementation reads the Scraps flag (hidden from gallery/browse/
+        search but still on the profile + visible to watchers). IB exposes
+        an explicit visibility/hold state. SF flags works as published or
+        unpublished. AO3/SQW have a `posted: false` state.
+
+        Returns:
+            True  — confirmed draft / not publicly listed
+            False — confirmed live / publicly listed
+            None  — probe not implemented for this platform
+        """
+        return None
+
     def validate(self, package: StoryUploadPackage) -> list[str]:
         """Validate a package before posting. Returns list of errors (empty = OK)."""
         errors = []

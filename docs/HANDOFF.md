@@ -1,7 +1,7 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-05-01
-**Current version:** 2.14.8 (round-2 QA bug-fix sweep — mobile hamburger + create-story-500 unblockers, on top of 2.14.7's first QA round)
+**Last updated:** 2026-05-02
+**Current version:** 2.14.9 (FA-only first slice of draft detection in the publish-check matrix — Scraps probe, "Publish draft" action, latent un-scrap bug on metadata edits fixed)
 **Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — production was confirmed running 2.14.6 during round-2 QA. 2.14.7 was never deployed; 2.14.8 supersedes it and bundles all the QA fixes.
 **GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.14.3 — tag includes the Windows zip artifact. 2.14.4–2.14.8 haven't been tagged yet (bundle into the next feature release once the wizard UX has soaked).
 
@@ -235,6 +235,15 @@ drift detection, deletion probe, re-post.
 - [x] Polling module: N+1 query batching (IB faves, FA comments, SQW kudos, AO3 kudos — all use executemany now)
 - [x] AO3 rate-limit retry (_post_with_retry + Retry-After parsing + exponential backoff on all POST operations)
 - [ ] Weasyl testing (blocked on account verification)
+- [ ] Per-platform tag selection in editor — for every platform the user has enabled, surface a tag picker (add/remove from the default set) so platform-specific limits don't poison the default list. Trigger: Tombstone's `default` tags hit 91 entries → 814-char joined string, which the FA validator rejects (`furaffinity.py:227-228`, 500-char ceiling). Pruning defaults to fit FA's limit makes no sense — IB/SF/Weasyl happily take the longer list. UI lives in the tag editor (already has Default/SF/IB/WP tabs per Tag audit row above); extend with FA + Weasyl + AO3 + SQW tabs gated on `settings.platform_*_enabled`. Each tab inherits from `default` on first load, then becomes its own override list. Validator should pull from `tags_by_platform[fa]` directly when present instead of falling back to default (`story_reader.py:799`).
+- [~] Draft detection in publish check — surface stories that are sitting on a platform as drafts (uploaded but not public). Today the matrix only knows `ready`/`posted`/`blocked`/`drifted`/`deleted_upstream` (`publish_check.js:12-24`); add a `posted_draft` cell status so the user can see at a glance which platforms have a draft waiting to be flipped live. Per-platform probe surface:
+  - [x] **FA** — shipped 2.14.9. Scraps treated as draft equivalent; probe reads the changeinfo checkbox; `edit_submission` now preserves scrap state on every edit (latent un-scrap bug fixed); "Publish draft" action wired through `/publish` with `action='publish_draft'`. See CHANGELOG 2.14.9 for the full surface.
+  - [ ] **IB** — has actual draft submissions (the post-upload "edit info" page exposes the public/hold flag, and `clients/ib/client.py:679` already accepts a `visibility` param on edit).
+  - [ ] **SF** — unpublished/private state on the submission edit page; `publishedAt` field in the SF API details (`clients/sf/client.py:579`) might be enough on its own.
+  - [ ] **AO3 / SQW** — `posted: false` on works (the "Post Without Preview" toggle).
+  - [ ] **Bluesky / Wattpad / DA / Itaku / Weasyl** — confirm individually before adding probes; some have nothing draft-like.
+
+  Action panel grows a "Publish draft" button (and maybe "Discard draft") next to the existing Post/Update buttons. Useful both as a sanity check (catch the case where the draft toggle was left on and you forgot to publish) and as a workflow (deliberately stage everything as drafts, then flip them all live in one bulk action — pairs with the existing "Publish all new" footer button).
 
 ---
 
@@ -375,6 +384,23 @@ Issues found + fixes shipped during 2.13.1–2.13.8:
 
 The old 128-row checklist has been retired and replaced with the two ~470-row files described above. All previously-fixed 2.13.x items are still represented (under their new IDs in the WEBAPP checklist's Editor / Anchor Toolbar / Publish Check sections). The 2.14.x theme + auto-sync coverage is in sections 29–30 of WEBAPP and the same in NATIVE.
 
+### Round-2 automated QA + production live-monitor (2026-05-01)
+
+Automated Playwright sweep ran against the 2.14.7 test container (port 8421, empty seed), then read-only sweep against production (35.243.213.49:8420, was on 2.14.6). 11 bugs filed in `qa/AUTOMATED_BUG_LOG.md` (BUG-010 through BUG-018) plus BUG-021 (production-only). BUG-022 was logged then retracted — false positive from Playwright detection logic matching "Platforms" inside the metadata drawer's own section headings. **2.14.8 fixes the two P1s (BUG-010 mobile hamburger off-screen via `transform` containing-block; BUG-019 create-story 500 → 400 with structured detail).** Production now confirmed running 2.14.8 with zero console errors.
+
+**Open bugs after 2.14.8 ship** (all P2/P3, none blocking):
+- **BUG-011** P3: `/api/health` should include `version` field (currently `{"status": "ok"}` only) — drive-by; affects `/api/health` consumers, not the SPA
+- **BUG-014** P3: Inkbunny tab heading reads "Stories" instead of "Inkbunny Dashboard" — cosmetic
+- **BUG-016** P3 → **CONFIRMED REAL via prod live-monitor**: progress-check fan-out fires 9 simultaneous `/api/{platform}/poll/progress` requests every 10s (idle) / 1.5s (active). When one auth blip happens, 9 console errors flood the user's DevTools at once. Fix: collapse into one `GET /api/poll/all-progress` endpoint that returns a `{platform: progress}` map. Frontend ticker becomes a single fetch
+- **BUG-017** P3: server runtime should hard-block `#/setup` route after `setup_complete: true`
+- **BUG-018** checklist-cleanup: delete §17 Goals + §18 Tags from webapp checklist (no longer apply post-2.14)
+- **BUG-020** P2: "Regenerate All formats" only confirmed incomplete on test container (no PDF deps); prod has WeasyPrint working — re-test against prod before fixing
+- **BUG-021** P2: Inkbunny Submissions search filter is non-functional on production. Was test-container-incidental on first sighting; confirmed real on prod
+
+**Live-monitor finding worth chasing — periodic 401 burst on production session.** While the user was idle in the browser (no logout, no auth changes), the server logged a recurring pattern every ~30s: a successful progress tick (9× 200), then the next tick fails entirely (9× 401 + sometimes a real SPA fetch like `/api/settings/preferences` also 401), then immediately recovers (next tick 200). Each burst opens fresh TCP connections (different source ports). Server-side session secret is cached in memory — verify path can't flake. Most likely cause: **`SameSite=Strict` cookie quirk** where the browser drops the cookie under specific idle/refresh conditions. Fix candidate: change `samesite="strict"` to `samesite="lax"` in `routes/dashboard_auth.py:132`. Self-hosted dashboard with HttpOnly cookies + JSON-only state-change endpoints doesn't need Strict's CSRF protection. Side-bug surfaced by same monitor: `/favicon.ico` returns 401 because the auth middleware (`dashboard.py:197-203`) doesn't exempt it; add to `_AUTH_EXEMPT_PATHS` or `_AUTH_EXEMPT_PREFIXES`.
+
+**Test-account strategy decided:** automated signup is not viable (CAPTCHA, Cloudflare, SMS verification, ToS violations across 11 platforms). Manual user-driven account creation with a dummy Gmail, then handing creds to the test environment, is the clean path. Browser-login flows on platforms that support it (CF-proxied SF/DA, etc.) avoid storing passwords entirely. No test-account work has started — flagged as a future option, not a planned step.
+
 Next retest pass should:
 1. Import the previous CSV snapshot into WEBAPP via Import CSV (IDs have shifted — most rows will need re-running rather than mass-import). Keep the old CSV around as historical reference.
 2. Sweep WEBAPP first (it covers everything that runs in Docker — most of the surface).
@@ -388,7 +414,8 @@ Remaining:
 - Analytics export (charts, CSV reports)
 - Auto-update mechanism (15d — in-app update download)
 - Weasyl testing (blocked on account verification, not code)
-- Cut `v2.14.3` GitHub release (currently undeployed to release page; master + GCP are 5 versions ahead of v2.13.8)
+- Cut `v2.14.8` GitHub release (currently undeployed to release page; master + GCP are 10 versions ahead of v2.13.8)
+- Fix the round-2 P2/P3 bugs above (BUG-011, 014, 016, 017, 018, 020, 021) + the SameSite=Strict cookie quirk + favicon-401 noise — all deferred from 2.14.8 because they're non-blocking
 
 Story archive sync commands:
 - `deploy/pawpush.bat` — local → server (push)

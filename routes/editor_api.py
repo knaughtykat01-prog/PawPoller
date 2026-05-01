@@ -1203,10 +1203,84 @@ async def verify_publications(story_name: str):
     return summary
 
 
+@editor_router.post("/stories/{story_name:path}/probe-drafts")
+async def probe_drafts(story_name: str):
+    """Probe every posted publication for this story to detect draft state.
+
+    Mirrors ``verify_publications`` but calls ``probe_draft_state()`` on
+    each poster. Posters that don't implement the probe return None and
+    are reported as ``not_probed``. No DB writes — results are returned
+    as-is for the frontend to overlay on the matrix in-memory. FA's probe
+    reads the Scraps checkbox; other platforms (IB/SF/AO3/SQW) will land
+    in follow-up work.
+    """
+    import asyncio
+    from posting import manager
+    from database.db import get_connection
+    from database import posting_queries
+
+    story_dir = _resolve_story_dir(story_name)
+    canonical = str(story_dir.relative_to(get_archive_path()))
+
+    conn = get_connection()
+    try:
+        posted = posting_queries.get_publications(conn, story_name=canonical, status="posted")
+    finally:
+        conn.close()
+
+    results = []
+    for pub_idx, pub in enumerate(posted):
+        if pub_idx > 0:
+            await asyncio.sleep(0.4)
+        plat = pub["platform"]
+        ext_id = pub["external_id"]
+        ch_idx = pub["chapter_index"]
+        if not ext_id:
+            continue
+        try:
+            poster = manager._get_poster(plat)
+        except Exception:
+            continue
+        try:
+            is_draft = await poster.probe_draft_state(ext_id)
+        except Exception as e:
+            logger.warning(
+                "Draft probe: %s ch%d on %s raised: %s — treating as not_probed",
+                canonical, ch_idx, plat, e,
+            )
+            results.append({
+                "platform": plat, "chapter_index": ch_idx,
+                "external_id": ext_id, "status": "not_probed",
+            })
+            continue
+        if is_draft is None:
+            results.append({
+                "platform": plat, "chapter_index": ch_idx,
+                "external_id": ext_id, "status": "not_probed",
+            })
+        else:
+            results.append({
+                "platform": plat, "chapter_index": ch_idx,
+                "external_id": ext_id,
+                "status": "draft" if is_draft else "live",
+                "is_draft": is_draft,
+            })
+
+    summary = {
+        "ok": True,
+        "probed": len(results),
+        "drafts": sum(1 for r in results if r.get("is_draft") is True),
+        "live": sum(1 for r in results if r.get("is_draft") is False),
+        "not_probed": sum(1 for r in results if r["status"] == "not_probed"),
+        "results": results,
+    }
+    return summary
+
+
 class PublishRequest(BaseModel):
     platform: str                 # 'sf', 'ib', 'fa', etc.
     chapter: int                  # 0 = full story; 1+ = specific chapter
-    action: str = "post"          # 'post' | 'update' | 'update_metadata' | 'dry_run'
+    action: str = "post"          # 'post' | 'update' | 'update_metadata' | 'dry_run' | 'publish_draft'
     draft: bool = True            # SF/SQW/AO3 etc. — post as draft if supported
     confirm_live: bool = False    # Must be True for non-dry-run actions
 
@@ -1231,10 +1305,10 @@ async def publish(story_name: str, req: PublishRequest):
     story_dir = _resolve_story_dir(story_name)
     canonical = str(story_dir.relative_to(get_archive_path()))
 
-    if req.action not in ("post", "update", "update_metadata", "dry_run"):
+    if req.action not in ("post", "update", "update_metadata", "dry_run", "publish_draft"):
         raise HTTPException(status_code=400, detail=f"Unknown action: {req.action}")
 
-    if req.action in ("post", "update", "update_metadata") and not req.confirm_live:
+    if req.action in ("post", "update", "update_metadata", "publish_draft") and not req.confirm_live:
         raise HTTPException(
             status_code=400,
             detail=f"action='{req.action}' requires confirm_live=true (safety guard)",
@@ -1279,6 +1353,45 @@ async def publish(story_name: str, req: PublishRequest):
         }
 
     # --- Real action ---
+    if req.action == "publish_draft":
+        # Look up external_id from the registry, then call the poster's
+        # publish_draft helper directly (bypasses the full update_story
+        # flow because we're only flipping a visibility flag, not pushing
+        # new content/metadata).
+        conn = get_connection()
+        try:
+            pubs = posting_queries.get_publications(
+                conn, story_name=canonical, platform=req.platform,
+            )
+        finally:
+            conn.close()
+        existing = next(
+            (p for p in pubs if p.get("chapter_index") == req.chapter),
+            None,
+        )
+        if not existing or not existing.get("external_id"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"No posted publication for {req.platform} ch{req.chapter} — nothing to flip",
+            )
+        try:
+            poster = manager._get_poster(req.platform)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Unknown platform: {e}")
+        result = await poster.publish_draft(existing["external_id"])
+        return {
+            "ok": result.success,
+            "action": "publish_draft",
+            "results": [{
+                "platform": req.platform,
+                "chapter": req.chapter,
+                "success": result.success,
+                "external_id": result.external_id,
+                "external_url": result.external_url,
+                "error": result.error,
+            }],
+        }
+
     if req.action == "post":
         results = await manager.post_story(
             canonical,

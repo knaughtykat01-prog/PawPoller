@@ -4,6 +4,62 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.14.9] - 2026-05-02
+
+### Draft detection in the publish-check matrix (FA-only first slice)
+
+Adds a "Check drafts" probe to the publish-check modal. For every posted
+publication on this story, the app pings the platform to ask "is this
+sitting as a draft, or is it live?" and overlays the result on the
+matrix. A new `posted_draft` cell status renders with a dashed amber
+border and a `✎` icon; clicking the cell exposes a "Publish draft (move
+out of Scraps)" action that flips the submission live in one round-trip.
+
+This release ships the FA implementation only. FA has no real drafts —
+**Scraps** is the closest equivalent (hidden from gallery / browse /
+search, but still on the profile + visible to watchers + reachable via
+direct link), so the probe reads the scrap checkbox on
+`/controls/submissions/changeinfo/{id}/`. IB / SF / AO3 / SQW use
+different mechanisms and will land in follow-up work — they cleanly
+opt out via the new `probe_draft_state()` returning `None` on the base
+class.
+
+**`edit_submission` now preserves the scrap state instead of clearing
+it.** Latent bug: the previous edit form POST omitted the `scrap`
+field on every metadata edit, which would silently un-scrap any
+scrapped submission the moment you tweaked its tags or title. Added a
+`scrap: bool | None = None` parameter — `None` = read the current
+checkbox state from the form and re-emit it, `True`/`False` = explicit
+override. The new "Publish draft" action calls edit with
+`scrap=False`.
+
+**New endpoints.** `POST /api/editor/stories/{name}/probe-drafts`
+mirrors the existing `/verify` endpoint but probes draft state instead
+of deletion state — same 0.4s rate limit between probes, same
+not-implemented opt-out, no DB writes (the frontend overlays results
+in-memory on cell `dataset.cell` blobs). The `/publish` endpoint
+accepts a new `action='publish_draft'` that bypasses the full
+post/update pipeline and just calls `poster.publish_draft(external_id)`
+— since we're flipping a visibility flag, not pushing new content.
+
+### Files touched
+
+`config.py` (APP_VERSION → 2.14.9),
+`clients/fa/client.py` (scrap checkbox parsing in `edit_submission`,
+new `probe_scrap_state` method),
+`posting/platforms/base.py` (`probe_draft_state` default-None hook),
+`posting/platforms/furaffinity.py` (`probe_draft_state` + `publish_draft`
+implementations),
+`routes/editor_api.py` (`/probe-drafts` endpoint, `publish_draft`
+action on `/publish`),
+`frontend/js/publish_check.js` (new status, "Check drafts" footer
+button, overlay logic, "Publish draft" action button, confirm dialog),
+`frontend/css/editor.css` (`.cell-posted-draft`, `.stat-draft`),
+`CHANGELOG.md`,
+`docs/HANDOFF.md` (FA portion of draft-detection bullet marked done).
+
+---
+
 ## [2.14.8] - 2026-05-01
 
 ### Round-2 QA bug-fix sweep
@@ -78,12 +134,15 @@ release:
   standalone pages that don't exist; both features actually live
   inside per-platform dashboards / metadata drawer. Checklist
   needs editing, code is fine.
-- **BUG-022 [P2 on 2.14.6]** — Editor "Metadata" button on
-  production opens the Platforms popover instead of the metadata
-  drawer. Already fixed somewhere between 2.14.6 → 2.14.7; will
-  self-resolve on this deploy.
 - **BUG-011, BUG-013, BUG-014, BUG-015, BUG-017** — Cosmetic /
   workflow notes documented in `qa/AUTOMATED_BUG_LOG.md`.
+
+**BUG-022 retracted** — original report was a false positive from
+the automated QA: the test was matching the word "Platforms" inside
+the metadata drawer's own "Per-Platform Tags" / "Platform Toggles"
+section headings and mistakenly concluding that the Platforms
+popover had opened. User-confirmed via screenshot — the Metadata
+button works correctly on both 2.14.6 and 2.14.8.
 
 ---
 

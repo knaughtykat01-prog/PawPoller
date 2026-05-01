@@ -584,6 +584,7 @@ class FAClient:
         description: str = "",
         keywords: str = "",
         rating: str | None = None,
+        scrap: bool | None = None,
     ) -> dict:
         """Edit an existing FurAffinity submission.
 
@@ -597,6 +598,11 @@ class FAClient:
           changethumbnail/   — thumbnail image
           changesubmission/  — replace the source file
           changestory/       — story text content
+
+        scrap: None preserves current state (read from form, re-emitted as-is),
+        True forces the submission into scraps, False moves it to the main
+        gallery. HTML semantics: a present "scrap=1" field keeps/sets scrap;
+        omitting the field clears it (standard unchecked-checkbox behaviour).
         """
         client = await self._get_fa_http()
         edit_url = f"{config.FA_BASE}/controls/submissions/changeinfo/{submission_id}/"
@@ -634,6 +640,10 @@ class FAClient:
             m = re.search(rf'name="{name}".*?<option[^>]*selected[^>]*value="([^"]*)"', form_html, re.DOTALL)
             return m.group(1) if m else ""
 
+        def _scrape_checkbox(name: str) -> bool:
+            m = re.search(rf'<input[^>]*name="{name}"[^>]*>', form_html)
+            return bool(m and re.search(r'\bchecked\b', m.group(0)))
+
         # Build complete form data: current values as base, overlay caller's changes
         form_data: dict[str, str] = {
             "key": key,
@@ -646,6 +656,13 @@ class FAClient:
             "atype": _scrape_select("atype") or "1",
             "species": _scrape_select("species") or "1",
         }
+
+        # Scrap checkbox: preserve unless caller forces a state. Without this,
+        # any metadata edit on a scrapped submission would silently un-scrap it
+        # (the omitted field clears the box).
+        keep_scrap = _scrape_checkbox("scrap") if scrap is None else scrap
+        if keep_scrap:
+            form_data["scrap"] = "1"
 
         resp = await client.post(
             edit_url,
@@ -662,6 +679,29 @@ class FAClient:
         url = f"{config.FA_BASE}/view/{submission_id}/"
         logger.info("FA: Edited submission %s — title=%r", submission_id, title[:40] if title else "(unchanged)")
         return {"submission_id": submission_id, "url": url}
+
+    async def probe_scrap_state(self, submission_id: str) -> bool:
+        """Return True if the FA submission is currently in scraps.
+
+        FAExport doesn't expose scrap state (it's a list-visibility property
+        rather than a submission-page badge), so we read it from the
+        changeinfo form HTML — the same page edit_submission already scrapes.
+        Used as the closest FA-side equivalent of "is this a draft?".
+        """
+        client = await self._get_fa_http()
+        edit_url = f"{config.FA_BASE}/controls/submissions/changeinfo/{submission_id}/"
+        resp = await client.get(edit_url)
+        if resp.status_code != 200:
+            raise RuntimeError(f"FA: probe_scrap_state GET failed — status {resp.status_code}")
+        form_match = re.search(
+            r'<form[^>]*action="/controls/submissions/changeinfo/[^"]*"[^>]*>(.*?)</form>',
+            resp.text, re.DOTALL,
+        )
+        if not form_match:
+            raise RuntimeError("FA: probe_scrap_state could not locate changeinfo form")
+        form_html = form_match.group(1)
+        m = re.search(r'<input[^>]*name="scrap"[^>]*>', form_html)
+        return bool(m and re.search(r'\bchecked\b', m.group(0)))
 
 
 def _safe_int(val: Any) -> int:
