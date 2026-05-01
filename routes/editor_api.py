@@ -273,6 +273,31 @@ async def create_story(req: CreateStoryRequest):
         rating = genre_tmpl.get("rating", "explicit")
 
     archive = get_archive_path()
+
+    # Validate the archive path BEFORE attempting any mkdir — otherwise
+    # a misconfigured `posting_story_archive_path` (e.g. host-specific
+    # `/m_x` on a fresh container) would let `FileNotFoundError` /
+    # `PermissionError` bubble up to FastAPI's default 500 handler with
+    # no user-visible message. (BUG-019 from 2.14.7 QA.)
+    try:
+        archive.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Story archive path is not writable: {archive} ({exc.strerror or exc}). "
+                "Fix the path in Settings → General → Posting Settings."
+            ),
+        )
+    if not os.access(str(archive), os.W_OK):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Story archive path exists but is not writable: {archive}. "
+                "Fix permissions or update the path in Settings → General → Posting Settings."
+            ),
+        )
+
     story_dir = archive / name
 
     if story_dir.exists():

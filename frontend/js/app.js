@@ -95,6 +95,31 @@ const App = {
     async init() {
         /* Listen for hash changes so browser back/forward works */
         window.addEventListener('hashchange', () => this.route());
+
+        /* Sidebar expansion → reflow main content. Bind listeners EARLY,
+         * before the dashboard/setup auth gates that can return out of
+         * init() — the sidebar element lives in the static index.html so
+         * it's always present, and we don't want the listeners skipped
+         * when the user is briefly on the login or setup screen first.
+         * (BUG-008 in 2.14.6, regression caught in 2.14.7 QA.) */
+        const _sidebarEl = document.querySelector('.sidebar');
+        if (_sidebarEl) {
+            _sidebarEl.addEventListener('mouseenter', () => {
+                document.body.classList.add('sidebar-expanded');
+            });
+            _sidebarEl.addEventListener('mouseleave', () => {
+                document.body.classList.remove('sidebar-expanded');
+            });
+            _sidebarEl.addEventListener('focusin', () => {
+                document.body.classList.add('sidebar-expanded');
+            });
+            _sidebarEl.addEventListener('focusout', (e) => {
+                if (!_sidebarEl.contains(e.relatedTarget)) {
+                    document.body.classList.remove('sidebar-expanded');
+                }
+            });
+        }
+
         /* Dashboard auth gate — check if dashboard login is required BEFORE
          * the Inkbunny auth check.  This is the outer auth layer. */
         try {
@@ -130,12 +155,22 @@ const App = {
             console.warn('[App] Setup status check failed:', err);
         }
 
-        /* Inkbunny platform auth gate — decide which screen the user should land on */
+        /* Inkbunny platform auth gate — decide which screen the user should
+         * land on. Two important rules learned in 2.14.7 (BUG-005/006/007):
+         *
+         * 1. Never force-redirect to the legacy IB-only login screen on
+         *    landing. Server installs and AO3/FA-only users may not have
+         *    IB credentials at all, but they still need the dashboard.
+         *    They configure IB (if they want it) via Settings → Platforms.
+         *
+         * 2. Only auto-route to the loading screen on root nav. Deep links
+         *    like #/settings/general should resolve straight there — the
+         *    user is fixing their config, not waiting for a poll. */
         try {
             const auth = await API.getAuthStatus();
-            if (!auth.has_credentials) {
-                window.location.hash = '#/login';
-            } else if (!auth.has_data) {
+            const currentHash = (window.location.hash || '').replace(/^#\/?/, '');
+            const goingToRoot = !currentHash || currentHash === '/' || currentHash === '';
+            if (auth.has_credentials && !auth.has_data && goingToRoot) {
                 window.location.hash = '#/loading';
             }
         } catch (err) {
@@ -149,17 +184,24 @@ const App = {
         this._statusCheckInterval = setInterval(() => this._updateStatusCheck(), 60000);
         this._initProgressCheckBar();
 
-        /* Hamburger menu — overlay is now in HTML, just query it */
+        /* Hamburger menu — overlay is now in HTML, just query it.
+         * (Sidebar hover/focus listeners are bound early in init() above
+         * so they survive the auth-gate early-returns.) */
         const sidebar = document.querySelector('.sidebar');
         const overlay = document.getElementById('sidebar-overlay');
 
         const closeSidebar = () => {
             sidebar?.classList.remove('open');
             overlay?.classList.remove('open');
+            document.body.classList.remove('sidebar-open');
         };
         const openSidebar = () => {
             sidebar?.classList.add('open');
             overlay?.classList.add('open');
+            /* Tracks mobile sidebar state so the (out-of-tree)
+             * hamburger button can shift left when the panel
+             * slides open. See BUG-010 in CHANGELOG. */
+            document.body.classList.add('sidebar-open');
         };
 
         /* Toggle sidebar open/closed when the hamburger icon is tapped */
@@ -1254,9 +1296,12 @@ const App = {
                 } catch (err) {
                     console.warn('[Setup] Failed to mark setup complete:', err);
                 }
-                /* Navigate to the main dashboard and re-run init to
-                 * go through the normal auth gates */
-                window.location.hash = '#/';
+                /* If the user finished the wizard without configuring any
+                 * platform, land them on Settings → Platforms instead of
+                 * the empty Inkbunny dashboard (BUG-005 in 2.14.6). The
+                 * page reload re-runs init() and the normal gates. */
+                const hasAnyPlatform = Object.values(authStatus).some(v => !!v);
+                window.location.hash = hasAnyPlatform ? '#/' : '#/settings/platforms';
                 window.location.reload();
             });
         };
@@ -1370,6 +1415,10 @@ const App = {
                         <div class="progress-bar" id="loading-bar" style="width:0%"></div>
                     </div>
                     <p id="loading-detail" style="color:var(--text-muted);margin-top:10px;font-size:12px"></p>
+                    <div id="loading-actions" style="display:none;margin-top:18px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+                        <button class="btn btn-secondary" id="loading-skip-overview">Continue to Dashboard</button>
+                        <button class="btn btn-secondary" id="loading-skip-settings">Open Settings</button>
+                    </div>
                 </div>
             </div>
         `);
@@ -1380,6 +1429,27 @@ const App = {
         const msgEl = document.getElementById('loading-message');
         const barEl = document.getElementById('loading-bar');
         const detailEl = document.getElementById('loading-detail');
+        const actionsEl = document.getElementById('loading-actions');
+
+        const showEscapeButtons = () => {
+            if (!actionsEl) return;
+            actionsEl.style.display = 'flex';
+        };
+
+        // Wire escape buttons up front — visible only on error or after the
+        // safety timeout below, so the user always has a way out if the
+        // initial IB poll fails or stalls (BUG-007 in 2.14.6).
+        document.getElementById('loading-skip-overview')?.addEventListener('click', () => {
+            this.navigate('/');
+        });
+        document.getElementById('loading-skip-settings')?.addEventListener('click', () => {
+            this.navigate('/settings/platforms');
+        });
+
+        // Safety timeout: if the loading screen hasn't completed in 10s,
+        // surface the escape buttons. The poll keeps running in the
+        // background — the user can navigate away without aborting it.
+        const safetyTimer = setTimeout(showEscapeButtons, 10000);
 
         /* Human-readable labels for each poll phase (shown as progress text) */
         const phaseLabels = {
@@ -1421,14 +1491,19 @@ const App = {
 
                 if (p.phase === 'complete') {
                     clearInterval(pollInterval);
+                    clearTimeout(safetyTimer);
                     setTimeout(() => this.navigate('/'), 600);
                 }
                 if (p.phase === 'error') {
                     clearInterval(pollInterval);
+                    clearTimeout(safetyTimer);
                     if (detailEl) {
                         detailEl.textContent = p.message || 'Poll failed. Check Settings for details.';
                         detailEl.style.color = 'var(--danger)';
                     }
+                    // Surface escape buttons immediately so the user can
+                    // reach Settings to fix credentials (BUG-007).
+                    showEscapeButtons();
                 }
             } catch {
                 // Server might not be ready yet, keep trying

@@ -628,7 +628,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.14.6"
+APP_VERSION = "2.14.8"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL
@@ -797,7 +797,14 @@ def migrate_dashboard_auth() -> None:
     """
     settings = get_settings()
     if settings.get("auth_password_hash"):
-        return  # Already migrated
+        # Already migrated. _seed_settings_from_env can re-write the legacy
+        # plaintext keys back into settings.json on every restart from the
+        # DASHBOARD_PASSWORD/USER env vars (Docker compose), so scrub them
+        # here too — otherwise the plaintext sits next to the bcrypt hash and
+        # defeats the migration. (BUG-004 in 2.14.6.)
+        if settings.get("dashboard_password") or settings.get("dashboard_user"):
+            delete_settings_keys(["dashboard_password", "dashboard_user"])
+        return
 
     legacy_pw = settings.get("dashboard_password") or os.environ.get("DASHBOARD_PASSWORD", "")
     if not legacy_pw:

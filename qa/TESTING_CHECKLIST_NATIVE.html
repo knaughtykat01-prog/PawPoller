@@ -3,60 +3,273 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>PawPoller v2.14.4 — Native Testing Checklist</title>
+    <title>PawPoller v2.14.8 — Native Testing Checklist</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; max-width: 1200px; margin: 0 auto; }
-        h1 { margin-bottom: 8px; color: #b8a0ff; }
-        .mode-badge { display: inline-block; margin-left: 12px; padding: 4px 12px; border-radius: 12px; background: #2a4a7a; color: #b8d0ff; font-size: 12px; font-weight: bold; vertical-align: middle; }
-        h2 { margin: 24px 0 12px; color: #9b7dff; border-bottom: 1px solid #333; padding-bottom: 6px; }
-        .summary { margin-bottom: 20px; font-size: 14px; color: #999; }
-        .summary span { font-weight: bold; }
-        .summary .pass { color: #4a9; }
-        .summary .fail { color: #e55; }
-        .summary .skip { color: #c80; }
-        .summary .untested { color: #888; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; }
-        th { background: #252545; text-align: left; padding: 8px 10px; border-bottom: 2px solid #444; position: sticky; top: 0; }
-        td { padding: 6px 10px; border-bottom: 1px solid #2a2a3e; vertical-align: top; }
-        tr:hover { background: #1e1e38; }
-        tr.pass { background: #1a2a1e; }
-        tr.fail { background: #2a1a1a; }
-        tr.skip { background: #2a2418; }
-        .num { color: #888; font-family: monospace; }
-        .test-name { font-weight: 600; color: #ddd; }
-        .steps { color: #aaa; }
-        .expected { color: #b0c0d0; font-style: italic; }
-        .status-cell { white-space: nowrap; }
-        .status-cell label { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; cursor: pointer; }
-        .status-cell input[type="radio"] { margin: 0; }
-        .result-input { width: 100%; padding: 4px 6px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #444; border-radius: 3px; font-size: 12px; resize: vertical; min-height: 28px; font-family: inherit; }
-        .actions { margin-bottom: 12px; }
-        .btn { display: inline-block; padding: 6px 12px; background: #4a3a7a; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; margin-right: 6px; }
-        .btn:hover { background: #5a4a8a; }
-        .btn-primary { background: #4a7aef; }
-        .btn-primary:hover { background: #5a8aff; }
-        .btn-secondary { background: #555; }
-        .btn-secondary:hover { background: #666; }
-        .btn-danger { background: #a44; }
-        .btn-danger:hover { background: #b55; }
-        .badge-skip { display: inline-block; padding: 1px 6px; border-radius: 8px; background: #5a4a1c; color: #f0d090; font-size: 10px; margin-left: 6px; vertical-align: middle; }
-        .filter-bar { margin-bottom: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-        .filter-bar input, .filter-bar select { padding: 4px 8px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #444; border-radius: 3px; font-size: 12px; }
-        details { margin-top: 12px; padding: 8px 12px; background: #1f1f3a; border-radius: 6px; }
-        details summary { cursor: pointer; font-weight: 600; color: #b8a0ff; }
-        details > div { margin-top: 8px; font-size: 13px; color: #bbb; line-height: 1.5; }
-        code { background: #15152a; padding: 2px 5px; border-radius: 3px; font-size: 12px; color: #e0c090; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+            color: #b8a0ff;
+        }
+
+        .mode-badge {
+            display: inline-block;
+            margin-left: 12px;
+            padding: 4px 12px;
+            border-radius: 12px;
+            background: #2a4a7a;
+            color: #b8d0ff;
+            font-size: 12px;
+            font-weight: bold;
+            vertical-align: middle;
+        }
+
+        h2 {
+            margin: 24px 0 12px;
+            color: #9b7dff;
+            border-bottom: 1px solid #333;
+            padding-bottom: 6px;
+        }
+
+        .summary {
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #999;
+        }
+
+        .summary span {
+            font-weight: bold;
+        }
+
+        .summary .pass {
+            color: #4a9;
+        }
+
+        .summary .fail {
+            color: #e55;
+        }
+
+        .summary .skip {
+            color: #c80;
+        }
+
+        .summary .untested {
+            color: #888;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 16px;
+            font-size: 13px;
+        }
+
+        th {
+            background: #252545;
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 2px solid #444;
+            position: sticky;
+            top: 0;
+        }
+
+        td {
+            padding: 6px 10px;
+            border-bottom: 1px solid #2a2a3e;
+            vertical-align: top;
+        }
+
+        tr:hover {
+            background: #1e1e38;
+        }
+
+        tr.pass {
+            background: #1a2a1e;
+        }
+
+        tr.fail {
+            background: #2a1a1a;
+        }
+
+        tr.skip {
+            background: #2a2418;
+        }
+
+        .num {
+            color: #888;
+            font-family: monospace;
+        }
+
+        .test-name {
+            font-weight: 600;
+            color: #ddd;
+        }
+
+        .steps {
+            color: #aaa;
+        }
+
+        .expected {
+            color: #b0c0d0;
+            font-style: italic;
+        }
+
+        .status-cell {
+            white-space: nowrap;
+        }
+
+        .status-cell label {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-right: 8px;
+            cursor: pointer;
+        }
+
+        .status-cell input[type="radio"] {
+            margin: 0;
+        }
+
+        .result-input {
+            width: 100%;
+            padding: 4px 6px;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            border: 1px solid #444;
+            border-radius: 3px;
+            font-size: 12px;
+            resize: vertical;
+            min-height: 28px;
+            font-family: inherit;
+        }
+
+        .actions {
+            margin-bottom: 12px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 6px 12px;
+            background: #4a3a7a;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-right: 6px;
+        }
+
+        .btn:hover {
+            background: #5a4a8a;
+        }
+
+        .btn-primary {
+            background: #4a7aef;
+        }
+
+        .btn-primary:hover {
+            background: #5a8aff;
+        }
+
+        .btn-secondary {
+            background: #555;
+        }
+
+        .btn-secondary:hover {
+            background: #666;
+        }
+
+        .btn-danger {
+            background: #a44;
+        }
+
+        .btn-danger:hover {
+            background: #b55;
+        }
+
+        .badge-skip {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 8px;
+            background: #5a4a1c;
+            color: #f0d090;
+            font-size: 10px;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+
+        .filter-bar {
+            margin-bottom: 12px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .filter-bar input,
+        .filter-bar select {
+            padding: 4px 8px;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            border: 1px solid #444;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        details {
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: #1f1f3a;
+            border-radius: 6px;
+        }
+
+        details summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: #b8a0ff;
+        }
+
+        details>div {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #bbb;
+            line-height: 1.5;
+        }
+
+        code {
+            background: #15152a;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 12px;
+            color: #e0c090;
+        }
     </style>
 </head>
 
 <body>
 
-    <h1>PawPoller v2.14.4 — Testing Checklist <span class="mode-badge" style="background:#5a2e6e;color:#e8c0ff">NATIVE</span></h1>
+    <h1>PawPoller v2.14.8 — Testing Checklist <span class="mode-badge"
+            style="background:#5a2e6e;color:#e8c0ff">NATIVE</span></h1>
     <p style="color: #888; font-size: 13px; margin-bottom: 12px;">
-        This list covers the Windows desktop build of PawPoller (PyInstaller bundle launched as <code>PawPoller.exe</code>, pywebview window + pystray tray icon). For the browser/Docker/server flavour use <code>TESTING_CHECKLIST_WEBAPP.html</code>.
+        This list covers the Windows desktop build of PawPoller (PyInstaller bundle launched as
+        <code>PawPoller.exe</code>, pywebview window + pystray tray icon). For the browser/Docker/server flavour use
+        <code>TESTING_CHECKLIST_WEBAPP.html</code>.
         Sample upload files referenced below live in <code>fixtures/</code>.
-        Rows tagged <span class="badge-skip">SKIP</span> are for platforms the user has opted out of testing — login/connection rows still apply.
+        Rows tagged <span class="badge-skip">SKIP</span> are for platforms the user has opted out of testing —
+        login/connection rows still apply.
     </p>
     <div class="summary" id="summary">
         <span class="pass" id="pass-count">0</span> passed &nbsp;|&nbsp;
@@ -70,11 +283,14 @@
         <button class="btn btn-secondary" onclick="loadResults()">Load saved</button>
         <button class="btn btn-secondary" onclick="clearResults()">Clear all</button>
         <button class="btn btn-secondary" onclick="exportCSV()">Export CSV</button>
-        <button class="btn btn-secondary" onclick="document.getElementById('csv-import-input').click()">Import CSV</button>
-        <input type="file" id="csv-import-input" accept=".csv,text/csv" style="display:none" onchange="importCSV(event)">
+        <button class="btn btn-secondary" onclick="document.getElementById('csv-import-input').click()">Import
+            CSV</button>
+        <input type="file" id="csv-import-input" accept=".csv,text/csv" style="display:none"
+            onchange="importCSV(event)">
     </div>
     <div class="filter-bar">
-        <label>Filter: <input type="text" id="filter-text" placeholder="Search test name / steps..." oninput="applyFilter()"></label>
+        <label>Filter: <input type="text" id="filter-text" placeholder="Search test name / steps..."
+                oninput="applyFilter()"></label>
         <label>Status:
             <select id="filter-status" onchange="applyFilter()">
                 <option value="">All</option>
@@ -90,613 +306,738 @@
     <details>
         <summary>How to run this sweep</summary>
         <div>
-            <p><strong>1.</strong> Build a fresh exe with <code>build.bat</code>, then launch <code>dist\PawPoller\PawPoller.exe</code>. The pywebview window + tray icon should appear within ~5s.</p>
-            <p><strong>2.</strong> Work through one section at a time. Mark each row pass / fail / skip as you go (autosave is on, results live in <code>localStorage</code> under <code>pawpoller_test_native</code>).</p>
-            <p><strong>3.</strong> File-upload rows reference <code>fixtures/sample_*.{md,html,bbcode,txt,rtf,jpg}</code>. Use those exact files so results stay reproducible.</p>
-            <p><strong>4.</strong> For platform rows you've opted out of (DA, IK, Wattpad, Bsky, X), the login row still matters — mark posting/data rows as Skip with a brief note.</p>
-            <p><strong>5.</strong> Several native-only sections (tray, run-on-startup, browser-login popups, auto-update apply, Edge PDF fallback, native file dialogs) appear at the end — these have no equivalent in the webapp checklist.</p>
-            <p><strong>6.</strong> Export CSV at the end and stash it next to the previous snapshot at <code>C:\Users\rhysc\Downloads\pawpoller_test_native.csv</code>.</p>
+            <p><strong>1.</strong> Build a fresh exe with <code>build.bat</code>, then launch
+                <code>dist\PawPoller\PawPoller.exe</code>. The pywebview window + tray icon should appear within ~5s.
+            </p>
+            <p><strong>2.</strong> Work through one section at a time. Mark each row pass / fail / skip as you go
+                (autosave is on, results live in <code>localStorage</code> under <code>pawpoller_test_native</code>).
+            </p>
+            <p><strong>3.</strong> File-upload rows reference
+                <code>fixtures/sample_*.{md,html,bbcode,txt,rtf,jpg}</code>. Use those exact files so results stay
+                reproducible.</p>
+            <p><strong>4.</strong> For platform rows you've opted out of (DA, IK, Wattpad, Bsky, X), the login row still
+                matters — mark posting/data rows as Skip with a brief note.</p>
+            <p><strong>5.</strong> Several native-only sections (tray, run-on-startup, browser-login popups, auto-update
+                apply, Edge PDF fallback, native file dialogs) appear at the end — these have no equivalent in the
+                webapp checklist.</p>
+            <p><strong>6.</strong> Export CSV at the end and stash it next to the previous snapshot at
+                <code>C:\Users\rhysc\Downloads\pawpoller_test_native.csv</code>.</p>
         </div>
     </details>
 
     <script>
         const STORAGE_KEY = 'pawpoller_test_native';
         const sections = [
-            { title: "1. Boot & First-Run (Native)", tests: [
-                { id: 1, name: "PyInstaller build succeeds", steps: `python -m PyInstaller pawpoller.spec --noconfirm`, expected: `Build completes; dist/PawPoller/PawPoller.exe exists; warn-pawpoller.txt has no critical missing modules` },
-                { id: 2, name: "PawPoller.exe launches", steps: `Double-click dist/PawPoller/PawPoller.exe`, expected: `Native window appears within ~5s; tray icon shows in system tray; no Windows error dialog` },
-                { id: 3, name: "Internal server ready", steps: `In-app: navigate dashboard. Log file at %APPDATA%/PawPoller/logs/`, expected: `Log line "PawPoller server ready at http://0.0.0.0:8420". Dashboard renders without retry spinner` },
-                { id: 4, name: "No-flash theme on cold load", steps: `Set non-default theme → Quit → relaunch`, expected: `Theme applies before first paint via inline <head> script. No flash of default dark` },
-                { id: 5, name: "Setup wizard appears first run", steps: `Remove setup_complete from settings.json → reload`, expected: `Wizard renders, sidebar hidden, no platform pages reachable` },
-                { id: 6, name: "Setup — Step 1 Welcome", steps: `Click "Get Started"`, expected: `Advances to Step 2; step indicator updates (dot 1 fills)` },
-                { id: 7, name: "Setup — Step 2 Archive path", steps: `Enter path /app/story-archive (or local equivalent) → Next`, expected: `Path saved to posting_story_archive_path; advances to Step 3. Empty path triggers validation error` },
-                { id: 8, name: "Setup — Step 3 Platform cards", steps: `Inspect grid of 11 platforms`, expected: `IB, FA, WS, SF, SQW, AO3, DA, WP, IK, Bsky, TW. Connected platforms green, others grey/neutral` },
-                { id: 9, name: "Setup — Step 3 Skip", steps: `Click Next without connecting anything`, expected: `Skip allowed; advances to Step 4 with empty platforms_connected count` },
-                { id: 10, name: "Setup — Step 4 Finish", steps: `Click "Go to Dashboard"`, expected: `setup_complete=true persisted; redirected to dashboard; sidebar visible` },
-                { id: 11, name: "Setup does NOT reappear", steps: `Reload after Finish`, expected: `Goes straight to dashboard` },
-                { id: 12, name: "Dashboard auth gate (when configured)", steps: `Set auth_password_hash via Settings → Security → log out → reload`, expected: `Redirected to /#/dashboard-login; no dashboard data exposed` },
-                { id: 13, name: "Dashboard login form", steps: `Submit valid password`, expected: `Server sets pp_session cookie (HttpOnly, SameSite=Strict); redirects to dashboard` },
-                { id: 14, name: "Dashboard login — wrong password", steps: `Submit garbage password`, expected: `Form shows error, no cookie set, no information leak about whether user exists` },
-                { id: 15, name: "Dashboard logout", steps: `Sidebar → Logout`, expected: `pp_session cleared, redirected to login form` },
-            ]},
-            { title: "2. Sidebar & Navigation", tests: [
-                { id: 16, name: "Brand mark renders", steps: `Look at top of sidebar`, expected: `Copper diamond ◆ + "PawPoller" wordmark in serif. Theme-coloured` },
-                { id: 17, name: "Sidebar collapses on mobile (< 768px)", steps: `Resize window to 600px wide`, expected: `Sidebar hides; hamburger button appears top-left; tap reveals overlay sidebar` },
-                { id: 18, name: "Hamburger toggle", steps: `Mobile width → tap hamburger`, expected: `Sidebar slides in with translucent overlay. Tap overlay = closes` },
-                { id: 19, name: "Nav — Dashboard link", steps: `Click "Dashboard"`, expected: `Routes to #/, cross-platform overview renders` },
-                { id: 20, name: "Nav — Inkbunny", steps: `Platforms → Inkbunny`, expected: `Routes to #/ib, IB submissions list loads (or login screen if no creds)` },
-                { id: 21, name: "Nav — FurAffinity", steps: `Platforms → FurAffinity`, expected: `Routes to #/fa, FA list loads` },
-                { id: 22, name: "Nav — Weasyl", steps: `Platforms → Weasyl`, expected: `Routes to #/ws, WS list loads` },
-                { id: 23, name: "Nav — SoFurry", steps: `Platforms → SoFurry`, expected: `Routes to #/sf, SF list loads` },
-                { id: 24, name: "Nav — SquidgeWorld", steps: `Platforms → SquidgeWorld`, expected: `Routes to #/sqw, SQW list loads` },
-                { id: 25, name: "Nav — AO3", steps: `Platforms → AO3`, expected: `Routes to #/ao3, AO3 list loads` },
-                { id: 26, name: "Nav — DeviantArt", steps: `Platforms → DeviantArt`, expected: `Routes to #/da, DA list loads` },
-                { id: 27, name: "Nav — Wattpad", steps: `Platforms → Wattpad`, expected: `Routes to #/wp, WP list loads` },
-                { id: 28, name: "Nav — Itaku", steps: `Platforms → Itaku`, expected: `Routes to #/ik, IK list loads` },
-                { id: 29, name: "Nav — Bluesky", steps: `Platforms → Bluesky`, expected: `Routes to #/bsky, Bsky list loads` },
-                { id: 30, name: "Nav — X / Twitter", steps: `Platforms → X`, expected: `Routes to #/tw, TW list loads` },
-                { id: 31, name: "Nav — Stories", steps: `Click "Stories"`, expected: `Routes to #/stories, story list loads with all detected MASTER.md folders` },
-                { id: 32, name: "Nav — Publish Check", steps: `Click "Publish Check"`, expected: `Routes to #/publish-check; story selector at top` },
-                { id: 33, name: "Nav — Editor", steps: `Story list → click a story`, expected: `Routes to #/editor/<story>; editor + preview pane render` },
-                { id: 34, name: "Nav — Groups", steps: `Click "Groups"`, expected: `Routes to #/groups; existing groups + Create button visible` },
-                { id: 35, name: "Nav — Goals", steps: `Click "Goals"`, expected: `Routes to #/goals; goals list with progress bars` },
-                { id: 36, name: "Nav — Tags", steps: `Click "Tags"`, expected: `Routes to #/tags; user tags list` },
-                { id: 37, name: "Nav — Settings", steps: `Click "Settings"`, expected: `Routes to #/settings/general; tab bar visible` },
-                { id: 38, name: "Sidebar version badge", steps: `Bottom of sidebar`, expected: `Shows current version. If newer release exists: "vX.Y.Z available" + Update Now button` },
-                { id: 39, name: "Theme toggle button", steps: `Sidebar → palette button (🎨)`, expected: `Navigates to #/settings/appearance` },
-                { id: 40, name: "Browser back button", steps: `Navigate around then Back`, expected: `Hash router responds correctly; previous page renders` },
-            ]},
-            { title: "3. Dashboard / Cross-Platform Overview", tests: [
-                { id: 41, name: "Dashboard stats cards", steps: `Open dashboard`, expected: `Cards for total submissions, total views, total faves, total comments across all connected platforms` },
-                { id: 42, name: "Recent activity feed", steps: `Scroll dashboard`, expected: `Recent new submissions / new faves / new comments rendered with platform icons + timestamps` },
-                { id: 43, name: "Top fans cross-platform", steps: `Dashboard → Top Fans card`, expected: `Leaderboard of users by total favourites across linked platforms` },
-                { id: 44, name: "Trending submissions", steps: `Dashboard → Trending card`, expected: `Submissions with unusual recent growth (spike detection algorithm)` },
-                { id: 45, name: "Charts render with theme colours", steps: `Switch theme → return to dashboard`, expected: `All Chart.js charts pick up new theme accent (Charts.destroyAll + redraw on theme switch)` },
-                { id: 46, name: "Date range selector", steps: `Date range bar → click 30d`, expected: `Charts and data re-filter to last 30 days` },
-                { id: 47, name: "Date range — All time", steps: `Click "All"`, expected: `Charts show full history` },
-                { id: 48, name: "Auto-refresh ticker", steps: `Wait 60s on dashboard`, expected: `Page silently refetches; new data shown without flicker. Pauses when document.hidden=true` },
-                { id: 49, name: "Last polled badge", steps: `Sidebar bottom → look at "Last polled"`, expected: `Shows relative time of last successful poll cycle. Updates every 60s` },
-            ]},
-            { title: "4. Per-Platform — Inkbunny", tests: [
-                { id: 50, name: "Auth status check", steps: `Settings → Platforms → Inkbunny`, expected: `If creds set: green badge + username. If not: "Not connected" + connect form` },
-                { id: 51, name: "Connect — valid creds", steps: `Enter valid IB user/pass → Save Credentials`, expected: `Validates via API, stores in settings, badge flips to green` },
-                { id: 52, name: "Connect — invalid creds", steps: `Enter wrong password`, expected: `Friendly error message; no creds saved; no information leak` },
-                { id: 53, name: "Submissions list loads", steps: `#/ib`, expected: `Table of submissions with thumbnail, title, views, faves, comments, posted date` },
-                { id: 54, name: "Sort — views", steps: `Click "Views" column header`, expected: `Re-sorts descending. Click again = ascending. Active column gets sort indicator` },
-                { id: 55, name: "Sort — favorites", steps: `Click "Favorites" header`, expected: `Re-sorts. Indicator moves` },
-                { id: 56, name: "Sort — comments", steps: `Click "Comments" header`, expected: `Re-sorts. Indicator moves` },
-                { id: 57, name: "Search filter", steps: `Type in search box`, expected: `Live-filters table by title (case-insensitive substring)` },
-                { id: 58, name: "Detail page", steps: `Click any submission row`, expected: `Routes to #/ib/<id>; charts + snapshots + metadata render` },
-                { id: 59, name: "Detail charts", steps: `Detail page → look at charts`, expected: `Time-series for views, faves, comments. Smooth lines, theme colours` },
-                { id: 60, name: "Snapshot table", steps: `Detail page → scroll`, expected: `Table of historical snapshots (one per poll cycle) with delta columns` },
-                { id: 61, name: "Compare — add to compare", steps: `List view → checkbox 2-3 rows → "Compare"`, expected: `Compare overlay chart shows selected submissions on one chart` },
-                { id: 62, name: "Compare — metric switch", steps: `Compare overlay → change metric to "Comments"`, expected: `Lines re-fetch and redraw for the new metric` },
-                { id: 63, name: "Compare — max 5", steps: `Try to add a 6th`, expected: `Polite refusal; max 5 enforced` },
-                { id: 64, name: "Watchers list", steps: `IB → Watchers tab`, expected: `IB watcher list with spam status flag` },
-                { id: 65, name: "Manual poll trigger", steps: `Detail or list → "Poll Now"`, expected: `Triggers a single-platform poll. Progress bar shows. Stats refresh on completion` },
-                { id: 66, name: "Poll log", steps: `Settings → Logs → IB poll log`, expected: `Table of recent poll runs with timestamps, duration, success/fail status` },
-                { id: 67, name: "CSV export", steps: `IB list → "Export CSV"`, expected: `Downloads pawpoller_inkbunny_<date>.csv with all current rows` },
-                { id: 68, name: "Aggregate stats", steps: `IB Aggregate page`, expected: `Total/avg per metric, top performers, growth charts` },
-            ]},
-            { title: "5. Per-Platform — FurAffinity", tests: [
-                { id: 69, name: "Auth status (cookies)", steps: `Settings → Platforms → FurAffinity`, expected: `If cookie_a + cookie_b set: green + username. Otherwise: connection form` },
-                { id: 70, name: "Connect — manual cookies", steps: `Enter cookie_a + cookie_b → Save`, expected: `Validates against /msg/others/, saves, flips green` },
-                { id: 71, name: "Submissions list loads", steps: `#/fa`, expected: `Table loads with FA-specific metadata (rating, category)` },
-                { id: 72, name: "Detail page + FA metadata", steps: `Click a submission`, expected: `Detail shows category, theme, species, gender (FA-specific fields)` },
-                { id: 73, name: "FA charts render", steps: `Detail charts`, expected: `Views + faves + comments time-series` },
-                { id: 74, name: "Watchers list (FA)", steps: `FA → Watchers`, expected: `Watcher list, individual watcher detail clickable` },
-                { id: 75, name: "Manual poll", steps: `FA list → "Poll Now"`, expected: `FA-only poll runs; stats update` },
-                { id: 76, name: "FA CSV export", steps: `Export CSV`, expected: `Downloads with FA columns` },
-                { id: 77, name: "FA poll log", steps: `Settings → Logs → FA`, expected: `Recent runs with timestamps + status` },
-            ]},
-            { title: "6. Per-Platform — Weasyl", tests: [
-                { id: 78, name: "Auth status", steps: `Settings → Platforms → Weasyl`, expected: `Shows API key set/not + username when validated` },
-                { id: 79, name: "Connect — API key", steps: `Paste WS API key → Save`, expected: `Hits /api/whoami, saves on 200` },
-                { id: 80, name: "Submissions list", steps: `#/ws`, expected: `WS list with cursor pagination markers` },
-                { id: 81, name: "Detail + chart", steps: `Click submission`, expected: `Detail page renders; charts populated` },
-                { id: 82, name: "Manual poll", steps: `WS Poll Now`, expected: `Single platform poll; updates` },
-                { id: 83, name: "WS CSV export", steps: `Export CSV`, expected: `Downloads CSV` },
-                { id: 84, name: "WS poll log", steps: `Logs → WS`, expected: `Run history visible` },
-                { id: 85, name: "Weasyl SKIP note", steps: `If account not verified`, expected: `Mark this and remaining WS tests Skip with note "account not verified"` },
-            ]},
-            { title: "7. Per-Platform — SoFurry", tests: [
-                { id: 86, name: "Auth status", steps: `Settings → Platforms → SoFurry`, expected: `Shows username if logged in` },
-                { id: 87, name: "Connect — direct login", steps: `Enter SF user/pass → Save`, expected: `Calls SF login, persists session cookies, badge green` },
-                { id: 88, name: "Connect via CF proxy", steps: `On server with cf_worker_url set`, expected: `Login routes through CF Worker (datacenter IPs blocked otherwise)` },
-                { id: 89, name: "Submissions list", steps: `#/sf`, expected: `SF list with story-type submissions` },
-                { id: 90, name: "Detail + chart", steps: `Click a story`, expected: `Charts render; chapter list if multi-chapter` },
-                { id: 91, name: "Followers list", steps: `SF → Followers`, expected: `SF follower list` },
-                { id: 92, name: "Manual poll", steps: `SF Poll Now`, expected: `Poll runs; updates visible` },
-                { id: 93, name: "SF CSV export", steps: `Export CSV`, expected: `Downloads CSV` },
-                { id: 94, name: "SF poll log", steps: `Logs → SF`, expected: `History visible` },
-            ]},
-            { title: "8. Per-Platform — SquidgeWorld", tests: [
-                { id: 95, name: "Auth status", steps: `Settings → Platforms → SquidgeWorld`, expected: `Shows configured username(s); poster vs author distinction visible` },
-                { id: 96, name: "Connect — credentials", steps: `Enter SQW user/pass + author user/pass → Save`, expected: `Both validate; badge green` },
-                { id: 97, name: "Email-login resolution", steps: `Use email instead of username`, expected: `App resolves to account name for URLs (not just email)` },
-                { id: 98, name: "Submissions list", steps: `#/sqw`, expected: `Per-chapter rows (SQW format)` },
-                { id: 99, name: "Detail + chart", steps: `Click a chapter`, expected: `Chart renders; kudos count visible` },
-                { id: 100, name: "Manual poll", steps: `SQW Poll Now`, expected: `Updates after run` },
-                { id: 101, name: "SQW CSV export", steps: `Export CSV`, expected: `CSV downloads` },
-                { id: 102, name: "SQW poll log", steps: `Logs → SQW`, expected: `History visible` },
-            ]},
-            { title: "9. Per-Platform — AO3", tests: [
-                { id: 103, name: "Auth status", steps: `Settings → Platforms → AO3`, expected: `Shows configured username; AO3-specific note about CF proxy` },
-                { id: 104, name: "Connect — credentials", steps: `Enter user/pass → Save`, expected: `Login validates; session cookie cached` },
-                { id: 105, name: "Connect via CF proxy (desktop)", steps: `Desktop with cf_worker_url`, expected: `Login routes through Worker (Shields-up bypass)` },
-                { id: 106, name: "Submissions list", steps: `#/ao3`, expected: `Works list with kudos/hits/comments` },
-                { id: 107, name: "Detail + chart", steps: `Click a work`, expected: `Charts render including chapter-by-chapter` },
-                { id: 108, name: "Manual poll", steps: `AO3 Poll Now`, expected: `Poll runs; check log for retries on 429` },
-                { id: 109, name: "AO3 CSV export", steps: `Export CSV`, expected: `Downloads with AO3 columns (kudos, hits, etc.)` },
-                { id: 110, name: "AO3 poll log", steps: `Logs → AO3`, expected: `History incl. any "429 rate limited, waiting Xs" lines` },
-            ]},
-            { title: "10. Per-Platform — DeviantArt (opted out, login only)", tests: [
-                { id: 111, name: "Auth status", steps: `Settings → Platforms → DeviantArt`, expected: `Cookie field shown; status badge correct` },
-                { id: 112, name: "Connect — DA cookie", steps: `Paste DA cookie → Save`, expected: `Validates, badge flips green` },
-                { id: 113, name: "Submissions list <span class=\"badge-skip\">SKIP</span>", steps: `#/da`, expected: `SKIP — opted out. Confirm page renders without crashing` },
-                { id: 114, name: "Manual poll <span class=\"badge-skip\">SKIP</span>", steps: `DA Poll Now`, expected: `SKIP — opted out. If triggered, should not error` },
-                { id: 115, name: "DA poll log", steps: `Logs → DA`, expected: `Page renders even if no poll history` },
-            ]},
-            { title: "11. Per-Platform — Wattpad (opted out, login only)", tests: [
-                { id: 116, name: "Auth status", steps: `Settings → Platforms → Wattpad`, expected: `Username field; status badge correct` },
-                { id: 117, name: "Connect", steps: `Enter user/pass → Save`, expected: `Validates, badge flips green` },
-                { id: 118, name: "Submissions list <span class=\"badge-skip\">SKIP</span>", steps: `#/wp`, expected: `SKIP — opted out. Page renders without crash` },
-                { id: 119, name: "Manual poll <span class=\"badge-skip\">SKIP</span>", steps: `WP Poll Now`, expected: `SKIP — opted out` },
-                { id: 120, name: "WP poll log", steps: `Logs → WP`, expected: `Renders` },
-            ]},
-            { title: "12. Per-Platform — Itaku (opted out, login only)", tests: [
-                { id: 121, name: "Auth status", steps: `Settings → Platforms → Itaku`, expected: `Token field visible` },
-                { id: 122, name: "Connect — IK token", steps: `Paste IK auth token → Save`, expected: `Validates, badge flips green` },
-                { id: 123, name: "Submissions list <span class=\"badge-skip\">SKIP</span>", steps: `#/ik`, expected: `SKIP — opted out. Page renders` },
-                { id: 124, name: "Manual poll <span class=\"badge-skip\">SKIP</span>", steps: `IK Poll Now`, expected: `SKIP` },
-                { id: 125, name: "IK poll log", steps: `Logs → IK`, expected: `Renders` },
-            ]},
-            { title: "13. Per-Platform — Bluesky (opted out, login only)", tests: [
-                { id: 126, name: "Auth status", steps: `Settings → Platforms → Bluesky`, expected: `Identifier + app password fields` },
-                { id: 127, name: "Connect — Bluesky", steps: `Enter handle + app password → Save`, expected: `Validates via AT protocol, badge flips green` },
-                { id: 128, name: "Submissions list <span class=\"badge-skip\">SKIP</span>", steps: `#/bsky`, expected: `SKIP — opted out` },
-                { id: 129, name: "Manual poll <span class=\"badge-skip\">SKIP</span>", steps: `Bsky Poll Now`, expected: `SKIP` },
-                { id: 130, name: "Bsky poll log", steps: `Logs → Bsky`, expected: `Renders` },
-            ]},
-            { title: "14. Per-Platform — X / Twitter (opted out, login only)", tests: [
-                { id: 131, name: "Auth status", steps: `Settings → Platforms → X`, expected: `auth_token + ct0 fields` },
-                { id: 132, name: "Connect — X cookies", steps: `Paste auth_token + ct0 → Save`, expected: `Validates, badge green` },
-                { id: 133, name: "Submissions list <span class=\"badge-skip\">SKIP</span>", steps: `#/tw`, expected: `SKIP — opted out` },
-                { id: 134, name: "Manual poll <span class=\"badge-skip\">SKIP</span>", steps: `TW Poll Now`, expected: `SKIP` },
-                { id: 135, name: "TW poll log", steps: `Logs → TW`, expected: `Renders` },
-            ]},
-            { title: "15. Groups", tests: [
-                { id: 136, name: "Groups page renders", steps: `Sidebar → Groups`, expected: `Existing groups list + Create button` },
-                { id: 137, name: "Create group", steps: `Click Create → name + description → Save`, expected: `New group appears in list` },
-                { id: 138, name: "Add member", steps: `Group detail → Add submission → pick from list → Add`, expected: `Member appears in group; aggregate stats update` },
-                { id: 139, name: "Remove member", steps: `Group → click ✗ on a member`, expected: `Member removed; stats recalculate` },
-                { id: 140, name: "Edit group", steps: `Group → Edit → change name → Save`, expected: `Name updates everywhere` },
-                { id: 141, name: "Delete group", steps: `Group → Delete → Confirm`, expected: `Group removed; CASCADE removes member entries` },
-                { id: 142, name: "Group aggregate chart", steps: `Group detail`, expected: `Combined views/faves/comments line chart for all members` },
-            ]},
-            { title: "16. Cross-Platform Links", tests: [
-                { id: 143, name: "Links list renders", steps: `Open links view`, expected: `Existing cross-platform link records` },
-                { id: 144, name: "Create link", steps: `Add link → pick IB sub + AO3 work → Save`, expected: `Link saved; appears in both submission detail pages` },
-                { id: 145, name: "View linked detail", steps: `Open IB sub detail`, expected: `Linked AO3 work shown in sidebar` },
-                { id: 146, name: "Delete link", steps: `Remove a link`, expected: `Link disappears from both sides` },
-            ]},
-            { title: "17. Goals", tests: [
-                { id: 147, name: "Goals page renders", steps: `Sidebar → Goals`, expected: `Existing goals + Create button` },
-                { id: 148, name: "Create goal", steps: `Create → pick metric (views/faves/comments) → target → Save`, expected: `Goal appears with progress bar` },
-                { id: 149, name: "Goal — invalid metric blocked", steps: `Try crafting an API request with metric not in ALLOWED_GOAL_METRICS`, expected: `400 with "invalid metric" — SQL injection prevention working` },
-                { id: 150, name: "Progress updates", steps: `After a poll cycle pulls new data`, expected: `Goal bar moves toward target` },
-                { id: 151, name: "Goal completion", steps: `Goal hits 100%`, expected: `Visual completion state. Telegram notification fires (if enabled)` },
-                { id: 152, name: "Delete goal", steps: `Click delete → confirm`, expected: `Goal removed` },
-            ]},
-            { title: "18. Tags Library", tests: [
-                { id: 153, name: "Tags page renders", steps: `Sidebar → Tags`, expected: `User tag list + Create button` },
-                { id: 154, name: "Create user tag", steps: `Create → name + colour → Save`, expected: `Tag appears in list` },
-                { id: 155, name: "Assign tag to submission", steps: `Submission detail → Tags → pick a tag → Assign`, expected: `Tag chip appears on submission` },
-                { id: 156, name: "Remove tag", steps: `Click ✗ on a tag chip`, expected: `Assignment removed; tag still in library` },
-                { id: 157, name: "Delete tag", steps: `Tags → delete a tag`, expected: `Tag removed; assignments cascade` },
-            ]},
-            { title: "19. Editor — Story Management", tests: [
-                { id: 158, name: "Story list — All", steps: `Click Stories`, expected: `All MASTER.md folders detected from posting_story_archive_path. Counts visible` },
-                { id: 159, name: "Story search", steps: `Type in search box`, expected: `Live filter by folder name / title` },
-                { id: 160, name: "Create New Story button", steps: `+ Create New Story`, expected: `Modal opens with title, author, folder name, chapters, rating, genre selector, optional file upload` },
-                { id: 161, name: "Folder name auto-gen", steps: `Type "My Great Story"`, expected: `Folder field auto-fills "My_Great_Story"` },
-                { id: 162, name: "Folder name validation", steps: `Try "test@story!"`, expected: `Inline error: "letters, digits, and underscores only"` },
-                { id: 163, name: "Duplicate folder rejected", steps: `Use an existing folder name`, expected: `Inline error about existing folder; no overwrite` },
-                { id: 164, name: "Genre — Erotica template", steps: `Pick "Erotica" → Create`, expected: `Rating auto-Explicit; story.json tags.default has erotica preset tags` },
-                { id: 165, name: "Genre — Horror w/ override", steps: `Pick Horror → manually set Explicit → Create`, expected: `story.json rating=explicit (user override) but Horror tags/warnings retained` },
-                { id: 166, name: "Upload sample_story.md", steps: `Create with file <code>fixtures/sample_story.md</code>`, expected: `MASTER.md = uploaded content; @title and @body anchors preserved` },
-                { id: 167, name: "Upload sample_story.html", steps: `Create with <code>fixtures/sample_story.html</code>`, expected: `MASTER.md = HTML→Markdown (## headings, **bold**, *italic*, lists kept)` },
-                { id: 168, name: "Upload sample_story.bbcode", steps: `Create with <code>fixtures/sample_story.bbcode</code>`, expected: `MASTER.md = BBCode→Markdown ([b]→**, [i]→*, [hr]→---, [url]→[text](url))` },
-                { id: 169, name: "Upload sample_story.txt", steps: `Create with <code>fixtures/sample_story.txt</code>`, expected: `MASTER.md = raw text inside @body block` },
-                { id: 170, name: "Upload sample_story.rtf", steps: `Create with <code>fixtures/sample_story.rtf</code>`, expected: `MASTER.md has RTF runs converted to Markdown bold/italic` },
-                { id: 171, name: "Upload multi-chapter sample", steps: `Create from <code>fixtures/sample_multichapter.md</code>`, expected: `Three chapter folders/files detected on Editor open; chapter break (---) recognised; POV markers preserved` },
-                { id: 172, name: "Editor opens after create", steps: `After Create`, expected: `Routes to #/editor/<folder>; MASTER.md loaded in source pane` },
-                { id: 173, name: "Story rename", steps: `Story list → ⋯ → Rename`, expected: `Folder + story.json title both update` },
-                { id: 174, name: "Story delete (soft)", steps: `Story list → ⋯ → Delete → Confirm`, expected: `Story removed from list (folder moved to trash or marked deleted)` },
-            ]},
-            { title: "20. Editor — Anchor Toolbar", tests: [
-                { id: 175, name: "Anchor — Title (T)", steps: `Cursor on a line → click "T"`, expected: `<!-- @title --> inserted on its own line above the cursor's line` },
-                { id: 176, name: "Anchor — Subtitle (Sub)", steps: `Click "Sub"`, expected: `<!-- @subtitle --> on own line above` },
-                { id: 177, name: "Anchor — Body", steps: `Click "Body"`, expected: `<!-- @body --> on own line above` },
-                { id: 178, name: "Anchor — Warning (⚠)", steps: `Click warning button`, expected: `<!-- @warning --> on own line above` },
-                { id: 179, name: "Anchor — Byline (By)", steps: `Click "By"`, expected: `<!-- @byline --> on own line above` },
-                { id: 180, name: "Anchor — Disclaimer (Disc)", steps: `Click "Disc"`, expected: `<!-- @disclaimer --> on own line above` },
-                { id: 181, name: "Anchor — Fanfiction (FF)", steps: `Click "FF"`, expected: `<!-- @fanfiction --> on own line above` },
-                { id: 182, name: "Anchor — Text Sent (→ Sent)", steps: `Click "→ Sent"`, expected: `<!-- @text-sent --> on own line above. NO close tag` },
-                { id: 183, name: "Anchor — Text Received (← Recv)", steps: `Click "← Recv"`, expected: `<!-- @text-received --> on own line above. No close tag` },
-                { id: 184, name: "Anchor — Phone Incoming (☎ Phone)", steps: `Click "☎ Phone"`, expected: `<!-- @phone-incoming --> (real anchor name, not @phone)` },
-                { id: 185, name: "Tooltip — hover delay", steps: `Hover anchor button ~1.2s`, expected: `Tooltip pops with label, purpose, before/after preview (green left border on After)` },
-                { id: 186, name: "Tooltip — cancel on click", steps: `Tooltip showing → click button`, expected: `Tooltip hides immediately; anchor still inserts` },
-                { id: 187, name: "Anchor wrap — CM selection", steps: `Markdown Source → select a line → click "→ Sent"`, expected: `Anchor sits on a new line above the selection; selection preserved` },
-                { id: 188, name: "Anchor wrap — Rich Editor selection", steps: `Rich Editor → select unique text → click any anchor`, expected: `Anchor inserted above matching line in Markdown (text must be unique)` },
-                { id: 189, name: "Anchor preview rendering", steps: `Insert any anchor → switch to preview pane`, expected: `Anchor renders correctly per the format (heading, blockquote, etc.)` },
-            ]},
-            { title: "21. Editor — Format Tabs & Regen", tests: [
-                { id: 190, name: "Format tab — Markdown", steps: `Editor → Markdown tab`, expected: `Source pane shows MASTER.md` },
-                { id: 191, name: "Format tab — Clean HTML", steps: `Click "Clean HTML"`, expected: `Source + preview update to Clean HTML` },
-                { id: 192, name: "Format tab — SoFurry", steps: `Click "SoFurry"`, expected: `SoFurry-specific HTML formatting` },
-                { id: 193, name: "Format tab — BBCode", steps: `Click "BBCode"`, expected: `BBCode source with [b], [i], [hr]` },
-                { id: 194, name: "Format tab — Styled HTML", steps: `Click "Styled"`, expected: `Styled HTML with theme colours applied` },
-                { id: 195, name: "Format tab — SquidgeWorld", steps: `Click "SquidgeWorld"`, expected: `Per-chapter SQW work-skin HTML` },
-                { id: 196, name: "Selective regen — All", steps: `Regenerate ▾ → "All formats"`, expected: `Every format file rebuilt; staleness banner clears` },
-                { id: 197, name: "Selective regen — HTML only", steps: `Regenerate ▾ → "HTML only"`, expected: `Only Clean HTML + SoFurry HTML rewritten` },
-                { id: 198, name: "Selective regen — BBCode only", steps: `Regenerate ▾ → "BBCode only"`, expected: `Only BBCode file rebuilt` },
-                { id: 199, name: "Selective regen — Styled only", steps: `Regenerate ▾ → "Styled only"`, expected: `Only Styled HTML rebuilt` },
-                { id: 200, name: "Selective regen — SQW only", steps: `Regenerate ▾ → "SquidgeWorld only"`, expected: `Only SQW work-skin HTML rebuilt` },
-                { id: 201, name: "Selective regen — PDF only", steps: `Regenerate ▾ → "PDF only"`, expected: `Only PDF files rebuilt; check for header/footer banner suppression` },
-                { id: 202, name: "Selective regen — Chapters", steps: `Regenerate ▾ → "Chapters only"`, expected: `Per-chapter files rebuilt without touching full-story files` },
-                { id: 203, name: "Regen staleness warning", steps: `Edit + save MASTER → open Publish Check`, expected: `Amber banner with "Regenerate now" button` },
-                { id: 204, name: "Regen from Publish Check", steps: `Click "Regenerate now" in banner`, expected: `Files rebuild; banner disappears; matrix reloads` },
-                { id: 205, name: "PDF — full bleed background", steps: `Open generated PDF`, expected: `Theme background runs edge-to-edge; no double margin` },
-                { id: 206, name: "PDF — no header/footer banner", steps: `Open generated PDF`, expected: `No date/URL banner from print engine` },
-            ]},
-            { title: "22. Editor — Metadata Drawer", tests: [
-                { id: 207, name: "Drawer opens", steps: `Editor → Metadata button`, expected: `Side drawer slides in with 8 collapsible sections` },
-                { id: 208, name: "Section — Basics", steps: `Expand Basics`, expected: `Title, author, rating, status, summary fields` },
-                { id: 209, name: "Section — Cover", steps: `Expand Cover`, expected: `Cover preview + Upload button` },
-                { id: 210, name: "Cover — upload sample", steps: `Upload <code>fixtures/sample_cover.jpg</code>`, expected: `Preview updates; story.json images.cover set` },
-                { id: 211, name: "Section — Classification", steps: `Expand Classification`, expected: `Rating dropdown, content warnings checklist, mature content flag` },
-                { id: 212, name: "Section — Characters", steps: `Expand Characters`, expected: `Add/remove character chips; species dropdown` },
-                { id: 213, name: "Section — Tags", steps: `Expand Tags`, expected: `Tabs: Default / SoFurry / Inkbunny / Wattpad / FA / DA / IK / Bsky` },
-                { id: 214, name: "Tag — autocomplete (DB hit)", steps: `Default tab → type "anth"`, expected: `Local DB suggestions appear; click to add` },
-                { id: 215, name: "Tag — e621 fallback", steps: `Type a tag not in DB`, expected: `e621 lookup fires; "+Library" button to import` },
-                { id: 216, name: "Tag — space→underscore (Default)", steps: `Default tab → type "slow burn"`, expected: `Auto-converts to "slow_burn"` },
-                { id: 217, name: "Tag — space→underscore (FA)", steps: `FA tab → type "slow burn"`, expected: `Auto-converts to "slow_burn"` },
-                { id: 218, name: "Tag — keep spaces (SF)", steps: `SoFurry tab → type "slow burn"`, expected: `Stays as "slow burn" (SF uses spaces)` },
-                { id: 219, name: "Tag — Fix spaces button", steps: `Have tags with spaces → Fix spaces`, expected: `"Fixed N tag(s)"; tags updated` },
-                { id: 220, name: "Tag — Fix spaces (none)", steps: `All clean → Fix spaces`, expected: `"No spaces found in tags"` },
-                { id: 221, name: "Tag — Sort A-Z", steps: `Random order → Sort A-Z`, expected: `Tags reorder; "Sorted tags on N platform(s)"` },
-                { id: 222, name: "Tag browser modal", steps: `"Browse all matches"`, expected: `Modal opens with categorised tag grid` },
-                { id: 223, name: "Tag browser — Selected filter", steps: `Click "Selected" chip`, expected: `Grid shows only currently-added tags` },
-                { id: 224, name: "Tag browser — Selected exclusive", steps: `Click "Selected" then "Physical"`, expected: `Selected deactivates; Physical activates` },
-                { id: 225, name: "Tag — platform badges", steps: `Look at a tag chip`, expected: `Small DEF/SF/IB/AO3/etc badges show which platforms have it` },
-                { id: 226, name: "Tag browser grid responsive", steps: `Resize`, expected: `3-5 columns adjusting to width` },
-                { id: 227, name: "Section — Chapter Tags", steps: `Expand chapter`, expected: `Same 4-tab tag editor (Default/SF/IB/WP) per chapter` },
-                { id: 228, name: "Chapter thumbnail upload", steps: `Expand chapter → Upload <code>fixtures/sample_chapter_thumb.jpg</code>`, expected: `Filename appears; story.json chapter_info[].thumbnail set` },
-                { id: 229, name: "Section — Chapters", steps: `Expand Chapters`, expected: `Chapter list with reorder handles, edit titles inline` },
-                { id: 230, name: "Section — Advanced", steps: `Expand Advanced`, expected: `Custom JSON, raw story.json view, dangerous overrides` },
-                { id: 231, name: "Drawer save", steps: `Make changes → Save metadata`, expected: `story.json updated; drawer shows "Saved" toast` },
-                { id: 232, name: "Per-platform descriptions panel", steps: `Basics → expand "Per-platform descriptions"`, expected: `Short (IB/SF) and Announcement (Bsky) textareas` },
-                { id: 233, name: "Short description save", steps: `Type → Save`, expected: `story.json descriptions.short set` },
-                { id: 234, name: "Announcement char limit", steps: `Type in Announcement`, expected: `Character counter; maxlength=300` },
-            ]},
-            { title: "23. Publish Check Matrix", tests: [
-                { id: 235, name: "Matrix renders", steps: `Open Publish Check for a story`, expected: `Chapter rows × platform columns grid; cells coloured per state` },
-                { id: 236, name: "Cell — ready (✓)", steps: `Look at a green cell`, expected: `Hover tooltip "Ready to post"` },
-                { id: 237, name: "Cell — posted (blue ✓)", steps: `Posted cell`, expected: `Tooltip "Posted at <time>"; click reveals URL` },
-                { id: 238, name: "Cell — drift (◊)", steps: `Edit MASTER then re-open Publish Check`, expected: `Drifted cells flip to drift state with diff hash mismatch` },
-                { id: 239, name: "Cell — error (✗)", steps: `Force a posting failure`, expected: `Red cell with reason in detail panel` },
-                { id: 240, name: "Cell — deleted (⊘)", steps: `Delete a posted submission upstream → Verify`, expected: `Cell flips to deleted state` },
-                { id: 241, name: "Cell — not supported (–)", steps: `SQW full-story row`, expected: `– icon; "Not supported on this platform"` },
-                { id: 242, name: "Cell — locked (🔒)", steps: `Unconfigured platform`, expected: `Lock icon; not red` },
-                { id: 243, name: "Lock cell detail", steps: `Click a lock cell`, expected: `"No credentials configured. Set up in Settings."` },
-                { id: 244, name: "Live publish warning", steps: `Ready cell → uncheck "Save as draft"`, expected: `Yellow ⚠ LIVE PUBLISH banner` },
-                { id: 245, name: "Re-check draft", steps: `Re-check draft`, expected: `Banner disappears` },
-                { id: 246, name: "Live confirm dialog", steps: `Draft unchecked → Post`, expected: `confirm() dialog with "⚠ WARNING: LIVE publish"` },
-                { id: 247, name: "Dry run — readable", steps: `Click Dry Run`, expected: `Structured: Title, Rating, Words, File, Tags. Raw JSON collapsible` },
-                { id: 248, name: "Action result log", steps: `Do 3-4 actions`, expected: `"Recent actions" section appears with timestamps` },
-                { id: 249, name: "Log persists across cell switches", steps: `Click between cells`, expected: `Log doesn't reset` },
-                { id: 250, name: "Relative timestamps", steps: `Posted cell detail`, expected: `"Posted: ... (3d ago)" relative time` },
-                { id: 251, name: "Edit from posted cell", steps: `Click posted → "Edit in Editor" button`, expected: `Routes to #/editor/<story> with cursor near right chapter` },
-                { id: 252, name: "Schedule — picker", steps: `Ready cell → Schedule`, expected: `Datetime picker (defaults ~1hr ahead)` },
-                { id: 253, name: "Schedule — confirm", steps: `Set future time → Confirm`, expected: `Queue item appears in detail panel` },
-                { id: 254, name: "Schedule — cancel", steps: `Cancel a pending schedule`, expected: `Item removed` },
-                { id: 255, name: "Retry queue auto-message", steps: `When a post fails`, expected: `"Will retry automatically with backoff"` },
-                { id: 256, name: "Confirm_live guard (curl)", steps: `curl POST without confirm_live=true`, expected: `400 / refused — backend safety guard` },
-            ]},
-            { title: "24. Bulk Actions", tests: [
-                { id: 257, name: "Publish all new", steps: `Footer → "Publish all new"`, expected: `Preflight modal: per-item checkboxes, draft toggle, Go button` },
-                { id: 258, name: "Update drifted", steps: `Footer → "Update drifted"`, expected: `Only drifted cells listed in preflight` },
-                { id: 259, name: "Row publish badge", steps: `Click row number`, expected: `Preflight scoped to that row only` },
-                { id: 260, name: "Bulk dry run", steps: `Preflight → "Dry Run All"`, expected: `Progress panel; per-item ✓/✗` },
-                { id: 261, name: "Bulk cancel", steps: `Mid-bulk → "Cancel remaining"`, expected: `Pending items show ⊘ Cancelled` },
-                { id: 262, name: "Bulk close + refresh", steps: `Bulk done → "Close & refresh"`, expected: `Modal closes, matrix reloads with new states` },
-            ]},
-            { title: "25. Posting Operations (per-platform)", tests: [
-                { id: 263, name: "Post — Inkbunny draft", steps: `Test story → IB cell → Post (draft)`, expected: `200 + URL; cell flips to posted; story listed in IB drafts` },
-                { id: 264, name: "Post — IB live (re-confirm)", steps: `Same with draft unchecked`, expected: `Extra warning shown; submit posts live; URL returned` },
-                { id: 265, name: "Update — IB", steps: `Edit MASTER → Update IB cell`, expected: `Content refreshes upstream; drift cleared` },
-                { id: 266, name: "Post — SoFurry chaptered", steps: `Multi-chapter story → SF cell → Post`, expected: `One submission with N chapters via /content append. Front matter prepended to ch1` },
-                { id: 267, name: "Post — AO3 chaptered", steps: `Multi-chapter → AO3 cell → Post`, expected: `create_work + create_chapter loop. Work skin uploaded automatically` },
-                { id: 268, name: "Post — SquidgeWorld chaptered", steps: `Multi-chapter → SQW row → Post each chapter`, expected: `Per-chapter posts succeed; chapter titles set; work skin uploaded` },
-                { id: 269, name: "Post — FA from server", steps: `Server-side: post to FA cell`, expected: `Auto-queued for desktop pickup. Status: queued` },
-                { id: 270, name: "Edit — SF content refresh", steps: `Update SF cell after MASTER edit`, expected: `replace_file() called; content refreshed` },
-                { id: 271, name: "Edit — AO3 safe overlay", steps: `Update AO3`, expected: `Fetch form → overlay → resubmit with save_button` },
-                { id: 272, name: "Metadata-only update", steps: `Cell → "Update (metadata only)"`, expected: `skip_content_refresh=true; only metadata changes pushed` },
-                { id: 273, name: "Metadata-only chapter retitle (AO3)", steps: `Rename ch3 → Update`, expected: `Title-only edit preserves body; AO3 edit_chapter accepts content=None` },
-                { id: 274, name: "Metadata-only chapter retitle (SQW)", steps: `Rename ch3 → Update`, expected: `Same; SQW preserves body` },
-                { id: 275, name: "Tag cascade — DA/IK/Bsky", steps: `Add a Default tag → Post to DA/IK/Bsky cells`, expected: `Default tags cascade to all platforms (post-2.9.3 fix)` },
-                { id: 276, name: "Chapter prefix strip (AO3)", steps: `Look at posted AO3 chapter title`, expected: `"Chapter 1: Title" not "Chapter 1: Chapter 1: Title"` },
-                { id: 277, name: "Chapter prefix strip (SQW)", steps: `SQW chapter title`, expected: `Same; no doubled prefix` },
-                { id: 278, name: "Deletion probe — IB", steps: `Manually delete an IB sub upstream → Verify`, expected: `Cell flips to ⊘ deleted; can re-post` },
-                { id: 279, name: "Deletion probe — SF", steps: `Same for SF`, expected: `⊘ deleted` },
-                { id: 280, name: "Deletion probe — AO3", steps: `Same for AO3`, expected: `⊘ deleted` },
-                { id: 281, name: "Deletion probe — SQW", steps: `Same for SQW`, expected: `⊘ deleted` },
-                { id: 282, name: "Deletion probe — FA", steps: `Same for FA (404 / "not in our database")`, expected: `⊘ deleted` },
-                { id: 283, name: "Cover upload to IB", steps: `IB post with sample_cover.jpg`, expected: `Cover image uploaded; visible on IB submission page` },
-                { id: 284, name: "Cover upload to FA", steps: `FA post with cover`, expected: `Submission file = uploaded image, story = description` },
-                { id: 285, name: "Cover upload to SF", steps: `SF post with cover`, expected: `Cover image accepted` },
-                { id: 286, name: "Cover upload to WS", steps: `WS post with coverfile`, expected: `Weasyl accepts coverfile field` },
-                { id: 287, name: "Per-chapter thumb (SF)", steps: `Multi-chapter SF post with chapter thumbs`, expected: `Per-chapter image uploads succeed` },
-                { id: 288, name: "Posted at clock", steps: `Posted cell detail panel`, expected: `Per-platform "posted at" clock display` },
-            ]},
-            { title: "26. Import from Platforms", tests: [
-                { id: 289, name: "Import dialog", steps: `Story list → "Import from Platform"`, expected: `Submissions grouped by IB / SF / FA` },
-                { id: 290, name: "Import — IB", steps: `Pick an IB Writing submission → Import`, expected: `MASTER.md with full BBCode→Markdown content + story.json` },
-                { id: 291, name: "Import — SF", steps: `Pick SF story → Import`, expected: `MASTER.md with full HTML→Markdown content` },
-                { id: 292, name: "Import — FA PDF", steps: `Pick FA story (PDF upload)`, expected: `story.json with tags/rating; description as content` },
-                { id: 293, name: "Import — FA TXT", steps: `Pick FA story (TXT upload)`, expected: `MASTER.md with full text content` },
-                { id: 294, name: "Already-imported filter", steps: `Import → close → reopen`, expected: `Already-imported story not listed again` },
-                { id: 295, name: "Name collision", steps: `Import with existing folder name`, expected: `Creates with _2 suffix; no overwrite` },
-                { id: 296, name: "Provenance recorded", steps: `Check imported story.json`, expected: `import_source: {platform, submission_id, url}` },
-                { id: 297, name: "AO3 / SQW import — placeholder", steps: `Look at AO3/SQW in dialog`, expected: `"Coming soon" — no import button (14a second half not yet shipped)` },
-            ]},
-            { title: "27. Polling & Notifications", tests: [
-                { id: 298, name: "Skip startup poll", steps: `Restart server → check logs`, expected: `"Skipping startup poll — last cycle was recent"` },
-                { id: 299, name: "AO3 login retry", steps: `Trigger AO3 poll`, expected: `Logs include "login page retry 1/2 after 5s" if needed` },
-                { id: 300, name: "AO3 429 handling", steps: `If AO3 returns 429`, expected: `"429 rate limited, waiting Xs" before retry` },
-                { id: 301, name: "Telegram classified error", steps: `Force a platform failure`, expected: `Friendly "Login blocked" + hint, not raw exception trace` },
-                { id: 302, name: "Telegram consolidated summary", steps: `Orchestrated poll completes with mixed results`, expected: `"⚠️ N/M Polls Complete" with per-platform classified errors` },
-                { id: 303, name: "Pause polling via API", steps: `curl -H "Bearer pp_..." -X POST /api/poll/pause`, expected: `200 + paused state. Subsequent polls skip` },
-                { id: 304, name: "Resume polling via API", steps: `Same with /resume`, expected: `200 + paused=false. Polls resume next interval` },
-                { id: 305, name: "Pause state visible", steps: `Dashboard sidebar`, expected: `"Polling paused" indicator shown when paused` },
-            ]},
-            { title: "28. Telegram Integration", tests: [
-                { id: 306, name: "Telegram disconnected state", steps: `Settings → Telegram (no bot)`, expected: `"Not connected" + setup instructions` },
-                { id: 307, name: "Telegram setup — bot token", steps: `Paste token from @BotFather → Save`, expected: `getUpdates called; chat_id discovered from /start message` },
-                { id: 308, name: "Telegram test message", steps: `Settings → Telegram → "Send test message"`, expected: `Test message arrives in Telegram chat` },
-                { id: 309, name: "Telegram disconnect", steps: `Disconnect button`, expected: `Token + chat_id removed; status flips` },
-                { id: 310, name: "Telegram features — Poll summaries", steps: `Toggle off`, expected: `setting persists; summaries no longer sent` },
-                { id: 311, name: "Telegram features — Error alerts", steps: `Toggle off`, expected: `Persists; no error toasts` },
-                { id: 312, name: "Telegram features — Milestones", steps: `Toggle off`, expected: `Persists; no milestone notifications` },
-                { id: 313, name: "Telegram features — Digest", steps: `Toggle off`, expected: `Persists; no digest sends` },
-                { id: 314, name: "Telegram digest interval", steps: `Set interval 12h → Save`, expected: `Setting saved` },
-                { id: 315, name: "Telegram digest manual trigger", steps: `Settings → "Send digest now"`, expected: `Digest message arrives immediately` },
-                { id: 316, name: "Milestone — views threshold", steps: `Add custom milestone (e.g. 500) → Save → simulate hit`, expected: `Telegram alert fires at threshold` },
-                { id: 317, name: "Milestone — faves threshold", steps: `Same for faves`, expected: `Alert fires` },
-                { id: 318, name: "Milestone — comments threshold", steps: `Same for comments`, expected: `Alert fires` },
-                { id: 319, name: "Milestone — sorted unique", steps: `Add duplicate or unsorted thresholds`, expected: `Saved as sorted unique positive integers` },
-            ]},
-            { title: "29. Settings — Appearance & Themes", tests: [
-                { id: 320, name: "Theme picker — Default Dark", steps: `Settings → Appearance → click Default Dark`, expected: `data-theme="dark"; charcoal+violet palette; Active pill moves` },
-                { id: 321, name: "Theme picker — Default Light", steps: `Click Default Light`, expected: `data-theme="light"; bright neutral` },
-                { id: 322, name: "Theme picker — Ink & Copper", steps: `Click Ink & Copper`, expected: `data-theme="ink_copper"; matches marketing site` },
-                { id: 323, name: "Theme picker — Parchment", steps: `Click Parchment`, expected: `data-theme="parchment"; warm sepia/brown` },
-                { id: 324, name: "Theme picker — Midnight Press", steps: `Click Midnight Press`, expected: `data-theme="midnight_press"; pure black; no body wash gradient` },
-                { id: 325, name: "Theme picker — Forest", steps: `Click Forest`, expected: `data-theme="forest"; pine + sage + cream` },
-                { id: 326, name: "Theme picker — Velvet", steps: `Click Velvet`, expected: `data-theme="velvet"; aubergine + rose + amber` },
-                { id: 327, name: "Theme picker — High Contrast", steps: `Click High Contrast`, expected: `data-theme="high_contrast"; pure b/w + saturated yellow; system sans (no Crimson Pro headings); no body wash` },
-                { id: 328, name: "Theme persists across reload", steps: `Pick Forest → hard reload (Ctrl+F5)`, expected: `Forest still active; no flash of dark theme (inline <head> script)` },
-                { id: 329, name: "Theme persists in settings.json", steps: `curl /api/settings/preferences | jq .theme`, expected: `Returns the chosen theme id (post-2.14.2 fix — theme key was being silently dropped before)` },
-                { id: 330, name: "Active pill movement", steps: `Switch themes`, expected: `Active pill follows current theme card` },
-                { id: 331, name: "Charts repaint on theme change", steps: `Open dashboard → switch theme`, expected: `All Chart.js redraw with new accent (Charts.destroyAll triggered)` },
-            ]},
-            { title: "30. Settings — Auto-Sync", tests: [
-                { id: 332, name: "Toggle visible on Appearance tab", steps: `Settings → Appearance → "Sync" section`, expected: `auto-sync toggle present, default ON. Helper copy mentions Publishing tab requirement` },
-                { id: 333, name: "Auto-push: device → server", steps: `Change theme on this browser → wait 3s → curl /api/settings/preferences from elsewhere`, expected: `Server picks up new theme within ~3-5s (debounce + HTTP). Logs: "Auto-sync push: N keys merged"` },
-                { id: 334, name: "Auto-pull: server → device", steps: `Change a setting via curl → wait up to 5 min`, expected: `This device's logs show "Auto-sync pull: applied N keys from server"` },
-                { id: 335, name: "Browser focus refresh — different tab", steps: `Open dashboard in 2nd tab → change theme in tab A → focus tab B`, expected: `Tab B repaints with new theme within ~1s of focus (visibilitychange handler)` },
-                { id: 336, name: "Browser focus refresh — throttle", steps: `Switch tabs back-and-forth quickly`, expected: `Re-focus within 3s does NOT re-fetch (throttled)` },
-                { id: 337, name: "Loop protection (no echo)", steps: `Trigger pull while watching server logs`, expected: `Server sees ONE pull request, no follow-up push from same client` },
-                { id: 338, name: "Localhost loopback skip", steps: `Server with empty/localhost posting_server_url → flip a setting`, expected: `No outbound HTTP from server to itself; _sync_target() returns None` },
-                { id: 339, name: "auto_sync_enabled=false stops both", steps: `Toggle OFF → change theme → wait 10s`, expected: `Server settings.json does NOT update; pull thread keeps running but no-ops` },
-            ]},
-            { title: "31. Settings — General", tests: [
-                { id: 340, name: "General tab loads", steps: `Settings → General`, expected: `IB credentials section + App Preferences accordion + Poll intervals + Filters` },
-                { id: 341, name: "IB credentials save", steps: `Edit username/password → Save Credentials`, expected: `Saved message; settings.json updated` },
-                { id: 342, name: "IB sign out button", steps: `Sign Out → confirm`, expected: `Credentials cleared; routed to login` },
-                { id: 343, name: "Toggle — Minimize to tray (active on native)", steps: `Toggle ON → close window via X button`, expected: `Window hides instead of quitting; poller keeps running; tray icon stays. Toggle OFF → X button quits app` },
-                { id: 344, name: "Toggle — Run on startup (registry write)", steps: `Toggle ON → check HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run`, expected: `PawPoller entry exists pointing at PawPoller.exe. Toggle OFF removes the entry` },
-                { id: 345, name: "Toggle — Desktop notifications", steps: `Flip toggle → Save`, expected: `notifications_enabled persists; toast suppression respected per platform` },
-                { id: 346, name: "Toggle — Watcher notifications (IB)", steps: `Flip → Save`, expected: `watcher_notifications_enabled persists` },
-                { id: 347, name: "Toggle — Watcher notifications (FA)", steps: `Flip → Save`, expected: `fa_watcher_notifications_enabled persists` },
-                { id: 348, name: "Per-platform notif toggle — IB", steps: `Toggle off → trigger fave`, expected: `No notification` },
-                { id: 349, name: "Per-platform notif toggle — FA", steps: `Same for FA`, expected: `Suppressed` },
-                { id: 350, name: "Per-platform notif toggle — WS", steps: `Same`, expected: `Suppressed` },
-                { id: 351, name: "Per-platform notif toggle — SF", steps: `Same`, expected: `Suppressed` },
-                { id: 352, name: "Per-platform notif toggle — SQW", steps: `Same`, expected: `Suppressed` },
-                { id: 353, name: "Per-platform notif toggle — AO3", steps: `Same`, expected: `Suppressed` },
-                { id: 354, name: "Per-platform notif toggle — DA/WP/IK/Bsky/TW", steps: `Same`, expected: `Suppressed (verify even for opted-out platforms)` },
-                { id: 355, name: "Comments-only filter — IB", steps: `Toggle on → trigger fave`, expected: `Fave alert suppressed; comment alert allowed` },
-                { id: 356, name: "Comments-only filter — FA/WS/SF", steps: `Same per platform`, expected: `Same behaviour` },
-                { id: 357, name: "Min faves delta", steps: `Set to 5 → trigger fave with N<5 in cycle`, expected: `Notification suppressed below threshold` },
-                { id: 358, name: "Display timezone — set", steps: `Pick "Australia/Sydney" → Save`, expected: `display_timezone saved; Telegram messages and UI timestamps reflect TZ` },
-                { id: 359, name: "Display timezone — UTC default", steps: `Clear → Save`, expected: `Defaults to UTC` },
-                { id: 360, name: "Save All Settings button", steps: `Make multiple changes → Save All`, expected: `One batched save; toast confirmation` },
-            ]},
-            { title: "32. Settings — Polling Intervals", tests: [
-                { id: 361, name: "IB poll interval", steps: `Set 30 min → Save`, expected: `poll_interval_minutes=30 persists; orchestrator picks up new interval` },
-                { id: 362, name: "FA poll interval", steps: `Set 60 min → Save`, expected: `Persists` },
-                { id: 363, name: "WS poll interval", steps: `Set 120 → Save`, expected: `Persists` },
-                { id: 364, name: "SF poll interval", steps: `Set 60 → Save`, expected: `Persists` },
-                { id: 365, name: "SQW poll interval", steps: `Set 60 → Save`, expected: `Persists` },
-                { id: 366, name: "AO3 poll interval", steps: `Set 240 → Save`, expected: `Persists` },
-                { id: 367, name: "DA poll interval", steps: `Set 240 → Save`, expected: `Persists (even though opted out)` },
-                { id: 368, name: "WP poll interval", steps: `Set 240 → Save`, expected: `Persists` },
-                { id: 369, name: "IK poll interval", steps: `Set 240 → Save`, expected: `Persists` },
-                { id: 370, name: "Bsky poll interval", steps: `Set 240 → Save`, expected: `Persists` },
-                { id: 371, name: "TW poll interval", steps: `Set 240 → Save`, expected: `Persists` },
-                { id: 372, name: "Out-of-range value rejected", steps: `Try 7 minutes via curl`, expected: `Silently rejected; no settings update — only {15,30,60,120,240} allowed` },
-                { id: 373, name: "Server unified interval", steps: `On server.py orchestrator`, expected: `Single poll_interval_minutes drives all platforms; per-platform intervals ignored` },
-            ]},
-            { title: "33. Settings — Platforms (already covered per-platform, focus on UI here)", tests: [
-                { id: 374, name: "Platforms tab loads", steps: `Settings → Platforms`, expected: `11 platform cards with status badges` },
-                { id: 375, name: "Connected badge — green", steps: `For each connected platform`, expected: `Green dot + username` },
-                { id: 376, name: "Not-connected badge", steps: `For unconfigured`, expected: `Grey dot + "Not connected"` },
-                { id: 377, name: "Platform connect form expand", steps: `Click "Connect"`, expected: `Inline form with platform-appropriate fields` },
-                { id: 378, name: "Platform disconnect", steps: `Connected → Disconnect`, expected: `Confirmation; creds removed; badge flips grey` },
-                { id: 379, name: "Browser-login button visibility (native)", steps: `On native dashboard`, expected: `"Login via Browser" button VISIBLE for FA, DA, SF, SQW, AO3, Bsky, X (any platform with PLATFORM_LOGIN entry)` },
-                { id: 380, name: "Browser-login availability endpoint", steps: `curl /api/settings/browser-login/platforms (with Bearer)`, expected: `Returns available=true on native; false on webapp` },
-            ]},
-            { title: "34. Settings — Data", tests: [
-                { id: 381, name: "Data tab loads", steps: `Settings → Data`, expected: `Sync section + Export section + Import section` },
-                { id: 382, name: "Sync — Status", steps: `"Check status"`, expected: `Returns version, key count, credential mode, timestamp` },
-                { id: 383, name: "Sync — Pull", steps: `"Pull from server"`, expected: `"Pulled X keys from server"` },
-                { id: 384, name: "Sync — Push", steps: `"Push to server"`, expected: `"Pushed X keys to server"` },
-                { id: 385, name: "Export — full DB", steps: `Click Export DB`, expected: `Downloads pawpoller.db (or sqlite dump)` },
-                { id: 386, name: "Export — settings only", steps: `Click Export Settings`, expected: `Downloads sanitised settings.json (no secrets if vault enabled)` },
-                { id: 387, name: "Import — settings", steps: `Upload a settings.json export`, expected: `Settings merged; confirmation toast` },
-                { id: 388, name: "Reset — confirm gate", steps: `Click Reset → first confirm`, expected: `Refuses without typing "RESET" or similar friction` },
-            ]},
-            { title: "35. Settings — Logs", tests: [
-                { id: 389, name: "Logs tab loads", steps: `Settings → Logs`, expected: `Sub-tabs per platform + general log` },
-                { id: 390, name: "General log view", steps: `General tab`, expected: `Recent application log lines; tail-style updates` },
-                { id: 391, name: "Per-platform log view", steps: `IB / FA / etc.`, expected: `Per-platform poll history table` },
-                { id: 392, name: "Log level filter", steps: `Filter by INFO / WARN / ERROR`, expected: `Lines filtered correctly` },
-                { id: 393, name: "Log search", steps: `Type a substring`, expected: `Live filter` },
-                { id: 394, name: "Logs auto-refresh", steps: `Wait`, expected: `New log lines stream in without manual reload` },
-            ]},
-            { title: "36. Settings — About", tests: [
-                { id: 395, name: "About tab loads", steps: `Settings → About`, expected: `Version, build hash, links to docs/changelog, third-party credits` },
-                { id: 396, name: "Version matches APP_VERSION", steps: `Compare to config.APP_VERSION`, expected: `2.14.4` },
-                { id: 397, name: "Update check button", steps: `"Check for updates"`, expected: `Hits GitHub releases endpoint; shows latest version` },
-                { id: 398, name: "Update available state", steps: `When current < latest`, expected: `Sidebar shows "vX.Y.Z available" badge + Update Now button` },
-                { id: 399, name: "Apply Update — native flow", steps: `Click Apply when newer version available`, expected: `updater.py downloads release zip, replaces binaries, restarts the app. New version visible in About after relaunch` },
-            ]},
-            { title: "37. Settings — Security", tests: [
-                { id: 400, name: "Security tab loads", steps: `Settings → Security`, expected: `Password change + API keys + TOTP + Turnstile sections` },
-                { id: 401, name: "Set dashboard password", steps: `Set password → Save`, expected: `auth_password_hash bcrypt-stored; legacy plaintext migrated if present` },
-                { id: 402, name: "Change password", steps: `Old + new + confirm → Save`, expected: `New hash stored; old session invalidated; re-login required` },
-                { id: 403, name: "Wrong old password", steps: `Type wrong old`, expected: `Error message; no change` },
-                { id: 404, name: "Remember me — 30d", steps: `Login with Remember Me`, expected: `pp_session cookie max_age=30 days` },
-                { id: 405, name: "Default session — 24h", steps: `Login without remember me`, expected: `Cookie max_age=24h` },
-                { id: 406, name: "API keys list", steps: `Security → API Keys`, expected: `Existing keys (last 4 chars + label + created date)` },
-                { id: 407, name: "API key create", steps: `+ New Key → label → Create`, expected: `pp_xxx token shown ONCE; SHA-256 stored` },
-                { id: 408, name: "API key revoke", steps: `Revoke a key → confirm`, expected: `Key removed; subsequent Bearer attempts fail` },
-                { id: 409, name: "TOTP setup", steps: `Enable 2FA → Show QR → scan → enter code → Enable`, expected: `auth_totp_enabled=true; secret stored` },
-                { id: 410, name: "TOTP login", steps: `Logout → login with password + TOTP code`, expected: `Both required; success` },
-                { id: 411, name: "TOTP — wrong code", steps: `Enter wrong TOTP`, expected: `Login refused` },
-                { id: 412, name: "TOTP disable — requires both", steps: `Try disable with password only`, expected: `Refused; needs valid TOTP code too` },
-                { id: 413, name: "TOTP disable — full", steps: `Password + TOTP → Disable`, expected: `auth_totp_enabled=false; secret cleared` },
-                { id: 414, name: "Turnstile config", steps: `Add site key + secret → Save`, expected: `Saved; widget appears on login form on next reload` },
-                { id: 415, name: "Turnstile login flow", steps: `Logout → login with widget`, expected: `Cloudflare token verified server-side; login proceeds` },
-                { id: 416, name: "Turnstile remove", steps: `Clear keys → Save`, expected: `Widget no longer renders` },
-            ]},
-            { title: "38. Settings — Publishing", tests: [
-                { id: 417, name: "Publishing tab loads", steps: `Settings → Publishing`, expected: `Server URL, API key, archive path, default platforms, default rating` },
-                { id: 418, name: "Posting server URL save", steps: `Enter URL → Save`, expected: `posting_server_url persists; auto-sync now active (target valid)` },
-                { id: 419, name: "Posting server API key save", steps: `Enter key → Save`, expected: `posting_server_api_key persists` },
-                { id: 420, name: "Story archive path save", steps: `Enter path → Save`, expected: `posting_story_archive_path persists; story list re-scans` },
-                { id: 421, name: "Default platforms checklist", steps: `Tick IB + SF + AO3 → Save`, expected: `posting_default_platforms persists; new stories pre-select these` },
-                { id: 422, name: "Default rating", steps: `Pick "Adult" → Save`, expected: `posting_default_rating persists` },
-                { id: 423, name: "Default author", steps: `Set default_author → Save`, expected: `Persisted; new stories use this author` },
-            ]},
-            { title: "39. Settings — Vault", tests: [
-                { id: 424, name: "Vault — Status", steps: `Security → Credential Security → Status`, expected: `Mode (cloud/local) + vault_exists flag` },
-                { id: 425, name: "Vault — Enable", steps: `"Enable encryption" → confirm`, expected: `Success + settings.vault.json created; CREDENTIAL_FIELDS removed from settings.json` },
-                { id: 426, name: "Vault — settings.json clean", steps: `Open settings.json after enable`, expected: `No passwords, cookies, tokens, API keys present in plaintext` },
-                { id: 427, name: "Vault — app still works", steps: `Navigate after vault enable`, expected: `All platform integrations work (creds loaded transparently from vault)` },
-                { id: 428, name: "Vault — Disable", steps: `"Disable encryption" → confirm`, expected: `Creds back in settings.json; vault file deleted` },
-                { id: 429, name: "Vault — error handling", steps: `Tamper with vault file → reload`, expected: `App boots; vault decrypt fails gracefully; error shown in UI` },
-            ]},
-            { title: "40. API Access (Bearer key)", tests: [
-                { id: 430, name: "Health unprotected", steps: `curl /api/health (no auth)`, expected: `200 OK` },
-                { id: 431, name: "Protected endpoint refused unauth", steps: `curl /api/settings/preferences`, expected: `401 / 403` },
-                { id: 432, name: "Bearer key access", steps: `curl -H "Authorization: Bearer pp_..." /api/settings/preferences`, expected: `200 with prefs JSON` },
-                { id: 433, name: "Wrong Bearer key", steps: `curl with bogus pp_xxx`, expected: `401` },
-                { id: 434, name: "Pause/resume via Bearer", steps: `curl POST /api/poll/pause then /resume with Bearer key`, expected: `Both 200; state persists` },
-                { id: 435, name: "Bearer respects revocation", steps: `Revoke a key in UI → curl with that key`, expected: `401 immediately` },
-                { id: 436, name: "Bearer + dashboard cookie coexist", steps: `Both cookie and Bearer in same request`, expected: `Either grants access; no conflict` },
-            ]},
-            { title: "41. Native-only — Tray icon", tests: [
-                { id: 437, name: "Tray icon visible on launch", steps: `Launch PawPoller.exe → look at tray`, expected: `PawPoller icon present (may be in overflow ^)` },
-                { id: 438, name: "Tray right-click menu", steps: `Right-click tray icon`, expected: `Menu with Show / Quit (and any other entries from main.py tray setup)` },
-                { id: 439, name: "Tray — Show restores window", steps: `Hide window → tray → Show`, expected: `Window restores in original position; receives focus` },
-                { id: 440, name: "Tray — Quit terminates daemon threads", steps: `Tray → Quit`, expected: `App exits cleanly; no zombie pythonw.exe in Task Manager` },
-                { id: 441, name: "Close button — hides to tray (when toggle ON)", steps: `Settings → Minimize to tray ON → click X`, expected: `Window hides; tray icon stays visible; poller continues` },
-                { id: 442, name: "Close button — quits (when toggle OFF)", steps: `Settings → Minimize to tray OFF → click X`, expected: `App quits; tray icon disappears` },
-                { id: 443, name: "Tray click restores window", steps: `Window hidden → left-click tray icon`, expected: `Window restores (if main.py wires single-click)` },
-                { id: 444, name: "Tray icon survives long idle", steps: `Leave hidden for 30+ min`, expected: `Icon doesn't disappear; restore still works` },
-            ]},
-            { title: "42. Native-only — Run on Startup", tests: [
-                { id: 445, name: "Toggle ON adds registry entry", steps: `Settings → Run on startup ON → check HKCU\\...\\Run`, expected: `PawPoller value pointing at full path of PawPoller.exe` },
-                { id: 446, name: "Toggle OFF removes registry entry", steps: `Toggle OFF → re-check`, expected: `Value removed; no leftover keys` },
-                { id: 447, name: "Auto-launches on Windows login", steps: `Toggle ON → log out and back in (or restart)`, expected: `PawPoller launches automatically; tray icon appears within ~10s of login` },
-                { id: 448, name: "Auto-launch — minimizes to tray", steps: `Same with Minimize to tray ON`, expected: `Launches directly to tray, no visible window flash` },
-            ]},
-            { title: "43. Native-only — Browser-login popups (pywebview)", tests: [
-                { id: 449, name: "FA browser login", steps: `Settings → Platforms → FA → "Login via Browser"`, expected: `pywebview popup with FA login page; user logs in; cookies (a + b) auto-captured; popup closes; FA badge flips green` },
-                { id: 450, name: "DA browser login", steps: `DA → Login via Browser`, expected: `Pywebview popup → DA login → cookie captured` },
-                { id: 451, name: "SF browser login", steps: `SF → Login via Browser`, expected: `SF login popup → session cookies captured → badge green` },
-                { id: 452, name: "SQW browser login", steps: `SQW → Login via Browser`, expected: `SQW popup → poster + author logins captured` },
-                { id: 453, name: "AO3 browser login", steps: `AO3 → Login via Browser`, expected: `AO3 popup → session cookie captured (CF Worker bypass needed if Shields-up)` },
-                { id: 454, name: "Bsky browser login", steps: `Bsky → Login via Browser`, expected: `Bsky popup → identifier + app password captured` },
-                { id: 455, name: "X / Twitter browser login", steps: `X → Login via Browser`, expected: `X popup → auth_token + ct0 captured from cookies` },
-                { id: 456, name: "Browser login — cancel/close", steps: `Open any browser-login popup → close X`, expected: `Endpoint returns ok=false "Login cancelled or timed out"; no creds saved` },
-                { id: 457, name: "Browser login — 5-min timeout", steps: `Open popup → leave idle 5+ min`, expected: `Auto-closes; "timed out" message; no creds saved` },
-                { id: 458, name: "Browser login — extra fields", steps: `Platform that needs extra config (e.g. SF display name)`, expected: `Form prompts for extra fields BEFORE opening popup` },
-            ]},
-            { title: "44. Native-only — File dialogs & PDF", tests: [
-                { id: 459, name: "Story upload via native file picker", steps: `Create New Story → Upload → click file field`, expected: `Native Windows file dialog opens (not browser dialog); .md/.html/.bbcode/.txt/.rtf filter applied` },
-                { id: 460, name: "Cover upload via native picker", steps: `Metadata → Cover → Upload`, expected: `Native picker; image-only filter` },
-                { id: 461, name: "Edge PDF fallback (no GTK)", steps: `Trigger PDF regen on Windows without GTK runtime`, expected: `Falls back to Edge headless; "Edge fallback" log line. Output PDF still produced` },
-                { id: 462, name: "Edge PDF — no header/footer", steps: `Open Edge-rendered PDF`, expected: `--no-pdf-header-footer in effect; no date/URL banner` },
-                { id: 463, name: "Edge PDF — full bleed background", steps: `Compare to WeasyPrint output`, expected: `Theme background runs edge-to-edge; padding via .print-container, not @page margin` },
-                { id: 464, name: "WeasyPrint — opt-in if installed", steps: `Install GTK runtime → trigger PDF regen`, expected: `WeasyPrint used as primary; log shows "WeasyPrint render"` },
-            ]},
-            { title: "45. Native-only — Vault keyring", tests: [
-                { id: 465, name: "Vault enable — keyring storage", steps: `Enable vault → check Windows Credential Manager`, expected: `PawPoller / vault_key entry present (keyring backend)` },
-                { id: 466, name: "Vault enable — dotfile fallback", steps: `If keyring unavailable → check %APPDATA%/PawPoller/data/.vault_key`, expected: `Dotfile present with restricted permissions; vault still functional` },
-                { id: 467, name: "Vault key persists across reinstall", steps: `Uninstall → reinstall → check vault still decrypts`, expected: `Keyring entry survives reinstall; existing vault file decrypts cleanly` },
-                { id: 468, name: "Vault — keyring removal", steps: `Disable vault → remove keyring entry → re-enable`, expected: `Generates fresh key; old vault becomes unrecoverable (this is OK; user just disabled it)` },
-            ]},
-            { title: "46. Native-only — Auto-update mechanism", tests: [
-                { id: 469, name: "Update check — current", steps: `About → Check for Updates with no newer version`, expected: `"You're up to date" message` },
-                { id: 470, name: "Update check — new available", steps: `Older version installed than latest GitHub release`, expected: `Sidebar badge "vX.Y.Z available" + Update Now button` },
-                { id: 471, name: "Update download", steps: `Click Update Now → confirm`, expected: `Downloads release zip from GitHub; progress shown` },
-                { id: 472, name: "Update apply — restart", steps: `After download completes`, expected: `Existing PawPoller.exe replaced; app restarts; new version visible in About` },
-                { id: 473, name: "Update — preserves data", steps: `After update`, expected: `%APPDATA%/PawPoller/data/ contents intact (db, settings.json, vault, themes)` },
-                { id: 474, name: "Update — preserves settings.json migration", steps: `Update from old version with old settings.json location`, expected: `Migration logic in config.py copies to new /app/data/ location once on first boot` },
-                { id: 475, name: "Update — failure handling", steps: `Force a failure (e.g. block download URL)`, expected: `Friendly error toast; old binary remains; user can retry` },
-            ]},
-            { title: "47. Native-only — Process behaviour", tests: [
-                { id: 476, name: "Single-instance — second launch focuses first", steps: `Launch → launch again`, expected: `Second instance focuses first window instead of opening duplicate (or politely refuses)` },
-                { id: 477, name: "Native window resize persists", steps: `Resize → quit → relaunch`, expected: `Window opens at last size + position` },
-                { id: 478, name: "Window minimise to taskbar", steps: `Click _ minimize button`, expected: `Hides to taskbar; restore via taskbar click` },
-                { id: 479, name: "Native menu bar (if present)", steps: `Check window menu bar`, expected: `Either pywebview menu (File/Edit/etc.) or no menu bar — consistent with build config` },
-                { id: 480, name: "App icon in taskbar", steps: `Look at taskbar`, expected: `PawPoller icon (not generic Python icon); matches tray icon` },
-                { id: 481, name: "App in start menu", steps: `Search "PawPoller" in Start`, expected: `Launches the app correctly (if shortcut created during install)` },
-                { id: 482, name: "Native console hidden", steps: `Launch normally`, expected: `No black console window appears (PyInstaller --noconsole / runw.exe bootloader)` },
-            ]},
-            { title: "48. GitHub & CI/CD", tests: [
-                { id: 483, name: "README renders on GitHub", steps: `Visit repo`, expected: `README displays correctly with all images/links` },
-                { id: 484, name: "LICENSE present", steps: `Repo root`, expected: `MIT LICENSE file` },
-                { id: 485, name: "CONTRIBUTING present", steps: `Repo root`, expected: `Contributing guide` },
-                { id: 486, name: "Lint workflow on push", steps: `Push to master → Actions tab`, expected: `Lint workflow runs ruff + JS syntax; passes` },
-                { id: 487, name: "Build workflow on tag", steps: `git tag v2.14.4 && git push --tags`, expected: `Build & Release runs; .zip artifact attached to release` },
-                { id: 488, name: "Test job in build workflow", steps: `Same workflow run`, expected: `unittest discover passes (after pytest + respx pinned to requirements-server.txt)` },
-                { id: 489, name: "Release notes — generated", steps: `Look at release page after tag`, expected: `Release notes match CHANGELOG.md entry` },
-            ]},
-            { title: "49. Errors & Resilience", tests: [
-                { id: 490, name: "Network offline — graceful", steps: `Disable network → navigate`, expected: `Errors surfaced as toast, not console-only; UI doesn't lock up` },
-                { id: 491, name: "Server unreachable — retry (native: localhost)", steps: `Kill internal uvicorn thread → click around`, expected: `App detects server gone; doesn't lock up; offers restart` },
-                { id: 492, name: "Invalid JSON in settings.json", steps: `Quit → corrupt %APPDATA%/PawPoller/data/settings.json → relaunch`, expected: `App boots with empty defaults; log warning; UI shows reset state` },
-                { id: 493, name: "Database locked — retry", steps: `Hold sqlite lock externally → trigger a write`, expected: `Write retries / queues, doesn't crash` },
-                { id: 494, name: "Rate-limit display", steps: `Trigger AO3 429`, expected: `User-visible message about rate limiting + retry timer` },
-                { id: 495, name: "Console — no uncaught errors", steps: `Open pywebview DevTools (F12 if enabled)`, expected: `Browser console has no uncaught exceptions on happy path` },
-                { id: 496, name: "Hash route fallback", steps: `Manually edit URL to #/totally-fake-route`, expected: `Either 404 page OR redirects to dashboard; no white screen` },
-                { id: 497, name: "Crash recovery — daemon thread", steps: `Force a single poller thread to crash`, expected: `Other pollers + dashboard remain functional; restart resurrects the dead thread` },
-            ]},
+            {
+                title: "1. Boot & First-Run (Native)", tests: [
+                    { id: 1, name: "PyInstaller build succeeds", steps: `python -m PyInstaller pawpoller.spec --noconfirm`, expected: `Build completes; dist/PawPoller/PawPoller.exe exists; warn-pawpoller.txt has no critical missing modules` },
+                    { id: 2, name: "PawPoller.exe launches", steps: `Double-click dist/PawPoller/PawPoller.exe`, expected: `Native window appears within ~5s; tray icon shows in system tray; no Windows error dialog` },
+                    { id: 3, name: "Internal server ready", steps: `In-app: navigate dashboard. Log file at %APPDATA%/PawPoller/logs/`, expected: `Log line "PawPoller server ready at http://0.0.0.0:8420". Dashboard renders without retry spinner` },
+                    { id: 4, name: "No-flash theme on cold load", steps: `Set non-default theme → Quit → relaunch`, expected: `Theme applies before first paint via inline <head> script. No flash of default dark` },
+                    { id: 5, name: "Setup wizard appears first run", steps: `Remove setup_complete from settings.json → reload`, expected: `Wizard renders, sidebar hidden, no platform pages reachable` },
+                    { id: 6, name: "Setup — Step 1 Welcome", steps: `Click "Get Started"`, expected: `Advances to Step 2; step indicator updates (dot 1 fills)` },
+                    { id: 7, name: "Setup — Step 2 Archive path", steps: `Enter path /app/story-archive (or local equivalent) → Next`, expected: `Path saved to posting_story_archive_path; advances to Step 3. Empty path triggers validation error` },
+                    { id: 8, name: "Setup — Step 3 Platform cards", steps: `Inspect grid of 11 platforms`, expected: `IB, FA, WS, SF, SQW, AO3, DA, WP, IK, Bsky, TW. Connected platforms green, others grey/neutral` },
+                    { id: 9, name: "Setup — Step 3 Skip", steps: `Click Next without connecting anything`, expected: `Skip allowed; advances to Step 4 with empty platforms_connected count` },
+                    { id: 10, name: "Setup — Step 4 Finish", steps: `Click "Go to Dashboard"`, expected: `setup_complete=true persisted; redirected to dashboard; sidebar visible` },
+                    { id: 11, name: "Setup does NOT reappear", steps: `Reload after Finish`, expected: `Goes straight to dashboard` },
+                    { id: 12, name: "Dashboard auth gate (when configured)", steps: `Set auth_password_hash via Settings → Security → log out → reload`, expected: `Redirected to /#/dashboard-login; no dashboard data exposed` },
+                    { id: 13, name: "Dashboard login form", steps: `Submit valid password`, expected: `Server sets pp_session cookie (HttpOnly, SameSite=Strict); redirects to dashboard` },
+                    { id: 14, name: "Dashboard login — wrong password", steps: `Submit garbage password`, expected: `Form shows error, no cookie set, no information leak about whether user exists` },
+                    { id: 15, name: "Dashboard logout", steps: `Sidebar → Logout`, expected: `pp_session cleared, redirected to login form` },
+                ]
+            },
+            {
+                title: "2. Sidebar & Navigation", tests: [
+                    { id: 16, name: "Brand mark renders", steps: `Look at top of sidebar`, expected: `Copper diamond ◆ + "PawPoller" wordmark in serif. Theme-coloured` },
+                    { id: 17, name: "Sidebar collapses on mobile (< 768px)", steps: `Resize window to 600px wide`, expected: `Sidebar hides; hamburger button appears top-left; tap reveals overlay sidebar` },
+                    { id: 18, name: "Hamburger toggle", steps: `Mobile width → tap hamburger`, expected: `Sidebar slides in with translucent overlay. Tap overlay = closes` },
+                    { id: 19, name: "Nav — Dashboard link", steps: `Click "Dashboard"`, expected: `Routes to #/, cross-platform overview renders` },
+                    { id: 20, name: "Nav — Inkbunny", steps: `Platforms → Inkbunny`, expected: `Routes to #/ib, IB submissions list loads (or login screen if no creds)` },
+                    { id: 21, name: "Nav — FurAffinity", steps: `Platforms → FurAffinity`, expected: `Routes to #/fa, FA list loads` },
+                    { id: 22, name: "Nav — Weasyl", steps: `Platforms → Weasyl`, expected: `Routes to #/ws, WS list loads` },
+                    { id: 23, name: "Nav — SoFurry", steps: `Platforms → SoFurry`, expected: `Routes to #/sf, SF list loads` },
+                    { id: 24, name: "Nav — SquidgeWorld", steps: `Platforms → SquidgeWorld`, expected: `Routes to #/sqw, SQW list loads` },
+                    { id: 25, name: "Nav — AO3", steps: `Platforms → AO3`, expected: `Routes to #/ao3, AO3 list loads` },
+                    { id: 26, name: "Nav — DeviantArt", steps: `Platforms → DeviantArt`, expected: `Routes to #/da, DA list loads` },
+                    { id: 27, name: "Nav — Wattpad", steps: `Platforms → Wattpad`, expected: `Routes to #/wp, WP list loads` },
+                    { id: 28, name: "Nav — Itaku", steps: `Platforms → Itaku`, expected: `Routes to #/ik, IK list loads` },
+                    { id: 29, name: "Nav — Bluesky", steps: `Platforms → Bluesky`, expected: `Routes to #/bsky, Bsky list loads` },
+                    { id: 30, name: "Nav — X / Twitter", steps: `Platforms → X`, expected: `Routes to #/tw, TW list loads` },
+                    { id: 31, name: "Nav — Stories", steps: `Click "Stories"`, expected: `Routes to #/stories, story list loads with all detected MASTER.md folders` },
+                    { id: 32, name: "Nav — Publish Check", steps: `Click "Publish Check"`, expected: `Routes to #/publish-check; story selector at top` },
+                    { id: 33, name: "Nav — Editor", steps: `Story list → click a story`, expected: `Routes to #/editor/<story>; editor + preview pane render` },
+                    { id: 34, name: "Nav — Groups", steps: `Click "Groups"`, expected: `Routes to #/groups; existing groups + Create button visible` },
+                    { id: 35, name: "Nav — Goals", steps: `Click "Goals"`, expected: `Routes to #/goals; goals list with progress bars` },
+                    { id: 36, name: "Nav — Tags", steps: `Click "Tags"`, expected: `Routes to #/tags; user tags list` },
+                    { id: 37, name: "Nav — Settings", steps: `Click "Settings"`, expected: `Routes to #/settings/general; tab bar visible` },
+                    { id: 38, name: "Sidebar version badge", steps: `Bottom of sidebar`, expected: `Shows current version. If newer release exists: "vX.Y.Z available" + Update Now button` },
+                    { id: 39, name: "Theme toggle button", steps: `Sidebar → palette button (🎨)`, expected: `Navigates to #/settings/appearance` },
+                    { id: 40, name: "Browser back button", steps: `Navigate around then Back`, expected: `Hash router responds correctly; previous page renders` },
+                ]
+            },
+            {
+                title: "3. Dashboard / Cross-Platform Overview", tests: [
+                    { id: 41, name: "Dashboard stats cards", steps: `Open dashboard`, expected: `Cards for total submissions, total views, total faves, total comments across all connected platforms` },
+                    { id: 42, name: "Recent activity feed", steps: `Scroll dashboard`, expected: `Recent new submissions / new faves / new comments rendered with platform icons + timestamps` },
+                    { id: 43, name: "Top fans cross-platform", steps: `Dashboard → Top Fans card`, expected: `Leaderboard of users by total favourites across linked platforms` },
+                    { id: 44, name: "Trending submissions", steps: `Dashboard → Trending card`, expected: `Submissions with unusual recent growth (spike detection algorithm)` },
+                    { id: 45, name: "Charts render with theme colours", steps: `Switch theme → return to dashboard`, expected: `All Chart.js charts pick up new theme accent (Charts.destroyAll + redraw on theme switch)` },
+                    { id: 46, name: "Date range selector", steps: `Date range bar → click 30d`, expected: `Charts and data re-filter to last 30 days` },
+                    { id: 47, name: "Date range — All time", steps: `Click "All"`, expected: `Charts show full history` },
+                    { id: 48, name: "Auto-refresh ticker", steps: `Wait 60s on dashboard`, expected: `Page silently refetches; new data shown without flicker. Pauses when document.hidden=true` },
+                    { id: 49, name: "Last polled badge", steps: `Sidebar bottom → look at "Last polled"`, expected: `Shows relative time of last successful poll cycle. Updates every 60s` },
+                ]
+            },
+            {
+                title: "4. Per-Platform — Inkbunny", tests: [
+                    { id: 50, name: "Auth status check", steps: `Settings → Platforms → Inkbunny`, expected: `If creds set: green badge + username. If not: "Not connected" + connect form` },
+                    { id: 51, name: "Connect — valid creds", steps: `Enter valid IB user/pass → Save Credentials`, expected: `Validates via API, stores in settings, badge flips to green` },
+                    { id: 52, name: "Connect — invalid creds", steps: `Enter wrong password`, expected: `Friendly error message; no creds saved; no information leak` },
+                    { id: 53, name: "Submissions list loads", steps: `#/ib`, expected: `Table of submissions with thumbnail, title, views, faves, comments, posted date` },
+                    { id: 54, name: "Sort — views", steps: `Click "Views" column header`, expected: `Re-sorts descending. Click again = ascending. Active column gets sort indicator` },
+                    { id: 55, name: "Sort — favorites", steps: `Click "Favorites" header`, expected: `Re-sorts. Indicator moves` },
+                    { id: 56, name: "Sort — comments", steps: `Click "Comments" header`, expected: `Re-sorts. Indicator moves` },
+                    { id: 57, name: "Search filter", steps: `Type in search box`, expected: `Live-filters table by title (case-insensitive substring)` },
+                    { id: 58, name: "Detail page", steps: `Click any submission row`, expected: `Routes to #/ib/<id>; charts + snapshots + metadata render` },
+                    { id: 59, name: "Detail charts", steps: `Detail page → look at charts`, expected: `Time-series for views, faves, comments. Smooth lines, theme colours` },
+                    { id: 60, name: "Snapshot table", steps: `Detail page → scroll`, expected: `Table of historical snapshots (one per poll cycle) with delta columns` },
+                    { id: 61, name: "Compare — add to compare", steps: `List view → checkbox 2-3 rows → "Compare"`, expected: `Compare overlay chart shows selected submissions on one chart` },
+                    { id: 62, name: "Compare — metric switch", steps: `Compare overlay → change metric to "Comments"`, expected: `Lines re-fetch and redraw for the new metric` },
+                    { id: 63, name: "Compare — max 5", steps: `Try to add a 6th`, expected: `Polite refusal; max 5 enforced` },
+                    { id: 64, name: "Watchers list", steps: `IB → Watchers tab`, expected: `IB watcher list with spam status flag` },
+                    { id: 65, name: "Manual poll trigger", steps: `Detail or list → "Poll Now"`, expected: `Triggers a single-platform poll. Progress bar shows. Stats refresh on completion` },
+                    { id: 66, name: "Poll log", steps: `Settings → Logs → IB poll log`, expected: `Table of recent poll runs with timestamps, duration, success/fail status` },
+                    { id: 67, name: "CSV export", steps: `IB list → "Export CSV"`, expected: `Downloads pawpoller_inkbunny_<date>.csv with all current rows` },
+                    { id: 68, name: "Aggregate stats", steps: `IB Aggregate page`, expected: `Total/avg per metric, top performers, growth charts` },
+                ]
+            },
+            {
+                title: "5. Per-Platform — FurAffinity", tests: [
+                    { id: 69, name: "Auth status (cookies)", steps: `Settings → Platforms → FurAffinity`, expected: `If cookie_a + cookie_b set: green + username. Otherwise: connection form` },
+                    { id: 70, name: "Connect — manual cookies", steps: `Enter cookie_a + cookie_b → Save`, expected: `Validates against /msg/others/, saves, flips green` },
+                    { id: 71, name: "Submissions list loads", steps: `#/fa`, expected: `Table loads with FA-specific metadata (rating, category)` },
+                    { id: 72, name: "Detail page + FA metadata", steps: `Click a submission`, expected: `Detail shows category, theme, species, gender (FA-specific fields)` },
+                    { id: 73, name: "FA charts render", steps: `Detail charts`, expected: `Views + faves + comments time-series` },
+                    { id: 74, name: "Watchers list (FA)", steps: `FA → Watchers`, expected: `Watcher list, individual watcher detail clickable` },
+                    { id: 75, name: "Manual poll", steps: `FA list → "Poll Now"`, expected: `FA-only poll runs; stats update` },
+                    { id: 76, name: "FA CSV export", steps: `Export CSV`, expected: `Downloads with FA columns` },
+                    { id: 77, name: "FA poll log", steps: `Settings → Logs → FA`, expected: `Recent runs with timestamps + status` },
+                ]
+            },
+            {
+                title: "6. Per-Platform — Weasyl", tests: [
+                    { id: 78, name: "Auth status", steps: `Settings → Platforms → Weasyl`, expected: `Shows API key set/not + username when validated` },
+                    { id: 79, name: "Connect — API key", steps: `Paste WS API key → Save`, expected: `Hits /api/whoami, saves on 200` },
+                    { id: 80, name: "Submissions list", steps: `#/ws`, expected: `WS list with cursor pagination markers` },
+                    { id: 81, name: "Detail + chart", steps: `Click submission`, expected: `Detail page renders; charts populated` },
+                    { id: 82, name: "Manual poll", steps: `WS Poll Now`, expected: `Single platform poll; updates` },
+                    { id: 83, name: "WS CSV export", steps: `Export CSV`, expected: `Downloads CSV` },
+                    { id: 84, name: "WS poll log", steps: `Logs → WS`, expected: `Run history visible` },
+                    { id: 85, name: "Weasyl SKIP note", steps: `If account not verified`, expected: `Mark this and remaining WS tests Skip with note "account not verified"` },
+                ]
+            },
+            {
+                title: "7. Per-Platform — SoFurry", tests: [
+                    { id: 86, name: "Auth status", steps: `Settings → Platforms → SoFurry`, expected: `Shows username if logged in` },
+                    { id: 87, name: "Connect — direct login", steps: `Enter SF user/pass → Save`, expected: `Calls SF login, persists session cookies, badge green` },
+                    { id: 88, name: "Connect via CF proxy", steps: `On server with cf_worker_url set`, expected: `Login routes through CF Worker (datacenter IPs blocked otherwise)` },
+                    { id: 89, name: "Submissions list", steps: `#/sf`, expected: `SF list with story-type submissions` },
+                    { id: 90, name: "Detail + chart", steps: `Click a story`, expected: `Charts render; chapter list if multi-chapter` },
+                    { id: 91, name: "Followers list", steps: `SF → Followers`, expected: `SF follower list` },
+                    { id: 92, name: "Manual poll", steps: `SF Poll Now`, expected: `Poll runs; updates visible` },
+                    { id: 93, name: "SF CSV export", steps: `Export CSV`, expected: `Downloads CSV` },
+                    { id: 94, name: "SF poll log", steps: `Logs → SF`, expected: `History visible` },
+                ]
+            },
+            {
+                title: "8. Per-Platform — SquidgeWorld", tests: [
+                    { id: 95, name: "Auth status", steps: `Settings → Platforms → SquidgeWorld`, expected: `Shows configured username(s); poster vs author distinction visible` },
+                    { id: 96, name: "Connect — credentials", steps: `Enter SQW user/pass + author user/pass → Save`, expected: `Both validate; badge green` },
+                    { id: 97, name: "Email-login resolution", steps: `Use email instead of username`, expected: `App resolves to account name for URLs (not just email)` },
+                    { id: 98, name: "Submissions list", steps: `#/sqw`, expected: `Per-chapter rows (SQW format)` },
+                    { id: 99, name: "Detail + chart", steps: `Click a chapter`, expected: `Chart renders; kudos count visible` },
+                    { id: 100, name: "Manual poll", steps: `SQW Poll Now`, expected: `Updates after run` },
+                    { id: 101, name: "SQW CSV export", steps: `Export CSV`, expected: `CSV downloads` },
+                    { id: 102, name: "SQW poll log", steps: `Logs → SQW`, expected: `History visible` },
+                ]
+            },
+            {
+                title: "9. Per-Platform — AO3", tests: [
+                    { id: 103, name: "Auth status", steps: `Settings → Platforms → AO3`, expected: `Shows configured username; AO3-specific note about CF proxy` },
+                    { id: 104, name: "Connect — credentials", steps: `Enter user/pass → Save`, expected: `Login validates; session cookie cached` },
+                    { id: 105, name: "Connect via CF proxy (desktop)", steps: `Desktop with cf_worker_url`, expected: `Login routes through Worker (Shields-up bypass)` },
+                    { id: 106, name: "Submissions list", steps: `#/ao3`, expected: `Works list with kudos/hits/comments` },
+                    { id: 107, name: "Detail + chart", steps: `Click a work`, expected: `Charts render including chapter-by-chapter` },
+                    { id: 108, name: "Manual poll", steps: `AO3 Poll Now`, expected: `Poll runs; check log for retries on 429` },
+                    { id: 109, name: "AO3 CSV export", steps: `Export CSV`, expected: `Downloads with AO3 columns (kudos, hits, etc.)` },
+                    { id: 110, name: "AO3 poll log", steps: `Logs → AO3`, expected: `History incl. any "429 rate limited, waiting Xs" lines` },
+                ]
+            },
+            {
+                title: "10. Per-Platform — DeviantArt (opted out, login only)", tests: [
+                    { id: 111, name: "Auth status", steps: `Settings → Platforms → DeviantArt`, expected: `Cookie field shown; status badge correct` },
+                    { id: 112, name: "Connect — DA cookie", steps: `Paste DA cookie → Save`, expected: `Validates, badge flips green` },
+                    { id: 113, name: "Submissions list <span class=\"badge-skip\">SKIP</span>", steps: `#/da`, expected: `SKIP — opted out. Confirm page renders without crashing` },
+                    { id: 114, name: "Manual poll <span class=\"badge-skip\">SKIP</span>", steps: `DA Poll Now`, expected: `SKIP — opted out. If triggered, should not error` },
+                    { id: 115, name: "DA poll log", steps: `Logs → DA`, expected: `Page renders even if no poll history` },
+                ]
+            },
+            {
+                title: "11. Per-Platform — Wattpad (opted out, login only)", tests: [
+                    { id: 116, name: "Auth status", steps: `Settings → Platforms → Wattpad`, expected: `Username field; status badge correct` },
+                    { id: 117, name: "Connect", steps: `Enter user/pass → Save`, expected: `Validates, badge flips green` },
+                    { id: 118, name: "Submissions list <span class=\"badge-skip\">SKIP</span>", steps: `#/wp`, expected: `SKIP — opted out. Page renders without crash` },
+                    { id: 119, name: "Manual poll <span class=\"badge-skip\">SKIP</span>", steps: `WP Poll Now`, expected: `SKIP — opted out` },
+                    { id: 120, name: "WP poll log", steps: `Logs → WP`, expected: `Renders` },
+                ]
+            },
+            {
+                title: "12. Per-Platform — Itaku (opted out, login only)", tests: [
+                    { id: 121, name: "Auth status", steps: `Settings → Platforms → Itaku`, expected: `Token field visible` },
+                    { id: 122, name: "Connect — IK token", steps: `Paste IK auth token → Save`, expected: `Validates, badge flips green` },
+                    { id: 123, name: "Submissions list <span class=\"badge-skip\">SKIP</span>", steps: `#/ik`, expected: `SKIP — opted out. Page renders` },
+                    { id: 124, name: "Manual poll <span class=\"badge-skip\">SKIP</span>", steps: `IK Poll Now`, expected: `SKIP` },
+                    { id: 125, name: "IK poll log", steps: `Logs → IK`, expected: `Renders` },
+                ]
+            },
+            {
+                title: "13. Per-Platform — Bluesky (opted out, login only)", tests: [
+                    { id: 126, name: "Auth status", steps: `Settings → Platforms → Bluesky`, expected: `Identifier + app password fields` },
+                    { id: 127, name: "Connect — Bluesky", steps: `Enter handle + app password → Save`, expected: `Validates via AT protocol, badge flips green` },
+                    { id: 128, name: "Submissions list <span class=\"badge-skip\">SKIP</span>", steps: `#/bsky`, expected: `SKIP — opted out` },
+                    { id: 129, name: "Manual poll <span class=\"badge-skip\">SKIP</span>", steps: `Bsky Poll Now`, expected: `SKIP` },
+                    { id: 130, name: "Bsky poll log", steps: `Logs → Bsky`, expected: `Renders` },
+                ]
+            },
+            {
+                title: "14. Per-Platform — X / Twitter (opted out, login only)", tests: [
+                    { id: 131, name: "Auth status", steps: `Settings → Platforms → X`, expected: `auth_token + ct0 fields` },
+                    { id: 132, name: "Connect — X cookies", steps: `Paste auth_token + ct0 → Save`, expected: `Validates, badge green` },
+                    { id: 133, name: "Submissions list <span class=\"badge-skip\">SKIP</span>", steps: `#/tw`, expected: `SKIP — opted out` },
+                    { id: 134, name: "Manual poll <span class=\"badge-skip\">SKIP</span>", steps: `TW Poll Now`, expected: `SKIP` },
+                    { id: 135, name: "TW poll log", steps: `Logs → TW`, expected: `Renders` },
+                ]
+            },
+            {
+                title: "15. Groups", tests: [
+                    { id: 136, name: "Groups page renders", steps: `Sidebar → Groups`, expected: `Existing groups list + Create button` },
+                    { id: 137, name: "Create group", steps: `Click Create → name + description → Save`, expected: `New group appears in list` },
+                    { id: 138, name: "Add member", steps: `Group detail → Add submission → pick from list → Add`, expected: `Member appears in group; aggregate stats update` },
+                    { id: 139, name: "Remove member", steps: `Group → click ✗ on a member`, expected: `Member removed; stats recalculate` },
+                    { id: 140, name: "Edit group", steps: `Group → Edit → change name → Save`, expected: `Name updates everywhere` },
+                    { id: 141, name: "Delete group", steps: `Group → Delete → Confirm`, expected: `Group removed; CASCADE removes member entries` },
+                    { id: 142, name: "Group aggregate chart", steps: `Group detail`, expected: `Combined views/faves/comments line chart for all members` },
+                ]
+            },
+            {
+                title: "16. Cross-Platform Links", tests: [
+                    { id: 143, name: "Links list renders", steps: `Open links view`, expected: `Existing cross-platform link records` },
+                    { id: 144, name: "Create link", steps: `Add link → pick IB sub + AO3 work → Save`, expected: `Link saved; appears in both submission detail pages` },
+                    { id: 145, name: "View linked detail", steps: `Open IB sub detail`, expected: `Linked AO3 work shown in sidebar` },
+                    { id: 146, name: "Delete link", steps: `Remove a link`, expected: `Link disappears from both sides` },
+                ]
+            },
+            {
+                title: "17. Goals", tests: [
+                    { id: 147, name: "Goals page renders", steps: `Sidebar → Goals`, expected: `Existing goals + Create button` },
+                    { id: 148, name: "Create goal", steps: `Create → pick metric (views/faves/comments) → target → Save`, expected: `Goal appears with progress bar` },
+                    { id: 149, name: "Goal — invalid metric blocked", steps: `Try crafting an API request with metric not in ALLOWED_GOAL_METRICS`, expected: `400 with "invalid metric" — SQL injection prevention working` },
+                    { id: 150, name: "Progress updates", steps: `After a poll cycle pulls new data`, expected: `Goal bar moves toward target` },
+                    { id: 151, name: "Goal completion", steps: `Goal hits 100%`, expected: `Visual completion state. Telegram notification fires (if enabled)` },
+                    { id: 152, name: "Delete goal", steps: `Click delete → confirm`, expected: `Goal removed` },
+                ]
+            },
+            {
+                title: "18. Tags Library", tests: [
+                    { id: 153, name: "Tags page renders", steps: `Sidebar → Tags`, expected: `User tag list + Create button` },
+                    { id: 154, name: "Create user tag", steps: `Create → name + colour → Save`, expected: `Tag appears in list` },
+                    { id: 155, name: "Assign tag to submission", steps: `Submission detail → Tags → pick a tag → Assign`, expected: `Tag chip appears on submission` },
+                    { id: 156, name: "Remove tag", steps: `Click ✗ on a tag chip`, expected: `Assignment removed; tag still in library` },
+                    { id: 157, name: "Delete tag", steps: `Tags → delete a tag`, expected: `Tag removed; assignments cascade` },
+                ]
+            },
+            {
+                title: "19. Editor — Story Management", tests: [
+                    { id: 158, name: "Story list — All", steps: `Click Stories`, expected: `All MASTER.md folders detected from posting_story_archive_path. Counts visible` },
+                    { id: 159, name: "Story search", steps: `Type in search box`, expected: `Live filter by folder name / title` },
+                    { id: 160, name: "Create New Story button", steps: `+ Create New Story`, expected: `Modal opens with title, author, folder name, chapters, rating, genre selector, optional file upload` },
+                    { id: 161, name: "Folder name auto-gen", steps: `Type "My Great Story"`, expected: `Folder field auto-fills "My_Great_Story"` },
+                    { id: 162, name: "Folder name validation", steps: `Try "test@story!"`, expected: `Inline error: "letters, digits, and underscores only"` },
+                    { id: 163, name: "Duplicate folder rejected", steps: `Use an existing folder name`, expected: `Inline error about existing folder; no overwrite` },
+                    { id: 164, name: "Genre — Erotica template", steps: `Pick "Erotica" → Create`, expected: `Rating auto-Explicit; story.json tags.default has erotica preset tags` },
+                    { id: 165, name: "Genre — Horror w/ override", steps: `Pick Horror → manually set Explicit → Create`, expected: `story.json rating=explicit (user override) but Horror tags/warnings retained` },
+                    { id: 166, name: "Upload sample_story.md", steps: `Create with file <code>fixtures/sample_story.md</code>`, expected: `MASTER.md = uploaded content; @title and @body anchors preserved` },
+                    { id: 167, name: "Upload sample_story.html", steps: `Create with <code>fixtures/sample_story.html</code>`, expected: `MASTER.md = HTML→Markdown (## headings, **bold**, *italic*, lists kept)` },
+                    { id: 168, name: "Upload sample_story.bbcode", steps: `Create with <code>fixtures/sample_story.bbcode</code>`, expected: `MASTER.md = BBCode→Markdown ([b]→**, [i]→*, [hr]→---, [url]→[text](url))` },
+                    { id: 169, name: "Upload sample_story.txt", steps: `Create with <code>fixtures/sample_story.txt</code>`, expected: `MASTER.md = raw text inside @body block` },
+                    { id: 170, name: "Upload sample_story.rtf", steps: `Create with <code>fixtures/sample_story.rtf</code>`, expected: `MASTER.md has RTF runs converted to Markdown bold/italic` },
+                    { id: 171, name: "Upload multi-chapter sample", steps: `Create from <code>fixtures/sample_multichapter.md</code>`, expected: `Three chapter folders/files detected on Editor open; chapter break (---) recognised; POV markers preserved` },
+                    { id: 172, name: "Editor opens after create", steps: `After Create`, expected: `Routes to #/editor/<folder>; MASTER.md loaded in source pane` },
+                    { id: 173, name: "Story rename", steps: `Story list → ⋯ → Rename`, expected: `Folder + story.json title both update` },
+                    { id: 174, name: "Story delete (soft)", steps: `Story list → ⋯ → Delete → Confirm`, expected: `Story removed from list (folder moved to trash or marked deleted)` },
+                ]
+            },
+            {
+                title: "20. Editor — Anchor Toolbar", tests: [
+                    { id: 175, name: "Anchor — Title (T)", steps: `Cursor on a line → click "T"`, expected: `<!-- @title --> inserted on its own line above the cursor's line` },
+                    { id: 176, name: "Anchor — Subtitle (Sub)", steps: `Click "Sub"`, expected: `<!-- @subtitle --> on own line above` },
+                    { id: 177, name: "Anchor — Body", steps: `Click "Body"`, expected: `<!-- @body --> on own line above` },
+                    { id: 178, name: "Anchor — Warning (⚠)", steps: `Click warning button`, expected: `<!-- @warning --> on own line above` },
+                    { id: 179, name: "Anchor — Byline (By)", steps: `Click "By"`, expected: `<!-- @byline --> on own line above` },
+                    { id: 180, name: "Anchor — Disclaimer (Disc)", steps: `Click "Disc"`, expected: `<!-- @disclaimer --> on own line above` },
+                    { id: 181, name: "Anchor — Fanfiction (FF)", steps: `Click "FF"`, expected: `<!-- @fanfiction --> on own line above` },
+                    { id: 182, name: "Anchor — Text Sent (→ Sent)", steps: `Click "→ Sent"`, expected: `<!-- @text-sent --> on own line above. NO close tag` },
+                    { id: 183, name: "Anchor — Text Received (← Recv)", steps: `Click "← Recv"`, expected: `<!-- @text-received --> on own line above. No close tag` },
+                    { id: 184, name: "Anchor — Phone Incoming (☎ Phone)", steps: `Click "☎ Phone"`, expected: `<!-- @phone-incoming --> (real anchor name, not @phone)` },
+                    { id: 185, name: "Tooltip — hover delay", steps: `Hover anchor button ~1.2s`, expected: `Tooltip pops with label, purpose, before/after preview (green left border on After)` },
+                    { id: 186, name: "Tooltip — cancel on click", steps: `Tooltip showing → click button`, expected: `Tooltip hides immediately; anchor still inserts` },
+                    { id: 187, name: "Anchor wrap — CM selection", steps: `Markdown Source → select a line → click "→ Sent"`, expected: `Anchor sits on a new line above the selection; selection preserved` },
+                    { id: 188, name: "Anchor wrap — Rich Editor selection", steps: `Rich Editor → select unique text → click any anchor`, expected: `Anchor inserted above matching line in Markdown (text must be unique)` },
+                    { id: 189, name: "Anchor preview rendering", steps: `Insert any anchor → switch to preview pane`, expected: `Anchor renders correctly per the format (heading, blockquote, etc.)` },
+                ]
+            },
+            {
+                title: "21. Editor — Format Tabs & Regen", tests: [
+                    { id: 190, name: "Format tab — Markdown", steps: `Editor → Markdown tab`, expected: `Source pane shows MASTER.md` },
+                    { id: 191, name: "Format tab — Clean HTML", steps: `Click "Clean HTML"`, expected: `Source + preview update to Clean HTML` },
+                    { id: 192, name: "Format tab — SoFurry", steps: `Click "SoFurry"`, expected: `SoFurry-specific HTML formatting` },
+                    { id: 193, name: "Format tab — BBCode", steps: `Click "BBCode"`, expected: `BBCode source with [b], [i], [hr]` },
+                    { id: 194, name: "Format tab — Styled HTML", steps: `Click "Styled"`, expected: `Styled HTML with theme colours applied` },
+                    { id: 195, name: "Format tab — SquidgeWorld", steps: `Click "SquidgeWorld"`, expected: `Per-chapter SQW work-skin HTML` },
+                    { id: 196, name: "Selective regen — All", steps: `Regenerate ▾ → "All formats"`, expected: `Every format file rebuilt; staleness banner clears` },
+                    { id: 197, name: "Selective regen — HTML only", steps: `Regenerate ▾ → "HTML only"`, expected: `Only Clean HTML + SoFurry HTML rewritten` },
+                    { id: 198, name: "Selective regen — BBCode only", steps: `Regenerate ▾ → "BBCode only"`, expected: `Only BBCode file rebuilt` },
+                    { id: 199, name: "Selective regen — Styled only", steps: `Regenerate ▾ → "Styled only"`, expected: `Only Styled HTML rebuilt` },
+                    { id: 200, name: "Selective regen — SQW only", steps: `Regenerate ▾ → "SquidgeWorld only"`, expected: `Only SQW work-skin HTML rebuilt` },
+                    { id: 201, name: "Selective regen — PDF only", steps: `Regenerate ▾ → "PDF only"`, expected: `Only PDF files rebuilt; check for header/footer banner suppression` },
+                    { id: 202, name: "Selective regen — Chapters", steps: `Regenerate ▾ → "Chapters only"`, expected: `Per-chapter files rebuilt without touching full-story files` },
+                    { id: 203, name: "Regen staleness warning", steps: `Edit + save MASTER → open Publish Check`, expected: `Amber banner with "Regenerate now" button` },
+                    { id: 204, name: "Regen from Publish Check", steps: `Click "Regenerate now" in banner`, expected: `Files rebuild; banner disappears; matrix reloads` },
+                    { id: 205, name: "PDF — full bleed background", steps: `Open generated PDF`, expected: `Theme background runs edge-to-edge; no double margin` },
+                    { id: 206, name: "PDF — no header/footer banner", steps: `Open generated PDF`, expected: `No date/URL banner from print engine` },
+                ]
+            },
+            {
+                title: "22. Editor — Metadata Drawer", tests: [
+                    { id: 207, name: "Drawer opens", steps: `Editor → Metadata button`, expected: `Side drawer slides in with 8 collapsible sections` },
+                    { id: 208, name: "Section — Basics", steps: `Expand Basics`, expected: `Title, author, rating, status, summary fields` },
+                    { id: 209, name: "Section — Cover", steps: `Expand Cover`, expected: `Cover preview + Upload button` },
+                    { id: 210, name: "Cover — upload sample", steps: `Upload <code>fixtures/sample_cover.jpg</code>`, expected: `Preview updates; story.json images.cover set` },
+                    { id: 211, name: "Section — Classification", steps: `Expand Classification`, expected: `Rating dropdown, content warnings checklist, mature content flag` },
+                    { id: 212, name: "Section — Characters", steps: `Expand Characters`, expected: `Add/remove character chips; species dropdown` },
+                    { id: 213, name: "Section — Tags", steps: `Expand Tags`, expected: `Tabs: Default / SoFurry / Inkbunny / Wattpad / FA / DA / IK / Bsky` },
+                    { id: 214, name: "Tag — autocomplete (DB hit)", steps: `Default tab → type "anth"`, expected: `Local DB suggestions appear; click to add` },
+                    { id: 215, name: "Tag — e621 fallback", steps: `Type a tag not in DB`, expected: `e621 lookup fires; "+Library" button to import` },
+                    { id: 216, name: "Tag — space→underscore (Default)", steps: `Default tab → type "slow burn"`, expected: `Auto-converts to "slow_burn"` },
+                    { id: 217, name: "Tag — space→underscore (FA)", steps: `FA tab → type "slow burn"`, expected: `Auto-converts to "slow_burn"` },
+                    { id: 218, name: "Tag — keep spaces (SF)", steps: `SoFurry tab → type "slow burn"`, expected: `Stays as "slow burn" (SF uses spaces)` },
+                    { id: 219, name: "Tag — Fix spaces button", steps: `Have tags with spaces → Fix spaces`, expected: `"Fixed N tag(s)"; tags updated` },
+                    { id: 220, name: "Tag — Fix spaces (none)", steps: `All clean → Fix spaces`, expected: `"No spaces found in tags"` },
+                    { id: 221, name: "Tag — Sort A-Z", steps: `Random order → Sort A-Z`, expected: `Tags reorder; "Sorted tags on N platform(s)"` },
+                    { id: 222, name: "Tag browser modal", steps: `"Browse all matches"`, expected: `Modal opens with categorised tag grid` },
+                    { id: 223, name: "Tag browser — Selected filter", steps: `Click "Selected" chip`, expected: `Grid shows only currently-added tags` },
+                    { id: 224, name: "Tag browser — Selected exclusive", steps: `Click "Selected" then "Physical"`, expected: `Selected deactivates; Physical activates` },
+                    { id: 225, name: "Tag — platform badges", steps: `Look at a tag chip`, expected: `Small DEF/SF/IB/AO3/etc badges show which platforms have it` },
+                    { id: 226, name: "Tag browser grid responsive", steps: `Resize`, expected: `3-5 columns adjusting to width` },
+                    { id: 227, name: "Section — Chapter Tags", steps: `Expand chapter`, expected: `Same 4-tab tag editor (Default/SF/IB/WP) per chapter` },
+                    { id: 228, name: "Chapter thumbnail upload", steps: `Expand chapter → Upload <code>fixtures/sample_chapter_thumb.jpg</code>`, expected: `Filename appears; story.json chapter_info[].thumbnail set` },
+                    { id: 229, name: "Section — Chapters", steps: `Expand Chapters`, expected: `Chapter list with reorder handles, edit titles inline` },
+                    { id: 230, name: "Section — Advanced", steps: `Expand Advanced`, expected: `Custom JSON, raw story.json view, dangerous overrides` },
+                    { id: 231, name: "Drawer save", steps: `Make changes → Save metadata`, expected: `story.json updated; drawer shows "Saved" toast` },
+                    { id: 232, name: "Per-platform descriptions panel", steps: `Basics → expand "Per-platform descriptions"`, expected: `Short (IB/SF) and Announcement (Bsky) textareas` },
+                    { id: 233, name: "Short description save", steps: `Type → Save`, expected: `story.json descriptions.short set` },
+                    { id: 234, name: "Announcement char limit", steps: `Type in Announcement`, expected: `Character counter; maxlength=300` },
+                ]
+            },
+            {
+                title: "23. Publish Check Matrix", tests: [
+                    { id: 235, name: "Matrix renders", steps: `Open Publish Check for a story`, expected: `Chapter rows × platform columns grid; cells coloured per state` },
+                    { id: 236, name: "Cell — ready (✓)", steps: `Look at a green cell`, expected: `Hover tooltip "Ready to post"` },
+                    { id: 237, name: "Cell — posted (blue ✓)", steps: `Posted cell`, expected: `Tooltip "Posted at <time>"; click reveals URL` },
+                    { id: 238, name: "Cell — drift (◊)", steps: `Edit MASTER then re-open Publish Check`, expected: `Drifted cells flip to drift state with diff hash mismatch` },
+                    { id: 239, name: "Cell — error (✗)", steps: `Force a posting failure`, expected: `Red cell with reason in detail panel` },
+                    { id: 240, name: "Cell — deleted (⊘)", steps: `Delete a posted submission upstream → Verify`, expected: `Cell flips to deleted state` },
+                    { id: 241, name: "Cell — not supported (–)", steps: `SQW full-story row`, expected: `– icon; "Not supported on this platform"` },
+                    { id: 242, name: "Cell — locked (🔒)", steps: `Unconfigured platform`, expected: `Lock icon; not red` },
+                    { id: 243, name: "Lock cell detail", steps: `Click a lock cell`, expected: `"No credentials configured. Set up in Settings."` },
+                    { id: 244, name: "Live publish warning", steps: `Ready cell → uncheck "Save as draft"`, expected: `Yellow ⚠ LIVE PUBLISH banner` },
+                    { id: 245, name: "Re-check draft", steps: `Re-check draft`, expected: `Banner disappears` },
+                    { id: 246, name: "Live confirm dialog", steps: `Draft unchecked → Post`, expected: `confirm() dialog with "⚠ WARNING: LIVE publish"` },
+                    { id: 247, name: "Dry run — readable", steps: `Click Dry Run`, expected: `Structured: Title, Rating, Words, File, Tags. Raw JSON collapsible` },
+                    { id: 248, name: "Action result log", steps: `Do 3-4 actions`, expected: `"Recent actions" section appears with timestamps` },
+                    { id: 249, name: "Log persists across cell switches", steps: `Click between cells`, expected: `Log doesn't reset` },
+                    { id: 250, name: "Relative timestamps", steps: `Posted cell detail`, expected: `"Posted: ... (3d ago)" relative time` },
+                    { id: 251, name: "Edit from posted cell", steps: `Click posted → "Edit in Editor" button`, expected: `Routes to #/editor/<story> with cursor near right chapter` },
+                    { id: 252, name: "Schedule — picker", steps: `Ready cell → Schedule`, expected: `Datetime picker (defaults ~1hr ahead)` },
+                    { id: 253, name: "Schedule — confirm", steps: `Set future time → Confirm`, expected: `Queue item appears in detail panel` },
+                    { id: 254, name: "Schedule — cancel", steps: `Cancel a pending schedule`, expected: `Item removed` },
+                    { id: 255, name: "Retry queue auto-message", steps: `When a post fails`, expected: `"Will retry automatically with backoff"` },
+                    { id: 256, name: "Confirm_live guard (curl)", steps: `curl POST without confirm_live=true`, expected: `400 / refused — backend safety guard` },
+                ]
+            },
+            {
+                title: "24. Bulk Actions", tests: [
+                    { id: 257, name: "Publish all new", steps: `Footer → "Publish all new"`, expected: `Preflight modal: per-item checkboxes, draft toggle, Go button` },
+                    { id: 258, name: "Update drifted", steps: `Footer → "Update drifted"`, expected: `Only drifted cells listed in preflight` },
+                    { id: 259, name: "Row publish badge", steps: `Click row number`, expected: `Preflight scoped to that row only` },
+                    { id: 260, name: "Bulk dry run", steps: `Preflight → "Dry Run All"`, expected: `Progress panel; per-item ✓/✗` },
+                    { id: 261, name: "Bulk cancel", steps: `Mid-bulk → "Cancel remaining"`, expected: `Pending items show ⊘ Cancelled` },
+                    { id: 262, name: "Bulk close + refresh", steps: `Bulk done → "Close & refresh"`, expected: `Modal closes, matrix reloads with new states` },
+                ]
+            },
+            {
+                title: "25. Posting Operations (per-platform)", tests: [
+                    { id: 263, name: "Post — Inkbunny draft", steps: `Test story → IB cell → Post (draft)`, expected: `200 + URL; cell flips to posted; story listed in IB drafts` },
+                    { id: 264, name: "Post — IB live (re-confirm)", steps: `Same with draft unchecked`, expected: `Extra warning shown; submit posts live; URL returned` },
+                    { id: 265, name: "Update — IB", steps: `Edit MASTER → Update IB cell`, expected: `Content refreshes upstream; drift cleared` },
+                    { id: 266, name: "Post — SoFurry chaptered", steps: `Multi-chapter story → SF cell → Post`, expected: `One submission with N chapters via /content append. Front matter prepended to ch1` },
+                    { id: 267, name: "Post — AO3 chaptered", steps: `Multi-chapter → AO3 cell → Post`, expected: `create_work + create_chapter loop. Work skin uploaded automatically` },
+                    { id: 268, name: "Post — SquidgeWorld chaptered", steps: `Multi-chapter → SQW row → Post each chapter`, expected: `Per-chapter posts succeed; chapter titles set; work skin uploaded` },
+                    { id: 269, name: "Post — FA from server", steps: `Server-side: post to FA cell`, expected: `Auto-queued for desktop pickup. Status: queued` },
+                    { id: 270, name: "Edit — SF content refresh", steps: `Update SF cell after MASTER edit`, expected: `replace_file() called; content refreshed` },
+                    { id: 271, name: "Edit — AO3 safe overlay", steps: `Update AO3`, expected: `Fetch form → overlay → resubmit with save_button` },
+                    { id: 272, name: "Metadata-only update", steps: `Cell → "Update (metadata only)"`, expected: `skip_content_refresh=true; only metadata changes pushed` },
+                    { id: 273, name: "Metadata-only chapter retitle (AO3)", steps: `Rename ch3 → Update`, expected: `Title-only edit preserves body; AO3 edit_chapter accepts content=None` },
+                    { id: 274, name: "Metadata-only chapter retitle (SQW)", steps: `Rename ch3 → Update`, expected: `Same; SQW preserves body` },
+                    { id: 275, name: "Tag cascade — DA/IK/Bsky", steps: `Add a Default tag → Post to DA/IK/Bsky cells`, expected: `Default tags cascade to all platforms (post-2.9.3 fix)` },
+                    { id: 276, name: "Chapter prefix strip (AO3)", steps: `Look at posted AO3 chapter title`, expected: `"Chapter 1: Title" not "Chapter 1: Chapter 1: Title"` },
+                    { id: 277, name: "Chapter prefix strip (SQW)", steps: `SQW chapter title`, expected: `Same; no doubled prefix` },
+                    { id: 278, name: "Deletion probe — IB", steps: `Manually delete an IB sub upstream → Verify`, expected: `Cell flips to ⊘ deleted; can re-post` },
+                    { id: 279, name: "Deletion probe — SF", steps: `Same for SF`, expected: `⊘ deleted` },
+                    { id: 280, name: "Deletion probe — AO3", steps: `Same for AO3`, expected: `⊘ deleted` },
+                    { id: 281, name: "Deletion probe — SQW", steps: `Same for SQW`, expected: `⊘ deleted` },
+                    { id: 282, name: "Deletion probe — FA", steps: `Same for FA (404 / "not in our database")`, expected: `⊘ deleted` },
+                    { id: 283, name: "Cover upload to IB", steps: `IB post with sample_cover.jpg`, expected: `Cover image uploaded; visible on IB submission page` },
+                    { id: 284, name: "Cover upload to FA", steps: `FA post with cover`, expected: `Submission file = uploaded image, story = description` },
+                    { id: 285, name: "Cover upload to SF", steps: `SF post with cover`, expected: `Cover image accepted` },
+                    { id: 286, name: "Cover upload to WS", steps: `WS post with coverfile`, expected: `Weasyl accepts coverfile field` },
+                    { id: 287, name: "Per-chapter thumb (SF)", steps: `Multi-chapter SF post with chapter thumbs`, expected: `Per-chapter image uploads succeed` },
+                    { id: 288, name: "Posted at clock", steps: `Posted cell detail panel`, expected: `Per-platform "posted at" clock display` },
+                ]
+            },
+            {
+                title: "26. Import from Platforms", tests: [
+                    { id: 289, name: "Import dialog", steps: `Story list → "Import from Platform"`, expected: `Submissions grouped by IB / SF / FA` },
+                    { id: 290, name: "Import — IB", steps: `Pick an IB Writing submission → Import`, expected: `MASTER.md with full BBCode→Markdown content + story.json` },
+                    { id: 291, name: "Import — SF", steps: `Pick SF story → Import`, expected: `MASTER.md with full HTML→Markdown content` },
+                    { id: 292, name: "Import — FA PDF", steps: `Pick FA story (PDF upload)`, expected: `story.json with tags/rating; description as content` },
+                    { id: 293, name: "Import — FA TXT", steps: `Pick FA story (TXT upload)`, expected: `MASTER.md with full text content` },
+                    { id: 294, name: "Already-imported filter", steps: `Import → close → reopen`, expected: `Already-imported story not listed again` },
+                    { id: 295, name: "Name collision", steps: `Import with existing folder name`, expected: `Creates with _2 suffix; no overwrite` },
+                    { id: 296, name: "Provenance recorded", steps: `Check imported story.json`, expected: `import_source: {platform, submission_id, url}` },
+                    { id: 297, name: "AO3 / SQW import — placeholder", steps: `Look at AO3/SQW in dialog`, expected: `"Coming soon" — no import button (14a second half not yet shipped)` },
+                ]
+            },
+            {
+                title: "27. Polling & Notifications", tests: [
+                    { id: 298, name: "Skip startup poll", steps: `Restart server → check logs`, expected: `"Skipping startup poll — last cycle was recent"` },
+                    { id: 299, name: "AO3 login retry", steps: `Trigger AO3 poll`, expected: `Logs include "login page retry 1/2 after 5s" if needed` },
+                    { id: 300, name: "AO3 429 handling", steps: `If AO3 returns 429`, expected: `"429 rate limited, waiting Xs" before retry` },
+                    { id: 301, name: "Telegram classified error", steps: `Force a platform failure`, expected: `Friendly "Login blocked" + hint, not raw exception trace` },
+                    { id: 302, name: "Telegram consolidated summary", steps: `Orchestrated poll completes with mixed results`, expected: `"⚠️ N/M Polls Complete" with per-platform classified errors` },
+                    { id: 303, name: "Pause polling via API", steps: `curl -H "Bearer pp_..." -X POST /api/poll/pause`, expected: `200 + paused state. Subsequent polls skip` },
+                    { id: 304, name: "Resume polling via API", steps: `Same with /resume`, expected: `200 + paused=false. Polls resume next interval` },
+                    { id: 305, name: "Pause state visible", steps: `Dashboard sidebar`, expected: `"Polling paused" indicator shown when paused` },
+                ]
+            },
+            {
+                title: "28. Telegram Integration", tests: [
+                    { id: 306, name: "Telegram disconnected state", steps: `Settings → Telegram (no bot)`, expected: `"Not connected" + setup instructions` },
+                    { id: 307, name: "Telegram setup — bot token", steps: `Paste token from @BotFather → Save`, expected: `getUpdates called; chat_id discovered from /start message` },
+                    { id: 308, name: "Telegram test message", steps: `Settings → Telegram → "Send test message"`, expected: `Test message arrives in Telegram chat` },
+                    { id: 309, name: "Telegram disconnect", steps: `Disconnect button`, expected: `Token + chat_id removed; status flips` },
+                    { id: 310, name: "Telegram features — Poll summaries", steps: `Toggle off`, expected: `setting persists; summaries no longer sent` },
+                    { id: 311, name: "Telegram features — Error alerts", steps: `Toggle off`, expected: `Persists; no error toasts` },
+                    { id: 312, name: "Telegram features — Milestones", steps: `Toggle off`, expected: `Persists; no milestone notifications` },
+                    { id: 313, name: "Telegram features — Digest", steps: `Toggle off`, expected: `Persists; no digest sends` },
+                    { id: 314, name: "Telegram digest interval", steps: `Set interval 12h → Save`, expected: `Setting saved` },
+                    { id: 315, name: "Telegram digest manual trigger", steps: `Settings → "Send digest now"`, expected: `Digest message arrives immediately` },
+                    { id: 316, name: "Milestone — views threshold", steps: `Add custom milestone (e.g. 500) → Save → simulate hit`, expected: `Telegram alert fires at threshold` },
+                    { id: 317, name: "Milestone — faves threshold", steps: `Same for faves`, expected: `Alert fires` },
+                    { id: 318, name: "Milestone — comments threshold", steps: `Same for comments`, expected: `Alert fires` },
+                    { id: 319, name: "Milestone — sorted unique", steps: `Add duplicate or unsorted thresholds`, expected: `Saved as sorted unique positive integers` },
+                ]
+            },
+            {
+                title: "29. Settings — Appearance & Themes", tests: [
+                    { id: 320, name: "Theme picker — Default Dark", steps: `Settings → Appearance → click Default Dark`, expected: `data-theme="dark"; charcoal+violet palette; Active pill moves` },
+                    { id: 321, name: "Theme picker — Default Light", steps: `Click Default Light`, expected: `data-theme="light"; bright neutral` },
+                    { id: 322, name: "Theme picker — Ink & Copper", steps: `Click Ink & Copper`, expected: `data-theme="ink_copper"; matches marketing site` },
+                    { id: 323, name: "Theme picker — Parchment", steps: `Click Parchment`, expected: `data-theme="parchment"; warm sepia/brown` },
+                    { id: 324, name: "Theme picker — Midnight Press", steps: `Click Midnight Press`, expected: `data-theme="midnight_press"; pure black; no body wash gradient` },
+                    { id: 325, name: "Theme picker — Forest", steps: `Click Forest`, expected: `data-theme="forest"; pine + sage + cream` },
+                    { id: 326, name: "Theme picker — Velvet", steps: `Click Velvet`, expected: `data-theme="velvet"; aubergine + rose + amber` },
+                    { id: 327, name: "Theme picker — High Contrast", steps: `Click High Contrast`, expected: `data-theme="high_contrast"; pure b/w + saturated yellow; system sans (no Crimson Pro headings); no body wash` },
+                    { id: 328, name: "Theme persists across reload", steps: `Pick Forest → hard reload (Ctrl+F5)`, expected: `Forest still active; no flash of dark theme (inline <head> script)` },
+                    { id: 329, name: "Theme persists in settings.json", steps: `curl /api/settings/preferences | jq .theme`, expected: `Returns the chosen theme id (post-2.14.2 fix — theme key was being silently dropped before)` },
+                    { id: 330, name: "Active pill movement", steps: `Switch themes`, expected: `Active pill follows current theme card` },
+                    { id: 331, name: "Charts repaint on theme change", steps: `Open dashboard → switch theme`, expected: `All Chart.js redraw with new accent (Charts.destroyAll triggered)` },
+                ]
+            },
+            {
+                title: "30. Settings — Auto-Sync", tests: [
+                    { id: 332, name: "Toggle visible on Appearance tab", steps: `Settings → Appearance → "Sync" section`, expected: `auto-sync toggle present, default ON. Helper copy mentions Publishing tab requirement` },
+                    { id: 333, name: "Auto-push: device → server", steps: `Change theme on this browser → wait 3s → curl /api/settings/preferences from elsewhere`, expected: `Server picks up new theme within ~3-5s (debounce + HTTP). Logs: "Auto-sync push: N keys merged"` },
+                    { id: 334, name: "Auto-pull: server → device", steps: `Change a setting via curl → wait up to 5 min`, expected: `This device's logs show "Auto-sync pull: applied N keys from server"` },
+                    { id: 335, name: "Browser focus refresh — different tab", steps: `Open dashboard in 2nd tab → change theme in tab A → focus tab B`, expected: `Tab B repaints with new theme within ~1s of focus (visibilitychange handler)` },
+                    { id: 336, name: "Browser focus refresh — throttle", steps: `Switch tabs back-and-forth quickly`, expected: `Re-focus within 3s does NOT re-fetch (throttled)` },
+                    { id: 337, name: "Loop protection (no echo)", steps: `Trigger pull while watching server logs`, expected: `Server sees ONE pull request, no follow-up push from same client` },
+                    { id: 338, name: "Localhost loopback skip", steps: `Server with empty/localhost posting_server_url → flip a setting`, expected: `No outbound HTTP from server to itself; _sync_target() returns None` },
+                    { id: 339, name: "auto_sync_enabled=false stops both", steps: `Toggle OFF → change theme → wait 10s`, expected: `Server settings.json does NOT update; pull thread keeps running but no-ops` },
+                ]
+            },
+            {
+                title: "31. Settings — General", tests: [
+                    { id: 340, name: "General tab loads", steps: `Settings → General`, expected: `IB credentials section + App Preferences accordion + Poll intervals + Filters` },
+                    { id: 341, name: "IB credentials save", steps: `Edit username/password → Save Credentials`, expected: `Saved message; settings.json updated` },
+                    { id: 342, name: "IB sign out button", steps: `Sign Out → confirm`, expected: `Credentials cleared; routed to login` },
+                    { id: 343, name: "Toggle — Minimize to tray (active on native)", steps: `Toggle ON → close window via X button`, expected: `Window hides instead of quitting; poller keeps running; tray icon stays. Toggle OFF → X button quits app` },
+                    { id: 344, name: "Toggle — Run on startup (registry write)", steps: `Toggle ON → check HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run`, expected: `PawPoller entry exists pointing at PawPoller.exe. Toggle OFF removes the entry` },
+                    { id: 345, name: "Toggle — Desktop notifications", steps: `Flip toggle → Save`, expected: `notifications_enabled persists; toast suppression respected per platform` },
+                    { id: 346, name: "Toggle — Watcher notifications (IB)", steps: `Flip → Save`, expected: `watcher_notifications_enabled persists` },
+                    { id: 347, name: "Toggle — Watcher notifications (FA)", steps: `Flip → Save`, expected: `fa_watcher_notifications_enabled persists` },
+                    { id: 348, name: "Per-platform notif toggle — IB", steps: `Toggle off → trigger fave`, expected: `No notification` },
+                    { id: 349, name: "Per-platform notif toggle — FA", steps: `Same for FA`, expected: `Suppressed` },
+                    { id: 350, name: "Per-platform notif toggle — WS", steps: `Same`, expected: `Suppressed` },
+                    { id: 351, name: "Per-platform notif toggle — SF", steps: `Same`, expected: `Suppressed` },
+                    { id: 352, name: "Per-platform notif toggle — SQW", steps: `Same`, expected: `Suppressed` },
+                    { id: 353, name: "Per-platform notif toggle — AO3", steps: `Same`, expected: `Suppressed` },
+                    { id: 354, name: "Per-platform notif toggle — DA/WP/IK/Bsky/TW", steps: `Same`, expected: `Suppressed (verify even for opted-out platforms)` },
+                    { id: 355, name: "Comments-only filter — IB", steps: `Toggle on → trigger fave`, expected: `Fave alert suppressed; comment alert allowed` },
+                    { id: 356, name: "Comments-only filter — FA/WS/SF", steps: `Same per platform`, expected: `Same behaviour` },
+                    { id: 357, name: "Min faves delta", steps: `Set to 5 → trigger fave with N<5 in cycle`, expected: `Notification suppressed below threshold` },
+                    { id: 358, name: "Display timezone — set", steps: `Pick "Australia/Sydney" → Save`, expected: `display_timezone saved; Telegram messages and UI timestamps reflect TZ` },
+                    { id: 359, name: "Display timezone — UTC default", steps: `Clear → Save`, expected: `Defaults to UTC` },
+                    { id: 360, name: "Save All Settings button", steps: `Make multiple changes → Save All`, expected: `One batched save; toast confirmation` },
+                ]
+            },
+            {
+                title: "32. Settings — Polling Intervals", tests: [
+                    { id: 361, name: "IB poll interval", steps: `Set 30 min → Save`, expected: `poll_interval_minutes=30 persists; orchestrator picks up new interval` },
+                    { id: 362, name: "FA poll interval", steps: `Set 60 min → Save`, expected: `Persists` },
+                    { id: 363, name: "WS poll interval", steps: `Set 120 → Save`, expected: `Persists` },
+                    { id: 364, name: "SF poll interval", steps: `Set 60 → Save`, expected: `Persists` },
+                    { id: 365, name: "SQW poll interval", steps: `Set 60 → Save`, expected: `Persists` },
+                    { id: 366, name: "AO3 poll interval", steps: `Set 240 → Save`, expected: `Persists` },
+                    { id: 367, name: "DA poll interval", steps: `Set 240 → Save`, expected: `Persists (even though opted out)` },
+                    { id: 368, name: "WP poll interval", steps: `Set 240 → Save`, expected: `Persists` },
+                    { id: 369, name: "IK poll interval", steps: `Set 240 → Save`, expected: `Persists` },
+                    { id: 370, name: "Bsky poll interval", steps: `Set 240 → Save`, expected: `Persists` },
+                    { id: 371, name: "TW poll interval", steps: `Set 240 → Save`, expected: `Persists` },
+                    { id: 372, name: "Out-of-range value rejected", steps: `Try 7 minutes via curl`, expected: `Silently rejected; no settings update — only {15,30,60,120,240} allowed` },
+                    { id: 373, name: "Server unified interval", steps: `On server.py orchestrator`, expected: `Single poll_interval_minutes drives all platforms; per-platform intervals ignored` },
+                ]
+            },
+            {
+                title: "33. Settings — Platforms (already covered per-platform, focus on UI here)", tests: [
+                    { id: 374, name: "Platforms tab loads", steps: `Settings → Platforms`, expected: `11 platform cards with status badges` },
+                    { id: 375, name: "Connected badge — green", steps: `For each connected platform`, expected: `Green dot + username` },
+                    { id: 376, name: "Not-connected badge", steps: `For unconfigured`, expected: `Grey dot + "Not connected"` },
+                    { id: 377, name: "Platform connect form expand", steps: `Click "Connect"`, expected: `Inline form with platform-appropriate fields` },
+                    { id: 378, name: "Platform disconnect", steps: `Connected → Disconnect`, expected: `Confirmation; creds removed; badge flips grey` },
+                    { id: 379, name: "Browser-login button visibility (native)", steps: `On native dashboard`, expected: `"Login via Browser" button VISIBLE for FA, DA, SF, SQW, AO3, Bsky, X (any platform with PLATFORM_LOGIN entry)` },
+                    { id: 380, name: "Browser-login availability endpoint", steps: `curl /api/settings/browser-login/platforms (with Bearer)`, expected: `Returns available=true on native; false on webapp` },
+                ]
+            },
+            {
+                title: "34. Settings — Data", tests: [
+                    { id: 381, name: "Data tab loads", steps: `Settings → Data`, expected: `Sync section + Export section + Import section` },
+                    { id: 382, name: "Sync — Status", steps: `"Check status"`, expected: `Returns version, key count, credential mode, timestamp` },
+                    { id: 383, name: "Sync — Pull", steps: `"Pull from server"`, expected: `"Pulled X keys from server"` },
+                    { id: 384, name: "Sync — Push", steps: `"Push to server"`, expected: `"Pushed X keys to server"` },
+                    { id: 385, name: "Export — full DB", steps: `Click Export DB`, expected: `Downloads pawpoller.db (or sqlite dump)` },
+                    { id: 386, name: "Export — settings only", steps: `Click Export Settings`, expected: `Downloads sanitised settings.json (no secrets if vault enabled)` },
+                    { id: 387, name: "Import — settings", steps: `Upload a settings.json export`, expected: `Settings merged; confirmation toast` },
+                    { id: 388, name: "Reset — confirm gate", steps: `Click Reset → first confirm`, expected: `Refuses without typing "RESET" or similar friction` },
+                ]
+            },
+            {
+                title: "35. Settings — Logs", tests: [
+                    { id: 389, name: "Logs tab loads", steps: `Settings → Logs`, expected: `Sub-tabs per platform + general log` },
+                    { id: 390, name: "General log view", steps: `General tab`, expected: `Recent application log lines; tail-style updates` },
+                    { id: 391, name: "Per-platform log view", steps: `IB / FA / etc.`, expected: `Per-platform poll history table` },
+                    { id: 392, name: "Log level filter", steps: `Filter by INFO / WARN / ERROR`, expected: `Lines filtered correctly` },
+                    { id: 393, name: "Log search", steps: `Type a substring`, expected: `Live filter` },
+                    { id: 394, name: "Logs auto-refresh", steps: `Wait`, expected: `New log lines stream in without manual reload` },
+                ]
+            },
+            {
+                title: "36. Settings — About", tests: [
+                    { id: 395, name: "About tab loads", steps: `Settings → About`, expected: `Version, build hash, links to docs/changelog, third-party credits` },
+                    { id: 396, name: "Version matches APP_VERSION", steps: `Compare to config.APP_VERSION`, expected: `2.14.8` },
+                    { id: 397, name: "Update check button", steps: `"Check for updates"`, expected: `Hits GitHub releases endpoint; shows latest version` },
+                    { id: 398, name: "Update available state", steps: `When current < latest`, expected: `Sidebar shows "vX.Y.Z available" badge + Update Now button` },
+                    { id: 399, name: "Apply Update — native flow", steps: `Click Apply when newer version available`, expected: `updater.py downloads release zip, replaces binaries, restarts the app. New version visible in About after relaunch` },
+                ]
+            },
+            {
+                title: "37. Settings — Security", tests: [
+                    { id: 400, name: "Security tab loads", steps: `Settings → Security`, expected: `Password change + API keys + TOTP + Turnstile sections` },
+                    { id: 401, name: "Set dashboard password", steps: `Set password → Save`, expected: `auth_password_hash bcrypt-stored; legacy plaintext migrated if present` },
+                    { id: 402, name: "Change password", steps: `Old + new + confirm → Save`, expected: `New hash stored; old session invalidated; re-login required` },
+                    { id: 403, name: "Wrong old password", steps: `Type wrong old`, expected: `Error message; no change` },
+                    { id: 404, name: "Remember me — 30d", steps: `Login with Remember Me`, expected: `pp_session cookie max_age=30 days` },
+                    { id: 405, name: "Default session — 24h", steps: `Login without remember me`, expected: `Cookie max_age=24h` },
+                    { id: 406, name: "API keys list", steps: `Security → API Keys`, expected: `Existing keys (last 4 chars + label + created date)` },
+                    { id: 407, name: "API key create", steps: `+ New Key → label → Create`, expected: `pp_xxx token shown ONCE; SHA-256 stored` },
+                    { id: 408, name: "API key revoke", steps: `Revoke a key → confirm`, expected: `Key removed; subsequent Bearer attempts fail` },
+                    { id: 409, name: "TOTP setup", steps: `Enable 2FA → Show QR → scan → enter code → Enable`, expected: `auth_totp_enabled=true; secret stored` },
+                    { id: 410, name: "TOTP login", steps: `Logout → login with password + TOTP code`, expected: `Both required; success` },
+                    { id: 411, name: "TOTP — wrong code", steps: `Enter wrong TOTP`, expected: `Login refused` },
+                    { id: 412, name: "TOTP disable — requires both", steps: `Try disable with password only`, expected: `Refused; needs valid TOTP code too` },
+                    { id: 413, name: "TOTP disable — full", steps: `Password + TOTP → Disable`, expected: `auth_totp_enabled=false; secret cleared` },
+                    { id: 414, name: "Turnstile config", steps: `Add site key + secret → Save`, expected: `Saved; widget appears on login form on next reload` },
+                    { id: 415, name: "Turnstile login flow", steps: `Logout → login with widget`, expected: `Cloudflare token verified server-side; login proceeds` },
+                    { id: 416, name: "Turnstile remove", steps: `Clear keys → Save`, expected: `Widget no longer renders` },
+                ]
+            },
+            {
+                title: "38. Settings — Publishing", tests: [
+                    { id: 417, name: "Publishing tab loads", steps: `Settings → Publishing`, expected: `Server URL, API key, archive path, default platforms, default rating` },
+                    { id: 418, name: "Posting server URL save", steps: `Enter URL → Save`, expected: `posting_server_url persists; auto-sync now active (target valid)` },
+                    { id: 419, name: "Posting server API key save", steps: `Enter key → Save`, expected: `posting_server_api_key persists` },
+                    { id: 420, name: "Story archive path save", steps: `Enter path → Save`, expected: `posting_story_archive_path persists; story list re-scans` },
+                    { id: 421, name: "Default platforms checklist", steps: `Tick IB + SF + AO3 → Save`, expected: `posting_default_platforms persists; new stories pre-select these` },
+                    { id: 422, name: "Default rating", steps: `Pick "Adult" → Save`, expected: `posting_default_rating persists` },
+                    { id: 423, name: "Default author", steps: `Set default_author → Save`, expected: `Persisted; new stories use this author` },
+                ]
+            },
+            {
+                title: "39. Settings — Vault", tests: [
+                    { id: 424, name: "Vault — Status", steps: `Security → Credential Security → Status`, expected: `Mode (cloud/local) + vault_exists flag` },
+                    { id: 425, name: "Vault — Enable", steps: `"Enable encryption" → confirm`, expected: `Success + settings.vault.json created; CREDENTIAL_FIELDS removed from settings.json` },
+                    { id: 426, name: "Vault — settings.json clean", steps: `Open settings.json after enable`, expected: `No passwords, cookies, tokens, API keys present in plaintext` },
+                    { id: 427, name: "Vault — app still works", steps: `Navigate after vault enable`, expected: `All platform integrations work (creds loaded transparently from vault)` },
+                    { id: 428, name: "Vault — Disable", steps: `"Disable encryption" → confirm`, expected: `Creds back in settings.json; vault file deleted` },
+                    { id: 429, name: "Vault — error handling", steps: `Tamper with vault file → reload`, expected: `App boots; vault decrypt fails gracefully; error shown in UI` },
+                ]
+            },
+            {
+                title: "40. API Access (Bearer key)", tests: [
+                    { id: 430, name: "Health unprotected", steps: `curl /api/health (no auth)`, expected: `200 OK` },
+                    { id: 431, name: "Protected endpoint refused unauth", steps: `curl /api/settings/preferences`, expected: `401 / 403` },
+                    { id: 432, name: "Bearer key access", steps: `curl -H "Authorization: Bearer pp_..." /api/settings/preferences`, expected: `200 with prefs JSON` },
+                    { id: 433, name: "Wrong Bearer key", steps: `curl with bogus pp_xxx`, expected: `401` },
+                    { id: 434, name: "Pause/resume via Bearer", steps: `curl POST /api/poll/pause then /resume with Bearer key`, expected: `Both 200; state persists` },
+                    { id: 435, name: "Bearer respects revocation", steps: `Revoke a key in UI → curl with that key`, expected: `401 immediately` },
+                    { id: 436, name: "Bearer + dashboard cookie coexist", steps: `Both cookie and Bearer in same request`, expected: `Either grants access; no conflict` },
+                ]
+            },
+            {
+                title: "41. Native-only — Tray icon", tests: [
+                    { id: 437, name: "Tray icon visible on launch", steps: `Launch PawPoller.exe → look at tray`, expected: `PawPoller icon present (may be in overflow ^)` },
+                    { id: 438, name: "Tray right-click menu", steps: `Right-click tray icon`, expected: `Menu with Show / Quit (and any other entries from main.py tray setup)` },
+                    { id: 439, name: "Tray — Show restores window", steps: `Hide window → tray → Show`, expected: `Window restores in original position; receives focus` },
+                    { id: 440, name: "Tray — Quit terminates daemon threads", steps: `Tray → Quit`, expected: `App exits cleanly; no zombie pythonw.exe in Task Manager` },
+                    { id: 441, name: "Close button — hides to tray (when toggle ON)", steps: `Settings → Minimize to tray ON → click X`, expected: `Window hides; tray icon stays visible; poller continues` },
+                    { id: 442, name: "Close button — quits (when toggle OFF)", steps: `Settings → Minimize to tray OFF → click X`, expected: `App quits; tray icon disappears` },
+                    { id: 443, name: "Tray click restores window", steps: `Window hidden → left-click tray icon`, expected: `Window restores (if main.py wires single-click)` },
+                    { id: 444, name: "Tray icon survives long idle", steps: `Leave hidden for 30+ min`, expected: `Icon doesn't disappear; restore still works` },
+                ]
+            },
+            {
+                title: "42. Native-only — Run on Startup", tests: [
+                    { id: 445, name: "Toggle ON adds registry entry", steps: `Settings → Run on startup ON → check HKCU\\...\\Run`, expected: `PawPoller value pointing at full path of PawPoller.exe` },
+                    { id: 446, name: "Toggle OFF removes registry entry", steps: `Toggle OFF → re-check`, expected: `Value removed; no leftover keys` },
+                    { id: 447, name: "Auto-launches on Windows login", steps: `Toggle ON → log out and back in (or restart)`, expected: `PawPoller launches automatically; tray icon appears within ~10s of login` },
+                    { id: 448, name: "Auto-launch — minimizes to tray", steps: `Same with Minimize to tray ON`, expected: `Launches directly to tray, no visible window flash` },
+                ]
+            },
+            {
+                title: "43. Native-only — Browser-login popups (pywebview)", tests: [
+                    { id: 449, name: "FA browser login", steps: `Settings → Platforms → FA → "Login via Browser"`, expected: `pywebview popup with FA login page; user logs in; cookies (a + b) auto-captured; popup closes; FA badge flips green` },
+                    { id: 450, name: "DA browser login", steps: `DA → Login via Browser`, expected: `Pywebview popup → DA login → cookie captured` },
+                    { id: 451, name: "SF browser login", steps: `SF → Login via Browser`, expected: `SF login popup → session cookies captured → badge green` },
+                    { id: 452, name: "SQW browser login", steps: `SQW → Login via Browser`, expected: `SQW popup → poster + author logins captured` },
+                    { id: 453, name: "AO3 browser login", steps: `AO3 → Login via Browser`, expected: `AO3 popup → session cookie captured (CF Worker bypass needed if Shields-up)` },
+                    { id: 454, name: "Bsky browser login", steps: `Bsky → Login via Browser`, expected: `Bsky popup → identifier + app password captured` },
+                    { id: 455, name: "X / Twitter browser login", steps: `X → Login via Browser`, expected: `X popup → auth_token + ct0 captured from cookies` },
+                    { id: 456, name: "Browser login — cancel/close", steps: `Open any browser-login popup → close X`, expected: `Endpoint returns ok=false "Login cancelled or timed out"; no creds saved` },
+                    { id: 457, name: "Browser login — 5-min timeout", steps: `Open popup → leave idle 5+ min`, expected: `Auto-closes; "timed out" message; no creds saved` },
+                    { id: 458, name: "Browser login — extra fields", steps: `Platform that needs extra config (e.g. SF display name)`, expected: `Form prompts for extra fields BEFORE opening popup` },
+                ]
+            },
+            {
+                title: "44. Native-only — File dialogs & PDF", tests: [
+                    { id: 459, name: "Story upload via native file picker", steps: `Create New Story → Upload → click file field`, expected: `Native Windows file dialog opens (not browser dialog); .md/.html/.bbcode/.txt/.rtf filter applied` },
+                    { id: 460, name: "Cover upload via native picker", steps: `Metadata → Cover → Upload`, expected: `Native picker; image-only filter` },
+                    { id: 461, name: "Edge PDF fallback (no GTK)", steps: `Trigger PDF regen on Windows without GTK runtime`, expected: `Falls back to Edge headless; "Edge fallback" log line. Output PDF still produced` },
+                    { id: 462, name: "Edge PDF — no header/footer", steps: `Open Edge-rendered PDF`, expected: `--no-pdf-header-footer in effect; no date/URL banner` },
+                    { id: 463, name: "Edge PDF — full bleed background", steps: `Compare to WeasyPrint output`, expected: `Theme background runs edge-to-edge; padding via .print-container, not @page margin` },
+                    { id: 464, name: "WeasyPrint — opt-in if installed", steps: `Install GTK runtime → trigger PDF regen`, expected: `WeasyPrint used as primary; log shows "WeasyPrint render"` },
+                ]
+            },
+            {
+                title: "45. Native-only — Vault keyring", tests: [
+                    { id: 465, name: "Vault enable — keyring storage", steps: `Enable vault → check Windows Credential Manager`, expected: `PawPoller / vault_key entry present (keyring backend)` },
+                    { id: 466, name: "Vault enable — dotfile fallback", steps: `If keyring unavailable → check %APPDATA%/PawPoller/data/.vault_key`, expected: `Dotfile present with restricted permissions; vault still functional` },
+                    { id: 467, name: "Vault key persists across reinstall", steps: `Uninstall → reinstall → check vault still decrypts`, expected: `Keyring entry survives reinstall; existing vault file decrypts cleanly` },
+                    { id: 468, name: "Vault — keyring removal", steps: `Disable vault → remove keyring entry → re-enable`, expected: `Generates fresh key; old vault becomes unrecoverable (this is OK; user just disabled it)` },
+                ]
+            },
+            {
+                title: "46. Native-only — Auto-update mechanism", tests: [
+                    { id: 469, name: "Update check — current", steps: `About → Check for Updates with no newer version`, expected: `"You're up to date" message` },
+                    { id: 470, name: "Update check — new available", steps: `Older version installed than latest GitHub release`, expected: `Sidebar badge "vX.Y.Z available" + Update Now button` },
+                    { id: 471, name: "Update download", steps: `Click Update Now → confirm`, expected: `Downloads release zip from GitHub; progress shown` },
+                    { id: 472, name: "Update apply — restart", steps: `After download completes`, expected: `Existing PawPoller.exe replaced; app restarts; new version visible in About` },
+                    { id: 473, name: "Update — preserves data", steps: `After update`, expected: `%APPDATA%/PawPoller/data/ contents intact (db, settings.json, vault, themes)` },
+                    { id: 474, name: "Update — preserves settings.json migration", steps: `Update from old version with old settings.json location`, expected: `Migration logic in config.py copies to new /app/data/ location once on first boot` },
+                    { id: 475, name: "Update — failure handling", steps: `Force a failure (e.g. block download URL)`, expected: `Friendly error toast; old binary remains; user can retry` },
+                ]
+            },
+            {
+                title: "47. Native-only — Process behaviour", tests: [
+                    { id: 476, name: "Single-instance — second launch focuses first", steps: `Launch → launch again`, expected: `Second instance focuses first window instead of opening duplicate (or politely refuses)` },
+                    { id: 477, name: "Native window resize persists", steps: `Resize → quit → relaunch`, expected: `Window opens at last size + position` },
+                    { id: 478, name: "Window minimise to taskbar", steps: `Click _ minimize button`, expected: `Hides to taskbar; restore via taskbar click` },
+                    { id: 479, name: "Native menu bar (if present)", steps: `Check window menu bar`, expected: `Either pywebview menu (File/Edit/etc.) or no menu bar — consistent with build config` },
+                    { id: 480, name: "App icon in taskbar", steps: `Look at taskbar`, expected: `PawPoller icon (not generic Python icon); matches tray icon` },
+                    { id: 481, name: "App in start menu", steps: `Search "PawPoller" in Start`, expected: `Launches the app correctly (if shortcut created during install)` },
+                    { id: 482, name: "Native console hidden", steps: `Launch normally`, expected: `No black console window appears (PyInstaller --noconsole / runw.exe bootloader)` },
+                ]
+            },
+            {
+                title: "48. GitHub & CI/CD", tests: [
+                    { id: 483, name: "README renders on GitHub", steps: `Visit repo`, expected: `README displays correctly with all images/links` },
+                    { id: 484, name: "LICENSE present", steps: `Repo root`, expected: `MIT LICENSE file` },
+                    { id: 485, name: "CONTRIBUTING present", steps: `Repo root`, expected: `Contributing guide` },
+                    { id: 486, name: "Lint workflow on push", steps: `Push to master → Actions tab`, expected: `Lint workflow runs ruff + JS syntax; passes` },
+                    { id: 487, name: "Build workflow on tag", steps: `git tag v2.14.8 && git push --tags`, expected: `Build & Release runs; .zip artifact attached to release` },
+                    { id: 488, name: "Test job in build workflow", steps: `Same workflow run`, expected: `unittest discover passes (after pytest + respx pinned to requirements-server.txt)` },
+                    { id: 489, name: "Release notes — generated", steps: `Look at release page after tag`, expected: `Release notes match CHANGELOG.md entry` },
+                ]
+            },
+            {
+                title: "49. Errors & Resilience", tests: [
+                    { id: 490, name: "Network offline — graceful", steps: `Disable network → navigate`, expected: `Errors surfaced as toast, not console-only; UI doesn't lock up` },
+                    { id: 491, name: "Server unreachable — retry (native: localhost)", steps: `Kill internal uvicorn thread → click around`, expected: `App detects server gone; doesn't lock up; offers restart` },
+                    { id: 492, name: "Invalid JSON in settings.json", steps: `Quit → corrupt %APPDATA%/PawPoller/data/settings.json → relaunch`, expected: `App boots with empty defaults; log warning; UI shows reset state` },
+                    { id: 493, name: "Database locked — retry", steps: `Hold sqlite lock externally → trigger a write`, expected: `Write retries / queues, doesn't crash` },
+                    { id: 494, name: "Rate-limit display", steps: `Trigger AO3 429`, expected: `User-visible message about rate limiting + retry timer` },
+                    { id: 495, name: "Console — no uncaught errors", steps: `Open pywebview DevTools (F12 if enabled)`, expected: `Browser console has no uncaught exceptions on happy path` },
+                    { id: 496, name: "Hash route fallback", steps: `Manually edit URL to #/totally-fake-route`, expected: `Either 404 page OR redirects to dashboard; no white screen` },
+                    { id: 497, name: "Crash recovery — daemon thread", steps: `Force a single poller thread to crash`, expected: `Other pollers + dashboard remain functional; restart resurrects the dead thread` },
+                ]
+            },
+            {
+                title: "50. 2.14.7 + 2.14.8 regression sweep (automated-QA bug fixes)", tests: [
+                    { id: 498, name: "Cache-buster carries APP_VERSION", steps: `Open pywebview DevTools → view-source on /`, expected: `All <link>/<script> URLs end with ?v=2.14.8. No hand-bumped per-file numbers — closes BUG-001` },
+                    { id: 499, name: "No CSP error from inline theme script", steps: `DevTools → Console after cold launch`, expected: `No "violates Content Security Policy" error pointing at index.html:9 — closes BUG-002` },
+                    { id: 500, name: "Google Fonts load without CSP block", steps: `DevTools → Network → filter "fonts.gstatic"`, expected: `Crimson Pro / Inter / JetBrains Mono woff2 files load 200 OK — closes BUG-003` },
+                    { id: 501, name: "Plaintext password not re-seeded after restart", steps: `Quit → relaunch → cat %APPDATA%/PawPoller/data/settings.json`, expected: `auth_password_hash present, dashboard_password and dashboard_user absent — closes BUG-004` },
+                    { id: 502, name: "Wizard finish without platforms → Settings/Platforms", steps: `Reset wizard → finish without connecting any platform → click "Go to Dashboard"`, expected: `Lands on #/settings/platforms (not #/login or #/) — closes BUG-005` },
+                    { id: 503, name: "Deep link to Settings reachable without IB creds", steps: `Fresh install, no IB creds → navigate to /#/settings/general`, expected: `Settings → General renders. Not redirected to #/login — closes BUG-006` },
+                    { id: 504, name: "Loading screen has escape hatch on error", steps: `Bad IB creds → land on /#/loading`, expected: `Error message displays AND "Continue to Dashboard" + "Open Settings" buttons appear — closes BUG-007` },
+                    { id: 505, name: "Sidebar expand pushes content right", steps: `Hover collapsed sidebar on Settings → Appearance`, expected: `Main content shifts right in lockstep with sidebar width transition. First theme card stays fully visible — closes BUG-008` },
+                    { id: 506, name: "Updater quiet on missing release", steps: `Tail %APPDATA%/PawPoller/logs/server.log after 10 min`, expected: `At most ONE "GitHub repo … has no published releases yet" INFO line. No repeated WARNING "Update check failed: 404" — closes BUG-009` },
+                    { id: 507, name: "Mobile hamburger reachable on viewport (≤768px)", steps: `Open DevTools, set viewport to 600×800, reload, inspect #hamburger-btn`, expected: `Button at top-left (12,12), 40×40, position:fixed, parent is BODY (not .sidebar). Click opens sidebar; body gets .sidebar-open class; hamburger shifts to left:240px — closes BUG-010` },
+                    { id: 508, name: "Sidebar hover listeners survive auth gate", steps: `Quit → relaunch → log in → navigate to #/settings/platforms → hover sidebar`, expected: `body.sidebar-expanded class toggles on mouseenter/mouseleave. Listener bound at top of init() before dashboard-auth/setup-wizard early returns — closes BUG-012` },
+                    { id: 509, name: "Create New Story 400s cleanly when archive path missing", steps: `Set posting_story_archive_path to a non-existent dir → +Create New Story → fill name → Create`, expected: `Modal stays open. Error displays "Story archive path is not writable: <path> (...). Fix the path in Settings → General → Posting Settings." HTTP status 400, not 500 — closes BUG-019` },
+                    { id: 510, name: "Create New Story happy path with valid archive", steps: `Set archive to a writable dir → +Create New Story → fill name → Create`, expected: `200 response. Routes to #/editor/<name>. Folder structure created on disk under archive — companion to BUG-019` },
+                ]
+            },
         ];
 
         function render() {
@@ -888,4 +1229,5 @@
         loadResults();
     </script>
 </body>
+
 </html>

@@ -19,7 +19,13 @@
     overflow: hidden;
 }
 
-/* Expand on hover (desktop only) — overlays content, no reflow */
+/* Expand on hover (desktop only). The expanded sidebar is wider than the
+ * 60px collapsed rail, so without a margin nudge it overlaps the first
+ * column of main content (BUG-008 in 2.14.6 — the first theme card on
+ * Settings → Appearance was clipped behind the expanded sidebar). We
+ * push main-content to the right via the .sidebar-expanded body class
+ * (toggled by app.js below) so the layout reflows alongside the
+ * sidebar's own width transition. */
 @media (min-width: 769px) {
     .sidebar:hover,
     .sidebar.expanded {
@@ -29,6 +35,9 @@
     [data-theme="light"] .sidebar:hover,
     [data-theme="light"] .sidebar.expanded {
         box-shadow: 4px 0 30px rgba(100, 80, 150, 0.1);
+    }
+    body.sidebar-expanded .main-content {
+        margin-left: var(--sidebar-w-expanded);
     }
 }
 
@@ -373,6 +382,10 @@
 }
 
 .hamburger-btn:hover { background: var(--bg-hover); }
+/* BUG-010: hamburger sits OUTSIDE .sidebar (see index.html) and pins
+ * to the viewport on mobile. position:fixed on a transformed
+ * descendant gets bound to that ancestor — keeping the button as a
+ * sibling of the sidebar avoids that quirk. */
 
 /* ── Main Content ────────────────────────────────────────── */
 .main-content {
@@ -443,8 +456,20 @@
 
 /* ── Responsive: 768px (mobile) ──────────────────────────── */
 @media (max-width: 768px) {
-    .hamburger-btn { display: block; }
-    .sidebar-header { display: flex; align-items: center; gap: 8px; }
+    .hamburger-btn {
+        display: block;
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 11;
+        background: var(--bg-elevated, var(--bg-secondary));
+        border: 1px solid var(--border-color);
+        width: 40px;
+        height: 40px;
+        font-size: 22px;
+        line-height: 1;
+    }
+    .sidebar-header { display: flex; align-items: center; gap: 8px; padding-left: 56px; }
     .sidebar-header h1 { opacity: 1; }
 
     .sidebar {
@@ -453,6 +478,12 @@
         width: 280px;
     }
     .sidebar.open { transform: translateX(0); }
+    /* When the sidebar is open, slide the hamburger to sit just
+     * outside the panel's right edge so it's still tappable as a
+     * close affordance instead of being hidden behind the panel. */
+    body.sidebar-open .hamburger-btn {
+        left: 240px;
+    }
     .sidebar-overlay.open { display: block; }
 
     .nav-label { opacity: 1; }

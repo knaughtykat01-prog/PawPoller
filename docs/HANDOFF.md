@@ -1,9 +1,9 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-04-28
-**Current version:** 2.14.6 (coordinated desktop ↔ server architecture)
-**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — 2.14.5 deployed earlier, 2.14.6 deploys with `pawupdate`.
-**GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.14.3 — tag includes the Windows zip artifact. 2.14.4–2.14.6 haven't been tagged yet (bundle into the next feature release once the wizard UX has soaked).
+**Last updated:** 2026-05-01
+**Current version:** 2.14.8 (round-2 QA bug-fix sweep — mobile hamburger + create-story-500 unblockers, on top of 2.14.7's first QA round)
+**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — production was confirmed running 2.14.6 during round-2 QA. 2.14.7 was never deployed; 2.14.8 supersedes it and bundles all the QA fixes.
+**GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.14.3 — tag includes the Windows zip artifact. 2.14.4–2.14.8 haven't been tagged yet (bundle into the next feature release once the wizard UX has soaked).
 
 > **2.14.3 file-tree refactor — read this before navigating the codebase.** All 11 platform clients moved into `clients/` (e.g. `api_client/` → `clients/ib/`, `ao3_client/` → `clients/ao3/`, ...). Imports now look like `from clients.ib.client import InkbunnyClient`. Internal docs (HANDOFF, SETUP, ROADMAP_PUBLIC, documentation_guide) moved into `docs/`. Three orphans deleted from root (`112.png`, `TESTING_CHECKLIST.md`, legacy `settings.json`). Zero behaviour change. See CHANGELOG `[2.14.3]` for the full validation gates.
 

@@ -44,6 +44,26 @@ def check_for_update() -> dict:
                 f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
                 headers=headers,
             )
+            # 404 from /releases/latest is the legitimate "this repo has no
+            # published releases yet" case — log it once at INFO and return a
+            # clean no-update response. WARN-logging it on every dashboard
+            # load (BUG-009 in 2.14.6) flooded server.log with noise during
+            # the window between code release and tag publication.
+            if resp.status_code == 404:
+                if not getattr(check_for_update, "_logged_no_releases", False):
+                    logger.info(
+                        "GitHub repo %s has no published releases yet — "
+                        "update checks will keep returning no-update.",
+                        GITHUB_REPO,
+                    )
+                    check_for_update._logged_no_releases = True  # type: ignore[attr-defined]
+                return {
+                    "available": False,
+                    "current": APP_VERSION,
+                    "latest": APP_VERSION,
+                    "download_url": None,
+                    "release_notes": "",
+                }
             resp.raise_for_status()
             data = resp.json()
 

@@ -87,8 +87,12 @@ async def global_exception_handler(request: Request, exc: Exception):
 #   X-Frame-Options         — blocks embedding in iframes (clickjacking)
 #   Referrer-Policy         — limits referrer leakage to external sites
 #   Content-Security-Policy — restricts script/style/image/connect sources
-#     script-src 'self'          : all JS loaded via <script src=...>, zero inline
-#     style-src 'self' 'unsafe-inline' : CSS files + inline style= attributes
+#     script-src 'self' <theme-hash>  : bundled JS + the inline no-flash theme
+#                                       bootstrap script (hashed so the rest of
+#                                       'unsafe-inline' stays disallowed)
+#     style-src 'self' 'unsafe-inline' fonts.googleapis.com : CSS files + inline
+#                                       style= attributes + Google Fonts CSS
+#     font-src 'self' fonts.gstatic.com : Google Fonts woff2 binaries
 #     img-src 'self' https:      : local proxy + platform CDN thumbnails
 #     connect-src 'self'         : all API calls are same-origin
 #     frame-ancestors 'none'     : no embedding allowed (supercedes X-Frame-Options)
@@ -116,10 +120,17 @@ def _build_csp() -> str:
     has_turnstile = bool(settings.get("turnstile_site_key"))
     cf = " https://challenges.cloudflare.com" if has_turnstile else ""
     frame_src = f"frame-src 'self'{cf}; " if has_turnstile else ""
+    # Hash of the inline theme-apply script in frontend/index.html.
+    # Lets us keep that one no-flash bootstrap inline without opening up
+    # the policy with 'unsafe-inline'. If the inline script changes, the
+    # browser will print the new expected hash in the console and this
+    # constant must be updated to match.
+    theme_inline_hash = "'sha256-PQv0iyndH6bqQiLzwEuCSIz1xMcWBsP0swro6kOCiZI='"
     _cached_csp = (
         "default-src 'self'; "
-        f"script-src 'self'{cf}; "
-        "style-src 'self' 'unsafe-inline'; "
+        f"script-src 'self' {theme_inline_hash}{cf}; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' https:; "
         "connect-src 'self'; "
         f"{frame_src}"
@@ -268,9 +279,29 @@ app.mount("/js", StaticFiles(directory=str(frontend_dir / "js")), name="js")
 # browser by the JS app — there are no additional server-side page routes. Any
 # navigation the user performs in the UI is managed by the frontend JS without
 # additional HTML pages from the server.
+#
+# Cache-buster substitution: index.html ships with `?v=__APP_VERSION__` on every
+# CSS and JS reference. We splice config.APP_VERSION in here at request time so
+# every release automatically invalidates browser caches without requiring
+# someone to remember to bump per-file `?v=NNN` numbers (the source of BUG-001
+# in 2.14.6).
+_index_html_cache: tuple[str, str] | None = None  # (version, rendered html)
+
+
+def _render_index_html() -> str:
+    global _index_html_cache
+    version = config.APP_VERSION
+    if _index_html_cache and _index_html_cache[0] == version:
+        return _index_html_cache[1]
+    raw = (frontend_dir / "index.html").read_text(encoding="utf-8")
+    rendered = raw.replace("__APP_VERSION__", version)
+    _index_html_cache = (version, rendered)
+    return rendered
+
+
 @app.get("/")
 async def serve_index():
-    return FileResponse(str(frontend_dir / "index.html"))
+    return Response(content=_render_index_html(), media_type="text/html")
 
 
 if __name__ == "__main__":

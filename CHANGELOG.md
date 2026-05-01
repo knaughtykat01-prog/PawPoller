@@ -4,6 +4,172 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.14.8] - 2026-05-01
+
+### Round-2 QA bug-fix sweep
+
+Two P1s caught in the second automated Playwright pass against the
+2.14.7 test container, plus a couple of structural notes from a
+read-only sweep against the live GCP instance (still on 2.14.6 —
+2.14.7 hasn't shipped yet, this releases as 2.14.8 instead).
+
+**Mobile hamburger button no longer off-screen (BUG-010).** The
+hamburger lived inside `.sidebar > .sidebar-header`, but the sidebar
+slides off-screen on mobile via `transform: translateX(-100%)` —
+which took the hamburger with it. Adding `position: fixed` to the
+button alone didn't fix it, because a fixed-position descendant of a
+transformed ancestor gets re-anchored to that ancestor's containing
+block (a well-known CSS quirk with `transform`). Moved the button
+out of `.sidebar` to be a top-level child of `<body>`, so its
+`position: fixed` now correctly anchors to the viewport. New
+`body.sidebar-open` class shifts the button to `left: 240px` when
+the panel is open, so it's still tappable as a close affordance
+above the open sidebar instead of being hidden behind it. Mobile
+users on every viewport ≤768px previously had no way to open the
+nav at all.
+
+**Create New Story returns a clean 400 instead of an unhandled 500
+(BUG-019).** `POST /api/editor/stories/create` was calling
+`mkdir(parents=True, exist_ok=True)` against the configured archive
+path without first checking whether the path was reachable. On a
+fresh server install where `posting_story_archive_path` defaulted to
+the host-specific `/m_x` (which doesn't exist in the container), the
+mkdir raised `FileNotFoundError`/`PermissionError` and FastAPI's
+default handler returned a bare 500 with no detail. The frontend
+catch block tried to render `data.detail` but got an empty/non-JSON
+response. Now the endpoint pre-validates the archive root: it tries
+to create it (treating missing intermediate dirs as the user's
+intent), then explicitly checks `os.access(W_OK)`. On failure it
+returns 400 with a structured detail message pointing the user to
+Settings → General → Posting Settings. The frontend's existing
+`!resp.ok → throw → catch → display in errEl` chain now surfaces
+that message correctly.
+
+### Files touched
+
+`config.py` (APP_VERSION bump to 2.14.8),
+`frontend/index.html` (hamburger out of sidebar),
+`frontend/css/layout.css` (mobile media query for fixed-position hamburger),
+`frontend/js/app.js` (`body.sidebar-open` class toggle in
+open/closeSidebar),
+`routes/editor_api.py` (archive path validation before mkdir),
+`CHANGELOG.md`,
+`docs/HANDOFF.md`,
+`qa/AUTOMATED_BUG_LOG.md` (Round-2 findings),
+`qa/TESTING_CHECKLIST_WEBAPP.html` and
+`qa/TESTING_CHECKLIST_NATIVE.html` (version bump + regression tests).
+
+### What's NOT fixed in 2.14.8
+
+Round-2 QA also surfaced these P2/P3 items, deferred to a future
+release:
+
+- **BUG-021 [P2]** — IB Submissions search filter is non-functional
+  on production (the textbox accepts input but doesn't filter the
+  card grid). Already-rendered table view still sorts; only the
+  card view's search is broken.
+- **BUG-020 [P2]** — Editor "Regenerate ▾ → All formats" silently
+  skips Styled HTML, SquidgeWorld, PDF, and chapter splits without
+  reporting which were skipped. Endpoint returns 200 even though
+  it's only generated 3 of the 7 expected outputs.
+- **BUG-016 [P3]** — Progress-check ticker fan-out spams the
+  console with 9-10 stack traces on a single network blip.
+- **BUG-018 [P3]** — Checklist §17 Goals + §18 Tags reference
+  standalone pages that don't exist; both features actually live
+  inside per-platform dashboards / metadata drawer. Checklist
+  needs editing, code is fine.
+- **BUG-022 [P2 on 2.14.6]** — Editor "Metadata" button on
+  production opens the Platforms popover instead of the metadata
+  drawer. Already fixed somewhere between 2.14.6 → 2.14.7; will
+  self-resolve on this deploy.
+- **BUG-011, BUG-013, BUG-014, BUG-015, BUG-017** — Cosmetic /
+  workflow notes documented in `qa/AUTOMATED_BUG_LOG.md`.
+
+---
+
+## [2.14.7] - 2026-04-28
+
+### Automated-QA bug-fix sweep on top of 2.14.6
+
+Nine issues surfaced in the first automated Playwright pass against the
+server-runtime test container (`docker-compose.test.yml`, port 8421).
+None were data-loss bugs but several were UX dead-ends — most painfully
+a catch-22 where a fresh server install with no Inkbunny credentials
+got stuck on the legacy IB login screen with no way to reach Settings
+to configure other platforms.
+
+**Cache-buster keyed off APP_VERSION (BUG-001).** Every CSS/JS reference
+in `frontend/index.html` now uses `?v=__APP_VERSION__` and the
+`/` route in `dashboard.py` substitutes the running version in at
+request time. No more hand-bumped per-file `?v=NNN` numbers — every
+release auto-invalidates the browser cache. Result is cached so the
+substitution happens once per process. The triggering symptom was
+2.14.6 shipping with `app.js?v=311` unchanged from 2.14.5 even though
+the wizard code had changed substantially, leaving cached browsers
+serving the old JS.
+
+**Plaintext password no longer re-seeds on every restart (BUG-004).**
+`config.migrate_dashboard_auth()` now scrubs `dashboard_password` and
+`dashboard_user` from `settings.json` even when the bcrypt hash is
+already in place. `_seed_settings_from_env()` was re-writing them on
+every Docker start from the `DASHBOARD_PASSWORD`/`USER` compose env
+vars, leaving plaintext sitting next to the hash and defeating the
+whole point of the migration. The bcrypt hash is what auth actually
+uses; the plaintext was just a leak.
+
+**CSP unblocked the no-flash theme bootstrap and Google Fonts (BUG-002,
+BUG-003).** The inline `<script>` in `index.html` that reads
+localStorage and applies the persisted theme before CSS evaluates was
+being blocked by `script-src 'self'`. Added the script's sha256 hash
+(`'sha256-PQv0iyndH6bqQiLzwEuCSIz1xMcWBsP0swro6kOCiZI='`) to the
+directive — keeps `'unsafe-inline'` off but allows just this one
+bootstrap. `style-src` and `font-src` now include
+`https://fonts.googleapis.com` and `https://fonts.gstatic.com` so the
+typography (Crimson Pro / Inter / JetBrains Mono) actually loads.
+
+**IB-login catch-22 broken (BUG-005, BUG-006, BUG-007).** Three bugs,
+one root cause: `app.js init()` force-redirected to the legacy
+Inkbunny login screen whenever IB credentials were missing — even on
+server installs where the user explicitly skipped platforms in the
+wizard, even on direct deep-links to `#/settings/general`. Removed the
+redirect entirely (the IB login route still exists; it's just no
+longer the default landing). Loading screen now keeps a `Continue to
+Dashboard` / `Open Settings` escape hatch — visible immediately on
+poll error, and after a 10-second safety timeout if the poll stalls.
+Wizard "Go to Dashboard" routes to `#/settings/platforms` (not `#/`)
+when no platform was configured during setup, so first-time users
+land somewhere actionable.
+
+**Sidebar reflow on hover (BUG-008).** The 60px collapsed sidebar
+expanded to ~190px on hover but main content didn't move, so the
+expanded sidebar overlaid the first column — visible most clearly on
+Settings → Appearance where the first theme card was clipped. Added a
+`body.sidebar-expanded` class toggled from `mouseenter`/`mouseleave`
+listeners on the sidebar, with a matching CSS rule that bumps
+`.main-content`'s left margin to `var(--sidebar-w-expanded)` in
+lockstep with the sidebar's own width transition. Listeners are now
+bound at the very top of `App.init()`, before the dashboard-auth and
+setup-wizard early-returns — caught in QA: the original placement was
+after those returns, so a fresh user who hit the login screen first
+never got the listeners attached for the rest of the session.
+
+**Updater stops WARN-spamming the log (BUG-009).** GitHub returns 404
+from `/releases/latest` when the repo has zero published releases —
+the legitimate "no release tagged yet" case. Treat it as INFO-once and
+return a clean no-update response instead of WARN-logging on every
+dashboard load. Distinct from real network failures, which still
+deserve a warning.
+
+### Files touched
+
+`config.py`, `dashboard.py`, `updater.py`, `frontend/index.html`,
+`frontend/js/app.js`, `frontend/css/layout.css`,
+`qa/AUTOMATED_BUG_LOG.md`, `qa/TESTING_CHECKLIST_WEBAPP.html`,
+`qa/TESTING_CHECKLIST_NATIVE.html`, `docs/HANDOFF.md`,
+`docs/ROADMAP_PUBLIC.md`, `CHANGELOG.md`.
+
+---
+
 ## [2.14.6] - 2026-04-28
 
 ### Coordinated desktop ↔ server architecture (no more dual polling)

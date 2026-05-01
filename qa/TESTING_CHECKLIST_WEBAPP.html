@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>PawPoller v2.14.4 — Webapp Testing Checklist</title>
+    <title>PawPoller v2.14.8 — Webapp Testing Checklist</title>
     <style>
         * {
             box-sizing: border-box;
@@ -261,7 +261,7 @@
 
 <body>
 
-    <h1>PawPoller v2.14.4 — Testing Checklist <span class="mode-badge">WEBAPP</span></h1>
+    <h1>PawPoller v2.14.8 — Testing Checklist <span class="mode-badge">WEBAPP</span></h1>
     <p style="color: #888; font-size: 13px; margin-bottom: 12px;">
         This list covers the browser/Docker/server flavour of PawPoller. For the native desktop build (tray,
         run-on-startup, browser-login popups, auto-update, Edge PDF fallback) use
@@ -326,7 +326,7 @@
             {
                 title: "1. Boot & First-Run (Webapp)", tests: [
                     { id: 1, name: "Server boots clean", steps: `docker compose up -d --build → wait → docker compose logs --tail=30`, expected: `No ERROR lines. "PawPoller server ready at http://0.0.0.0:8420" present` },
-                    { id: 2, name: "Health endpoint", steps: `curl http://localhost:8420/api/health`, expected: `200 OK with JSON {"status": "ok", ...} including version 2.14.4` },
+                    { id: 2, name: "Health endpoint", steps: `curl http://localhost:8420/api/health`, expected: `200 OK with JSON {"status": "ok"} (version is exposed via /api/settings/setup-status, not /api/health by design)` },
                     { id: 3, name: "Dashboard loads", steps: `Open http://localhost:8420/ in fresh tab`, expected: `Splash → SPA hydrates → either dashboard, login, or setup wizard renders. No console errors.` },
                     { id: 4, name: "No-flash theme on cold load", steps: `Hard reload (Ctrl+Shift+R) on saved theme other than dark`, expected: `Theme applies before first paint via inline <head> script. No flash of dark theme then repaint` },
                     { id: 5, name: "Setup wizard appears first run", steps: `Remove setup_complete from settings.json → reload`, expected: `Wizard renders, sidebar hidden, no platform pages reachable` },
@@ -860,7 +860,7 @@
             {
                 title: "36. Settings — About", tests: [
                     { id: 395, name: "About tab loads", steps: `Settings → About`, expected: `Version, build hash, links to docs/changelog, third-party credits` },
-                    { id: 396, name: "Version matches APP_VERSION", steps: `Compare to config.APP_VERSION`, expected: `2.14.4` },
+                    { id: 396, name: "Version matches APP_VERSION", steps: `Compare to config.APP_VERSION`, expected: `2.14.8` },
                     { id: 397, name: "Update check button", steps: `"Check for updates"`, expected: `Hits GitHub releases endpoint; shows latest version` },
                     { id: 398, name: "Update available state", steps: `When current < latest`, expected: `Sidebar shows "vX.Y.Z available" badge + Update Now button` },
                     { id: 399, name: "Apply Update — webapp behaviour", steps: `Click Apply (webapp)`, expected: `Webapp explains the user must rebuild the Docker image (auto-update is desktop-only)` },
@@ -940,7 +940,7 @@
                     { id: 449, name: "LICENSE present", steps: `Repo root`, expected: `MIT LICENSE file` },
                     { id: 450, name: "CONTRIBUTING present", steps: `Repo root`, expected: `Contributing guide` },
                     { id: 451, name: "Lint workflow on push", steps: `Push to master → Actions tab`, expected: `Lint workflow runs ruff + JS syntax; passes` },
-                    { id: 452, name: "Build workflow on tag", steps: `git tag v2.14.4 && git push --tags`, expected: `Build & Release runs; .zip artifact attached to release` },
+                    { id: 452, name: "Build workflow on tag", steps: `git tag v2.14.8 && git push --tags`, expected: `Build & Release runs; .zip artifact attached to release` },
                     { id: 453, name: "Test job in build workflow", steps: `Same workflow run`, expected: `unittest discover passes (after pytest + respx pinned to requirements-server.txt)` },
                     { id: 454, name: "Release notes — generated", steps: `Look at release page after tag`, expected: `Release notes match CHANGELOG.md entry` },
                 ]
@@ -954,6 +954,24 @@
                     { id: 459, name: "Rate-limit display", steps: `Trigger AO3 429`, expected: `User-visible message about rate limiting + retry timer` },
                     { id: 460, name: "Console — no uncaught errors", steps: `Navigate the entire app`, expected: `Browser console has no uncaught exceptions on happy path` },
                     { id: 461, name: "Hash route fallback", steps: `Visit #/totally-fake-route`, expected: `Either 404 page OR redirects to dashboard; no white screen` },
+                ]
+            },
+            {
+                title: "44. 2.14.7 + 2.14.8 regression sweep (automated-QA bug fixes)", tests: [
+                    { id: 462, name: "Cache-buster carries APP_VERSION", steps: `View page source on /`, expected: `All <link>/<script> URLs end with ?v=2.14.8 (no hand-bumped 311/240/etc.). Hard reload not needed between releases — closes BUG-001` },
+                    { id: 463, name: "No CSP error from inline theme script", steps: `Cold-load /, watch DevTools console`, expected: `No "violates Content Security Policy" error pointing at index.html:9. Theme applies before first paint — closes BUG-002` },
+                    { id: 464, name: "Google Fonts load without CSP block", steps: `DevTools → Network → filter "fonts.gstatic"`, expected: `Crimson Pro / Inter / JetBrains Mono woff2 files load 200 OK. No "violates CSP directive style-src" or "font-src" errors — closes BUG-003` },
+                    { id: 465, name: "Plaintext password not re-seeded after restart", steps: `docker compose restart → cat data/settings.json`, expected: `auth_password_hash present, dashboard_password and dashboard_user absent. Even if DASHBOARD_PASSWORD env var is set — closes BUG-004` },
+                    { id: 466, name: "Wizard finish without platforms → Settings/Platforms", steps: `Reset wizard → finish without connecting any platform → click "Go to Dashboard"`, expected: `Lands on #/settings/platforms (not #/login or #/) — closes BUG-005` },
+                    { id: 467, name: "Deep link to Settings reachable without IB creds", steps: `Fresh server install, no IB creds → navigate to /#/settings/general`, expected: `Settings → General renders. NOT redirected to #/login — closes BUG-006` },
+                    { id: 468, name: "Loading screen has escape hatch on error", steps: `Trigger IB poll error (bad creds) on first run → land on /#/loading`, expected: `Error message displays AND "Continue to Dashboard" + "Open Settings" buttons appear — closes BUG-007` },
+                    { id: 469, name: "Loading screen safety timeout", steps: `Block IB API outbound, land on /#/loading, wait 10 s`, expected: `Continue to Dashboard / Open Settings buttons appear after timeout. Poll keeps running in background — closes BUG-007` },
+                    { id: 470, name: "Sidebar expand pushes content right", steps: `Hover collapsed sidebar on Settings → Appearance`, expected: `Main content shifts right in lockstep with sidebar width transition. First theme card stays fully visible — closes BUG-008` },
+                    { id: 471, name: "Updater quiet on missing release", steps: `tail -n 200 logs/server.log after 10 min uptime`, expected: `At most ONE "GitHub repo … has no published releases yet" INFO line. No repeated WARNING "Update check failed: 404" — closes BUG-009` },
+                    { id: 472, name: "Mobile hamburger reachable on viewport", steps: `Resize browser to 600×800 → load /, inspect #hamburger-btn`, expected: `Button at top-left (12,12), 40×40, position:fixed, parent is BODY (not .sidebar). Click opens sidebar; body gets .sidebar-open class; hamburger shifts to left:240px above the open panel — closes BUG-010` },
+                    { id: 473, name: "Sidebar hover listeners survive auth gate", steps: `Fresh tab, log in, navigate to #/settings/platforms, hover sidebar`, expected: `body.sidebar-expanded class toggles. Listener bound at top of init() before dashboard-auth/setup-wizard early returns — closes BUG-012` },
+                    { id: 474, name: "Create New Story 400s cleanly when archive path missing", steps: `Set posting_story_archive_path to a non-existent dir → +Create New Story → fill name → Create`, expected: `Modal stays open. errEl shows "Story archive path is not writable: <path> (...). Fix the path in Settings → General → Posting Settings." HTTP status 400, not 500. No unhandled exception in container logs — closes BUG-019` },
+                    { id: 475, name: "Create New Story happy path with valid archive", steps: `Set archive to writable dir → +Create New Story → fill name → Create`, expected: `200 response with {ok:true, story_name}. Routes to #/editor/<name>. Folder structure created on disk. — companion to BUG-019` },
                 ]
             },
         ];
