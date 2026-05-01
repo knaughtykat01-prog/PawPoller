@@ -4,6 +4,40 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.14.10] - 2026-05-02
+
+### Metadata drawer no longer self-closes on mobile (BUG-023)
+
+Tapping the Editor's **Metadata** button on a touch device opened the
+drawer for ~300ms then immediately closed it. Cause: the backdrop
+(`position: fixed; inset: 0`) is mounted synchronously inside the
+button's click handler, so the moment the drawer opens the backdrop
+is sitting under the user's finger. Mobile then fires a synthetic
+click ~300ms after touchend on whatever element is currently under
+the touch point — which is now the backdrop, not the button — and
+the backdrop's `close()` handler runs.
+
+Fixed in `metadata_editor.js` by gating the backdrop click handler
+with a 400ms mount window. Clicks during that window are ignored, so
+the synthetic click can't close the drawer it just opened. Real
+backdrop clicks (the user deliberately tapping outside the drawer)
+still close it as expected.
+
+The publish-check modal uses the same backdrop pattern and is likely
+vulnerable to the same issue, but the symptom is masked there because
+the user has to do at least one more interaction (cell select →
+button click) before any backdrop dismissal could fire. Worth a
+follow-up audit pass.
+
+### Files touched
+
+`config.py` (APP_VERSION → 2.14.10),
+`frontend/js/metadata_editor.js` (mount-window guard on backdrop
+click),
+`CHANGELOG.md`.
+
+---
+
 ## [2.14.9] - 2026-05-02
 
 ### Draft detection in the publish-check matrix (FA-only first slice)

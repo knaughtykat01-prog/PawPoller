@@ -218,8 +218,18 @@ const MetaEditor = {
         });
 
         // Wire up shell buttons once (form bindings happen after _renderForm)
+        const mountedAt = Date.now();
         document.getElementById('metadata-close-btn')?.addEventListener('click', () => this.close());
-        document.getElementById('metadata-drawer-backdrop')?.addEventListener('click', () => this.close());
+        document.getElementById('metadata-drawer-backdrop')?.addEventListener('click', () => {
+            // Mobile fires a synthetic click ~300ms after touchend on whatever
+            // element is under the finger at that moment. Since we mount the
+            // backdrop synchronously inside the button's click handler, the
+            // backdrop is now under the user's finger and catches the
+            // synthetic click — closing the drawer the instant it opens.
+            // Ignore backdrop clicks within the synthetic-click window.
+            if (Date.now() - mountedAt < 400) return;
+            this.close();
+        });
         document.getElementById('metadata-save-btn')?.addEventListener('click', () => this.save());
     },
 
