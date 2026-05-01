@@ -4,6 +4,65 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.15.0] - 2026-05-02
+
+### Per-platform tag tabs for FA + Weasyl + AO3 + SquidgeWorld
+
+The editor's Per-Platform Tags section grew four new tabs alongside
+the existing Default / SoFurry / Inkbunny / Wattpad. Each new tab
+inherits from Default on first load, then becomes its own override
+list once the user edits — useful when one platform's limit forces
+a smaller set than the others can tolerate.
+
+The trigger was Tombstone: 91 default tags serialise to an 814-char
+keyword string, which the FA validator rejects (`furaffinity.py:227-228`,
+500-char ceiling). Pruning the default list to fit FA punishes the
+other platforms, which happily take the longer set. With per-platform
+tabs the user can keep the rich default for IB/SF/Weasyl and ship a
+trimmed FA list — no compromise.
+
+**FA tab gets a second counter.** The standard "X tags · Platform max:
+Y" line now also shows "X / 500 chars" when the FA tab is active,
+turning red once the joined keyword string exceeds the validator's
+limit. Catches the over-limit case before save.
+
+**Populate from Default button.** Stories whose `story.json` predates
+these tabs (Tombstone, anything older than this release) won't have
+`tags.furaffinity` / `tags.weasyl` / `tags.ao3` / `tags.squidgeworld`
+namespaces. When such a tab is empty AND Default has tags, a
+"Populate from Default (N)" button appears. One click copies every
+default tag in (transformed for the platform — underscores for FA /
+Weasyl, spaces for AO3 / SQW). Once populated, the user can trim
+freely. New stories don't need this — the existing
+`TAG_CASCADE_PLATFORMS` keeps every platform in sync automatically as
+the user edits Default.
+
+**No backend changes.** `posting/story_reader.py:395-405` already
+respects per-platform overrides correctly in the JSON path — the
+default cascade only fills in platforms whose namespace is missing.
+The legacy txt parser at line 799 still has the blind cascade but no
+live story exercises it; that path is parsed once and replaced with
+`story.json` on first save.
+
+Per-chapter tag tabs (`_CHAPTER_TAG_PLATFORMS`) intentionally not
+extended in this release — chapter-level overrides for FA/Weasyl/AO3/
+SQW can land in a follow-up once the story-level UX has soaked.
+
+### Files touched
+
+`config.py` (APP_VERSION → 2.15.0, minor bump because this is a new
+feature surface),
+`frontend/js/metadata_editor.js` (`TAG_PLATFORMS` extended,
+`TAG_LIMITS` + `PLATFORM_LABELS` updated, FA-specific char counter,
+"Populate from Default" button + `_populateFromDefault` handler with
+underscore-canonicalisation guard for default lists that contain
+spaces),
+`frontend/css/editor.css` (`.metadata-tag-populate` spacing),
+`CHANGELOG.md`,
+`docs/HANDOFF.md` (per-platform tag bullet marked done).
+
+---
+
 ## [2.14.10] - 2026-05-02
 
 ### Metadata drawer no longer self-closes on mobile (BUG-023)

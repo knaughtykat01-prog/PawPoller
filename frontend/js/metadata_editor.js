@@ -70,13 +70,26 @@ const MetaEditor = {
     _coverUploading: false,
     _rawJsonEditMode: false,
 
-    // Platform tag caps (∞ = no cap)
+    // Platform tag caps (∞ = no cap on count). FA's real cap is on the
+    // joined keyword string (500 chars), not the count — _renderTagTabBody
+    // shows that as a separate counter when the FA tab is active.
     TAG_LIMITS: {
         sofurry: 97,
         wattpad: 24,
         inkbunny: Infinity,
+        furaffinity: Infinity,
+        weasyl: Infinity,
+        ao3: Infinity,
+        squidgeworld: Infinity,
         default: Infinity,
     },
+
+    // FA's real validator (posting/platforms/furaffinity.py:227-228) caps
+    // the space-joined keyword string at 500 chars, not the tag count.
+    // Surface that in the UI alongside the count so the user knows when
+    // they need to trim before posting (e.g. Tombstone's 91-tag default
+    // list serialises to 814 chars and gets rejected).
+    FA_TAG_STRING_MAX: 500,
 
     // Canonical ratings (must match backend whitelist)
     RATINGS: [
@@ -103,9 +116,11 @@ const MetaEditor = {
     // Platform keys (order controls render)
     PLATFORMS: ['sofurry', 'inkbunny', 'squidgeworld', 'ao3', 'furaffinity', 'wattpad'],
 
-    // Platforms that show as tabs in the Tags section (keeps UI tight —
-    // other posters' tags are cascaded from default behind the scenes).
-    TAG_PLATFORMS: ['default', 'sofurry', 'inkbunny', 'wattpad'],
+    // Platforms that show as tabs in the Tags section. Order matches
+    // PLATFORMS for the underlying posters with Default leading; new tabs
+    // (FA / Weasyl / AO3 / SQW) inherit from default on first load and
+    // become independent override lists once the user edits them.
+    TAG_PLATFORMS: ['default', 'sofurry', 'inkbunny', 'furaffinity', 'weasyl', 'ao3', 'squidgeworld', 'wattpad'],
 
     // Platforms that receive cascaded tags when the user adds/removes a
     // tag from the Default tab. Broader than TAG_PLATFORMS so AO3, SQW,
@@ -125,6 +140,7 @@ const MetaEditor = {
         squidgeworld: 'SquidgeWorld',
         ao3: 'AO3',
         furaffinity: 'FurAffinity',
+        weasyl: 'Weasyl',
         wattpad: 'Wattpad',
         default: 'Default',
     },
@@ -532,6 +548,14 @@ const MetaEditor = {
         const aliases = this._tagDb ? this._tagDb.aliases : {};
         const byName = this._tagDb ? this._tagDb.byName : null;
 
+        // Backfill helper for existing stories whose story.json predates the
+        // new tabs (e.g. Tombstone has no `furaffinity` / `ao3` namespace).
+        // New stories don't need this — TAG_CASCADE_PLATFORMS keeps every
+        // platform in sync as the user edits Default.
+        const isEmpty = tags.length === 0;
+        const defaultHasTags = (md.tags.default || []).length > 0;
+        const showPopulate = isEmpty && defaultHasTags && platform !== 'default';
+
         const pills = tags.map((t, i) => {
             const inDb = byName ? byName.has(t) : false;
             const aliasTarget = (!inDb && aliases[t]) ? aliases[t] : null;
@@ -551,8 +575,32 @@ const MetaEditor = {
         const limitLabel = (limit === Infinity) ? '&infin;' : limit;
         const overLimit = (limit !== Infinity) && tags.length > limit;
 
+        // FA's real cap is on the space-joined string, not the count.
+        // Show a second counter when the FA tab is active so the user
+        // can see they're heading for the validator's 500-char rejection
+        // before they hit Save.
+        let extraCounter = '';
+        if (platform === 'furaffinity') {
+            const joinedLen = tags.join(' ').length;
+            const charOver = joinedLen > this.FA_TAG_STRING_MAX;
+            extraCounter = `
+                <span class="metadata-tag-count-sep">&middot;</span>
+                <span class="${charOver ? 'metadata-tag-count-over' : ''}"
+                      title="FA validator rejects keyword strings over 500 chars">${joinedLen} / ${this.FA_TAG_STRING_MAX} chars</span>`;
+        }
+
+        const populateBtn = showPopulate
+            ? `<button type="button" class="btn btn-sm btn-outline metadata-tag-populate"
+                       id="metadata-tag-populate-btn"
+                       data-populate-platform="${this._escape(platform)}"
+                       title="Copy every Default tag into this platform's list (transformed for ${this._escape(this.PLATFORM_LABELS[platform] || platform)})">
+                Populate from Default (${(md.tags.default || []).length})
+              </button>`
+            : '';
+
         return `
             <div class="metadata-tag-pills" id="metadata-tag-pills-${this._escape(platform)}">${pills}</div>
+            ${populateBtn}
             <div class="metadata-tag-input-wrap">
                 <input type="text"
                        class="metadata-tag-input"
@@ -566,6 +614,7 @@ const MetaEditor = {
                 <span id="metadata-tag-count-text">${tags.length} tags</span>
                 <span class="metadata-tag-count-sep">&middot;</span>
                 <span>Platform max: ${limitLabel}</span>
+                ${extraCounter}
             </div>
         `;
     },
@@ -1169,6 +1218,39 @@ const MetaEditor = {
         return name;
     },
 
+    _populateFromDefault(platform) {
+        // One-shot backfill: copy every Default tag into this platform's
+        // list, transformed into the platform's expected format (FA/Weasyl
+        // get underscores, AO3/SQW/SF/IB get spaces, etc.). Only callable
+        // when the platform list is empty — guards against accidentally
+        // wiping a deliberate override.
+        if (platform === 'default') return;
+        const existing = this.metadata.tags[platform] || [];
+        if (existing.length > 0) return;
+        const defaults = this.metadata.tags.default || [];
+        // Defaults in older stories (e.g. Tombstone) sometimes contain spaces
+        // rather than the canonical underscored form. Normalise to underscores
+        // first, then run the per-platform transform — that way FA/Weasyl get
+        // underscores and SF/IB/AO3/SQW get spaces regardless of how the
+        // default list was authored.
+        const seeded = defaults.map(t => {
+            const canonical = t.replace(/\s+/g, '_');
+            return this._transformTagForPlatform(canonical, platform);
+        });
+        // Case-insensitive dedup in case of redundant default entries
+        const seen = new Set();
+        const deduped = [];
+        for (const t of seeded) {
+            const k = t.toLowerCase();
+            if (seen.has(k)) continue;
+            seen.add(k);
+            deduped.push(t);
+        }
+        this.metadata.tags[platform] = deduped;
+        this._clearStatus();
+        this._rerenderTagTabBody();
+    },
+
     _addTagToPlatform(platform, rawName) {
         const name = this._normalizeTagName(rawName, platform);
         if (!name) return;
@@ -1339,6 +1421,14 @@ const MetaEditor = {
                 const idx = parseInt(btn.getAttribute('data-index'), 10);
                 if (!Number.isNaN(idx)) this._removeTagFromPlatform(platform, idx);
             });
+        });
+
+        // Populate-from-default button (only present on empty non-default tabs
+        // for stories whose story.json predates these tabs)
+        document.getElementById('metadata-tag-populate-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            const platform = e.currentTarget.getAttribute('data-populate-platform');
+            this._populateFromDefault(platform);
         });
 
         const input = document.getElementById('metadata-tag-input');

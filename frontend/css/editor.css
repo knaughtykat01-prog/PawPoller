@@ -1190,6 +1190,11 @@
     position: relative;
 }
 
+.metadata-tag-populate {
+    margin: 6px 0 8px 0;
+    display: inline-block;
+}
+
 .metadata-tag-input {
     width: 100%;
     box-sizing: border-box;
