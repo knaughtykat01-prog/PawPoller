@@ -4,6 +4,87 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.16.2] - 2026-05-02
+
+### Mobile Mode — Phase 3 vertical sweep
+
+User feedback: "anything that is currently wide screen should be
+turned into a vertical version." This pass forces every multi-column
+grid to a single column and every horizontal flex strip to a vertical
+stack on mobile. Most of the targets had a `@media (max-width: 480px)`
+override already; mirroring them under `html[data-mobile="1"]` makes
+them fire consistently in mobile mode (including forced-on at
+desktop widths) and bumps the threshold from "small phone" to "any
+mobile resolution".
+
+**Grids forced to 1 column on mobile.** `growth-grid` (was 3-col),
+`goal-grid` (was 260px-min auto-fit), `card-grid` (story list, was
+280px-min), `story-card-grid` (was 300px-min), `tag-browser-grid`
+(was 240px-min), `chart-row` (was 1fr 1fr), `theme-picker` and
+`mobile-mode-picker` (were 220px-min auto-fill — barely fit one
+card at 430px anyway, now explicit), `fa-metadata` (was 140px-min,
+3 cols on a 430px viewport), `setup-platforms` (was 130px-min, 3
+cramped cols).
+
+**Detail page header → vertical.** 120px square thumb on top
+(centered, max-width 240px, aspect-ratio 1), title + meta below.
+`detail-stats` becomes a vertical list of label-left/value-right
+strips with their own surface — easier to scan on a phone than the
+horizontal stat row.
+
+**Pinned row → vertical stack.** Was a horizontal scroll-snap
+strip of 200px-wide cards; on a phone the user had to swipe through
+each card and could only see one at a time. Vertical stack shows
+all pinned items in one scroll.
+
+**Compare select chips → vertical full-width buttons** at 44px-min.
+The compare-page main two-panel side-by-side flow is intentionally
+hard to render vertically and stays as-is for v1; future tab switch
+between left/right targets.
+
+**Date range bar wraps in 3-up rows.** Was a tight horizontal flex
+where each button got squeezed to ~50px and the labels wrapped
+inside. Now wraps into multiple rows with each button at ≥60px,
+labels stay readable.
+
+**Settings tabs scroll horizontally with snap.** Were already
+overflow-x via the 768 rule; this pass adds `scroll-snap-type: x
+proximity` and 44px-min tap targets. Settings rows stack their
+toggle-switch right-aligned beneath the label.
+
+**Timeline / log rows → single column.** Already 1fr at 480px;
+mirror under data-mobile so the mobile-mode forced-on case behaves.
+
+**Tighter padding everywhere.** `.main-content` 12px + bottom-nav
+clearance, `.settings-section` 14px, `.settings-accordion summary`
+48px touch height + 14px font.
+
+**Generic safety net for tables.** Any `.data-table` not opted into
+the `[data-mobile-cards]` transformation gets `overflow-x: auto`
+on mobile so an unconverted table doesn't burst the viewport.
+
+### Surfaces NOT changed in this pass
+
+- Bottom nav (intentionally 5-item horizontal — that's the pattern)
+- Editor mobile tab bar (intentionally 4-tab horizontal switcher)
+- Anchor toolbar (intentionally 13-button horizontal swipe strip)
+- Compare page side-by-side panels (would need a tab switcher;
+  out of scope for v1)
+- Submission card grid (already 1-col with 200px thumbs from P2)
+- Stat cards (already 1-col strips from P2)
+- Editor toolbar (handled via P2 ⋯ More collapse)
+
+### Files touched
+
+`config.py` (APP_VERSION → 2.16.2),
+`frontend/css/editor.css` (Phase 3 block at end of mobile-mode
+section: ~165 lines covering all the grid → 1-col rules,
+detail-header vertical, pinned-row stack, compare/date-range/
+fave/comment/timeline/log/settings adjustments),
+`CHANGELOG.md`.
+
+---
+
 ## [2.16.1] - 2026-05-02
 
 ### Mobile Mode — Phase 2 portrait-phone polish

@@ -3877,3 +3877,258 @@ html[data-mobile="1"] .regen-dropdown-menu {
     right: auto;
     left: 0;
 }
+
+/* =====================================================================
+   Phase 3 — vertical sweep
+   "Anything that is currently wide screen should be turned into a
+   vertical version." Force every multi-col grid to 1-col and every
+   horizontal strip to a vertical stack on mobile. The existing
+   `@media (max-width: 480px)` rules cover most of these for narrow
+   viewports; this block mirrors them under `html[data-mobile="1"]`
+   so they fire consistently in mobile mode (including forced-on
+   on a wide desktop).
+   ===================================================================== */
+
+/* All grid layouts → single column. */
+html[data-mobile="1"] .growth-grid,
+html[data-mobile="1"] .goal-grid,
+html[data-mobile="1"] .card-grid,
+html[data-mobile="1"] .story-card-grid,
+html[data-mobile="1"] .tag-browser-grid,
+html[data-mobile="1"] .chart-row,
+html[data-mobile="1"] .theme-picker,
+html[data-mobile="1"] .mobile-mode-picker,
+html[data-mobile="1"] .fa-metadata,
+html[data-mobile="1"] .setup-platforms {
+    grid-template-columns: 1fr !important;
+    gap: 8px;
+}
+
+/* Detail page header — stack the 120px thumb on top of the info
+ * column on mobile. The 480px @media rule already does this; the
+ * override here fires for forced-mobile too. */
+html[data-mobile="1"] .detail-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+}
+
+html[data-mobile="1"] .detail-thumb {
+    width: 100%;
+    max-width: 240px;
+    height: auto;
+    aspect-ratio: 1;
+    align-self: center;
+}
+
+html[data-mobile="1"] .detail-info {
+    width: 100%;
+}
+
+html[data-mobile="1"] .detail-info h2 {
+    font-size: 18px;
+    line-height: 1.25;
+}
+
+html[data-mobile="1"] .detail-stats {
+    flex-direction: column;
+    gap: 6px;
+    align-items: stretch;
+}
+
+html[data-mobile="1"] .detail-stat {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--surface-elevated);
+    border-radius: 6px;
+}
+
+/* Pinned row — drop the horizontal scroll-snap and stack as
+ * vertical cards. The "pinned" concept is "things to keep an eye
+ * on"; on a phone vertical reads better than swiping. */
+html[data-mobile="1"] .pinned-row {
+    flex-direction: column;
+    overflow-x: visible;
+    scroll-snap-type: none;
+    padding-bottom: 0;
+    gap: 8px;
+}
+
+html[data-mobile="1"] .pinned-card {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+}
+
+/* Compare page — chips and select rows stack instead of side-by-
+ * side. The compare flow itself (two side-by-side panels) is
+ * intentionally hard to render vertically — for v1 the user can
+ * scroll. Future: tab between the two compare targets. */
+html[data-mobile="1"] .compare-select {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+
+html[data-mobile="1"] .compare-chip {
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    min-height: 44px;
+}
+
+/* Date range bar — wrap so all buttons fit without horizontal
+ * scrolling. Existing 768 rule did `flex: 1; min-width: 0` which
+ * made each button very narrow; on mobile mode let them be 60px
+ * min and wrap to multiple rows if needed. */
+html[data-mobile="1"] .date-range-bar {
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+html[data-mobile="1"] .range-btn {
+    flex: 1 1 calc(33.333% - 4px);
+    min-width: 60px;
+}
+
+/* Fave items + comment cards — already use flex; ensure the inner
+ * elements wrap rather than overflow on a 430px viewport. */
+html[data-mobile="1"] .fave-item {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 0;
+}
+
+html[data-mobile="1"] .comment-card {
+    padding: 10px 12px;
+}
+
+html[data-mobile="1"] .comment-header {
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* Timeline + log rows — single column, label above value. Already
+ * 1fr at 480px; mirror for mobile mode. */
+html[data-mobile="1"] .timeline-event {
+    grid-template-columns: 14px 1fr;
+    grid-row-gap: 2px;
+}
+
+html[data-mobile="1"] .timeline-event .ts {
+    grid-column: 2;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+html[data-mobile="1"] .log-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+    padding: 10px 0;
+}
+
+/* Settings tabs — already scroll-x; ensure the active tab is
+ * visible and tabs are big enough to tap. */
+html[data-mobile="1"] .settings-tabs {
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+}
+
+html[data-mobile="1"] .settings-tab {
+    flex-shrink: 0;
+    scroll-snap-align: start;
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 13px;
+}
+
+/* Settings sections / accordion — tighten padding, ensure the
+ * accordion summary is comfortable to tap. */
+html[data-mobile="1"] .settings-section {
+    padding: 14px;
+    margin-bottom: 12px;
+}
+
+html[data-mobile="1"] .settings-accordion summary {
+    min-height: 48px;
+    padding: 12px 14px;
+    font-size: 14px;
+}
+
+/* Settings rows — already stack via 768 rule. Ensure consistent
+ * gap and that the toggle-switch sits aligned right. */
+html[data-mobile="1"] .settings-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+}
+
+html[data-mobile="1"] .settings-row .toggle-switch {
+    align-self: flex-end;
+}
+
+/* Story cards (posting page) — full-width on mobile. */
+html[data-mobile="1"] .story-card {
+    width: 100%;
+}
+
+/* Highlight cards — vertical strips like stat-cards. */
+html[data-mobile="1"] .highlight-card {
+    padding: 12px 14px;
+}
+
+html[data-mobile="1"] .highlight-card .label {
+    font-size: 11px;
+}
+
+html[data-mobile="1"] .highlight-card .value {
+    font-size: 18px;
+}
+
+/* Top lists — full width, comfortable touch row */
+html[data-mobile="1"] .top-list .top-title {
+    max-width: none;
+    flex: 1;
+}
+
+html[data-mobile="1"] .top-list li {
+    padding: 10px 0;
+    font-size: 13px;
+    min-height: 44px;
+}
+
+/* Setup wizard step bar — let the line wrap on phone. */
+html[data-mobile="1"] .setup-step-line {
+    flex-wrap: wrap;
+}
+
+/* Publish-check footer — buttons stack 2-up on mobile (already in
+ * P1 block, restated here for clarity). */
+html[data-mobile="1"] .publish-check-footer .btn {
+    min-height: 44px;
+}
+
+/* Polling platforms container — child layout depends on the
+ * specific dashboard but force grid items to single column. */
+html[data-mobile="1"] #polling-platforms-container > div {
+    width: 100%;
+}
+
+/* Generic safety: any data-table that hasn't been opted into
+ * card transformation gets horizontal-scroll on mobile so it
+ * doesn't burst the viewport. */
+html[data-mobile="1"] .data-table:not([data-mobile-cards]) {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Main content padding — slightly tighter on portrait phone so the
+ * scrollable region uses every pixel. */
+html[data-mobile="1"] .main-content {
+    padding: 12px;
+    padding-bottom: calc(12px + var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
+}
