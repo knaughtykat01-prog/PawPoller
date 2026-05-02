@@ -3646,9 +3646,12 @@ html[data-mobile="1"] {
 /* Stat cards — switch from 2-col grid to 1-col horizontal strips on
  * portrait phone. The card becomes a single row: label left, value
  * right. 8 stats stack as 8 short rows instead of 4 tall card pairs,
- * which scrolls less and reads faster on a 430px viewport. */
+ * which scrolls less and reads faster on a 430px viewport.
+ * !important defeats inline `style="grid-template-columns:..."` set
+ * by some dashboards (overview's per-platform mini-stats grid does
+ * this so the rendered desktop layout can be auto-fit minmax). */
 html[data-mobile="1"] .stats-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
     gap: 6px;
     margin-bottom: 14px;
 }
@@ -3685,10 +3688,15 @@ html[data-mobile="1"] .stat-card .delta {
 }
 
 /* Page header tighten — reduce h2 size and bottom margin so the
- * actual page content gets more vertical real estate. */
+ * actual page content gets more vertical real estate. The
+ * padding-left clears the fixed hamburger button (52px right edge
+ * + 8px breathing room) so the page title isn't hidden behind it.
+ * Caught via Playwright on Overview where "Overview" rendered as
+ * "rview" with the first 36px under the hamburger. */
 html[data-mobile="1"] .page-header {
     margin-bottom: 12px;
     gap: 8px;
+    padding-left: calc(env(safe-area-inset-left, 0px) + 60px);
 }
 
 html[data-mobile="1"] .page-header h2 {
