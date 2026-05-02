@@ -220,6 +220,44 @@
     max-height: 200px;
 }
 
+/* 2.16.10: Master collapse wrapper for platform dashboards. The 11
+ * platform sub-groups stacked together cluttered the mobile sidebar
+ * to the point that "Stories / Queue / Published / History" required
+ * a long scroll. One master toggle now hides them all. Children list
+ * gets a generous max-height when expanded so all 11 fit; individual
+ * sub-groups still expand to show Dashboard/Submissions/Compare. */
+.nav-master-section {
+    /* Read as a primary nav entry, not a section divider — a touch
+     * heavier than a regular .nav-section so it stands out from the
+     * 11 platform group headers it controls. */
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: none;
+    letter-spacing: 0.2px;
+    font-size: 13px;
+}
+
+.nav-master-children {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.nav-master.expanded .nav-master-children {
+    /* Big enough to hold 11 collapsed platform headers + room for one
+     * group expanded with its 3 children (~120px). 1200px is generous
+     * but harmless — only matters during the transition. */
+    max-height: 1200px;
+}
+
+.nav-master.expanded > .nav-master-section .nav-chevron {
+    transform: rotate(90deg);
+}
+
 .nav-section-divider {
     font-size: 10px;
     text-transform: uppercase;

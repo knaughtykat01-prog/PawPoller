@@ -4,6 +4,43 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.16.10] - 2026-05-02
+
+### Sidebar — collapse all platform groups under one master toggle
+
+The 11 always-visible platform group headers (Inkbunny / FurAffinity
+/ Weasyl / SoFurry / SquidgeWorld / AO3 / DeviantArt / Wattpad /
+Itaku / Bluesky / X / Twitter) clogged the mobile sidebar. Even
+with each group's sub-items collapsed by default, the stack of 11
+headers pushed Stories / Queue / Published / History below the
+fold on a 956px viewport.
+
+Wrapped the 11 platform `<li class="nav-group">` items inside a new
+`<li class="nav-master nav-platforms-master">` with a "Platform
+Dashboards ›" header. Click toggles `.expanded` on the master,
+which animates `.nav-master-children` from `max-height: 0` to
+`1200px` (generous so the 11 headers + one expanded sub-group all
+fit). Chevron rotates 90° when open.
+
+Auto-expand: navigating to any platform page (`/#/sf`, `/#/fa/...`,
+etc.) sets `.expanded` on the master so the user's current section
+is visible. Never auto-collapses — that would override an
+intentional click.
+
+Sidebar reading order on Overview is now:
+- Overview
+- Platforms (existing popover trigger)
+- **Platform Dashboards ›** (new master collapse)
+- Stories / Queue / Published / History
+- Editor / Groups
+- (poll status, etc.)
+
+Desktop unchanged in spirit (the same auto-expand logic applies);
+the 220px hover-expanded sidebar still shows everything when you
+land on a platform page.
+
+---
+
 ## [2.16.9] - 2026-05-02
 
 ### BUG-016 — collapse 9× poll/progress fan-out into one endpoint

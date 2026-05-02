@@ -249,6 +249,18 @@ const App = {
             });
         });
 
+        /* 2.16.10: Master collapse for the 11 platform sub-groups.
+           Click "Platform Dashboards" to show/hide the entire stack.
+           Default state (no .expanded class) hides them so the mobile
+           sidebar reads cleanly: Overview · Platforms · Platform
+           Dashboards › · Stories · Queue · Published · History. */
+        document.querySelectorAll('[data-nav-master-toggle]').forEach(toggle => {
+            toggle.addEventListener('click', () => {
+                const master = toggle.closest('.nav-master');
+                if (master) master.classList.toggle('expanded');
+            });
+        });
+
         /* Logout button — clears dashboard session if dashboard auth is active,
          * otherwise clears Inkbunny platform session */
         document.getElementById('logout-btn')?.addEventListener('click', async () => {
@@ -570,6 +582,17 @@ const App = {
         document.querySelectorAll('.nav-group').forEach(group => {
             const hasActive = group.querySelector('.nav-link.active');
             group.classList.toggle('expanded', !!hasActive);
+        });
+
+        /* 2.16.10: Auto-expand the platforms master when the active link
+           is inside it (so navigating to e.g. /#/sf doesn't leave the
+           current platform's group hidden). Otherwise leave the user's
+           manual state alone — never auto-collapse, since that would
+           override an intentional click. */
+        document.querySelectorAll('.nav-master').forEach(master => {
+            if (master.querySelector('.nav-link.active')) {
+                master.classList.add('expanded');
+            }
         });
 
         /* Update bottom nav active state */

@@ -73,6 +73,14 @@
                 <span class="nav-label">Platforms</span>
             </button></li>
 
+            <!-- 2.16.10: Master collapse for the 11 platform groups —
+                 the stack of always-visible platform headers was clogging
+                 the mobile sidebar. One toggle now hides/shows the lot. -->
+            <li class="nav-master nav-platforms-master">
+                <div class="nav-section nav-master-section" data-nav-master-toggle>
+                    Platform Dashboards <span class="nav-chevron">&#8250;</span>
+                </div>
+                <ul class="nav-master-children">
             <!-- Inkbunny: collapsible group -->
             <li class="nav-group">
                 <div class="nav-section" data-nav-toggle>Inkbunny <span class="nav-chevron">&#8250;</span></div>
@@ -281,6 +289,9 @@
                     </a></li>
                 </ul>
             </li>
+                </ul>
+            </li>
+            <!-- /nav-platforms-master (2.16.10) -->
 
             <!-- Publishing section -->
             <li class="nav-section-divider">Publishing</li>
