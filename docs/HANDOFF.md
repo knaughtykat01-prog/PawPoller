@@ -2,8 +2,8 @@
 
 **Last updated:** 2026-05-02
 **Current version:** 2.17.5 (housekeeping pass: `pawsync.py` now supports `--prune` / `--dry-run` for removing server-side top-level story orphans missing locally — closes the "manual `rm -rf` after deleting test stories" follow-up. Roadmap also corrected to mark the cache-buster consistency and CI pytest items as already-done — they were stale entries from before. Behaviour change is opt-in: default `pawsync` keeps the existing additive `tar xzf` semantics. EPUB output format + on-device downloads. 2.17.0 shipped a Vellum-style EPUB 3.0 generator at `editor/epub_generator.py` — cover → title page → copyright → author's note → content warning → chapters with word-form numbers ("Part One") and a roman drop cap on the first paragraph that preserves italic-narration body style. Reuses `parse_front_matter` from converter.py so the input contract matches every other regenerate format. Validated under epubcheck 5.1.0 / EPUB 3.3 — 0/0/0/0. 2.17.1 fixed three visual issues from a Hypnotic_Claim eyeball pass: chapter heading was dropping the "Part" prefix (now joined with the word-form number), trailing `---` between chapters was emitting a stray `<hr>` that produced a blank page in some readers (now stripped per chapter), and text-message styling reworked into a sender-tagged card layout that works whether or not the source uses `@text-sent`/`@text-received` anchors. 2.17.2 moved the EPUB output from `Markdown/{stem}.epub` to its own `EPUB/` folder matching the existing format-folder convention; `posting/generate_story_json.py` extended to auto-discover the new folder and flip `formats["epub"] = True`. 2.17.3 added per-format and whole-story downloads as a mobile-test workflow — `.epub` allowlisted in `/api/posting/file`, new `/api/posting/archive` endpoint streams the entire story folder (excluding `Backups/`) as a zip, surfaced via a "Download all (zip)" footer on the Available Formats card AND a new "Downloads ▾" dropdown in the editor toolbar. 2.17.4 cleaned up the editor downloads dropdown: one row per format in a fixed sensible order (EPUB → PDF → Styled HTML → Clean HTML → SoFurry HTML → BBCode → Markdown), per-chapter formats hidden, friendly labels, proper CSS (label left, muted size right, bordered zip footer). Earlier in the session: Mobile Mode Phase 5 sweep + backlog cleanup through 2.16.14 — see CHANGELOG for the BUG-* references closed.)
-**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — production was confirmed running 2.14.6 during round-2 QA. 2.14.7 was never deployed; 2.14.8 supersedes it and bundles all the QA fixes.
-**GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.14.3 — tag includes the Windows zip artifact. 2.14.4–2.14.8 haven't been tagged yet (bundle into the next feature release once the wizard UX has soaked).
+**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — running 2.17.5 (deployed 2026-05-02, confirmed via `/api/health`).
+**GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.13.8 — last tagged release. Master is now 23 versions ahead (2.13.9 → 2.17.5). Tag drift covered in "CI / release pipeline state" section below; cutting a fresh tag is a single `git tag v2.17.5 && git push --tags` away when there's appetite.
 
 > **2.14.3 file-tree refactor — read this before navigating the codebase.** All 11 platform clients moved into `clients/` (e.g. `api_client/` → `clients/ib/`, `ao3_client/` → `clients/ao3/`, ...). Imports now look like `from clients.ib.client import InkbunnyClient`. Internal docs (HANDOFF, SETUP, ROADMAP_PUBLIC, documentation_guide) moved into `docs/`. Three orphans deleted from root (`112.png`, `TESTING_CHECKLIST.md`, legacy `settings.json`). Zero behaviour change. See CHANGELOG `[2.14.3]` for the full validation gates.
 
@@ -104,6 +104,7 @@ cover/chapter thumbnail uploads, and GitHub release packaging.
 | **EPUB own folder + auto-discovery** | 2.17.2 | Output moved from `Markdown/{stem}.epub` → `EPUB/{stem}.epub` to match the per-format folder convention. `posting/generate_story_json.py:_discover_formats` flips `formats["epub"] = True` automatically when the folder has files. |
 | **Format downloads (mobile-friendly)** | 2.17.3 | EPUB triple-broken in 2.17.0–2.17.2 — not in `_FORMAT_KEY_PATTERNS`, not in `_DOWNLOAD_EXTENSIONS`, no media-type. All three fixed. New `GET /api/posting/archive` streams the entire story folder (excluding `Backups/`) as a zip via `StreamingResponse`. Two surfaces: "Download all (zip)" footer on the Available Formats card on the published-story page, and a new "Downloads ▾" dropdown in the editor toolbar that lazy-fetches the format list and includes the zip. |
 | **Downloads dropdown polish** | 2.17.4 | One row per format, fixed display order (EPUB → PDF → Styled HTML → Clean HTML → SoFurry HTML → BBCode → Markdown). Per-chapter formats (`chapter_bbcode`, `squidgeworld`) hidden — the zip covers them. Proper CSS (`.downloads-row` flex layout, `.downloads-zip` styled footer, `.downloads-empty` muted state). |
+| **`pawsync --prune`** | 2.17.5 | Closes the "manual `rm -rf` after deleting test stories" gap. `pawsync.py` accepts `--prune` (removes server-side top-level dirs missing locally; `Backups`/`Drafts`/`Styled_HTML` untouchable) and `--dry-run` (lists without removing). Default behaviour unchanged — `pawsync.bat` keeps the additive `tar xzf` semantics. Roadmap also corrected: cache-buster consistency and CI pytest items were stale (already done in earlier versions). |
 | **Mobile Mode (Phase 5 sweep)** | 2.16.4–2.16.8 | After-deploy audit pass. **2.16.4** hot-fixed the silent CSP block that had been dropping every `data-mobile` rule since 2.16.0 — inline boot-script SHA-256 hash had to be re-computed in `dashboard.py`. **2.16.5** added page-header `padding-left:60px` so titles ("Overview", "Settings") aren't half-hidden behind the hamburger, and `!important` on stats-grid 1-col rule to beat the inline JS style on the per-platform grid. **2.16.6** wrapped `.page-header` and gave its inline-styled action div 100%-width / 50%-flex buttons so 4-button rows (Save Settings / Poll Now / Full Resync / Clear Session) flow into 2×2 instead of forcing the doc to 830px. **2.16.7** clamped `.settings-tabs` (`max-width:100%`+`min-width:0`) so the existing scroll-x actually engages, plus `.main-content { max-width:100vw; overflow-x:hidden }` as defense-in-depth. **2.16.8** closed deferred backlog: SameSite=Strict→lax (fixes periodic 401 bursts on prod), favicon-401 exemption, `/api/health` exposes `version`. |
 | **Mobile Mode (Phase 3)** | 2.16.2 | Vertical sweep — every multi-col grid (growth/goal/card/story/tag/chart-row/theme/fa-metadata/setup-platforms) forced to 1-col on mobile. Detail header → thumb-on-top vertical. Pinned row scroll-snap → vertical stack. Compare chips → full-width buttons. Date range → wraps in 3-up rows. Settings rows toggle right-aligned. Log + timeline → single column. |
 | **Mobile Mode (Phase 2)** | 2.16.1 | Portrait-phone polish after a real device pass. iOS 16px floor on all inputs (no auto-zoom on focus). Editor toolbar collapses behind ⋯ More button; only back/title/⋯/Save/Metadata visible by default. Bottom nav swap: Editor replaces Analytics. Stat cards become 1-col horizontal strips. Page header h2 17px + tighter margins. Chart-modal + platform-grid full-screen with safe-area. Submission cards 1-col with 200px thumbs. |
@@ -356,7 +357,7 @@ gcloud compute ssh pawpoller --zone=us-east1-c --command="curl -s -H 'Authorizat
 
 If the user asks to resume, the most useful things to read first are:
 1. This file (HANDOFF.md)
-2. `../CHANGELOG.md` top section — covers 2.10.5 through 2.14.3
+2. `../CHANGELOG.md` top section — most recent: 2.17.5 (`pawsync --prune`), 2.17.4 (downloads dropdown), 2.17.0–2.17.3 (EPUB output + mobile downloads). Pre-EPUB pivot history goes back to 2.10.5
 3. `ROADMAP_PUBLIC.md` — public release plan (all must/should-haves + most nice-to-haves now COMPLETE)
 4. `documentation_guide.md` — full technical reference (now includes auto-sync architecture under "Settings Auto-Sync (2.14.2+)")
 5. **Testing checklists** — all QA artefacts live under `qa/`:
@@ -368,24 +369,24 @@ If the user asks to resume, the most useful things to read first are:
 6. `routes/editor_api.py` + `routes/settings_api.py` — main API surface
 7. `auto_sync.py` — new in 2.14.2; small (~170 LOC), worth a glance before touching settings persistence
 
-### CI / release pipeline state (2026-04-27)
+### CI / release pipeline state (updated 2026-05-02)
 
 The `Build & Release` workflow fires on `v*` tag pushes and has two
-jobs: `test` (Ubuntu, unittest discover) and `build-windows`
-(PyInstaller → zip → `softprops/action-gh-release@v2`). The `Lint`
-workflow fires on every push to master (ruff + JS syntax).
-
+jobs: `test` (Ubuntu, `python -m pytest tests/ -v` since 2.13.8) and
+`build-windows` (PyInstaller → zip → `softprops/action-gh-release@v2`).
+The `Lint` workflow fires on every push to master (ruff + JS syntax).
 `requirements-server.txt` pins the test deps (`pytest~=8.3`,
-`respx~=0.22`) — before that the test job always failed on ModuleNotFoundError.
-Latent issue: `test_integration_posting` and `test_platform_posters` are
-pytest-style so `unittest discover` skips them silently. Switching the
-workflow `test` step to `pytest` would actually run them; not urgent.
+`pytest-asyncio~=1.3`, `respx~=0.22`). 91 tests, all green.
 
 **Tag drift**: `v2.13.8` is still the most recent published release.
-2.13.9 → 2.14.3 has shipped to master + GCP but no Windows artifacts
-have been published. Cutting `v2.14.3` would require re-running the
-build job; worth doing once the file-tree refactor + auto-sync work
-have soaked for a day or two.
+2.13.9 → 2.17.5 (23 versions: vault init fix, 8-theme picker, Vibe
+Pack, auto-sync, file-tree refactor, audit-debt refactor, coordinated
+desktop ↔ server, mobile mode phases 0–5, BUG-* sweep, EPUB output,
+mobile downloads, pawsync prune) has shipped to master + GCP but no
+Windows artifacts have been published. Cutting `v2.17.5` would re-run
+the build job and produce a fresh `PawPoller-windows-x64.zip` artifact;
+worth doing as a "release everything that's accumulated" pass before
+the next feature push.
 
 ### QA status as of 2026-04-26
 
