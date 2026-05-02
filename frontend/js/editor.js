@@ -427,37 +427,45 @@ const Editor = {
 
         App._setContent(`
             <div class="editor-container">
-                <div class="editor-toolbar">
+                <div class="editor-toolbar" id="editor-toolbar">
                     <a href="#/editor" class="editor-back">← Stories</a>
                     <span class="editor-title" id="editor-title">${Utils.escapeHtml(storyName.replace(/_/g, ' '))}</span>
                     <div class="editor-actions">
-                        <select id="editor-chapter-nav" title="Jump to chapter"></select>
-                        <span id="editor-slop" class="editor-slop" title="Slop score"></span>
-                        <span id="editor-status" class="editor-status"></span>
-                        <span id="editor-wordcount" class="editor-wordcount"></span>
-                        <button id="editor-save-btn" class="btn btn-sm">Save</button>
-                        <button id="editor-metadata-btn" class="btn btn-sm btn-outline">Metadata</button>
-                        <button id="editor-css-btn" class="btn btn-sm btn-outline">CSS</button>
-                        <div class="regen-dropdown" id="regen-dropdown">
-                            <button id="editor-regen-btn" class="btn btn-sm btn-outline">Regenerate &#9662;</button>
-                            <div class="regen-dropdown-menu" id="regen-dropdown-menu">
-                                <button data-regen="all">All formats</button>
-                                <button data-regen="html">HTML only (SF/AO3/SQW)</button>
-                                <button data-regen="bbcode">BBCode only (IB/WS)</button>
-                                <button data-regen="styled">Styled HTML + CSS</button>
-                                <button data-regen="sqw">SquidgeWorld only</button>
-                                <button data-regen="pdf">PDF only</button>
-                                <button data-regen="chapters">Chapter splits only</button>
+                        <!-- Secondary cluster — collapsed behind the
+                             ⋯ More button on mobile so the toolbar
+                             stays one row. Save + Metadata stay
+                             visible as primary affordances. -->
+                        <div class="editor-actions-secondary" id="editor-actions-secondary">
+                            <select id="editor-chapter-nav" title="Jump to chapter"></select>
+                            <span id="editor-slop" class="editor-slop" title="Slop score"></span>
+                            <span id="editor-status" class="editor-status"></span>
+                            <span id="editor-wordcount" class="editor-wordcount"></span>
+                            <button id="editor-css-btn" class="btn btn-sm btn-outline">CSS</button>
+                            <div class="regen-dropdown" id="regen-dropdown">
+                                <button id="editor-regen-btn" class="btn btn-sm btn-outline">Regenerate &#9662;</button>
+                                <div class="regen-dropdown-menu" id="regen-dropdown-menu">
+                                    <button data-regen="all">All formats</button>
+                                    <button data-regen="html">HTML only (SF/AO3/SQW)</button>
+                                    <button data-regen="bbcode">BBCode only (IB/WS)</button>
+                                    <button data-regen="styled">Styled HTML + CSS</button>
+                                    <button data-regen="sqw">SquidgeWorld only</button>
+                                    <button data-regen="pdf">PDF only</button>
+                                    <button data-regen="chapters">Chapter splits only</button>
+                                </div>
+                            </div>
+                            <button id="editor-publish-btn" class="btn btn-sm btn-outline" title="Check publishability across all platforms">Publish</button>
+                            <button id="editor-format-btn" class="btn btn-sm btn-outline" title="Format source code (Shift+Alt+F)">Format</button>
+                            <div class="format-tabs" id="format-tabs">
+                                <button class="format-tab active" data-fmt="clean_html">Clean HTML</button>
+                                <button class="format-tab" data-fmt="sofurry_html">SoFurry</button>
+                                <button class="format-tab" data-fmt="bbcode">BBCode</button>
+                                <button class="format-tab" data-fmt="styled_html">Styled</button>
                             </div>
                         </div>
-                        <button id="editor-publish-btn" class="btn btn-sm btn-outline" title="Check publishability across all platforms">Publish</button>
-                        <button id="editor-format-btn" class="btn btn-sm btn-outline" title="Format source code (Shift+Alt+F)">Format</button>
-                        <div class="format-tabs" id="format-tabs">
-                            <button class="format-tab active" data-fmt="clean_html">Clean HTML</button>
-                            <button class="format-tab" data-fmt="sofurry_html">SoFurry</button>
-                            <button class="format-tab" data-fmt="bbcode">BBCode</button>
-                            <button class="format-tab" data-fmt="styled_html">Styled</button>
-                        </div>
+                        <!-- ⋯ button — hidden on desktop, only mobile -->
+                        <button id="editor-more-btn" class="btn btn-sm btn-outline editor-more-btn" type="button" title="More actions">&hellip;</button>
+                        <button id="editor-save-btn" class="btn btn-sm">Save</button>
+                        <button id="editor-metadata-btn" class="btn btn-sm btn-outline">Metadata</button>
                     </div>
                 </div>
                 <!-- Mobile-only single-panel switcher. CSS hides this on
@@ -578,6 +586,21 @@ const Editor = {
                 });
             });
             this.setMobileActivePanel('panel-md-code');
+
+            // Mobile More-actions toggle. Toolbar starts collapsed;
+            // tapping ⋯ slides the secondary actions down as a wrap
+            // row. Re-tap to collapse. Outside-click closes too.
+            document.getElementById('editor-more-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.getElementById('editor-toolbar')?.classList.toggle('actions-open');
+            });
+            document.addEventListener('click', (e) => {
+                const toolbar = document.getElementById('editor-toolbar');
+                if (!toolbar || !toolbar.classList.contains('actions-open')) return;
+                if (e.target.closest('#editor-actions-secondary')) return;
+                if (e.target.closest('#editor-more-btn')) return;
+                toolbar.classList.remove('actions-open');
+            });
             document.getElementById('editor-css-btn')?.addEventListener('click', () => this.toggleCssEditor());
             document.getElementById('editor-metadata-btn')?.addEventListener('click', () => MetaEditor.toggle());
             document.getElementById('editor-save-btn')?.addEventListener('click', () => this.save());

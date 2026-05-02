@@ -4,6 +4,90 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.16.1] - 2026-05-02
+
+### Mobile Mode — Phase 2 portrait-phone polish
+
+Follow-up to 2.16.0 after a real device pass. Phase 1 closed the
+worst breakages but the layout still felt cramped in iPhone Plus
+portrait. Six targeted fixes.
+
+**iOS input zoom (P2.A).** Every `<input>`, `<select>`, `<textarea>`,
+`.search-input`, and `.filter-select` now floors at 16px on mobile.
+iOS Safari auto-zooms when a focused input has font-size < 16px and
+never zooms back (the fix isn't on focus, it's on `blur`, which iOS
+doesn't honour). The 2.16.0 contenteditable fix already covered the
+WYSIWYG; this catches everything else — credential fields, search
+boxes, settings inputs, the chapter-nav select. `text-size-adjust:
+100%` added to `<html>` so OS-level scaling doesn't second-guess us.
+
+**Editor toolbar collapse (P2.B).** The toolbar had 12+ children
+(back, title, chapter dropdown, slop/status/wordcount, Save,
+Metadata, CSS, Regenerate ▾, Publish, Format, 4 format tabs) which
+wrapped into 3-4 ugly rows on a 430px viewport. Wrapped the
+secondary cluster in `.editor-actions-secondary` and added a `⋯`
+More button visible only on mobile. Toolbar stays one row (back /
+title / ⋯ / Save / Metadata); the secondary cluster slides in below
+when the user taps `⋯`. Outside-click closes. Title gets ellipsis
+truncation so long story names don't push the primary buttons
+off-screen.
+
+**Bottom nav swap Analytics → Editor (P2.C).** The Editor is one
+of the heaviest-used surfaces and was only reachable via sidebar →
+scroll → tap. Bottom nav now shows Overview / Platforms / Upload /
+**Editor** / Settings. Analytics remains in the sidebar (Tools
+section).
+
+**Stat cards 1-col strips on portrait (P2.D).** Existing 480px
+breakpoint was 2-col with values cramped in. Mobile mode now stacks
+cards vertically as horizontal strips: label left, value right, one
+short row per stat. Eight stats become eight short rows instead of
+four tall card pairs — less scrolling, more legible.
+
+**Page header tighten + 16px form controls (P2.E).** `.page-header
+h2` drops to 17px, `margin-bottom` from 24px to 12px. `.toolbar`
+gap from 8px to 6px. Search/filter inputs get min-height: 44px
+explicitly so they're tappable and clear of safe-area junk.
+
+**Modal full-screen on mobile (P2.F).** Chart-modal and
+platform-grid both went from centred dialogs (with 24px / 5vw
+insets) to edge-to-edge sheets respecting `env(safe-area-inset-*)`.
+Chart legends were getting cropped in the centred 90vh dialog;
+full-screen gives them room. Platform-grid drops from 3-col to
+2-col with bigger 96px-min cards.
+
+**Bonus: submission-card grid → 1-col on portrait** with 200px-tall
+thumbnails (was 2-col with 120px-tall thumbs at the 480px
+breakpoint, too small to read titles).
+
+### Files touched
+
+`config.py` (APP_VERSION → 2.16.1),
+`frontend/index.html` (bottom nav: Editor replaces Analytics),
+`frontend/js/editor.js` (toolbar HTML wraps secondary cluster +
+adds ⋯ More button; click bindings + outside-click close),
+`frontend/css/editor.css` (Phase 2 block at end of mobile-mode
+section: iOS 16px, stat-card strip, page-header tighten, sub-card
+1-col, chart-modal + platform-grid full-screen, editor-toolbar
+collapse with .actions-open class),
+`CHANGELOG.md`.
+
+### What's NOT fixed in 2.16.1
+
+Phase 2 deferred items — all judged lower-impact than the six above:
+metadata drawer accordion-collapse, sidebar search, format-tabs
+"More ▾" overflow when `actions-open` (currently wraps OK), CSS
+editor mobile UX (the 5th-tab works but theme-row layout is desktop-
+sized), per-platform dashboard pages haven't had a portrait audit.
+
+The legacy `@media (max-width: 768px)` rules still drive a chunk of
+the mobile UX. `mobile_mode = "always_on"` on a wide desktop fires
+the new `[data-mobile="1"]` rules but not the legacy ones — the two
+sets aren't unified yet. Refactor pass deferred until the new rules
+have stabilised.
+
+---
+
 ## [2.16.0] - 2026-05-02
 
 ### Mobile Mode — Phase 0 + 1

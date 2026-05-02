@@ -3620,3 +3620,260 @@ html[data-mobile="1"] .publish-check-detail {
     padding: 14px;
     font-size: 13px;
 }
+
+/* iOS Safari auto-zooms when a focused input has font-size < 16px and
+ * never zooms back. Floor every form control to 16px on mobile. The
+ * `text-size-adjust` keeps page-level text honest if the OS tries
+ * its own scaling. Apply to the elements directly (not the parents)
+ * so children inherit nothing — `font-size: 1rem` would still be
+ * <16px wherever the host overrides root font-size. */
+html[data-mobile="1"] input,
+html[data-mobile="1"] select,
+html[data-mobile="1"] textarea,
+html[data-mobile="1"] .search-input,
+html[data-mobile="1"] .filter-select {
+    font-size: 16px;
+}
+html[data-mobile="1"] {
+    -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+}
+
+/* =====================================================================
+   Phase 2 — portrait-phone polish (2.16.1)
+   ===================================================================== */
+
+/* Stat cards — switch from 2-col grid to 1-col horizontal strips on
+ * portrait phone. The card becomes a single row: label left, value
+ * right. 8 stats stack as 8 short rows instead of 4 tall card pairs,
+ * which scrolls less and reads faster on a 430px viewport. */
+html[data-mobile="1"] .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+
+html[data-mobile="1"] .stat-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    gap: 12px;
+    border-left-width: 3px;
+}
+
+html[data-mobile="1"] .stat-card .label {
+    font-size: 12px;
+    margin-bottom: 0;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html[data-mobile="1"] .stat-card .value {
+    font-size: 20px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+html[data-mobile="1"] .stat-card .delta {
+    font-size: 11px;
+    margin-top: 0;
+    flex-shrink: 0;
+}
+
+/* Page header tighten — reduce h2 size and bottom margin so the
+ * actual page content gets more vertical real estate. */
+html[data-mobile="1"] .page-header {
+    margin-bottom: 12px;
+    gap: 8px;
+}
+
+html[data-mobile="1"] .page-header h2 {
+    font-size: 17px;
+    line-height: 1.2;
+}
+
+/* Toolbar inputs/selects — 16px font (handled above) but also the
+ * filter row should be tighter. */
+html[data-mobile="1"] .toolbar {
+    gap: 6px;
+}
+
+html[data-mobile="1"] .search-input,
+html[data-mobile="1"] .filter-select {
+    min-height: 44px;
+    padding: 10px 12px;
+}
+
+/* Submission card grid — 1 col on portrait phone with bigger thumbs.
+ * The 480px breakpoint had 2-col with 120px-tall thumbs, too small
+ * to read titles. Single column reads better on a 430px viewport. */
+html[data-mobile="1"] .submission-card-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px;
+}
+
+html[data-mobile="1"] .submission-card-thumb {
+    height: 200px;
+}
+
+/* Chart-modal full-screen on mobile. Desktop has it as a centred
+ * dialog with margin; on a phone every pixel matters and the
+ * legend was getting cropped. The modal is a flex child of an
+ * overlay, so we kill the overlay's padding and let the modal
+ * stretch edge-to-edge. */
+html[data-mobile="1"] .chart-modal-overlay {
+    padding: 0;
+    padding-top: env(safe-area-inset-top, 0);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    align-items: stretch;
+    justify-content: stretch;
+}
+
+html[data-mobile="1"] .chart-modal {
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    height: 100%;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    padding: 14px;
+}
+
+html[data-mobile="1"] .chart-modal-wrap {
+    height: calc(100% - 60px);
+}
+
+/* Platform-grid popover — also full-screen sheet on mobile. Same
+ * pattern as chart-modal: kill the overlay's flex centring and let
+ * the panel fill. The panel uses the generic .modal-panel class so
+ * we target via the wrapping #platform-grid-overlay. */
+html[data-mobile="1"] #platform-grid-overlay.modal-overlay.open {
+    align-items: stretch;
+    justify-content: stretch;
+    padding-top: env(safe-area-inset-top, 0);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+html[data-mobile="1"] #platform-grid-panel.modal-panel {
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    height: 100%;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    overflow-y: auto;
+}
+
+html[data-mobile="1"] .platform-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+html[data-mobile="1"] .platform-grid-item {
+    padding: 18px 12px;
+    min-height: 96px;
+}
+
+/* Editor toolbar collapse — ⋯ More button hides secondary actions on
+ * mobile. Toolbar stays one row (back / title / ⋯ / Save / Metadata)
+ * and the secondary cluster (chapter nav, slop, status, wordcount,
+ * CSS, Regenerate, Publish, Format code, format tabs) drops down on
+ * tap as a wrap row pushed below the primary row. */
+.editor-more-btn {
+    display: none;
+}
+
+html[data-mobile="1"] .editor-more-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 40px;
+    font-size: 18px;
+    padding: 0 12px;
+}
+
+html[data-mobile="1"] .editor-actions-secondary {
+    display: none;
+}
+
+html[data-mobile="1"] #editor-toolbar.actions-open .editor-actions-secondary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    flex-basis: 100%;
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-primary);
+}
+
+/* Inside the open secondary cluster, give every actionable child
+ * proper touch sizing. Status spans (slop / status / wordcount) get
+ * displayed inline as tag-like pills so they fit visually with the
+ * actual buttons. */
+html[data-mobile="1"] #editor-toolbar.actions-open .editor-actions-secondary .btn,
+html[data-mobile="1"] #editor-toolbar.actions-open .editor-actions-secondary select,
+html[data-mobile="1"] #editor-toolbar.actions-open .editor-actions-secondary .format-tab {
+    min-height: 40px;
+}
+
+html[data-mobile="1"] #editor-toolbar.actions-open .editor-actions-secondary .editor-slop,
+html[data-mobile="1"] #editor-toolbar.actions-open .editor-actions-secondary .editor-status,
+html[data-mobile="1"] #editor-toolbar.actions-open .editor-actions-secondary .editor-wordcount {
+    padding: 6px 10px;
+    background: var(--surface-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1;
+}
+
+/* Chapter nav select — full-width-ish row item on mobile so the
+ * truncated title is readable. */
+html[data-mobile="1"] #editor-toolbar.actions-open #editor-chapter-nav {
+    flex: 1 1 100%;
+    max-width: none;
+    min-width: 0;
+}
+
+/* Format tabs inside the open secondary cluster — let them wrap
+ * onto their own row. */
+html[data-mobile="1"] #editor-toolbar.actions-open .format-tabs {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+}
+
+/* Title — truncate with ellipsis on mobile so it doesn't push the ⋯
+ * and Save buttons off-screen. */
+html[data-mobile="1"] .editor-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+}
+
+html[data-mobile="1"] .editor-back {
+    flex-shrink: 0;
+    font-size: 13px;
+}
+
+html[data-mobile="1"] .editor-toolbar {
+    align-items: center;
+}
+
+/* Regen dropdown menu position — the parent regen-dropdown is a
+ * flex child of the secondary cluster which is itself a wrap row;
+ * keep the menu absolutely positioned to the button. */
+html[data-mobile="1"] .regen-dropdown-menu {
+    right: auto;
+    left: 0;
+}
