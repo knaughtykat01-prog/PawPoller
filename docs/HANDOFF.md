@@ -394,9 +394,9 @@ Automated Playwright sweep ran against the 2.14.7 test container (port 8421, emp
 
 **Open bugs after 2.16.8 ship** (all P2/P3, none blocking):
 - ~~**BUG-011** P3: `/api/health` should include `version` field~~ — fixed in 2.16.8, now returns `{"status": "ok", "version": APP_VERSION}`
-- **BUG-014** P3: Inkbunny tab heading reads "Stories" instead of "Inkbunny Dashboard" — cosmetic
+- ~~**BUG-014** P3~~ — fixed in 2.16.13. IB dashboard now renders `<h2>Inkbunny Dashboard</h2>` matching every other platform's `<h2>{Platform} Dashboard</h2>` pattern
 - ~~**BUG-016** P3~~ — fixed in 2.16.9. New `GET /api/poll/all-progress` returns the full `{ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw}` map; frontend ticker is now one fetch with one `.catch` instead of 9 parallel requests with 9 independent error paths. Per-platform endpoints kept for direct callers
-- **BUG-017** P3: server runtime should hard-block `#/setup` route after `setup_complete: true`
+- ~~**BUG-017** P3~~ — fixed in 2.16.13. New `_guardSetupRoute()` fetches `/api/setup-status` on every `#/setup` navigation; bounces to `#/` if `setup_complete: true`. The Re-run setup button still works because it clears the flag server-side first
 - **BUG-018** checklist-cleanup: delete §17 Goals + §18 Tags from webapp checklist (no longer apply post-2.14)
 - **BUG-020** P2: "Regenerate All formats" only confirmed incomplete on test container (no PDF deps); prod has WeasyPrint working — re-test against prod before fixing
 - **BUG-021** P2: Inkbunny Submissions search filter is non-functional on production. Was test-container-incidental on first sighting; confirmed real on prod

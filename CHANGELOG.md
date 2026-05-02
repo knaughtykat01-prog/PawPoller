@@ -4,6 +4,32 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.16.13] - 2026-05-02
+
+### BUG-014 + BUG-017 cleanup
+
+**BUG-014.** Inkbunny dashboard rendered `<h2>Dashboard</h2>` —
+every other platform renders `<h2>{Platform} Dashboard</h2>`. The
+IB template predates the per-platform pattern. Renamed to
+`Inkbunny Dashboard` for consistency.
+
+**BUG-017.** `#/setup` was reachable on the live server runtime
+even after `setup_complete: true` — accidentally typing the route,
+hitting back from a stale tab, or following a bookmark would dump
+the user back into the wizard with the option to overwrite live
+archive path / platform credentials / polling owner. Added a route
+guard `_guardSetupRoute()` that fetches `/api/setup-status` on
+every `#/setup` navigation; if `setup_complete` is true, bounces
+to `#/` (Overview). The "Re-run setup" button in Settings clears
+`setup_complete` server-side before navigating, so it still flows
+through the guard cleanly.
+
+If the status fetch fails, the guard falls through to the wizard
+(better to render than strand on a blank page). The wizard's own
+backend calls will fail noisily if the backend is truly down.
+
+---
+
 ## [2.16.12] - 2026-05-02
 
 ### Sidebar — drop the "Platform Dashboards" dropdown

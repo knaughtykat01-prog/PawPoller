@@ -598,7 +598,12 @@ const App = {
         } else if (parts[0] === 'dashboard-setup') {
             this.renderDashboardSetup();
         } else if (parts[0] === 'setup') {
-            this.renderSetupWizard();
+            // 2.16.13 (BUG-017): hard-block #/setup once setup_complete
+            // is true so users can't accidentally re-enter the wizard
+            // and overwrite live config. The "Re-run setup" button
+            // clears the flag server-side first, so it still flows
+            // through this guard cleanly.
+            this._guardSetupRoute();
         } else if (parts[0] === 'login') {
             this.renderLogin();
         } else if (parts[0] === 'loading') {
@@ -1100,6 +1105,31 @@ const App = {
      * On completion, marks setup_complete=true and redirects to the
      * main dashboard. The polling-owner gate in main.py reads
      * setup_mode at startup, so a fresh restart applies. */
+
+    /* 2.16.13 (BUG-017): #/setup route guard. If setup_complete is
+     * already true (the normal post-onboarding state), bounce the
+     * user back to overview instead of letting them re-enter the
+     * wizard — accidental re-entry would let them overwrite live
+     * config (archive path, platform credentials, polling owner).
+     * The "Re-run setup" button on Settings clears setup_complete
+     * server-side first, so it still flows through this guard. */
+    async _guardSetupRoute() {
+        try {
+            const status = await API.getSetupStatus();
+            if (status.setup_complete) {
+                window.location.hash = '#/';
+                this.route();
+                return;
+            }
+        } catch (err) {
+            /* If the status check fails, fall through to the wizard
+             * — better to render than to strand the user on a blank
+             * page. The wizard's own actions will fail noisily if
+             * the backend is truly down. */
+            console.warn('[App] Setup-route guard: status check failed, allowing wizard:', err);
+        }
+        this.renderSetupWizard();
+    },
 
     async renderSetupWizard() {
         /* Platform definitions for the platform-connect step — reuses emoji + colour from the nav grid */
@@ -1990,7 +2020,7 @@ const App = {
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
-                    <h2>Dashboard</h2>
+                    <h2>Inkbunny Dashboard</h2>
                     <div style="display:flex;gap:8px">
                         <button class="btn btn-primary" onclick="App._dashPoll(this,'ib')">Poll Now</button>
                         <button class="btn btn-secondary" onclick="App._dashResync(this,'ib')">Full Resync</button>
