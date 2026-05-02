@@ -4,6 +4,26 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.17.2] - 2026-05-02
+
+### EPUB — own folder + auto-discovery in story.json
+
+EPUBs were landing in `Markdown/{stem}.epub` next to MASTER.md, which
+muddied the canonical-source folder. Moved to `EPUB/{stem}.epub` to
+match the existing per-format folder convention (`BBCode/`, `HTML/`,
+`PDF/`, `SquidgeWorld/`).
+
+`posting/generate_story_json.py:_discover_formats` now flips
+`formats["epub"] = True` when the `EPUB/` folder exists with at least
+one file in it — same auto-discovery pattern as every other format.
+No manual story.json edits required for new stories. Existing
+story.json files pick up the flag the next time they're regenerated.
+
+The EPUB regenerate result line now reads
+`EPUB/{stem}.epub (NNN bytes)` instead of `Markdown/...`.
+
+---
+
 ## [2.17.1] - 2026-05-02
 
 ### EPUB polish — first round of visual feedback

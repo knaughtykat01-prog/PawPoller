@@ -806,13 +806,15 @@ async def regenerate(story_name: str, req: RegenerateRequest):
     if should_gen("epub"):
         try:
             from editor.epub_generator import build_epub
-            epub_path = story_dir / "Markdown" / f"{stem}.epub"
+            epub_dir = story_dir / "EPUB"
+            epub_dir.mkdir(exist_ok=True)
+            epub_path = epub_dir / f"{stem}.epub"
             build_epub(
                 story_dir, epub_path,
                 warning_position=req.epub_warning_position,
             )
             size = epub_path.stat().st_size if epub_path.is_file() else 0
-            results.append(f"Markdown/{stem}.epub ({size:,} bytes)")
+            results.append(f"EPUB/{stem}.epub ({size:,} bytes)")
         except Exception as e:
             errors.append(f"EPUB: {e}")
 

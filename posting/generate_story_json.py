@@ -117,6 +117,8 @@ def generate_story_json(story_path: Path) -> dict:
         formats["html"] = True
     if (story_path / "PDF").is_dir() and any((story_path / "PDF").iterdir()):
         formats["pdf"] = True
+    if (story_path / "EPUB").is_dir() and any((story_path / "EPUB").iterdir()):
+        formats["epub"] = True
     if (story_path / "Markdown" / "MASTER.md").is_file():
         formats["markdown"] = True
     if (story_path / "SquidgeWorld").is_dir() and any((story_path / "SquidgeWorld").iterdir()):

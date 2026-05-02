@@ -1017,7 +1017,7 @@ def build_epub(story_dir: str | Path, output_path: str | Path | None = None,
         stem = master_path.stem  # MASTER -> 'MASTER'
         # Prefer the story title for the filename
         safe_title = re.sub(r"[^A-Za-z0-9._\- ]", "", title).strip().replace(" ", "_") or stem
-        output_path = master_path.parent / f"{safe_title}.epub"
+        output_path = story_dir / "EPUB" / f"{safe_title}.epub"
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
