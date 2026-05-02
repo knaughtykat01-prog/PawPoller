@@ -4,6 +4,42 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.17.4] - 2026-05-02
+
+### Editor downloads dropdown — clean, whole-story-only
+
+The 2.17.3 dropdown was listing every individual file in multi-file
+formats — six PDF entries (full + 5 chapter splits), every chapter of
+SquidgeWorld, etc. Asked-for clean-up: one row per format, full
+story only. Anyone who wants individual chapters grabs the
+whole-story zip and cherry-picks.
+
+Rewrote `_populateDownloadsMenu`:
+- Hardcoded format render order: EPUB → PDF → Styled HTML →
+  Clean HTML → SoFurry HTML → BBCode → Markdown.
+  `chapter_bbcode` and `squidgeworld` (chapter-only formats) are
+  excluded entirely; the zip covers them.
+- One row per format, takes `meta.files[0]` (the format-pattern map
+  in `story_reader.py` already orders whole-story files first).
+  Defensive: skip if the only file is a chapter split.
+- Friendly labels (`sofurry_html` -> "SoFurry HTML" etc.) instead
+  of underscored format keys.
+
+CSS:
+- New `.regen-dropdown-menu.downloads` modifier widens the menu to
+  240px so labels + filesizes fit on one line.
+- New `.downloads-row` class for the flex layout — label on the
+  left, muted filesize right-aligned with tabular-nums.
+- New `.downloads-zip` class for the whole-story footer entry —
+  border-top + bold weight to set it apart.
+- Empty state styled via `.downloads-empty` instead of inline
+  `style=""` blobs.
+
+Whole-story zip stays at the bottom of every variant of the menu —
+even on error / loading-failed states — so it's always reachable.
+
+---
+
 ## [2.17.3] - 2026-05-02
 
 ### Mobile-friendly format downloads (EPUB included)

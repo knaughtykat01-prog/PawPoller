@@ -1461,50 +1461,79 @@ const Editor = {
     async _populateDownloadsMenu() {
         const menu = document.getElementById('downloads-dropdown-menu');
         if (!menu) return;
+        // Tag the menu so the downloads-specific CSS rules apply.
+        menu.classList.add('downloads');
+
+        // Per-format friendly label + render order (top to bottom in
+        // the dropdown). Per-chapter formats (chapter_bbcode, the
+        // chapter-only squidgeworld) are deliberately excluded —
+        // anyone wanting individual chapters can grab the whole-story
+        // zip and cherry-pick from there.
+        const FORMAT_LABELS = {
+            epub: 'EPUB',
+            pdf: 'PDF',
+            styled_html: 'Styled HTML',
+            html: 'Clean HTML',
+            sofurry_html: 'SoFurry HTML',
+            bbcode: 'BBCode',
+            markdown: 'Markdown',
+        };
+        const FORMAT_ORDER = ['epub', 'pdf', 'styled_html', 'html',
+                              'sofurry_html', 'bbcode', 'markdown'];
+
+        const fmtSize = (bytes) => {
+            if (!bytes) return '';
+            if (bytes < 1024) return `${bytes} B`;
+            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+            return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        };
+        const isChapterFile = (path) =>
+            path.startsWith('Chapters/') || path.includes('/Chapters/');
+
+        const archiveUrl = `/api/posting/archive?story=${encodeURIComponent(this.storyName)}`;
+        const zipEntry =
+            `<a class="downloads-row downloads-zip" href="${archiveUrl}" download ` +
+            `title="Entire story folder as a single zip">` +
+            `<span>Whole story (.zip)</span>` +
+            `<span class="downloads-row-size">all formats</span></a>`;
+
         try {
             // Reuse the published-story endpoint — it already enriches
-            // every declared format with file size + modified time. The
-            // editor doesn't otherwise hit /api/posting, but the
-            // metadata is exactly what we need here.
+            // every declared format with file size + modified time.
             const resp = await fetch(`/api/posting/stories/${encodeURIComponent(this.storyName)}`);
             if (!resp.ok) {
-                menu.innerHTML = `<div style="padding:0.4em 0.75em;color:#c33">Failed to load formats (${resp.status})</div>`;
+                menu.innerHTML =
+                    `<div class="downloads-empty">Failed to load formats (${resp.status})</div>` + zipEntry;
                 return;
             }
             const data = await resp.json();
             const formats = data.formats || {};
+
+            // One row per format: take the first file in the list,
+            // skipping if it's a chapter split (the format-pattern
+            // map orders whole-story files first, so files[0] is
+            // reliably the canonical full-story file when one exists).
             const items = [];
-            const fmtSize = (bytes) => {
-                if (!bytes) return '';
-                if (bytes < 1024) return ` (${bytes} B)`;
-                if (bytes < 1024 * 1024) return ` (${(bytes / 1024).toFixed(1)} KB)`;
-                return ` (${(bytes / (1024 * 1024)).toFixed(1)} MB)`;
-            };
-            // Render one menu link per file. For multi-file formats
-            // (chapter_bbcode, squidgeworld, sometimes pdf) we list each
-            // file individually so the user can grab a single chapter
-            // instead of being forced into the whole-zip path.
-            Object.keys(formats).sort().forEach(fmtKey => {
-                const meta = formats[fmtKey] || {};
-                if (!meta.available || !meta.files || meta.files.length === 0) return;
-                const label = fmtKey.replace(/_/g, ' ');
-                meta.files.forEach(f => {
-                    const url = `/api/posting/file?story=${encodeURIComponent(this.storyName)}&file=${encodeURIComponent(f.path)}`;
-                    const fileLabel = meta.files.length === 1
-                        ? label
-                        : `${label}: ${f.path.split('/').pop()}`;
-                    items.push(`<a href="${url}" download title="${f.path}">${fileLabel}<span style="color:#888;font-size:0.85em">${fmtSize(f.size)}</span></a>`);
-                });
-            });
-            // Whole-story zip footer entry — always present, even when
-            // no individual format files exist (a brand-new story still
-            // has MASTER.md + story.json worth zipping).
-            const archiveUrl = `/api/posting/archive?story=${encodeURIComponent(this.storyName)}`;
-            const zipEntry = `<a href="${archiveUrl}" download style="border-top:1px solid #ddd;margin-top:0.3em;padding-top:0.5em" title="Download the entire story folder as a zip"><strong>Whole story (zip)</strong></a>`;
-            menu.innerHTML = items.join('') + zipEntry;
+            for (const fmtKey of FORMAT_ORDER) {
+                const meta = formats[fmtKey];
+                if (!meta || !meta.available || !meta.files || meta.files.length === 0) continue;
+                const file = meta.files[0];
+                if (isChapterFile(file.path)) continue;
+                const url = `/api/posting/file?story=${encodeURIComponent(this.storyName)}&file=${encodeURIComponent(file.path)}`;
+                items.push(
+                    `<a class="downloads-row" href="${url}" download title="${file.path}">` +
+                    `<span>${FORMAT_LABELS[fmtKey]}</span>` +
+                    `<span class="downloads-row-size">${fmtSize(file.size)}</span></a>`
+                );
+            }
+
+            menu.innerHTML = items.length
+                ? items.join('') + zipEntry
+                : `<div class="downloads-empty">No formats generated yet — try Regenerate first.</div>` + zipEntry;
             menu.dataset.populated = '1';
         } catch (err) {
-            menu.innerHTML = `<div style="padding:0.4em 0.75em;color:#c33">Error: ${err.message}</div>`;
+            menu.innerHTML =
+                `<div class="downloads-empty">Error: ${err.message}</div>` + zipEntry;
         }
     },
 

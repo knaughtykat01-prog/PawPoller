@@ -2969,6 +2969,44 @@
 }
 .regen-dropdown-menu button:hover { background: var(--bg-hover); }
 
+/* Downloads dropdown — same shell as the regenerate menu but rows
+   instead of buttons (each row is a download link). Wider min-width
+   so format labels + filesize fit without wrapping. */
+.regen-dropdown-menu.downloads { min-width: 240px; }
+.regen-dropdown-menu a.downloads-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 12px;
+    color: var(--text-primary);
+    font-size: 12px;
+    text-decoration: none;
+    border-radius: 4px;
+}
+.regen-dropdown-menu a.downloads-row:hover {
+    background: var(--bg-hover);
+    text-decoration: none;
+}
+.regen-dropdown-menu .downloads-row-size {
+    color: var(--text-secondary, #888);
+    font-size: 0.85em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.regen-dropdown-menu .downloads-zip {
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+    padding-top: 9px;
+    font-weight: 600;
+}
+.regen-dropdown-menu .downloads-empty {
+    padding: 8px 12px;
+    color: var(--text-secondary, #888);
+    font-size: 12px;
+    font-style: italic;
+}
+
 /* ===========================================================================
  * Create Story Dialog
  * =========================================================================== */
