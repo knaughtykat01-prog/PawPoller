@@ -19,7 +19,7 @@ Replaces the original pawsync.bat which suffered two intermittent bugs:
    problem.
 
 Usage:
-    python deploy/pawsync.py
+    python deploy/pawsync.py [--prune] [--dry-run]
     pawsync.bat                  # Thin wrapper around this script
 
 Behaviour:
@@ -31,6 +31,15 @@ Behaviour:
     - Removes the temp tarball on both ends.
     - Aborts on any failure (no silent stale uploads).
 
+    With ``--prune``: after extract, removes any top-level directory under
+    ``/home/kithetiger/story-archive/`` that doesn't exist locally. Useful
+    after deleting test stories. Top-level only — does not recurse into
+    stories. The local exclude set (``Backups/Drafts/Styled_HTML``) is
+    treated as untouchable so server-side housekeeping folders survive.
+
+    With ``--dry-run``: prints what prune would remove without removing it.
+    Implies ``--prune``. Still uploads + extracts.
+
 Exit codes:
     0  success
     1  generic error (tar pack, scp, ssh, extract)
@@ -38,6 +47,7 @@ Exit codes:
 """
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 import subprocess
@@ -71,7 +81,8 @@ def _filter_member(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
     return tarinfo
 
 
-def pack(local_tar: Path) -> None:
+def pack(local_tar: Path) -> list[str]:
+    """Pack the archive and return the list of top-level story names included."""
     print(f"[1/4] Packing stories from {ARCHIVE_ROOT} -> {local_tar}")
     if local_tar.exists():
         local_tar.unlink()
@@ -82,10 +93,13 @@ def pack(local_tar: Path) -> None:
     # tarball mirrors a flat layout (Tombstone/, Chosen/, ...).
     n_files = 0
     n_skipped = 0
+    top_level: list[str] = []
     with tarfile.open(local_tar, "w:gz") as tar:
         for entry in sorted(ARCHIVE_ROOT.iterdir()):
             if entry.name in EXCLUDE_DIR_NAMES:
                 continue
+            if entry.is_dir():
+                top_level.append(entry.name)
             for fp in entry.rglob("*"):
                 if fp.is_file():
                     rel = fp.relative_to(ARCHIVE_ROOT)
@@ -96,7 +110,8 @@ def pack(local_tar: Path) -> None:
                     n_files += 1
 
     size_mb = local_tar.stat().st_size / (1024 * 1024)
-    print(f"  packed {n_files:,} files ({size_mb:.1f} MB), skipped {n_skipped:,}")
+    print(f"  packed {n_files:,} files ({size_mb:.1f} MB), skipped {n_skipped:,} from {len(top_level)} stories")
+    return top_level
 
 
 def scp_upload(local_tar: Path) -> None:
@@ -161,6 +176,66 @@ def ssh_extract() -> None:
     print("  extract complete")
 
 
+def _ssh(remote_cmd: str, *, timeout: int = 120) -> str:
+    """Run a remote shell command, return stdout. Raises on non-zero exit."""
+    safe_remote = remote_cmd.replace('"', '\\"')
+    cmd = (
+        f'gcloud --quiet compute ssh '
+        f'--zone={GCP_ZONE} '
+        f'{GCP_USER}@{GCP_INSTANCE} '
+        f'--command="{safe_remote}"'
+    )
+    result = subprocess.run(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        shell=True,
+    )
+    if result.returncode != 0:
+        if result.stderr.strip():
+            print(f"  stderr: {result.stderr.strip()}", file=sys.stderr)
+        raise RuntimeError(f"ssh command failed with exit code {result.returncode}")
+    return result.stdout
+
+
+def _list_remote_top_level() -> list[str]:
+    """Return server-side top-level directory names under GCP_DEST_DIR."""
+    # find ... -printf '%f\n' lists basenames, one per line, no trailing slashes.
+    out = _ssh(
+        f"find {GCP_DEST_DIR} -mindepth 1 -maxdepth 1 -type d -printf '%f\\n'"
+    )
+    return [line for line in (l.strip() for l in out.splitlines()) if line]
+
+
+def ssh_prune(local_top_level: list[str], dry_run: bool) -> None:
+    """Remove server-side top-level story folders that don't exist locally.
+
+    Server-side housekeeping folders matching EXCLUDE_DIR_NAMES are kept
+    even if they're missing locally — those are the same folders that
+    pack() skips, so we'd never know whether they should exist or not.
+    """
+    label = "[3b/4] Pruning server orphans" + (" (dry-run)" if dry_run else "")
+    print(label)
+    keep = set(local_top_level) | EXCLUDE_DIR_NAMES
+    remote = _list_remote_top_level()
+    orphans = sorted(name for name in remote if name not in keep)
+    if not orphans:
+        print("  no orphans found")
+        return
+    for name in orphans:
+        print(f"  {'would remove' if dry_run else 'removing'}: {name}")
+    if dry_run:
+        return
+    # Delete one-by-one so a single bad name doesn't abort the rest.
+    # Each name goes in its own single-quoted shell argument with embedded
+    # quotes escaped (' → '\''). Path always anchored at GCP_DEST_DIR.
+    for name in orphans:
+        safe_name = name.replace("'", "'\\''")
+        _ssh(f"rm -rf -- '{GCP_DEST_DIR}/{safe_name}'")
+
+
 def cleanup_local(local_tar: Path) -> None:
     print(f"[4/4] Cleaning up local tarball")
     if local_tar.exists():
@@ -168,15 +243,31 @@ def cleanup_local(local_tar: Path) -> None:
         print(f"  removed {local_tar}")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Sync the story archive to the GCP server.")
+    parser.add_argument(
+        "--prune",
+        action="store_true",
+        help="After upload, remove server-side top-level story folders that don't exist locally.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="With --prune, print what would be removed instead of removing. Implies --prune.",
+    )
+    args = parser.parse_args(argv)
+    do_prune = args.prune or args.dry_run
+
     print("=" * 70)
-    print("PawPoller story sync")
+    print("PawPoller story sync" + (" (with prune)" if do_prune else ""))
     print("=" * 70)
     local_tar = _local_tarball()
     try:
-        pack(local_tar)
+        top_level = pack(local_tar)
         scp_upload(local_tar)
         ssh_extract()
+        if do_prune:
+            ssh_prune(top_level, dry_run=args.dry_run)
         cleanup_local(local_tar)
     except subprocess.TimeoutExpired as e:
         print(f"\nERROR: command timed out: {e}", file=sys.stderr)

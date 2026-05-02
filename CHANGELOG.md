@@ -4,6 +4,36 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.17.5] - 2026-05-02
+
+### `pawsync --prune` for server-side housekeeping
+
+After cleaning up `Blank/` and `Brand_New_Story/` test stories during
+the 2.17.x EPUB push it became clear that `pawsync` is additive only:
+`tar xzf` over the destination directory adds and updates, never
+deletes. Test/scratch stories pile up on the server every time one
+gets renamed or thrown away locally. Manual `rm -rf` over ssh worked
+but invites typos; a flag is safer.
+
+`deploy/pawsync.py` now accepts:
+- `--prune` — after extract, removes any top-level directory under
+  `/home/kithetiger/story-archive/` that doesn't exist locally. Top
+  level only — never recurses into a story. The local
+  exclude set (`Backups`, `Drafts`, `Styled_HTML`) is treated as
+  untouchable so server-side housekeeping folders survive.
+- `--dry-run` — implies `--prune`. Lists what would be removed
+  without removing it. Always run this before the live prune the
+  first time.
+
+Internals: `pack()` now returns the list of top-level story names it
+included; `_list_remote_top_level()` runs `find -mindepth 1
+-maxdepth 1 -type d -printf '%f\n'` to list server-side dirs; the
+diff drives single-arg `rm -rf` calls (one ssh per orphan, so a single
+weird name can't cascade). Default behaviour unchanged — without
+`--prune` the script behaves exactly as before.
+
+---
+
 ## [2.17.4] - 2026-05-02
 
 ### Editor downloads dropdown — clean, whole-story-only

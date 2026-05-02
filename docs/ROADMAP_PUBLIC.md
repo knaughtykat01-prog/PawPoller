@@ -1,9 +1,9 @@
 # PawPoller Public Release Roadmap
 
 **Status:** Public beta shipped
-**Date:** 2026-04-25
-**Current version:** 2.13.8
-**Latest release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.13.8
+**Date:** 2026-05-02
+**Current version:** 2.17.5
+**Latest release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.13.8 (master is 22 versions ahead — see HANDOFF.md "CI / release pipeline state" for the tag-drift status)
 
 ---
 
@@ -45,6 +45,8 @@ All must-have and should-have items from the original plan are live in 2.13.8. C
 | 15a | Repo cleanup + licensing | 2.13.0 | MIT LICENSE, CONTRIBUTING.md, .env.example, `.gitignore` hardening |
 | 15b | README + SETUP | 2.13.8 | README trimmed to highlights + Quick Start; new SETUP.md walks through desktop / Docker / web-facing / from-source end-to-end |
 | 15c | GitHub Actions CI | 2.13.0 → 2.13.8 | `build.yml` (PyInstaller → zip → release on `v*` tag) + `lint.yml` (ruff + JS syntax) + pinned test deps |
+| — | EPUB output (Vellum-style) | 2.17.0 → 2.17.4 | `editor/epub_generator.py` builds EPUB 3.0 with novel-style chapter headings (word-form numbers + drop cap), italic-narration body, phone-screen + text-message styling. Stored in `EPUB/{stem}.epub`, picked up by `_FORMAT_KEY_PATTERNS` and `generate_story_json`. Passes epubcheck 5.1.0 cleanly. |
+| — | Mobile-friendly downloads | 2.17.2 → 2.17.4 | `/api/posting/file` allowlists `.epub`; new `/api/posting/archive` streams the whole story folder as a zip. Editor toolbar gets a Downloads ▾ menu (one row per format + "Download all"); published-story page gets a "Download all (zip)" button on the Available Formats card. Workflow: edit on desktop → push → grab the EPUB / PDF on phone. |
 
 Polling-side improvements (outside the original phase plan but shipped as part of the 2.10 – 2.11 push): session expiry recovery across all 11 platforms, N+1 query batching (IB / FA / SQW / AO3 executemany), AO3 rate-limit handling (`Retry-After` + exponential backoff), Telegram error UX, skip-startup-poll.
 
@@ -64,7 +66,7 @@ Polling-side improvements (outside the original phase plan but shipped as part o
 
 - [ ] **Cloud sync polish** — Phase 7a shipped the pull/push flow. Outstanding: delta conflict resolution (right now "push" is authoritative), audit log of what synced when, "sync health" badge on the Settings page.
 - [ ] **Plugin-ish platform registration** — formalize the per-platform file pattern (`clients/{xx}/`, `polling/{xx}_poller.py`, `database/{xx}_queries.py`, `routes/{xx}_api.py`, `posting/platforms/{xx}.py`) into a contributor-friendly cookiecutter or template command so adding a new platform is a single scaffold step. No dynamic loader — still statically imported.
-- [ ] **CI test modernization** — switch the test job from `python -m unittest discover` to `pytest`. Two test modules (`test_integration_posting`, `test_platform_posters`) are pytest-style today and get silently skipped by unittest discovery. Changing the command gets them actually executed.
+- [x] **CI test modernization** — already done in 2.13.8. `build.yml` runs `python -m pytest tests/ -v` and `requirements-server.txt` pins `pytest~=8.3` + `pytest-asyncio~=1.3` + `respx~=0.22`. 91 tests vs unittest's 30.
 - [ ] **Thumbnail auto-resize** — Pillow is already a dep; fall back to auto-resize when an uploaded cover exceeds a platform's size cap instead of surfacing an error.
 - [ ] **Story template library** — beyond the 9 genre presets, let users save their own starting templates (e.g. "my chaptered m/m romance template with these 12 tags pre-selected").
 
@@ -118,11 +120,11 @@ two left as their own focused passes:
   default ACLs on Windows. Mostly theoretical (Windows keyring almost
   always works so the dotfile path is rarely taken), but worth
   closing with DPAPI or `icacls`.
-- [ ] **Dashboard frontend cache-buster consistency** — JS files in
-  `frontend/index.html` are scattered across `v=240, 285, 22, 13, 311`
-  while CSS files are uniformly at `v=310`. Either move to a single
-  global constant or hash-bust on file-mtime so a forgotten bump
-  doesn't ship stale JS.
+- [x] **Dashboard frontend cache-buster consistency** — already done.
+  `index.html` ships with `?v=__APP_VERSION__` on every CSS/JS asset
+  and `dashboard.py` splices `config.APP_VERSION` in at request time
+  (see the BUG-001 cache-bust fix). Roadmap item kept this open by
+  mistake.
 
 ### Cloud / hosted access — separate development stream
 
@@ -145,6 +147,7 @@ Design decisions that keep Stage 3 achievable later without breaking Stage 1/2:
 - [ ] **Story performance comparison** — side-by-side charts for multiple stories on one dashboard.
 - [ ] **Offline analytics cache** — show last-known stats when a platform is unreachable instead of blank cells.
 - [ ] **`.docx` / `.rtf` import** — the new-story wizard accepts these file types today but the conversion is basic; richer Word/RTF → Markdown via `python-docx` / `pandoc` fallback would preserve more formatting.
+- [ ] **In-app EPUB viewer** — vendor `epub.js` (~300 KB, MIT-licensed, mobile-friendly), add a small `/epub-viewer.html` page or modal that loads from `/api/posting/file?...&file=EPUB/<name>.epub`, surface a "Preview" button next to the EPUB row in the Downloads dropdown. Removes the round-trip of downloading to a phone just to spot-check formatting. ~30 minutes.
 - [ ] **Multi-user mode** — unclear if there's demand. Would need PostgreSQL + per-user credential isolation. Not on the roadmap; flagged so the decision's recorded.
 
 ---

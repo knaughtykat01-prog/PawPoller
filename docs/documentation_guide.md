@@ -9,7 +9,7 @@ Comprehensive technical reference for the PawPoller codebase. Covers architectur
 PawPoller is a multi-platform furry art/fiction **analytics + publishing** app. It has two major subsystems that share a database, dashboard, and settings surface:
 
 1. **Polling / analytics** — periodically polls 11 art/writing platforms, stores submission stats in SQLite, and renders real-time charts in the dashboard.
-2. **Publishing pipeline** — reads canonical `MASTER.md` files from the local story archive, converts to per-platform formats (BBCode, SoFurry HTML, Styled HTML, SquidgeWorld work-skin HTML, WeasyPrint/Edge-rendered PDFs), and posts/updates stories across 9 publishing platforms. Includes a Markdown editor with anchor toolbar, metadata drawer, publish-check matrix, drift detection, retry queue, scheduling, credential vault, browser-login popups, and import from IB/SF/FA.
+2. **Publishing pipeline** — reads canonical `MASTER.md` files from the local story archive, converts to per-platform formats (BBCode, SoFurry HTML, Styled HTML, SquidgeWorld work-skin HTML, WeasyPrint/Edge-rendered PDFs, EPUB 3.0), and posts/updates stories across 9 publishing platforms. Includes a Markdown editor with anchor toolbar, metadata drawer, publish-check matrix, drift detection, retry queue, scheduling, credential vault, browser-login popups, and import from IB/SF/FA.
 
 The tech stack is FastAPI + SQLite (WAL mode) + Vanilla JS SPA + pywebview + pystray. Desktop uses PyInstaller (`pawpoller.spec`); server runs under Docker Compose on a GCP VM. Entry points: `main.py` (desktop) or `server.py` (headless).
 
@@ -3376,6 +3376,7 @@ frontend/                                        backend
                                                        ▼
                                                   editor/converter.py
                                                   editor/pdf_generator.py
+                                                  editor/epub_generator.py
                                                   editor/slop.py
 ```
 
@@ -3429,6 +3430,30 @@ counts, word counts), `warnings` (non-fatal issues like missing
 anchors). `convert_to_styled_html_external_css()` emits a variant
 that links to an external `style.css` rather than inlining — used for
 the editor's preview pane and the per-chapter Styled HTML files.
+
+### EPUB Output
+
+`editor/epub_generator.py` builds an EPUB 3.0 archive in a Vellum-style
+novel layout. It reuses the same anchor parser as the other formats
+(`parse_front_matter`, `parse_markdown_formatting`, `is_pov_marker`,
+`is_text_message`) so phone-screen blocks, text-message bubbles, and
+italic-narration body all carry through identically.
+
+Layout choices that mirror the Vellum 4.1.2 reference (Apple Books):
+- Word-form chapter numbers — `# Chapter 2: Title` becomes a
+  "Chapter Two" line above the title, drop cap on the first paragraph
+  rendered roman regardless of italic body context.
+- `mimetype` first and uncompressed; `META-INF/container.xml` points at
+  `OEBPS/content.opf`; manifest + spine + nav `toc.xhtml` per spec.
+- `_strip_trailing_separators()` drops the source `---` between
+  chapters so no empty `<hr/>` page slips in between chapter files.
+
+Output lives in `EPUB/{stem}.epub` (one file per story). Auto-discovered
+by `posting/story_reader.py` via `_FORMAT_KEY_PATTERNS["epub"]` and
+flagged in `story.json` by `posting/generate_story_json.py`. The
+regenerate route accepts an `epub_warning_position` field
+(`"front"` | `"after-title"`) for placement of the content-warning
+block. Validates cleanly against epubcheck 5.1.0 / EPUB 3.3.
 
 ### Theme System (Styled HTML / PDF)
 
@@ -3544,7 +3569,7 @@ Returns `{ok, results: [...], errors: [...], word_count}`.
 
 ### Selective Format Regeneration
 
-The Regenerate button includes a dropdown with 7 options: All formats, HTML only, BBCode only, Styled HTML + CSS, SquidgeWorld only, PDF only, and Chapter splits only. The backend `RegenerateRequest.formats` field accepts a list of format keys and filters which conversion steps run, avoiding unnecessary rebuilds when only one format has changed.
+The Regenerate button includes a dropdown with options for All formats, HTML, BBCode, Styled HTML + CSS, SquidgeWorld, PDF, EPUB, and Chapter splits. The backend `RegenerateRequest.formats` field accepts a list of format keys and filters which conversion steps run, avoiding unnecessary rebuilds when only one format has changed. The toolbar also has a separate Downloads ▾ menu that lists every output format with its file size plus a "Download all (zip)" footer that streams the entire story folder via `/api/posting/archive` — convenient for grabbing an EPUB or PDF onto a phone for proofreading.
 
 ### Format Tab Bar
 
