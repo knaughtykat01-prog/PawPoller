@@ -108,6 +108,36 @@ _BASE_SECURITY_HEADERS = {
 _cached_csp: str | None = None
 
 
+_cached_epub_viewer_csp: str | None = None
+
+
+def _build_epub_viewer_csp() -> str:
+    """Relaxed CSP for the in-app EPUB viewer (/epub-viewer.html only).
+
+    epub.js extracts CSS, images, and fonts from the EPUB archive into
+    Blob URLs and references them from the rendered iframe. Without
+    `blob:` in style-src/img-src/font-src those resources are CSP-blocked
+    and the book renders unstyled or with broken inline images. The
+    relaxation is scoped to this single page so the rest of the
+    dashboard keeps the strict default.
+    """
+    global _cached_epub_viewer_csp
+    if _cached_epub_viewer_csp is not None:
+        return _cached_epub_viewer_csp
+    theme_inline_hash = "'sha256-WudoxBejEmzS4SXsQBia7rsNZctlaFiey3RvF0r8SzA='"
+    _cached_epub_viewer_csp = (
+        "default-src 'self'; "
+        f"script-src 'self' {theme_inline_hash}; "
+        "style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com; "
+        "font-src 'self' blob: https://fonts.gstatic.com; "
+        "img-src 'self' blob: data: https:; "
+        "connect-src 'self' blob:; "
+        "frame-src 'self' blob:; "
+        "frame-ancestors 'none'"
+    )
+    return _cached_epub_viewer_csp
+
+
 def _build_csp() -> str:
     """Build Content-Security-Policy, adding Turnstile origins when configured.
 
@@ -141,8 +171,9 @@ def _build_csp() -> str:
 
 def invalidate_csp_cache() -> None:
     """Clear the cached CSP so it's rebuilt on the next request."""
-    global _cached_csp
+    global _cached_csp, _cached_epub_viewer_csp
     _cached_csp = None
+    _cached_epub_viewer_csp = None
 
 
 @app.middleware("http")
@@ -150,7 +181,12 @@ async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
     for header, value in _BASE_SECURITY_HEADERS.items():
         response.headers[header] = value
-    response.headers["Content-Security-Policy"] = _build_csp()
+    # /epub-viewer.html needs a relaxed CSP for epub.js's blob: URLs.
+    # Anything else gets the strict default.
+    if request.url.path == "/epub-viewer.html":
+        response.headers["Content-Security-Policy"] = _build_epub_viewer_csp()
+    else:
+        response.headers["Content-Security-Policy"] = _build_csp()
     return response
 
 
