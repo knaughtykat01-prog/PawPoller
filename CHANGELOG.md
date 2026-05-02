@@ -6,7 +6,12 @@ All notable changes to PawPoller are documented here.
 
 ## [2.16.7] - 2026-05-02
 
-### Mobile Mode — page-header circular sizing fix
+### Mobile Mode — page-header sizing + tab strip + main clamp
+
+Three layered fixes for the same overflow class — natural intrinsic
+content width forcing the document past viewport.
+
+**Page-header circular sizing (the obvious one).**
 
 2.16.6's page-header wrap rule used `width: 100%` on the actions
 div, which created a circular sizing dependency: the div asked for
@@ -25,6 +30,19 @@ and the buttons inside (also given `min-width: 0`) shrink to
 
 Also added `box-sizing: border-box` to the actions div as a belt
 on top of the suspenders.
+
+**Settings tab strip not constrained.** `.settings-tabs` had
+`overflow-x: auto` but no `max-width`, so its natural row width
+(General + Appearance + Platforms + Polling + Telegram + ... = 798px)
+forced main wide and the scrollbar never engaged. Added
+`max-width: 100%` + `min-width: 0` so the container clamps to
+viewport and the scroll-x finally activates inside it.
+
+**Main content clamp (defense-in-depth).** Added `max-width: 100vw`
++ `overflow-x: hidden` to `.main-content` on mobile so a future
+un-wrapped child can't bust the layout. Individual horizontal
+scroll regions (data tables, tab strips) still work inside the
+clamp because they have their own `overflow-x: auto`.
 
 ---
 

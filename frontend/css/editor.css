@@ -4073,8 +4073,13 @@ html[data-mobile="1"] .log-row {
 }
 
 /* Settings tabs — already scroll-x; ensure the active tab is
- * visible and tabs are big enough to tap. */
+ * visible and tabs are big enough to tap. 2.16.7: max-width:100%
+ * + min-width:0 so the tab strip is actually constrained to the
+ * viewport (without these, the natural tab row width 798px forces
+ * the whole main element wide and overflow-x:auto never engages). */
 html[data-mobile="1"] .settings-tabs {
+    max-width: 100%;
+    min-width: 0;
     overflow-x: auto;
     scroll-snap-type: x proximity;
     -webkit-overflow-scrolling: touch;
@@ -4210,10 +4215,17 @@ html[data-mobile="1"] h4 {
 }
 
 /* Main content gets more breathing room — 16px on the sides keeps
- * cards from kissing the screen edge. */
+ * cards from kissing the screen edge. 2.16.7: also `max-width:100vw`
+ * + `overflow-x:hidden` as defense-in-depth so a single wide child
+ * (un-wrapped tab strip, un-broken word) can't expand the document
+ * past the viewport. Individual scroll regions (settings-tabs,
+ * data-table) still use overflow-x:auto inside this clamp. */
 html[data-mobile="1"] .main-content {
     padding: 16px;
     padding-bottom: calc(16px + var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
+    max-width: 100vw;
+    overflow-x: hidden;
+    box-sizing: border-box;
 }
 
 /* Primary action buttons — 48px tappable height beats the 44px
