@@ -4,6 +4,128 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.16.0] - 2026-05-02
+
+### Mobile Mode — Phase 0 + 1
+
+A real mobile interface for the dashboard, prompted by the iPhone 16
+Plus Pro experience. Existing media queries handled the broad strokes
+(hamburger, slide-in sidebar, bottom nav, table → card transformation),
+but the editor was unusable below ~600px and several touch interactions
+fought the user. This release closes the worst gaps and adds a
+Settings → Appearance toggle to let any device opt in or out.
+
+**The toggle.** New `mobile_mode` preference under Settings →
+Appearance with three options: **Auto** (default — follows
+`(max-width: 768px)` via `matchMedia`), **Always on** (force the
+mobile interface on every device — useful for testing or for users
+who'd rather have the touch-first layout on a tablet), and **Always
+off** (best-effort: keep the desktop UX even on a phone; existing
+legacy media queries still fire on small viewports). Persisted to
+`settings.json` and synced across devices via the existing 7c
+auto-sync. Resolved at boot via the inline `<head>` script — no
+flash of the wrong layout. Single source of truth: `<html
+data-mobile="0|1">`. A `matchMedia` listener keeps `auto` in sync
+when the user rotates the phone or resizes the window.
+
+**Editor → single-panel switcher (P1.1).** The 4-pane quad layout
+(MD source / Rich editor / Format source / Format preview) collapsed
+to a 2×2 grid below 1200px and stopped — at 430px each pane was
+~200px wide, CodeMirror unusable. Mobile mode now shows a tab bar
+above the quad with 4 buttons (Edit / Rich / Format / Preview); only
+the active panel is visible, the rest stay mounted in the DOM so
+CodeMirror state, contenteditable selection, and saved scroll
+positions survive switches. Picking a format (Clean HTML / SoFurry /
+BBCode / Styled) auto-jumps to the Format panel. Toggling the CSS
+theme editor adds a 5th tab dynamically and removes it when closed.
+The per-panel eye-icon hide-toggles are suppressed — meaningless in
+single-panel mode.
+
+**Anchor toolbar → horizontal swipe strip (P1.2).** The 13 buttons
+(undo/redo, B/I, H1, HR, T/Sub/By, ⚠/Disc/FF, Body, →Sent/←Recv/
+☎Phone) used to crowd a narrow row at 28px-min-width. On mobile
+they're now 44px touch targets in a horizontal scroll strip with
+subtle right-edge mask-fade so the user knows there's more.
+Scroll-snap proximity keeps the snapping gentle.
+
+**Publish-check matrix → expandable chapter cards (P1.3).** The
+chapter × 11-platform table is meaningless on a 430px viewport.
+Mobile mode renders each chapter as a `<details>` card with a status
+summary (e.g. "5✓ 1↑ 2🔒") visible in the closed state and a
+vertical platform list when expanded — each platform inline with
+icon + name + status label. Cell-click handler unchanged (same
+`.publish-check-cell` class with `data-cell` attribute). Detail
+panel scrolls into view on tap. Modal goes full-screen instead of
+the desktop's 5vw inset.
+
+**Sidebar `:hover` lockout for touch (P1.4).** The icon rail
+expanded-on-hover from 60px → 220px, but on touch devices the
+synthetic-hover from a tap latched the panel open until the user
+tapped elsewhere. Felt broken on iOS. All `:hover` rules in the
+sidebar block now sit inside `@media (hover: hover)`; the
+`.expanded` class still works everywhere as a JS-driven escape
+hatch. Touch users open the sidebar via the hamburger and close it
+via the backdrop, no surprise expansions.
+
+**Safe-area-inset-top (P1.5).** iPhone 16 Plus Dynamic Island sits
+at top-center; the hamburger at `top: 12px` was clipping behind it
+in some orientations and the global poll-progress-bar rendered
+underneath the notch. Both now respect `env(safe-area-inset-top)`.
+Sidebar header (when the panel slides open on mobile) also gets
+top + left safe-area padding so the title clears the notch on
+landscape phones.
+
+**Publish-check modal backdrop mount-window guard (P1.6).**
+The 2.14.10 metadata-drawer fix (mobile fires a synthetic click
+~300ms after touchend on whatever element is under the finger; if
+that's a backdrop mounted synchronously inside the open-button
+handler, the modal closes the instant it opens) was flagged as
+"likely vulnerable" for the publish-check modal too. Confirmed real,
+fixed with the same 400ms-since-`open()` guard on the backdrop click
+handler. The publish-check modal is mounted once at first use, so
+the gate keys off `_openedAt` (updated each `open()` call) rather
+than mount time.
+
+**Out of scope for this release.** Phase 2 polish (metadata drawer
+accordion-collapse, format-tabs `More ▾` overflow, theme picker
+2-col mobile grid, bottom nav editor entry, CodeMirror
+`autocorrect=off`, sidebar search) and Phase 3 nice-to-haves
+(pull-to-refresh, swipe gestures, FAB) are scoped for follow-up
+releases. Roadmap-stale items (`docs/ROADMAP_PUBLIC.md` still says
+"Current version: 2.13.8") were not touched here.
+
+### Files touched
+
+`config.py` (APP_VERSION → 2.16.0),
+`routes/api.py` (mobile_mode added to GET/POST `/settings/preferences`
+with whitelist),
+`frontend/index.html` (boot script extended to apply `data-mobile`
+synchronously),
+`frontend/js/app.js` (MOBILE_MODES catalog, `applyMobileMode`,
+`_resolveMobile`, `_initMobileModeWatcher`, Settings → Appearance UI
+section + click/keydown handlers, `_refreshPrefsFromServer` extended
+to pull `mobile_mode` cross-device),
+`frontend/js/editor.js` (mobile tab bar HTML, `setMobileActivePanel`
+helper, format-tab → fmt-source auto-jump, CSS-editor 5th-tab
+add/remove, `_updateGridColumns` mobile no-op),
+`frontend/js/publish_check.js` (`_renderDesktopMatrix`,
+`_renderMobileMatrix`, `_renderMobileCell`, `_countActionable`
+factored out; cell-click bind walks `[data-ch-idx]` ancestor; backdrop
+guard via `_openedAt`),
+`frontend/css/tokens.css` (mobile-mode picker card styles),
+`frontend/css/layout.css` (sidebar `:hover` rules split + gated by
+`(hover: hover)`; hamburger + sidebar header safe-area-inset-top/left),
+`frontend/css/components.css` (poll-progress-bar safe-area-inset-top),
+`frontend/css/editor.css` (large mobile-mode block at end —
+anchor toolbar 44px touch targets + scroll-snap + edge-fade,
+editor-quad 1-column override, mobile tab bar styles, publish-check
+modal full-screen on mobile, mobile chapter cards, full-width detail
+panel),
+`CHANGELOG.md`,
+`docs/HANDOFF.md` (TODO: bump version + open-roadmap note).
+
+---
+
 ## [2.15.0] - 2026-05-02
 
 ### Per-platform tag tabs for FA + Weasyl + AO3 + SquidgeWorld

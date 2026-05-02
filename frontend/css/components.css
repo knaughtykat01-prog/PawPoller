@@ -1181,7 +1181,10 @@ a.stat-card:hover {
 /* ── Global Poll Progress Bar ────────────────────────────── */
 .poll-progress-bar {
     position: fixed;
-    top: 0;
+    /* iPhone Dynamic Island / notch sits at the top of the viewport;
+     * env(safe-area-inset-top) pushes the bar below it. Resolves to 0
+     * on devices without a top inset so desktop is unaffected. */
+    top: env(safe-area-inset-top, 0);
     left: var(--sidebar-w);
     right: 0;
     z-index: 100;

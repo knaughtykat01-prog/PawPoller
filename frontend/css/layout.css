@@ -25,14 +25,26 @@
  * Settings → Appearance was clipped behind the expanded sidebar). We
  * push main-content to the right via the .sidebar-expanded body class
  * (toggled by app.js below) so the layout reflows alongside the
- * sidebar's own width transition. */
+ * sidebar's own width transition.
+ *
+ * `(hover: hover)` gates the :hover rule to true-pointer devices. On
+ * touch the synthetic-hover from a tap would latch the expanded panel
+ * open until the user tapped elsewhere — felt broken on iOS. `.expanded`
+ * still works everywhere as a JS-driven escape hatch. */
+@media (hover: hover) and (min-width: 769px) {
+    .sidebar:hover {
+        width: var(--sidebar-w-expanded);
+        box-shadow: 4px 0 30px rgba(0, 0, 0, 0.3);
+    }
+    [data-theme="light"] .sidebar:hover {
+        box-shadow: 4px 0 30px rgba(100, 80, 150, 0.1);
+    }
+}
 @media (min-width: 769px) {
-    .sidebar:hover,
     .sidebar.expanded {
         width: var(--sidebar-w-expanded);
         box-shadow: 4px 0 30px rgba(0, 0, 0, 0.3);
     }
-    [data-theme="light"] .sidebar:hover,
     [data-theme="light"] .sidebar.expanded {
         box-shadow: 4px 0 30px rgba(100, 80, 150, 0.1);
     }
@@ -62,8 +74,12 @@
 }
 
 /* Show title text when rail is expanded */
+@media (hover: hover) and (min-width: 769px) {
+    .sidebar:hover .sidebar-header h1 {
+        opacity: 1;
+    }
+}
 @media (min-width: 769px) {
-    .sidebar:hover .sidebar-header h1,
     .sidebar.expanded .sidebar-header h1 {
         opacity: 1;
     }
@@ -122,8 +138,12 @@
 }
 
 /* Show labels when sidebar is expanded */
+@media (hover: hover) and (min-width: 769px) {
+    .sidebar:hover .nav-label {
+        opacity: 1;
+    }
+}
 @media (min-width: 769px) {
-    .sidebar:hover .nav-label,
     .sidebar.expanded .nav-label {
         opacity: 1;
     }
@@ -152,16 +172,26 @@
     transition: opacity 0.15s ease, height 0.15s ease, padding 0.15s ease;
 }
 
-.sidebar:hover .nav-group .nav-section,
 .sidebar.expanded .nav-group .nav-section {
     opacity: 1;
     height: auto;
     padding: 16px 12px 4px;
 }
+@media (hover: hover) {
+    .sidebar:hover .nav-group .nav-section {
+        opacity: 1;
+        height: auto;
+        padding: 16px 12px 4px;
+    }
+}
 
-.sidebar:hover .nav-group .nav-section:first-of-type,
 .sidebar.expanded .nav-group .nav-section:first-of-type {
     padding-top: 8px;
+}
+@media (hover: hover) {
+    .sidebar:hover .nav-group .nav-section:first-of-type {
+        padding-top: 8px;
+    }
 }
 
 .nav-chevron {
@@ -171,9 +201,9 @@
     opacity: 0;
 }
 
-.sidebar:hover .nav-chevron,
-.sidebar.expanded .nav-chevron {
-    opacity: 1;
+.sidebar.expanded .nav-chevron { opacity: 1; }
+@media (hover: hover) {
+    .sidebar:hover .nav-chevron { opacity: 1; }
 }
 
 .nav-group.expanded .nav-chevron { transform: rotate(90deg); }
@@ -205,11 +235,17 @@
     transition: opacity 0.15s ease, height 0.15s ease, padding 0.15s ease;
 }
 
-.sidebar:hover .nav-section-divider,
 .sidebar.expanded .nav-section-divider {
     opacity: 1;
     height: auto;
     padding: 16px 12px 4px;
+}
+@media (hover: hover) {
+    .sidebar:hover .nav-section-divider {
+        opacity: 1;
+        height: auto;
+        padding: 16px 12px 4px;
+    }
 }
 
 .nav-spacer { list-style: none; }
@@ -254,10 +290,15 @@
     transition: opacity 0.15s ease, height 0.15s ease;
 }
 
-.sidebar:hover .poll-badge,
 .sidebar.expanded .poll-badge {
     opacity: 1;
     height: auto;
+}
+@media (hover: hover) {
+    .sidebar:hover .poll-badge {
+        opacity: 1;
+        height: auto;
+    }
 }
 
 .btn-logout {
@@ -307,9 +348,9 @@
     display: inline-block;
 }
 
-.sidebar:hover .btn-theme-toggle .nav-label,
-.sidebar.expanded .btn-theme-toggle .nav-label {
-    width: auto;
+.sidebar.expanded .btn-theme-toggle .nav-label { width: auto; }
+@media (hover: hover) {
+    .sidebar:hover .btn-theme-toggle .nav-label { width: auto; }
 }
 
 .sidebar-version {
@@ -324,10 +365,15 @@
     transition: opacity 0.15s ease, height 0.15s ease;
 }
 
-.sidebar:hover .sidebar-version,
 .sidebar.expanded .sidebar-version {
     opacity: 1;
     height: auto;
+}
+@media (hover: hover) {
+    .sidebar:hover .sidebar-version {
+        opacity: 1;
+        height: auto;
+    }
 }
 
 .sidebar-version .version-text { display: block; margin-bottom: 4px; }
@@ -459,8 +505,11 @@
     .hamburger-btn {
         display: block;
         position: fixed;
-        top: 12px;
-        left: 12px;
+        /* env() is added (not just used as fallback) so the button clears
+         * the iPhone Dynamic Island / notch on devices that report a top
+         * inset. Resolves to 12px + 0 = 12px on the desktop browser. */
+        top: calc(env(safe-area-inset-top, 0px) + 12px);
+        left: calc(env(safe-area-inset-left, 0px) + 12px);
         z-index: 11;
         background: var(--bg-elevated, var(--bg-secondary));
         border: 1px solid var(--border-color);
@@ -469,7 +518,13 @@
         font-size: 22px;
         line-height: 1;
     }
-    .sidebar-header { display: flex; align-items: center; gap: 8px; padding-left: 56px; }
+    .sidebar-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-left: calc(env(safe-area-inset-left, 0px) + 56px);
+        padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
+    }
     .sidebar-header h1 { opacity: 1; }
 
     .sidebar {

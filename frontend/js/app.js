@@ -272,6 +272,11 @@ const App = {
         /* Sidebar version + update check */
         this._initSidebarVersion();
 
+        /* Watch viewport so `mobile_mode='auto'` flips data-mobile when
+           the user rotates the phone or resizes the window. No-op on
+           forced on/off. */
+        this._initMobileModeWatcher();
+
         /* Cross-device sync: when the tab regains focus (user comes back
            after editing settings on another device or in the desktop app),
            refresh the theme + general prefs so changes flow through without
@@ -299,6 +304,18 @@ const App = {
                 localStorage.setItem('pawpoller-theme', serverTheme);
                 if (typeof Charts !== 'undefined' && Charts.destroyAll) Charts.destroyAll();
                 if (this.route) this.route();
+            }
+            const serverMobile = prefs && prefs.mobile_mode;
+            if (serverMobile && serverMobile !== this.getMobileModeOverride()
+                && this.MOBILE_MODES.includes(serverMobile)) {
+                // Apply without re-POSTing back (savePreferences would echo)
+                localStorage.setItem('pawpoller-mobile-mode', serverMobile);
+                const next = this._resolveMobile(serverMobile);
+                if (document.documentElement.dataset.mobile !== next) {
+                    document.documentElement.dataset.mobile = next;
+                    if (typeof Charts !== 'undefined' && Charts.destroyAll) Charts.destroyAll();
+                    if (this.route) this.route();
+                }
             }
         } catch (e) { /* offline, ignore */ }
     },
@@ -345,6 +362,103 @@ const App = {
 
     getCurrentTheme() {
         return document.documentElement.dataset.theme || 'dark';
+    },
+
+    /* ── Mobile mode ─────────────────────────────────────────
+       Single source of truth: `<html data-mobile="0|1">`. CSS
+       selectors keyed off the attribute (e.g. `html[data-mobile="1"]
+       .editor-quad`) are the mobile-mode-only enhancements. The
+       inline boot script in index.html sets the initial value before
+       CSS evaluates so there's no flash of desktop UX on a phone.
+       The mode selector below lets the user override the auto-detect:
+         - 'auto'  → tracks (max-width: 768px) via matchMedia
+         - 'on'    → forces "1" (mobile UX everywhere)
+         - 'off'   → forces "0" (desktop UX everywhere; existing
+                     `@media (max-width: 768px)` rules still fire on
+                     small viewports — this only suppresses the new
+                     mobile-mode-only enhancements)
+       Persisted to localStorage for synchronous boot, and to
+       settings.json so the choice syncs across devices. */
+    MOBILE_MODES: ['auto', 'on', 'off'],
+
+    getMobileModeOverride() {
+        return localStorage.getItem('pawpoller-mobile-mode') || 'auto';
+    },
+
+    isMobileLayoutActive() {
+        return document.documentElement.dataset.mobile === '1';
+    },
+
+    _resolveMobile(mode) {
+        if (mode === 'on') return '1';
+        if (mode === 'off') return '0';
+        return window.matchMedia('(max-width: 768px)').matches ? '1' : '0';
+    },
+
+    applyMobileMode(mode) {
+        const valid = this.MOBILE_MODES.includes(mode);
+        const m = valid ? mode : 'auto';
+        localStorage.setItem('pawpoller-mobile-mode', m);
+        const prev = document.documentElement.dataset.mobile;
+        const next = this._resolveMobile(m);
+        document.documentElement.dataset.mobile = next;
+        // Re-paint the picker cards in-place — most pages don't need a
+        // full route re-render (the CSS reads `data-mobile` directly).
+        // We deliberately skip route() because the editor is the most
+        // sensitive surface and a re-render would cost the user any
+        // unsaved CodeMirror state. Pages with layout-dependent JS
+        // (charts, Publish Check matrix) handle their own redraws.
+        document.querySelectorAll('#mobile-mode-picker .mobile-mode-card').forEach(card => {
+            const isActive = card.dataset.mmId === m;
+            card.classList.toggle('active', isActive);
+            const pill = card.querySelector('.active-pill');
+            if (isActive && !pill) {
+                const span = document.createElement('span');
+                span.className = 'active-pill';
+                span.textContent = 'Active';
+                card.appendChild(span);
+            } else if (!isActive && pill) {
+                pill.remove();
+            }
+        });
+        // If the layout dimension actually flipped (desktop ↔ mobile),
+        // redraw any charts on the current page so they re-measure.
+        // Editor + most pages handle this via CSS alone.
+        if (prev !== next && typeof Charts !== 'undefined' && Charts.destroyAll) {
+            Charts.destroyAll();
+            // Only re-route if not on the editor (which manages its own
+            // CodeMirror state and would lose unsaved edits).
+            if (this.route && !location.hash.startsWith('#/editor/')) {
+                this.route();
+            }
+        }
+        try { API.savePreferences({ mobile_mode: m }); } catch (e) { /* ignore */ }
+    },
+
+    /* Called once at boot from init(). Watches the viewport so `auto`
+       mode tracks viewport changes (rotation, window resize) without
+       a page reload. No-op when the override is forced on/off. */
+    _initMobileModeWatcher() {
+        if (this._mobileModeWatcherBound) return;
+        this._mobileModeWatcherBound = true;
+        const mql = window.matchMedia('(max-width: 768px)');
+        const onChange = () => {
+            const mode = this.getMobileModeOverride();
+            if (mode !== 'auto') return;
+            const next = this._resolveMobile('auto');
+            if (document.documentElement.dataset.mobile !== next) {
+                document.documentElement.dataset.mobile = next;
+                if (typeof Charts !== 'undefined' && Charts.destroyAll) Charts.destroyAll();
+                // Skip route() on the editor — we don't want a rotation
+                // to wipe unsaved CodeMirror state.
+                if (this.route && !location.hash.startsWith('#/editor/')) {
+                    this.route();
+                }
+            }
+        };
+        // addEventListener works on modern Safari; older Safari uses addListener
+        if (mql.addEventListener) mql.addEventListener('change', onChange);
+        else if (mql.addListener) mql.addListener(onChange);
     },
 
     async _initSidebarVersion() {
@@ -5604,6 +5718,32 @@ const App = {
                 </div>
 
                 <div class="settings-section">
+                    <h3>Mobile Layout</h3>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
+                        Auto-detect uses the mobile interface on screens 768px wide or less (rotates with the viewport). Force on uses it everywhere — handy for testing or if you'd rather have the touch-first layout on a tablet. Force off keeps the desktop UX even on a phone (best-effort: some legacy responsive rules still fire on small screens).
+                    </p>
+                    <div class="mobile-mode-picker" id="mobile-mode-picker">
+                        ${[
+                            { id: 'auto', name: 'Auto', desc: 'Follows screen size (recommended)' },
+                            { id: 'on',   name: 'Always on', desc: 'Mobile interface on every device' },
+                            { id: 'off',  name: 'Always off', desc: 'Desktop interface even on a phone' },
+                        ].map(opt => {
+                            const isActive = opt.id === this.getMobileModeOverride();
+                            return `
+                              <div class="mobile-mode-card ${isActive ? 'active' : ''}" data-mm-id="${opt.id}" role="button" tabindex="0">
+                                <div class="mobile-mode-name">${opt.name}</div>
+                                <div class="mobile-mode-desc">${opt.desc}</div>
+                                ${isActive ? '<span class="active-pill">Active</span>' : ''}
+                              </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">
+                        Currently rendering: <strong>${this.isMobileLayoutActive() ? 'Mobile' : 'Desktop'}</strong> layout
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h3>Sync</h3>
                     <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
                         When enabled, this device pushes preference changes to your cloud server within seconds and pulls remote changes every 5 minutes. Browser tabs also refresh on focus. Credentials and your session secret are excluded.
@@ -6875,6 +7015,25 @@ const App = {
                     if (!card) return;
                     e.preventDefault();
                     this.applyTheme(card.dataset.themeId);
+                });
+            }
+
+            // ── Mobile-mode picker (Appearance tab) ───────────────────
+            // Same shape as the theme picker. applyMobileMode() persists,
+            // re-resolves data-mobile, and re-renders the page.
+            const mmPicker = document.getElementById('mobile-mode-picker');
+            if (mmPicker) {
+                mmPicker.addEventListener('click', (e) => {
+                    const card = e.target.closest('.mobile-mode-card');
+                    if (!card) return;
+                    this.applyMobileMode(card.dataset.mmId);
+                });
+                mmPicker.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    const card = e.target.closest('.mobile-mode-card');
+                    if (!card) return;
+                    e.preventDefault();
+                    this.applyMobileMode(card.dataset.mmId);
                 });
             }
 

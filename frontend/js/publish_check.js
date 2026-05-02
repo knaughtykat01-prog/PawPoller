@@ -66,7 +66,15 @@ window.PublishCheck = (function () {
         `;
         document.body.appendChild(modal);
 
-        modal.querySelector('.publish-check-backdrop').addEventListener('click', () => close());
+        modal.querySelector('.publish-check-backdrop').addEventListener('click', () => {
+            // Mobile synthetic-click guard — see metadata_editor.js for the
+            // full explainer. The backdrop sits under the user's finger
+            // when the modal opens, and iOS fires a synthetic click ~300ms
+            // after touchend on the element under the touch point. Without
+            // this gate the modal closes the instant it opens on touch.
+            if (Date.now() - _openedAt < 400) return;
+            close();
+        });
         modal.querySelector('#publish-check-close').addEventListener('click', () => close());
         modal.querySelector('#publish-check-recheck').addEventListener('click', (e) => {
             if (!_currentStory) return;
@@ -96,9 +104,11 @@ window.PublishCheck = (function () {
     }
 
     let _currentStory = null;
+    let _openedAt = 0;
 
     async function open(storyName) {
         _currentStory = storyName;
+        _openedAt = Date.now();
         const modal = _ensureModal();
         modal.classList.add('open');
         document.getElementById('publish-check-title').textContent =
@@ -274,55 +284,18 @@ window.PublishCheck = (function () {
             });
         }
 
-        // Build matrix table
-        let html = '<div class="publish-check-table-wrap"><table class="publish-check-table">';
-        html += '<thead><tr><th class="ch-col">Chapter</th>';
-        for (const p of data.platforms) {
-            html += '<th class="plat-col" title="' + _escape(p.name) + '">' +
-                _escape(p.name) + '</th>';
-        }
-        html += '<th class="bulk-col"></th>';
-        html += '</tr></thead><tbody>';
-
-        for (const row of data.matrix) {
-            const isFull = row.chapter_index === 0;
-            const chLabel = isFull
-                ? '<strong>Full story</strong> <span class="row-hint">(' +
-                  _escape(row.chapter_title) + ')</span>'
-                : 'Ch ' + row.chapter_index + '. ' + _escape(row.chapter_title);
-            const rowCls = isFull ? 'row-full' : 'row-chapter';
-            const titleAttr = isFull ? row.chapter_title : row.chapter_title;
-            html += '<tr class="' + rowCls + '" data-ch-idx="' + row.chapter_index +
-                '" data-ch-title="' + _escape(titleAttr) + '">' +
-                '<td class="ch-col">' + chLabel + '</td>';
-            for (const p of data.platforms) {
-                const cell = row.cells[p.id] || { status: 'error', errors: ['Missing'] };
-                html += _renderCell(cell, p);
-            }
-            // Row-end bulk button — count actionable cells
-            let rowActionable = 0;
-            for (const p of data.platforms) {
-                const c = row.cells[p.id];
-                if (c && (c.status === 'ready' || c.status === 'ready_retry' ||
-                    c.status === 'deleted_upstream' || c.status === 'posted_drifted')) {
-                    rowActionable++;
-                }
-            }
-            html += '<td class="bulk-col">';
-            if (rowActionable > 0) {
-                html += '<button class="btn btn-xs btn-outline bulk-row-btn" ' +
-                    'data-ch-idx="' + row.chapter_index + '" title="Bulk publish this row">' +
-                    rowActionable + '</button>';
-            }
-            html += '</td>';
-            html += '</tr>';
-        }
-        html += '</tbody></table></div>';
+        // Build matrix — table on desktop, expandable cards on mobile.
+        // Both render the same .publish-check-cell elements with
+        // data-cell + data-plat-id attributes so cell-click binding +
+        // bulk target collection are unchanged.
+        const isMobile = (typeof App !== 'undefined') && App.isMobileLayoutActive && App.isMobileLayoutActive();
+        let html = isMobile ? _renderMobileMatrix(data) : _renderDesktopMatrix(data);
 
         // Detail panel placeholder
         html += '<div class="publish-check-detail" id="publish-check-detail">' +
-            '<div class="publish-check-detail-empty">Click any cell for details.</div>' +
-            '</div>';
+            '<div class="publish-check-detail-empty">' +
+            (isMobile ? 'Tap any platform row for details.' : 'Click any cell for details.') +
+            '</div></div>';
         html += '<div class="action-log" id="publish-action-log"></div>';
 
         body.innerHTML = html;
@@ -344,6 +317,140 @@ window.PublishCheck = (function () {
         });
     }
 
+    // Desktop matrix — chapters as rows, platforms as columns. Wide
+    // table; the user scans a single row to see status across every
+    // platform at a glance.
+    function _renderDesktopMatrix(data) {
+        let html = '<div class="publish-check-table-wrap"><table class="publish-check-table">';
+        html += '<thead><tr><th class="ch-col">Chapter</th>';
+        for (const p of data.platforms) {
+            html += '<th class="plat-col" title="' + _escape(p.name) + '">' +
+                _escape(p.name) + '</th>';
+        }
+        html += '<th class="bulk-col"></th>';
+        html += '</tr></thead><tbody>';
+
+        for (const row of data.matrix) {
+            const isFull = row.chapter_index === 0;
+            const chLabel = isFull
+                ? '<strong>Full story</strong> <span class="row-hint">(' +
+                  _escape(row.chapter_title) + ')</span>'
+                : 'Ch ' + row.chapter_index + '. ' + _escape(row.chapter_title);
+            const rowCls = isFull ? 'row-full' : 'row-chapter';
+            html += '<tr class="' + rowCls + '" data-ch-idx="' + row.chapter_index +
+                '" data-ch-title="' + _escape(row.chapter_title) + '">' +
+                '<td class="ch-col">' + chLabel + '</td>';
+            for (const p of data.platforms) {
+                const cell = row.cells[p.id] || { status: 'error', errors: ['Missing'] };
+                html += _renderCell(cell, p);
+            }
+            const rowActionable = _countActionable(row, data.platforms);
+            html += '<td class="bulk-col">';
+            if (rowActionable > 0) {
+                html += '<button class="btn btn-xs btn-outline bulk-row-btn" ' +
+                    'data-ch-idx="' + row.chapter_index + '" title="Bulk publish this row">' +
+                    rowActionable + '</button>';
+            }
+            html += '</td></tr>';
+        }
+        html += '</tbody></table></div>';
+        return html;
+    }
+
+    // Mobile matrix — chapters as expandable cards, each chapter
+    // listing its platforms vertically with name + status label
+    // inline. The 11-platform-wide table is unreadable on a 430px
+    // viewport; this trades a glance-comparison across platforms for
+    // tap-to-drill-in within one chapter, which matches mobile use:
+    // "what's the status of <chapter X>?" rather than "compare every
+    // chapter against every platform". <details> handles open/close
+    // natively (no JS) and remembers state per element.
+    function _renderMobileMatrix(data) {
+        let html = '<div class="publish-check-mobile-list">';
+        for (const row of data.matrix) {
+            const isFull = row.chapter_index === 0;
+            const chLabel = isFull
+                ? 'Full story'
+                : 'Ch ' + row.chapter_index + '. ' + _escape(row.chapter_title);
+            const rowCls = isFull ? 'row-full' : 'row-chapter';
+            const actionable = _countActionable(row, data.platforms);
+
+            // Status summary in the summary bar — count by class so
+            // the user sees "5✓ 1↑ 2🔒" without expanding.
+            let pCounts = { posted: 0, drifted: 0, ready: 0, blocked: 0, deleted: 0, draft: 0, no_creds: 0 };
+            for (const p of data.platforms) {
+                const c = row.cells[p.id];
+                if (!c) continue;
+                if (c.status === 'posted') pCounts.posted++;
+                else if (c.status === 'posted_draft') pCounts.draft++;
+                else if (c.status === 'posted_drifted') pCounts.drifted++;
+                else if (c.status === 'ready' || c.status === 'ready_retry') pCounts.ready++;
+                else if (c.status === 'deleted_upstream') pCounts.deleted++;
+                else if (c.status === 'no_credentials') pCounts.no_creds++;
+                else if (c.status === 'blocked' || c.status === 'posted_stale' || c.status === 'failed_prev') pCounts.blocked++;
+            }
+            const summaryParts = [];
+            if (pCounts.posted) summaryParts.push('<span class="cell-legend cell-posted">' + pCounts.posted + '✓</span>');
+            if (pCounts.draft) summaryParts.push('<span class="cell-legend cell-posted-draft">' + pCounts.draft + '✎</span>');
+            if (pCounts.drifted) summaryParts.push('<span class="cell-legend cell-posted-drifted">' + pCounts.drifted + '↑</span>');
+            if (pCounts.deleted) summaryParts.push('<span class="cell-legend cell-deleted">' + pCounts.deleted + '⊘</span>');
+            if (pCounts.ready) summaryParts.push('<span class="cell-legend cell-ready">' + pCounts.ready + '✓</span>');
+            if (pCounts.blocked) summaryParts.push('<span class="cell-legend cell-blocked">' + pCounts.blocked + '✗</span>');
+            if (pCounts.no_creds) summaryParts.push('<span class="cell-legend cell-no-creds">' + pCounts.no_creds + '🔒</span>');
+
+            html += '<details class="publish-check-mobile-row ' + rowCls + '" ' +
+                'data-ch-idx="' + row.chapter_index + '" ' +
+                'data-ch-title="' + _escape(row.chapter_title) + '">';
+            html += '<summary class="publish-check-mobile-summary">' +
+                '<span class="ch-title">' + chLabel + '</span>' +
+                '<span class="ch-counts">' + summaryParts.join(' ') + '</span>' +
+                '</summary>';
+            html += '<div class="publish-check-mobile-platforms">';
+            for (const p of data.platforms) {
+                const cell = row.cells[p.id] || { status: 'error', errors: ['Missing'] };
+                html += _renderMobileCell(cell, p);
+            }
+            if (actionable > 0) {
+                html += '<button class="btn btn-sm btn-outline bulk-row-btn" ' +
+                    'data-ch-idx="' + row.chapter_index + '" title="Bulk publish this chapter">' +
+                    'Publish ' + actionable + ' ready' + (actionable === 1 ? '' : 's') + '</button>';
+            }
+            html += '</div></details>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    function _countActionable(row, platforms) {
+        let n = 0;
+        for (const p of platforms) {
+            const c = row.cells[p.id];
+            if (c && (c.status === 'ready' || c.status === 'ready_retry' ||
+                c.status === 'deleted_upstream' || c.status === 'posted_drifted')) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    // Mobile cell — same `.publish-check-cell` class so existing
+    // click handler picks it up; presents as a horizontal row with
+    // platform name + status label rather than a single icon cell.
+    function _renderMobileCell(cell, plat) {
+        const meta = STATUS_LABELS[cell.status] || STATUS_LABELS.error;
+        const errSummary = (cell.errors && cell.errors.length)
+            ? cell.errors[0] : '';
+        return '<button type="button" class="publish-check-cell publish-check-cell-mobile ' + meta.cls + '"' +
+            ' data-cell=\'' + _escape(JSON.stringify(cell)) + '\'' +
+            ' data-plat-id="' + _escape(plat.id) + '"' +
+            ' data-plat-name="' + _escape(plat.name) + '">' +
+            '<span class="cell-icon">' + meta.icon + '</span>' +
+            '<span class="cell-plat">' + _escape(plat.name) + '</span>' +
+            '<span class="cell-status">' + meta.label +
+            (errSummary ? ' <span class="cell-err">— ' + _escape(errSummary) + '</span>' : '') +
+            '</span></button>';
+    }
+
     function _renderCell(cell, plat) {
         const meta = STATUS_LABELS[cell.status] || STATUS_LABELS.error;
         const titleParts = [meta.label];
@@ -361,16 +468,19 @@ window.PublishCheck = (function () {
             meta.icon + '</td>';
     }
 
-    // Cell click handler — passes plat info + chapter to detail
+    // Cell click handler — passes plat info + chapter to detail.
+    // Works for both desktop (<tr>) and mobile (<details>) wrappers
+    // by walking up to whichever ancestor carries data-ch-idx.
     function _bindCellClicks(body) {
         body.querySelectorAll('.publish-check-cell').forEach(td => {
             td.addEventListener('click', () => {
                 body.querySelectorAll('.publish-check-cell.selected')
                     .forEach(x => x.classList.remove('selected'));
                 td.classList.add('selected');
-                const tr = td.closest('tr');
-                const chIdx = parseInt(tr.dataset.chIdx);
-                const chTitle = tr.dataset.chTitle;
+                const wrap = td.closest('[data-ch-idx]');
+                if (!wrap) return;
+                const chIdx = parseInt(wrap.dataset.chIdx);
+                const chTitle = wrap.dataset.chTitle;
                 _showDetail(
                     JSON.parse(td.dataset.cell),
                     td.dataset.platId,
@@ -378,6 +488,14 @@ window.PublishCheck = (function () {
                     chIdx,
                     chTitle,
                 );
+                // On mobile the detail panel sits below the chapter
+                // list; scroll it into view so the user sees the
+                // appearing detail without hunting.
+                if (typeof App !== 'undefined' && App.isMobileLayoutActive && App.isMobileLayoutActive()) {
+                    requestAnimationFrame(() => {
+                        document.getElementById('publish-check-detail')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    });
+                }
             });
         });
     }

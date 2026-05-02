@@ -605,6 +605,7 @@ def get_preferences():
         "run_on_startup": config.get_run_on_startup(),
         "display_timezone": settings.get("display_timezone", "UTC"),
         "theme": settings.get("theme", "dark"),
+        "mobile_mode": settings.get("mobile_mode", "auto"),
         "auto_sync_enabled": settings.get("auto_sync_enabled", True),
         # ── Per-platform notification master toggles ───────────────
         "notifications_enabled": settings.get("notifications_enabled", True),
@@ -681,6 +682,14 @@ def save_preferences(body: dict):
         if theme_val in {"dark", "light", "ink_copper", "parchment",
                          "midnight_press", "forest", "velvet", "high_contrast"}:
             update["theme"] = theme_val
+    # Mobile UX override. `auto` (default) follows viewport via matchMedia;
+    # `on` forces the mobile layout on every screen size; `off` suppresses
+    # the new mobile-mode-only enhancements (existing media queries still
+    # fire on small viewports). Whitelisted to a known set.
+    if "mobile_mode" in body:
+        mm_val = str(body["mobile_mode"])
+        if mm_val in {"auto", "on", "off"}:
+            update["mobile_mode"] = mm_val
 
     # ── Per-platform notification master toggles ───────────────
     # Each platform poller checks its own *_notifications_enabled flag

@@ -460,6 +460,16 @@ const Editor = {
                         </div>
                     </div>
                 </div>
+                <!-- Mobile-only single-panel switcher. CSS hides this on
+                     desktop. Each tab maps to one of the 4 quad panels;
+                     a 5th tab is appended dynamically when the CSS theme
+                     editor is opened. -->
+                <div class="editor-mobile-tabs" id="editor-mobile-tabs" role="tablist">
+                    <button class="editor-mobile-tab active" data-panel="panel-md-code" type="button">Edit</button>
+                    <button class="editor-mobile-tab" data-panel="panel-md-preview" type="button">Rich</button>
+                    <button class="editor-mobile-tab" data-panel="panel-fmt-source" type="button">Format</button>
+                    <button class="editor-mobile-tab" data-panel="panel-fmt-preview" type="button">Preview</button>
+                </div>
                 <div class="editor-quad" id="editor-quad">
                     <div class="editor-quad-panel" id="panel-md-code">
                         <div class="preview-panel-header"><button class="panel-toggle" data-panel="panel-md-code" title="Hide panel">&#128065;</button> Markdown Source</div>
@@ -547,8 +557,27 @@ const Editor = {
                     document.querySelectorAll('#format-tabs .format-tab').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     this.switchFormat(btn.dataset.fmt);
+                    // On mobile, picking a format implies the user wants
+                    // to look at the result — auto-switch to the format
+                    // panel (unless they're already there or on Preview).
+                    if (App.isMobileLayoutActive && App.isMobileLayoutActive()) {
+                        const cur = document.querySelector('.editor-quad-panel.mobile-active');
+                        const onFmt = cur && (cur.id === 'panel-fmt-source' || cur.id === 'panel-fmt-preview');
+                        if (!onFmt) this.setMobileActivePanel('panel-fmt-source');
+                    }
                 });
             });
+
+            // Mobile single-panel tab switcher. Initialised to the
+            // Edit (Markdown source) panel — the most common starting
+            // point. All four panels remain in the DOM; CSS hides every
+            // panel except the one with .mobile-active.
+            document.querySelectorAll('#editor-mobile-tabs .editor-mobile-tab').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    this.setMobileActivePanel(btn.dataset.panel);
+                });
+            });
+            this.setMobileActivePanel('panel-md-code');
             document.getElementById('editor-css-btn')?.addEventListener('click', () => this.toggleCssEditor());
             document.getElementById('editor-metadata-btn')?.addEventListener('click', () => MetaEditor.toggle());
             document.getElementById('editor-save-btn')?.addEventListener('click', () => this.save());
@@ -1439,8 +1468,41 @@ const Editor = {
     _updateGridColumns() {
         const quad = document.getElementById('editor-quad');
         if (!quad) return;
+        // Mobile single-panel mode is class-driven (.mobile-active); the
+        // grid-template-columns dance only matters on desktop where the
+        // user can hide individual panels via the eye icon.
+        if (App.isMobileLayoutActive && App.isMobileLayoutActive()) {
+            quad.style.gridTemplateColumns = '';
+            return;
+        }
         const visible = quad.querySelectorAll('.editor-quad-panel:not([style*="display: none"])').length;
         quad.style.gridTemplateColumns = Array(visible).fill('1fr').join(' ');
+    },
+
+    /* Mobile single-panel switcher. Adds .mobile-active to one panel,
+     * removes it from all others. CSS handles visibility. CodeMirror
+     * panes need a measure poke after becoming visible — when they're
+     * mounted hidden CM6 records zero size and gutters render wrong
+     * until the next layout change. */
+    setMobileActivePanel(panelId) {
+        document.querySelectorAll('.editor-mobile-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.panel === panelId);
+        });
+        document.querySelectorAll('.editor-quad-panel').forEach(p => {
+            p.classList.toggle('mobile-active', p.id === panelId);
+        });
+        // Re-measure CodeMirror after the panel becomes visible.
+        // requestAnimationFrame waits for layout to settle.
+        if (panelId === 'panel-md-code' && this.cmView) {
+            requestAnimationFrame(() => {
+                try { this.cmView.requestMeasure(); } catch (e) { /* ignore */ }
+            });
+        }
+        if (panelId === 'panel-css-editor' && this.cmCssView) {
+            requestAnimationFrame(() => {
+                try { this.cmCssView.requestMeasure(); } catch (e) { /* ignore */ }
+            });
+        }
     },
 
     _updateRestoreBar() {
@@ -1888,13 +1950,34 @@ const Editor = {
                 document.getElementById('theme-revert-btn')?.addEventListener('click', () => this.revertTheme());
                 document.getElementById('theme-source-btn')?.addEventListener('click', () => this._toggleThemeSource());
                 document.querySelector('#panel-css-editor .panel-toggle')?.addEventListener('click', () => this.togglePanel('panel-css-editor'));
+                // Add a CSS tab to the mobile switcher and jump to it.
+                const tabs = document.getElementById('editor-mobile-tabs');
+                if (tabs && !tabs.querySelector('[data-panel="panel-css-editor"]')) {
+                    const tab = document.createElement('button');
+                    tab.className = 'editor-mobile-tab';
+                    tab.type = 'button';
+                    tab.dataset.panel = 'panel-css-editor';
+                    tab.textContent = 'CSS';
+                    tab.addEventListener('click', () => this.setMobileActivePanel('panel-css-editor'));
+                    tabs.appendChild(tab);
+                }
             }
             await this._loadThemeEditor();
             this._updateGridColumns();
+            if (App.isMobileLayoutActive && App.isMobileLayoutActive()) {
+                this.setMobileActivePanel('panel-css-editor');
+            }
         } else {
             if (this.cmCssView) { this.cmCssView.destroy(); this.cmCssView = null; }
             if (cssPanel) cssPanel.remove();
+            // Remove the CSS tab from the mobile switcher.
+            document.querySelector('#editor-mobile-tabs [data-panel="panel-css-editor"]')?.remove();
             this._updateGridColumns();
+            // If the CSS tab was the active one, fall back to Edit.
+            if (App.isMobileLayoutActive && App.isMobileLayoutActive()) {
+                const stillActive = document.querySelector('.editor-quad-panel.mobile-active');
+                if (!stillActive) this.setMobileActivePanel('panel-md-code');
+            }
         }
     },
 

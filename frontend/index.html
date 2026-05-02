@@ -6,11 +6,23 @@
     <title>PawPoller</title>
     <!-- Apply persisted theme BEFORE CSS evaluates so the page never flashes
          the default-dark palette before swapping. localStorage is used so
-         the theme is available synchronously without an API roundtrip. -->
+         the theme is available synchronously without an API roundtrip.
+         Mobile-mode resolution lives here too: the `data-mobile` attribute
+         is the single source of truth read by mobile-only CSS rules
+         (selectors like `html[data-mobile="1"] .foo`). On `auto` it
+         tracks `(max-width: 768px)`; on `on` it's forced "1"; on `off`
+         it's forced "0". App.js attaches a resize listener after boot
+         to keep `auto` in sync as the viewport changes. -->
     <script>
       (function () {
         var t = localStorage.getItem('pawpoller-theme') || 'dark';
         document.documentElement.dataset.theme = t;
+        var m = localStorage.getItem('pawpoller-mobile-mode') || 'auto';
+        var resolved;
+        if (m === 'on') resolved = '1';
+        else if (m === 'off') resolved = '0';
+        else resolved = window.matchMedia('(max-width: 768px)').matches ? '1' : '0';
+        document.documentElement.dataset.mobile = resolved;
       })();
     </script>
     <!-- Vibe Pack typography (matches pawpoller.pages.dev). Crimson Pro
