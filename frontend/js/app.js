@@ -9926,28 +9926,23 @@ const App = {
         if (!bar || !fill || !label) return;
 
         try {
-            const [ib, fa, ws, sf, sqw, ao3, da, wp, ik] = await Promise.all([
-                API.getPollProgress().catch(() => null),
-                API.getFAPollProgress().catch(() => null),
-                API.getWSPollProgress().catch(() => null),
-                API.getSFPollProgress().catch(() => null),
-                API.getSQWPollProgress().catch(() => null),
-                API.getAO3PollProgress().catch(() => null),
-                API.getDAPollProgress().catch(() => null),
-                API.getWPPollProgress().catch(() => null),
-                API.getIKPollProgress().catch(() => null),
-            ]);
+            // 2.16.9: one fetch instead of 9. The combined endpoint
+            // returns { ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw }
+            // — same shape per platform as the old per-platform calls.
+            // Single .catch keeps the bar quiet on transient auth blips
+            // instead of spamming 9 console errors.
+            const all = await API.getAllPollProgress().catch(() => ({}));
 
             const platforms = [
-                { name: 'Inkbunny', data: ib },
-                { name: 'FurAffinity', data: fa },
-                { name: 'Weasyl', data: ws },
-                { name: 'SoFurry', data: sf },
-                { name: 'SquidgeWorld', data: sqw },
-                { name: 'AO3', data: ao3 },
-                { name: 'DeviantArt', data: da },
-                { name: 'Wattpad', data: wp },
-                { name: 'Itaku', data: ik },
+                { name: 'Inkbunny', data: all.ib || null },
+                { name: 'FurAffinity', data: all.fa || null },
+                { name: 'Weasyl', data: all.ws || null },
+                { name: 'SoFurry', data: all.sf || null },
+                { name: 'SquidgeWorld', data: all.sqw || null },
+                { name: 'AO3', data: all.ao3 || null },
+                { name: 'DeviantArt', data: all.da || null },
+                { name: 'Wattpad', data: all.wp || null },
+                { name: 'Itaku', data: all.ik || null },
             ];
 
             const active = platforms.filter(p => p.data && p.data.active);

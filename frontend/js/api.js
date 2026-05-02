@@ -96,6 +96,10 @@ const API = {
     authLogin(data) { return this.post('/api/auth/login', data); },
     authLogout() { return this.post('/api/auth/logout'); },
     getPollProgress() { return this.get('/api/poll/progress'); },
+    // 2.16.9: single-fetch combined endpoint for the global progress
+    // ticker. Returns { ib: {...}, fa: {...}, ws: {...}, ... } in one
+    // request instead of fanning out to 11 per-platform endpoints.
+    getAllPollProgress() { return this.get('/api/poll/all-progress'); },
     getCredentials() { return this.get('/api/settings/credentials'); },
     saveCredentials(data) { return this.post('/api/settings/credentials', data); },
     getPreferences() { return this.get('/api/settings/preferences'); },

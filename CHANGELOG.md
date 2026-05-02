@@ -4,6 +4,41 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.16.9] - 2026-05-02
+
+### BUG-016 — collapse 9× poll/progress fan-out into one endpoint
+
+The dashboard's global progress bar polled every per-platform
+`/api/{p}/poll/progress` endpoint in parallel — 9 simultaneous
+fetches every 10s when idle, every 1.5s when a poll was active.
+The prod live-monitor caught this as the noisiest pattern in the
+DevTools console: any single auth blip spammed 9 identical 401s
+at once because each platform fetch independently retried.
+
+**Backend.** New `GET /api/poll/all-progress` in `routes/api.py`
+imports each poller's progress dict locally so a partial deploy
+(missing module, import error in one poller) only nulls that
+slot instead of taking the whole response down. Returns
+`{ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw}` — same
+per-platform shape every existing endpoint already emitted
+(`active`, `phase`, `current`, `total`, `message`).
+
+**Frontend.** `_progressCheckTick` in `app.js` swapped its
+`Promise.all([...9])` for a single `API.getAllPollProgress()` call.
+On failure, one `.catch` returns `{}` and every platform slot
+falls through to null — the bar stays hidden and the console
+stays clean. Same active/idle interval logic; same aggregation.
+
+Per-platform endpoints stay alive — they're still fetched
+individually by the per-platform dashboard pages and any external
+monitoring scripts. Backwards compatible.
+
+Net effect: 11×/min → 1×/min idle, 50×/min → 5×/min during a
+sync (3.5 minutes of sustained polling on FA + IB easily eats
+2k requests over a day; this drops it by 88%).
+
+---
+
 ## [2.16.8] - 2026-05-02
 
 ### Backlog cleanup — three drive-by fixes from HANDOFF

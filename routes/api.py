@@ -225,6 +225,46 @@ def get_poll_progress():
     return dict(poll_progress)
 
 
+@router.get("/poll/all-progress")
+def get_all_poll_progress():
+    """Return progress state for every platform in one call.
+
+    2.16.9: collapses what used to be 9 simultaneous fetches into one.
+    The frontend ticker fires every 10s (idle) / 1.5s (active), so the
+    fan-out spammed 9× errors into DevTools whenever the session
+    cookie blipped. Each value is a dict with `active`, `phase`,
+    `current`, `total`, `message` — the same shape every per-platform
+    /api/{p}/poll/progress already returns.
+
+    Imports are local so a missing poller module (e.g. partial deploy)
+    can't take the whole endpoint down — that platform's slot just
+    becomes None. Per-platform endpoints stay alive for direct callers
+    and backwards compatibility.
+    """
+    progress = {}
+
+    def _safe(key, importer):
+        try:
+            progress[key] = dict(importer())
+        except Exception as e:
+            logger.debug("all-progress: %s import failed: %s", key, e)
+            progress[key] = None
+
+    _safe("ib", lambda: poll_progress)
+    _safe("fa", lambda: __import__("polling.fa_poller", fromlist=["fa_poll_progress"]).fa_poll_progress)
+    _safe("ws", lambda: __import__("polling.ws_poller", fromlist=["ws_poll_progress"]).ws_poll_progress)
+    _safe("sf", lambda: __import__("polling.sf_poller", fromlist=["sf_poll_progress"]).sf_poll_progress)
+    _safe("sqw", lambda: __import__("polling.sqw_poller", fromlist=["sqw_poll_progress"]).sqw_poll_progress)
+    _safe("ao3", lambda: __import__("polling.ao3_poller", fromlist=["ao3_poll_progress"]).ao3_poll_progress)
+    _safe("da", lambda: __import__("polling.da_poller", fromlist=["da_poll_progress"]).da_poll_progress)
+    _safe("wp", lambda: __import__("polling.wp_poller", fromlist=["wp_poll_progress"]).wp_poll_progress)
+    _safe("ik", lambda: __import__("polling.ik_poller", fromlist=["ik_poll_progress"]).ik_poll_progress)
+    _safe("bsky", lambda: __import__("polling.bsky_poller", fromlist=["bsky_poll_progress"]).bsky_poll_progress)
+    _safe("tw", lambda: __import__("polling.tw_poller", fromlist=["tw_poll_progress"]).tw_poll_progress)
+
+    return progress
+
+
 @router.get("/status")
 def get_status():
     """Polling status, last/next poll time, total submissions."""
