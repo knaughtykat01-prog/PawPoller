@@ -125,7 +125,7 @@ def _build_csp() -> str:
     # the policy with 'unsafe-inline'. If the inline script changes, the
     # browser will print the new expected hash in the console and this
     # constant must be updated to match.
-    theme_inline_hash = "'sha256-PQv0iyndH6bqQiLzwEuCSIz1xMcWBsP0swro6kOCiZI='"
+    theme_inline_hash = "'sha256-WudoxBejEmzS4SXsQBia7rsNZctlaFiey3RvF0r8SzA='"
     _cached_csp = (
         "default-src 'self'; "
         f"script-src 'self' {theme_inline_hash}{cf}; "
