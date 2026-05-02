@@ -4,6 +4,40 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.16.12] - 2026-05-02
+
+### Sidebar — drop the "Platform Dashboards" dropdown
+
+2.16.10 added a master collapse to hide the 11 platform sub-groups
+in the mobile sidebar. The user pointed out it's redundant: there's
+already a "Platforms" entry above it that opens a visual platform
+grid popover (same destinations, fewer taps, more visual).
+
+Removed:
+- the `<li class="nav-master nav-platforms-master">` wrapper from
+  `index.html`
+- all 11 nested `<li class="nav-group">` platform groups (Inkbunny
+  through X / Twitter, ~220 lines)
+- the master CSS block in `layout.css` (`.nav-master-section`,
+  `.nav-master-children`, expanded chevron)
+- the master toggle handler and master-auto-expand logic in `app.js`
+
+Sidebar reading order on Overview now:
+- Overview
+- Platforms (popover trigger)
+- **Publishing** divider
+- Stories / Queue / History
+- Editor / Tools
+
+The `.nav-group` and `.nav-chevron` CSS rules are kept untouched in
+case the popover gains per-platform sub-page links later. The per-
+platform routes (`/#/sf`, `/#/fa/submissions`, etc.) all still work
+— only the sidebar entries are gone, and the popover already covers
+the dashboard route. Sub-pages are reachable from each platform's
+dashboard.
+
+---
+
 ## [2.16.11] - 2026-05-02
 
 ### Sidebar — drop dead "Published" link
