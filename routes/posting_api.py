@@ -15,7 +15,7 @@ import tarfile
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 import config
 from database.db import get_connection
@@ -324,6 +324,7 @@ _DOWNLOAD_EXTENSIONS = frozenset({
     ".md",       # MASTER.md and chapter Markdown
     ".pdf",      # FA-format PDFs
     ".json",     # story.json + split_manifest.json
+    ".epub",     # EPUB 3.0 produced by editor/epub_generator.py
 })
 
 # Map extensions to media types for the download response. Browsers use
@@ -336,7 +337,13 @@ _DOWNLOAD_MEDIA_TYPES = {
     ".md":   "text/markdown; charset=utf-8",
     ".pdf":  "application/pdf",
     ".json": "application/json",
+    ".epub": "application/epub+zip",
 }
+
+# Subdirectories excluded from the whole-story zip — Backups/ in particular
+# can be many MB of revision history that the user almost never wants in a
+# "send myself this story" download.
+_ARCHIVE_EXCLUDED_DIRS = frozenset({"Backups", "__pycache__", ".git"})
 
 
 @posting_router.get("/file")
@@ -382,6 +389,77 @@ def get_story_file(story: str = Query(...), file: str = Query(...)):
         filename=requested.name,
         headers={
             "Content-Disposition": f'attachment; filename="{requested.name}"',
+            "Cache-Control": "no-cache",
+        },
+    )
+
+
+@posting_router.get("/archive")
+def get_story_archive(story: str = Query(...)):
+    """Stream a zip of the entire story folder as a single download.
+
+    Built so that on a phone you can grab `Story.zip` once and have
+    every format (BBCode/HTML/PDF/EPUB/Styled HTML/SquidgeWorld + the
+    canonical Markdown/MASTER.md + cover image + chapter splits) in one
+    file. `Backups/` is excluded — it can be many MB of revision
+    history that nobody wants in a "send myself this story" download.
+
+    The zip includes the story folder name as the top-level prefix so
+    extracting it produces `Hypnotic_Claim/Markdown/MASTER.md` rather
+    than dumping `Markdown/MASTER.md` into the user's downloads.
+    """
+    import io
+    import os
+    import zipfile
+    from posting import story_reader
+
+    if not story:
+        raise HTTPException(400, detail="story query param is required")
+
+    try:
+        story_obj = story_reader.load_story(story)
+    except FileNotFoundError:
+        raise HTTPException(404, detail=f"Story not found: {story}")
+    except Exception as e:
+        logger.error("Error loading story %s for archive: %s", story, e)
+        raise HTTPException(500, detail="Failed to load story")
+
+    story_root = story_obj.path.resolve()
+    if not story_root.is_dir():
+        raise HTTPException(404, detail="Story folder not found")
+
+    folder_name = story_root.name
+
+    # Build zip in memory. Typical story is well under 50MB after
+    # compression — even Velvet_and_Vice (~70K words, 9 sections,
+    # multi-format) was 28MB total across the whole archive of ~13
+    # stories. One story alone fits comfortably in RAM.
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(story_root):
+            # Skip excluded subdirectories in-place so os.walk doesn't
+            # descend into them.
+            dirs[:] = [d for d in dirs if d not in _ARCHIVE_EXCLUDED_DIRS]
+            for fname in files:
+                fpath = (Path(root) / fname).resolve()
+                # Defensive: never let a symlink leak files from outside
+                # the story folder.
+                try:
+                    fpath.relative_to(story_root)
+                except ValueError:
+                    continue
+                arcname = f"{folder_name}/{fpath.relative_to(story_root).as_posix()}"
+                zf.write(fpath, arcname=arcname)
+
+    buf.seek(0)
+    size = buf.getbuffer().nbytes
+
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{folder_name}.zip"',
+            "Content-Length": str(size),
             "Cache-Control": "no-cache",
         },
     )

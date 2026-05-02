@@ -545,9 +545,21 @@ const Posting = {
                 const url = `/api/posting/file?story=${encodeURIComponent(storyName)}&file=${encodeURIComponent(first.path)}`;
                 return `<a class="format-badge format-link" href="${url}" title="${Utils.escapeHtml(tooltip)}" download>${label} <span class="format-meta">${sizeText}</span></a>`;
             }).join('');
-            const formatsHtml = formatBadges
-                ? `<div class="card"><h3>Available Formats</h3><div class="format-list">${formatBadges}</div></div>`
-                : '';
+            // "Download all" button streams the entire story folder
+            // (excluding Backups/) as a single zip — handy when you're
+            // on a phone and want every format with one tap. The card
+            // always renders so this footer button is reachable even
+            // when no individual format badges have anything to point
+            // at (a brand-new story with only MASTER.md still has
+            // something worth zipping).
+            const archiveUrl = `/api/posting/archive?story=${encodeURIComponent(storyName)}`;
+            const downloadAllHtml = `<a class="btn btn-sm btn-outline" href="${archiveUrl}" download title="Download the entire story folder as a zip (every format + cover + Markdown source)">Download all (zip)</a>`;
+            const badgeListHtml = formatBadges
+                || '<div style="color:#888;font-style:italic">No format files found yet — try Regenerate from the editor.</div>';
+            const formatsHtml = `<div class="card"><h3>Available Formats</h3>
+                <div class="format-list">${badgeListHtml}</div>
+                <div class="format-actions" style="margin-top:0.75em">${downloadAllHtml}</div>
+              </div>`;
 
             App._setContent(`
                 <a href="#/posting" class="back-link">&larr; All Stories</a>

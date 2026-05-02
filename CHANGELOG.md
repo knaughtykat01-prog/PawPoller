@@ -4,6 +4,52 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.17.3] - 2026-05-02
+
+### Mobile-friendly format downloads (EPUB included)
+
+Driven by the "I want to grab the EPUB to my phone to test it" use
+case. The published-story page already had a download badge per
+declared format, but EPUB was triple-broken: not in
+`_FORMAT_KEY_PATTERNS`, not in `_DOWNLOAD_EXTENSIONS`, no media-type
+mapping. Fixed all three. EPUB badges now render with file size +
+modified time, and tapping one downloads
+`Hypnotic_Claim.epub` (or whatever) via Content-Disposition
+attachment with `application/epub+zip` MIME — phone browsers hand
+straight to the OS download manager / EPUB reader.
+
+New `GET /api/posting/archive?story=<name>` streams the entire story
+folder as a zip via `StreamingResponse`. Excludes `Backups/` (revision
+history that no end-user wants in a "send myself this story"
+download), `__pycache__/`, and `.git/`. Top-level entry is the story
+folder name so extracting produces `Hypnotic_Claim/Markdown/MASTER.md`
+rather than dumping `Markdown/MASTER.md` into the user's downloads
+folder. Symlink-traversal guarded — every file is verified
+`relative_to(story_root)` before being added to the archive.
+
+Two surfaces:
+
+1. **Published-story page (`#/posting/<name>`)**: the existing
+   "Available Formats" card gains a "Download all (zip)" footer
+   button next to the per-format badges. The card now always renders
+   (even when no individual formats have files yet) so the zip
+   button is always reachable.
+
+2. **Editor toolbar**: new "Downloads ▾" dropdown next to "Regenerate
+   ▾". Lazy-fetches the format list from `/api/posting/stories/<name>`
+   on first open — every available file gets its own menu link with
+   filesize annotation, and a footer "Whole story (zip)" entry calls
+   the new archive endpoint. The menu is invalidated on every
+   regenerate so freshly produced files appear without a page
+   reload. Multi-file formats (PDF chapters, chapter_bbcode,
+   squidgeworld) list each file individually so single-chapter
+   downloads don't force the user through the whole-zip path.
+
+Tested on Hypnotic_Claim: 1.3MB zip with 38 entries, EPUB included,
+Backups/ excluded.
+
+---
+
 ## [2.17.2] - 2026-05-02
 
 ### EPUB — own folder + auto-discovery in story.json

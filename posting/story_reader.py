@@ -290,6 +290,7 @@ _FORMAT_KEY_PATTERNS: dict[str, list[tuple[str, str]]] = {
     "markdown": [("Markdown", "MASTER.md"), ("Markdown", "*.md")],
     "pdf": [("PDF", "*.pdf"), ("Chapters/PDF", "*.pdf")],
     "styled_html": [("HTML", "*_Styled.html"), ("Chapters/Styled_HTML", "*.html")],
+    "epub": [("EPUB", "*.epub")],
 }
 
 

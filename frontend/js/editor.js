@@ -454,6 +454,12 @@ const Editor = {
                                     <button data-regen="chapters">Chapter splits only</button>
                                 </div>
                             </div>
+                            <div class="regen-dropdown" id="downloads-dropdown">
+                                <button id="editor-downloads-btn" class="btn btn-sm btn-outline" title="Download a generated format to this device">Downloads &#9662;</button>
+                                <div class="regen-dropdown-menu" id="downloads-dropdown-menu">
+                                    <div class="downloads-loading" style="padding:0.4em 0.75em;color:#888">Loading…</div>
+                                </div>
+                            </div>
                             <button id="editor-publish-btn" class="btn btn-sm btn-outline" title="Check publishability across all platforms">Publish</button>
                             <button id="editor-format-btn" class="btn btn-sm btn-outline" title="Format source code (Shift+Alt+F)">Format</button>
                             <div class="format-tabs" id="format-tabs">
@@ -617,9 +623,25 @@ const Editor = {
                     this.regenerate(btn.dataset.regen === 'all' ? null : [btn.dataset.regen]);
                 });
             });
-            // Close dropdown on outside click
+            // Downloads dropdown — lazy-fetch the format list the first
+            // time it opens, then keep the rendered menu around for
+            // subsequent opens. Rebuilt on every regenerate() so freshly
+            // produced files show up without a page reload.
+            document.getElementById('editor-downloads-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const menu = document.getElementById('downloads-dropdown-menu');
+                if (!menu) return;
+                const willOpen = !menu.classList.contains('open');
+                document.getElementById('regen-dropdown-menu')?.classList.remove('open');
+                menu.classList.toggle('open');
+                if (willOpen && !menu.dataset.populated) {
+                    this._populateDownloadsMenu();
+                }
+            });
+            // Close dropdowns on outside click
             document.addEventListener('click', () => {
                 document.getElementById('regen-dropdown-menu')?.classList.remove('open');
+                document.getElementById('downloads-dropdown-menu')?.classList.remove('open');
             });
             document.getElementById('editor-publish-btn')?.addEventListener('click', () => PublishCheck.open(storyName));
             document.getElementById('editor-format-btn')?.addEventListener('click', () => this.formatSource());
@@ -1418,10 +1440,71 @@ const Editor = {
             } else {
                 this._updateStatus(`Regen errors: ${(data.errors || []).join(', ')}`);
             }
+            // File set may have changed — invalidate downloads menu so
+            // a fresh fetch happens on next open.
+            const dlMenu = document.getElementById('downloads-dropdown-menu');
+            if (dlMenu) {
+                delete dlMenu.dataset.populated;
+                dlMenu.innerHTML = '<div class="downloads-loading" style="padding:0.4em 0.75em;color:#888">Loading…</div>';
+            }
         } catch (err) {
             this._updateStatus(`Regen error: ${err.message}`);
         } finally {
             if (btn) btn.disabled = false;
+        }
+    },
+
+    // ---------------------------------------------------------------------------
+    // Downloads dropdown
+    // ---------------------------------------------------------------------------
+
+    async _populateDownloadsMenu() {
+        const menu = document.getElementById('downloads-dropdown-menu');
+        if (!menu) return;
+        try {
+            // Reuse the published-story endpoint — it already enriches
+            // every declared format with file size + modified time. The
+            // editor doesn't otherwise hit /api/posting, but the
+            // metadata is exactly what we need here.
+            const resp = await fetch(`/api/posting/stories/${encodeURIComponent(this.storyName)}`);
+            if (!resp.ok) {
+                menu.innerHTML = `<div style="padding:0.4em 0.75em;color:#c33">Failed to load formats (${resp.status})</div>`;
+                return;
+            }
+            const data = await resp.json();
+            const formats = data.formats || {};
+            const items = [];
+            const fmtSize = (bytes) => {
+                if (!bytes) return '';
+                if (bytes < 1024) return ` (${bytes} B)`;
+                if (bytes < 1024 * 1024) return ` (${(bytes / 1024).toFixed(1)} KB)`;
+                return ` (${(bytes / (1024 * 1024)).toFixed(1)} MB)`;
+            };
+            // Render one menu link per file. For multi-file formats
+            // (chapter_bbcode, squidgeworld, sometimes pdf) we list each
+            // file individually so the user can grab a single chapter
+            // instead of being forced into the whole-zip path.
+            Object.keys(formats).sort().forEach(fmtKey => {
+                const meta = formats[fmtKey] || {};
+                if (!meta.available || !meta.files || meta.files.length === 0) return;
+                const label = fmtKey.replace(/_/g, ' ');
+                meta.files.forEach(f => {
+                    const url = `/api/posting/file?story=${encodeURIComponent(this.storyName)}&file=${encodeURIComponent(f.path)}`;
+                    const fileLabel = meta.files.length === 1
+                        ? label
+                        : `${label}: ${f.path.split('/').pop()}`;
+                    items.push(`<a href="${url}" download title="${f.path}">${fileLabel}<span style="color:#888;font-size:0.85em">${fmtSize(f.size)}</span></a>`);
+                });
+            });
+            // Whole-story zip footer entry — always present, even when
+            // no individual format files exist (a brand-new story still
+            // has MASTER.md + story.json worth zipping).
+            const archiveUrl = `/api/posting/archive?story=${encodeURIComponent(this.storyName)}`;
+            const zipEntry = `<a href="${archiveUrl}" download style="border-top:1px solid #ddd;margin-top:0.3em;padding-top:0.5em" title="Download the entire story folder as a zip"><strong>Whole story (zip)</strong></a>`;
+            menu.innerHTML = items.join('') + zipEntry;
+            menu.dataset.populated = '1';
+        } catch (err) {
+            menu.innerHTML = `<div style="padding:0.4em 0.75em;color:#c33">Error: ${err.message}</div>`;
         }
     },
 
