@@ -129,7 +129,14 @@ async def dashboard_login(request: Request, body: dict):
         value=cookie_value,
         max_age=max_age,
         httponly=True,
-        samesite="strict",
+        # 2.16.8: lax instead of strict — prod live-monitor caught a
+        # recurring pattern where the browser dropped the cookie under
+        # specific idle/refresh conditions, producing periodic 401
+        # bursts (9× polling progress + the next SPA fetch all 401),
+        # then immediately recovering on the next tick. Strict was
+        # never necessary anyway: dashboard is HttpOnly + JSON-only
+        # state-change endpoints, so CSRF surface is already closed.
+        samesite="lax",
         secure=request.url.scheme == "https",
         path="/",
     )

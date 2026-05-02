@@ -4,6 +4,47 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.16.8] - 2026-05-02
+
+### Backlog cleanup — three drive-by fixes from HANDOFF
+
+Three small wins that had been sitting in the open-bugs list since
+the round-2 prod live-monitor.
+
+**SameSite=Strict cookie quirk → lax.** The prod live-monitor
+caught a recurring 30s pattern: 9 successful polling-progress ticks,
+then the next tick fails entirely (9× 401 + sometimes a real SPA
+fetch like `/api/settings/preferences` also 401), then immediately
+recovers. Each burst opened fresh TCP connections (different source
+ports), pointing at the browser dropping the session cookie under
+specific idle/refresh conditions — a known SameSite=Strict quirk.
+Strict was never load-bearing here: dashboard is HttpOnly + only
+JSON-only state-change endpoints, so CSRF surface is already
+closed by the cookie format. Switched to `samesite="lax"` in
+`routes/dashboard_auth.py:132`.
+
+**Favicon 401 noise.** `/favicon.ico` returned 401 because the auth
+middleware (`dashboard.py:197-203`) didn't exempt it. Browsers
+fetch favicons without auth context on every page, so every
+unauthenticated page load spammed the console. Added to
+`_AUTH_EXEMPT_PATHS`.
+
+**`/api/health` exposes version.** Was `{"status": "ok"}` with no
+version — monitoring and CI couldn't confirm a deploy had actually
+rolled out without scraping the dashboard HTML. Now returns
+`{"status": "ok", "version": config.APP_VERSION}`.
+
+### Housekeeping
+
+`docs/HANDOFF.md` was stuck on 2.16.3 — bumped the header to 2.16.8
+and added the mobile-mode work (Phase 5 calibration sweep + 2.16.4
+CSP hash fix + 2.16.5 page header / stats grid + 2.16.6 page-header
+wrap + 2.16.7 sizing+tabs+main clamp) to the "What's working live"
+table, plus marked BUG-011 / SameSite-quirk / favicon-401 as fixed
+in the open-bugs list.
+
+---
+
 ## [2.16.7] - 2026-05-02
 
 ### Mobile Mode — page-header sizing + tab strip + main clamp

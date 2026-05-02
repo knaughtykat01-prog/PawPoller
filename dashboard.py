@@ -199,6 +199,10 @@ _AUTH_EXEMPT_PATHS = frozenset({
     "/api/auth/dashboard-status",
     "/api/auth/dashboard-login",
     "/api/auth/dashboard-setup",
+    # 2.16.8: favicon was returning 401 because the auth middleware
+    # didn't exempt it. Browsers fetch /favicon.ico without auth
+    # context on every page, producing console error noise.
+    "/favicon.ico",
 })
 _AUTH_EXEMPT_PREFIXES = ("/css/", "/js/")
 

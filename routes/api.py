@@ -46,11 +46,15 @@ router = APIRouter(prefix="/api")
 async def health_check():
     """Lightweight health check for Docker HEALTHCHECK and monitoring.
 
-    Returns 200 with {"status": "ok"} if the web server is responsive.
-    Does not check individual poller health — that would add latency and
-    coupling.  The point is to detect a completely dead container.
+    Returns 200 with {"status": "ok", "version": "..."} if the web
+    server is responsive. Does not check individual poller health —
+    that would add latency and coupling. The point is to detect a
+    completely dead container.
+
+    2.16.8: added `version` so monitoring/CI can confirm a deploy
+    actually rolled out without parsing the dashboard HTML.
     """
-    return {"status": "ok"}
+    return {"status": "ok", "version": config.APP_VERSION}
 
 
 # In-memory credentials for "don't remember me" logins.
