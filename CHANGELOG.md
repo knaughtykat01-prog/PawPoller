@@ -4,6 +4,52 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.17.0] - 2026-05-02
+
+### EPUB output format
+
+New `editor/epub_generator.py` produces EPUB 3.0 files in a Vellum-style
+novel layout: cover -> title page -> copyright -> dedication (optional)
+-> author's note -> content warning (front or back) -> chapters with
+word-form chapter numbers ("One", "Two") and a drop cap on the first
+paragraph. Reuses the existing `parse_front_matter` + anchor parsing
+from `editor/converter.py` so the input contract is identical to every
+other regenerate format — no MASTER.md changes required.
+
+The generator handles the italic-narration / roman-dialogue house
+style: drop caps are floated as roman characters even when the
+paragraph that contains them is italic, so the "T" in `*The gym
+smelled of rubber...*` renders as a roman drop cap followed by the
+remaining italic body. Scene breaks emit `<hr class="basic-break" />`
+(vertical whitespace, no glyph). POV markers `**⟨ Name ⟩**` become
+in-chapter `<h2 class="section-title subhead">` headings and reset
+the drop-cap counter so the next paragraph also gets full-width
+treatment, matching Vellum's behaviour for multi-POV chapters.
+
+Wired into the regenerate endpoint as a new `epub` format. The
+dropdown gains an "EPUB only" entry next to "PDF only". A new
+`epub_warning_position` request field accepts `"front"` (PawPoller
+default) or `"back"` (Vellum convention, with a forward link from
+the author's note) — defaults to front to match the rest of the
+pipeline.
+
+Cover image resolution is `cover.jpg` at the story root if present,
+falling back to `story.json` `images.cover` otherwise. Output lands at
+`Markdown/{story_stem}.epub`.
+
+Validated with `epubcheck 5.1.0` against EPUB 3.3 rules:
+0 fatals / 0 errors / 0 warnings on the Hypnotic_Claim test fixture.
+Mimetype is stored uncompressed as the first zip entry per the EPUB
+spec.
+
+Skipped on round one (logged for follow-up): bundled OFL fonts (~700KB
++ license tracking), Vellum-grade CSS class system (we use clean
+classnames), SVG scene-break glyphs, dedication / subtitle UI fields
+in the metadata drawer (the generator reads them if present in
+`story.json`/MASTER.md, but there's no UI yet to edit them).
+
+---
+
 ## [2.16.14] - 2026-05-02
 
 ### BUG-018 + BUG-020 + BUG-021 — last of the round-2 backlog

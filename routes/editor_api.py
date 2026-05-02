@@ -43,7 +43,8 @@ class PreviewRequest(BaseModel):
 
 class RegenerateRequest(BaseModel):
     skip_pdf: bool = False  # WeasyPrint is fast enough to be on by default
-    formats: list[str] | None = None  # None = all, or subset of: html, bbcode, styled, sqw, pdf, chapters
+    formats: list[str] | None = None  # None = all, or subset of: html, bbcode, styled, sqw, pdf, chapters, epub
+    epub_warning_position: str = "front"  # 'front' (PawPoller default) or 'back' (Vellum convention)
 
 
 class CreateStoryRequest(BaseModel):
@@ -800,6 +801,20 @@ async def regenerate(story_name: str, req: RegenerateRequest):
                     results.append(f"PDF: {pdf_count} file(s) generated via {backend}")
         except Exception as e:
             errors.append(f"PDF: {e}")
+
+    # --- EPUB (full story, Vellum-style novel layout) ---
+    if should_gen("epub"):
+        try:
+            from editor.epub_generator import build_epub
+            epub_path = story_dir / "Markdown" / f"{stem}.epub"
+            build_epub(
+                story_dir, epub_path,
+                warning_position=req.epub_warning_position,
+            )
+            size = epub_path.stat().st_size if epub_path.is_file() else 0
+            results.append(f"Markdown/{stem}.epub ({size:,} bytes)")
+        except Exception as e:
+            errors.append(f"EPUB: {e}")
 
     # --- Chapter splits (Markdown, SoFurry HTML, BBCode) ---
     if should_gen("chapters"):

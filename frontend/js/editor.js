@@ -450,6 +450,7 @@ const Editor = {
                                     <button data-regen="styled">Styled HTML + CSS</button>
                                     <button data-regen="sqw">SquidgeWorld only</button>
                                     <button data-regen="pdf">PDF only</button>
+                                    <button data-regen="epub">EPUB only</button>
                                     <button data-regen="chapters">Chapter splits only</button>
                                 </div>
                             </div>
