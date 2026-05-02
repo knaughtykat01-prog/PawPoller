@@ -4,6 +4,52 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.17.1] - 2026-05-02
+
+### EPUB polish — first round of visual feedback
+
+Three fixes after eyeballing the 2.17.0 build of Hypnotic_Claim:
+
+**Chapter heading kept dropping the prefix word.** `# Part 1: The
+Seduction` was rendering as just "One" + "The Seduction" — the
+original "Part" was getting captured by the regex but never used in
+the output. `_split_chapter_heading` now returns `('Part One', 'The
+Seduction')` so the chapter-number line preserves the source kind
+("Part" / "Chapter" / "Section" / "Book"). Word-form number is still
+applied. Stories that use raw "Epilogue" or "Prologue" headings (no
+numeric prefix) still skip the number-label entirely.
+
+**Blank page between chapters.** The `---` separator on its own line
+between chapters in the source markdown was being emitted as a stray
+`<hr class="basic-break" />` at the end of chapter 1's xhtml — most
+EPUB readers handled it benignly but Apple Books rendered a blank
+page between the last paragraph of chapter 1 and the chapter 2
+heading. New `_strip_trailing_separators()` drops trailing blank /
+`---` / `*End of <title>*` lines from each chapter before xhtml
+emission. Also removed `page-break-before: always` from
+`.chapter-heading` since each chapter is its own spine file — the
+file boundary already makes every chapter a fresh page, doubling up
+the directive caused some readers to insert an extra blank page on
+top.
+
+**Text messages were styling-blind.** Hypnotic_Claim uses the legacy
+`**ETHAN ❤: Hey babe!**` whole-line-bold shorthand, not the
+`@text-sent`/`@text-received` anchors — so every message fell through
+the heuristic-fallback path and rendered as a plain
+`<p class="text-message">` with no class distinction. Reworked the
+CSS to give every text message a sender-tagged card style (light
+background, small-caps sender name above the body, narrow side
+margins) regardless of whether sent/received was specified. Stories
+that DO use the anchors still get a subtle blue/grey tint contrast
+between sent and received on top of the base card. Phone-display
+(`@phone-incoming`) styling tightened to match — added letter-spacing
+and a slightly smaller font size so the boxed name reads like a
+caller-ID display.
+
+epubcheck 5.1.0 / EPUB 3.3 still clean: 0 / 0 / 0 / 0.
+
+---
+
 ## [2.17.0] - 2026-05-02
 
 ### EPUB output format

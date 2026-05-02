@@ -65,16 +65,22 @@ _HEADING_RE = re.compile(
 
 
 def _split_chapter_heading(heading: str) -> tuple[str | None, str]:
-    """Split 'Part 1: The Seduction' -> ('One', 'The Seduction').
+    """Split 'Part 1: The Seduction' -> ('Part One', 'The Seduction').
 
-    Returns (number_word, title). number_word is None when the heading
-    has no recognisable numeric prefix (e.g. 'Epilogue', 'Prologue').
+    Returns (number_label, title). number_label preserves the source
+    prefix word ("Part", "Chapter", "Section", "Book") joined with the
+    word-form number — so 'Chapter 12: Reckoning' becomes
+    ('Chapter Twelve', 'Reckoning'). Returns (None, full_heading) when
+    the heading has no recognisable numeric prefix (e.g. 'Epilogue',
+    'Prologue').
     """
     m = _HEADING_RE.match(heading.strip())
     if m:
         num = int(m.group("num"))
+        kind = m.group("kind").title()  # 'part' -> 'Part'
         title = (m.group("title") or "").strip()
-        return _number_to_word(num), title or m.group("kind").title()
+        number_label = f"{kind} {_number_to_word(num)}"
+        return number_label, title or kind
     return None, heading.strip()
 
 
@@ -171,11 +177,36 @@ def _format_paragraph_with_dropcap(text: str) -> str:
 # Body parsing (per chapter)
 # ---------------------------------------------------------------------------
 
+def _strip_trailing_separators(lines: list[str]) -> list[str]:
+    """Drop trailing blank/`---`/end-marker lines from a chapter body.
+
+    A `---` immediately before a chapter break (or at end-of-file) was
+    a visual divider in the source markdown that has no place in the
+    rendered chapter — it would emit a stray <hr class="basic-break"/>
+    after the chapter's last paragraph and create a blank page in some
+    EPUB readers.
+    """
+    end = len(lines)
+    while end > 0:
+        s = lines[end - 1].strip()
+        if s == "" or s == "---":
+            end -= 1
+            continue
+        # *End of <title>* marker is structural metadata, not body
+        if re.match(r"^\*End of .+\*$", s):
+            end -= 1
+            continue
+        break
+    return lines[:end]
+
+
 def _split_into_chapters(lines: list[str], body_start: int) -> list[dict]:
     """Walk the body and split into chapters at `# ` headings.
 
     Returns [{title, lines}, ...] where lines are the raw body lines for
-    that chapter, excluding the heading itself.
+    that chapter, excluding the heading itself. Trailing blank/separator
+    lines are stripped from each chapter so a `---` between chapters in
+    the source doesn't render as a stray <hr> at the end of the file.
     """
     chapters: list[dict] = []
     current: dict | None = None
@@ -188,13 +219,11 @@ def _split_into_chapters(lines: list[str], body_start: int) -> list[dict]:
         if stripped.startswith("# "):
             heading = stripped[2:].strip()
             if current is not None:
+                current["lines"] = _strip_trailing_separators(current["lines"])
                 chapters.append(current)
             current = {"title": heading, "lines": []}
             i += 1
             continue
-        # `---` followed by a chapter heading is a chapter break — handled
-        # implicitly by the heading detection above. A standalone `---`
-        # is a scene break and gets emitted in the body.
         if current is None:
             # Skip stray separators / blank lines before the first chapter.
             i += 1
@@ -202,6 +231,7 @@ def _split_into_chapters(lines: list[str], body_start: int) -> list[dict]:
         current["lines"].append(lines[i])
         i += 1
     if current is not None:
+        current["lines"] = _strip_trailing_separators(current["lines"])
         chapters.append(current)
     return chapters
 
@@ -617,7 +647,9 @@ p.story-end {
 .chapter-heading {
   margin: 2em 0 1.5em;
   text-align: center;
-  page-break-before: always;
+  /* No page-break-before — each chapter is its own spine file, so the
+     reader already starts every chapter on a new page. Doubling up
+     causes a blank page before the heading on some readers. */
 }
 
 .chapter-number {
@@ -715,28 +747,47 @@ body.cover, section#cover {
   height: auto;
 }
 
-/* Text messages (for stories that use the iMessage anchors) */
+/* Text messages — rendered as a sender-tagged card so they work
+   regardless of whether the source uses @text-sent / @text-received
+   anchors or the legacy bold-line shorthand. iMessage left/right
+   bubbles need protagonist context the source doesn't carry. */
 p.text-message {
-  margin: 0.4em 0;
-  padding: 0.5em 0.8em;
-  border-radius: 0.8em;
-  max-width: 75%;
+  margin: 0.6em 1.5em;
+  padding: 0.55em 0.9em;
+  background: #f3f3f3;
+  border-left: 3px solid #b0b0b0;
+  border-radius: 0.4em;
   text-indent: 0;
   text-align: left;
+  hyphens: none;
+  font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.92em;
+  line-height: 1.35;
 }
+p.text-message b {
+  display: block;
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #5a5a5a;
+  margin-bottom: 0.25em;
+  font-weight: 600;
+}
+/* When the source DOES use anchors, give sent/received a subtle tint
+   so a writer who sets them up gets the iMessage hint for free. */
 p.text-message.sent {
-  background: #d8e7ff;
-  margin-left: 25%;
+  background: #e6efff;
+  border-left-color: #6f8ec0;
 }
 p.text-message.received {
-  background: #ececec;
-  margin-right: 25%;
+  background: #f0f0f0;
+  border-left-color: #9a9a9a;
 }
 
 p.phone-display {
   text-align: center;
   text-indent: 0;
-  margin: 1em 0;
+  margin: 1.2em 0;
 }
 p.phone-display .phone-display-inner {
   display: inline-block;
@@ -744,6 +795,8 @@ p.phone-display .phone-display-inner {
   border-radius: 1em;
   padding: 0.4em 1.2em;
   font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  letter-spacing: 0.08em;
+  font-size: 0.9em;
 }
 """
 
