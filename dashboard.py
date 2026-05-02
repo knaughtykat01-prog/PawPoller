@@ -204,7 +204,7 @@ _AUTH_EXEMPT_PATHS = frozenset({
     # context on every page, producing console error noise.
     "/favicon.ico",
 })
-_AUTH_EXEMPT_PREFIXES = ("/css/", "/js/")
+_AUTH_EXEMPT_PREFIXES = ("/css/", "/js/", "/vendor/")
 
 
 @app.middleware("http")
@@ -276,6 +276,7 @@ app.include_router(settings_router)  # Settings sync routes (/api/settings/*)
 frontend_dir = config.resource_path("frontend")
 app.mount("/css", StaticFiles(directory=str(frontend_dir / "css")), name="css")
 app.mount("/js", StaticFiles(directory=str(frontend_dir / "js")), name="js")
+app.mount("/vendor", StaticFiles(directory=str(frontend_dir / "vendor")), name="vendor")
 
 
 # SPA (Single Page Application) serving pattern. The root route serves index.html,
@@ -306,6 +307,19 @@ def _render_index_html() -> str:
 @app.get("/")
 async def serve_index():
     return Response(content=_render_index_html(), media_type="text/html")
+
+
+@app.get("/epub-viewer.html")
+async def serve_epub_viewer():
+    """In-app EPUB reader. Opened in a new tab from the editor's
+    Downloads dropdown. Renders any EPUB served by /api/posting/file
+    using vendored epub.js. Auth is the standard session-cookie middleware
+    — opened from the authenticated dashboard, the cookie tags along
+    same-origin so the EPUB fetch and the page itself both succeed.
+    """
+    raw = (frontend_dir / "epub-viewer.html").read_text(encoding="utf-8")
+    rendered = raw.replace("__APP_VERSION__", config.APP_VERSION)
+    return Response(content=rendered, media_type="text/html")
 
 
 if __name__ == "__main__":

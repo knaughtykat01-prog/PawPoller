@@ -4,6 +4,53 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.17.6] - 2026-05-03
+
+### In-app EPUB viewer
+
+EPUB output (2.17.0) was download-only — to eyeball typography you had
+to open Calibre, the OS reader, or sync the file off-device. Now there's
+a "Preview in browser" link directly under the EPUB row in the editor's
+Downloads dropdown that opens a minimal reader in a new tab.
+
+Implementation:
+- `frontend/vendor/{epub.min.js,jszip.min.js}` (epub.js 0.3.93 +
+  jszip 3.10.1, ~315KB total) vendored locally so the desktop build
+  works offline. README in the folder tracks versions and licenses.
+- `dashboard.py` mounts `/vendor` as a static prefix and adds it to
+  `_AUTH_EXEMPT_PREFIXES` (parity with `/css`/`/js`). New
+  `GET /epub-viewer.html` route serves the page with the standard
+  cache-buster substitution; auth is the existing session-cookie
+  middleware.
+- `frontend/epub-viewer.html` is the page: top toolbar (close, title,
+  prev/next + percent location, EPUB download), full-bleed reader,
+  invisible 18%-wide tap zones on the left/right edges for mobile.
+  Reads `?story=X&file=Y` from the URL, fetches via the existing
+  `/api/posting/file` endpoint (cookie carries same-origin) so no
+  new server-side surface. Theme tokens loaded from `tokens.css` so
+  the viewer matches whichever theme the user has set.
+- Keyboard arrows work both in the parent page and inside the rendered
+  iframe. `book.locations.generate(1024)` runs once per open to back
+  the percent indicator — optional, viewer still works if it fails.
+- `ePub(url, { openAs: 'epub' })` is mandatory: epub.js sniffs the
+  URL's file extension to pick archive vs. directory mode, and our
+  URL path is `/api/posting/file` (the `.epub` lives in the query
+  string), so the sniff fails and the load hangs trying to read
+  `META-INF/container.xml` as a directory. Forcing `openAs` skips
+  the sniff.
+- `frontend/js/editor.js` `_populateDownloadsMenu`: when the EPUB
+  format is present, emits a follow-up `.downloads-row-sub` row
+  pointing at `/epub-viewer.html?story=...&file=...`. Separate row
+  rather than a nested `<a>` to keep the markup valid.
+- Mobile: `<600px` hides the toolbar download button so the title +
+  prev/next + percent fit; tap zones cover prev/next anyway.
+
+Deferred (not blocking shipping): no font-size or theme picker inside
+the viewer, no cross-session location persistence, no library shelf
+listing other EPUBs in the same story.
+
+---
+
 ## [2.17.5] - 2026-05-02
 
 ### `pawsync --prune` for server-side housekeeping

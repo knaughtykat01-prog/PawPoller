@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>EPUB Viewer — PawPoller</title>
+    <!-- Match the dashboard's no-flash theme bootstrap so the viewer
+         opens in whatever theme the user has set rather than briefly
+         flashing default-dark. -->
+    <script>
+      (function () {
+        var t = localStorage.getItem('pawpoller-theme') || 'dark';
+        document.documentElement.dataset.theme = t;
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="/css/tokens.css?v=__APP_VERSION__">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            overflow: hidden;
+        }
+        .viewer-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.6em;
+            padding: 0.5em 0.9em;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            height: 48px;
+            box-sizing: border-box;
+        }
+        .viewer-bar button,
+        .viewer-bar a.btn {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0.35em 0.75em;
+            font: inherit;
+            font-size: 0.85em;
+            cursor: pointer;
+            text-decoration: none;
+            white-space: nowrap;
+            transition: background var(--transition);
+        }
+        .viewer-bar button:hover,
+        .viewer-bar a.btn:hover {
+            background: var(--bg-hover);
+        }
+        .viewer-bar button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .viewer-title {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-family: var(--font-serif);
+            font-size: 1.05em;
+            color: var(--text-primary);
+        }
+        .viewer-location {
+            font-size: 0.8em;
+            color: var(--text-muted);
+            min-width: 5em;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+        #viewer-area {
+            position: relative;
+            width: 100%;
+            height: calc(100% - 48px);
+            background: var(--bg-primary);
+        }
+        #viewer {
+            width: 100%;
+            height: 100%;
+        }
+        /* Tap zones for mobile prev/next — invisible, sit over the
+           reading pane edges. Desktop users use keyboard arrows or
+           the toolbar buttons; the zones don't get in the way. */
+        .tap-zone {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 18%;
+            z-index: 10;
+            cursor: pointer;
+        }
+        .tap-zone.left  { left: 0; }
+        .tap-zone.right { right: 0; }
+        .viewer-status {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--text-muted);
+            font-size: 0.95em;
+            text-align: center;
+            max-width: 80%;
+        }
+        .viewer-status.error {
+            color: var(--danger);
+        }
+        @media (max-width: 600px) {
+            .viewer-title  { font-size: 0.95em; }
+            .viewer-bar    { padding: 0.4em 0.6em; gap: 0.4em; }
+            .viewer-bar a.dl-btn { display: none; } /* save space; long-press to share works */
+        }
+    </style>
+</head>
+<body>
+    <div class="viewer-bar">
+        <button id="btn-close" title="Close viewer">&times;</button>
+        <span class="viewer-title" id="viewer-title">Loading&hellip;</span>
+        <button id="btn-prev" title="Previous page (←)">&lsaquo;</button>
+        <span class="viewer-location" id="viewer-location"></span>
+        <button id="btn-next" title="Next page (→)">&rsaquo;</button>
+        <a id="btn-download" class="btn dl-btn" download title="Download EPUB">&darr; EPUB</a>
+    </div>
+    <div id="viewer-area">
+        <div class="tap-zone left"  id="tap-prev"></div>
+        <div class="tap-zone right" id="tap-next"></div>
+        <div id="viewer"></div>
+        <div class="viewer-status" id="viewer-status">Loading EPUB&hellip;</div>
+    </div>
+
+    <script src="/vendor/jszip.min.js"></script>
+    <script src="/vendor/epub.min.js"></script>
+    <script>
+    (function () {
+        const params = new URLSearchParams(window.location.search);
+        const story = params.get('story');
+        const file  = params.get('file');
+        const status = document.getElementById('viewer-status');
+        const titleEl = document.getElementById('viewer-title');
+        const locEl   = document.getElementById('viewer-location');
+        const dl      = document.getElementById('btn-download');
+
+        function fail(msg) {
+            status.textContent = msg;
+            status.classList.add('error');
+        }
+
+        if (!story || !file) {
+            fail('Missing ?story or ?file in URL.');
+            return;
+        }
+
+        const epubUrl = `/api/posting/file?story=${encodeURIComponent(story)}&file=${encodeURIComponent(file)}`;
+        dl.href = epubUrl;
+        // Pre-fill the title from the URL until book metadata loads.
+        titleEl.textContent = file.split('/').pop().replace(/\.epub$/i, '');
+
+        // Resolve parent-page CSS tokens to concrete colours — the
+        // EPUB renders in a sandboxed iframe that doesn't inherit
+        // CSS custom properties from this page, so var(--…) references
+        // injected via rendition.themes would fall back to defaults.
+        const cs = getComputedStyle(document.documentElement);
+        const bg     = cs.getPropertyValue('--bg-primary').trim()    || '#fafaf6';
+        const text   = cs.getPropertyValue('--text-primary').trim()  || '#1a1a1a';
+        const accent = cs.getPropertyValue('--accent').trim()        || '#9b7dff';
+
+        // openAs: 'epub' forces zip-archive parsing. Without it, epub.js
+        // sniffs the URL's file extension to decide between archive and
+        // directory mode — and our URL path is `/api/posting/file` (the
+        // .epub lives in the query string), so the sniff fails and the
+        // book load hangs trying to read META-INF/container.xml as a
+        // directory. Same-origin fetch carries the pp_session cookie
+        // automatically.
+        const book = ePub(epubUrl, { openAs: 'epub' });
+        const rendition = book.renderTo('viewer', {
+            width:  '100%',
+            height: '100%',
+            flow:   'paginated',
+            spread: 'auto',
+        });
+
+        rendition.themes.default({
+            'body': {
+                'background': bg,
+                'color':      text,
+                'font-family': "'Crimson Pro', Georgia, 'Times New Roman', serif",
+                'line-height': '1.55',
+                'padding':    '0 1em',
+            },
+            'p': { 'margin': '0 0 0.8em 0' },
+            'a': { 'color': accent },
+            'h1, h2, h3, h4': { 'color': text },
+        });
+
+        rendition.display().then(() => {
+            status.style.display = 'none';
+        }).catch((err) => {
+            fail('Failed to open EPUB: ' + (err && err.message ? err.message : err));
+        });
+
+        book.loaded.metadata.then((meta) => {
+            if (meta && meta.title) titleEl.textContent = meta.title;
+        }).catch(() => { /* ignore — title falls back to filename */ });
+
+        // Pagination/location indicator. Generated on the fly the first
+        // time the book is rendered; cached on the book object after.
+        book.ready.then(() => book.locations.generate(1024)).then(() => {
+            updateLocation();
+        }).catch(() => { /* locations are optional — viewer still works */ });
+
+        function updateLocation() {
+            try {
+                const loc = rendition.currentLocation();
+                if (!loc || !loc.start) return;
+                const cfi = loc.start.cfi;
+                const pct = book.locations && book.locations.length()
+                    ? Math.round(book.locations.percentageFromCfi(cfi) * 100)
+                    : null;
+                locEl.textContent = pct !== null ? pct + '%' : '';
+            } catch (e) { /* ignore */ }
+        }
+
+        rendition.on('relocated', updateLocation);
+
+        // Navigation
+        const prev = () => rendition.prev();
+        const next = () => rendition.next();
+
+        document.getElementById('btn-prev').addEventListener('click', prev);
+        document.getElementById('btn-next').addEventListener('click', next);
+        document.getElementById('tap-prev').addEventListener('click', prev);
+        document.getElementById('tap-next').addEventListener('click', next);
+        document.getElementById('btn-close').addEventListener('click', () => window.close());
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft')  prev();
+            if (e.key === 'ArrowRight') next();
+        });
+
+        // Inside the rendered iframe arrow keys also need to work — epub.js
+        // doesn't propagate them out by default.
+        rendition.on('keyup', (e) => {
+            if (e.key === 'ArrowLeft')  prev();
+            if (e.key === 'ArrowRight') next();
+        });
+    })();
+    </script>
+</body>
+</html>

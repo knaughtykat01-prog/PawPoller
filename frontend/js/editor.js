@@ -1525,6 +1525,18 @@ const Editor = {
                     `<span>${FORMAT_LABELS[fmtKey]}</span>` +
                     `<span class="downloads-row-size">${fmtSize(file.size)}</span></a>`
                 );
+                // EPUB gets a follow-up "Preview" row that opens the
+                // in-app viewer in a new tab. Separate row so we don't
+                // nest <a> inside <a> (invalid HTML).
+                if (fmtKey === 'epub') {
+                    const viewerUrl = `/epub-viewer.html?story=${encodeURIComponent(this.storyName)}&file=${encodeURIComponent(file.path)}`;
+                    items.push(
+                        `<a class="downloads-row downloads-row-sub" href="${viewerUrl}" ` +
+                        `target="_blank" rel="noopener" title="Open in EPUB viewer">` +
+                        `<span>&nbsp;&nbsp;&#x2197; Preview in browser</span>` +
+                        `<span class="downloads-row-size">opens viewer</span></a>`
+                    );
+                }
             }
 
             menu.innerHTML = items.length

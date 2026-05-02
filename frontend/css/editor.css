@@ -3000,6 +3000,18 @@
     padding-top: 9px;
     font-weight: 600;
 }
+/* Sub-row under a primary format (currently only EPUB → "Preview in
+   browser"). Indented label + muted size, sits flush against the row
+   above so it visually attaches to it. */
+.regen-dropdown-menu .downloads-row-sub {
+    padding-top: 2px;
+    font-size: 11px;
+    color: var(--accent);
+}
+.regen-dropdown-menu .downloads-row-sub .downloads-row-size {
+    font-size: 0.8em;
+    font-style: italic;
+}
 .regen-dropdown-menu .downloads-empty {
     padding: 8px 12px;
     color: var(--text-secondary, #888);
