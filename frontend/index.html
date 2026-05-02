@@ -303,10 +303,11 @@
                 <span class="nav-icon">&#9203;</span>
                 <span class="nav-label">Queue</span>
             </a></li>
-            <li><a href="#/posting/published" class="nav-link" data-page="posting-published">
-                <span class="nav-icon">&#128203;</span>
-                <span class="nav-label">Published</span>
-            </a></li>
+            <!-- 2.16.11: "Published" link removed — its handler was a
+                 legacy redirect to #/posting (publications are now shown
+                 per-story on the Stories hub), so the link confused users
+                 by appearing to do nothing. The renderPublished() handler
+                 stays so any old bookmarks still resolve. -->
             <li><a href="#/posting/log" class="nav-link" data-page="posting-log">
                 <span class="nav-icon">&#128220;</span>
                 <span class="nav-label">History</span>

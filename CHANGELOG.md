@@ -4,6 +4,23 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.16.11] - 2026-05-02
+
+### Sidebar — drop dead "Published" link
+
+The "Published" sidebar link (`#/posting/published`) was a legacy
+route that just redirected to `#/posting` (the Stories hub) because
+"publications are now shown per-story" — see the comment on
+`renderPublished()` in `posting.js:744`. Tapping it on mobile gave
+the impression the navigation was broken (clicked Published →
+landed on Stories with no visible action).
+
+Removed the link from `index.html`. The `renderPublished()` handler
+stays in place so any external bookmarks to `#/posting/published`
+still resolve to the Stories hub.
+
+---
+
 ## [2.16.10] - 2026-05-02
 
 ### Sidebar — collapse all platform groups under one master toggle
