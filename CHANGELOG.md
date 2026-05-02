@@ -4,6 +4,30 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.16.7] - 2026-05-02
+
+### Mobile Mode — page-header circular sizing fix
+
+2.16.6's page-header wrap rule used `width: 100%` on the actions
+div, which created a circular sizing dependency: the div asked for
+100% of the parent, the parent grew to fit the div's min-content,
+and `flex-wrap: wrap` never triggered. Result: the doc still
+rendered at 830px wide on a 440px viewport — same overflow as
+2.16.5, just with bigger buttons.
+
+Fix: replace `width: 100%` with `flex: 1 1 100%` and add
+`min-width: 0`. Flex items default to `min-width: auto` which
+refuses to shrink below intrinsic content size — that's what kept
+the parent inflated. With `min-width: 0` + flex-basis 100%, the
+actions div correctly takes its own flex line at viewport width
+and the buttons inside (also given `min-width: 0`) shrink to
+50%-3px each.
+
+Also added `box-sizing: border-box` to the actions div as a belt
+on top of the suspenders.
+
+---
+
 ## [2.16.6] - 2026-05-02
 
 ### Mobile Mode — Phase 5 polish from Playwright sweep

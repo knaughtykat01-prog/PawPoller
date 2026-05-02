@@ -3710,15 +3710,25 @@ html[data-mobile="1"] .page-header {
 /* 2.16.6: any direct DIV child of .page-header (the inline-styled action
  * cluster) must wrap and span full width so its buttons can flow rather
  * than overflow the viewport. Targets unstyled DIVs only — h2/p siblings
- * are unaffected. */
+ * are unaffected.
+ *
+ * `min-width: 0` is critical — flex items default to `min-width: auto`
+ * which means they refuse to shrink below their content's intrinsic
+ * width. Combined with `width: 100%`, that creates a circular sizing
+ * loop where actions wants 100% of parent and parent grows to fit
+ * actions' min-content. Setting min-width:0 + flex-basis:100% breaks
+ * the loop — actions takes a flex line by itself at viewport width. */
 html[data-mobile="1"] .page-header > div {
-    width: 100%;
+    flex: 1 1 100%;
+    min-width: 0;
     flex-wrap: wrap;
     gap: 6px !important;
+    box-sizing: border-box;
 }
 
 html[data-mobile="1"] .page-header > div > .btn {
     flex: 1 1 calc(50% - 3px);
+    min-width: 0;
     min-height: 40px;
     padding: 8px 10px;
     font-size: 13px;
