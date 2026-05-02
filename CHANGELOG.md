@@ -4,6 +4,82 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.16.3] - 2026-05-02
+
+### Mobile Mode — Phase 4 Pro Max calibration
+
+The earlier passes optimised for "small phone, save every pixel"
+which left a 6.9" 440×956 viewport feeling sparse and undersized.
+This pass calibrates sizing for an iPhone 16 Pro Max-class screen.
+
+**Base + heading scale.** Body 14→15px, line-height 1.5. Page
+header h2 17→20px. Headings step up consistently — h3 16, h4 14.
+
+**Buttons.** Generic `.btn` 44px min-height, 14px font. Primary
+actions (Save, Metadata-save, Re-check) 48px min-height with 600
+weight — they read as the obvious "do this" buttons. `.btn-sm`
+40px. iOS HIG minimum is 44px; 48px on primaries gives the
+"clearly tappable" feel a 6.9" screen rewards.
+
+**Padding.** `.main-content` 12→16px (cards stop kissing the
+viewport edges). `.settings-section` 14→16px. `.settings-accordion
+summary` 48→52px tall.
+
+**Stat cards** stay 1-col strips but bump to 56px min-height,
+24px value, 13px label. Reads as a substantial section divider
+rather than a floaty pill.
+
+**Detail page**: thumb max-width 240→280px. Title 18→22px.
+
+**Submission cards**: 1-col with 240px thumbs (was 200px). Title
+14→15px.
+
+**Search/filter inputs**: 44→48px tall, 12-14px padding.
+
+**Bottom nav**: total height +6px so icon+label both fit
+comfortably; icon 22px, label 11px.
+
+**Editor mobile tabs** (Edit/Rich/Format/Preview): 44px tall,
+18px padding — feel like switcher tabs, not chips.
+
+**Anchor toolbar**: button min-width 48px, anchor labels 0.85rem
+(up from 0.78).
+
+**Publish-check chapter cards**: summary row 56px tall, 15px
+title; per-platform rows 52px tall.
+
+**Theme picker / mobile-mode picker**: 16px card padding, 15px
+name, 13px desc.
+
+**Sidebar (when slid open)**: nav links 48px tall, 15px font;
+section headings 11px; overall sidebar slightly wider —
+`min(320px, 88vw)` (was `min(300px, 85vw)`).
+
+### What this DOESN'T change
+
+- Layout direction (still vertical from P3)
+- Mobile-mode toggle (still in Settings → Appearance)
+- Editor toolbar collapse (still ⋯ More from P2)
+- The legacy `@media (max-width: 480px)` rules (still cover their
+  small-phone baseline; this pass overrides them at higher
+  specificity for mobile-mode users)
+
+If sizing still feels off on a specific surface, point at it and
+I'll target it directly — the new block is at the very end of
+`editor.css` for easy iteration.
+
+### Files touched
+
+`config.py` (APP_VERSION → 2.16.3),
+`frontend/css/editor.css` (Phase 4 calibration block at end —
+~190 lines covering body/heading scale, button heights, padding,
+stat/detail/submission card sizing, search inputs, bottom nav,
+editor tabs, anchor toolbar, publish-check, theme/mobile-mode
+pickers, sidebar dimensions),
+`CHANGELOG.md`.
+
+---
+
 ## [2.16.2] - 2026-05-02
 
 ### Mobile Mode — Phase 3 vertical sweep

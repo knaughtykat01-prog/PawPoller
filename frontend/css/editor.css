@@ -4132,3 +4132,254 @@ html[data-mobile="1"] .main-content {
     padding: 12px;
     padding-bottom: calc(12px + var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
 }
+
+/* =====================================================================
+   Phase 4 — Pro Max calibration
+   The earlier passes optimised for "small phone, save every pixel"
+   which left a 6.9" 440×956 viewport feeling sparse and undersized.
+   This pass ups base font, primary button height, padding, and
+   line-heights to suit a generous portrait phone. Hierarchy is
+   preserved — secondary text still smaller than primary.
+   ===================================================================== */
+
+/* Base body font on mobile — 15px is the sweet spot for a 6.9"
+ * screen at arm's length. Inputs stay at the 16px floor (the iOS
+ * zoom-fix in P2.A). */
+html[data-mobile="1"] body {
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+/* Headings — bumped one step up. h2 was 17px in P2; 19px reads as
+ * a heading without dominating. */
+html[data-mobile="1"] .page-header h2 {
+    font-size: 20px;
+    line-height: 1.25;
+}
+
+html[data-mobile="1"] h3 {
+    font-size: 16px;
+}
+
+html[data-mobile="1"] h4 {
+    font-size: 14px;
+}
+
+/* Main content gets more breathing room — 16px on the sides keeps
+ * cards from kissing the screen edge. */
+html[data-mobile="1"] .main-content {
+    padding: 16px;
+    padding-bottom: calc(16px + var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
+}
+
+/* Primary action buttons — 48px tappable height beats the 44px
+ * iOS minimum. Secondary still 40-44px. */
+html[data-mobile="1"] .btn {
+    min-height: 44px;
+    font-size: 14px;
+    padding: 10px 16px;
+}
+
+html[data-mobile="1"] .btn-primary,
+html[data-mobile="1"] #editor-save-btn,
+html[data-mobile="1"] #metadata-save-btn,
+html[data-mobile="1"] #publish-check-recheck {
+    min-height: 48px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+html[data-mobile="1"] .btn-sm {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 13px;
+}
+
+/* Stat cards — keep the 1-col strip but bump label + value. They
+ * read as section dividers so they should feel substantial. */
+html[data-mobile="1"] .stat-card {
+    padding: 14px 16px;
+    min-height: 56px;
+}
+
+html[data-mobile="1"] .stat-card .label {
+    font-size: 13px;
+}
+
+html[data-mobile="1"] .stat-card .value {
+    font-size: 24px;
+}
+
+html[data-mobile="1"] .stat-card .delta {
+    font-size: 12px;
+}
+
+/* Settings section text + accordion summary — readable + tappable */
+html[data-mobile="1"] .settings-section {
+    padding: 16px;
+}
+
+html[data-mobile="1"] .settings-label {
+    font-size: 14px;
+}
+
+html[data-mobile="1"] .settings-accordion summary {
+    min-height: 52px;
+    padding: 14px 16px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+html[data-mobile="1"] .accordion-body {
+    padding: 14px 16px;
+}
+
+/* Form rows — generous gap between label and input on a wide
+ * portrait phone. */
+html[data-mobile="1"] .settings-row {
+    gap: 12px;
+    padding: 4px 0;
+}
+
+html[data-mobile="1"] .settings-row input,
+html[data-mobile="1"] .settings-row select {
+    min-height: 48px;
+    padding: 12px 14px;
+}
+
+/* Detail page — pump up the 120px square thumb to 280px on a
+ * 6.9" screen. Title bigger too. */
+html[data-mobile="1"] .detail-thumb {
+    max-width: 280px;
+}
+
+html[data-mobile="1"] .detail-info h2 {
+    font-size: 22px;
+    line-height: 1.2;
+}
+
+html[data-mobile="1"] .detail-meta,
+html[data-mobile="1"] .detail-stat {
+    font-size: 14px;
+}
+
+/* Submission cards — they're 1-col with 200px thumbs. Bump thumbs
+ * to 240px on a Pro Max-class viewport so they fill more of the
+ * available width. */
+html[data-mobile="1"] .submission-card-thumb {
+    height: 240px;
+}
+
+html[data-mobile="1"] .submission-card .card-title {
+    font-size: 15px;
+}
+
+/* Page header toolbar inputs — already 44px, push to 48px on Pro
+ * Max for primary search visibility. */
+html[data-mobile="1"] .search-input,
+html[data-mobile="1"] .filter-select {
+    min-height: 48px;
+    padding: 12px 14px;
+}
+
+/* Bottom nav — 48px effective (was ~44px); icons + labels both
+ * bigger so they're glanceable. */
+html[data-mobile="1"] .bottom-nav {
+    height: calc(var(--bottom-nav-h) + 6px);
+}
+
+html[data-mobile="1"] .bottom-nav-item {
+    padding: 8px 0;
+    min-height: 50px;
+}
+
+html[data-mobile="1"] .bottom-nav-icon {
+    font-size: 22px;
+}
+
+html[data-mobile="1"] .bottom-nav-label {
+    font-size: 11px;
+}
+
+/* Mobile editor tabs — Edit/Rich/Format/Preview. Bump padding so
+ * they feel like real switcher tabs rather than chips. */
+html[data-mobile="1"] .editor-mobile-tab {
+    min-height: 44px;
+    padding: 10px 18px;
+    font-size: 14px;
+}
+
+/* Anchor toolbar buttons — already 44px from P1; bump font slightly
+ * so the Sub/Disc/Body labels are legible. */
+html[data-mobile="1"] .wysiwyg-toolbar button {
+    min-width: 48px;
+    min-height: 44px;
+    padding: 10px 14px;
+}
+
+html[data-mobile="1"] .wysiwyg-toolbar button[data-anchor] {
+    font-size: 0.85rem;
+}
+
+/* Publish-check chapter cards — bigger summary tap target. */
+html[data-mobile="1"] .publish-check-mobile-summary {
+    min-height: 56px;
+    padding: 14px 16px;
+}
+
+html[data-mobile="1"] .publish-check-mobile-summary .ch-title {
+    font-size: 15px;
+}
+
+html[data-mobile="1"] .publish-check-cell-mobile {
+    min-height: 52px;
+    padding: 12px 14px;
+}
+
+html[data-mobile="1"] .publish-check-cell-mobile .cell-plat {
+    font-size: 14px;
+}
+
+html[data-mobile="1"] .publish-check-cell-mobile .cell-status {
+    font-size: 13px;
+}
+
+/* Theme picker + mobile-mode picker cards — comfortable tap zone */
+html[data-mobile="1"] .theme-card,
+html[data-mobile="1"] .mobile-mode-card {
+    padding: 16px;
+}
+
+html[data-mobile="1"] .theme-card-meta .name,
+html[data-mobile="1"] .mobile-mode-card .mobile-mode-name {
+    font-size: 15px;
+}
+
+html[data-mobile="1"] .theme-card-meta .desc,
+html[data-mobile="1"] .mobile-mode-card .mobile-mode-desc {
+    font-size: 13px;
+}
+
+/* Sidebar (when slid open on mobile) — bigger touch rows so
+ * navigating to a platform dashboard isn't fiddly. */
+html[data-mobile="1"] .sidebar.open .nav-link,
+html[data-mobile="1"] .sidebar.open .nav-platform-btn {
+    padding: 14px 16px;
+    font-size: 15px;
+    min-height: 48px;
+}
+
+html[data-mobile="1"] .sidebar.open .nav-icon {
+    font-size: 18px;
+    width: 28px;
+}
+
+html[data-mobile="1"] .sidebar.open .nav-section {
+    font-size: 11px;
+    padding: 18px 14px 6px;
+}
+
+/* Sidebar overall a touch wider on mobile to fit bigger rows */
+html[data-mobile="1"] .sidebar {
+    width: min(320px, 88vw);
+}

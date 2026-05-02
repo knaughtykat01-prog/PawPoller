@@ -1,7 +1,7 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-05-02
-**Current version:** 2.16.2 (Mobile Mode Phase 3 — vertical sweep: every multi-col grid forced to 1-col on mobile, detail-header thumb-on-top stack, pinned-row vertical, compare-chips full-width, date-range wraps, log/timeline single-col, on top of 2.16.1's portrait polish)
+**Current version:** 2.16.3 (Mobile Mode Phase 4 — Pro Max calibration: body 15px, headings 20px, primary buttons 48px, main-content padding 16px, stat-card values 24px, sidebar 320px wide, on top of 2.16.2's vertical sweep)
 **Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — production was confirmed running 2.14.6 during round-2 QA. 2.14.7 was never deployed; 2.14.8 supersedes it and bundles all the QA fixes.
 **GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.14.3 — tag includes the Windows zip artifact. 2.14.4–2.14.8 haven't been tagged yet (bundle into the next feature release once the wizard UX has soaked).
 
