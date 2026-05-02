@@ -2119,7 +2119,11 @@ const App = {
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
+            // 2.16.14 (BUG-021): grid render extracted to a closure so the
+            // search filter can re-render it. Previously _bindSearch only
+            // updated #table-container, but most pages default to grid view
+            // — so typing in the search box appeared to do nothing.
+            const ibGridRenderer = (subs) => Components.submissionCardGrid(subs, {
                 idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumb_url',
                 detailRoute: '/submission', dateKey: 'create_datetime',
                 stats: [
@@ -2128,6 +2132,7 @@ const App = {
                     { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
                 ],
             });
+            const gridHtml = ibGridRenderer(data.submissions);
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>Submissions</h2></div>
@@ -2159,7 +2164,7 @@ const App = {
             this._setContent(html);
             this._bindViewToggle();
             this._bindTableSort();
-            this._bindSearch(data.submissions);
+            this._bindSearch(data.submissions, ibGridRenderer);
 
             this._startAutoRefresh(() => this.renderSubmissions());
         } catch (err) {
@@ -2458,17 +2463,21 @@ const App = {
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const _faSubs = data.submissions.map(s => ({ ...s, _thumb: s.thumbnail_url ? Utils.faThumbUrl(s.thumbnail_url) : null }));
-            const gridHtml = Components.submissionCardGrid(_faSubs, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: '_thumb',
-                detailRoute: '/fa/submission', dateKey: 'posted_at',
-                proxyThumb: false,
-                stats: [
-                    { key: 'views', deltaKey: 'views_delta', label: 'views' },
-                    { key: 'favorites_count', deltaKey: 'faves_delta', label: 'faves' },
-                    { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
-                ],
-            });
+            // 2.16.14 (BUG-021): closure so the search filter can re-render
+            const faGridRenderer = (subs) => Components.submissionCardGrid(
+                subs.map(s => ({ ...s, _thumb: s.thumbnail_url ? Utils.faThumbUrl(s.thumbnail_url) : null })),
+                {
+                    idKey: 'submission_id', titleKey: 'title', thumbKey: '_thumb',
+                    detailRoute: '/fa/submission', dateKey: 'posted_at',
+                    proxyThumb: false,
+                    stats: [
+                        { key: 'views', deltaKey: 'views_delta', label: 'views' },
+                        { key: 'favorites_count', deltaKey: 'faves_delta', label: 'faves' },
+                        { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
+                    ],
+                }
+            );
+            const gridHtml = faGridRenderer(data.submissions);
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>FA Submissions</h2></div>
@@ -2494,7 +2503,7 @@ const App = {
             this._setContent(html);
             this._bindViewToggle();
             this._bindFATableSort();
-            this._bindFASearch(data.submissions);
+            this._bindFASearch(data.submissions, faGridRenderer);
             this._startAutoRefresh(() => this.renderFASubmissions());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading FA submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -2794,7 +2803,8 @@ const App = {
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
+            // 2.16.14 (BUG-021): closure so the search filter can re-render
+            const wsGridRenderer = (subs) => Components.submissionCardGrid(subs, {
                 idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumbnail_url',
                 detailRoute: '/ws/submission', dateKey: 'posted_at', proxyThumb: false,
                 stats: [
@@ -2803,6 +2813,7 @@ const App = {
                     { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
                 ],
             });
+            const gridHtml = wsGridRenderer(data.submissions);
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>Weasyl Submissions</h2></div>
@@ -2828,7 +2839,7 @@ const App = {
             this._setContent(html);
             this._bindViewToggle();
             this._bindWSTableSort();
-            this._bindWSSearch(data.submissions);
+            this._bindWSSearch(data.submissions, wsGridRenderer);
             this._startAutoRefresh(() => this.renderWSSubmissions());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading WS submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -3105,7 +3116,8 @@ const App = {
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
+            // 2.16.14 (BUG-021): closure so the search filter can re-render
+            const sfGridRenderer = (subs) => Components.submissionCardGrid(subs, {
                 idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumbnail_url',
                 detailRoute: '/sf/submission', dateKey: 'posted_at', proxyThumb: false,
                 stats: [
@@ -3114,6 +3126,7 @@ const App = {
                     { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
                 ],
             });
+            const gridHtml = sfGridRenderer(data.submissions);
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>SoFurry Submissions</h2></div>
@@ -3139,7 +3152,7 @@ const App = {
             this._setContent(html);
             this._bindViewToggle();
             this._bindSFTableSort();
-            this._bindSFSearch(data.submissions);
+            this._bindSFSearch(data.submissions, sfGridRenderer);
             this._startAutoRefresh(() => this.renderSFSubmissions());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading SF submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -3393,7 +3406,8 @@ const App = {
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
+            // 2.16.14 (BUG-021): closure so the search filter can re-render
+            const sqwGridRenderer = (subs) => Components.submissionCardGrid(subs, {
                 idKey: 'submission_id', titleKey: 'title', thumbKey: null,
                 detailRoute: '/sqw/submission', dateKey: 'posted_at',
                 stats: [
@@ -3402,6 +3416,7 @@ const App = {
                     { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
                 ],
             });
+            const gridHtml = sqwGridRenderer(data.submissions);
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>SquidgeWorld Works</h2></div>
@@ -3428,7 +3443,7 @@ const App = {
             this._setContent(html);
             this._bindViewToggle();
             this._bindSQWTableSort();
-            this._bindSQWSearch(data.submissions);
+            this._bindSQWSearch(data.submissions, sqwGridRenderer);
             this._startAutoRefresh(() => this.renderSQWSubmissions());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading SqW submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -3682,7 +3697,8 @@ const App = {
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
+            // 2.16.14 (BUG-021): closure so the search filter can re-render
+            const ao3GridRenderer = (subs) => Components.submissionCardGrid(subs, {
                 idKey: 'submission_id', titleKey: 'title', thumbKey: null,
                 detailRoute: '/ao3/submission', dateKey: 'posted_at',
                 stats: [
@@ -3691,6 +3707,7 @@ const App = {
                     { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
                 ],
             });
+            const gridHtml = ao3GridRenderer(data.submissions);
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>AO3 Works</h2></div>
@@ -3717,7 +3734,7 @@ const App = {
             this._setContent(html);
             this._bindViewToggle();
             this._bindAO3TableSort();
-            this._bindAO3Search(data.submissions);
+            this._bindAO3Search(data.submissions, ao3GridRenderer);
             this._startAutoRefresh(() => this.renderAO3Submissions());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading AO3 submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -3983,7 +4000,8 @@ const App = {
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
+            // 2.16.14 (BUG-021): closure so the search filter can re-render
+            const daGridRenderer = (subs) => Components.submissionCardGrid(subs, {
                 idKey: 'submission_id', titleKey: 'title', thumbKey: null,
                 detailRoute: '/da/submission', dateKey: 'posted_at',
                 stats: [
@@ -3992,6 +4010,7 @@ const App = {
                     { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
                 ],
             });
+            const gridHtml = daGridRenderer(data.submissions);
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>DA Submissions</h2></div>
@@ -4016,7 +4035,7 @@ const App = {
             this._setContent(html);
             this._bindViewToggle();
             this._bindDATableSort();
-            this._bindDASearch(data.submissions);
+            this._bindDASearch(data.submissions, daGridRenderer);
             this._startAutoRefresh(() => this.renderDASubmissions());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading DA submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -4289,7 +4308,8 @@ const App = {
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
+            // 2.16.14 (BUG-021): closure so the search filter can re-render
+            const wpGridRenderer = (subs) => Components.submissionCardGrid(subs, {
                 idKey: 'submission_id', titleKey: 'title', thumbKey: null,
                 detailRoute: '/wp/submission', dateKey: 'posted_at',
                 stats: [
@@ -4298,6 +4318,7 @@ const App = {
                     { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
                 ],
             });
+            const gridHtml = wpGridRenderer(data.submissions);
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>WP Submissions</h2></div>
@@ -4317,7 +4338,7 @@ const App = {
             this._setContent(html);
             this._bindViewToggle();
             this._bindWPTableSort();
-            this._bindWPSearch(data.submissions);
+            this._bindWPSearch(data.submissions, wpGridRenderer);
             this._startAutoRefresh(() => this.renderWPSubmissions());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading WP submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -4583,7 +4604,8 @@ const App = {
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
+            // 2.16.14 (BUG-021): closure so the search filter can re-render
+            const ikGridRenderer = (subs) => Components.submissionCardGrid(subs, {
                 idKey: 'submission_id', titleKey: 'title', thumbKey: null,
                 detailRoute: '/ik/submission', dateKey: 'posted_at',
                 stats: [
@@ -4592,6 +4614,7 @@ const App = {
                     { key: 'reshares', deltaKey: 'reshares_delta', label: 'reshares' },
                 ],
             });
+            const gridHtml = ikGridRenderer(data.submissions);
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>IK Submissions</h2></div>
@@ -4611,7 +4634,7 @@ const App = {
             this._setContent(html);
             this._bindViewToggle();
             this._bindIKTableSort();
-            this._bindIKSearch(data.submissions);
+            this._bindIKSearch(data.submissions, ikGridRenderer);
             this._startAutoRefresh(() => this.renderIKSubmissions());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading IK submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -4875,19 +4898,21 @@ const App = {
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            // BSKY uses rkey (last segment of submission_id URI) for routing
-            const bskyGridSubs = data.submissions.map(s => ({
-                ...s, _rkey: String(s.submission_id).split('/').pop()
-            }));
-            const gridHtml = Components.submissionCardGrid(bskyGridSubs, {
-                idKey: '_rkey', titleKey: 'title', thumbKey: null,
-                detailRoute: '/bsky/submission', dateKey: 'posted_at',
-                stats: [
-                    { key: 'likes', deltaKey: 'likes_delta', label: 'likes' },
-                    { key: 'reposts', deltaKey: 'reposts_delta', label: 'reposts' },
-                    { key: 'replies', deltaKey: 'replies_delta', label: 'replies' },
-                ],
-            });
+            // BSKY uses rkey (last segment of submission_id URI) for routing.
+            // 2.16.14 (BUG-021): closure so the search filter can re-render.
+            const bskyGridRenderer = (subs) => Components.submissionCardGrid(
+                subs.map(s => ({ ...s, _rkey: String(s.submission_id).split('/').pop() })),
+                {
+                    idKey: '_rkey', titleKey: 'title', thumbKey: null,
+                    detailRoute: '/bsky/submission', dateKey: 'posted_at',
+                    stats: [
+                        { key: 'likes', deltaKey: 'likes_delta', label: 'likes' },
+                        { key: 'reposts', deltaKey: 'reposts_delta', label: 'reposts' },
+                        { key: 'replies', deltaKey: 'replies_delta', label: 'replies' },
+                    ],
+                }
+            );
+            const gridHtml = bskyGridRenderer(data.submissions);
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>Bluesky Posts</h2></div>
@@ -4907,7 +4932,7 @@ const App = {
             this._setContent(html);
             this._bindViewToggle();
             this._bindBSKYTableSort();
-            this._bindBSKYSearch(data.submissions);
+            this._bindBSKYSearch(data.submissions, bskyGridRenderer);
             this._startAutoRefresh(() => this.renderBSKYSubmissions());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading BSKY submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -5181,7 +5206,8 @@ const App = {
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
-            const gridHtml = Components.submissionCardGrid(data.submissions, {
+            // 2.16.14 (BUG-021): closure so the search filter can re-render
+            const twGridRenderer = (subs) => Components.submissionCardGrid(subs, {
                 idKey: 'submission_id', titleKey: 'title', thumbKey: null,
                 detailRoute: '/tw/submission', dateKey: 'posted_at',
                 stats: [
@@ -5190,6 +5216,7 @@ const App = {
                     { key: 'retweets', deltaKey: 'retweets_delta', label: 'retweets' },
                 ],
             });
+            const gridHtml = twGridRenderer(data.submissions);
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header"><h2>X/Twitter Tweets</h2></div>
@@ -5209,7 +5236,7 @@ const App = {
             this._setContent(html);
             this._bindViewToggle();
             this._bindTWTableSort();
-            this._bindTWSearch(data.submissions);
+            this._bindTWSearch(data.submissions, twGridRenderer);
             this._startAutoRefresh(() => this.renderTWSubmissions());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading TW submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
@@ -9321,7 +9348,7 @@ const App = {
     // Operates on the full allSubmissions array (already fetched) rather than
     // re-fetching from the API, so filtering is instant. Re-renders the table
     // HTML and re-binds sort handlers after each filter change.
-    _bindSearch(allSubmissions) {
+    _bindSearch(allSubmissions, gridRenderer) {
         const input = document.getElementById('search-input');
         const ratingSelect = document.getElementById('filter-rating');
         const typeSelect = document.getElementById('filter-type');
@@ -9344,6 +9371,13 @@ const App = {
                 filtered = filtered.filter(s => (s.type_name || '') === type);
             }
 
+            // 2.16.14 (BUG-021): always re-render BOTH containers so the
+            // search works whichever view-mode the user is in. The grid
+            // renderer is platform-specific so it's passed in as a
+            // closure by the caller; null in legacy callers leaves the
+            // grid alone (only the table view filters).
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.submissionsTable(filtered);
             this._bindTableSort();
         };
@@ -9373,7 +9407,7 @@ const App = {
     // FA variant of _bindSearch(). Filters by text (title/keywords) and rating
     // (General/Mature/Adult string values instead of IB's numeric rating_id).
     // No type filter (FA doesn't have IB's type_name taxonomy).
-    _bindFASearch(allSubmissions) {
+    _bindFASearch(allSubmissions, gridRenderer) {
         const input = document.getElementById('search-input');
         const ratingSelect = document.getElementById('filter-rating');
 
@@ -9391,6 +9425,9 @@ const App = {
                 filtered = filtered.filter(s => (s.rating || '') === rating);
             }
 
+            // 2.16.14 (BUG-021): re-render grid container too if a renderer was passed
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.faSubmissionsTable(filtered);
             this._bindFATableSort();
         };
@@ -9418,7 +9455,7 @@ const App = {
 
     // WS variant of _bindSearch(). Filters by text (title/keywords) and rating
     // (General/Mature/Explicit — Weasyl's terminology). No type filter.
-    _bindWSSearch(allSubmissions) {
+    _bindWSSearch(allSubmissions, gridRenderer) {
         const input = document.getElementById('search-input');
         const ratingSelect = document.getElementById('filter-rating');
 
@@ -9436,6 +9473,9 @@ const App = {
                 filtered = filtered.filter(s => (s.rating || '') === rating);
             }
 
+            // 2.16.14 (BUG-021): re-render grid container too if a renderer was passed
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.wsSubmissionsTable(filtered);
             this._bindWSTableSort();
         };
@@ -9479,7 +9519,7 @@ const App = {
     },
 
     // SQW variant of _bindSearch(). Filters by text (title/tags) and rating.
-    _bindSQWSearch(allSubmissions) {
+    _bindSQWSearch(allSubmissions, gridRenderer) {
         const input = document.getElementById('search-input');
         const ratingSelect = document.getElementById('filter-rating');
 
@@ -9497,6 +9537,9 @@ const App = {
                 filtered = filtered.filter(s => (s.rating || '') === rating);
             }
 
+            // 2.16.14 (BUG-021): re-render grid container too if a renderer was passed
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.sqwSubmissionsTable(filtered);
             this._bindSQWTableSort();
         };
@@ -9523,7 +9566,7 @@ const App = {
     },
 
     // AO3 variant of _bindSearch(). Filters by text (title/tags) and rating.
-    _bindAO3Search(allSubmissions) {
+    _bindAO3Search(allSubmissions, gridRenderer) {
         const input = document.getElementById('search-input');
         const ratingSelect = document.getElementById('filter-rating');
 
@@ -9541,6 +9584,9 @@ const App = {
                 filtered = filtered.filter(s => (s.rating || '') === rating);
             }
 
+            // 2.16.14 (BUG-021): re-render grid container too if a renderer was passed
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.ao3SubmissionsTable(filtered);
             this._bindAO3TableSort();
         };
@@ -9567,7 +9613,7 @@ const App = {
     },
 
     // DA variant of _bindSearch(). Filters by text (title/keywords) and rating.
-    _bindDASearch(allSubmissions) {
+    _bindDASearch(allSubmissions, gridRenderer) {
         const input = document.getElementById('search-input');
         const ratingSelect = document.getElementById('filter-rating');
 
@@ -9585,6 +9631,9 @@ const App = {
                 filtered = filtered.filter(s => (s.rating || '') === rating);
             }
 
+            // 2.16.14 (BUG-021): re-render grid container too if a renderer was passed
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.daSubmissionsTable(filtered);
             this._bindDATableSort();
         };
@@ -9611,7 +9660,7 @@ const App = {
     },
 
     // WP variant of _bindSearch(). Filters by text (title only — Wattpad has no rating filter).
-    _bindWPSearch(allSubmissions) {
+    _bindWPSearch(allSubmissions, gridRenderer) {
         const input = document.getElementById('search-input');
 
         const doFilter = () => {
@@ -9624,6 +9673,9 @@ const App = {
                 );
             }
 
+            // 2.16.14 (BUG-021): re-render grid container too if a renderer was passed
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.wpSubmissionsTable(filtered);
             this._bindWPTableSort();
         };
@@ -9649,7 +9701,7 @@ const App = {
     },
 
     // IK variant of _bindSearch(). Filters by text (title only).
-    _bindIKSearch(allSubmissions) {
+    _bindIKSearch(allSubmissions, gridRenderer) {
         const input = document.getElementById('search-input');
 
         const doFilter = () => {
@@ -9662,6 +9714,9 @@ const App = {
                 );
             }
 
+            // 2.16.14 (BUG-021): re-render grid container too if a renderer was passed
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.ikSubmissionsTable(filtered);
             this._bindIKTableSort();
         };
@@ -9686,7 +9741,7 @@ const App = {
     },
 
     // BSKY variant of _bindSearch(). Filters by text (title only).
-    _bindBSKYSearch(allSubmissions) {
+    _bindBSKYSearch(allSubmissions, gridRenderer) {
         const input = document.getElementById('search-input');
 
         const doFilter = () => {
@@ -9699,6 +9754,9 @@ const App = {
                 );
             }
 
+            // 2.16.14 (BUG-021): re-render grid container too if a renderer was passed
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.bskySubmissionsTable(filtered);
             this._bindBSKYTableSort();
         };
@@ -9723,7 +9781,7 @@ const App = {
     },
 
     // TW variant of _bindSearch(). Filters by text (title only).
-    _bindTWSearch(allSubmissions) {
+    _bindTWSearch(allSubmissions, gridRenderer) {
         const input = document.getElementById('search-input');
 
         const doFilter = () => {
@@ -9736,6 +9794,9 @@ const App = {
                 );
             }
 
+            // 2.16.14 (BUG-021): re-render grid container too if a renderer was passed
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.twSubmissionsTable(filtered);
             this._bindTWTableSort();
         };
@@ -9745,7 +9806,7 @@ const App = {
 
     // SF variant of _bindSearch(). Filters by text (title/keywords) and rating
     // (Clean/Mature/Adult — SoFurry's terminology).
-    _bindSFSearch(allSubmissions) {
+    _bindSFSearch(allSubmissions, gridRenderer) {
         const input = document.getElementById('search-input');
         const ratingSelect = document.getElementById('filter-rating');
 
@@ -9763,6 +9824,9 @@ const App = {
                 filtered = filtered.filter(s => (s.rating || '') === rating);
             }
 
+            // 2.16.14 (BUG-021): re-render grid container too if a renderer was passed
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.sfSubmissionsTable(filtered);
             this._bindSFTableSort();
         };

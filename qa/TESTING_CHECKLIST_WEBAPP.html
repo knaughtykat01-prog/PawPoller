@@ -363,8 +363,7 @@
                     { id: 32, name: "Nav — Publish Check", steps: `Click "Publish Check"`, expected: `Routes to #/publish-check; story selector at top` },
                     { id: 33, name: "Nav — Editor", steps: `Story list → click a story`, expected: `Routes to #/editor/<story>; editor + preview pane render` },
                     { id: 34, name: "Nav — Groups", steps: `Click "Groups"`, expected: `Routes to #/groups; existing groups + Create button visible` },
-                    { id: 35, name: "Nav — Goals", steps: `Click "Goals"`, expected: `Routes to #/goals; goals list with progress bars` },
-                    { id: 36, name: "Nav — Tags", steps: `Click "Tags"`, expected: `Routes to #/tags; user tags list` },
+                    // 2.16.14 (BUG-018): "Nav — Goals" and "Nav — Tags" removed; routes no longer exist.
                     { id: 37, name: "Nav — Settings", steps: `Click "Settings"`, expected: `Routes to #/settings/general; tab bar visible` },
                     { id: 38, name: "Sidebar version badge", steps: `Bottom of sidebar`, expected: `Shows current version. If newer release exists: "vX.Y.Z available" + Update Now button` },
                     { id: 39, name: "Theme toggle button", steps: `Sidebar → palette button (🎨)`, expected: `Navigates to #/settings/appearance` },
@@ -533,25 +532,11 @@
                     { id: 146, name: "Delete link", steps: `Remove a link`, expected: `Link disappears from both sides` },
                 ]
             },
-            {
-                title: "17. Goals", tests: [
-                    { id: 147, name: "Goals page renders", steps: `Sidebar → Goals`, expected: `Existing goals + Create button` },
-                    { id: 148, name: "Create goal", steps: `Create → pick metric (views/faves/comments) → target → Save`, expected: `Goal appears with progress bar` },
-                    { id: 149, name: "Goal — invalid metric blocked", steps: `Try crafting an API request with metric not in ALLOWED_GOAL_METRICS`, expected: `400 with "invalid metric" — SQL injection prevention working` },
-                    { id: 150, name: "Progress updates", steps: `After a poll cycle pulls new data`, expected: `Goal bar moves toward target` },
-                    { id: 151, name: "Goal completion", steps: `Goal hits 100%`, expected: `Visual completion state. Telegram notification fires (if enabled)` },
-                    { id: 152, name: "Delete goal", steps: `Click delete → confirm`, expected: `Goal removed` },
-                ]
-            },
-            {
-                title: "18. Tags Library", tests: [
-                    { id: 153, name: "Tags page renders", steps: `Sidebar → Tags`, expected: `User tag list + Create button` },
-                    { id: 154, name: "Create user tag", steps: `Create → name + colour → Save`, expected: `Tag appears in list` },
-                    { id: 155, name: "Assign tag to submission", steps: `Submission detail → Tags → pick a tag → Assign`, expected: `Tag chip appears on submission` },
-                    { id: 156, name: "Remove tag", steps: `Click ✗ on a tag chip`, expected: `Assignment removed; tag still in library` },
-                    { id: 157, name: "Delete tag", steps: `Tags → delete a tag`, expected: `Tag removed; assignments cascade` },
-                ]
-            },
+            // 2.16.14 (BUG-018): §17 Goals + §18 Tags removed — these
+            // surfaces no longer exist post-2.14. Goal tracking was
+            // reworked into the per-platform analytics widgets and
+            // user-defined tag library was folded into the metadata
+            // drawer's tag editor (covered in §29 Editor — Metadata).
             {
                 title: "19. Editor — Story Management", tests: [
                     { id: 158, name: "Story list — All", steps: `Click Stories`, expected: `All MASTER.md folders detected from posting_story_archive_path. Counts visible` },

@@ -4,6 +4,43 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.16.14] - 2026-05-02
+
+### BUG-018 + BUG-020 + BUG-021 — last of the round-2 backlog
+
+**BUG-021** (P2, real bug). Per-platform Submissions search filter
+was non-functional whenever the user was in the default grid view.
+Each platform's `_bind{X}Search` only re-rendered the legacy
+`#table-container` (hidden in grid mode); the visible
+`#grid-container` was never touched. Typing in the search box
+appeared to do nothing.
+
+Fix: each platform render now extracts its `Components.submissionCardGrid(...)`
+call into a closure (`{platform}GridRenderer`) and passes it to
+`_bind{X}Search`. The search handler invokes the closure with the
+filtered set and updates `#grid-container` alongside `#table-container`.
+Eleven platforms covered in one sweep: IB, FA, WS, SF, SQW, AO3,
+DA, WP, IK, BSKY, TW. Behavior in list view unchanged.
+
+**BUG-018** (P3, housekeeping). `qa/TESTING_CHECKLIST_WEBAPP.html`
+still listed §17 Goals + §18 Tags Library as testable surfaces.
+Both were removed in 2.14: goal tracking moved into the per-platform
+analytics widgets, and the user-defined tag library was folded into
+the metadata drawer's tag editor (already covered in §29). Deleted
+the two sections (12 tests) plus the orphan "Nav — Goals" / "Nav —
+Tags" entries in §1.
+
+**BUG-020** (P2). Re-tested "Regenerate All formats" against prod
+(Hypnotic_Claim, 9.8K words, 2 chapters): completed in 7.5s, all
+8 formats clean (Clean HTML, SoFurry HTML, BBCode, SquidgeWorld
+2 chapters, Styled HTML full + chapters + CSS, **PDF 3 files via
+WeasyPrint**, chapter splits). `errors: []`. Original report was
+test-container-only (no PDF deps installed); on prod with
+WeasyPrint the feature works as designed. Marking closed without
+code change.
+
+---
+
 ## [2.16.13] - 2026-05-02
 
 ### BUG-014 + BUG-017 cleanup

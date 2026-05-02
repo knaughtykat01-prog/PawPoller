@@ -397,9 +397,9 @@ Automated Playwright sweep ran against the 2.14.7 test container (port 8421, emp
 - ~~**BUG-014** P3~~ — fixed in 2.16.13. IB dashboard now renders `<h2>Inkbunny Dashboard</h2>` matching every other platform's `<h2>{Platform} Dashboard</h2>` pattern
 - ~~**BUG-016** P3~~ — fixed in 2.16.9. New `GET /api/poll/all-progress` returns the full `{ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw}` map; frontend ticker is now one fetch with one `.catch` instead of 9 parallel requests with 9 independent error paths. Per-platform endpoints kept for direct callers
 - ~~**BUG-017** P3~~ — fixed in 2.16.13. New `_guardSetupRoute()` fetches `/api/setup-status` on every `#/setup` navigation; bounces to `#/` if `setup_complete: true`. The Re-run setup button still works because it clears the flag server-side first
-- **BUG-018** checklist-cleanup: delete §17 Goals + §18 Tags from webapp checklist (no longer apply post-2.14)
-- **BUG-020** P2: "Regenerate All formats" only confirmed incomplete on test container (no PDF deps); prod has WeasyPrint working — re-test against prod before fixing
-- **BUG-021** P2: Inkbunny Submissions search filter is non-functional on production. Was test-container-incidental on first sighting; confirmed real on prod
+- ~~**BUG-018**~~ — fixed in 2.16.14. §17 Goals + §18 Tags + nav-link tests removed from webapp checklist
+- ~~**BUG-020**~~ — confirmed working on prod in 2.16.14 (Hypnotic_Claim regen 7.5s, 8 formats clean, 3 PDFs via WeasyPrint, errors:[]). Original report was test-container-only (no PDF deps)
+- ~~**BUG-021**~~ — fixed in 2.16.14. All 11 platforms' search filter now re-renders both the grid and the table view via a closure passed to `_bind{X}Search(allSubmissions, gridRenderer)`
 - ~~**SameSite=Strict cookie quirk**~~ — fixed in 2.16.8, switched to `samesite="lax"` in `routes/dashboard_auth.py`
 - ~~**`/favicon.ico` returns 401**~~ — fixed in 2.16.8, added to `_AUTH_EXEMPT_PATHS` in `dashboard.py`
 
