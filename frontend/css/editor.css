@@ -3413,11 +3413,13 @@ html[data-mobile="1"] .format-tabs {
 }
 
 /* Editor toolbar overall — let it wrap on narrow viewports rather than
- * scrolling horizontally (toolbar already has overflow-x). */
+ * scrolling horizontally (toolbar already has overflow-x). 2.16.6: also
+ * pad-left for the fixed hamburger so "← Stories" link isn't hidden
+ * behind it (caught via Playwright — title rendered as "tories"). */
 html[data-mobile="1"] .editor-toolbar {
     flex-wrap: wrap;
     gap: 6px;
-    padding: 8px 10px;
+    padding: 8px 10px 8px calc(env(safe-area-inset-left, 0px) + 60px);
 }
 
 html[data-mobile="1"] .editor-toolbar .btn {
@@ -3697,6 +3699,30 @@ html[data-mobile="1"] .page-header {
     margin-bottom: 12px;
     gap: 8px;
     padding-left: calc(env(safe-area-inset-left, 0px) + 60px);
+    /* 2.16.6: action-button rows (Settings has Save Settings, Poll Now,
+     * Full Resync, Clear Session = 4 buttons) live in a sibling div with
+     * inline display:flex. Without flex-wrap they force the document to
+     * 800px+ on a 440px viewport. Wrap the page-header itself so the
+     * actions div drops to row 2; rule below handles the buttons. */
+    flex-wrap: wrap;
+}
+
+/* 2.16.6: any direct DIV child of .page-header (the inline-styled action
+ * cluster) must wrap and span full width so its buttons can flow rather
+ * than overflow the viewport. Targets unstyled DIVs only — h2/p siblings
+ * are unaffected. */
+html[data-mobile="1"] .page-header > div {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px !important;
+}
+
+html[data-mobile="1"] .page-header > div > .btn {
+    flex: 1 1 calc(50% - 3px);
+    min-height: 40px;
+    padding: 8px 10px;
+    font-size: 13px;
+    white-space: nowrap;
 }
 
 html[data-mobile="1"] .page-header h2 {

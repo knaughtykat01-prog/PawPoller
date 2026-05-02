@@ -513,6 +513,10 @@
         z-index: 11;
         background: var(--bg-elevated, var(--bg-secondary));
         border: 1px solid var(--border-color);
+        /* 2.16.6: drop shadow makes the button read as a floating
+         * affordance instead of merging with content that scrolls under
+         * it. Subtle enough not to compete with cards. */
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
         width: 40px;
         height: 40px;
         font-size: 22px;

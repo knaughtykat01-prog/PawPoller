@@ -4,6 +4,109 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.16.6] - 2026-05-02
+
+### Mobile Mode — Phase 5 polish from Playwright sweep
+
+Three issues caught while auditing the live dashboard at 440×956
+with real data behind a logged-in session.
+
+**Settings page-header overflow (real bug).** The Settings header
+holds four action buttons (Save Settings, Poll Now, Full Resync,
+Clear Session) inside an inline `<div style="display:flex;gap:8px">`
+sibling to the h2. With no `flex-wrap` and no mobile rules
+targeting that unclassed div, the row forced the entire document to
+~830px on a 440px viewport — every settings card, the tab strip,
+the accordion bodies all bled past the right edge. Fix: add
+`flex-wrap: wrap` to `.page-header` itself, and a new rule for
+`html[data-mobile="1"] .page-header > div` that gives the actions
+container `width:100%` plus 50%-flex buttons. Buttons now flow into
+two rows of two on mobile and the document collapses back to
+viewport width. Same fix benefits any future page-header that picks
+up multi-button action clusters.
+
+**Editor toolbar hidden under hamburger.** The editor's
+`.editor-toolbar` is a separate component from `.page-header` and
+never picked up the +60px hamburger clearance. The "← Stories"
+back link was anchored at x=26 — entirely behind the 12-52px
+hamburger button. Title rendered as "tories Chosen" instead of
+"← Stories Chosen". Added the same
+`padding-left: calc(env(safe-area-inset-left, 0px) + 60px)` to
+`.editor-toolbar` on mobile.
+
+**Hamburger float shadow (polish).** When the page scrolls, content
+slides under the fixed hamburger and visually merges with it even
+though the button has its own opaque background. Added a subtle
+`box-shadow: 0 2px 6px rgba(0,0,0,0.35)` so it reads as a floating
+affordance, like an iOS FAB. Doesn't compete with cards because the
+shadow only shows where it overlaps content.
+
+### How this was caught
+
+Re-spun the production SSH tunnel (port 8420), logged in via
+Playwright at 440×956 viewport, walked every surface (Overview,
+Settings General + Appearance, Editor with a real story, Posting
+list + queue + story detail, IB/FA dashboards, Compare).
+`document.documentElement.scrollWidth` exposed the Settings
+overflow immediately; the editor breadcrumb issue showed up in
+the toolbar measurement. Pages that fit (Overview, Posting,
+platform dashboards with 2-button headers, Compare) weren't
+touched.
+
+---
+
+## [2.16.5] - 2026-05-02
+
+### Mobile Mode — Phase 4 hotfixes
+
+Two layout bugs caught after the CSP fix in 2.16.4 finally let the
+mobile rules take effect.
+
+**Page header h2 hidden behind hamburger.** With h2 at x=16 and
+hamburger occupying 12-52px, "Overview" rendered as "rview",
+"Settings" as "ngs", "Story Editor" as "y Editor". Added
+`padding-left: calc(env(safe-area-inset-left, 0px) + 60px)` to
+`html[data-mobile="1"] .page-header` so titles always start past
+the hamburger's right edge plus 8px breathing room.
+
+**Stats grid stuck at 2 columns.** The dashboard sets
+`style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))"`
+inline on the per-platform grid, beating the class-selector mobile
+rule. Added `!important` to
+`html[data-mobile="1"] .stats-grid { grid-template-columns: 1fr }`
+so the inline style is overridden. Now the 11 platform cards stack
+1-per-row on portrait phone instead of cramming 2 to a 220px-wide
+row.
+
+---
+
+## [2.16.4] - 2026-05-02
+
+### Mobile Mode — CSP hash fix (CRITICAL)
+
+The single bug that made all mobile-mode work from 2.16.0 through
+2.16.3 invisible.
+
+When 2.16.0 extended the inline boot script in `index.html` to
+resolve `data-mobile` from localStorage, the script's SHA-256 hash
+changed but `dashboard.py`'s CSP `script-src` whitelist still held
+the old hash from before the extension. Browsers silently blocked
+the boot script, `data-mobile` was never set, and every mobile rule
+written against `html[data-mobile="1"]` selector was dead CSS.
+Users only saw legacy `@media (max-width: 768px)` rules, which is
+why "better but not 100%" feedback persisted across four releases.
+
+Fix: updated the CSP hash in `dashboard.py` to
+`'sha256-WudoxBejEmzS4SXsQBia7rsNZctlaFiey3RvF0r8SzA='` (the
+browser console helpfully prints the expected hash on each block).
+
+Caught by re-running Playwright against the production CSP and
+checking `document.documentElement.dataset.mobile` — it was empty
+where it should have been "1". Lesson: any inline script change
+must update the CSP hash in lockstep.
+
+---
+
 ## [2.16.3] - 2026-05-02
 
 ### Mobile Mode — Phase 4 Pro Max calibration
