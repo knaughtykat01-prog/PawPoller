@@ -705,24 +705,19 @@ async def import_from_ao3(submission_id: str) -> dict:
     )
 
     try:
-        # Public works don't require login — view_adult=true bypasses the
-        # adult-content gate. Skip the login step entirely so the importer
-        # doesn't burn AO3's login rate limit (10-min lockout) on every
-        # import. Login is only attempted when the public fetch fails.
+        # AO3 gates adult / restricted works behind authentication, even
+        # with view_adult=true. ensure_logged_in() reuses any cached
+        # session cookies so this isn't a fresh login on every import.
+        # The 429 lockout is only a problem when forcibly re-authing in
+        # quick succession during testing.
+        if not await client.ensure_logged_in():
+            raise RuntimeError(
+                "Could not log in to AO3 (likely rate-limited — try again in 10 min)"
+            )
         url = f"https://archiveofourown.org/works/{submission_id}?view_full_work=true&view_adult=true"
         resp = await client._http.get(url, follow_redirects=True)
-        if resp.status_code != 200 or "/users/login" in str(resp.url):
-            # Restricted/draft work — fall back to authenticated fetch.
-            if not await client.ensure_logged_in():
-                raise RuntimeError(
-                    f"AO3 returned {resp.status_code} for work {submission_id} "
-                    "and login fallback failed (likely rate-limited — try again in 10 min)"
-                )
-            resp = await client._http.get(url, follow_redirects=True)
-            if resp.status_code != 200:
-                raise RuntimeError(
-                    f"AO3 returned {resp.status_code} for work {submission_id} after login"
-                )
+        if resp.status_code != 200:
+            raise RuntimeError(f"AO3 returned {resp.status_code} for work {submission_id}")
         parsed = _parse_otw_work_page(resp.text)
     finally:
         await client.close()
@@ -774,14 +769,17 @@ async def import_from_squidgeworld(submission_id: str) -> dict:
     )
 
     try:
-        # SqW is fronted by Anubis (proof-of-work bot challenge), so a
-        # raw HTTP fetch returns the challenge page instead of the work.
-        # The client's _get_page() helper transparently solves the
-        # challenge and retries — use it rather than raw _http.get().
+        # SqW gates ALL work content behind both Anubis (PoW bot challenge)
+        # AND authentication for adult-content works — anonymous +
+        # view_adult=true returns a "Sorry!" stub page, not the work.
+        # ensure_logged_in() handles both Anubis and the login flow;
+        # _get_page() retries through Anubis for the actual work fetch.
+        if not await client.ensure_logged_in():
+            raise RuntimeError("Could not log in to SqW")
         url = f"https://squidgeworld.org/works/{submission_id}?view_full_work=true&view_adult=true"
         html_text = await client._get_page(url)
         if not html_text:
-            raise RuntimeError(f"SqW returned no body for work {submission_id} (Anubis or auth failure)")
+            raise RuntimeError(f"SqW returned no body for work {submission_id}")
         parsed = _parse_otw_work_page(html_text)
     finally:
         await client.close()
