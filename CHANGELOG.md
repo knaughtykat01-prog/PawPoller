@@ -4,6 +4,49 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.6] - 2026-05-03
+
+### CF Worker proxy as a per-platform backup
+
+Generalises the existing AO3 / DA / SoFurry CF Worker plumbing to
+the other eight platforms as an opt-in escape hatch. When a platform
+starts blocking the server's IP (Cloudflare challenge, 403 / 429
+floods, datacenter-IP filtering), flip its toggle in
+**Settings → Polling → CF Proxy Backup** and traffic for that
+platform routes through the same Worker instead of going direct.
+
+Changed:
+
+- Eight client constructors (`bsky`, `fa`, `ib`, `ik`, `sqw`, `tw`,
+  `weasyl`, `wp`) now accept `proxy_url` + `proxy_key` arguments.
+  When both are truthy they wrap the httpx transport in
+  `polling.cf_proxy.CloudflareProxyTransport`; otherwise behaviour
+  is unchanged.
+- Single decision helper at `polling/cf_proxy.py:proxy_kwargs(settings,
+  platform_code)` returns either `{}` or
+  `{"proxy_url": ..., "proxy_key": ...}`. Three callers feed it:
+  the per-platform poller singleton accessor, the per-platform
+  `auth/connect` route, and the IB/FA importers. AO3 / DA / SF
+  remain "always on when worker is configured"; the other eight
+  gate on a per-platform `<platform>_use_cf_proxy` setting.
+- `GET /api/settings/preferences` now returns the eight new toggle
+  values plus a `cf_worker_configured` boolean (drives the
+  disabled state on the UI checkboxes when worker creds are
+  missing).
+- `POST /api/settings/preferences` accepts the eight new toggle
+  keys.
+- New "CF Proxy Backup" accordion in Settings → Polling tab with
+  one checkbox per opt-in platform. Banner explains the behaviour
+  and warns when worker creds aren't configured.
+
+Worker quota math: each opt-in platform poll cycle is roughly
+50–200 requests; default 4-hour cadence = 6 cycles/day; eight
+platforms toggled on = ~2.5–10k extra Worker requests/day, well
+within the free tier (100k/day). Currently ~0 since defaults
+are all off.
+
+---
+
 ## [2.18.5] - 2026-05-03
 
 ### Persistent sessions across all platforms with login flows

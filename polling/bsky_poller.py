@@ -94,9 +94,11 @@ def _get_or_create_client(settings: dict) -> BskyClient:
     bsky_app_password = settings.get("bsky_app_password", "")
 
     if _bsky_client is None:
+        from polling.cf_proxy import proxy_kwargs
         _bsky_client = BskyClient(
             identifier=bsky_identifier,
             app_password=bsky_app_password,
+            **proxy_kwargs(settings, "bsky"),
         )
     else:
         _bsky_client.update_credentials(bsky_identifier, bsky_app_password)

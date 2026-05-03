@@ -99,7 +99,9 @@ async def ws_connect(body: dict):
         raise HTTPException(400, "Weasyl API key is required")
 
     # Validate the API key by calling Weasyl's /api/whoami endpoint
-    client = WeasylClient(api_key=api_key)
+    from polling.cf_proxy import proxy_kwargs
+    client = WeasylClient(api_key=api_key,
+                          **proxy_kwargs(config.get_settings(), "ws"))
     try:
         username = await client.validate_key()
     except Exception as e:

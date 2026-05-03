@@ -119,12 +119,12 @@ def _get_or_create_client(settings: dict) -> AO3Client:
     ao3_target = settings.get("ao3_target_user", "")
 
     if _ao3_client is None:
+        from polling.cf_proxy import proxy_kwargs
         _ao3_client = AO3Client(
             username=ao3_user,
             password=ao3_pass,
             target_user=ao3_target,
-            proxy_url=settings.get("cf_worker_url", ""),
-            proxy_key=settings.get("cf_worker_key", ""),
+            **proxy_kwargs(settings, "ao3"),
         )
     else:
         _ao3_client.update_credentials(ao3_user, ao3_pass, ao3_target)

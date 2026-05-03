@@ -28,6 +28,46 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+# ── Per-platform proxy gating (2.18.6) ──────────────────────────
+# Three platforms (AO3, DA, SF) need the CF proxy to function from
+# datacenter IPs and have always used it implicitly when
+# cf_worker_url is configured. The remaining eight platforms work
+# fine direct from any IP today, so the proxy is OFF by default for
+# them — but each has a per-platform "use as backup" flag in case
+# they start blocking us in the future.
+
+# Settings key prefix: f"{platform_code}_use_cf_proxy" -> bool.
+# Platforms that have the flag (default OFF; setting controls
+# whether the existing CF proxy gets used as a backup transport):
+PROXY_OPTIONAL_PLATFORMS = frozenset({
+    "ib", "fa", "ws", "sqw", "bsky", "ik", "wp", "tw",
+})
+
+# Platforms where the proxy is implicitly on whenever cf_worker_url
+# is configured (no per-platform toggle — these need it):
+PROXY_REQUIRED_PLATFORMS = frozenset({"ao3", "da", "sf"})
+
+
+def proxy_kwargs(settings: dict, platform_code: str) -> dict:
+    """Return ``{"proxy_url": ..., "proxy_key": ...}`` if the proxy
+    should be used for *platform_code*, else an empty dict.
+
+    Pass ``**proxy_kwargs(settings, "bsky")`` straight into a client
+    constructor. Empty dict means "no proxy"; the constructors fall
+    through to a direct transport in that case.
+    """
+    worker_url = settings.get("cf_worker_url", "")
+    worker_key = settings.get("cf_worker_key", "")
+    if not (worker_url and worker_key):
+        return {}
+    if platform_code in PROXY_REQUIRED_PLATFORMS:
+        return {"proxy_url": worker_url, "proxy_key": worker_key}
+    if platform_code in PROXY_OPTIONAL_PLATFORMS:
+        if settings.get(f"{platform_code}_use_cf_proxy", False):
+            return {"proxy_url": worker_url, "proxy_key": worker_key}
+    return {}
+
+
 class CloudflareProxyTransport(httpx.AsyncBaseTransport):
     """httpx transport that routes requests through a Cloudflare Worker."""
 

@@ -97,7 +97,8 @@ def _get_or_create_client(settings: dict) -> IKClient:
     ik_target = settings.get("ik_target_user", "")
 
     if _ik_client is None:
-        _ik_client = IKClient(target_user=ik_target)
+        from polling.cf_proxy import proxy_kwargs
+        _ik_client = IKClient(target_user=ik_target, **proxy_kwargs(settings, "ik"))
     else:
         _ik_client.update_credentials(ik_target)
 

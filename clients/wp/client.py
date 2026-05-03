@@ -33,9 +33,14 @@ _HEADERS = {
 class WPClient:
     """Async HTTP client for Wattpad's public API."""
 
-    def __init__(self, target_user: str):
+    def __init__(self, target_user: str, proxy_url: str = "", proxy_key: str = ""):
         self.target_user = target_user
-        transport = httpx.AsyncHTTPTransport(retries=2)
+        if proxy_url and proxy_key:
+            from polling.cf_proxy import CloudflareProxyTransport
+            transport = CloudflareProxyTransport(proxy_url, proxy_key)
+            logger.info("WP client using CF proxy: %s", proxy_url)
+        else:
+            transport = httpx.AsyncHTTPTransport(retries=2)
         self._http = httpx.AsyncClient(
             timeout=30.0,
             follow_redirects=True,

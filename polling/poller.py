@@ -236,7 +236,9 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
     settings = config.get_settings()
     ib_user = settings.get("username", "") or config.INKBUNNY_USERNAME
     ib_pass = settings.get("password", "") or config.INKBUNNY_PASSWORD
-    client = InkbunnyClient(username=ib_user, password=ib_pass)
+    from polling.cf_proxy import proxy_kwargs
+    client = InkbunnyClient(username=ib_user, password=ib_pass,
+                            **proxy_kwargs(settings, "ib"))
 
     try:
         conn = get_connection()

@@ -308,7 +308,9 @@ async def import_from_inkbunny(submission_id: str) -> dict:
     finally:
         conn.close()
 
-    client = InkbunnyClient(username=username, password=password)
+    from polling.cf_proxy import proxy_kwargs
+    client = InkbunnyClient(username=username, password=password,
+                            **proxy_kwargs(settings, "ib"))
     try:
         # Reuse the cached session ID (SID) the poller writes to the DB
         # after each successful login — that's IB's own form of session
@@ -574,7 +576,9 @@ async def import_from_furaffinity(submission_id: str) -> dict:
     if not cookie_a or not cookie_b:
         raise RuntimeError("FA cookies not configured — set up in Settings")
 
-    client = FAClient(username=fa_username, cookie_a=cookie_a, cookie_b=cookie_b)
+    from polling.cf_proxy import proxy_kwargs as _fa_proxy_kwargs
+    client = FAClient(username=fa_username, cookie_a=cookie_a, cookie_b=cookie_b,
+                      **_fa_proxy_kwargs(settings, "fa"))
 
     try:
         detail = await client.get_submission_detail(int(submission_id))

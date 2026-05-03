@@ -120,10 +120,12 @@ def _get_or_create_client(settings: dict) -> SquidgeWorldClient:
     sqw_target = settings.get("sqw_target_user", "")
 
     if _sqw_client is None:
+        from polling.cf_proxy import proxy_kwargs
         _sqw_client = SquidgeWorldClient(
             username=sqw_user,
             password=sqw_pass,
             target_user=sqw_target,
+            **proxy_kwargs(settings, "sqw"),
         )
     else:
         _sqw_client.update_credentials(sqw_user, sqw_pass, sqw_target)

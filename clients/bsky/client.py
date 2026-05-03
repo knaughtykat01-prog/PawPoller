@@ -45,7 +45,8 @@ def _safe_int(val: Any) -> int:
 class BskyClient:
     """Async HTTP client for Bluesky's AT Protocol API."""
 
-    def __init__(self, identifier: str = "", app_password: str = ""):
+    def __init__(self, identifier: str = "", app_password: str = "",
+                 proxy_url: str = "", proxy_key: str = ""):
         self.identifier = identifier      # Handle (user.bsky.social) or DID
         self.app_password = app_password   # App password (NOT main account password)
         self._access_jwt: str = ""
@@ -54,7 +55,15 @@ class BskyClient:
         self._handle: str = ""
         self._logged_in = False
 
-        transport = httpx.AsyncHTTPTransport(retries=2)
+        # Optional CF Worker proxy — opt-in backup, not required from
+        # any IP today. Enabled via bsky_use_cf_proxy if Bluesky ever
+        # starts blocking datacenter IPs.
+        if proxy_url and proxy_key:
+            from polling.cf_proxy import CloudflareProxyTransport
+            transport = CloudflareProxyTransport(proxy_url, proxy_key)
+            logger.info("Bsky client using CF proxy: %s", proxy_url)
+        else:
+            transport = httpx.AsyncHTTPTransport(retries=2)
         self._http = httpx.AsyncClient(
             timeout=30.0,
             follow_redirects=True,

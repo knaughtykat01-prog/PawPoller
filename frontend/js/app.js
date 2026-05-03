@@ -762,12 +762,67 @@ const App = {
         }
     },
 
+    /* _loadCFProxyToggles() — Render the per-platform opt-in CF proxy
+     * checkboxes. Pulls current values from /api/settings/preferences,
+     * writes back via POST on toggle. */
+    async _loadCFProxyToggles() {
+        const root = document.getElementById('cf-proxy-toggles');
+        if (!root) return;
+        const platforms = [
+            { key: 'ib',   name: 'Inkbunny' },
+            { key: 'fa',   name: 'FurAffinity' },
+            { key: 'ws',   name: 'Weasyl' },
+            { key: 'sqw',  name: 'SquidgeWorld' },
+            { key: 'bsky', name: 'Bluesky' },
+            { key: 'ik',   name: 'Itaku' },
+            { key: 'wp',   name: 'Wattpad' },
+            { key: 'tw',   name: 'X / Twitter' },
+        ];
+        try {
+            const prefs = await API.getPreferences();
+            const haveCfWorker = !!prefs.cf_worker_configured;
+            const rows = platforms.map(p => {
+                const settingKey = `${p.key}_use_cf_proxy`;
+                const checked = !!prefs[settingKey];
+                const dis = haveCfWorker ? '' : 'disabled';
+                return `<label class="settings-row" style="display:flex;align-items:center;gap:10px;padding:6px 0;${haveCfWorker ? '' : 'opacity:0.55;'}">
+                    <input type="checkbox" data-cf-platform="${p.key}" ${checked ? 'checked' : ''} ${dis}>
+                    <span class="settings-label" style="flex:1">${p.name}</span>
+                    <span style="font-size:11px;color:var(--text-muted);">${settingKey}</span>
+                </label>`;
+            }).join('');
+            const banner = haveCfWorker
+                ? ''
+                : `<p style="font-size:12px;color:#d66;margin:0 0 10px;">CF Worker URL/key not configured — toggles disabled. Set <code>cf_worker_url</code> and <code>cf_worker_key</code> in settings.json first.</p>`;
+            root.innerHTML = banner + rows;
+            root.querySelectorAll('input[type="checkbox"][data-cf-platform]').forEach(cb => {
+                cb.addEventListener('change', async () => {
+                    const platform = cb.dataset.cfPlatform;
+                    const key = `${platform}_use_cf_proxy`;
+                    cb.disabled = true;
+                    try {
+                        await API.savePreferences({ [key]: cb.checked });
+                    } catch (e) {
+                        cb.checked = !cb.checked;
+                    } finally {
+                        cb.disabled = false;
+                    }
+                });
+            });
+        } catch (e) {
+            root.innerHTML = `<p style="color:#d66;font-size:12px;">Failed to load proxy settings: ${e.message}</p>`;
+        }
+    },
+
     /* _loadPollingTab() — Lazy-load platform polling status and logs when
      * the Polling settings tab is activated. Fetches IB status + poll log,
      * plus each connected platform's status + poll log in parallel. */
     async _loadPollingTab() {
         const container = document.getElementById('polling-platforms-container');
         if (!container) return;
+        // Always (re)load the proxy toggles when the tab opens — they're
+        // independent of the platform-status loading.
+        this._loadCFProxyToggles();
         if (this._pollingTabLoaded) return; // already loaded this render
         container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">Loading polling data...</div>';
         try {
@@ -7028,6 +7083,18 @@ const App = {
                 <div id="polling-platforms-container">
                     <div style="text-align:center;padding:40px;color:var(--text-muted)">Loading polling data...</div>
                 </div>
+
+                <details class="settings-accordion">
+                    <summary>CF Proxy Backup <span class="summary-meta">— route through Cloudflare Worker if a platform starts blocking us</span></summary>
+                    <div class="accordion-body">
+                        <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+                            AO3, DeviantArt, and SoFurry already use the configured CF Worker proxy because they require it from datacenter IPs. The platforms below work direct today — flip the toggle if any of them ever starts returning 403 / Cloudflare challenges from the server. Requires <code>cf_worker_url</code> + <code>cf_worker_key</code> to be set.
+                        </p>
+                        <div id="cf-proxy-toggles">
+                            <div style="text-align:center;padding:20px;color:var(--text-muted)">Loading…</div>
+                        </div>
+                    </div>
+                </details>
 
                 </div><!-- /tab:polling -->
             `;

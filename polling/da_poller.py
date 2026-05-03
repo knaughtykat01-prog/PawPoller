@@ -96,11 +96,11 @@ def _get_or_create_client(settings: dict) -> DAClient:
     da_target = settings.get("da_target_user", "")
 
     if _da_client is None:
+        from polling.cf_proxy import proxy_kwargs
         _da_client = DAClient(
             cookie_value=da_cookie,
             target_user=da_target,
-            proxy_url=settings.get("cf_worker_url", ""),
-            proxy_key=settings.get("cf_worker_key", ""),
+            **proxy_kwargs(settings, "da"),
         )
     else:
         _da_client.update_credentials(da_cookie, da_target)

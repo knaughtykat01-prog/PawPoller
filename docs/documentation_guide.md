@@ -899,6 +899,44 @@ Step 6: Notifications
 Finalise: Update poll_log, release concurrency guard
 ```
 
+### CF Worker proxy gate (2.18.6)
+
+Three platforms — AO3, DeviantArt, SoFurry — *require* the CF Worker
+proxy to function from datacenter IPs (Cloudflare TLS-fingerprint
+challenges, login-page rate limits, etc). The other eight don't need
+it today, but each has an opt-in toggle so we can flip it on if a
+platform ever starts blocking the server.
+
+Single decision point: `polling/cf_proxy.py:proxy_kwargs(settings, platform_code)`.
+
+```python
+proxy_kwargs(settings, "ao3")   # always returns proxy kwargs if worker configured
+proxy_kwargs(settings, "ib")    # returns proxy kwargs only if ib_use_cf_proxy=True
+proxy_kwargs(settings, "fa")    # returns {} when fa_use_cf_proxy is False (default)
+```
+
+The helper returns either `{}` or `{"proxy_url": ..., "proxy_key": ...}`,
+so callers spread it directly into client constructors:
+
+```python
+client = BskyClient(
+    identifier=...,
+    app_password=...,
+    **proxy_kwargs(settings, "bsky"),
+)
+```
+
+Three caller surfaces feed it:
+1. Per-platform poller singleton accessors (`_get_or_create_client`).
+2. Per-platform `auth/connect` routes.
+3. The IB and FA importers.
+
+UI: a "CF Proxy Backup" accordion in **Settings → Polling** lists the
+eight opt-in platforms with one checkbox each. Backed by the eight
+`<platform>_use_cf_proxy` keys and a derived `cf_worker_configured`
+boolean returned by `GET /api/settings/preferences`. Toggles are
+disabled when worker creds aren't configured.
+
 ### Persistent client singletons (2.18.4 / 2.18.5)
 
 Every platform with a login flow keeps a process-lifetime client

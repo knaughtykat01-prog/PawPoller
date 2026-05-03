@@ -96,10 +96,12 @@ def _get_or_create_client(settings: dict) -> TWClient:
     tw_target = settings.get("tw_target_user", "")
 
     if _tw_client is None:
+        from polling.cf_proxy import proxy_kwargs
         _tw_client = TWClient(
             auth_token=tw_auth_token,
             ct0=tw_ct0,
             target_user=tw_target,
+            **proxy_kwargs(settings, "tw"),
         )
     else:
         _tw_client.update_credentials(tw_auth_token, tw_ct0, tw_target)

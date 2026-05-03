@@ -46,14 +46,26 @@ class FAClient:
       _fa_http   -- authenticated client for direct FA access (cookies, lazy-init)
     """
 
-    def __init__(self, username: str = "", cookie_a: str = "", cookie_b: str = ""):
+    def __init__(self, username: str = "", cookie_a: str = "", cookie_b: str = "",
+                 proxy_url: str = "", proxy_key: str = ""):
         self.username = username or config.FA_USERNAME
         # FA uses two cookies ('a' and 'b') together as the session token.
         # Both must be present and valid for an authenticated session.
         self.cookie_a = cookie_a or config.FA_COOKIE_A
         self.cookie_b = cookie_b or config.FA_COOKIE_B
+        # Optional CF Worker proxy — opt-in backup. Affects both the
+        # FAExport client and the lazy direct-FA cookie client. The
+        # latter is the more likely target if FA's Cloudflare ever
+        # starts challenging datacenter IPs. Enabled via fa_use_cf_proxy.
+        self._proxy_url = proxy_url
+        self._proxy_key = proxy_key
+        if proxy_url and proxy_key:
+            from polling.cf_proxy import CloudflareProxyTransport
+            transport = CloudflareProxyTransport(proxy_url, proxy_key)
+            logger.info("FA client using CF proxy: %s", proxy_url)
+        else:
+            transport = httpx.AsyncHTTPTransport(retries=2)
         # Primary client: talks to FAExport (no auth needed)
-        transport = httpx.AsyncHTTPTransport(retries=2)
         self._http = httpx.AsyncClient(timeout=30.0, transport=transport)
         # Secondary client: direct FA with cookies (lazy-initialised)
         self._fa_http: httpx.AsyncClient | None = None

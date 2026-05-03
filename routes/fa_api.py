@@ -106,7 +106,9 @@ async def fa_connect(body: dict):
         raise HTTPException(400, "Both cookie 'a' and cookie 'b' are required")
 
     # Validate cookies by attempting to access the user's gallery
-    client = FAClient(username=username, cookie_a=cookie_a, cookie_b=cookie_b)
+    from polling.cf_proxy import proxy_kwargs
+    client = FAClient(username=username, cookie_a=cookie_a, cookie_b=cookie_b,
+                      **proxy_kwargs(config.get_settings(), "fa"))
     try:
         valid = await client.validate_cookies()
     except Exception as e:

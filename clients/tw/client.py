@@ -100,13 +100,19 @@ def _safe_int(val: Any) -> int:
 class TWClient:
     """Async HTTP client for X/Twitter using cookie-based GraphQL endpoints."""
 
-    def __init__(self, auth_token: str, ct0: str, target_user: str):
+    def __init__(self, auth_token: str, ct0: str, target_user: str,
+                 proxy_url: str = "", proxy_key: str = ""):
         self.auth_token = auth_token    # auth_token cookie from browser
         self.ct0 = ct0                  # ct0 CSRF cookie from browser
         self.target_user = target_user  # Username to track (without @)
         self._user_rest_id: str = ""    # Cached user ID
 
-        transport = httpx.AsyncHTTPTransport(retries=2)
+        if proxy_url and proxy_key:
+            from polling.cf_proxy import CloudflareProxyTransport
+            transport = CloudflareProxyTransport(proxy_url, proxy_key)
+            logger.info("TW client using CF proxy: %s", proxy_url)
+        else:
+            transport = httpx.AsyncHTTPTransport(retries=2)
         self._http = httpx.AsyncClient(
             timeout=30.0,
             follow_redirects=True,

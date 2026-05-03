@@ -38,7 +38,8 @@ class InkbunnyClient:
       _web_http  -- for web-scraping comments (requires PHPSESSID cookie via web login)
     """
 
-    def __init__(self, username: str = "", password: str = ""):
+    def __init__(self, username: str = "", password: str = "",
+                 proxy_url: str = "", proxy_key: str = ""):
         self.username = username or config.INKBUNNY_USERNAME
         self.password = password or config.INKBUNNY_PASSWORD
         # Session ID returned by api_login.php; passed as a POST param on every API call.
@@ -46,8 +47,18 @@ class InkbunnyClient:
         # User ID returned by api_login.php; needed for web-scraping endpoints
         # that require a user_id parameter (e.g. watcher list pages).
         self.user_id: int = 0
+        # Optional CF Worker proxy — opt-in backup. Inkbunny's API has
+        # historically been generous to datacenter IPs, but the toggle
+        # exists so we can flip it on if that ever changes.
+        self._proxy_url = proxy_url
+        self._proxy_key = proxy_key
+        if proxy_url and proxy_key:
+            from polling.cf_proxy import CloudflareProxyTransport
+            transport = CloudflareProxyTransport(proxy_url, proxy_key)
+            logger.info("IB client using CF proxy: %s", proxy_url)
+        else:
+            transport = httpx.AsyncHTTPTransport(retries=2)
         # Primary HTTP client for all official API endpoints.
-        transport = httpx.AsyncHTTPTransport(retries=2)
         self._http = httpx.AsyncClient(timeout=30.0, transport=transport)
         # Secondary HTTP client for web scraping (lazy-initialised in _ensure_web_session).
         # Kept separate because it carries browser cookies and follows redirects,

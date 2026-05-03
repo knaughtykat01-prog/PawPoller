@@ -144,7 +144,9 @@ async def auth_login(body: dict):
         raise HTTPException(400, "Username and password are required")
 
     # Test login against the live Inkbunny API to validate credentials
-    client = InkbunnyClient(username=username, password=password)
+    from polling.cf_proxy import proxy_kwargs
+    client = InkbunnyClient(username=username, password=password,
+                            **proxy_kwargs(config.get_settings(), "ib"))
     try:
         await client.login()
     except Exception as e:
@@ -695,6 +697,20 @@ def get_preferences():
         "milestone_views": settings.get("milestone_views", [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000]),
         "milestone_faves": settings.get("milestone_faves", [10, 25, 50, 100, 250, 500, 1000, 2500, 5000]),
         "milestone_comments": settings.get("milestone_comments", [10, 25, 50, 100, 250, 500, 1000]),
+        # ── Per-platform CF Proxy backup toggles (2.18.6) ──────────
+        # Only the eight platforms that don't *require* the proxy.
+        # AO3 / DA / SF use it implicitly when cf_worker_url is set.
+        "ib_use_cf_proxy":   settings.get("ib_use_cf_proxy", False),
+        "fa_use_cf_proxy":   settings.get("fa_use_cf_proxy", False),
+        "ws_use_cf_proxy":   settings.get("ws_use_cf_proxy", False),
+        "sqw_use_cf_proxy":  settings.get("sqw_use_cf_proxy", False),
+        "bsky_use_cf_proxy": settings.get("bsky_use_cf_proxy", False),
+        "ik_use_cf_proxy":   settings.get("ik_use_cf_proxy", False),
+        "wp_use_cf_proxy":   settings.get("wp_use_cf_proxy", False),
+        "tw_use_cf_proxy":   settings.get("tw_use_cf_proxy", False),
+        # Whether the worker URL/key are configured at all (drives the
+        # disabled state on the UI toggles).
+        "cf_worker_configured": bool(settings.get("cf_worker_url")) and bool(settings.get("cf_worker_key")),
     }
 
 
@@ -818,6 +834,15 @@ def save_preferences(body: dict):
                     update[ms_key] = vals
             except (TypeError, ValueError):
                 pass
+
+    # ── Per-platform CF Proxy backup toggles ───────────────────
+    for key in (
+        "ib_use_cf_proxy", "fa_use_cf_proxy", "ws_use_cf_proxy",
+        "sqw_use_cf_proxy", "bsky_use_cf_proxy", "ik_use_cf_proxy",
+        "wp_use_cf_proxy", "tw_use_cf_proxy",
+    ):
+        if key in body:
+            update[key] = bool(body[key])
 
     # ── Windows startup registry ───────────────────────────────
     # Handled separately because it modifies the system registry

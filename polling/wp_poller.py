@@ -95,7 +95,8 @@ def _get_or_create_client(settings: dict) -> WPClient:
     wp_target = settings.get("wp_target_user", "")
 
     if _wp_client is None:
-        _wp_client = WPClient(target_user=wp_target)
+        from polling.cf_proxy import proxy_kwargs
+        _wp_client = WPClient(target_user=wp_target, **proxy_kwargs(settings, "wp"))
     else:
         _wp_client.update_credentials(wp_target)
 

@@ -167,17 +167,26 @@ _HEADERS = {
 class SquidgeWorldClient:
     """Async HTTP client for SquidgeWorld (OTW Archive)."""
 
-    def __init__(self, username: str, password: str, target_user: str):
+    def __init__(self, username: str, password: str, target_user: str,
+                 proxy_url: str = "", proxy_key: str = ""):
         """
         Args:
             username: Login account username (e.g. PawPoller)
             password: Login account password
             target_user: User whose works to track (e.g. KnaughtyKat)
+            proxy_url, proxy_key: Optional CF Worker proxy. Off by
+                default — SqW works fine direct from any IP. Toggle
+                via sqw_use_cf_proxy if it ever starts blocking us.
         """
         self.username = username
         self.password = password
         self.target_user = target_user
-        transport = httpx.AsyncHTTPTransport(retries=2)
+        if proxy_url and proxy_key:
+            from polling.cf_proxy import CloudflareProxyTransport
+            transport = CloudflareProxyTransport(proxy_url, proxy_key)
+            logger.info("SqW client using CF proxy: %s", proxy_url)
+        else:
+            transport = httpx.AsyncHTTPTransport(retries=2)
         self._http = httpx.AsyncClient(
             timeout=30.0,
             follow_redirects=True,

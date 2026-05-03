@@ -227,10 +227,12 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
     # These are stored in the user's settings and passed to the FAClient
     # constructor directly.
     settings = config.get_settings()
+    from polling.cf_proxy import proxy_kwargs
     client = FAClient(
         username=settings.get("fa_username", ""),
         cookie_a=settings.get("fa_cookie_a", ""),
         cookie_b=settings.get("fa_cookie_b", ""),
+        **proxy_kwargs(settings, "fa"),
     )
 
     try:

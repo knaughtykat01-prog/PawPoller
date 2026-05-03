@@ -151,7 +151,9 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
     }
 
     settings = config.get_settings()
-    client = WeasylClient(api_key=settings.get("ws_api_key", ""))
+    from polling.cf_proxy import proxy_kwargs
+    client = WeasylClient(api_key=settings.get("ws_api_key", ""),
+                          **proxy_kwargs(settings, "ws"))
 
     try:
         conn = get_connection()

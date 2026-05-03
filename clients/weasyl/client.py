@@ -31,14 +31,19 @@ WEASYL_API_BASE = "https://www.weasyl.com/api"
 class WeasylClient:
     """Weasyl REST API client using API key authentication."""
 
-    def __init__(self, api_key: str = ""):
+    def __init__(self, api_key: str = "", proxy_url: str = "", proxy_key: str = ""):
         self.api_key = api_key
         # Weasyl authenticates via a custom header: X-Weasyl-API-Key.
         # Unlike OAuth bearer tokens, this key is a static secret generated
         # from the user's account settings. It is sent on every request as
         # a default header on the httpx client so callers don't need to
         # manage auth per-request.
-        transport = httpx.AsyncHTTPTransport(retries=2)
+        if proxy_url and proxy_key:
+            from polling.cf_proxy import CloudflareProxyTransport
+            transport = CloudflareProxyTransport(proxy_url, proxy_key)
+            logger.info("Weasyl client using CF proxy: %s", proxy_url)
+        else:
+            transport = httpx.AsyncHTTPTransport(retries=2)
         self._http = httpx.AsyncClient(
             timeout=30.0,
             headers={"X-Weasyl-API-Key": self.api_key},

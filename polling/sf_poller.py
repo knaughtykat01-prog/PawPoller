@@ -141,8 +141,8 @@ def _get_or_create_client(settings: dict) -> SoFurryClient:
     sf_display = settings.get("sf_display_name", "")
     sf_totp = settings.get("sf_totp_code", "")
 
-    cf_url = settings.get("cf_worker_url", "")
-    cf_key = settings.get("cf_worker_key", "")
+    from polling.cf_proxy import proxy_kwargs
+    sf_proxy = proxy_kwargs(settings, "sf")
 
     if _sf_client is None:
         _sf_client = SoFurryClient(
@@ -150,12 +150,11 @@ def _get_or_create_client(settings: dict) -> SoFurryClient:
             password=sf_pass,
             display_name=sf_display,
             totp_code=sf_totp,
-            proxy_url=cf_url,
-            proxy_key=cf_key,
+            **sf_proxy,
         )
         # Restore saved session cookies (if any) to skip login.
         # Only useful when NOT using the CF proxy (direct login).
-        if not cf_url:
+        if not sf_proxy:
             saved_cookies = settings.get("sf_session_cookies")
             if saved_cookies:
                 _sf_client.import_cookies(saved_cookies)
