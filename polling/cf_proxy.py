@@ -28,33 +28,59 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-# ── Per-platform proxy gating (2.18.6) ──────────────────────────
+# ── Per-platform proxy gating (2.18.6 / 2.18.7) ─────────────────
 # Three platforms (AO3, DA, SF) need the CF proxy to function from
-# datacenter IPs and have always used it implicitly when
-# cf_worker_url is configured. The remaining eight platforms work
-# fine direct from any IP today, so the proxy is OFF by default for
-# them — but each has a per-platform "use as backup" flag in case
-# they start blocking us in the future.
+# datacenter IPs and use it implicitly whenever cf_worker_url is
+# configured — *_use_cf_proxy toggles do not apply to them.
+#
+# The remaining eight work direct by default. Their per-platform
+# toggle (`<platform>_use_cf_proxy`) means "if a direct call hits a
+# block-like failure, retry once through the CF Worker". The proxy
+# is *never* the default transport for these platforms — only a
+# fallback. That keeps the worker quota low (we only burn it when
+# direct actually fails) and keeps server-IP-based access patterns
+# (cookie scope, IP-locked sessions) intact in the happy path.
 
-# Settings key prefix: f"{platform_code}_use_cf_proxy" -> bool.
-# Platforms that have the flag (default OFF; setting controls
-# whether the existing CF proxy gets used as a backup transport):
+# Optional platforms — toggle `<platform>_use_cf_proxy` enables the
+# fallback retry. Direct is always tried first.
 PROXY_OPTIONAL_PLATFORMS = frozenset({
     "ib", "fa", "ws", "sqw", "bsky", "ik", "wp", "tw",
 })
 
-# Platforms where the proxy is implicitly on whenever cf_worker_url
-# is configured (no per-platform toggle — these need it):
+# Required platforms — proxy is the *default* transport whenever
+# cf_worker_url is configured. No fallback / no toggle: these
+# platforms don't work direct from datacenter IPs at all.
 PROXY_REQUIRED_PLATFORMS = frozenset({"ao3", "da", "sf"})
 
 
 def proxy_kwargs(settings: dict, platform_code: str) -> dict:
-    """Return ``{"proxy_url": ..., "proxy_key": ...}`` if the proxy
-    should be used for *platform_code*, else an empty dict.
+    """Default-path proxy kwargs.
 
-    Pass ``**proxy_kwargs(settings, "bsky")`` straight into a client
-    constructor. Empty dict means "no proxy"; the constructors fall
-    through to a direct transport in that case.
+    Returns proxy creds ONLY for platforms in PROXY_REQUIRED_PLATFORMS
+    (and only when the worker is configured). Everything else returns
+    an empty dict — direct transport. The eight optional platforms
+    rely on `proxy_kwargs_fallback()` instead, which is consulted
+    only after a direct call has already failed.
+    """
+    if platform_code not in PROXY_REQUIRED_PLATFORMS:
+        return {}
+    worker_url = settings.get("cf_worker_url", "")
+    worker_key = settings.get("cf_worker_key", "")
+    if not (worker_url and worker_key):
+        return {}
+    return {"proxy_url": worker_url, "proxy_key": worker_key}
+
+
+def proxy_kwargs_fallback(settings: dict, platform_code: str) -> dict:
+    """Fallback-path proxy kwargs.
+
+    Returns proxy creds when the caller has just hit a block-like
+    failure and wants to retry through the Worker. Honours the
+    per-platform toggle for OPTIONAL platforms; always returns
+    creds for REQUIRED platforms (those would already be running
+    on proxy via the default path, so this branch usually doesn't
+    fire for them — included for completeness so callers can use
+    one helper irrespective of platform class).
     """
     worker_url = settings.get("cf_worker_url", "")
     worker_key = settings.get("cf_worker_key", "")
@@ -66,6 +92,29 @@ def proxy_kwargs(settings: dict, platform_code: str) -> dict:
         if settings.get(f"{platform_code}_use_cf_proxy", False):
             return {"proxy_url": worker_url, "proxy_key": worker_key}
     return {}
+
+
+def is_blocking_failure(exc: BaseException) -> bool:
+    """Heuristic: does *exc* look like an IP/Cloudflare/rate-limit
+    block (worth retrying through the proxy), or a real
+    application-level error (don't retry)?
+
+    True for: 403, 429, "Shields are up", "Retry later" body,
+    Cloudflare challenge text, datacenter-IP block phrases, and
+    common timeouts/connection errors that often indicate a
+    network-level filter rather than a server-side problem.
+    False for: 401/credential failures, 404, 5xx (likely a real
+    server error rather than a block we can route around).
+    """
+    s = str(exc)
+    needles = (
+        "403", "429",
+        "Shields are up", "Retry later", "Cloudflare",
+        "Forbidden", "rate limit", "rate-limit", "rate limited",
+        "blocked", "ConnectTimeout", "ReadTimeout", "ConnectError",
+        "Anubis", "challenge",
+    )
+    return any(n.lower() in s.lower() for n in needles)
 
 
 class CloudflareProxyTransport(httpx.AsyncBaseTransport):

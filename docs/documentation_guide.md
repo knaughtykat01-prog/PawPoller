@@ -899,43 +899,61 @@ Step 6: Notifications
 Finalise: Update poll_log, release concurrency guard
 ```
 
-### CF Worker proxy gate (2.18.6)
+### CF Worker proxy gate (2.18.6 / 2.18.7)
 
 Three platforms — AO3, DeviantArt, SoFurry — *require* the CF Worker
 proxy to function from datacenter IPs (Cloudflare TLS-fingerprint
-challenges, login-page rate limits, etc). The other eight don't need
-it today, but each has an opt-in toggle so we can flip it on if a
-platform ever starts blocking the server.
+challenges, login-page rate limits, etc). The other eight work direct
+by default, with the proxy as a **fallback** that fires only when a
+direct call hits a block-like failure.
 
-Single decision point: `polling/cf_proxy.py:proxy_kwargs(settings, platform_code)`.
-
-```python
-proxy_kwargs(settings, "ao3")   # always returns proxy kwargs if worker configured
-proxy_kwargs(settings, "ib")    # returns proxy kwargs only if ib_use_cf_proxy=True
-proxy_kwargs(settings, "fa")    # returns {} when fa_use_cf_proxy is False (default)
-```
-
-The helper returns either `{}` or `{"proxy_url": ..., "proxy_key": ...}`,
-so callers spread it directly into client constructors:
+Two decision points in `polling/cf_proxy.py`:
 
 ```python
-client = BskyClient(
-    identifier=...,
-    app_password=...,
-    **proxy_kwargs(settings, "bsky"),
-)
+proxy_kwargs(settings, platform_code)
+    # default-path: PROXY_REQUIRED (ao3/da/sf) only.
+    # OPTIONAL platforms always get {} from this — they run direct.
+
+proxy_kwargs_fallback(settings, platform_code)
+    # retry-path: PROXY_REQUIRED + OPTIONAL with toggle on.
+    # Used after a direct call has just failed.
+
+is_blocking_failure(exc) -> bool
+    # heuristic: 403, 429, "Shields are up", "Retry later",
+    # "Cloudflare", connect/read timeouts, Anubis challenge,
+    # "rate-limit", "blocked".
 ```
 
-Three caller surfaces feed it:
-1. Per-platform poller singleton accessors (`_get_or_create_client`).
-2. Per-platform `auth/connect` routes.
-3. The IB and FA importers.
+Pattern in importers (AO3, SqW, IB, FA):
+
+```python
+direct_client = singleton(settings)         # direct path
+try:
+    result = await fetch(direct_client)
+except Exception as e:
+    if not is_blocking_failure(e):
+        raise
+    creds = proxy_kwargs_fallback(settings, "<platform>")
+    if not creds:
+        raise                               # toggle off / worker missing
+    proxy_client = SomeClient(..., **creds) # one-shot
+    try:
+        result = await fetch(proxy_client)
+    finally:
+        await proxy_client.close()
+```
 
 UI: a "CF Proxy Backup" accordion in **Settings → Polling** lists the
 eight opt-in platforms with one checkbox each. Backed by the eight
 `<platform>_use_cf_proxy` keys and a derived `cf_worker_configured`
 boolean returned by `GET /api/settings/preferences`. Toggles are
 disabled when worker creds aren't configured.
+
+**Not wrapped (yet):** poll cycles. They retry naturally on the next
+scheduled cycle, so the failure mode is bounded. Adding per-cycle
+fallback would mean catching errors at the orchestrator and
+constructing a fresh proxy-equipped client for the retry, but that's
+deferred — the bounded-failure-mode argument removes the urgency.
 
 ### Persistent client singletons (2.18.4 / 2.18.5)
 

@@ -4,6 +4,52 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.7] - 2026-05-03
+
+### CF Proxy: true fallback semantics, not "always on"
+
+The 2.18.6 toggle had the wrong shape — flipping
+`<platform>_use_cf_proxy=true` made every request for that platform
+go through the Worker, which is wasteful when direct works fine.
+The toggle now means **"retry once through the Worker if a direct
+call hits a block-like failure"**:
+
+```
+default path:   direct call
+on block-like:  if toggle on, retry through Worker (one shot)
+```
+
+Block-like failures are detected by
+`polling/cf_proxy.py:is_blocking_failure(exc)`: 403, 429, "Shields
+are up", "Retry later", "Cloudflare", connect/read timeouts, Anubis
+challenge text, "rate-limit"/"blocked" substrings.
+
+Changed:
+
+- `polling/cf_proxy.py` split into two helpers:
+  - `proxy_kwargs(settings, platform)` — default-path. Returns
+    proxy creds ONLY for AO3 / DA / SF (PROXY_REQUIRED). The eight
+    optional platforms always get `{}` (direct).
+  - `proxy_kwargs_fallback(settings, platform)` — fallback-path.
+    Returns proxy creds when a retry should go through the Worker:
+    REQUIRED platforms always; OPTIONAL platforms only when the
+    toggle is on.
+- Importers (`ao3`, `sqw`, `ib`, `fa`) wrap their network calls in
+  try / `is_blocking_failure` / retry-with-fresh-proxy-client.
+  Direct stays the happy path; on block, a one-shot proxy client
+  is constructed *just for the retry* and closed afterwards. The
+  shared poller singleton is never replaced.
+- Settings → Polling UI label updated to spell out the fallback
+  semantics.
+
+**Not wrapped (yet):** the per-platform poll cycles. Polls run on
+a schedule and naturally retry on the next cycle, so the failure
+mode is bounded; if a platform is genuinely blocking us we'll
+notice within one poll interval. Adding fallback to poll cycles
+is a future iteration if needed.
+
+---
+
 ## [2.18.6] - 2026-05-03
 
 ### CF Worker proxy as a per-platform backup

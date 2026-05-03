@@ -308,15 +308,9 @@ async def import_from_inkbunny(submission_id: str) -> dict:
     finally:
         conn.close()
 
-    from polling.cf_proxy import proxy_kwargs
-    client = InkbunnyClient(username=username, password=password,
-                            **proxy_kwargs(settings, "ib"))
-    try:
+    async def _ib_fetch(client) -> dict:
         # Reuse the cached session ID (SID) the poller writes to the DB
-        # after each successful login — that's IB's own form of session
-        # persistence. ensure_session() falls back to a fresh login only
-        # when the cached SID has expired, so back-to-back imports don't
-        # cost an api_login.php round-trip each.
+        # after each successful login.
         conn = get_connection()
         try:
             cached = queries.get_cached_session(conn)
@@ -328,7 +322,6 @@ async def import_from_inkbunny(submission_id: str) -> dict:
             client.user_id = cached_uid
         await client.ensure_session(cached_sid)
 
-        # Use the raw API with show_writing=yes to get the file URL
         resp = await client._http.post(
             f"{config.INKBUNNY_API_BASE}/api_submissions.php",
             data={
@@ -342,56 +335,68 @@ async def import_from_inkbunny(submission_id: str) -> dict:
         data = resp.json()
         if "error_code" in data:
             raise RuntimeError(f"IB API error: {data.get('error_message', data)}")
-
         submissions = data.get("submissions", [])
         if not submissions:
             raise RuntimeError(f"Submission {submission_id} not found on Inkbunny")
-
         sub = submissions[0]
-        title = sub.get("title", f"IB_{submission_id}")
-        author = sub.get("username", "")
-        description = sub.get("description", "")
-        keywords = [k.get("keyword_name", "") for k in sub.get("keywords", []) if k.get("keyword_name")]
-        rating = _IB_RATING_MAP.get(str(sub.get("rating_id", "0")), "general")
-        # IB drafts are returned with public="no"; api_submissions.php
-        # reaches them transparently for the authenticated owner, so no
-        # fallback URL is needed — just record the state for the caller.
-        is_draft = str(sub.get("public", "yes")).lower() == "no"
-        url = f"https://inkbunny.net/s/{submission_id}"
 
-        # Get the file URL — Inkbunny stores files in a "files" array
-        # When show_writing=yes, writing submissions include file_url_full
+        # Get the file URL — Inkbunny stores files in a "files" array.
         files = sub.get("files", [])
         content = ""
-        cover_url = ""
-
         if files:
             file_info = files[0]
             file_url = file_info.get("file_url_full", "") or file_info.get("file_url_screen", "")
-            # The thumbnail/preview for cover
-            cover_url = (
-                sub.get("thumbnail_url_huge", "")
-                or sub.get("thumbnail_url_large", "")
-                or sub.get("thumbnail_url_medium", "")
-                or sub.get("thumbnail_url_medium_noncustom", "")
-            )
-
             if file_url:
                 async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as dl:
                     file_resp = await dl.get(file_url)
                     file_resp.raise_for_status()
                     content = file_resp.text
             else:
-                # Fallback: use writing_text if available from the API
                 content = file_info.get("writing_text", "")
-
         if not content:
-            # Last resort: use description as content
-            content = description or "(No content available)"
+            content = sub.get("description", "") or "(No content available)"
             logger.warning("IB import %s: no file content found, using description", submission_id)
+        return {"sub": sub, "content": content}
 
+    from polling.cf_proxy import (
+        proxy_kwargs,
+        proxy_kwargs_fallback as _proxy_fb,
+        is_blocking_failure as _is_blk,
+    )
+
+    direct_client = InkbunnyClient(username=username, password=password,
+                                   **proxy_kwargs(settings, "ib"))
+    try:
+        try:
+            fetched = await _ib_fetch(direct_client)
+        except Exception as e:
+            if not _is_blk(e):
+                raise
+            creds = _proxy_fb(settings, "ib")
+            if not creds:
+                raise
+            logger.warning("IB import direct call failed (%s); retrying via CF Worker proxy", e)
+            await direct_client.close()
+            direct_client = InkbunnyClient(username=username, password=password, **creds)
+            fetched = await _ib_fetch(direct_client)
     finally:
-        await client.close()
+        await direct_client.close()
+
+    sub = fetched["sub"]
+    content = fetched["content"]
+    title = sub.get("title", f"IB_{submission_id}")
+    author = sub.get("username", "")
+    description = sub.get("description", "")
+    keywords = [k.get("keyword_name", "") for k in sub.get("keywords", []) if k.get("keyword_name")]
+    rating = _IB_RATING_MAP.get(str(sub.get("rating_id", "0")), "general")
+    is_draft = str(sub.get("public", "yes")).lower() == "no"
+    url = f"https://inkbunny.net/s/{submission_id}"
+    cover_url = (
+        sub.get("thumbnail_url_huge", "")
+        or sub.get("thumbnail_url_large", "")
+        or sub.get("thumbnail_url_medium", "")
+        or sub.get("thumbnail_url_medium_noncustom", "")
+    )
 
     folder_name = _sanitize_folder_name(title)
     story_name = _create_story_folder(
@@ -576,14 +581,34 @@ async def import_from_furaffinity(submission_id: str) -> dict:
     if not cookie_a or not cookie_b:
         raise RuntimeError("FA cookies not configured — set up in Settings")
 
-    from polling.cf_proxy import proxy_kwargs as _fa_proxy_kwargs
-    client = FAClient(username=fa_username, cookie_a=cookie_a, cookie_b=cookie_b,
-                      **_fa_proxy_kwargs(settings, "fa"))
+    from polling.cf_proxy import (
+        proxy_kwargs as _fa_proxy_kwargs,
+        proxy_kwargs_fallback as _fa_proxy_fb,
+        is_blocking_failure as _fa_is_blk,
+    )
+
+    async def _fa_get(creds):
+        c = FAClient(username=fa_username, cookie_a=cookie_a, cookie_b=cookie_b, **creds)
+        try:
+            return await c.get_submission_detail(int(submission_id))
+        finally:
+            await c.close()
 
     try:
-        detail = await client.get_submission_detail(int(submission_id))
+        detail = await _fa_get(_fa_proxy_kwargs(settings, "fa"))
     except Exception as e:
-        raise RuntimeError(f"Could not fetch FA submission {submission_id}: {e}")
+        if _fa_is_blk(e):
+            creds = _fa_proxy_fb(settings, "fa")
+            if creds:
+                logger.warning("FA import direct call failed (%s); retrying via CF Worker proxy", e)
+                try:
+                    detail = await _fa_get(creds)
+                except Exception as e2:
+                    raise RuntimeError(f"Could not fetch FA submission {submission_id} (proxy retry also failed): {e2}")
+            else:
+                raise RuntimeError(f"Could not fetch FA submission {submission_id}: {e}")
+        else:
+            raise RuntimeError(f"Could not fetch FA submission {submission_id}: {e}")
 
     title = detail.get("title", f"FA_{submission_id}")
     author = detail.get("username", "")
@@ -736,6 +761,37 @@ def _parse_otw_work_page(html_text: str) -> dict:
     return out
 
 
+async def _fetch_ao3_work(client, submission_id: str, ao3_username: str) -> tuple[str, bool]:
+    """Fetch the AO3 work HTML using *client*. Returns (html, is_draft).
+
+    Raises RuntimeError on auth failure, missing-content, or wrong-owner.
+    The fallback wrapper catches block-like RuntimeErrors and retries
+    with a proxy-equipped client.
+    """
+    if not await client.ensure_logged_in():
+        raise RuntimeError(
+            "Could not log in to AO3 (likely rate-limited — try again in 10 min)"
+        )
+    public_url = f"https://archiveofourown.org/works/{submission_id}?view_full_work=true&view_adult=true"
+    preview_url = f"https://archiveofourown.org/works/{submission_id}/preview?view_full_work=true&view_adult=true"
+    is_draft = False
+    resp = await client._http.get(public_url, follow_redirects=True)
+    if resp.status_code == 404:
+        is_draft = True
+        resp = await client._http.get(preview_url, follow_redirects=True)
+    if resp.status_code != 200:
+        raise RuntimeError(f"AO3 returned {resp.status_code} for work {submission_id}")
+    if 'class="title heading"' not in resp.text or 'userstuff' not in resp.text:
+        if is_draft:
+            raise RuntimeError(
+                f"AO3 work {submission_id} appears to be a draft, but the configured "
+                f"AO3 account ('{ao3_username}') doesn't own it. Drafts are owner-only — "
+                f"check that ao3_username in Settings matches the draft's author."
+            )
+        raise RuntimeError(f"AO3 work {submission_id}: response did not contain a parseable work page")
+    return resp.text, is_draft
+
+
 async def import_from_ao3(submission_id: str) -> dict:
     """Download an AO3 work and create a local story folder.
 
@@ -758,48 +814,37 @@ async def import_from_ao3(submission_id: str) -> dict:
     if not ao3_username or not ao3_password:
         raise RuntimeError("AO3 credentials not configured — set up in Settings")
 
-    client = _get_ao3_client(settings)
+    # AO3 is in PROXY_REQUIRED — the singleton already runs through the
+    # CF Worker when one is configured. Fallback wrapper is included for
+    # symmetry with the optional platforms; in practice it'd only fire if
+    # the worker itself is having a bad day.
+    from polling.cf_proxy import (
+        is_blocking_failure as _is_blk,
+        proxy_kwargs_fallback as _proxy_fb,
+    )
+    from clients.ao3.client import AO3Client
 
-    # AO3 gates adult / restricted works behind authentication, even
-    # with view_adult=true. ensure_logged_in() short-circuits when the
-    # singleton already has a live session, so back-to-back imports
-    # don't trigger a relogin.
-    if not await client.ensure_logged_in():
-        raise RuntimeError(
-            "Could not log in to AO3 (likely rate-limited — try again in 10 min)"
-        )
-
+    direct_client = _get_ao3_client(settings)
     try:
-        # Try the public work URL first; fall through to the owner-only
-        # /preview path for unposted drafts (which 404 on the public URL
-        # because OTW only renders the page once `posted=true`). The
-        # preview path requires authentication AS THE OWNER — fetching
-        # someone else's draft will redirect to the user dashboard with
-        # 200 OK, so we sanity-check the response for work-page markers
-        # before accepting it.
-        public_url = f"https://archiveofourown.org/works/{submission_id}?view_full_work=true&view_adult=true"
-        preview_url = f"https://archiveofourown.org/works/{submission_id}/preview?view_full_work=true&view_adult=true"
-        is_draft = False
-        resp = await client._http.get(public_url, follow_redirects=True)
-        if resp.status_code == 404:
-            is_draft = True
-            resp = await client._http.get(preview_url, follow_redirects=True)
-        if resp.status_code != 200:
-            raise RuntimeError(f"AO3 returned {resp.status_code} for work {submission_id}")
-        if 'class="title heading"' not in resp.text or 'userstuff' not in resp.text:
-            if is_draft:
-                raise RuntimeError(
-                    f"AO3 work {submission_id} appears to be a draft, but the configured "
-                    f"AO3 account ('{ao3_username}') doesn't own it. Drafts are owner-only — "
-                    f"check that ao3_username in Settings matches the draft's author."
-                )
-            raise RuntimeError(f"AO3 work {submission_id}: response did not contain a parseable work page")
-        parsed = _parse_otw_work_page(resp.text)
-    except Exception:
-        raise
-    # No client.close() — the singleton is shared with the poller and
-    # closing here would cause the next poll cycle to reconnect and risk
-    # the same rate-limit hit we're trying to dodge.
+        html_text, is_draft = await _fetch_ao3_work(direct_client, submission_id, ao3_username)
+    except Exception as e:
+        if not _is_blk(e):
+            raise
+        creds = _proxy_fb(settings, "ao3")
+        if not creds:
+            raise
+        logger.warning("AO3 import direct call failed (%s); retrying via CF Worker proxy", e)
+        proxy_client = AO3Client(
+            username=ao3_username,
+            password=ao3_password,
+            target_user=settings.get("ao3_target_user", "") or ao3_username,
+            **creds,
+        )
+        try:
+            html_text, is_draft = await _fetch_ao3_work(proxy_client, submission_id, ao3_username)
+        finally:
+            await proxy_client.close()
+    parsed = _parse_otw_work_page(html_text)
 
     title = parsed["title"] or f"AO3_{submission_id}"
     author = parsed["author"] or ao3_username
@@ -835,6 +880,38 @@ async def import_from_ao3(submission_id: str) -> dict:
     }
 
 
+async def _fetch_sqw_work(client, submission_id: str) -> tuple[str, bool]:
+    """Fetch the SqW work HTML using *client*. Returns (html, is_draft).
+
+    Raises RuntimeError on auth failure, missing-content, or wrong-owner.
+    The fallback wrapper catches block-like RuntimeErrors and retries
+    with a proxy-equipped client.
+    """
+    if not await client.ensure_logged_in():
+        raise RuntimeError("Could not log in to SqW")
+    public_url = f"https://squidgeworld.org/works/{submission_id}?view_full_work=true&view_adult=true"
+    preview_url = f"https://squidgeworld.org/works/{submission_id}/preview?view_full_work=true&view_adult=true"
+    is_draft = False
+    html_text = await client._get_page(public_url)
+    looks_published = bool(html_text) and (
+        'class="title heading"' in html_text and 'userstuff' in html_text
+    )
+    if not looks_published:
+        is_draft = True
+        html_text = await client._get_page(preview_url)
+    if not html_text:
+        raise RuntimeError(f"SqW returned no body for work {submission_id}")
+    if 'class="title heading"' not in html_text or 'userstuff' not in html_text:
+        if is_draft:
+            raise RuntimeError(
+                f"SqW work {submission_id} appears to be a draft, but the configured "
+                f"SqW account doesn't own it. Drafts are owner-only — "
+                f"check that sqw_username in Settings matches the draft's author."
+            )
+        raise RuntimeError(f"SqW work {submission_id}: response did not contain a parseable work page")
+    return html_text, is_draft
+
+
 async def import_from_squidgeworld(submission_id: str) -> dict:
     """Download a SqW work — same OTW Rails layout as AO3, different host.
 
@@ -853,47 +930,37 @@ async def import_from_squidgeworld(submission_id: str) -> dict:
     if not sqw_username or not sqw_password:
         raise RuntimeError("SqW credentials not configured — set up in Settings")
 
-    client = _get_sqw_client(settings)
+    # Direct attempt via the shared singleton. On a block-like failure
+    # (Anubis stuck, Cloudflare 403, persistent timeouts) AND the
+    # sqw_use_cf_proxy fallback toggle is on, retry once through a
+    # fresh proxy-equipped client.
+    from polling.cf_proxy import (
+        is_blocking_failure as _is_blk,
+        proxy_kwargs_fallback as _proxy_fb,
+    )
+    from clients.sqw.client import SquidgeWorldClient
 
-    # SqW gates ALL work content behind both Anubis (PoW bot challenge)
-    # AND authentication for adult-content works — anonymous +
-    # view_adult=true returns a "Sorry!" stub page, not the work.
-    # ensure_logged_in() handles both Anubis and the login flow;
-    # _get_page() retries through Anubis for the actual work fetch.
-    if not await client.ensure_logged_in():
-        raise RuntimeError("Could not log in to SqW")
+    direct_client = _get_sqw_client(settings)
     try:
-        # Try public URL first; fall through to /preview for unposted drafts.
-        # _get_page() returns "" on 404, so we detect drafts by re-trying the
-        # preview path when the parser finds no content on the first attempt.
-        # SqW redirects unauthorized work fetches to the user dashboard with
-        # 200 OK, so we sanity-check both responses for work-page markers and
-        # raise a clearer error than "draft with no content extracted".
-        public_url = f"https://squidgeworld.org/works/{submission_id}?view_full_work=true&view_adult=true"
-        preview_url = f"https://squidgeworld.org/works/{submission_id}/preview?view_full_work=true&view_adult=true"
-        is_draft = False
-        html_text = await client._get_page(public_url)
-        looks_published = bool(html_text) and (
-            'class="title heading"' in html_text and 'userstuff' in html_text
+        html_text, is_draft = await _fetch_sqw_work(direct_client, submission_id)
+    except Exception as e:
+        if not _is_blk(e):
+            raise
+        creds = _proxy_fb(settings, "sqw")
+        if not creds:
+            raise
+        logger.warning("SqW import direct call failed (%s); retrying via CF Worker proxy", e)
+        proxy_client = SquidgeWorldClient(
+            username=sqw_username,
+            password=sqw_password,
+            target_user=settings.get("sqw_target_user", "") or sqw_username,
+            **creds,
         )
-        if not looks_published:
-            is_draft = True
-            html_text = await client._get_page(preview_url)
-        if not html_text:
-            raise RuntimeError(f"SqW returned no body for work {submission_id}")
-        if 'class="title heading"' not in html_text or 'userstuff' not in html_text:
-            if is_draft:
-                raise RuntimeError(
-                    f"SqW work {submission_id} appears to be a draft, but the configured "
-                    f"SqW account ('{sqw_username}') doesn't own it. Drafts are owner-only — "
-                    f"check that sqw_username in Settings matches the draft's author."
-                )
-            raise RuntimeError(f"SqW work {submission_id}: response did not contain a parseable work page")
-        parsed = _parse_otw_work_page(html_text)
-    except Exception:
-        raise
-    # No client.close() — singleton is shared with the poller; see the
-    # note on the AO3 importer above.
+        try:
+            html_text, is_draft = await _fetch_sqw_work(proxy_client, submission_id)
+        finally:
+            await proxy_client.close()
+    parsed = _parse_otw_work_page(html_text)
 
     title = parsed["title"] or f"SqW_{submission_id}"
     author = parsed["author"] or sqw_username
