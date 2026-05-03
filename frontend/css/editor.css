@@ -3325,6 +3325,43 @@
     border-color: rgba(70,180,100,0.15);
 }
 
+.import-row-draft {
+    background: rgba(220,180,60,0.07);
+    border-color: rgba(220,180,60,0.2);
+}
+
+.import-manual {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    margin: 12px 0 6px;
+}
+.import-manual-label {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-secondary, #999);
+}
+.import-manual-input {
+    padding: 6px 10px;
+    border: 1px solid var(--border, #444);
+    border-radius: 4px;
+    background: var(--input-bg, #1a1a1a);
+    color: var(--text, #ddd);
+    font-size: 13px;
+    width: 100%;
+}
+.import-manual-status {
+    margin-bottom: 10px;
+    font-size: 13px;
+    min-height: 18px;
+}
+.import-manual-status.error   { color: #d66; }
+.import-manual-status.success { color: #6c6; }
+.import-manual-status.pending { color: var(--text-secondary, #999); }
+
 .import-row-error {
     font-size: 0.75rem;
     color: #f08080;

@@ -66,6 +66,14 @@ const Editor = {
                             <button class="import-close-btn" id="import-close-btn" title="Close">&times;</button>
                         </div>
                         <p class="import-subtitle">Import existing stories from your polled platforms into the local archive.</p>
+                        <div class="import-manual">
+                            <label class="import-manual-label">
+                                <span>Import by URL or ID (works for drafts too)</span>
+                                <input type="text" id="import-manual-input" class="import-manual-input" placeholder="https://archiveofourown.org/works/12345 or sf:67890" autocomplete="off">
+                            </label>
+                            <button class="btn btn-sm" id="import-manual-btn">Import</button>
+                        </div>
+                        <div id="import-manual-status" class="import-manual-status"></div>
                         <div id="import-content">
                             <div class="loading-spinner">Loading available submissions...</div>
                         </div>
@@ -200,6 +208,13 @@ const Editor = {
             });
             importOverlay.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') importOverlay.classList.remove('open');
+            });
+
+            document.getElementById('import-manual-btn').addEventListener('click', () => {
+                Editor._submitManualImport();
+            });
+            document.getElementById('import-manual-input').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); Editor._submitManualImport(); }
             });
 
         } catch (err) {
@@ -357,6 +372,59 @@ const Editor = {
         }
     },
 
+    /* Parse "https://archiveofourown.org/works/12345" / "ib:12345" /
+     * "12345" + selected/inferred platform into {platform, id}.
+     * Returns null if the input doesn't match a known shape. */
+    _parseImportRef(raw) {
+        const s = (raw || '').trim();
+        if (!s) return null;
+        // Explicit platform prefix: ib:12345, sf:12345, fa:12345, ao3:12345, sqw:12345
+        const prefixed = s.match(/^(ib|sf|fa|ao3|sqw)\s*[:\/\s]+(\d+)/i);
+        if (prefixed) return { platform: prefixed[1].toLowerCase(), id: prefixed[2] };
+        // URL forms
+        const urlPatterns = [
+            { re: /inkbunny\.net\/s\/(\d+)/i, plat: 'ib' },
+            { re: /sofurry\.com\/(?:view|s)\/(\d+)/i, plat: 'sf' },
+            { re: /furaffinity\.net\/view\/(\d+)/i, plat: 'fa' },
+            { re: /archiveofourown\.org\/works\/(\d+)/i, plat: 'ao3' },
+            { re: /squidgeworld\.org\/works\/(\d+)/i, plat: 'sqw' },
+        ];
+        for (const { re, plat } of urlPatterns) {
+            const m = s.match(re);
+            if (m) return { platform: plat, id: m[1] };
+        }
+        return null;
+    },
+
+    async _submitManualImport() {
+        const input = document.getElementById('import-manual-input');
+        const status = document.getElementById('import-manual-status');
+        const btn = document.getElementById('import-manual-btn');
+        const ref = Editor._parseImportRef(input.value);
+        if (!ref) {
+            status.textContent = 'Could not parse — try a URL like https://archiveofourown.org/works/12345 or "ao3:12345".';
+            status.className = 'import-manual-status error';
+            return;
+        }
+        status.textContent = `Importing ${ref.platform.toUpperCase()} ${ref.id}…`;
+        status.className = 'import-manual-status pending';
+        btn.disabled = true;
+        try {
+            const resp = await fetch(`/api/editor/import/${ref.platform}/${ref.id}`, { method: 'POST' });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || 'Import failed');
+            const draftLabel = data.is_draft ? ' (draft)' : '';
+            status.innerHTML = `Imported${draftLabel}: <a href="#/editor/${data.story_name}">${Utils.escapeHtml(data.title || data.story_name)}</a>`;
+            status.className = 'import-manual-status success';
+            input.value = '';
+        } catch (err) {
+            status.textContent = `Import failed: ${err.message}`;
+            status.className = 'import-manual-status error';
+        } finally {
+            btn.disabled = false;
+        }
+    },
+
     async _doImport(platform, submissionId, btn) {
         const row = document.getElementById(`import-row-${platform}-${submissionId}`);
         btn.disabled = true;
@@ -371,12 +439,13 @@ const Editor = {
             if (!resp.ok) throw new Error(data.detail || 'Import failed');
 
             // Success — mark the row and offer navigation
-            btn.textContent = 'Done';
+            btn.textContent = data.is_draft ? 'Done (draft)' : 'Done';
             btn.classList.remove('importing');
             btn.classList.add('import-done');
 
             if (row) {
                 row.classList.add('import-row-success');
+                if (data.is_draft) row.classList.add('import-row-draft');
                 const link = document.createElement('a');
                 link.href = `#/editor/${data.story_name}`;
                 link.className = 'btn btn-sm import-open-btn';

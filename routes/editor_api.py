@@ -2857,4 +2857,5 @@ async def import_submission(platform: str, submission_id: str):
         "ok": True,
         "story_name": result["story_name"],
         "title": result["title"],
+        "is_draft": result.get("is_draft", False),
     }

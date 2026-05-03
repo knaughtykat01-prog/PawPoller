@@ -4,6 +4,42 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.1] - 2026-05-03
+
+### Importers handle drafts as well as published works
+
+Every import path now resolves drafts and live submissions through
+the same call, plus a manual-entry box on the import dialog so
+draft IDs can be requested directly (the auto-list still only
+surfaces what the pollers have seen, which is published-only).
+
+- **AO3 / SqW.** `import_from_ao3` and `import_from_squidgeworld`
+  now try `/works/{id}?view_full_work=true&view_adult=true` first,
+  fall through to `/works/{id}/preview?view_full_work=true&view_adult=true`
+  on 404 (AO3) or when the public response lacks the title heading
+  + `userstuff` markers (SqW — its `_get_page` swallows status
+  codes through the Anubis solver, so we sniff content instead).
+  Both paths return the same Rails markup, so the existing
+  `_parse_otw_work_page` works unchanged.
+- **Inkbunny.** `api_submissions.php` already returns owner drafts
+  transparently; the importer now records `is_draft = (public ==
+  "no")` and surfaces it.
+- **SoFurry.** `/ui/submission/{id}` likewise returns drafts the
+  same shape; we infer draft state from `publishedAt` (null /
+  empty / `0000-…` / future ISO date) and tolerate a non-200
+  `/s/{id}` page-scrape for drafts (falls back to the JSON
+  description rather than failing the whole import).
+- **FurAffinity.** No draft API surface — unchanged.
+
+UI: the import overlay grew an "Import by URL or ID" row at the
+top. Accepts platform-prefixed (`ao3:12345`, `ib:12345`) and full
+URLs (`https://archiveofourown.org/works/12345` and the
+equivalents). Imported drafts get an amber row tint plus a
+"Done (draft)" button label so they're distinguishable from
+published imports at a glance.
+
+---
+
 ## [2.18.0] - 2026-05-03
 
 ### "Do them all" pass — viewer polish, draft probes, AO3/SQW import, dedication UI, analytics export

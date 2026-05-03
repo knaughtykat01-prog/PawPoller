@@ -338,6 +338,10 @@ async def import_from_inkbunny(submission_id: str) -> dict:
         description = sub.get("description", "")
         keywords = [k.get("keyword_name", "") for k in sub.get("keywords", []) if k.get("keyword_name")]
         rating = _IB_RATING_MAP.get(str(sub.get("rating_id", "0")), "general")
+        # IB drafts are returned with public="no"; api_submissions.php
+        # reaches them transparently for the authenticated owner, so no
+        # fallback URL is needed — just record the state for the caller.
+        is_draft = str(sub.get("public", "yes")).lower() == "no"
         url = f"https://inkbunny.net/s/{submission_id}"
 
         # Get the file URL — Inkbunny stores files in a "files" array
@@ -390,7 +394,7 @@ async def import_from_inkbunny(submission_id: str) -> dict:
         source_url=url,
     )
 
-    return {"story_name": story_name, "title": title}
+    return {"story_name": story_name, "title": title, "is_draft": is_draft}
 
 
 async def import_from_sofurry(submission_id: str) -> dict:
@@ -452,14 +456,45 @@ async def import_from_sofurry(submission_id: str) -> dict:
         cover_url = data.get("coverUrl", "") or data.get("thumbUrl", "")
         url = f"{SOFURRY_BASE}/s/{submission_id}"
 
+        # SF drafts have publishedAt unset (null/empty/"0000-00-00...") or
+        # set to a future ISO date. The /ui/submission JSON endpoint
+        # returns owner drafts the same way it returns published works.
+        published_at = (data.get("publishedAt") or "").strip()
+        is_draft = (
+            not published_at
+            or published_at.startswith("0000")
+            or published_at == "0"
+        )
+        if not is_draft:
+            try:
+                from datetime import datetime, timezone
+                pub_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                if pub_dt.tzinfo is None:
+                    pub_dt = pub_dt.replace(tzinfo=timezone.utc)
+                if pub_dt > datetime.now(tz=timezone.utc):
+                    is_draft = True
+            except (ValueError, TypeError):
+                pass
+
         import asyncio
         await asyncio.sleep(0.5)
 
+        # /s/{id} renders for owner-viewed drafts but we tolerate non-200
+        # rather than failing the whole import — the description from JSON
+        # remains a usable fallback so at least metadata + summary land.
         page_resp = await client._http.get(f"{SOFURRY_BASE}/s/{submission_id}")
         if page_resp.status_code != 200:
-            raise RuntimeError(f"Could not fetch SF submission page (status {page_resp.status_code})")
+            if is_draft:
+                logger.warning(
+                    "SF draft %s page returned %s — falling back to description",
+                    submission_id, page_resp.status_code,
+                )
+                page_html = ""
+            else:
+                raise RuntimeError(f"Could not fetch SF submission page (status {page_resp.status_code})")
+        else:
+            page_html = page_resp.text
 
-        page_html = page_resp.text
         content = ""
 
         # SF renders story text after a chapter divider line inside
@@ -507,7 +542,7 @@ async def import_from_sofurry(submission_id: str) -> dict:
         source_url=url,
     )
 
-    return {"story_name": story_name, "title": title}
+    return {"story_name": story_name, "title": title, "is_draft": is_draft}
 
 
 async def import_from_furaffinity(submission_id: str) -> dict:
@@ -725,8 +760,16 @@ async def import_from_ao3(submission_id: str) -> dict:
             raise RuntimeError(
                 "Could not log in to AO3 (likely rate-limited — try again in 10 min)"
             )
-        url = f"https://archiveofourown.org/works/{submission_id}?view_full_work=true&view_adult=true"
-        resp = await client._http.get(url, follow_redirects=True)
+        # Try the public work URL first; fall through to the owner-only
+        # /preview path for unposted drafts (which 404 on the public URL
+        # because OTW only renders the page once `posted=true`).
+        public_url = f"https://archiveofourown.org/works/{submission_id}?view_full_work=true&view_adult=true"
+        preview_url = f"https://archiveofourown.org/works/{submission_id}/preview?view_full_work=true&view_adult=true"
+        is_draft = False
+        resp = await client._http.get(public_url, follow_redirects=True)
+        if resp.status_code == 404:
+            is_draft = True
+            resp = await client._http.get(preview_url, follow_redirects=True)
         if resp.status_code != 200:
             raise RuntimeError(f"AO3 returned {resp.status_code} for work {submission_id}")
         parsed = _parse_otw_work_page(resp.text)
@@ -759,7 +802,12 @@ async def import_from_ao3(submission_id: str) -> dict:
         submission_id=str(submission_id),
         source_url=f"https://archiveofourown.org/works/{submission_id}",
     )
-    return {"story_name": story_name, "title": title, "chapter_count": len(chapters)}
+    return {
+        "story_name": story_name,
+        "title": title,
+        "chapter_count": len(chapters),
+        "is_draft": is_draft,
+    }
 
 
 async def import_from_squidgeworld(submission_id: str) -> dict:
@@ -787,8 +835,21 @@ async def import_from_squidgeworld(submission_id: str) -> dict:
         # _get_page() retries through Anubis for the actual work fetch.
         if not await client.ensure_logged_in():
             raise RuntimeError("Could not log in to SqW")
-        url = f"https://squidgeworld.org/works/{submission_id}?view_full_work=true&view_adult=true"
-        html_text = await client._get_page(url)
+        # Try public URL first; fall through to /preview for unposted drafts.
+        # _get_page() returns "" on 404, so we detect drafts by re-trying the
+        # preview path when the parser finds no content on the first attempt.
+        public_url = f"https://squidgeworld.org/works/{submission_id}?view_full_work=true&view_adult=true"
+        preview_url = f"https://squidgeworld.org/works/{submission_id}/preview?view_full_work=true&view_adult=true"
+        is_draft = False
+        html_text = await client._get_page(public_url)
+        # Heuristic: if the public fetch returns empty/short or doesn't carry
+        # the work-page markers (title heading + userstuff div), retry preview.
+        looks_published = bool(html_text) and (
+            'class="title heading"' in html_text and 'userstuff' in html_text
+        )
+        if not looks_published:
+            is_draft = True
+            html_text = await client._get_page(preview_url)
         if not html_text:
             raise RuntimeError(f"SqW returned no body for work {submission_id}")
         parsed = _parse_otw_work_page(html_text)
@@ -820,4 +881,9 @@ async def import_from_squidgeworld(submission_id: str) -> dict:
         submission_id=str(submission_id),
         source_url=f"https://squidgeworld.org/works/{submission_id}",
     )
-    return {"story_name": story_name, "title": title, "chapter_count": len(chapters)}
+    return {
+        "story_name": story_name,
+        "title": title,
+        "chapter_count": len(chapters),
+        "is_draft": is_draft,
+    }
