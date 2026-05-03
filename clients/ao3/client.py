@@ -335,6 +335,20 @@ class AO3Client:
             html = await self._get_page(f"{_BASE}/users/{self.username}")
             if html and "Log Out" in html:
                 return True
+            # Conservative: only tear the session down when AO3 explicitly
+            # tells us we're logged out (a fetched page that lacks the
+            # "Log Out" link). If the verification fetch failed entirely
+            # (timeouts, 429-exhausted retries, transient Cloudflare), the
+            # session cookies are very likely still valid and forcing a
+            # re-login here trips AO3's per-IP login throttle for 5–10
+            # minutes — far worse than letting the actual call retry.
+            if html is None:
+                logger.warning(
+                    "AO3: session verification fetch failed for %s; "
+                    "assuming session is still valid and skipping relogin",
+                    self.username,
+                )
+                return True
             self._logged_in = False
         return await self.login()
 

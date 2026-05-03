@@ -722,44 +722,37 @@ def _parse_otw_work_page(html_text: str) -> dict:
 async def import_from_ao3(submission_id: str) -> dict:
     """Download an AO3 work and create a local story folder.
 
-    Uses the existing AO3Client (which routes through the CF Worker
-    proxy on desktop / direct on server) so authenticated drafts work
-    too. Fetches the work via ``?view_full_work=true`` so all chapters
-    arrive in one response, then converts each chapter's userstuff
-    block to markdown and concatenates them into MASTER.md.
+    Reuses the persistent AO3Client singleton from the poller module so
+    we share session cookies and avoid hitting AO3's per-IP login rate
+    limiter every time someone imports. (Each fresh AO3Client instance
+    has _logged_in=False and triggers a full POST /users/login round
+    trip; AO3 throttles those aggressively, returning 429 "Retry later"
+    for 5–10 minutes after the first hit.) Fetches the work via
+    ``?view_full_work=true`` so all chapters arrive in one response,
+    then converts each chapter's userstuff block to markdown and
+    concatenates them into MASTER.md.
     """
-    from clients.ao3.client import AO3Client
+    from polling.ao3_poller import _get_or_create_client as _get_ao3_client
 
     settings = config.get_settings()
     ao3_username = settings.get("ao3_username", "")
     ao3_password = settings.get("ao3_password", "")
-    proxy_url = settings.get("cf_worker_url", "")
-    proxy_key = settings.get("cf_worker_key", "")
 
     if not ao3_username or not ao3_password:
         raise RuntimeError("AO3 credentials not configured — set up in Settings")
 
-    # target_user is only used by gallery scraping — for direct work
-    # fetches it's irrelevant, but the constructor still requires it.
-    # Reuse the authenticated username so the value is at least valid.
-    client = AO3Client(
-        username=ao3_username,
-        password=ao3_password,
-        target_user=settings.get("ao3_target_user", "") or ao3_username,
-        proxy_url=proxy_url,
-        proxy_key=proxy_key,
-    )
+    client = _get_ao3_client(settings)
+
+    # AO3 gates adult / restricted works behind authentication, even
+    # with view_adult=true. ensure_logged_in() short-circuits when the
+    # singleton already has a live session, so back-to-back imports
+    # don't trigger a relogin.
+    if not await client.ensure_logged_in():
+        raise RuntimeError(
+            "Could not log in to AO3 (likely rate-limited — try again in 10 min)"
+        )
 
     try:
-        # AO3 gates adult / restricted works behind authentication, even
-        # with view_adult=true. ensure_logged_in() reuses any cached
-        # session cookies so this isn't a fresh login on every import.
-        # The 429 lockout is only a problem when forcibly re-authing in
-        # quick succession during testing.
-        if not await client.ensure_logged_in():
-            raise RuntimeError(
-                "Could not log in to AO3 (likely rate-limited — try again in 10 min)"
-            )
         # Try the public work URL first; fall through to the owner-only
         # /preview path for unposted drafts (which 404 on the public URL
         # because OTW only renders the page once `posted=true`). The
@@ -785,8 +778,11 @@ async def import_from_ao3(submission_id: str) -> dict:
                 )
             raise RuntimeError(f"AO3 work {submission_id}: response did not contain a parseable work page")
         parsed = _parse_otw_work_page(resp.text)
-    finally:
-        await client.close()
+    except Exception:
+        raise
+    # No client.close() — the singleton is shared with the poller and
+    # closing here would cause the next poll cycle to reconnect and risk
+    # the same rate-limit hit we're trying to dodge.
 
     title = parsed["title"] or f"AO3_{submission_id}"
     author = parsed["author"] or ao3_username
@@ -823,8 +819,15 @@ async def import_from_ao3(submission_id: str) -> dict:
 
 
 async def import_from_squidgeworld(submission_id: str) -> dict:
-    """Download a SqW work — same OTW Rails layout as AO3, different host."""
-    from clients.sqw.client import SquidgeWorldClient
+    """Download a SqW work — same OTW Rails layout as AO3, different host.
+
+    Reuses the persistent SquidgeWorldClient singleton from the poller
+    module so we share Anubis tokens + session cookies across import
+    calls (and across imports + poll cycles). Re-solving the Anubis
+    proof-of-work challenge for every import would be wasteful and
+    could trip the same kind of rate limiter that bites AO3 logins.
+    """
+    from polling.sqw_poller import _get_or_create_client as _get_sqw_client
 
     settings = config.get_settings()
     sqw_username = settings.get("sqw_username", "")
@@ -833,20 +836,16 @@ async def import_from_squidgeworld(submission_id: str) -> dict:
     if not sqw_username or not sqw_password:
         raise RuntimeError("SqW credentials not configured — set up in Settings")
 
-    client = SquidgeWorldClient(
-        username=sqw_username,
-        password=sqw_password,
-        target_user=settings.get("sqw_target_user", "") or sqw_username,
-    )
+    client = _get_sqw_client(settings)
 
+    # SqW gates ALL work content behind both Anubis (PoW bot challenge)
+    # AND authentication for adult-content works — anonymous +
+    # view_adult=true returns a "Sorry!" stub page, not the work.
+    # ensure_logged_in() handles both Anubis and the login flow;
+    # _get_page() retries through Anubis for the actual work fetch.
+    if not await client.ensure_logged_in():
+        raise RuntimeError("Could not log in to SqW")
     try:
-        # SqW gates ALL work content behind both Anubis (PoW bot challenge)
-        # AND authentication for adult-content works — anonymous +
-        # view_adult=true returns a "Sorry!" stub page, not the work.
-        # ensure_logged_in() handles both Anubis and the login flow;
-        # _get_page() retries through Anubis for the actual work fetch.
-        if not await client.ensure_logged_in():
-            raise RuntimeError("Could not log in to SqW")
         # Try public URL first; fall through to /preview for unposted drafts.
         # _get_page() returns "" on 404, so we detect drafts by re-trying the
         # preview path when the parser finds no content on the first attempt.
@@ -874,8 +873,10 @@ async def import_from_squidgeworld(submission_id: str) -> dict:
                 )
             raise RuntimeError(f"SqW work {submission_id}: response did not contain a parseable work page")
         parsed = _parse_otw_work_page(html_text)
-    finally:
-        await client.close()
+    except Exception:
+        raise
+    # No client.close() — singleton is shared with the poller; see the
+    # note on the AO3 importer above.
 
     title = parsed["title"] or f"SqW_{submission_id}"
     author = parsed["author"] or sqw_username

@@ -65,13 +65,21 @@ async def sqw_connect(body: dict):
     if not target_user:
         raise HTTPException(400, "Target user is required (the SquidgeWorld user to track)")
 
-    client = SquidgeWorldClient(username=username, password=password, target_user=target_user)
+    # Use the persistent singleton so a successful login leaves a live
+    # session (with cached Anubis token + cookies) in place for imports
+    # and the next poll cycle to reuse.
+    from polling.sqw_poller import _get_or_create_client
+    overlay = {
+        **config.get_settings(),
+        "sqw_username": username,
+        "sqw_password": password,
+        "sqw_target_user": target_user,
+    }
+    client = _get_or_create_client(overlay)
     try:
         result = await client.validate_session()
     except Exception as e:
         raise HTTPException(502, f"Failed to validate credentials: {e}")
-    finally:
-        await client.close()
 
     if not result:
         raise HTTPException(401, "Login failed — check your username and password.")

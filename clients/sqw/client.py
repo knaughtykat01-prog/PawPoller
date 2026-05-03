@@ -413,6 +413,14 @@ class SquidgeWorldClient:
             html = await self._get_page(f"{_BASE}/users/{self.username}")
             if html and "Log Out" in html:
                 return True
+            # Conservative: only flip the flag when SqW returns a page
+            # that lacks the "Log Out" link. If the verification fetch
+            # itself failed (Anubis timeout, transient 5xx, network
+            # blip), keep the session — a forced re-login means another
+            # Anubis solve plus a login POST that could hit any future
+            # rate limiter. See the AO3 client for the same pattern.
+            if not html:
+                return True
             self._logged_in = False
 
         return await self.login()

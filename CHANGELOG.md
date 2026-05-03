@@ -4,6 +4,57 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.4] - 2026-05-03
+
+### AO3 / SqW import: stop the cold-start re-login that trips AO3's rate limiter
+
+Caught from the AO3 draft-import logs:
+
+```
+02:20:11  AO3: Successfully logged in as KnaughtyKat   ← /auth/connect
+02:24:58  AO3: Logging in as KnaughtyKat...            ← /import/ao3/...
+02:24:58  GET /users/login → 429 Too Many Requests     ← banned
+```
+
+Every layer was creating its own `AO3Client` / `SquidgeWorldClient`
+and immediately closing it: `auth/connect` validated and threw away
+the session, the importer constructed a fresh client and ran
+`ensure_logged_in()` cold (which calls `login()` because
+`_logged_in=False` on a new instance), and AO3's `/users/login`
+endpoint throttles per-IP for 5–10 min after a single hit. So the
+second-and-onwards login of the day always 429'd. AO3 doesn't
+appear to use Anubis itself — only SqW does — but both share the
+underlying Rails app, and SqW's Anubis solve is similarly wasteful
+to repeat on every call.
+
+Three changes:
+
+- **Importers route through the poller's singleton.**
+  `posting/importer.py:import_from_ao3` and `import_from_squidgeworld`
+  now resolve their client via the existing
+  `polling.{ao3,sqw}_poller._get_or_create_client(settings)` instead
+  of constructing one inline. The singleton survives across import
+  calls, poll cycles, and connect calls — all four code paths now
+  share session cookies and Anubis tokens. Importers also no longer
+  call `client.close()` since the poller owns the lifecycle.
+- **`auth/connect` warms the singleton.** `routes/ao3_api.py` and
+  `routes/sqw_api.py` connect handlers now route validation through
+  `_get_or_create_client` rather than constructing+closing a
+  throwaway client. A successful UI-driven connection now leaves a
+  live, reusable session in place for the next import or poll —
+  not a discarded one.
+- **`ensure_logged_in()` defended against transient verification
+  failures.** Both clients did a "session check" GET on
+  `/users/{name}` and tore the session down whenever the response
+  didn't contain "Log Out" — including when the response was
+  `None` (timeouts, 429-exhausted retries, transient Cloudflare).
+  That tear-down forced a relogin which re-tripped the rate
+  limiter. Now the flag only flips on a fetched page that
+  *positively* lacks the logged-in markers; a failed verification
+  fetch leaves the session alone.
+
+---
+
 ## [2.18.3] - 2026-05-03
 
 ### `.env` no longer clobbers UI-set credentials on every restart

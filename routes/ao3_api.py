@@ -68,17 +68,22 @@ async def ao3_connect(body: dict):
         raise HTTPException(400, "Target user is required (the AO3 user to track)")
 
     settings = config.get_settings()
-    client = AO3Client(
-        username=username, password=password, target_user=target_user,
-        proxy_url=settings.get("cf_worker_url", ""),
-        proxy_key=settings.get("cf_worker_key", ""),
-    )
+    # Validate against the persistent singleton so the successful login
+    # leaves a live, reusable session in place — instead of authenticating,
+    # closing the client, and forcing the next import or poll to relogin
+    # from cold (which trips AO3's per-IP login throttle for ~10 min).
+    from polling.ao3_poller import _get_or_create_client
+    overlay = {
+        **settings,
+        "ao3_username": username,
+        "ao3_password": password,
+        "ao3_target_user": target_user,
+    }
+    client = _get_or_create_client(overlay)
     try:
         result = await client.validate_session()
     except Exception as e:
         raise HTTPException(502, f"Failed to validate credentials: {e}")
-    finally:
-        await client.close()
 
     if not result:
         raise HTTPException(401, "Login failed — check your username and password.")
