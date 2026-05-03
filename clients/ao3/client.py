@@ -393,6 +393,20 @@ class AO3Client:
         return False
 
     async def ensure_logged_in(self) -> bool:
+        # Cookie-only mode: trust the pasted cookie and skip the verify
+        # fetch. The verification probe (`GET /users/{name}`) is itself
+        # rate-limited from datacenter IPs — when it 429s the loop
+        # exhausts and the body lacks "Log Out", which would normally
+        # tear down the session. With a pasted cookie we can't fall
+        # back to login anyway (would re-trip the rate limiter the
+        # cookie was supposed to avoid), so the verify fetch only
+        # creates false negatives. Let the actual import/poll request
+        # be the source of truth — if the cookie is bad, that fetch
+        # will return a public/login-redirect page and the caller
+        # surfaces the error.
+        if self._session_cookie:
+            return True
+
         if self._logged_in:
             html = await self._get_page(f"{_BASE}/users/{self.username}")
             if html and "Log Out" in html:
@@ -412,22 +426,32 @@ class AO3Client:
                 )
                 return True
             self._logged_in = False
-
-        # Cookie-only mode: don't fall back to form login if the user
-        # pasted a session cookie. If it's stale they need to repaste
-        # from their browser — burning the per-IP login quota when the
-        # whole point of cookie auth was to avoid that endpoint defeats
-        # the purpose.
-        if self._session_cookie:
-            logger.error(
-                "AO3: pasted session cookie no longer logged in. "
-                "Re-copy `_otwarchive_session` from your browser and update "
-                "the AO3 settings.",
-            )
-            return False
         return await self.login()
 
     async def validate_session(self) -> str | None:
+        # Cookie mode: do an actual fetch of the target user's drafts
+        # page (or fall back to the public profile page) so we can
+        # confirm the cookie is alive. Only used by /auth/connect —
+        # ensure_logged_in() trusts the cookie without checking.
+        if self._session_cookie:
+            html = await self._get_page(
+                f"{_BASE}/users/{self.target_user or self.username}"
+            )
+            if html and "Log Out" in html:
+                return self.target_user or self.username
+            if html is None:
+                # Rate-limited or transient — trust the cookie was
+                # accepted on the way in (the user just pasted it).
+                logger.warning(
+                    "AO3: cookie validate fetch failed transiently; "
+                    "accepting cookie and letting next call confirm",
+                )
+                return self.target_user or self.username
+            logger.error(
+                "AO3: pasted cookie did not produce a logged-in page. "
+                "Re-copy `_otwarchive_session` from your browser.",
+            )
+            return None
         if await self.ensure_logged_in():
             return self.target_user
         return None

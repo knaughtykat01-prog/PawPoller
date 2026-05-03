@@ -4,6 +4,34 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.9] - 2026-05-03
+
+### AO3: trust cookie, skip verification probe
+
+2.18.8 hit a self-inflicted false negative. The pasted-cookie
+flow still ran `ensure_logged_in()` → `_get_page("/users/{name}")`
+to confirm the session, and that probe is itself rate-limited
+from datacenter IPs. After three 429s the loop exhausted, the
+returned body lacked "Log Out", and the conservative check tore
+the session down — even though the cookie was perfectly fine.
+Net result: cookie users got "cookie no longer logged in" the
+moment AO3's rate limiter kicked in.
+
+Fix: when a `_session_cookie` is set, `ensure_logged_in()`
+returns True immediately without fetching anything. We can't
+fall back to form login anyway (would re-trip the throttle), so
+the verify fetch only ever creates false negatives. The actual
+import/poll page-fetch is now the sole source of truth — if
+the cookie is bad, that fetch returns a public-profile or
+login-redirect page and the caller surfaces a clear error.
+
+`validate_session()` (only called by `/auth/connect`) keeps a
+verification fetch so the user gets immediate feedback when
+they paste, but transient 429 there is treated as "trust and
+let the next call confirm" instead of a hard failure.
+
+---
+
 ## [2.18.8] - 2026-05-03
 
 ### AO3: cookie-based auth as alternative to username/password
