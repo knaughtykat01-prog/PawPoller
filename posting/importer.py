@@ -774,19 +774,15 @@ async def import_from_squidgeworld(submission_id: str) -> dict:
     )
 
     try:
-        # Same anonymous-first strategy as AO3 — most works are public,
-        # login is a fallback for restricted / draft works only.
+        # SqW is fronted by Anubis (proof-of-work bot challenge), so a
+        # raw HTTP fetch returns the challenge page instead of the work.
+        # The client's _get_page() helper transparently solves the
+        # challenge and retries — use it rather than raw _http.get().
         url = f"https://squidgeworld.org/works/{submission_id}?view_full_work=true&view_adult=true"
-        resp = await client._http.get(url, follow_redirects=True)
-        if resp.status_code != 200 or "/users/login" in str(resp.url):
-            if not await client.ensure_logged_in():
-                raise RuntimeError(
-                    f"SqW returned {resp.status_code} for work {submission_id} and login fallback failed"
-                )
-            resp = await client._http.get(url, follow_redirects=True)
-            if resp.status_code != 200:
-                raise RuntimeError(f"SqW returned {resp.status_code} for work {submission_id} after login")
-        parsed = _parse_otw_work_page(resp.text)
+        html_text = await client._get_page(url)
+        if not html_text:
+            raise RuntimeError(f"SqW returned no body for work {submission_id} (Anubis or auth failure)")
+        parsed = _parse_otw_work_page(html_text)
     finally:
         await client.close()
 
