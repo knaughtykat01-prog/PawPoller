@@ -705,14 +705,24 @@ async def import_from_ao3(submission_id: str) -> dict:
     )
 
     try:
-        if not await client.ensure_logged_in():
-            raise RuntimeError("Could not log in to AO3")
-        resp = await client._http.get(
-            f"https://archiveofourown.org/works/{submission_id}?view_full_work=true&view_adult=true",
-            follow_redirects=True,
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(f"AO3 returned {resp.status_code} for work {submission_id}")
+        # Public works don't require login — view_adult=true bypasses the
+        # adult-content gate. Skip the login step entirely so the importer
+        # doesn't burn AO3's login rate limit (10-min lockout) on every
+        # import. Login is only attempted when the public fetch fails.
+        url = f"https://archiveofourown.org/works/{submission_id}?view_full_work=true&view_adult=true"
+        resp = await client._http.get(url, follow_redirects=True)
+        if resp.status_code != 200 or "/users/login" in str(resp.url):
+            # Restricted/draft work — fall back to authenticated fetch.
+            if not await client.ensure_logged_in():
+                raise RuntimeError(
+                    f"AO3 returned {resp.status_code} for work {submission_id} "
+                    "and login fallback failed (likely rate-limited — try again in 10 min)"
+                )
+            resp = await client._http.get(url, follow_redirects=True)
+            if resp.status_code != 200:
+                raise RuntimeError(
+                    f"AO3 returned {resp.status_code} for work {submission_id} after login"
+                )
         parsed = _parse_otw_work_page(resp.text)
     finally:
         await client.close()
@@ -764,14 +774,18 @@ async def import_from_squidgeworld(submission_id: str) -> dict:
     )
 
     try:
-        if not await client.ensure_logged_in():
-            raise RuntimeError("Could not log in to SqW")
-        resp = await client._http.get(
-            f"https://squidgeworld.org/works/{submission_id}?view_full_work=true&view_adult=true",
-            follow_redirects=True,
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(f"SqW returned {resp.status_code} for work {submission_id}")
+        # Same anonymous-first strategy as AO3 — most works are public,
+        # login is a fallback for restricted / draft works only.
+        url = f"https://squidgeworld.org/works/{submission_id}?view_full_work=true&view_adult=true"
+        resp = await client._http.get(url, follow_redirects=True)
+        if resp.status_code != 200 or "/users/login" in str(resp.url):
+            if not await client.ensure_logged_in():
+                raise RuntimeError(
+                    f"SqW returned {resp.status_code} for work {submission_id} and login fallback failed"
+                )
+            resp = await client._http.get(url, follow_redirects=True)
+            if resp.status_code != 200:
+                raise RuntimeError(f"SqW returned {resp.status_code} for work {submission_id} after login")
         parsed = _parse_otw_work_page(resp.text)
     finally:
         await client.close()
