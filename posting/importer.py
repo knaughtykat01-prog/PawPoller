@@ -50,6 +50,68 @@ def _sanitize_folder_name(title: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Duplicate detection — match by (platform, submission_id) in story.json
+# ---------------------------------------------------------------------------
+
+def _find_existing_import(platform: str, submission_id: str) -> str | None:
+    """Return the folder name of an existing import for (platform, submission_id), or None.
+
+    Scans every `<archive>/<story>/story.json` for an `import_source` block
+    matching the given platform + submission id. Used by the importer to
+    short-circuit when the same submission is imported twice — the old
+    behaviour appended `_2`, `_3` suffixes which produced byte-identical
+    duplicate folders. The list endpoint also dedupes against this same
+    field so a submission disappears from the picker once imported, but
+    the manual "Import by URL or ID" path bypasses that filter and is
+    where the dupes actually came from.
+    """
+    if not platform or not submission_id:
+        return None
+    archive = get_archive_path()
+    if not archive.is_dir():
+        return None
+    sid = str(submission_id)
+    for entry in archive.iterdir():
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        sj = entry / "story.json"
+        if not sj.is_file():
+            continue
+        try:
+            data = json.loads(sj.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        src = data.get("import_source") or {}
+        if src.get("platform") == platform and str(src.get("submission_id", "")) == sid:
+            return entry.name
+    return None
+
+
+def _existing_import_response(existing_name: str, platform: str, submission_id: str) -> dict:
+    """Build the standard importer return dict for an already-imported work."""
+    archive = get_archive_path()
+    title = existing_name
+    is_draft = False
+    sj = archive / existing_name / "story.json"
+    if sj.is_file():
+        try:
+            data = json.loads(sj.read_text(encoding="utf-8"))
+            title = data.get("title", existing_name)
+        except Exception:
+            pass
+    logger.info(
+        "Import skipped — %s/%s already imported as %s",
+        platform, submission_id, existing_name,
+    )
+    return {
+        "story_name": existing_name,
+        "title": title,
+        "is_draft": is_draft,
+        "already_imported": True,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Content stripping — produce basic markdown from BBCode / HTML
 # ---------------------------------------------------------------------------
 
@@ -291,6 +353,10 @@ async def import_from_inkbunny(submission_id: str) -> dict:
     Returns:
         Dict with 'story_name' and 'title'.
     """
+    existing = _find_existing_import("ib", submission_id)
+    if existing:
+        return _existing_import_response(existing, "ib", submission_id)
+
     from clients.ib.client import InkbunnyClient
     from database.db import get_connection
     from database import queries
@@ -426,6 +492,10 @@ async def import_from_sofurry(submission_id: str) -> dict:
     Returns:
         Dict with 'story_name' and 'title'.
     """
+    existing = _find_existing_import("sf", submission_id)
+    if existing:
+        return _existing_import_response(existing, "sf", submission_id)
+
     from clients.sf.client import SoFurryClient, SOFURRY_BASE
 
     settings = config.get_settings()
@@ -571,6 +641,10 @@ async def import_from_furaffinity(submission_id: str) -> dict:
     Downloads the story file (TXT/PDF/DOC) from the download URL,
     extracts text content, and creates a local story folder.
     """
+    existing = _find_existing_import("fa", submission_id)
+    if existing:
+        return _existing_import_response(existing, "fa", submission_id)
+
     from clients.fa.client import FAClient
 
     settings = config.get_settings()
@@ -805,6 +879,10 @@ async def import_from_ao3(submission_id: str) -> dict:
     then converts each chapter's userstuff block to markdown and
     concatenates them into MASTER.md.
     """
+    existing = _find_existing_import("ao3", submission_id)
+    if existing:
+        return _existing_import_response(existing, "ao3", submission_id)
+
     from polling.ao3_poller import _get_or_create_client as _get_ao3_client
 
     settings = config.get_settings()
@@ -928,6 +1006,10 @@ async def import_from_squidgeworld(submission_id: str) -> dict:
     proof-of-work challenge for every import would be wasteful and
     could trip the same kind of rate limiter that bites AO3 logins.
     """
+    existing = _find_existing_import("sqw", submission_id)
+    if existing:
+        return _existing_import_response(existing, "sqw", submission_id)
+
     from polling.sqw_poller import _get_or_create_client as _get_sqw_client
 
     settings = config.get_settings()

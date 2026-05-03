@@ -4,6 +4,44 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.11] - 2026-05-03
+
+### Importer duplicate detection at the import call (not just the picker)
+
+The list endpoint at `/api/editor/import/available` already
+filtered out submissions that had a matching `import_source` in
+some existing `story.json`, so the picker UI never offered them
+again. But the actual import endpoint had no such guard — and
+the manual "Import by URL or ID" path bypasses the picker
+entirely. Result: the same submission imported twice produced
+byte-identical folders with `_2`, `_3` suffixes (caught with
+`Late_Shift` + `Late_Shift_2`, both SqW work `92124`,
+1962 words, identical contents).
+
+Fix:
+
+- New `posting/importer.py:_find_existing_import(platform,
+  submission_id)` scans every `story.json/import_source` in the
+  archive for a match.
+- Every `import_from_*()` calls it before doing any network
+  work; if a match is found, it returns the existing folder's
+  `story_name` + title with `already_imported=True` instead of
+  re-fetching and creating a `_2` duplicate.
+- The `/import/{platform}/{submission_id}` API surfaces
+  `already_imported` in its response so the frontend can show
+  "Already imported as <name>" instead of "Imported".
+- The list endpoint's `imported` dedup set now includes `ao3`
+  and `sqw` alongside `ib` / `sf` / `fa` (those two were
+  silently missing — any AO3 or SqW work would re-appear in
+  the picker even after import).
+
+The existing `_create_story_folder()` collision behaviour
+(suffix-on-name-clash) stays — it's still the right fallback
+when two genuinely different submissions slug to the same
+folder name.
+
+---
+
 ## [2.18.10] - 2026-05-03
 
 ### AO3 importer accepts cookie-only auth

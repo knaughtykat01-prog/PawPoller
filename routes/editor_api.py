@@ -2713,7 +2713,9 @@ async def list_importable():
 
     archive = get_archive_path()
 
-    imported: dict[str, set[str]] = {"ib": set(), "sf": set(), "fa": set()}
+    imported: dict[str, set[str]] = {
+        "ib": set(), "sf": set(), "fa": set(), "ao3": set(), "sqw": set(),
+    }
     if archive.is_dir():
         for entry in archive.iterdir():
             if not entry.is_dir() or entry.name.startswith("."):
@@ -2858,4 +2860,5 @@ async def import_submission(platform: str, submission_id: str):
         "story_name": result["story_name"],
         "title": result["title"],
         "is_draft": result.get("is_draft", False),
+        "already_imported": result.get("already_imported", False),
     }
