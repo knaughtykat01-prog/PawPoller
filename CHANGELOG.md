@@ -4,6 +4,20 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.10] - 2026-05-03
+
+### AO3 importer accepts cookie-only auth
+
+`posting/importer.py:import_from_ao3()` was still gating on
+`ao3_username` AND `ao3_password`, so cookie-only setups got
+"AO3 credentials not configured" before the fetch even started.
+Gate now passes when either user/pass OR a session cookie is
+present. The owner-of-draft sanity check inside
+`_fetch_ao3_work()` falls back to `ao3_target_user` when no
+username is set.
+
+---
+
 ## [2.18.9] - 2026-05-03
 
 ### AO3: trust cookie, skip verification probe
