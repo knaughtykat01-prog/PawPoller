@@ -3765,18 +3765,21 @@ Stored in `story.json`. `build_package()` uses a fallback chain: platform-specif
 
 ### Import from Platforms
 
-`posting/importer.py` downloads published submissions from platforms and creates local story folders. The editor's story list shows an "Import from Platform" button.
+`posting/importer.py` downloads submissions (published *and* unposted drafts) from platforms and creates local story folders. The editor's story list shows an "Import from Platform" button; the dialog also has an "Import by URL or ID" row at the top so draft IDs can be pasted directly (the auto-list only surfaces what the pollers have seen, which is published-only).
 
 **Supported platforms:**
-- **Inkbunny**: `import_from_inkbunny()` — fetches submission details via API with `show_writing=yes`, downloads BBCode text file (follows CDN redirects), converts BBCode→Markdown via `_bbcode_to_markdown()`.
-- **SoFurry**: `import_from_sofurry()` — fetches metadata from `/ui/submission/{id}` JSON API, scrapes story content from the `/s/{id}` page (extracted after the chapter divider in `story-content-holder`), converts HTML→Markdown via `_html_to_markdown()`.
-- **FurAffinity**: `import_from_furaffinity()` — fetches submission details from FAExport API, downloads story file via `download_url` (TXT files get full text; PDF files get description fallback since PDF parsing is not included).
+- **Inkbunny**: `import_from_inkbunny()` — fetches submission details via API with `show_writing=yes`, downloads BBCode text file (follows CDN redirects), converts BBCode→Markdown via `_bbcode_to_markdown()`. Drafts are reached transparently — `api_submissions.php` returns owner drafts the same shape as published works; the importer flags `is_draft = (public == "no")`.
+- **SoFurry**: `import_from_sofurry()` — fetches metadata from `/ui/submission/{id}` JSON API, scrapes story content from the `/s/{id}` page (extracted after the chapter divider in `story-content-holder`), converts HTML→Markdown via `_html_to_markdown()`. Draft state inferred from `publishedAt` (null / empty / `0000-…` / future ISO date); a non-200 `/s/{id}` page-scrape on a draft falls back to the JSON description rather than failing the import.
+- **FurAffinity**: `import_from_furaffinity()` — fetches submission details from FAExport API, downloads story file via `download_url` (TXT files get full text; PDF files get description fallback since PDF parsing is not included). FA exposes no draft API surface, so this path is published-only.
+- **AO3 / SquidgeWorld** (shared OTW Rails markup): `import_from_ao3()` and `import_from_squidgeworld()` use the shared `_parse_otw_work_page()` helper to extract title / author / summary / rating / tags / chapters from a single `?view_full_work=true` round trip. Both try `/works/{id}?view_full_work=true&view_adult=true` first and fall through to `/works/{id}/preview?view_full_work=true&view_adult=true` for unposted drafts (AO3 detects via 404; SqW detects via missing title-heading + userstuff markers because `_get_page` swallows status through the Anubis solver). SqW additionally routes through `client._get_page()` to transparently solve the Anubis PoW bot challenge.
 
 **Endpoints:**
-- `GET /api/editor/import/available` — cross-references polled submissions against local archive `import_source` metadata to find importable submissions.
-- `POST /api/editor/import/{platform}/{submission_id}` — triggers download + folder creation, returns `{story_name, title}`.
+- `GET /api/editor/import/available` — cross-references polled submissions against local archive `import_source` metadata to find importable published submissions.
+- `POST /api/editor/import/{platform}/{submission_id}` — triggers download + folder creation, returns `{story_name, title, is_draft}`.
 
 **Folder creation** (`_create_story_folder()`): creates full archive structure, generates `story.json` with `import_source` provenance (platform, submission_id, url), saves original format file alongside `MASTER.md`. Name collisions handled by appending `_2`, `_3` suffix.
+
+**UI affordances**: the import overlay's manual-entry input accepts platform-prefixed (`ao3:12345`, `ib:12345`) and full URLs (`https://archiveofourown.org/works/12345`, `https://inkbunny.net/s/...`, etc.). Imported drafts get an amber row tint plus a "Done (draft)" button label so they're distinguishable from published imports at a glance.
 
 ### Setup Wizard (Phase 9a)
 
