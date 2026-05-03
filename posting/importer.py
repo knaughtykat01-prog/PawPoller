@@ -637,10 +637,12 @@ def _parse_otw_work_page(html_text: str) -> dict:
         elif "general" in rtxt:
             out["rating"] = "general"
 
-    # Freeform tags (the user-authored ones — closest to our tag list)
+    # Freeform tags — only the actual <a class="tag"> links count;
+    # OTW emits "Show additional tags" / "Hide additional tags"
+    # toggles inside the same <dd> that we don't want to capture.
     free_m = re.search(r'<dd[^>]*class="freeform tags"[^>]*>(.*?)</dd>', html_text, re.DOTALL)
     if free_m:
-        out["tags"] = re.findall(r'>([^<]+)</a>', free_m.group(1))
+        out["tags"] = re.findall(r'<a[^>]*class="tag"[^>]*>([^<]+)</a>', free_m.group(1))
 
     # Chapters — when fetched via ?view_full_work=true OTW renders each
     # chapter inside <div id="chapter-N" class="chapter">.
@@ -654,19 +656,28 @@ def _parse_otw_work_page(html_text: str) -> dict:
             ch_title_m = re.search(r'<h3[^>]*class="title"[^>]*>(.*?)</h3>', blk, re.DOTALL)
             ch_title = re.sub(r'<[^>]+>', '', ch_title_m.group(1)).strip() if ch_title_m else ""
             body_m = re.search(
-                r'<div[^>]*class="userstuff[^"]*module"[^>]*>(.*?)</div>',
+                r'<div[^>]*class="[^"]*userstuff[^"]*"[^>]*>(.*?)</div>\s*(?=<div|$)',
                 blk,
                 re.DOTALL,
             )
             ch_body = body_m.group(1) if body_m else blk
             out["chapters"].append({"title": ch_title, "html": ch_body})
     else:
-        # Single-chapter work — body lives in a single <div class="userstuff">.
+        # Single-chapter work — content lives in a top-level
+        # <div class="userstuff">. OTW also wraps it in
+        # <div id="chapters"> but the inner div is the canonical body.
         body_m = re.search(
-            r'<div[^>]*id="chapters"[^>]*>(.*?)<!--/content-->',
+            r'<div[^>]*class="[^"]*userstuff[^"]*"[^>]*>(.*?)</div>\s*<!--/content-->',
             html_text,
             re.DOTALL,
         )
+        if not body_m:
+            # Fallback — grab the userstuff div even without the closing marker.
+            body_m = re.search(
+                r'<div[^>]*class="[^"]*userstuff[^"]*"[^>]*>(.*?)(?=<div\s+id="work_endnotes|<div\s+id="series-nav|<div\s+id="feedback|</div>\s*</div>\s*<div\s+id=)',
+                html_text,
+                re.DOTALL,
+            )
         if body_m:
             out["chapters"] = [{"title": "", "html": body_m.group(1)}]
 
