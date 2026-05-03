@@ -4,6 +4,73 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.0] - 2026-05-03
+
+### "Do them all" pass — viewer polish, draft probes, AO3/SQW import, dedication UI
+
+A grab-bag of accumulated follow-ups from HANDOFF.md and the EPUB-viewer
+shipping in 2.17.6. Headline additions:
+
+**EPUB viewer polish.**
+- Aa appearance dropdown — text size (S/M/L/XL via
+  `rendition.themes.fontSize`) and theme override
+  (auto/light/dark/sepia palettes). Auto reads parent dashboard
+  tokens; the other three are book-style palettes hard-coded so the
+  reader stays usable when the parent theme is unsuitable for prose.
+- Location persistence — last CFI saved to localStorage keyed by
+  `pawpoller-epub:{story}:{file}`, restored on next open. Text size
+  and theme persist the same way.
+- Full-page cover — `rendition.themes.default` now sets
+  `img { max-height: 95vh; object-fit: …; margin: 0 auto }` so cover
+  images fill the page rather than rendering at intrinsic size in a
+  small `<figure>`.
+
+**Subtitle + dedication metadata UI.**
+- New text fields in the editor's metadata drawer (Story Info / Description
+  & Summary sections respectively). Both write into `story.json`.
+- `editor/epub_generator.py` now prefers `story_meta["subtitle"]` over
+  `fm.subtitle` from the MASTER.md frontmatter — the drawer is the
+  canonical UI surface for editing this field. Existing
+  `<!-- @subtitle -->` anchors still work as a fallback.
+
+**Draft-state probes for IB / SF / AO3 / SqW.**
+- FA shipped its `probe_draft_state` (Scraps flag) in 2.14.9.
+  This release implements the same surface for the other four:
+  - IB — `clients/ib/models.py:SubmissionDetail` extended with a
+    `public` field; `InkbunnyPoster.probe_draft_state` reads it
+    (covers held / under-review / friends-only).
+  - SF — fetches `/ui/submission/{id}` JSON and reads `publishedAt`;
+    null / `0000-00-00` sentinel / future-dated → draft.
+  - AO3 — fetches the `/works/{id}/preview` page; presence of
+    `name="post_button"` / `name="preview_button"` or absence of
+    kudos / comments controls signals draft state.
+  - SqW — same OTW Rails layout, identical heuristics.
+- The `POST /api/editor/stories/{name}/probe-drafts` endpoint already
+  existed (2.16.x) — these are the missing implementations it was
+  waiting on. `posted_draft` cells will now appear in the matrix.
+
+**AO3 / SqW story import.**
+- Closes the second half of Phase 14a — the "coming soon" badge
+  introduced in 2.13.0. New `posting/importer.py` functions:
+  `import_from_ao3` and `import_from_squidgeworld`.
+- Both fetch `?view_full_work=true&view_adult=true` so all chapters
+  arrive in a single response, then a shared `_parse_otw_work_page()`
+  helper extracts title / author / summary / rating / tags / per-
+  chapter HTML using the same selectors (Rails app, identical markup).
+- Each chapter's `userstuff` block converts via the existing
+  `_html_to_markdown` helper; chapters concatenate with `---` breaks
+  matching the standard MASTER.md convention.
+- `routes/editor_api.py:IMPORT_PLATFORMS` extended with `ao3` and
+  `sqw` entries; `IMPORT_COMING_SOON` emptied; the import-submission
+  route grew two new `elif` branches.
+
+Bug-log walk: round-1 (BUG-001..009) all confirmed fixed in round 2;
+round-2 (BUG-010..021) all confirmed fixed in 2.14.8 / 2.16.x. SameSite,
+favicon-401, and `/api/health` version all already shipped in 2.16.8.
+Nothing genuinely open from the QA log.
+
+---
+
 ## [2.17.6] - 2026-05-03
 
 ### In-app EPUB viewer

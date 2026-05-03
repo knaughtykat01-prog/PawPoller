@@ -26,12 +26,19 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="/css/tokens.css?v=__APP_VERSION__">
     <style>
+        :root {
+            /* Reader-scoped variables; epub-viewer.js overrides these
+               whenever the reader theme changes (auto/light/dark/sepia). */
+            --reader-bg: var(--bg-primary);
+            --reader-text: var(--text-primary);
+            --reader-accent: var(--accent);
+        }
         html, body {
             margin: 0;
             padding: 0;
             height: 100%;
-            background: var(--bg-primary);
-            color: var(--text-primary);
+            background: var(--reader-bg);
+            color: var(--reader-text);
             font-family: var(--font-sans);
             overflow: hidden;
         }
@@ -40,15 +47,17 @@
             align-items: center;
             gap: 0.6em;
             padding: 0.5em 0.9em;
-            background: var(--bg-secondary);
+            background: var(--reader-bg);
+            color: var(--reader-text);
             border-bottom: 1px solid var(--border);
             height: 48px;
             box-sizing: border-box;
+            position: relative;
         }
         .viewer-bar button,
         .viewer-bar a.btn {
-            background: var(--bg-card);
-            color: var(--text-primary);
+            background: transparent;
+            color: var(--reader-text);
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
             padding: 0.35em 0.75em;
@@ -61,11 +70,7 @@
         }
         .viewer-bar button:hover,
         .viewer-bar a.btn:hover {
-            background: var(--bg-hover);
-        }
-        .viewer-bar button:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
+            background: rgba(127, 127, 127, 0.15);
         }
         .viewer-title {
             flex: 1;
@@ -75,11 +80,11 @@
             white-space: nowrap;
             font-family: var(--font-serif);
             font-size: 1.05em;
-            color: var(--text-primary);
+            color: var(--reader-text);
         }
         .viewer-location {
             font-size: 0.8em;
-            color: var(--text-muted);
+            opacity: 0.7;
             min-width: 5em;
             text-align: center;
             font-variant-numeric: tabular-nums;
@@ -88,7 +93,7 @@
             position: relative;
             width: 100%;
             height: calc(100% - 48px);
-            background: var(--bg-primary);
+            background: var(--reader-bg);
         }
         #viewer {
             width: 100%;
@@ -109,18 +114,79 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            color: var(--text-muted);
+            opacity: 0.7;
             font-size: 0.95em;
             text-align: center;
             max-width: 80%;
         }
-        .viewer-status.error {
-            color: var(--danger);
+        .viewer-status.error { color: var(--danger); }
+        /* ── Aa dropdown ────────────────────────────── */
+        #btn-aa {
+            font-family: var(--font-serif);
+            font-weight: 600;
+            font-size: 1em;
+            line-height: 1;
         }
+        .aa-menu {
+            position: absolute;
+            top: 52px;
+            right: 12px;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 8px;
+            display: none;
+            z-index: 50;
+            box-shadow: var(--shadow-strong, 0 8px 32px rgba(0,0,0,0.3));
+            min-width: 220px;
+        }
+        .aa-menu.open { display: block; }
+        .aa-row {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .aa-row:last-child { margin-bottom: 0; }
+        .aa-label {
+            font-size: 0.75em;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin: 6px 2px 4px;
+        }
+        .aa-btn {
+            flex: 1;
+            background: transparent;
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 6px 8px;
+            cursor: pointer;
+            font: inherit;
+            font-size: 0.85em;
+            transition: background var(--transition);
+        }
+        .aa-btn:hover { background: var(--bg-hover); }
+        .aa-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+        .aa-btn[data-size="S"]  { font-size: 0.7em; }
+        .aa-btn[data-size="M"]  { font-size: 0.85em; }
+        .aa-btn[data-size="L"]  { font-size: 1em; }
+        .aa-btn[data-size="XL"] { font-size: 1.15em; }
+        .aa-btn[data-theme-name="light"]  { background: #fafaf6; color: #1a1a1a; }
+        .aa-btn[data-theme-name="dark"]   { background: #13111a; color: #f0edf5; }
+        .aa-btn[data-theme-name="sepia"]  { background: #f4ecd8; color: #3a2e21; }
+        .aa-btn[data-theme-name="auto"]   { background: transparent; }
+        .aa-btn.active[data-theme-name]   { box-shadow: 0 0 0 2px var(--accent); }
         @media (max-width: 600px) {
             .viewer-title  { font-size: 0.95em; }
             .viewer-bar    { padding: 0.4em 0.6em; gap: 0.4em; }
             .viewer-bar a.dl-btn { display: none; }
+            .aa-menu { right: 6px; min-width: 200px; }
         }
     </style>
 </head>
@@ -131,7 +197,24 @@
         <button id="btn-prev" title="Previous page (←)">&lsaquo;</button>
         <span class="viewer-location" id="viewer-location"></span>
         <button id="btn-next" title="Next page (→)">&rsaquo;</button>
+        <button id="btn-aa" title="Appearance — text size and theme">Aa</button>
         <a id="btn-download" class="btn dl-btn" download title="Download EPUB">&darr; EPUB</a>
+        <div class="aa-menu" id="aa-menu">
+            <div class="aa-label">Text size</div>
+            <div class="aa-row">
+                <button class="aa-btn" data-size="S">S</button>
+                <button class="aa-btn" data-size="M">M</button>
+                <button class="aa-btn" data-size="L">L</button>
+                <button class="aa-btn" data-size="XL">XL</button>
+            </div>
+            <div class="aa-label">Theme</div>
+            <div class="aa-row">
+                <button class="aa-btn" data-theme-name="auto">Auto</button>
+                <button class="aa-btn" data-theme-name="light">Light</button>
+                <button class="aa-btn" data-theme-name="dark">Dark</button>
+                <button class="aa-btn" data-theme-name="sepia">Sepia</button>
+            </div>
+        </div>
     </div>
     <div id="viewer-area">
         <div class="tap-zone left"  id="tap-prev"></div>

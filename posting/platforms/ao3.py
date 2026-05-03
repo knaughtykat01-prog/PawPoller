@@ -242,6 +242,50 @@ class AO3Poster(PlatformPoster):
             logger.warning("AO3 probe_exists(%s) failed: %s", external_id, e)
             return None
 
+    async def probe_draft_state(self, external_id: str) -> bool | None:
+        """True if the AO3 work was Posted Without Preview (draft).
+
+        AO3's draft state is exposed via the work edit page: a draft
+        work redirects to ``/works/{id}/preview`` rather than rendering
+        the work body directly, and the public ``/works/{id}`` URL
+        returns 302 to ``/users/login`` for non-logged-in viewers
+        because drafts are owner-only. Authenticated edit-page response
+        contains either the live work form or the preview banner.
+        Detects drafts by looking for the unmistakable
+        ``id="post_without_preview_notice"`` div / "Post" submit button
+        on the preview page.
+        """
+        try:
+            client = await self._ensure_client()
+            if not client._logged_in:
+                if not await client.ensure_logged_in():
+                    return None
+            # The preview page is the canonical draft surface — live
+            # works return their normal show page even when this URL is
+            # requested by the owner.
+            resp = await client._http.get(
+                f"https://archiveofourown.org/works/{external_id}/preview",
+                follow_redirects=True,
+            )
+            if resp.status_code == 404:
+                return None  # delegated to probe_exists
+            if resp.status_code != 200:
+                return None
+            html = resp.text
+            # AO3 shows a "Post Without Preview" / "Post Draft" form on
+            # works that are still drafts. Live works redirect or render
+            # the show page without those buttons.
+            if 'name="post_button"' in html or 'value="Post"' in html and 'name="preview_button"' in html:
+                return True
+            # Fallback heuristic: live show page has the chapter index
+            # / kudos / comments controls; drafts don't.
+            if 'id="kudos"' in html or 'id="comments"' in html:
+                return False
+            return None
+        except Exception as e:
+            logger.warning("AO3 probe_draft_state(%s) failed: %s", external_id, e)
+            return None
+
     @staticmethod
     def _read_chapter_content(story: story_reader.StoryInfo, ch_idx: int) -> str | None:
         """Resolve a single chapter's body HTML for AO3.

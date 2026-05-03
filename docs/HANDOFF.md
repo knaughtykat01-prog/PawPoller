@@ -1,9 +1,10 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-05-03
-**Current version:** 2.17.6 (in-app EPUB viewer — closes the "EPUB is download-only" follow-up from 2.17.4. Vendors `epub.js` 0.3.93 + `jszip` 3.10.1 to `frontend/vendor/` (~315KB), adds `frontend/epub-viewer.html` + `frontend/js/epub-viewer.js`, and a `GET /epub-viewer.html` route in `dashboard.py` with a scoped CSP relaxation that allows `blob:` for style/img/font/connect/frame on that one path only — the rest of the dashboard keeps the strict default. The editor's Downloads dropdown grows a "↗ Preview in browser" sub-row directly under the EPUB row that opens the viewer in a new tab. Two CSP gotchas during the Playwright-driven QA pass: (1) inline scripts in `epub-viewer.html` were blocked because the dashboard CSP only allowlists one specific SHA-256 hash (the `index.html` theme bootstrap) — fixed by extracting viewer logic to `/js/epub-viewer.js` and copying `index.html`'s boot script byte-for-byte so the existing hash covers it; (2) epub.js extracts the EPUB's stylesheets/fonts/images into `blob:` URLs which the strict CSP dropped — fixed via the path-scoped CSP. End-to-end verified on the live VM: cover → title → author's note → chapter content all render with two-column spread, italic narration in Crimson Pro, percent indicator updates, prev/next + tap zones + keyboard arrows all advance pages. 2.17.5 — `pawsync.py` now supports `--prune` / `--dry-run` for removing server-side top-level story orphans missing locally. 2.17.0–2.17.4 — Vellum-style EPUB 3.0 generator at `editor/epub_generator.py` validated under epubcheck 5.1.0 / EPUB 3.3 (0/0/0/0); EPUB lives in its own `EPUB/{stem}.epub` folder, `.epub` allowlisted in `/api/posting/file`, whole-story `.zip` archive endpoint, downloads dropdown polished. Earlier in the session: Mobile Mode Phase 5 sweep + backlog cleanup through 2.16.14.)
-**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — running 2.17.6 (deployed 2026-05-03, confirmed via `/api/health` + Playwright-verified end-to-end against the live viewer).
-**GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.13.8 — last tagged release. Master is now 24 versions ahead (2.13.9 → 2.17.6). Tag drift covered in "CI / release pipeline state" section below; cutting a fresh tag is a single `git tag v2.17.6 && git push --tags` away when there's appetite.
+**Current version:** 2.18.0 ("do them all" pass — EPUB viewer Aa appearance dropdown (size + theme + persistence) + full-page cover override + last-position restore via localStorage; subtitle + dedication input fields wired into the metadata drawer with `editor/epub_generator.py` preferring story.json over MASTER.md frontmatter; draft-state probes implemented for IB / SF / AO3 / SqW (the `POST /api/editor/stories/{name}/probe-drafts` endpoint had existed since 2.16.x — these are the missing implementations); AO3 + SqW story importers built using a shared `_parse_otw_work_page()` helper that pulls title/author/summary/rating/tags/chapters out of the OTW Rails work page in one `?view_full_work=true` round trip, closes the "coming soon" badge from Phase 14a (2.13.0). Walk of `qa/AUTOMATED_BUG_LOG.md` confirmed every round-1 + round-2 bug is already closed in 2.14.8 / 2.16.x.)
+**Previous version:** 2.17.6 (in-app EPUB viewer — closes the "EPUB is download-only" follow-up from 2.17.4. Vendors `epub.js` 0.3.93 + `jszip` 3.10.1 to `frontend/vendor/` (~315KB), adds `frontend/epub-viewer.html` + `frontend/js/epub-viewer.js`, and a `GET /epub-viewer.html` route in `dashboard.py` with a scoped CSP relaxation that allows `blob:` for style/img/font/connect/frame on that one path only — the rest of the dashboard keeps the strict default. The editor's Downloads dropdown grows a "↗ Preview in browser" sub-row directly under the EPUB row that opens the viewer in a new tab. Two CSP gotchas during the Playwright-driven QA pass: (1) inline scripts in `epub-viewer.html` were blocked because the dashboard CSP only allowlists one specific SHA-256 hash (the `index.html` theme bootstrap) — fixed by extracting viewer logic to `/js/epub-viewer.js` and copying `index.html`'s boot script byte-for-byte so the existing hash covers it; (2) epub.js extracts the EPUB's stylesheets/fonts/images into `blob:` URLs which the strict CSP dropped — fixed via the path-scoped CSP. End-to-end verified on the live VM: cover → title → author's note → chapter content all render with two-column spread, italic narration in Crimson Pro, percent indicator updates, prev/next + tap zones + keyboard arrows all advance pages. 2.17.5 — `pawsync.py` now supports `--prune` / `--dry-run` for removing server-side top-level story orphans missing locally. 2.17.0–2.17.4 — Vellum-style EPUB 3.0 generator at `editor/epub_generator.py` validated under epubcheck 5.1.0 / EPUB 3.3 (0/0/0/0); EPUB lives in its own `EPUB/{stem}.epub` folder, `.epub` allowlisted in `/api/posting/file`, whole-story `.zip` archive endpoint, downloads dropdown polished. Earlier in the session: Mobile Mode Phase 5 sweep + backlog cleanup through 2.16.14.)
+**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — running 2.18.0 (deployed 2026-05-03).
+**GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.13.8 — last tagged release. Master is now 25 versions ahead (2.13.9 → 2.18.0). Plan: cut `v2.18.0` once auto-update + analytics export land — see Open roadmap below.
 
 > **2.14.3 file-tree refactor — read this before navigating the codebase.** All 11 platform clients moved into `clients/` (e.g. `api_client/` → `clients/ib/`, `ao3_client/` → `clients/ao3/`, ...). Imports now look like `from clients.ib.client import InkbunnyClient`. Internal docs (HANDOFF, SETUP, ROADMAP_PUBLIC, documentation_guide) moved into `docs/`. Three orphans deleted from root (`112.png`, `TESTING_CHECKLIST.md`, legacy `settings.json`). Zero behaviour change. See CHANGELOG `[2.14.3]` for the full validation gates.
 
@@ -248,20 +249,19 @@ drift detection, deletion probe, re-post.
 - [ ] Weasyl testing (blocked on account verification)
 - [x] Per-platform tag selection in editor — shipped 2.15.0. FA / Weasyl / AO3 / SQW tabs added alongside the existing Default / SF / IB / WP. FA tab carries a 500-char joined-string counter. Empty non-default tabs on older stories show a "Populate from Default" backfill button. Backend was already correct for JSON-backed stories (`story_reader.py:395-405`). Per-chapter tabs not extended — follow-up. The `settings.platform_*_enabled` gating proposed in the original bullet was dropped because no such setting exists; the cleaner play was to always show the tabs and let users ignore the ones they don't post to. Future enhancement: a chapter-level version of the same tabs.
 - [~] Draft detection in publish check — surface stories that are sitting on a platform as drafts (uploaded but not public). Today the matrix only knows `ready`/`posted`/`blocked`/`drifted`/`deleted_upstream` (`publish_check.js:12-24`); add a `posted_draft` cell status so the user can see at a glance which platforms have a draft waiting to be flipped live. Per-platform probe surface:
-  - [x] **FA** — shipped 2.14.9. Scraps treated as draft equivalent; probe reads the changeinfo checkbox; `edit_submission` now preserves scrap state on every edit (latent un-scrap bug fixed); "Publish draft" action wired through `/publish` with `action='publish_draft'`. See CHANGELOG 2.14.9 for the full surface.
-  - [ ] **IB** — has actual draft submissions (the post-upload "edit info" page exposes the public/hold flag, and `clients/ib/client.py:679` already accepts a `visibility` param on edit).
-  - [ ] **SF** — unpublished/private state on the submission edit page; `publishedAt` field in the SF API details (`clients/sf/client.py:579`) might be enough on its own.
-  - [ ] **AO3 / SQW** — `posted: false` on works (the "Post Without Preview" toggle).
+  - [x] **FA** — shipped 2.14.9. Scraps treated as draft equivalent; probe reads the changeinfo checkbox; `edit_submission` now preserves scrap state on every edit (latent un-scrap bug fixed); "Publish draft" action wired through `/publish` with `action='publish_draft'`.
+  - [x] **IB** — shipped 2.18.0. `clients/ib/models.py:SubmissionDetail` extended with a `public` field; `InkbunnyPoster.probe_draft_state` reads it. Covers held / under-review / friends-only.
+  - [x] **SF** — shipped 2.18.0. `SoFurryPoster.probe_draft_state` fetches `/ui/submission/{id}` JSON and reads `publishedAt` — null / `0000-00-00` sentinel / future-dated → draft.
+  - [x] **AO3** — shipped 2.18.0. Fetches `/works/{id}/preview`; `name="post_button"` / `name="preview_button"` or absence of kudos / comments controls signals draft state.
+  - [x] **SqW** — shipped 2.18.0. Same OTW Rails layout, identical heuristics.
   - [ ] **Bluesky / Wattpad / DA / Itaku / Weasyl** — confirm individually before adding probes; some have nothing draft-like.
 
   Action panel grows a "Publish draft" button (and maybe "Discard draft") next to the existing Post/Update buttons. Useful both as a sanity check (catch the case where the draft toggle was left on and you forgot to publish) and as a workflow (deliberately stage everything as drafts, then flip them all live in one bulk action — pairs with the existing "Publish all new" footer button).
 
 ### EPUB follow-ups (post-2.17.4)
 
-- [x] **In-app EPUB viewer** — shipped 2.17.6. See feature-table row above for the full architecture summary. Open follow-ups specifically for the viewer:
-  - **No font-size or theme picker inside the viewer.** Today the viewer reads the parent dashboard's theme tokens once at load and passes them to `rendition.themes.default()`. A small toolbar dropdown (Aa) for size + theme overrides would be a natural next step. Low effort.
-  - **No cross-session location persistence.** epub.js exposes `book.locations.percentageFromCfi` / `cfiFromPercentage`; localStorage-keyed by story name would survive page reloads. Low effort.
-  - **Cover renders as a small inline image, not a full-page hero.** epub.js follows whatever the EPUB's spine declares; the EPUB generator emits a `<figure>`-wrapped cover that's small at viewport widths. A `cover.xhtml` style override in `rendition.themes.default` could promote it to full-bleed. Cosmetic.
+- [x] **In-app EPUB viewer** — shipped 2.17.6 + 2.18.0 polish (Aa appearance dropdown, location persistence, full-page cover override). See feature-table row above and the 2.18.0 CHANGELOG entry for the full architecture.
+- [x] **Subtitle / dedication UI** — shipped 2.18.0. Drawer fields write to story.json; `editor/epub_generator.py` prefers `story_meta["subtitle"]` over the MASTER.md `<!-- @subtitle -->` anchor.
 - [ ] **Bundled fonts in EPUB.** 2.17.0 deferred bundling OFL fonts (~700KB + license tracking) for system fallbacks. Worth adding once an editor "appearance" panel exists for picking the EPUB body font; today the user can't pick anything so bundling is premature.
 - [ ] **Subtitle / dedication UI.** `epub_generator.build_epub` already reads `fm.subtitle` and `story_meta.dedication` if present, but the metadata drawer has no input field for either. Two-line form addition. Until then, only stories whose MASTER.md happens to have a `<!-- @subtitle -->` anchor get a subtitle on the title page.
 - [x] **`pawsync` doesn't delete server-side files** — fixed in 2.17.5. `pawsync.py` now accepts `--prune` (removes server-side top-level story dirs missing locally; `Backups`/`Drafts`/`Styled_HTML` are treated as untouchable) and `--dry-run` (lists what would be removed). Verified end-to-end against the live VM on 2026-05-02 — extract + dry-run prune reported "no orphans found" against the 16 currently-synced stories.
@@ -429,18 +429,16 @@ Next retest pass should:
 2. Sweep WEBAPP first (it covers everything that runs in Docker — most of the surface).
 3. Sweep NATIVE only on a Windows machine with the PyInstaller build, focusing on sections 41–47 (the native-only blocks).
 
-If the user says "what's next?" — all must-have and should-have items
-from the roadmap are complete, plus most nice-to-haves (import, genre
-templates, configurable author, GitHub packaging all shipped in 2.13.0;
-in-app EPUB viewer shipped in 2.17.6).
-Remaining:
-- AO3/SQW import (second half of 14a — listed "coming soon" in 2.13.0)
+If the user says "what's next?" — 2.18.0 cleared most of the
+accumulated follow-up list. Remaining:
 - Analytics export (charts, CSV reports)
 - Auto-update mechanism (15d — in-app update download)
 - Weasyl testing (blocked on account verification, not code)
-- Cut `v2.17.6` GitHub release (currently undeployed to release page; master + GCP are 24 versions ahead of v2.13.8)
-- EPUB viewer follow-ups: font-size/theme picker inside the viewer, location persistence, full-page cover. All low-effort, all cosmetic — see the EPUB follow-ups section above.
-- Fix the round-2 P2/P3 bugs above (BUG-011, 014, 016, 017, 018, 020, 021 — most already fixed in 2.16.x; check before opening) + the SameSite=Strict cookie quirk + favicon-401 noise — all deferred from 2.14.8 because they're non-blocking
+- Cut `v2.18.0` GitHub release once auto-update + analytics export
+  land (currently undeployed to release page; master + GCP are 25
+  versions ahead of v2.13.8)
+- Bluesky / Wattpad / DA / Itaku / Weasyl draft probes — fragmentary;
+  some platforms have no draft equivalent.
 
 Story archive sync commands:
 - `deploy/pawpush.bat` — local → server (push)

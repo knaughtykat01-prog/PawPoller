@@ -585,6 +585,47 @@ class SoFurryPoster(PlatformPoster):
             logger.warning("SF probe_exists(%s) failed: %s", external_id, e)
             return None
 
+    async def probe_draft_state(self, external_id: str) -> bool | None:
+        """True if the SF submission is unpublished / scheduled-future.
+
+        SF's submission JSON exposes ``publishedAt`` (per
+        clients/sf/client.py:579). Empty string / null / `0000-00-00`
+        sentinel / future ISO dates all map to "draft" — anything else
+        is live. Returns None on transport / parse errors.
+        """
+        try:
+            client = await self._ensure_client()
+            if not client._logged_in:
+                if not await client.ensure_logged_in():
+                    return None
+            resp = await client._http.get(
+                f"https://sofurry.com/ui/submission/{external_id}",
+                headers={"Accept": "application/json"},
+            )
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            if not isinstance(data, dict):
+                return None
+            published = (data.get("publishedAt") or "").strip()
+            if not published or published.startswith("0000"):
+                return True
+            # Future-dated → still draft until that timestamp passes.
+            try:
+                from datetime import datetime, timezone
+                # SF returns ISO-ish strings; tolerant parse.
+                dt = datetime.fromisoformat(published.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt > datetime.now(timezone.utc)
+            except Exception:
+                # If we can't parse it, presence of a non-zero string is
+                # good enough to treat as live.
+                return False
+        except Exception as e:
+            logger.warning("SF probe_draft_state(%s) failed: %s", external_id, e)
+            return None
+
     async def replace_file(self, external_id: str, file_path: str) -> PostResult:
         """Replace content on an existing SF submission.
 

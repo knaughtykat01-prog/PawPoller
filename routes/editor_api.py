@@ -2688,12 +2688,14 @@ async def add_tag(req: AddTagRequest):
 
 # Platforms that support story import (code, label, content_type_filter)
 IMPORT_PLATFORMS = {
-    "ib": {"label": "Inkbunny", "filter_field": "type_name", "filter_value": "Writing"},
-    "sf": {"label": "SoFurry", "filter_field": "content_type", "filter_value": "story"},
-    "fa": {"label": "FurAffinity", "filter_field": "category", "filter_value": "Story"},
+    "ib":  {"label": "Inkbunny",     "filter_field": "type_name",    "filter_value": "Writing"},
+    "sf":  {"label": "SoFurry",      "filter_field": "content_type", "filter_value": "story"},
+    "fa":  {"label": "FurAffinity",  "filter_field": "category",     "filter_value": "Story"},
+    "ao3": {"label": "AO3",          "filter_field": "category",     "filter_value": "Work"},
+    "sqw": {"label": "SquidgeWorld", "filter_field": "category",     "filter_value": "Work"},
 }
 
-IMPORT_COMING_SOON = ["sqw", "ao3"]
+IMPORT_COMING_SOON: list[str] = []
 
 
 @editor_router.get("/import/available")
@@ -2818,7 +2820,13 @@ async def import_submission(platform: str, submission_id: str):
     Downloads the content, creates the folder structure, and generates
     story.json from the submission metadata.
     """
-    from posting.importer import import_from_inkbunny, import_from_sofurry, import_from_furaffinity
+    from posting.importer import (
+        import_from_inkbunny,
+        import_from_sofurry,
+        import_from_furaffinity,
+        import_from_ao3,
+        import_from_squidgeworld,
+    )
 
     if platform not in IMPORT_PLATFORMS:
         raise HTTPException(
@@ -2833,6 +2841,10 @@ async def import_submission(platform: str, submission_id: str):
             result = await import_from_sofurry(submission_id)
         elif platform == "fa":
             result = await import_from_furaffinity(submission_id)
+        elif platform == "ao3":
+            result = await import_from_ao3(submission_id)
+        elif platform == "sqw":
+            result = await import_from_squidgeworld(submission_id)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
     except RuntimeError as e:

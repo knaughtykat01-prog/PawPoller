@@ -848,7 +848,10 @@ def build_epub(story_dir: str | Path, output_path: str | Path | None = None,
 
     title = fm.title or story_meta.get("title") or story_dir.name
     author = fm.byline or story_meta.get("author") or "Unknown Author"
-    subtitle = fm.subtitle
+    # story.json's subtitle (set via the metadata drawer) takes precedence
+    # over the MASTER.md `<!-- @subtitle -->` anchor — the drawer is the
+    # canonical UI surface for editing this field.
+    subtitle = (story_meta.get("subtitle") or fm.subtitle or "").strip() or None
     year = year or datetime.now().year
 
     # ---- Pick cover

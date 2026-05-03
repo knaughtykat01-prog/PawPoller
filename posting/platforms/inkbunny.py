@@ -221,6 +221,28 @@ class InkbunnyPoster(PlatformPoster):
             logger.warning("IB probe_exists(%s) failed: %s", external_id, e)
             return None
 
+    async def probe_draft_state(self, external_id: str) -> bool | None:
+        """True if the IB submission is held / not publicly listed.
+
+        IB's `public` field reads "yes" / "no" — "no" covers held / under-
+        review / friends-only / scrap-equivalent states. Treat all of those
+        as "draft" so the user gets a single visual signal in the matrix
+        even though IB has a slightly fuzzier private/public spectrum than
+        FA's binary scrap toggle.
+        """
+        try:
+            client = await self._ensure_client()
+            details = await client.get_submission_details([int(external_id)])
+            if not details:
+                return None
+            public = (details[0].public or "").strip().lower()
+            if public in ("yes", "no"):
+                return public == "no"
+            return None
+        except Exception as e:
+            logger.warning("IB probe_draft_state(%s) failed: %s", external_id, e)
+            return None
+
     async def replace_file(self, external_id: str, file_path: str) -> PostResult:
         """Replace the story text on an existing Inkbunny submission.
 

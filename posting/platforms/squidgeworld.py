@@ -606,6 +606,37 @@ class SquidgeWorldPoster(PlatformPoster):
             logger.warning("SqW probe_exists(%s) failed: %s", external_id, e)
             return None
 
+    async def probe_draft_state(self, external_id: str) -> bool | None:
+        """True if the SqW work was Posted Without Preview (draft).
+
+        SqW runs the same OTW Archive codebase as AO3, so the draft
+        surface is identical: the preview page renders a "Post" button
+        on drafts and live works lack it. See
+        ``AO3Poster.probe_draft_state`` for the heuristics.
+        """
+        try:
+            client = await self._ensure_client()
+            if not client._logged_in:
+                if not await client.ensure_logged_in():
+                    return None
+            resp = await client._http.get(
+                f"https://squidgeworld.org/works/{external_id}/preview",
+                follow_redirects=True,
+            )
+            if resp.status_code == 404:
+                return None
+            if resp.status_code != 200:
+                return None
+            html = resp.text
+            if 'name="post_button"' in html or ('value="Post"' in html and 'name="preview_button"' in html):
+                return True
+            if 'id="kudos"' in html or 'id="comments"' in html:
+                return False
+            return None
+        except Exception as e:
+            logger.warning("SqW probe_draft_state(%s) failed: %s", external_id, e)
+            return None
+
     async def replace_file(self, external_id: str, file_path: str) -> PostResult:
         """Replace the first chapter's content from a single file.
 

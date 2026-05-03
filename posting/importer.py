@@ -586,3 +586,211 @@ async def import_from_furaffinity(submission_id: str) -> dict:
     )
 
     return {"story_name": story_name, "title": title}
+
+
+# ---------------------------------------------------------------------------
+# OTW Archive (AO3 / SqW) — shared work-page parsing
+# ---------------------------------------------------------------------------
+
+def _parse_otw_work_page(html_text: str) -> dict:
+    """Pull title/author/summary/rating/tags/chapters out of an OTW work page.
+
+    Both AO3 and SqW run the same Rails app, so the markup structure is
+    identical. Selector-based parsing kept simple — falls back to empty
+    strings when a field isn't found rather than failing the whole import.
+    Chapter splitting respects ``?view_full_work=true`` mode where every
+    chapter renders inside ``<div id="chapter-N" class="chapter">``.
+    """
+    out = {
+        "title": "",
+        "author": "",
+        "summary": "",
+        "rating": "general",
+        "tags": [],
+        "chapters": [],  # list of dict(title=..., html=...)
+    }
+
+    title_m = re.search(r'<h2[^>]*class="title heading"[^>]*>(.*?)</h2>', html_text, re.DOTALL)
+    if title_m:
+        out["title"] = re.sub(r'<[^>]+>', '', title_m.group(1)).strip()
+
+    author_m = re.search(r'<h3[^>]*class="byline heading"[^>]*>(.*?)</h3>', html_text, re.DOTALL)
+    if author_m:
+        out["author"] = re.sub(r'<[^>]+>', '', author_m.group(1)).strip()
+
+    summary_m = re.search(r'<div[^>]*class="summary module"[^>]*>(.*?)</div>\s*</div>', html_text, re.DOTALL)
+    if summary_m:
+        block = summary_m.group(1)
+        ub = re.search(r'<blockquote[^>]*>(.*?)</blockquote>', block, re.DOTALL)
+        if ub:
+            out["summary"] = _html_to_markdown(ub.group(1))
+
+    rating_m = re.search(r'<dd[^>]*class="rating tags"[^>]*>(.*?)</dd>', html_text, re.DOTALL)
+    if rating_m:
+        rtxt = re.sub(r'<[^>]+>', ' ', rating_m.group(1)).strip().lower()
+        if "explicit" in rtxt:
+            out["rating"] = "explicit"
+        elif "mature" in rtxt:
+            out["rating"] = "mature"
+        elif "teen" in rtxt:
+            out["rating"] = "teen"
+        elif "general" in rtxt:
+            out["rating"] = "general"
+
+    # Freeform tags (the user-authored ones — closest to our tag list)
+    free_m = re.search(r'<dd[^>]*class="freeform tags"[^>]*>(.*?)</dd>', html_text, re.DOTALL)
+    if free_m:
+        out["tags"] = re.findall(r'>([^<]+)</a>', free_m.group(1))
+
+    # Chapters — when fetched via ?view_full_work=true OTW renders each
+    # chapter inside <div id="chapter-N" class="chapter">.
+    chapter_blocks = re.findall(
+        r'<div[^>]*id="chapter-\d+"[^>]*class="[^"]*chapter[^"]*"[^>]*>(.*?)</div>\s*(?=<div[^>]*id="chapter-|<div[^>]*id="work_endnotes|$)',
+        html_text,
+        re.DOTALL,
+    )
+    if chapter_blocks:
+        for blk in chapter_blocks:
+            ch_title_m = re.search(r'<h3[^>]*class="title"[^>]*>(.*?)</h3>', blk, re.DOTALL)
+            ch_title = re.sub(r'<[^>]+>', '', ch_title_m.group(1)).strip() if ch_title_m else ""
+            body_m = re.search(
+                r'<div[^>]*class="userstuff[^"]*module"[^>]*>(.*?)</div>',
+                blk,
+                re.DOTALL,
+            )
+            ch_body = body_m.group(1) if body_m else blk
+            out["chapters"].append({"title": ch_title, "html": ch_body})
+    else:
+        # Single-chapter work — body lives in a single <div class="userstuff">.
+        body_m = re.search(
+            r'<div[^>]*id="chapters"[^>]*>(.*?)<!--/content-->',
+            html_text,
+            re.DOTALL,
+        )
+        if body_m:
+            out["chapters"] = [{"title": "", "html": body_m.group(1)}]
+
+    return out
+
+
+async def import_from_ao3(submission_id: str) -> dict:
+    """Download an AO3 work and create a local story folder.
+
+    Uses the existing AO3Client (which routes through the CF Worker
+    proxy on desktop / direct on server) so authenticated drafts work
+    too. Fetches the work via ``?view_full_work=true`` so all chapters
+    arrive in one response, then converts each chapter's userstuff
+    block to markdown and concatenates them into MASTER.md.
+    """
+    from clients.ao3.client import AO3Client
+
+    settings = config.get_settings()
+    ao3_username = settings.get("ao3_username", "")
+    ao3_password = settings.get("ao3_password", "")
+    proxy_url = settings.get("cf_worker_url", "")
+    proxy_key = settings.get("cf_worker_key", "")
+
+    if not ao3_username or not ao3_password:
+        raise RuntimeError("AO3 credentials not configured — set up in Settings")
+
+    client = AO3Client(
+        username=ao3_username,
+        password=ao3_password,
+        proxy_url=proxy_url,
+        proxy_key=proxy_key,
+    )
+
+    try:
+        if not await client.ensure_logged_in():
+            raise RuntimeError("Could not log in to AO3")
+        resp = await client._http.get(
+            f"https://archiveofourown.org/works/{submission_id}?view_full_work=true&view_adult=true",
+            follow_redirects=True,
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"AO3 returned {resp.status_code} for work {submission_id}")
+        parsed = _parse_otw_work_page(resp.text)
+    finally:
+        await client.close()
+
+    title = parsed["title"] or f"AO3_{submission_id}"
+    author = parsed["author"] or ao3_username
+    chapters = parsed["chapters"] or [{"title": "", "html": "(No content extracted)"}]
+
+    # Build MASTER.md content — one chapter per heading.
+    parts = []
+    for i, ch in enumerate(chapters, 1):
+        head = ch["title"] or f"Chapter {i}"
+        parts.append(f"# {head}\n\n{_html_to_markdown(ch['html'])}")
+    content = ("\n\n---\n\n".join(parts)) if parts else "(No content)"
+
+    folder_name = _sanitize_folder_name(title)
+    story_name = _create_story_folder(
+        name=folder_name,
+        title=title,
+        author=author,
+        description=parsed["summary"],
+        tags=parsed["tags"],
+        rating=parsed["rating"],
+        content=content,
+        content_format="text",  # already converted to markdown above
+        cover_url="",
+        platform="ao3",
+        submission_id=str(submission_id),
+        source_url=f"https://archiveofourown.org/works/{submission_id}",
+    )
+    return {"story_name": story_name, "title": title, "chapter_count": len(chapters)}
+
+
+async def import_from_squidgeworld(submission_id: str) -> dict:
+    """Download a SqW work — same OTW Rails layout as AO3, different host."""
+    from clients.sqw.client import SqWClient
+
+    settings = config.get_settings()
+    sqw_username = settings.get("sqw_username", "")
+    sqw_password = settings.get("sqw_password", "")
+
+    if not sqw_username or not sqw_password:
+        raise RuntimeError("SqW credentials not configured — set up in Settings")
+
+    client = SqWClient(username=sqw_username, password=sqw_password)
+
+    try:
+        if not await client.ensure_logged_in():
+            raise RuntimeError("Could not log in to SqW")
+        resp = await client._http.get(
+            f"https://squidgeworld.org/works/{submission_id}?view_full_work=true&view_adult=true",
+            follow_redirects=True,
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"SqW returned {resp.status_code} for work {submission_id}")
+        parsed = _parse_otw_work_page(resp.text)
+    finally:
+        await client.close()
+
+    title = parsed["title"] or f"SqW_{submission_id}"
+    author = parsed["author"] or sqw_username
+    chapters = parsed["chapters"] or [{"title": "", "html": "(No content extracted)"}]
+
+    parts = []
+    for i, ch in enumerate(chapters, 1):
+        head = ch["title"] or f"Chapter {i}"
+        parts.append(f"# {head}\n\n{_html_to_markdown(ch['html'])}")
+    content = ("\n\n---\n\n".join(parts)) if parts else "(No content)"
+
+    folder_name = _sanitize_folder_name(title)
+    story_name = _create_story_folder(
+        name=folder_name,
+        title=title,
+        author=author,
+        description=parsed["summary"],
+        tags=parsed["tags"],
+        rating=parsed["rating"],
+        content=content,
+        content_format="text",
+        cover_url="",
+        platform="sqw",
+        submission_id=str(submission_id),
+        source_url=f"https://squidgeworld.org/works/{submission_id}",
+    )
+    return {"story_name": story_name, "title": title, "chapter_count": len(chapters)}

@@ -299,6 +299,8 @@ const MetaEditor = {
 
         const descVal = md.description || '';
         const summaryVal = md.summary || '';
+        const subtitleVal = md.subtitle || '';
+        const dedicationVal = md.dedication || '';
 
         body.innerHTML = `
             <section class="metadata-section" data-section="info" data-expanded="true">
@@ -315,6 +317,10 @@ const MetaEditor = {
                     <div class="metadata-field">
                         <label for="meta-author">Author</label>
                         <input type="text" id="meta-author" data-field="author" value="${this._escape(md.author || '')}" autocomplete="off" />
+                    </div>
+                    <div class="metadata-field">
+                        <label for="meta-subtitle">Subtitle / tagline</label>
+                        <input type="text" id="meta-subtitle" data-field="subtitle" value="${this._escape(subtitleVal)}" autocomplete="off" placeholder="Optional — appears under the title on the EPUB title page" />
                     </div>
                     <div class="metadata-field">
                         <label for="meta-fandom">Fandom</label>
@@ -343,6 +349,10 @@ const MetaEditor = {
                     <div class="metadata-field">
                         <label for="meta-summary">Summary <span class="metadata-char-counter" id="meta-summary-counter"></span></label>
                         <textarea id="meta-summary" data-field="summary" rows="8">${this._escape(summaryVal)}</textarea>
+                    </div>
+                    <div class="metadata-field">
+                        <label for="meta-dedication">Dedication</label>
+                        <textarea id="meta-dedication" data-field="dedication" rows="3" placeholder="Optional — appears as its own page in the EPUB before the author's note">${this._escape(dedicationVal)}</textarea>
                     </div>
                     ${this._renderPerPlatformDescs()}
                 </div>

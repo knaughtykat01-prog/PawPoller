@@ -100,6 +100,10 @@ class SubmissionDetail(BaseModel):
     comments_count: str = "0"
     description: str = ""                     # Full description HTML
     keywords: list[Keyword] = []              # Tags/keywords attached to the submission
+    # IB exposes "public" as "yes" / "no" — submissions held / under review
+    # / set to friends-only return "no". Used by the draft-state probe to
+    # surface unpublished works in the publish-check matrix.
+    public: str = ""
 
     def to_db_dict(self) -> dict:
         """Normalise the API response into a clean dict suitable for database storage.
