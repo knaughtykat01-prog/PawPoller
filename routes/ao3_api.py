@@ -32,7 +32,9 @@ ao3_router = APIRouter(prefix="/api/ao3")
 def ao3_auth_status():
     """Check whether AO3 credentials exist and whether there is any AO3 data."""
     settings = config.get_settings()
-    has_credentials = bool(settings.get("ao3_username")) and bool(settings.get("ao3_password"))
+    has_password = bool(settings.get("ao3_username")) and bool(settings.get("ao3_password"))
+    has_cookie = bool(settings.get("ao3_session_cookie"))
+    has_credentials = has_password or has_cookie
     has_data = False
     conn = get_connection()
     try:
@@ -44,6 +46,8 @@ def ao3_auth_status():
         conn.close()
     return {
         "has_credentials": has_credentials,
+        "has_password": has_password,
+        "has_cookie": has_cookie,
         "has_data": has_data,
         "username": settings.get("ao3_target_user", ""),
     }
@@ -53,31 +57,35 @@ def ao3_auth_status():
 async def ao3_connect(body: dict):
     """Validate AO3 credentials by attempting login.
 
-    Auth flow:
-      1. Receive login username + password + target user from the frontend
-      2. Create a temporary AO3Client and attempt login
-      3. If login succeeds, save credentials to settings.json
+    Two auth modes are supported:
+      1. Password: receive username + password + target_user; do a Rails
+         form login and persist the password.
+      2. Cookie: receive `session_cookie` (`_otwarchive_session` from the
+         user's browser) + target_user; skip the rate-limited login form
+         and validate the cookie against /users/{target_user}. This
+         bypasses AO3's per-IP login throttle which routinely locks out
+         datacenter IPs for 5–60 minutes after a single failed probe.
     """
     username = body.get("username", "").strip()
     password = body.get("password", "").strip()
     target_user = body.get("target_user", "").strip()
+    session_cookie = body.get("session_cookie", "").strip()
 
-    if not username or not password:
-        raise HTTPException(400, "Username and password are required")
     if not target_user:
         raise HTTPException(400, "Target user is required (the AO3 user to track)")
 
+    cookie_mode = bool(session_cookie)
+    if not cookie_mode and (not username or not password):
+        raise HTTPException(400, "Provide either a session cookie or username + password")
+
     settings = config.get_settings()
-    # Validate against the persistent singleton so the successful login
-    # leaves a live, reusable session in place — instead of authenticating,
-    # closing the client, and forcing the next import or poll to relogin
-    # from cold (which trips AO3's per-IP login throttle for ~10 min).
     from polling.ao3_poller import _get_or_create_client
     overlay = {
         **settings,
-        "ao3_username": username,
-        "ao3_password": password,
+        "ao3_username": username or settings.get("ao3_username", ""),
+        "ao3_password": password or settings.get("ao3_password", ""),
         "ao3_target_user": target_user,
+        "ao3_session_cookie": session_cookie,
     }
     client = _get_or_create_client(overlay)
     try:
@@ -86,14 +94,22 @@ async def ao3_connect(body: dict):
         raise HTTPException(502, f"Failed to validate credentials: {e}")
 
     if not result:
+        if cookie_mode:
+            raise HTTPException(401, "Cookie validation failed — copy a fresh `_otwarchive_session` value from your browser (it must be the URL-decoded value, often beginning with a long base64-like string).")
         raise HTTPException(401, "Login failed — check your username and password.")
 
-    config.save_settings({
-        "ao3_username": username,
-        "ao3_password": password,
+    saved = {
         "ao3_target_user": target_user,
         "ao3_notifications_enabled": True,
-    })
+    }
+    if cookie_mode:
+        saved["ao3_session_cookie"] = session_cookie
+        if username:
+            saved["ao3_username"] = username
+    else:
+        saved["ao3_username"] = username
+        saved["ao3_password"] = password
+    config.save_settings(saved)
 
     return {"status": "success", "message": f"Connected — tracking {target_user}"}
 
@@ -101,7 +117,9 @@ async def ao3_connect(body: dict):
 @ao3_router.post("/auth/disconnect")
 def ao3_disconnect():
     """Clear AO3 credentials from settings."""
-    config.delete_settings_keys(["ao3_username", "ao3_password", "ao3_target_user"])
+    config.delete_settings_keys([
+        "ao3_username", "ao3_password", "ao3_target_user", "ao3_session_cookie",
+    ])
     config.save_settings({"ao3_notifications_enabled": False})
     return {"status": "success", "message": "AO3 disconnected"}
 

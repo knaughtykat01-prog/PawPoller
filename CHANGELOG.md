@@ -4,6 +4,57 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.8] - 2026-05-03
+
+### AO3: cookie-based auth as alternative to username/password
+
+AO3's per-IP login throttle is the long pole on datacenter
+deployments — a single failed login probe locks the IP out for
+5–60 minutes ("Retry later" 429), and the CF Worker proxy IP can
+sit in the same cooldown if it's been used to probe. Working
+around that with retries makes it worse.
+
+Cookie auth sidesteps the rate-limited login endpoint entirely:
+the user copies `_otwarchive_session` from their already-logged-in
+browser and pastes it into the AO3 connect form. The server
+injects it into the httpx cookie jar, marks the client logged in,
+and never touches `/users/login`. Same pattern FA / DA already
+use.
+
+Changed:
+
+- `clients/ao3/client.py:AO3Client.__init__` accepts
+  `session_cookie=""`. When truthy: cookie is set on the httpx
+  client at `domain="archiveofourown.org"` and `_logged_in=True`
+  is asserted up front. `update_credentials()` updates / clears
+  the cookie in place without rebuilding the client.
+- `AO3Client.ensure_logged_in()` returns False (with a clear log
+  message asking the user to repaste) when a cookie is set but
+  AO3 says we're logged out. It will *not* fall back to form
+  login — that defeats the rate-limit-avoidance whole point.
+- `polling/ao3_poller.py:_get_or_create_client` reads
+  `ao3_session_cookie` from settings and passes it through.
+- `routes/ao3_api.py:/auth/connect` now accepts an optional
+  `session_cookie` field. If provided, password becomes optional;
+  validation goes through the same singleton path so a successful
+  cookie validation leaves a warm client behind.
+- `/auth/status` reports `has_password` and `has_cookie`
+  separately for the UI.
+- `/auth/disconnect` clears the cookie alongside other creds.
+- Settings → AO3 connect form has a collapsible "Advanced: paste
+  session cookie instead" section with the value field plus a
+  short how-to.
+- `config.py:CREDENTIAL_FIELDS` adds `ao3_session_cookie` so the
+  cookie is encrypted in the vault and never written to plaintext
+  settings.json.
+
+**Why not auto-fall-back to login on cookie expiry:** the cookie
+is long-lived (~1 year on AO3) and rotates only on logout. Auto
+re-login on a stale cookie would re-trip the rate limiter that
+cookie auth exists to avoid. Re-pasting on expiry is the right UX.
+
+---
+
 ## [2.18.7] - 2026-05-03
 
 ### CF Proxy: true fallback semantics, not "always on"

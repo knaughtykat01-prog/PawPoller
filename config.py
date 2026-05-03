@@ -424,7 +424,7 @@ CREDENTIAL_FIELDS = frozenset({
     "sqw_username", "sqw_password",
     "sqw_author_username", "sqw_author_password",
     # AO3
-    "ao3_username", "ao3_password",
+    "ao3_username", "ao3_password", "ao3_session_cookie",
     # DeviantArt
     "da_cookie",
     # Bluesky
@@ -628,7 +628,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.18.7"
+APP_VERSION = "2.18.8"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

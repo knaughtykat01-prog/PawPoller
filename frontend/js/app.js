@@ -6808,9 +6808,16 @@ const App = {
                     ` : `
                     <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to AO3 with a login account and specify the user to track.</p>
                     <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
-                        <input type="text" id="ao3-username" class="search-input" placeholder="Login username">
-                        <input type="password" id="ao3-password" class="search-input" placeholder="Login password">
+                        <input type="text" id="ao3-username" class="search-input" placeholder="Login username (optional if using cookie)">
+                        <input type="password" id="ao3-password" class="search-input" placeholder="Login password (optional if using cookie)">
                         <input type="text" id="ao3-target-user" class="search-input" placeholder="Target user to track">
+                        <details style="margin-top:6px">
+                            <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Advanced: paste session cookie instead</summary>
+                            <div style="margin-top:6px">
+                                <input type="password" id="ao3-session-cookie" class="search-input" placeholder="_otwarchive_session cookie value">
+                                <p style="font-size:11px;color:var(--text-muted);margin-top:4px;line-height:1.4">From your logged-in browser: DevTools → Application → Cookies → archiveofourown.org → copy the <code>_otwarchive_session</code> value. Bypasses AO3's per-IP login throttle (recommended when running on a server).</p>
+                            </div>
+                        </details>
                     </div>
                     <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
                         <button class="btn btn-primary" id="ao3-connect-btn">Connect</button>
@@ -8222,8 +8229,15 @@ const App = {
                     const username = document.getElementById('ao3-username').value.trim();
                     const password = document.getElementById('ao3-password').value;
                     const target_user = document.getElementById('ao3-target-user').value.trim();
-                    if (!username || !password || !target_user) {
-                        msg.textContent = 'All fields required';
+                    const sessionCookieEl = document.getElementById('ao3-session-cookie');
+                    const session_cookie = sessionCookieEl ? sessionCookieEl.value.trim() : '';
+                    if (!target_user) {
+                        msg.textContent = 'Target user required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    if (!session_cookie && (!username || !password)) {
+                        msg.textContent = 'Provide session cookie OR username + password';
                         msg.style.color = 'var(--danger)';
                         return;
                     }
@@ -8231,7 +8245,7 @@ const App = {
                     ao3ConnectBtn.textContent = 'Connecting...';
                     msg.textContent = '';
                     try {
-                        await API.ao3Connect({ username, password, target_user });
+                        await API.ao3Connect({ username, password, target_user, session_cookie });
                         msg.textContent = 'Connected!';
                         msg.style.color = 'var(--success)';
                         setTimeout(() => this.renderSettings(), 1000);

@@ -838,6 +838,7 @@ async def import_from_ao3(submission_id: str) -> dict:
             username=ao3_username,
             password=ao3_password,
             target_user=settings.get("ao3_target_user", "") or ao3_username,
+            session_cookie=settings.get("ao3_session_cookie", ""),
             **creds,
         )
         try:

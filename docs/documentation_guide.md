@@ -2595,7 +2595,7 @@ Pollers read via config.get_settings() each cycle
 | Weasyl | API key | `ws_api_key` | Generate at weasyl.com/control/apikeys |
 | SoFurry | Email/password → session | `sf_username` (email!), `sf_password`, `sf_display_name` | SF account email + profile handle |
 | SquidgeWorld | User/pass + CSRF | `sqw_username`, `sqw_password`, `sqw_target_user` | Login account + tracked user's username |
-| AO3 | User/pass + CSRF | `ao3_username`, `ao3_password`, `ao3_target_user` | Login account + tracked user's username |
+| AO3 | User/pass + CSRF **or** session cookie | `ao3_username`, `ao3_password`, `ao3_target_user`, `ao3_session_cookie` (optional, takes precedence) | Login account + tracked user. **Cookie mode** (2.18.8+): paste `_otwarchive_session` from your browser to bypass the per-IP login throttle — recommended on datacenter/server deployments |
 | DeviantArt | Browser cookie string | `da_cookie`, `da_target_user` | Full cookie string from browser DevTools |
 | Wattpad | None (public) | `wp_target_user` | Just the username to track |
 | Itaku | None (public) | `ik_target_user` | Just the username to track |

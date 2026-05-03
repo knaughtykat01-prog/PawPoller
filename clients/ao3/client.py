@@ -60,10 +60,12 @@ class AO3Client:
     """Async HTTP client for Archive of Our Own (OTW Archive)."""
 
     def __init__(self, username: str, password: str, target_user: str,
-                 proxy_url: str = "", proxy_key: str = ""):
+                 proxy_url: str = "", proxy_key: str = "",
+                 session_cookie: str = ""):
         self.username = username
         self.password = password
         self.target_user = target_user
+        self._session_cookie = session_cookie.strip()
 
         # Use Cloudflare Worker proxy if configured — bypasses AO3's
         # "Shields are up!" Cloudflare TLS fingerprint check on
@@ -85,18 +87,61 @@ class AO3Client:
         self._logged_in = False
         self._pseud_id: str | None = None  # cached after first form fetch
 
+        # Cookie-based auth: when the user pastes their own browser's
+        # `_otwarchive_session` cookie we skip the username/password login
+        # entirely. AO3's per-IP login throttle (5–10 min cooldown after
+        # one bad attempt) makes cold-login from datacenter IPs unreliable;
+        # the cookie path bypasses the rate-limited login endpoint and
+        # uses the user's already-warm browser session instead. The cookie
+        # is long-lived (~1 year on AO3) and rotates only on logout.
+        if self._session_cookie:
+            self._http.cookies.set(
+                "_otwarchive_session",
+                self._session_cookie,
+                domain="archiveofourown.org",
+                path="/",
+            )
+            self._logged_in = True
+            logger.info("AO3 client using pasted session cookie (skipping form login)")
+
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, *exc):
         await self.close()
 
-    def update_credentials(self, username: str, password: str, target_user: str) -> None:
+    def update_credentials(self, username: str, password: str, target_user: str,
+                           session_cookie: str = "") -> None:
+        cookie = (session_cookie or "").strip()
         if username != self.username or password != self.password:
-            self._logged_in = False
+            # Only flip logged_in off when we don't have a fresh cookie
+            # to lean on; otherwise the cookie keeps the session alive.
+            if not cookie:
+                self._logged_in = False
         self.username = username
         self.password = password
         self.target_user = target_user
+
+        if cookie and cookie != self._session_cookie:
+            self._session_cookie = cookie
+            self._http.cookies.set(
+                "_otwarchive_session",
+                cookie,
+                domain="archiveofourown.org",
+                path="/",
+            )
+            self._logged_in = True
+            logger.info("AO3 client: session cookie updated from settings")
+        elif not cookie and self._session_cookie:
+            # Cookie cleared from settings — drop it and fall back to login.
+            self._session_cookie = ""
+            try:
+                self._http.cookies.delete(
+                    "_otwarchive_session", domain="archiveofourown.org", path="/"
+                )
+            except Exception:
+                pass
+            self._logged_in = False
 
     async def close(self) -> None:
         await self._http.aclose()
@@ -367,6 +412,19 @@ class AO3Client:
                 )
                 return True
             self._logged_in = False
+
+        # Cookie-only mode: don't fall back to form login if the user
+        # pasted a session cookie. If it's stale they need to repaste
+        # from their browser — burning the per-IP login quota when the
+        # whole point of cookie auth was to avoid that endpoint defeats
+        # the purpose.
+        if self._session_cookie:
+            logger.error(
+                "AO3: pasted session cookie no longer logged in. "
+                "Re-copy `_otwarchive_session` from your browser and update "
+                "the AO3 settings.",
+            )
+            return False
         return await self.login()
 
     async def validate_session(self) -> str | None:
