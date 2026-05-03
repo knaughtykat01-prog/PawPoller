@@ -73,8 +73,21 @@ async def sf_connect(body: dict):
     if not display_name:
         raise HTTPException(400, "Display name is required (your SoFurry profile name)")
 
-    client = SoFurryClient(username=username, password=password, totp_code=totp_code,
-                           display_name=display_name)
+    # Validate against the persistent singleton so a successful login
+    # leaves a live session in place (with SF's session cookies cached)
+    # for the next poll cycle and any subsequent imports to reuse.
+    from polling.sf_poller import _get_or_create_client
+    overlay = {
+        **config.get_settings(),
+        "sf_username": username,
+        "sf_password": password,
+        "sf_display_name": display_name,
+    }
+    client = _get_or_create_client(overlay)
+    # TOTP code is request-scoped — it's not in settings, so apply it
+    # directly. The singleton accessor doesn't know about it.
+    if totp_code:
+        client.totp_code = totp_code
     cookie_data = None
     try:
         display_name = await client.validate_session()
@@ -82,8 +95,6 @@ async def sf_connect(body: dict):
             cookie_data = client.export_cookies()
     except Exception as e:
         raise HTTPException(502, f"Failed to validate credentials: {e}")
-    finally:
-        await client.close()
 
     if not display_name:
         raise HTTPException(401, "Login failed — check your email, password, and 2FA code.")

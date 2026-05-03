@@ -64,13 +64,15 @@ async def wp_connect(body: dict):
     if not target_user:
         raise HTTPException(400, "Target user is required (the Wattpad user to track)")
 
-    client = WPClient(target_user=target_user)
+    # Validate against the persistent singleton so a successful
+    # check leaves a live session in place for the next poll cycle.
+    from polling.wp_poller import _get_or_create_client
+    overlay = {**config.get_settings(), "wp_target_user": target_user}
+    client = _get_or_create_client(overlay)
     try:
         result = await client.validate_user()
     except Exception as e:
         raise HTTPException(502, f"Failed to validate user: {e}")
-    finally:
-        await client.close()
 
     if not result:
         raise HTTPException(404, "Wattpad user not found — check the username.")

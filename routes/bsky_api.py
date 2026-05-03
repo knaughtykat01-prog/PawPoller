@@ -67,13 +67,20 @@ async def bsky_connect(body: dict):
     if not app_password:
         raise HTTPException(400, "App password is required (generate one at bsky.app/settings)")
 
-    client = BskyClient(identifier=identifier, app_password=app_password)
+    # Validate against the persistent singleton so a successful login
+    # leaves a live session in place for the next poll cycle to reuse,
+    # instead of validating + closing + forcing the next call to relogin.
+    from polling.bsky_poller import _get_or_create_client
+    overlay = {
+        **config.get_settings(),
+        "bsky_identifier": identifier,
+        "bsky_app_password": app_password,
+    }
+    client = _get_or_create_client(overlay)
     try:
         handle = await client.validate_session()
     except Exception as e:
         raise HTTPException(502, f"Failed to validate credentials: {e}")
-    finally:
-        await client.close()
 
     if not handle:
         raise HTTPException(401, "Login failed — check identifier and app password. Use an App Password, not your account password.")

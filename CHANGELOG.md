@@ -4,6 +4,46 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.5] - 2026-05-03
+
+### Persistent sessions across all platforms with login flows
+
+Generalises the AO3 / SqW singleton-warming pattern from 2.18.4 to
+the rest of the platform fleet. Six more `auth/connect` endpoints
+now route through their poller's persistent client singleton rather
+than constructing a throwaway client and immediately closing it:
+
+- **Bluesky** (`/api/bsky/auth/connect`) — persists XRPC session.
+- **DeviantArt** (`/api/da/auth/connect`) — persists cookie session.
+- **Itaku** (`/api/ik/auth/connect`) — persists API connection pool.
+- **SoFurry** (`/api/sf/auth/connect`) — persists session cookies
+  (TOTP code is request-scoped and applied to the singleton just
+  for this validation call).
+- **X / Twitter** (`/api/tw/auth/connect`) — persists cookie session.
+- **Wattpad** (`/api/wp/auth/connect`) — persists API connection pool.
+
+Plus the IB importer (`posting/importer.py:import_from_inkbunny`)
+now reuses the cached SID the poller writes to the local DB after
+each successful login. IB calls `ensure_session(cached_sid)` instead
+of `login()`, falling back to a fresh `api_login.php` round-trip
+only when the cached SID has expired — back-to-back imports no
+longer cost a login per call.
+
+**Not changed:**
+- **FurAffinity** (`/api/fa/auth/connect`) — cookie-based, no
+  login flow to persist beyond the cookies themselves (which are
+  in settings already).
+- **Weasyl** (`/api/ws/auth/connect`) — API-key authenticated, no
+  session/login concept at all.
+
+The pattern across all eight platforms with login flows is now
+identical: `_get_or_create_client(settings_overlay)` returns a
+process-lifetime singleton; `auth/connect` validates against it;
+imports reuse it; poll cycles reuse it; nothing closes it. One
+session per platform per process.
+
+---
+
 ## [2.18.4] - 2026-05-03
 
 ### AO3 / SqW import: stop the cold-start re-login that trips AO3's rate limiter

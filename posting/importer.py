@@ -310,8 +310,21 @@ async def import_from_inkbunny(submission_id: str) -> dict:
 
     client = InkbunnyClient(username=username, password=password)
     try:
-        # Login and fetch the full submission with file URLs
-        await client.login()
+        # Reuse the cached session ID (SID) the poller writes to the DB
+        # after each successful login — that's IB's own form of session
+        # persistence. ensure_session() falls back to a fresh login only
+        # when the cached SID has expired, so back-to-back imports don't
+        # cost an api_login.php round-trip each.
+        conn = get_connection()
+        try:
+            cached = queries.get_cached_session(conn)
+        finally:
+            conn.close()
+        cached_sid = cached["sid"] if cached else None
+        cached_uid = cached.get("user_id", 0) if cached else 0
+        if cached_uid:
+            client.user_id = cached_uid
+        await client.ensure_session(cached_sid)
 
         # Use the raw API with show_writing=yes to get the file URL
         resp = await client._http.post(

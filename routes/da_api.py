@@ -68,13 +68,19 @@ async def da_connect(body: dict):
     if not target_user:
         raise HTTPException(400, "Target user is required (the DA user to track)")
 
-    client = DAClient(cookie_value=cookie, target_user=target_user)
+    # Validate against the persistent singleton so a successful
+    # validation leaves a live session in place for the next poll cycle.
+    from polling.da_poller import _get_or_create_client
+    overlay = {
+        **config.get_settings(),
+        "da_cookie": cookie,
+        "da_target_user": target_user,
+    }
+    client = _get_or_create_client(overlay)
     try:
         valid = await client.validate_cookies()
     except Exception as e:
         raise HTTPException(502, f"Failed to validate cookies: {e}")
-    finally:
-        await client.close()
 
     if not valid:
         raise HTTPException(401, "Cookies appear invalid — could not access gallery. Check values and try again.")
