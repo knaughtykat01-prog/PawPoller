@@ -758,7 +758,7 @@ async def import_from_ao3(submission_id: str) -> dict:
 
 async def import_from_squidgeworld(submission_id: str) -> dict:
     """Download a SqW work — same OTW Rails layout as AO3, different host."""
-    from clients.sqw.client import SqWClient
+    from clients.sqw.client import SquidgeWorldClient
 
     settings = config.get_settings()
     sqw_username = settings.get("sqw_username", "")
@@ -767,7 +767,7 @@ async def import_from_squidgeworld(submission_id: str) -> dict:
     if not sqw_username or not sqw_password:
         raise RuntimeError("SqW credentials not configured — set up in Settings")
 
-    client = SqWClient(
+    client = SquidgeWorldClient(
         username=sqw_username,
         password=sqw_password,
         target_user=settings.get("sqw_target_user", "") or sqw_username,
