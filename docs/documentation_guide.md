@@ -899,6 +899,65 @@ Step 6: Notifications
 Finalise: Update poll_log, release concurrency guard
 ```
 
+### Persistent client singletons (2.18.4 / 2.18.5)
+
+Every platform with a login flow keeps a process-lifetime client
+singleton inside its poller module — `polling/{ao3,sqw,bsky,da,ik,sf,tw,wp}_poller.py:_<platform>_client`.
+Three callers share each singleton:
+
+```
+auth/connect (routes/<platform>_api.py)
+    │  validates new credentials
+    │  uses _get_or_create_client(overlay) — leaves the live session
+    │  in place rather than discarding it
+    ▼
+import_from_<platform> (posting/importer.py)
+    │  reuses the warmed singleton — no fresh login
+    │  no client.close() — singleton outlives the request
+    ▼
+run_<platform>_poll_cycle (polling/<platform>_poller.py)
+    │  uses _get_or_create_client(settings) every cycle
+    │  ensure_logged_in() short-circuits when session is still alive
+```
+
+The accessor signature is identical across platforms:
+
+```python
+def _get_or_create_client(settings: dict) -> <Platform>Client:
+    global _<platform>_client
+    if _<platform>_client is None:
+        _<platform>_client = <Platform>Client(...)
+    else:
+        _<platform>_client.update_credentials(...)
+    return _<platform>_client
+```
+
+For `auth/connect`, callers overlay the new credentials onto a copy
+of `config.get_settings()` before passing — that way `update_credentials()`
+sees the to-be-validated values and applies them, but `settings.json`
+is only written *after* validation succeeds.
+
+`ensure_logged_in()` on AO3 and SqW clients is conservative: only
+flips `_logged_in=False` when the verification GET returns a fetched
+page that *positively lacks* the "Log Out" indicator. Transient
+failures (timeouts, 429-exhausted retries, Cloudflare blips) leave
+the session intact rather than triggering a doomed relogin that
+would re-trip per-IP rate limiters.
+
+**Three platforms don't follow this pattern:**
+
+- **Inkbunny** uses DB-cached session IDs (`session_cache` table,
+  populated by `client.save_session()` after each successful login).
+  The IB importer reads the cached SID and calls `ensure_session()`
+  rather than `login()` — same persistence outcome via a different
+  mechanism. The IB poller itself does not yet use a singleton.
+- **FurAffinity** is cookie-based; cookies live in settings.json and
+  there is no login flow to persist. The httpx pool is the only
+  thing closing/reopening the client throws away, and that's
+  marginal for one-shot validation calls.
+- **Weasyl** is API-key authenticated; same reasoning as FA. No
+  session concept exists.
+
 ### Inkbunny Poll Cycle — Full 6-Step Detail
 
 The IB poller (`polling/poller.py`) is the most feature-complete:
