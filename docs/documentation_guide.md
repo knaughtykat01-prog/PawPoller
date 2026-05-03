@@ -187,17 +187,22 @@ PawPoller/
 │
 ├── frontend/
 │   ├── index.html           # SPA shell (collapsible nav groups, bottom nav bar, sidebar overlay)
+│   ├── epub-viewer.html     # In-app EPUB reader (2.17.6+) — opened in new tab from editor Downloads dropdown
 │   ├── css/
-│   │   ├── tokens.css      # Design tokens (dark + light theme custom properties)
+│   │   ├── tokens.css      # Design tokens (8 themes via [data-theme=...] custom properties)
 │   │   ├── components.css  # UI components (cards, buttons, tables, accordions, charts)
+│   │   ├── editor.css      # Editor + drawer + matrix + downloads dropdown styles
 │   │   └── layout.css      # Page layout, sidebar, responsive breakpoints, bottom nav
-│   └── js/
-│       ├── app.js           # Hash-based SPA router, accordion nav, bottom nav, auto-refresh
-│       ├── api.js           # API client wrapper (~50 methods, get/post transport)
-│       ├── components.js    # UI components (~25: tables with mobile card transformation, cards, charts, modals)
-│       ├── charts.js        # Chart.js time-series and comparison chart factories
-│       ├── utils.js         # Formatting helpers (numbers, dates, relative time)
-│       └── vendor/          # Third-party libraries (Chart.js, QRCode.js)
+│   ├── js/
+│   │   ├── app.js           # Hash-based SPA router, accordion nav, bottom nav, auto-refresh
+│   │   ├── api.js           # API client wrapper (~50 methods, get/post transport)
+│   │   ├── components.js    # UI components (~25: tables with mobile card transformation, cards, charts, modals)
+│   │   ├── charts.js        # Chart.js time-series and comparison chart factories
+│   │   ├── editor.js        # Editor UI + anchor toolbar + format tabs + downloads dropdown
+│   │   ├── epub-viewer.js   # EPUB viewer logic (2.17.6+) — extracted from epub-viewer.html for CSP compliance
+│   │   ├── utils.js         # Formatting helpers (numbers, dates, relative time)
+│   │   └── vendor/          # Third-party libraries (Chart.js, QRCode.js)
+│   └── vendor/              # Page-level vendored libs (epub.js, jszip — used by epub-viewer.html)
 │
 ├── posting/
 │   ├── __init__.py          # Package docstring
@@ -1676,9 +1681,11 @@ The following security measures are applied in `dashboard.py` and across the cod
 | `X-Content-Type-Options` | `nosniff` | Prevent MIME-sniffing |
 | `X-Frame-Options` | `DENY` | Block iframe embedding (clickjacking) |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | Limit referrer leakage |
-| `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https:; connect-src 'self'; frame-ancestors 'none'` | Restrict resource loading |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'sha256-Wudo…SzA='; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src 'self' fonts.gstatic.com; img-src 'self' https:; connect-src 'self'; frame-ancestors 'none'` | Restrict resource loading |
 
-CSP rationale: All JS loaded via `<script src=...>` (zero inline scripts). Inline `style=` attributes require `'unsafe-inline'`. Platform CDN thumbnails need `https:`. All API calls are same-origin. When Cloudflare Turnstile is configured, `script-src` and `frame-src` automatically include `https://challenges.cloudflare.com`.
+CSP rationale: All JS loaded via `<script src=...>` *except* one tiny inline boot script in `index.html` (and byte-identical in `epub-viewer.html`) that sets `data-theme` + `data-mobile` synchronously to avoid a flash of default-dark. That script's SHA-256 hash is allowlisted; everything else inline is dropped. Inline `style=` attributes require `'unsafe-inline'`. Google Fonts CSS + woff2 binaries get explicit allowlist origins. Platform CDN thumbnails need `https:`. All API calls are same-origin. When Cloudflare Turnstile is configured, `script-src` and `frame-src` automatically include `https://challenges.cloudflare.com`.
+
+**Path-scoped CSP relaxation for `/epub-viewer.html`** — `_build_epub_viewer_csp()` returns a separate policy that allows `blob:` in `style-src`, `img-src`, `font-src`, `connect-src`, and `frame-src`. epub.js extracts the EPUB's stylesheets, fonts, and inline images into Blob URLs and references them from the rendered iframe; under the strict default the iframe loads chapter HTML with no styling. The middleware swaps to the relaxed CSP only when `request.url.path == "/epub-viewer.html"` so every other route keeps the strict default. Updating the inline-boot-script body in either `index.html` or `epub-viewer.html` requires recomputing both files' SHA-256 hashes (the browser prints the expected hash in console on a CSP violation).
 
 **CORS** — Configured via FastAPI `CORSMiddleware` with `allow_origins=[]` (no cross-origin requests). The SPA and API are same-origin, so no legitimate cross-origin requests should occur.
 
@@ -3454,6 +3461,60 @@ flagged in `story.json` by `posting/generate_story_json.py`. The
 regenerate route accepts an `epub_warning_position` field
 (`"front"` | `"after-title"`) for placement of the content-warning
 block. Validates cleanly against epubcheck 5.1.0 / EPUB 3.3.
+
+### EPUB Viewer (2.17.6+)
+
+Served at `GET /epub-viewer.html?story=X&file=EPUB/Y.epub` for
+in-dashboard previews of generated EPUBs. Wired from the editor's
+Downloads dropdown via a `.downloads-row-sub` "↗ Preview in browser"
+sub-row inserted directly under the EPUB row in
+`frontend/js/editor.js:_populateDownloadsMenu`. Opens in a new tab
+(`target="_blank"`).
+
+Files:
+- `frontend/vendor/epub.min.js` — epub.js 0.3.93, BSD-2
+- `frontend/vendor/jszip.min.js` — jszip 3.10.1, MIT
+- `frontend/vendor/README.md` — version/license tracking
+- `frontend/epub-viewer.html` — minimal page: 48px toolbar
+  (close × / title / ‹ prev / N% / next › / ↓ EPUB download),
+  full-bleed reader area, two invisible 18%-wide tap zones for
+  mobile prev/next. Loads `tokens.css` for theme-token resolution.
+  The inline `<head>` script is byte-identical to `index.html`'s
+  theme/mobile bootstrap so the existing CSP SHA-256 hash covers
+  it (`WudoxBejEmzS4SXsQBia7rsNZctlaFiey3RvF0r8SzA=`).
+- `frontend/js/epub-viewer.js` — viewer logic. Reads `?story=` /
+  `?file=` from URL, fetches the EPUB via `/api/posting/file`
+  (cookie carries same-origin), wires keyboard arrows + tap zones
+  + toolbar buttons, generates location index for the percent
+  indicator.
+
+`dashboard.py` plumbing:
+- `app.mount("/vendor", StaticFiles(...))` next to `/css` and `/js`
+- `_AUTH_EXEMPT_PREFIXES = ("/css/", "/js/", "/vendor/")` so vendored
+  libs load without auth (parity with the rest of the SPA assets)
+- `@app.get("/epub-viewer.html")` route reads the file and substitutes
+  `__APP_VERSION__` for cache busting on `tokens.css` + the viewer JS
+- Path-scoped `_build_epub_viewer_csp()` relaxation (see Security
+  Hardening section above) — without this the iframe renders chapter
+  HTML but with no styles or images, since epub.js uses blob: URLs
+  for everything it extracts from the EPUB archive
+
+Two non-obvious gotchas:
+1. **`ePub(url, { openAs: 'epub' })` is mandatory.** epub.js sniffs
+   the URL's *path* extension to pick archive vs. directory mode.
+   Our URL is `/api/posting/file?story=...&file=...epub` — the path
+   ends in `/file`, not `.epub` (the extension is in the query
+   string), so the sniff fails and the loader hangs trying to read
+   `META-INF/container.xml` as if the URL were an unzipped directory.
+   Forcing `openAs: 'epub'` skips the sniff.
+2. **Theme tokens don't cross the iframe boundary.** epub.js renders
+   the EPUB into a sandboxed iframe that doesn't inherit CSS custom
+   properties from the parent. `epub-viewer.js` resolves
+   `--bg-primary`, `--text-primary`, `--accent` from the parent's
+   computed style and passes the *concrete colour values* into
+   `rendition.themes.default()` — passing `var(--…)` would resolve
+   to the iframe's defaults (white / black) regardless of the
+   selected dashboard theme.
 
 ### Theme System (Styled HTML / PDF)
 

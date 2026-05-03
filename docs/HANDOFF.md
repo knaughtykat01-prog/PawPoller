@@ -1,9 +1,9 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-05-02
-**Current version:** 2.17.5 (housekeeping pass: `pawsync.py` now supports `--prune` / `--dry-run` for removing server-side top-level story orphans missing locally — closes the "manual `rm -rf` after deleting test stories" follow-up. Roadmap also corrected to mark the cache-buster consistency and CI pytest items as already-done — they were stale entries from before. Behaviour change is opt-in: default `pawsync` keeps the existing additive `tar xzf` semantics. EPUB output format + on-device downloads. 2.17.0 shipped a Vellum-style EPUB 3.0 generator at `editor/epub_generator.py` — cover → title page → copyright → author's note → content warning → chapters with word-form numbers ("Part One") and a roman drop cap on the first paragraph that preserves italic-narration body style. Reuses `parse_front_matter` from converter.py so the input contract matches every other regenerate format. Validated under epubcheck 5.1.0 / EPUB 3.3 — 0/0/0/0. 2.17.1 fixed three visual issues from a Hypnotic_Claim eyeball pass: chapter heading was dropping the "Part" prefix (now joined with the word-form number), trailing `---` between chapters was emitting a stray `<hr>` that produced a blank page in some readers (now stripped per chapter), and text-message styling reworked into a sender-tagged card layout that works whether or not the source uses `@text-sent`/`@text-received` anchors. 2.17.2 moved the EPUB output from `Markdown/{stem}.epub` to its own `EPUB/` folder matching the existing format-folder convention; `posting/generate_story_json.py` extended to auto-discover the new folder and flip `formats["epub"] = True`. 2.17.3 added per-format and whole-story downloads as a mobile-test workflow — `.epub` allowlisted in `/api/posting/file`, new `/api/posting/archive` endpoint streams the entire story folder (excluding `Backups/`) as a zip, surfaced via a "Download all (zip)" footer on the Available Formats card AND a new "Downloads ▾" dropdown in the editor toolbar. 2.17.4 cleaned up the editor downloads dropdown: one row per format in a fixed sensible order (EPUB → PDF → Styled HTML → Clean HTML → SoFurry HTML → BBCode → Markdown), per-chapter formats hidden, friendly labels, proper CSS (label left, muted size right, bordered zip footer). Earlier in the session: Mobile Mode Phase 5 sweep + backlog cleanup through 2.16.14 — see CHANGELOG for the BUG-* references closed.)
-**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — running 2.17.5 (deployed 2026-05-02, confirmed via `/api/health`).
-**GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.13.8 — last tagged release. Master is now 23 versions ahead (2.13.9 → 2.17.5). Tag drift covered in "CI / release pipeline state" section below; cutting a fresh tag is a single `git tag v2.17.5 && git push --tags` away when there's appetite.
+**Last updated:** 2026-05-03
+**Current version:** 2.17.6 (in-app EPUB viewer — closes the "EPUB is download-only" follow-up from 2.17.4. Vendors `epub.js` 0.3.93 + `jszip` 3.10.1 to `frontend/vendor/` (~315KB), adds `frontend/epub-viewer.html` + `frontend/js/epub-viewer.js`, and a `GET /epub-viewer.html` route in `dashboard.py` with a scoped CSP relaxation that allows `blob:` for style/img/font/connect/frame on that one path only — the rest of the dashboard keeps the strict default. The editor's Downloads dropdown grows a "↗ Preview in browser" sub-row directly under the EPUB row that opens the viewer in a new tab. Two CSP gotchas during the Playwright-driven QA pass: (1) inline scripts in `epub-viewer.html` were blocked because the dashboard CSP only allowlists one specific SHA-256 hash (the `index.html` theme bootstrap) — fixed by extracting viewer logic to `/js/epub-viewer.js` and copying `index.html`'s boot script byte-for-byte so the existing hash covers it; (2) epub.js extracts the EPUB's stylesheets/fonts/images into `blob:` URLs which the strict CSP dropped — fixed via the path-scoped CSP. End-to-end verified on the live VM: cover → title → author's note → chapter content all render with two-column spread, italic narration in Crimson Pro, percent indicator updates, prev/next + tap zones + keyboard arrows all advance pages. 2.17.5 — `pawsync.py` now supports `--prune` / `--dry-run` for removing server-side top-level story orphans missing locally. 2.17.0–2.17.4 — Vellum-style EPUB 3.0 generator at `editor/epub_generator.py` validated under epubcheck 5.1.0 / EPUB 3.3 (0/0/0/0); EPUB lives in its own `EPUB/{stem}.epub` folder, `.epub` allowlisted in `/api/posting/file`, whole-story `.zip` archive endpoint, downloads dropdown polished. Earlier in the session: Mobile Mode Phase 5 sweep + backlog cleanup through 2.16.14.)
+**Deployed to:** GCP instance `pawpoller` (zone `us-east1-c`) — running 2.17.6 (deployed 2026-05-03, confirmed via `/api/health` + Playwright-verified end-to-end against the live viewer).
+**GitHub release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.13.8 — last tagged release. Master is now 24 versions ahead (2.13.9 → 2.17.6). Tag drift covered in "CI / release pipeline state" section below; cutting a fresh tag is a single `git tag v2.17.6 && git push --tags` away when there's appetite.
 
 > **2.14.3 file-tree refactor — read this before navigating the codebase.** All 11 platform clients moved into `clients/` (e.g. `api_client/` → `clients/ib/`, `ao3_client/` → `clients/ao3/`, ...). Imports now look like `from clients.ib.client import InkbunnyClient`. Internal docs (HANDOFF, SETUP, ROADMAP_PUBLIC, documentation_guide) moved into `docs/`. Three orphans deleted from root (`112.png`, `TESTING_CHECKLIST.md`, legacy `settings.json`). Zero behaviour change. See CHANGELOG `[2.14.3]` for the full validation gates.
 
@@ -105,6 +105,7 @@ cover/chapter thumbnail uploads, and GitHub release packaging.
 | **Format downloads (mobile-friendly)** | 2.17.3 | EPUB triple-broken in 2.17.0–2.17.2 — not in `_FORMAT_KEY_PATTERNS`, not in `_DOWNLOAD_EXTENSIONS`, no media-type. All three fixed. New `GET /api/posting/archive` streams the entire story folder (excluding `Backups/`) as a zip via `StreamingResponse`. Two surfaces: "Download all (zip)" footer on the Available Formats card on the published-story page, and a new "Downloads ▾" dropdown in the editor toolbar that lazy-fetches the format list and includes the zip. |
 | **Downloads dropdown polish** | 2.17.4 | One row per format, fixed display order (EPUB → PDF → Styled HTML → Clean HTML → SoFurry HTML → BBCode → Markdown). Per-chapter formats (`chapter_bbcode`, `squidgeworld`) hidden — the zip covers them. Proper CSS (`.downloads-row` flex layout, `.downloads-zip` styled footer, `.downloads-empty` muted state). |
 | **`pawsync --prune`** | 2.17.5 | Closes the "manual `rm -rf` after deleting test stories" gap. `pawsync.py` accepts `--prune` (removes server-side top-level dirs missing locally; `Backups`/`Drafts`/`Styled_HTML` untouchable) and `--dry-run` (lists without removing). Default behaviour unchanged — `pawsync.bat` keeps the additive `tar xzf` semantics. Roadmap also corrected: cache-buster consistency and CI pytest items were stale (already done in earlier versions). |
+| **In-app EPUB viewer** | 2.17.6 | Vendors `epub.js` 0.3.93 + `jszip` 3.10.1 to `frontend/vendor/`. New `frontend/epub-viewer.html` + `frontend/js/epub-viewer.js`: minimal toolbar (close/title/prev/percent/next/download), full-bleed reader, 18% tap zones, keyboard arrows, theme tokens resolved into the rendered iframe via `rendition.themes.default`. `dashboard.py` mounts `/vendor` static prefix (auth-exempt parity with `/css/`, `/js/`), serves `/epub-viewer.html` with cache-buster substitution, and adds `_build_epub_viewer_csp()` — a path-scoped relaxed CSP that allows `blob:` in style/img/font/connect/frame so epub.js's extracted resources render. Strict default CSP unchanged for every other path. Editor Downloads dropdown grows a "↗ Preview in browser" sub-row under EPUB. Two non-obvious gotchas: (1) `ePub(url, { openAs: 'epub' })` is mandatory — the URL path is `/api/posting/file` (the `.epub` lives in the query string), so epub.js's default extension sniff fails and the loader hangs trying to read `META-INF/container.xml` as a directory; (2) the inline boot script in the viewer must be byte-identical to `index.html`'s so the existing CSP SHA-256 hash covers it (verified via `hashlib.sha256` — both hash to `WudoxBejEmzS4SXsQBia7rsNZctlaFiey3RvF0r8SzA=`). |
 | **Mobile Mode (Phase 5 sweep)** | 2.16.4–2.16.8 | After-deploy audit pass. **2.16.4** hot-fixed the silent CSP block that had been dropping every `data-mobile` rule since 2.16.0 — inline boot-script SHA-256 hash had to be re-computed in `dashboard.py`. **2.16.5** added page-header `padding-left:60px` so titles ("Overview", "Settings") aren't half-hidden behind the hamburger, and `!important` on stats-grid 1-col rule to beat the inline JS style on the per-platform grid. **2.16.6** wrapped `.page-header` and gave its inline-styled action div 100%-width / 50%-flex buttons so 4-button rows (Save Settings / Poll Now / Full Resync / Clear Session) flow into 2×2 instead of forcing the doc to 830px. **2.16.7** clamped `.settings-tabs` (`max-width:100%`+`min-width:0`) so the existing scroll-x actually engages, plus `.main-content { max-width:100vw; overflow-x:hidden }` as defense-in-depth. **2.16.8** closed deferred backlog: SameSite=Strict→lax (fixes periodic 401 bursts on prod), favicon-401 exemption, `/api/health` exposes `version`. |
 | **Mobile Mode (Phase 3)** | 2.16.2 | Vertical sweep — every multi-col grid (growth/goal/card/story/tag/chart-row/theme/fa-metadata/setup-platforms) forced to 1-col on mobile. Detail header → thumb-on-top vertical. Pinned row scroll-snap → vertical stack. Compare chips → full-width buttons. Date range → wraps in 3-up rows. Settings rows toggle right-aligned. Log + timeline → single column. |
 | **Mobile Mode (Phase 2)** | 2.16.1 | Portrait-phone polish after a real device pass. iOS 16px floor on all inputs (no auto-zoom on focus). Editor toolbar collapses behind ⋯ More button; only back/title/⋯/Save/Metadata visible by default. Bottom nav swap: Editor replaces Analytics. Stat cards become 1-col horizontal strips. Page header h2 17px + tighter margins. Chart-modal + platform-grid full-screen with safe-area. Submission cards 1-col with 200px thumbs. |
@@ -257,7 +258,10 @@ drift detection, deletion probe, re-post.
 
 ### EPUB follow-ups (post-2.17.4)
 
-- [ ] **In-app EPUB viewer.** Currently EPUB is download-only — no in-dashboard preview. Cleanest path: vendor `epub.js` (~300KB, MIT-licensed, mobile-friendly), add a small `/epub-viewer.html` page or a modal that loads from `/api/posting/file?...&file=EPUB/<name>.epub`, surface a "Preview" button next to the EPUB row in the Downloads dropdown. ~30 minutes. Tradeoff: vendored dep that won't see use unless you actually preview EPUBs in-browser; on phones the OS reader (Apple Books / Google Play Books) is a better experience anyway. Most useful from desktop when you don't want to open Calibre just to eyeball typography.
+- [x] **In-app EPUB viewer** — shipped 2.17.6. See feature-table row above for the full architecture summary. Open follow-ups specifically for the viewer:
+  - **No font-size or theme picker inside the viewer.** Today the viewer reads the parent dashboard's theme tokens once at load and passes them to `rendition.themes.default()`. A small toolbar dropdown (Aa) for size + theme overrides would be a natural next step. Low effort.
+  - **No cross-session location persistence.** epub.js exposes `book.locations.percentageFromCfi` / `cfiFromPercentage`; localStorage-keyed by story name would survive page reloads. Low effort.
+  - **Cover renders as a small inline image, not a full-page hero.** epub.js follows whatever the EPUB's spine declares; the EPUB generator emits a `<figure>`-wrapped cover that's small at viewport widths. A `cover.xhtml` style override in `rendition.themes.default` could promote it to full-bleed. Cosmetic.
 - [ ] **Bundled fonts in EPUB.** 2.17.0 deferred bundling OFL fonts (~700KB + license tracking) for system fallbacks. Worth adding once an editor "appearance" panel exists for picking the EPUB body font; today the user can't pick anything so bundling is premature.
 - [ ] **Subtitle / dedication UI.** `epub_generator.build_epub` already reads `fm.subtitle` and `story_meta.dedication` if present, but the metadata drawer has no input field for either. Two-line form addition. Until then, only stories whose MASTER.md happens to have a `<!-- @subtitle -->` anchor get a subtitle on the title page.
 - [x] **`pawsync` doesn't delete server-side files** — fixed in 2.17.5. `pawsync.py` now accepts `--prune` (removes server-side top-level story dirs missing locally; `Backups`/`Drafts`/`Styled_HTML` are treated as untouchable) and `--dry-run` (lists what would be removed). Verified end-to-end against the live VM on 2026-05-02 — extract + dry-run prune reported "no orphans found" against the 16 currently-synced stories.
@@ -357,9 +361,9 @@ gcloud compute ssh pawpoller --zone=us-east1-c --command="curl -s -H 'Authorizat
 
 If the user asks to resume, the most useful things to read first are:
 1. This file (HANDOFF.md)
-2. `../CHANGELOG.md` top section — most recent: 2.17.5 (`pawsync --prune`), 2.17.4 (downloads dropdown), 2.17.0–2.17.3 (EPUB output + mobile downloads). Pre-EPUB pivot history goes back to 2.10.5
+2. `../CHANGELOG.md` top section — most recent: 2.17.6 (in-app EPUB viewer + 2 CSP fixes), 2.17.5 (`pawsync --prune`), 2.17.4 (downloads dropdown), 2.17.0–2.17.3 (EPUB output + mobile downloads). Pre-EPUB pivot history goes back to 2.10.5
 3. `ROADMAP_PUBLIC.md` — public release plan (all must/should-haves + most nice-to-haves now COMPLETE)
-4. `documentation_guide.md` — full technical reference (now includes auto-sync architecture under "Settings Auto-Sync (2.14.2+)")
+4. `documentation_guide.md` — full technical reference (now includes auto-sync architecture under "Settings Auto-Sync (2.14.2+)" and the in-app EPUB viewer under "EPUB Viewer (2.17.6+)")
 5. **Testing checklists** — all QA artefacts live under `qa/`:
    - `qa/TESTING_CHECKLIST_WEBAPP.html` — 461 rows × 43 sections, browser/Docker/server flavour. localStorage key `pawpoller_test_webapp`. CSV exports as `pawpoller_test_webapp.csv`.
    - `qa/TESTING_CHECKLIST_NATIVE.html` — 497 rows × 49 sections, Windows desktop build (PyInstaller exe + pywebview + tray). localStorage key `pawpoller_test_native`. CSV exports as `pawpoller_test_native.csv`.
@@ -379,14 +383,14 @@ The `Lint` workflow fires on every push to master (ruff + JS syntax).
 `pytest-asyncio~=1.3`, `respx~=0.22`). 91 tests, all green.
 
 **Tag drift**: `v2.13.8` is still the most recent published release.
-2.13.9 → 2.17.5 (23 versions: vault init fix, 8-theme picker, Vibe
+2.13.9 → 2.17.6 (24 versions: vault init fix, 8-theme picker, Vibe
 Pack, auto-sync, file-tree refactor, audit-debt refactor, coordinated
 desktop ↔ server, mobile mode phases 0–5, BUG-* sweep, EPUB output,
-mobile downloads, pawsync prune) has shipped to master + GCP but no
-Windows artifacts have been published. Cutting `v2.17.5` would re-run
-the build job and produce a fresh `PawPoller-windows-x64.zip` artifact;
-worth doing as a "release everything that's accumulated" pass before
-the next feature push.
+mobile downloads, pawsync prune, in-app EPUB viewer) has shipped to
+master + GCP but no Windows artifacts have been published. Cutting
+`v2.17.6` would re-run the build job and produce a fresh
+`PawPoller-windows-x64.zip` artifact; worth doing as a "release
+everything that's accumulated" pass before the next feature push.
 
 ### QA status as of 2026-04-26
 
@@ -427,14 +431,16 @@ Next retest pass should:
 
 If the user says "what's next?" — all must-have and should-have items
 from the roadmap are complete, plus most nice-to-haves (import, genre
-templates, configurable author, GitHub packaging all shipped in 2.13.0).
+templates, configurable author, GitHub packaging all shipped in 2.13.0;
+in-app EPUB viewer shipped in 2.17.6).
 Remaining:
 - AO3/SQW import (second half of 14a — listed "coming soon" in 2.13.0)
 - Analytics export (charts, CSV reports)
 - Auto-update mechanism (15d — in-app update download)
 - Weasyl testing (blocked on account verification, not code)
-- Cut `v2.14.8` GitHub release (currently undeployed to release page; master + GCP are 10 versions ahead of v2.13.8)
-- Fix the round-2 P2/P3 bugs above (BUG-011, 014, 016, 017, 018, 020, 021) + the SameSite=Strict cookie quirk + favicon-401 noise — all deferred from 2.14.8 because they're non-blocking
+- Cut `v2.17.6` GitHub release (currently undeployed to release page; master + GCP are 24 versions ahead of v2.13.8)
+- EPUB viewer follow-ups: font-size/theme picker inside the viewer, location persistence, full-page cover. All low-effort, all cosmetic — see the EPUB follow-ups section above.
+- Fix the round-2 P2/P3 bugs above (BUG-011, 014, 016, 017, 018, 020, 021 — most already fixed in 2.16.x; check before opening) + the SameSite=Strict cookie quirk + favicon-401 noise — all deferred from 2.14.8 because they're non-blocking
 
 Story archive sync commands:
 - `deploy/pawpush.bat` — local → server (push)
