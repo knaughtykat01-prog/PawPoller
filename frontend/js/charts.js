@@ -596,6 +596,7 @@ const Charts = {
             },
             options: opts,
         });
+        return this._instances[canvasId];
     },
 
     /**

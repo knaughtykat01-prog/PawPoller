@@ -215,4 +215,49 @@ const Utils = {
             end: now.toISOString().replace('T', ' ').substring(0, 19),
         };
     },
+
+    /**
+     * Build a CSV blob from headers + rows and trigger a browser
+     * download. Cells starting with `=`/`+`/`-`/`@`/`\t`/`\r` get a
+     * leading apostrophe (OWASP CSV-injection mitigation), matching
+     * the same rule the backend uses on its own CSV exports.
+     */
+    downloadCSV(headers, rows, filename) {
+        const sanitiseCell = (val) => {
+            const s = String(val ?? '');
+            const first = s.charAt(0);
+            const safe = (first === '=' || first === '+' || first === '-'
+                          || first === '@' || first === '\t' || first === '\r')
+                          ? "'" + s : s;
+            // Quote if the cell contains comma / quote / newline.
+            if (/[",\n]/.test(safe)) {
+                return '"' + safe.replace(/"/g, '""') + '"';
+            }
+            return safe;
+        };
+        const lines = [headers.map(sanitiseCell).join(',')];
+        for (const row of rows) {
+            lines.push(row.map(sanitiseCell).join(','));
+        }
+        // Excel-compatible: BOM + CRLF.
+        const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename || 'pawpoller-export.csv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // Release the object URL after the download dialog has had a
+        // chance to grab the blob — Chrome holds the reference until
+        // navigation, but we clear it for tidiness.
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+
+    /** YYYY-MM-DD stamp suitable for embedding in a download filename. */
+    dateStamp() {
+        const d = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    },
 };

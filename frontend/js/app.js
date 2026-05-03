@@ -9937,7 +9937,14 @@ const App = {
 
             const html = `
                 ${this._refreshIndicatorHtml()}
-                <div class="page-header"><h2>Analytics</h2></div>
+                <div class="page-header">
+                    <h2>Analytics</h2>
+                    <div style="margin-left:auto;display:flex;gap:0.5em">
+                        <button class="btn btn-sm btn-outline" id="analytics-export-fastest" ${fastest.length ? '' : 'disabled'} title="Download fastest-growing table as CSV">&darr; Fastest CSV</button>
+                        <button class="btn btn-sm btn-outline" id="analytics-export-weekly" ${weekly.length ? '' : 'disabled'} title="Download weekly growth as CSV">&darr; Weekly CSV</button>
+                        <button class="btn btn-sm btn-outline" id="analytics-export-chart" ${weekly.length ? '' : 'disabled'} title="Download the chart as PNG">&darr; Chart PNG</button>
+                    </div>
+                </div>
 
                 <div class="stats-grid">
                     ${Components.highlightCard('Best Month (Views)', bestMonth.views ? `+${Utils.formatNumber(bestMonth.views.delta)}` : '--', bestMonth.views ? bestMonth.views.period : '')}
@@ -9977,9 +9984,54 @@ const App = {
 
             this._setContent(html);
 
+            let weeklyChart = null;
             if (weekly.length) {
-                Charts.weeklyGrowthBar('chart-weekly-growth', weekly);
+                weeklyChart = Charts.weeklyGrowthBar('chart-weekly-growth', weekly);
             }
+
+            // Export wiring — pure client-side, no new backend endpoints.
+            // Fastest-growing table → CSV via Utils.downloadCSV.
+            document.getElementById('analytics-export-fastest')?.addEventListener('click', () => {
+                Utils.downloadCSV(
+                    ['Platform', 'Title', 'Views', 'Faves', 'Growth/Day', 'Unit'],
+                    fastest.map(f => {
+                        const isIK = (f.platform || '').toLowerCase() === 'ik';
+                        const isWP = (f.platform || '').toLowerCase() === 'wp';
+                        return [
+                            f.platform || '',
+                            f.title || '',
+                            isIK ? '' : (isWP ? (f.reads || f.views || 0) : (f.views || 0)),
+                            f.faves || 0,
+                            (f.views_per_day || 0).toFixed(2),
+                            isIK ? 'likes' : isWP ? 'reads' : 'views',
+                        ];
+                    }),
+                    `pawpoller-fastest-growing-${Utils.dateStamp()}.csv`,
+                );
+            });
+            // Weekly growth → CSV.
+            document.getElementById('analytics-export-weekly')?.addEventListener('click', () => {
+                Utils.downloadCSV(
+                    ['Week start', 'Views', 'Faves', 'Comments'],
+                    weekly.map(w => [
+                        w.week || w.period || '',
+                        w.views || 0,
+                        w.faves || 0,
+                        w.comments || 0,
+                    ]),
+                    `pawpoller-weekly-growth-${Utils.dateStamp()}.csv`,
+                );
+            });
+            // Chart → PNG via Chart.js's toBase64Image.
+            document.getElementById('analytics-export-chart')?.addEventListener('click', () => {
+                if (!weeklyChart || typeof weeklyChart.toBase64Image !== 'function') return;
+                const a = document.createElement('a');
+                a.href = weeklyChart.toBase64Image('image/png', 1);
+                a.download = `pawpoller-weekly-growth-${Utils.dateStamp()}.png`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            });
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading analytics</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
         }
