@@ -208,9 +208,13 @@ class AO3Client:
 
         # Retry login page fetch up to 3 times with backoff — AO3's
         # Cloudflare layer sometimes returns transient 429/503/challenge
-        # responses that clear on retry.
+        # responses that clear on retry. Persistent 429 with body
+        # "Retry later" is the long-term ban (5–60 min) and retrying
+        # in-band makes it worse — bail out fast in that case so the
+        # caller can surface a clear error.
         html = None
         last_status = 0
+        rate_limited = False
         for attempt in range(3):
             if attempt > 0:
                 delay = 5 * (2 ** (attempt - 1))
@@ -231,6 +235,16 @@ class AO3Client:
                         resp.status_code, _BASE,
                     )
                     return False
+                if resp.status_code == 429 and "Retry later" in (resp.text or ""):
+                    # Long-term per-IP login ban — additional retries within
+                    # the same call burn through the cooldown without
+                    # accomplishing anything. One probe was enough.
+                    rate_limited = True
+                    logger.warning(
+                        "AO3: login page rate-limited (HTTP 429, 'Retry later'); "
+                        "stopping in-band retries — wait 5-60 min before retrying",
+                    )
+                    break
                 logger.warning(
                     "AO3: login page returned HTTP %d (attempt %d/3), body prefix: %.200s",
                     resp.status_code, attempt + 1, (resp.text or "")[:200],
@@ -240,7 +254,10 @@ class AO3Client:
                 last_status = 0
 
         if not html:
-            logger.error("AO3: Failed to fetch login page after 3 attempts (last HTTP %d)", last_status)
+            if rate_limited:
+                logger.error("AO3: Login blocked by rate limiter (HTTP 429 'Retry later')")
+            else:
+                logger.error("AO3: Failed to fetch login page after 3 attempts (last HTTP %d)", last_status)
             return False
 
         # Extract authenticity_token
