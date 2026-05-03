@@ -429,16 +429,24 @@ Next retest pass should:
 2. Sweep WEBAPP first (it covers everything that runs in Docker — most of the surface).
 3. Sweep NATIVE only on a Windows machine with the PyInstaller build, focusing on sections 41–47 (the native-only blocks).
 
-If the user says "what's next?" — 2.18.0 cleared most of the
-accumulated follow-up list. Remaining:
-- Analytics export (charts, CSV reports)
-- Auto-update mechanism (15d — in-app update download)
-- Weasyl testing (blocked on account verification, not code)
-- Cut `v2.18.0` GitHub release once auto-update + analytics export
-  land (currently undeployed to release page; master + GCP are 25
-  versions ahead of v2.13.8)
+If the user says "what's next?" — 2.18.0 cleared the entire
+"do them all" list including the late additions.
+
+**Shipped in 2.18.0:**
+- Analytics export (Fastest CSV + Weekly CSV + Chart PNG buttons,
+  pure client-side, no new endpoints)
+- Auto-update mechanism (was already implemented end-to-end; cutting
+  v2.18.0 activates it)
+
+**Genuinely remaining:**
+- Weasyl posting test (blocked on account verification, not code)
+- Cut `v2.18.0` GitHub release — that's it; everything else is
+  cosmetic.
 - Bluesky / Wattpad / DA / Itaku / Weasyl draft probes — fragmentary;
   some platforms have no draft equivalent.
+- AO3 import end-to-end verification — code path identical to SqW
+  (which works) but the test was blocked by AO3's 10-min 429 cooldown
+  from probe attempts.
 
 Story archive sync commands:
 - `deploy/pawpush.bat` — local → server (push)

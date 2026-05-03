@@ -702,33 +702,26 @@ helps.
 
 ---
 
-### BUG-022 — Editor "Metadata" button on prod 2.14.6 opens Platforms popover, not metadata drawer [P2]
+### BUG-022 — RETRACTED — false positive from automated test [N/A]
 
-**Where:** Editor (`#/editor/<story>`) → "Metadata" button
-(`#editor-metadata-btn`).
+**Original claim:** Editor "Metadata" button opens Platforms modal
+instead of metadata drawer.
 
-**Steps to repro (on prod 2.14.6):**
-1. Open Editor for any real story (e.g.
-   `#/editor/Chosen`)
-2. Click the **Metadata** button in the toolbar
+**Why this was wrong:** The Playwright detection logic matched the
+word "Platforms" appearing inside the metadata drawer's own
+`Per-Platform Tags` and `Platform Toggles` section headings, then
+mistakenly concluded that the Platforms grid popover had opened.
+User-confirmed via screenshot on 2026-05-01 that the Metadata
+button opens the correct drawer with all expected sections (Story
+Info, Description & Summary, Classifications, Per-Platform Tags,
+Platform Toggles, Chapters). Working as designed on both 2.14.6
+and 2.14.8.
 
-**Observed:** Instead of the expected metadata drawer with
-collapsible sections (Story Info, Description, Classifications,
-Per-Platform Tags, Platform Toggles, Chapters, Cover Image, Raw
-JSON), the click pops the **Platforms** modal — the same modal
-opened from the sidebar's "Platforms" nav button.
-
-The 2.14.7 test container does NOT have this issue — the metadata
-drawer renders correctly there with all 8 sections. So this looks
-like a regression already fixed between 2.14.6 → 2.14.7, but worth
-flagging here so the deployment is prioritised.
-
-**Impact on prod users:** Cannot edit story metadata at all from
-the editor toolbar. They have to either edit story.json directly
-or use the Publishing tab in Settings (different, less convenient).
-
-**Resolution:** Will resolve when 2.14.7 ships. Confirm during
-post-deploy verification.
+**Lesson for future automated QA:** When checking that "modal X
+opened", match by element ID or unique class (e.g.
+`.platform-grid-overlay`, `#story-metadata-dialog`), not by
+substring search of textContent — drawer content frequently
+shadows nav-element labels.
 
 ---
 

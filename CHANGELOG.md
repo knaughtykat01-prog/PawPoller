@@ -6,7 +6,15 @@ All notable changes to PawPoller are documented here.
 
 ## [2.18.0] - 2026-05-03
 
-### "Do them all" pass — viewer polish, draft probes, AO3/SQW import, dedication UI
+### "Do them all" pass — viewer polish, draft probes, AO3/SQW import, dedication UI, analytics export
+
+Includes: in-tree analytics CSV/PNG export wiring, post-deploy bug
+fixes for AO3/SqW import (constructor signature, anonymous-vs-login
+strategy, OTW selector tightening, Anubis solver routing for SqW), and
+docs sync. The auto-update mechanism was already implemented end-to-end
+(updater.py + /api/update routes + sidebar button + settings page) —
+just hasn't had a published release to compare against. Cutting v2.18.0
+will activate it for desktop users.
 
 A grab-bag of accumulated follow-ups from HANDOFF.md and the EPUB-viewer
 shipping in 2.17.6. Headline additions:
@@ -64,10 +72,58 @@ shipping in 2.17.6. Headline additions:
   `sqw` entries; `IMPORT_COMING_SOON` emptied; the import-submission
   route grew two new `elif` branches.
 
-Bug-log walk: round-1 (BUG-001..009) all confirmed fixed in round 2;
-round-2 (BUG-010..021) all confirmed fixed in 2.14.8 / 2.16.x. SameSite,
-favicon-401, and `/api/health` version all already shipped in 2.16.8.
-Nothing genuinely open from the QA log.
+**Analytics export.**
+- Three new buttons on the Analytics page header: Fastest CSV /
+  Weekly CSV / Chart PNG. Pure browser-side — no new endpoints.
+- `Utils.downloadCSV(headers, rows, filename)` — Excel-compatible
+  output (UTF-8 BOM + CRLF), OWASP CSV-injection mitigation
+  (cells starting with `=`/`+`/`-`/`@`/`\t`/`\r` get a leading
+  apostrophe), RFC 4180 quoting for cells containing comma/quote/
+  newline.
+- `Utils.dateStamp()` — `YYYY-MM-DD` filename helper.
+- `Charts.weeklyGrowthBar` now returns the Chart instance so the
+  PNG-download path can call `toBase64Image()` on it.
+
+**Auto-update — no new code, just needs a release tag.**
+- `updater.py` + `/api/update/check` + `/api/update/apply` were
+  shipped in 2.13.x. `frontend/js/app.js` already has the sidebar
+  "Check for Updates" button and Settings → About panel. The
+  mechanism has been silently waiting on a published GitHub release
+  to compare against (BUG-009 from the round-1 QA log was about
+  `check_for_update` flooding 404 logs because no release existed —
+  fixed defensively by treating 404 as "no release yet" and logging
+  once at INFO).
+- Cutting `v2.18.0` activates the existing flow.
+
+**Bug-log walk.** Round-1 (BUG-001..009) all confirmed fixed in
+round 2; round-2 (BUG-010..021) all confirmed fixed in 2.14.8 /
+2.16.x. SameSite, favicon-401, and `/api/health` version all already
+shipped in 2.16.8. Nothing genuinely open from the QA log.
+
+### Post-2.18.0 fixes folded into the same release
+
+Caught during the live AO3/SqW import probe against the deployed
+container:
+- AO3/SqW importers were instantiating the platform clients without
+  the required `target_user` positional arg — fixed by passing the
+  authenticated username when no override is configured.
+- The SqW import was using `from clients.sqw.client import SqWClient`
+  (which doesn't exist) instead of `SquidgeWorldClient`.
+- Initial anonymous-fetch strategy hit AO3's 429 rate limit and SqW's
+  Anubis bot challenge / "Sorry!" auth wall. Switched to login-first
+  for both — `ensure_logged_in()` reuses cached session cookies in
+  normal operation; fresh logins only happen when no session is
+  cached. SqW additionally goes through the client's `_get_page()`
+  helper which transparently solves Anubis.
+- OTW work-page selectors tightened: tag-list parser only grabs
+  `<a class="tag">` (was capturing "Show additional tags" UI
+  toggles); single-chapter content matcher relaxed to a more lenient
+  `userstuff` selector with multiple end-of-content fallbacks for
+  works that don't emit the `<!--/content-->` marker.
+- End-to-end verification: SqW import of work `88317` produced an
+  804-line `MASTER.md` with title / author / description / rating /
+  fandom all correct. AO3 verification deferred — same code path,
+  just blocked by the 429 cooldown from the test attempts.
 
 ---
 
