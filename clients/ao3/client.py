@@ -14,6 +14,7 @@ Key details:
 from __future__ import annotations
 import asyncio
 import logging
+import random
 import re
 from html import unescape
 
@@ -167,7 +168,13 @@ class AO3Client:
                         logger.error("AO3: 403 Forbidden for %s", url)
                     return None
                 if resp.status_code == 429:
-                    wait = self._parse_retry_after(resp, default=30 * attempt)
+                    # Exponential backoff with jitter: 30, 60, 120s base, ±20%
+                    # randomised so concurrent retriers don't synchronise on
+                    # identical wake-up times. Retry-After header (when AO3
+                    # provides one) overrides the exponential default.
+                    base = 30 * (2 ** (attempt - 1))
+                    jittered = base * random.uniform(0.8, 1.2)
+                    wait = self._parse_retry_after(resp, default=int(jittered))
                     logger.warning("AO3: 429 rate limited on %s, waiting %ds (attempt %d/%d)",
                                    url, wait, attempt, max_attempts)
                     await asyncio.sleep(wait)
@@ -198,6 +205,19 @@ class AO3Client:
             url, max_attempts, type(last_exc).__name__ if last_exc else "?", last_exc,
         )
         return None
+
+    @staticmethod
+    async def _polite_delay() -> None:
+        """Sleep `AO3_REQUEST_DELAY_SECONDS` ± 30% jitter between requests.
+
+        Fixed inter-request gaps look bot-like; jitter spreads the request
+        timing into a more human-shaped distribution. Range is intentionally
+        narrow — we want politeness, not unpredictability that could hammer
+        AO3 with an unlucky 0.7×–1.3× sequence.
+        """
+        import config
+        base = config.AO3_REQUEST_DELAY_SECONDS
+        await asyncio.sleep(base * random.uniform(0.7, 1.3))
 
     @staticmethod
     def _parse_retry_after(resp: httpx.Response, default: int = 30) -> int:
@@ -509,7 +529,7 @@ class AO3Client:
                 break
 
             page += 1
-            await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+            await self._polite_delay()
 
         logger.info("AO3: Found %d works for %s", len(all_works), self.target_user)
         return all_works
@@ -612,7 +632,7 @@ class AO3Client:
         details = []
         for i, work_id in enumerate(work_ids):
             if i > 0:
-                await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+                await self._polite_delay()
             try:
                 detail = await self.get_work_detail(work_id)
                 details.append(detail)
@@ -787,7 +807,7 @@ class AO3Client:
         from urllib.parse import urlencode
         body = urlencode(form_data, doseq=True)
 
-        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        await self._polite_delay()
         resp = await self._post_with_retry(
             f"{_BASE}/works",
             content=body,
@@ -977,7 +997,7 @@ class AO3Client:
 
         body = urlencode(submit_data, doseq=True)
 
-        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        await self._polite_delay()
         resp = await self._post_with_retry(
             f"{_BASE}/works/{work_id}",
             content=body,
@@ -1170,7 +1190,7 @@ class AO3Client:
 
         body = urlencode(submit_data, doseq=True)
 
-        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        await self._polite_delay()
         resp = await self._post_with_retry(
             f"{_BASE}/works/{work_id}/chapters/{chapter_id}",
             content=body,
@@ -1296,7 +1316,7 @@ class AO3Client:
 
         body = urlencode(form_data, doseq=True)
 
-        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        await self._polite_delay()
         resp = await self._post_with_retry(
             f"{_BASE}/works/{work_id}/chapters",
             content=body,
@@ -1375,7 +1395,7 @@ class AO3Client:
             ("commit", "Yes, Delete Work"),
         ])
 
-        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        await self._polite_delay()
         resp = await self._post_with_retry(
             f"{_BASE}/works/{work_id}",
             content=body,
@@ -1525,7 +1545,7 @@ class AO3Client:
 
         body = urlencode(form_data, doseq=True)
 
-        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        await self._polite_delay()
         resp = await self._post_with_retry(
             f"{_BASE}/skins",
             content=body,
@@ -1682,7 +1702,7 @@ class AO3Client:
 
         body = urlencode(submit_data, doseq=True)
 
-        await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)
+        await self._polite_delay()
         resp = await self._post_with_retry(
             f"{_BASE}/skins/{skin_id}",
             content=body,

@@ -4,6 +4,47 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.12] - 2026-05-03
+
+### AO3 client: jitter + exponential backoff (hygiene)
+
+Pure rate-limit hygiene pass on the AO3 client. Doesn't fix
+the datacenter-IP block (that's IP-keyed, not request-pattern
+keyed) — the trade-off was made explicitly to skip residential
+proxy integration. AO3 imports from the GCP server will keep
+hitting cooldowns; the workflow recommendation is to run AO3
+imports from the desktop instance (residential IP) and let
+`pawsync` push the result. AO3 polling stays server-side
+because the 4-hour interval + cookie auth is tolerable.
+
+What changed:
+
+- `_polite_delay()` helper replaces every
+  `await asyncio.sleep(config.AO3_REQUEST_DELAY_SECONDS)` call
+  site (9 of them). Sleeps `base × U(0.7, 1.3)` instead of a
+  flat 3 seconds — fixed cadence reads as bot-like, jittered
+  cadence looks more human-shaped without being so wide that
+  an unlucky sequence hammers AO3.
+- `_get_page()` 429 backoff is now exponential with jitter:
+  `30 × 2^(attempt-1) × U(0.8, 1.2)` (≈ 30 / 60 / 120 base,
+  ±20%) instead of linear `30 × attempt`. The Retry-After
+  header still wins when AO3 sends one — the exponential
+  default only kicks in when the header is missing or
+  unparseable.
+
+Why these are right-sized for the actual problem:
+- Linear 30/60/90 → exponential ~30/60/120 — only helps when
+  the cooldown is actually clearing during the retry window
+  (5–10 min cases), gives up faster on long bans (30–60 min
+  cases) where extra retries just compound the offence.
+- Jitter spread of 30% is narrow on purpose. AO3 is a
+  volunteer-run site; "random delays" advice is meant for
+  hostile sites where pattern detection is sophisticated, not
+  for OTW Archive whose rate limiter is a simple per-IP
+  counter that doesn't care if your gaps are uniform.
+
+---
+
 ## [2.18.11] - 2026-05-03
 
 ### Importer duplicate detection at the import call (not just the picker)
