@@ -82,22 +82,35 @@ _ENV_TO_SETTINGS = {
 }
 
 def _seed_settings_from_env():
-    """Write env vars into settings.json, overwriting empty/missing values."""
+    """One-time bootstrap from env vars into settings on a fresh install.
+
+    Only fills in fields that are MISSING or EMPTY — never overwrites an
+    existing value. The UI is the source of truth for credentials once
+    they've been set; .env exists purely to bootstrap a brand-new container
+    so the first poll cycle has something to authenticate with.
+
+    Previously this function clobbered any UI-set value that differed from
+    the env var, which meant credentials silently reverted to .env on every
+    container restart. If you need to *change* a credential, do it through
+    the Settings UI.
+    """
     settings = config.get_settings()
     updates = {}
     for env_key, settings_key in _ENV_TO_SETTINGS.items():
         val = os.environ.get(env_key)
-        if val:
-            existing = settings.get(settings_key)
-            # Overwrite if missing, empty, or different from env
-            if not existing or existing != val:
-                if settings_key == "telegram_enabled":
-                    updates[settings_key] = val.lower() in ("true", "1", "yes")
-                else:
-                    updates[settings_key] = val
+        if not val:
+            continue
+        existing = settings.get(settings_key)
+        if existing:
+            # UI/vault already has a value — leave it alone.
+            continue
+        if settings_key == "telegram_enabled":
+            updates[settings_key] = val.lower() in ("true", "1", "yes")
+        else:
+            updates[settings_key] = val
     if updates:
         config.save_settings(updates)
-        logger.info("Seeded %d credential(s) from environment variables: %s",
+        logger.info("Seeded %d credential(s) from environment (first-run only): %s",
                      len(updates), ", ".join(updates.keys()))
 
 

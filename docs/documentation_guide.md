@@ -353,7 +353,7 @@ _ENV_TO_SETTINGS = {
     # ... 25+ mappings total
 }
 ```
-`_seed_settings_from_env()` reads each env var, compares with existing settings.json values, and only writes if the value is new or different. Special handling for `telegram_enabled` which is parsed as a boolean (`"true"/"1"/"yes"` → `True`). Logs which credentials were seeded.
+`_seed_settings_from_env()` reads each env var and writes ONLY into fields that are missing or empty in settings — never overwrites an existing UI/vault value. The UI is the source of truth for credentials once they've been set; `.env` exists purely as a first-run bootstrap so a brand-new container has something to authenticate with on its first poll. Special handling for `telegram_enabled` which is parsed as a boolean (`"true"/"1"/"yes"` → `True`). Logs which credentials were seeded. (Pre-2.18.3 behaviour was to overwrite on `existing != val` — that meant UI credential changes silently reverted to `.env` on every container restart. Fixed in 2.18.3.)
 
 **Step 2b: Migrate legacy plaintext password** — `config.migrate_dashboard_auth()` converts any plaintext `dashboard_password` in settings.json to a bcrypt hash if not already hashed.
 
@@ -2461,8 +2461,8 @@ Container environment variables
     ▼
 server.py startup: _seed_settings_from_env()
     │  Reads each _ENV_TO_SETTINGS mapping
-    │  Compares with existing settings.json values
-    │  Only writes if value is new or different
+    │  Only writes if the corresponding settings field
+    │  is missing/empty — never overwrites existing values
     │  Special handling: telegram_enabled parsed as boolean
     ▼
 settings.json written to /app volume (persistent)

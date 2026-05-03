@@ -4,6 +4,26 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.3] - 2026-05-03
+
+### `.env` no longer clobbers UI-set credentials on every restart
+
+`server.py:_seed_settings_from_env()` previously overwrote any
+existing settings value that differed from the corresponding
+environment variable, so credentials updated through the dashboard
+silently reverted to whatever was baked into `.env` on the next
+`docker compose up`. Now the function only fills in MISSING or
+EMPTY fields — UI changes survive container restarts. `.env`
+becomes a true one-time bootstrap for fresh installs.
+
+The vault → settings.json → UI pipeline was already correct on
+its own; this just stops the env-seeding step from racing it.
+
+To change a credential going forward: Settings UI. To clean up,
+remove the obsolete entries from `.env`.
+
+---
+
 ## [2.18.2] - 2026-05-03
 
 ### OTW import: don't write a stub story when auth is wrong
