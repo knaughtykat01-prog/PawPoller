@@ -693,9 +693,13 @@ async def import_from_ao3(submission_id: str) -> dict:
     if not ao3_username or not ao3_password:
         raise RuntimeError("AO3 credentials not configured — set up in Settings")
 
+    # target_user is only used by gallery scraping — for direct work
+    # fetches it's irrelevant, but the constructor still requires it.
+    # Reuse the authenticated username so the value is at least valid.
     client = AO3Client(
         username=ao3_username,
         password=ao3_password,
+        target_user=settings.get("ao3_target_user", "") or ao3_username,
         proxy_url=proxy_url,
         proxy_key=proxy_key,
     )
@@ -753,7 +757,11 @@ async def import_from_squidgeworld(submission_id: str) -> dict:
     if not sqw_username or not sqw_password:
         raise RuntimeError("SqW credentials not configured — set up in Settings")
 
-    client = SqWClient(username=sqw_username, password=sqw_password)
+    client = SqWClient(
+        username=sqw_username,
+        password=sqw_password,
+        target_user=settings.get("sqw_target_user", "") or sqw_username,
+    )
 
     try:
         if not await client.ensure_logged_in():
