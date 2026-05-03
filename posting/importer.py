@@ -762,7 +762,11 @@ async def import_from_ao3(submission_id: str) -> dict:
             )
         # Try the public work URL first; fall through to the owner-only
         # /preview path for unposted drafts (which 404 on the public URL
-        # because OTW only renders the page once `posted=true`).
+        # because OTW only renders the page once `posted=true`). The
+        # preview path requires authentication AS THE OWNER — fetching
+        # someone else's draft will redirect to the user dashboard with
+        # 200 OK, so we sanity-check the response for work-page markers
+        # before accepting it.
         public_url = f"https://archiveofourown.org/works/{submission_id}?view_full_work=true&view_adult=true"
         preview_url = f"https://archiveofourown.org/works/{submission_id}/preview?view_full_work=true&view_adult=true"
         is_draft = False
@@ -772,6 +776,14 @@ async def import_from_ao3(submission_id: str) -> dict:
             resp = await client._http.get(preview_url, follow_redirects=True)
         if resp.status_code != 200:
             raise RuntimeError(f"AO3 returned {resp.status_code} for work {submission_id}")
+        if 'class="title heading"' not in resp.text or 'userstuff' not in resp.text:
+            if is_draft:
+                raise RuntimeError(
+                    f"AO3 work {submission_id} appears to be a draft, but the configured "
+                    f"AO3 account ('{ao3_username}') doesn't own it. Drafts are owner-only — "
+                    f"check that ao3_username in Settings matches the draft's author."
+                )
+            raise RuntimeError(f"AO3 work {submission_id}: response did not contain a parseable work page")
         parsed = _parse_otw_work_page(resp.text)
     finally:
         await client.close()
@@ -838,12 +850,13 @@ async def import_from_squidgeworld(submission_id: str) -> dict:
         # Try public URL first; fall through to /preview for unposted drafts.
         # _get_page() returns "" on 404, so we detect drafts by re-trying the
         # preview path when the parser finds no content on the first attempt.
+        # SqW redirects unauthorized work fetches to the user dashboard with
+        # 200 OK, so we sanity-check both responses for work-page markers and
+        # raise a clearer error than "draft with no content extracted".
         public_url = f"https://squidgeworld.org/works/{submission_id}?view_full_work=true&view_adult=true"
         preview_url = f"https://squidgeworld.org/works/{submission_id}/preview?view_full_work=true&view_adult=true"
         is_draft = False
         html_text = await client._get_page(public_url)
-        # Heuristic: if the public fetch returns empty/short or doesn't carry
-        # the work-page markers (title heading + userstuff div), retry preview.
         looks_published = bool(html_text) and (
             'class="title heading"' in html_text and 'userstuff' in html_text
         )
@@ -852,6 +865,14 @@ async def import_from_squidgeworld(submission_id: str) -> dict:
             html_text = await client._get_page(preview_url)
         if not html_text:
             raise RuntimeError(f"SqW returned no body for work {submission_id}")
+        if 'class="title heading"' not in html_text or 'userstuff' not in html_text:
+            if is_draft:
+                raise RuntimeError(
+                    f"SqW work {submission_id} appears to be a draft, but the configured "
+                    f"SqW account ('{sqw_username}') doesn't own it. Drafts are owner-only — "
+                    f"check that sqw_username in Settings matches the draft's author."
+                )
+            raise RuntimeError(f"SqW work {submission_id}: response did not contain a parseable work page")
         parsed = _parse_otw_work_page(html_text)
     finally:
         await client.close()

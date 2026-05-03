@@ -4,6 +4,24 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.2] - 2026-05-03
+
+### OTW import: don't write a stub story when auth is wrong
+
+Caught probing two real drafts on the live container: SqW redirects
+fetches of unowned works to the user dashboard with 200 OK (rather
+than 404), so the title-heading + userstuff sanity check on the
+*public* path passed straight through to the preview fallback,
+which then ALSO returned a dashboard page — and the importer
+happily wrote a stub `MASTER.md` with `is_draft=true` and no
+content. Both AO3 and SqW now sanity-check the *post*-fallback
+response too, and raise a clear error message naming the
+configured account so the user knows they need posting credentials
+configured (not just `target_user` for polling). No new code path
+— just turning a silent bad-import into a loud error.
+
+---
+
 ## [2.18.1] - 2026-05-03
 
 ### Importers handle drafts as well as published works
