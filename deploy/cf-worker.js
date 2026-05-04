@@ -103,6 +103,35 @@ export default {
       return h;
     }
 
+    // Helper: log upstream response details to Workers Logs.
+    // Captures status + key debug headers always; sniffs body only on
+    // 4xx/5xx so we can see WAF challenge HTML / "Retry later" pages /
+    // Cloudflare-mitigated responses without bloating logs on success.
+    // Body sniffing requires resp.clone() because reading consumes the
+    // stream — the original resp must stay intact for the caller.
+    async function logUpstream(method, url, resp) {
+      const meta = {
+        method,
+        url,
+        status: resp.status,
+        retryAfter: resp.headers.get('retry-after'),
+        cfMitigated: resp.headers.get('cf-mitigated'),
+        cfRay: resp.headers.get('cf-ray'),
+        cfCacheStatus: resp.headers.get('cf-cache-status'),
+        server: resp.headers.get('server'),
+        contentType: resp.headers.get('content-type'),
+      };
+      if (resp.status >= 400) {
+        try {
+          const bodyText = await resp.clone().text();
+          meta.bodySnippet = bodyText.slice(0, 300);
+        } catch (e) {
+          meta.bodySnippetError = String(e);
+        }
+      }
+      console.log('[upstream]', JSON.stringify(meta));
+    }
+
     // Helper: fetch with internal redirect following + cookie forwarding
     async function fetchWithRedirects(url, method, body, extraHeaders) {
       const reqHeaders = buildHeaders(url);
@@ -118,6 +147,7 @@ export default {
         body: ['GET', 'HEAD'].includes(method) ? undefined : body,
         redirect: 'manual',
       });
+      await logUpstream(method, url, resp);
       captureCookies(resp);
 
       let finalUrl = url;
@@ -141,6 +171,7 @@ export default {
           headers: redirHeaders,
           redirect: 'manual',
         });
+        await logUpstream('GET', finalUrl, resp);
         captureCookies(resp);
         redirects++;
       }
