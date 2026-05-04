@@ -25,6 +25,17 @@ name = "pawproxy"
 main = "cf-worker.js"
 compatibility_date = "2024-09-01"
 
+# Workers Logs — capture invocation logs so we can debug AO3 / SF / SqW
+# 429 + login failures from the dashboard's Logs tab without manual
+# `wrangler tail`. Free-tier covers this. Traces stay off (not needed
+# for proxy debugging — adds CPU + storage cost without payoff).
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+
 # KV namespace binding — must already exist on Cloudflare side.
 # wrangler will fail to deploy if the namespace ID is wrong.
 # Get the ID with: npx wrangler kv:namespace list
