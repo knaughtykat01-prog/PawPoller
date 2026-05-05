@@ -426,7 +426,20 @@ by {author or 'Author Name'}
         "chapters": chapters,
         "tags": {"default": list(genre_tmpl.get("tags", []))},
         "chapter_info": [],
-        "formats": {"bbcode": True, "html": True, "markdown": True, "squidgeworld": True},
+        # Every format the regenerate endpoint can produce — flagging them
+        # all up front means freshly-created stories show every format in
+        # the editor's Downloads dropdown after the first regen, instead
+        # of silently hiding EPUB / PDF / SoFurry HTML / chapter BBCode
+        # because story.json's formats dict didn't list them.  The actual
+        # file presence is still verified by `get_format_files` at read
+        # time, so missing files just show as "unavailable" rather than
+        # broken links.
+        "formats": {
+            "bbcode": True, "html": True, "markdown": True,
+            "squidgeworld": True, "epub": True, "pdf": True,
+            "sofurry_html": True, "styled_html": True,
+            "chapter_bbcode": True,
+        },
         "images": {"cover": ""},
     }
     (story_dir / "story.json").write_text(
@@ -864,6 +877,52 @@ async def regenerate(story_name: str, req: RegenerateRequest):
                     pass
 
             results.append(f"{len(chapters) - 1} chapters split + converted (Markdown, HTML, BBCode)")
+
+    # --- Refresh story.json's `formats` dict from on-disk reality ---
+    # Mirrors the discovery block in `posting/generate_story_json.py`.
+    # Without this, an older story whose story.json predates EPUB / PDF
+    # support keeps `formats.epub: undefined` even after regen produces
+    # the file — and the editor's Downloads dropdown only renders
+    # formats declared in story.json.  Touch lightly: we ADD discovered
+    # formats but never remove existing ones, so manual additions
+    # (per-platform format flags etc.) are preserved.
+    sj_path = story_dir / "story.json"
+    if sj_path.is_file():
+        try:
+            sj_data = json.loads(sj_path.read_text(encoding="utf-8"))
+            existing = sj_data.get("formats", {}) or {}
+            discovered = {}
+            checks = [
+                ("bbcode",          story_dir / "BBCode"),
+                ("html",            story_dir / "HTML"),
+                ("pdf",             story_dir / "PDF"),
+                ("epub",            story_dir / "EPUB"),
+                ("squidgeworld",    story_dir / "SquidgeWorld"),
+                ("sofurry_html",    story_dir / "Chapters" / "SoFurry_HTML"),
+                ("chapter_bbcode",  story_dir / "Chapters" / "BBCode"),
+                ("styled_html",     story_dir / "Chapters" / "Styled_HTML"),
+            ]
+            for fmt_key, folder in checks:
+                if folder.is_dir() and any(folder.iterdir()):
+                    discovered[fmt_key] = True
+            if (story_dir / "Markdown" / "MASTER.md").is_file():
+                discovered["markdown"] = True
+            # Merge discovered into existing — only set keys that aren't
+            # already present, so user-edited formats stay intact.
+            changed = False
+            for k, v in discovered.items():
+                if existing.get(k) != v:
+                    existing[k] = v
+                    changed = True
+            if changed:
+                sj_data["formats"] = existing
+                sj_path.write_text(
+                    json.dumps(sj_data, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                results.append("story.json formats refreshed from disk")
+        except Exception as e:
+            errors.append(f"story.json formats refresh: {e}")
 
     return {
         "ok": True,

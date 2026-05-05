@@ -4,6 +4,42 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.15] - 2026-05-05
+
+### Fix: EPUB (and PDF / SoFurry HTML / chapter BBCode) hidden from Downloads dropdown after regen
+
+Caught from a fresh "Testin" story: regen produced the EPUB cleanly
+(`editor.epub_generator: Wrote EPUB ... (2 chapters, 11 files)`), the
+file was on disk at `EPUB/Testin.epub`, but the editor's Downloads
+dropdown didn't show it. Two compounding bugs:
+
+1. The new-story wizard at `routes/editor_api.py:429` hardcoded the
+   initial `story.json["formats"]` dict to
+   `{bbcode, html, markdown, squidgeworld}` — `epub`, `pdf`,
+   `sofurry_html`, `styled_html`, `chapter_bbcode` were silently
+   omitted. The Downloads dropdown reads from this dict via
+   `GET /api/posting/stories/{name}` (which delegates to
+   `posting/story_reader.py:get_format_files`), so any format key
+   not in the dict gets short-circuited as
+   `{available: False}` regardless of whether the file exists on disk.
+2. The regenerate endpoint at `routes/editor_api.py:/regenerate`
+   wrote the format files but never refreshed `story.json["formats"]`
+   from disk, so older stories that predated EPUB support stayed
+   blind to their own freshly-generated EPUB until story.json was
+   manually edited or `python -m posting.generate_story_json`
+   was run.
+
+Fix: (1) the wizard now declares every format the regen endpoint can
+produce, so freshly created stories show every format after the first
+regen. (2) The regen endpoint runs an on-disk discovery pass at the
+end (mirroring the block in `posting/generate_story_json.py:112-130`)
+and merges discovered formats into `story.json["formats"]` —
+add-only, never removes existing entries, so any manually-edited
+per-platform format flags stay intact. The merge re-writes story.json
+only when a real change was made; the response gains
+`"story.json formats refreshed from disk"` in `results[]` so the
+editor's regen-output banner reflects what happened.
+
 ## [2.18.14] - 2026-05-05
 
 ### Delete-story button on the story list
