@@ -41,11 +41,17 @@ const Editor = {
                 const wc = s.word_count ? `${(s.word_count / 1000).toFixed(1)}K words` : 'no word count';
                 const ch = s.chapters ? `${s.chapters} ch` : '';
                 const hasMaster = s.has_master ? '' : '<span style="color:var(--color-error)">No MASTER.md</span>';
+                // Card is the link; the delete button sits in the corner with
+                // its own click handler that stops propagation so it doesn't
+                // also navigate into the editor.
                 return `
-                    <a href="#/editor/${s.name}" class="stat-card" style="text-decoration:none;color:inherit;cursor:pointer">
-                        <h4>${Utils.escapeHtml(s.title)}</h4>
-                        <p style="color:var(--text-secondary);font-size:0.85rem">${wc}${ch ? ' · ' + ch : ''} ${hasMaster}</p>
-                    </a>`;
+                    <div class="stat-card story-card" style="position:relative;padding-right:36px">
+                        <a href="#/editor/${s.name}" style="text-decoration:none;color:inherit;cursor:pointer;display:block">
+                            <h4>${Utils.escapeHtml(s.title)}</h4>
+                            <p style="color:var(--text-secondary);font-size:0.85rem">${wc}${ch ? ' · ' + ch : ''} ${hasMaster}</p>
+                        </a>
+                        <button class="story-delete-btn" data-story="${Utils.escapeHtml(s.name)}" title="Delete story" style="position:absolute;top:8px;right:8px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);padding:2px 8px;font-size:14px;cursor:pointer;color:var(--text-muted);line-height:1">&#x1F5D1;</button>
+                    </div>`;
             }).join('');
 
             App._setContent(`
@@ -139,6 +145,28 @@ const Editor = {
                         </div>
                     </div>
                 </div>
+
+                <div class="create-story-overlay" id="delete-story-overlay">
+                    <div class="create-story-dialog">
+                        <h3 style="color:var(--danger)">Delete Story</h3>
+                        <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:8px">
+                            This permanently deletes the story folder and every file in it (Markdown, BBCode, HTML, EPUB, PDFs, covers, chapter thumbnails, backups). It cannot be undone.
+                        </p>
+                        <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:12px">
+                            Posting history (Publications and queue items) is retained — only the local files are removed.
+                        </p>
+                        <div id="delete-story-target" style="font-size:0.95rem;margin-bottom:8px"></div>
+                        <label class="create-story-label">
+                            Type the folder name to confirm
+                            <input type="text" id="delete-story-confirm-input" class="create-story-input" placeholder="" autocomplete="off">
+                        </label>
+                        <div id="delete-story-error" class="create-story-error" style="display:none"></div>
+                        <div class="create-story-actions">
+                            <button class="btn btn-sm btn-outline" id="delete-story-cancel">Cancel</button>
+                            <button class="btn btn-sm btn-danger" id="delete-story-submit" disabled>Delete</button>
+                        </div>
+                    </div>
+                </div>
             `);
 
             // Bind create-story dialog
@@ -192,6 +220,86 @@ const Editor = {
             overlay.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') { e.preventDefault(); Editor._submitCreateStory(); }
                 if (e.key === 'Escape') overlay.classList.remove('open');
+            });
+
+            // Bind delete-story overlay.  Two layers of confirmation: the
+            // user must (1) type the folder name into the input to enable
+            // the Delete button, and (2) acknowledge the native confirm()
+            // dialog before the DELETE request fires.
+            const deleteOverlay = document.getElementById('delete-story-overlay');
+            const deleteInput = document.getElementById('delete-story-confirm-input');
+            const deleteSubmit = document.getElementById('delete-story-submit');
+            const deleteTarget = document.getElementById('delete-story-target');
+            const deleteError = document.getElementById('delete-story-error');
+            // Holds the full story name (including any "Parent/Sub" prefix
+            // for versioned stories) of the card whose delete button was
+            // clicked.  The leaf folder name is what the user has to type.
+            Editor._pendingDelete = null;
+
+            document.querySelectorAll('.story-delete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const fullName = btn.getAttribute('data-story') || '';
+                    const leaf = fullName.split('/').pop();
+                    Editor._pendingDelete = { fullName, leaf };
+                    deleteTarget.innerHTML = `Folder: <code style="background:var(--bg-tertiary);padding:2px 6px;border-radius:3px">${Utils.escapeHtml(fullName)}</code>`;
+                    deleteInput.value = '';
+                    deleteInput.placeholder = leaf;
+                    deleteSubmit.disabled = true;
+                    deleteError.style.display = 'none';
+                    deleteOverlay.classList.add('open');
+                    setTimeout(() => deleteInput.focus(), 50);
+                });
+            });
+
+            deleteInput.addEventListener('input', () => {
+                deleteSubmit.disabled = !Editor._pendingDelete || deleteInput.value !== Editor._pendingDelete.leaf;
+            });
+            document.getElementById('delete-story-cancel').addEventListener('click', () => {
+                deleteOverlay.classList.remove('open');
+                Editor._pendingDelete = null;
+            });
+            deleteOverlay.addEventListener('click', (e) => {
+                if (e.target === deleteOverlay) {
+                    deleteOverlay.classList.remove('open');
+                    Editor._pendingDelete = null;
+                }
+            });
+            deleteOverlay.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    deleteOverlay.classList.remove('open');
+                    Editor._pendingDelete = null;
+                }
+                if (e.key === 'Enter' && !deleteSubmit.disabled) {
+                    e.preventDefault();
+                    deleteSubmit.click();
+                }
+            });
+            deleteSubmit.addEventListener('click', async () => {
+                if (!Editor._pendingDelete) return;
+                const { fullName, leaf } = Editor._pendingDelete;
+                if (!confirm(`Really delete "${fullName}"? Every file in the folder will be removed permanently.`)) return;
+                deleteSubmit.disabled = true;
+                deleteSubmit.textContent = 'Deleting...';
+                deleteError.style.display = 'none';
+                try {
+                    const url = `/api/editor/stories/${encodeURI(fullName)}?confirm_name=${encodeURIComponent(leaf)}`;
+                    const resp = await fetch(url, { method: 'DELETE' });
+                    if (!resp.ok) {
+                        let detail = `HTTP ${resp.status}`;
+                        try { detail = (await resp.json()).detail || detail; } catch {}
+                        throw new Error(detail);
+                    }
+                    deleteOverlay.classList.remove('open');
+                    Editor._pendingDelete = null;
+                    Editor.renderStoryList();
+                } catch (err) {
+                    deleteError.textContent = err.message;
+                    deleteError.style.display = 'block';
+                    deleteSubmit.disabled = false;
+                    deleteSubmit.textContent = 'Delete';
+                }
             });
 
             // Bind import dialog

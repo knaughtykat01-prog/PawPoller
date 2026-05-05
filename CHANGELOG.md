@@ -4,6 +4,30 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.14] - 2026-05-05
+
+### Delete-story button on the story list
+
+Story list cards (Editor → Stories) now have a small trash-can button
+in the top-right corner.  Clicking it opens a confirmation overlay
+that requires the user to type the story's folder name into an input
+before the Delete button enables, then a native `confirm()` dialog as
+the second verification gate.  Two layers — a typed-name match
+catches accidental clicks, the native confirm catches a paste-and-go.
+
+Backend: new `DELETE /api/editor/stories/{story_name:path}` endpoint.
+Resolves the path through the existing `_resolve_story_dir` (path
+traversal-safe — already in use by every other story endpoint),
+refuses anything inside `SKIP_DIRS` (e.g. `Reference_Guides`), and
+requires a `confirm_name` query param that must match the leaf folder
+name exactly — server-side defence so even direct curl calls can't
+delete a story without naming it first.  Logs the file count, plus
+the count of `publications` and pending queue items left behind, so
+the audit trail captures what side-state remains after the folder is
+gone.  Doesn't touch the database — `publications` rows stay so the
+analytics history is preserved; the user can clean those up
+separately if they want a hard reset.
+
 ## [2.18.13] - 2026-05-05
 
 ### Browser-login threading fix + Inkbunny added

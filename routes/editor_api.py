@@ -1584,6 +1584,80 @@ async def cancel_scheduled(story_name: str, queue_id: int):
     return {"ok": True, "queue_id": queue_id}
 
 
+@editor_router.delete("/stories/{story_name:path}")
+async def delete_story(story_name: str, confirm_name: str = ""):
+    """Permanently delete a story folder from the local archive.
+
+    Requires the caller to pass the story's folder name as the
+    `confirm_name` query param — must match exactly.  This is the
+    server-side half of the frontend's "type the folder name" overlay;
+    catches both accidental clicks and CSRF-style mistakes.
+
+    Versioned stories (e.g. `The_Abstinent_Bet/Nice_Version`) are
+    confirmed against the leaf folder name, not the full path.
+    """
+    import shutil
+
+    story_dir = _resolve_story_dir(story_name)
+    canonical = str(story_dir.relative_to(get_archive_path())).replace("\\", "/")
+
+    # SKIP_DIRS guard — defence-in-depth even though the list endpoint
+    # already excludes these.  `Reference_Guides` etc. are not stories.
+    top = canonical.split("/", 1)[0]
+    if top in SKIP_DIRS:
+        raise HTTPException(status_code=400, detail=f"Refusing to delete reserved folder '{top}'")
+
+    leaf = story_dir.name
+    if confirm_name != leaf:
+        raise HTTPException(
+            status_code=400,
+            detail=f"confirm_name must match the story's folder name ('{leaf}')",
+        )
+
+    # Audit: count publications + queue items before destroying the folder
+    # so the log line documents what side-state is left behind.
+    publications = 0
+    pending_queue = 0
+    try:
+        from database.db import get_connection
+        from database import posting_queries
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM publications WHERE story_name = ?",
+                (canonical,),
+            ).fetchone()
+            publications = row[0] if row else 0
+            pending_queue = sum(
+                1 for i in posting_queries.get_queue(conn, include_completed=False, story_name=canonical)
+            )
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.debug("delete_story: side-state probe failed for %s: %s", canonical, e)
+
+    # Count files for the response so the UI can show what was actually removed.
+    file_count = sum(1 for _ in story_dir.rglob("*") if _.is_file())
+
+    try:
+        shutil.rmtree(story_dir)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete story: {e}")
+
+    logger.info(
+        "Deleted story '%s' (%d files). Side-state retained: %d publications, %d queue items.",
+        canonical, file_count, publications, pending_queue,
+    )
+
+    return {
+        "ok": True,
+        "removed": canonical,
+        "files_deleted": file_count,
+        "publications_retained": publications,
+        "queue_items_retained": pending_queue,
+    }
+
+
 class ThemeSaveRequest(BaseModel):
     variables: dict
 
