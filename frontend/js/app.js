@@ -5902,25 +5902,6 @@ const App = {
                 </details>
 
                 <details class="settings-accordion" open>
-                    <summary>Inkbunny Credentials <span class="summary-meta">${creds.username ? '— ' + Utils.escapeHtml(creds.username) : ''}</span></summary>
-                    <div class="accordion-body">
-                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
-                        <label style="font-size:13px;color:var(--text-muted)">Username</label>
-                        <input type="text" id="cred-username" class="search-input" value="${Utils.escapeHtml(creds.username || '')}" placeholder="Inkbunny username" style="max-width:300px">
-                    </div>
-                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
-                        <label style="font-size:13px;color:var(--text-muted)">Password ${creds.has_password ? '(saved — leave blank to keep)' : ''}</label>
-                        <input type="password" id="cred-password" class="search-input" placeholder="${creds.has_password ? '********' : 'Inkbunny password'}" style="max-width:300px">
-                    </div>
-                    <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
-                        <button class="btn btn-primary" id="save-creds-btn">Save Credentials</button>
-                        <button class="btn btn-danger" id="settings-logout-btn">Sign Out</button>
-                        <span id="creds-msg" style="font-size:13px"></span>
-                    </div>
-                    </div>
-                </details>
-
-                <details class="settings-accordion" open>
                     <summary>App Preferences</summary>
                     <div class="accordion-body">
                     ${_isServer ? '' : `
@@ -6367,12 +6348,13 @@ const App = {
                             <option value="1000">Last 1000 lines</option>
                         </select>
                         <button class="btn btn-secondary" id="log-refresh-btn" style="padding:4px 12px;font-size:12px">Refresh</button>
+                        <button class="btn btn-secondary" id="log-copy-btn" style="padding:4px 12px;font-size:12px" title="Copy visible log lines to clipboard">Copy</button>
                         <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted);margin-left:auto">
                             <input type="checkbox" id="log-auto-scroll" checked> Auto-scroll
                         </label>
                     </div>
                     <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px" id="log-info"></div>
-                    <pre id="log-output" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-size:11px;line-height:1.5;max-height:500px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--text-secondary);font-family:'Cascadia Code','Fira Code','Consolas',monospace"></pre>
+                    <pre id="log-output" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-size:11px;line-height:1.5;max-height:500px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--text-secondary);font-family:'Cascadia Code','Fira Code','Consolas',monospace;user-select:text;-webkit-user-select:text;cursor:text"></pre>
                 </div>
 
                 </div><!-- /tab:logs -->
@@ -6586,6 +6568,29 @@ const App = {
 
                 <!-- ═══ TAB: Platforms ═══ -->
                 <div class="settings-tab-content" data-tab-content="platforms" ${_settingsTab !== 'platforms' ? 'style="display:none"' : ''}>
+
+                <details class="settings-accordion" open>
+                    <summary><span class="status-dot ${creds.has_password ? 'connected' : 'disconnected'}"></span>Inkbunny${creds.username ? ` <span class="summary-meta">— ${Utils.escapeHtml(creds.username)}</span>` : ''}</summary>
+                    <div class="accordion-body">
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">
+                        Inkbunny's API needs username + password to mint a session ID — web cookies aren't usable for auth, so this is a direct credential form rather than a browser-login flow.${_browserLoginAvailable ? ' Use "Verify in Browser" if you want to confirm your password works against the IB website before saving.' : ''}
+                    </p>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Username</label>
+                        <input type="text" id="cred-username" class="search-input" value="${Utils.escapeHtml(creds.username || '')}" placeholder="Inkbunny username" style="max-width:300px">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Password ${creds.has_password ? '(saved — leave blank to keep)' : ''}</label>
+                        <input type="password" id="cred-password" class="search-input" placeholder="${creds.has_password ? '********' : 'Inkbunny password'}" style="max-width:300px">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="save-creds-btn">Save Credentials</button>
+                        ${_browserLoginAvailable ? '<button class="btn btn-secondary" id="ib-browser-login-btn" title="Open inkbunny.net in a popup to confirm credentials work">Verify in Browser</button>' : ''}
+                        ${creds.has_password ? '<button class="btn btn-danger" id="settings-logout-btn">Sign Out</button>' : ''}
+                        <span id="creds-msg" style="font-size:13px"></span>
+                    </div>
+                    </div>
+                </details>
 
                 <details class="settings-accordion">
                     <summary><span class="status-dot ${faAuth.has_cookies ? 'connected' : 'disconnected'}"></span>FurAffinity${faAuth.has_cookies ? ` <span class="summary-meta">— ${Utils.escapeHtml(faAuth.username || '')}</span>` : ''}</summary>
@@ -7181,6 +7186,31 @@ const App = {
             document.getElementById('log-refresh-btn')?.addEventListener('click', () => this._loadLogs());
             document.getElementById('log-file-select')?.addEventListener('change', () => this._loadLogs());
             document.getElementById('log-lines-select')?.addEventListener('change', () => this._loadLogs());
+            document.getElementById('log-copy-btn')?.addEventListener('click', async (e) => {
+                const btn = e.target;
+                const out = document.getElementById('log-output');
+                const text = out ? (out.textContent || '') : '';
+                if (!text) { btn.textContent = 'Empty'; setTimeout(() => { btn.textContent = 'Copy'; }, 1200); return; }
+                try {
+                    await navigator.clipboard.writeText(text);
+                    btn.textContent = 'Copied';
+                } catch (_) {
+                    // Fallback: select the <pre> contents so the user can Ctrl+C.
+                    // pywebview WebView2 occasionally rejects clipboard writes
+                    // when the window doesn't have focus from a real input.
+                    try {
+                        const range = document.createRange();
+                        range.selectNodeContents(out);
+                        const sel = window.getSelection();
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                        btn.textContent = 'Selected — Ctrl+C';
+                    } catch (_) {
+                        btn.textContent = 'Copy failed';
+                    }
+                }
+                setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+            });
 
             // ── Settings Event Handlers ──────────────────────────────
             // All controls save immediately on interaction (no "Save All" button).
@@ -7381,8 +7411,10 @@ const App = {
                 }
             });
 
-            // Sign Out: clears IB credentials and navigates to the login page
-            document.getElementById('settings-logout-btn').addEventListener('click', async () => {
+            // Sign Out: clears IB credentials and navigates to the login page.
+            // Button is conditional on creds.has_password — only rendered when
+            // there's something to sign out of, so bind defensively.
+            document.getElementById('settings-logout-btn')?.addEventListener('click', async () => {
                 if (!confirm('Sign out and clear saved credentials?')) return;
                 try {
                     await API.authLogout();
@@ -7693,6 +7725,35 @@ const App = {
                         twBrowserLoginBtn.textContent = 'Login via Browser';
                         twBrowserLoginBtn.disabled = false;
                     }
+                });
+            }
+
+            // IB Browser Login: verification-only — opens inkbunny.net so the
+            // user can confirm their credentials work in a real browser.  IB's
+            // API needs username + password to mint an SID via api_login.php,
+            // so web cookies aren't usable for auth and nothing is saved by
+            // the browser-login flow itself.
+            const ibBrowserLoginBtn = document.getElementById('ib-browser-login-btn');
+            if (ibBrowserLoginBtn) {
+                ibBrowserLoginBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('creds-msg');
+                    ibBrowserLoginBtn.disabled = true;
+                    ibBrowserLoginBtn.textContent = 'Opening...';
+                    if (msg) { msg.textContent = 'A login window will open. Log in to Inkbunny to verify your credentials.'; msg.style.color = 'var(--text-muted)'; }
+                    try {
+                        const result = await API.browserLogin('ib', {});
+                        if (result.ok) {
+                            if (msg) { msg.textContent = 'Verified — Inkbunny accepted the login. Save your username and password above so the poller can authenticate.'; msg.style.color = 'var(--success)'; }
+                        } else {
+                            if (msg) { msg.textContent = result.message || 'Login window closed.'; msg.style.color = 'var(--text-muted)'; }
+                        }
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        if (msg) { msg.textContent = detail; msg.style.color = 'var(--danger)'; }
+                    }
+                    ibBrowserLoginBtn.textContent = 'Verify in Browser';
+                    ibBrowserLoginBtn.disabled = false;
                 });
             }
 

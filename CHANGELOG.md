@@ -4,6 +4,67 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.13] - 2026-05-05
+
+### Browser-login threading fix + Inkbunny added
+
+Browser login was failing on the first click for every platform with
+`pywebview must be run on a main thread` (visible in `auth.browser_login:
+Browser login window error for fa: pywebview must be run on a main thread.`)
+and only sometimes succeeding on retry. Root cause: `_run_login_window`
+called `webview.start()` from a daemon thread to spawn the login popup,
+but the dashboard's `main.py:924` already owns the one allowed
+`webview.start()` for the process — pywebview rejects any subsequent
+`start()` calls, and on Windows requires the main thread regardless.
+The intermittent retry "success" was undefined-behaviour territory left
+behind by the failed first call; not safe to rely on.
+
+Fix: drop the second `webview.start()` entirely. With the GUI loop
+already running (the dashboard's), `webview.create_window()` is enough —
+pywebview's main-thread dispatcher picks the new window up. The cookie
+poller stays in a daemon thread; the `closed` event fires the cancel
+path when the user dismisses the window. The wrapper thread that used
+to host `webview.start()` is gone; the FastAPI executor blocks on the
+result queue directly. A guard at the top now refuses to open a window
+when no GUI loop is running (returns a clear `RuntimeError` instead of
+silently spawning a broken second loop).
+
+New: Inkbunny added to `PLATFORM_LOGIN`. Same verification-only pattern
+as AO3 / SqW / Weasyl — IB's API mints its own SID via `api_login.php`
+with username + password, so web session cookies aren't usable. The
+browser-login entry exists so users can verify their credentials work
+in a real browser; the poller and poster still authenticate via
+`ib_username` / `ib_password`.
+
+### Settings: Inkbunny moved into the Platforms tab
+
+The Inkbunny credential form lived in Settings → General as its own
+"Inkbunny Credentials" accordion — leftover from when PawPoller was
+single-platform IB only. Now lifted into Settings → Platforms as the
+top accordion, matching the FA / WS / SF / DA / IK / Bsky / TW pattern:
+status-dot summary, username in the meta line, conditional Sign Out
+button only when a password is actually saved. The save / sign-out
+event handlers still bind to `cred-username` / `cred-password` /
+`save-creds-btn` / `settings-logout-btn` (kept the IDs intact). Added a
+"Verify in Browser" button that opens inkbunny.net via the new IB entry
+in `PLATFORM_LOGIN` so users can confirm their credentials work in a
+real browser before saving — verification only, since IB's API needs
+username + password to mint an SID and web cookies aren't usable. Made
+the `settings-logout-btn` handler binding optional-chaining since the
+button is now conditional on `creds.has_password`.
+
+### Log viewer: copyable + Copy button
+
+Settings → Logs `<pre id="log-output">` now has explicit
+`user-select:text` + `cursor:text` so click-drag selection works in
+pywebview's WebView2 (which silently suppressed selection in some theme
+combinations). Added a "Copy" button next to "Refresh" that writes the
+visible log buffer to the clipboard via `navigator.clipboard.writeText`,
+with a graceful fallback that selects the `<pre>` contents and prompts
+the user to Ctrl+C if WebView2 rejects the clipboard write (it
+occasionally does when the focus came from a button rather than an
+input).
+
 ## [2.18.12] - 2026-05-03
 
 ### AO3 client: jitter + exponential backoff (hygiene)

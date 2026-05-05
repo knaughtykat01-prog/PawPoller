@@ -9,16 +9,13 @@ Each SimpleCookie is a dict mapping a single cookie name to a Morsel with a
 .value attribute.  We flatten these into a {name: value} dict for easy lookup.
 
 Threading constraints:
-    pywebview.start() MUST run on the main thread on macOS.  On Windows (our
-    primary target) it can run on any thread, but webview.start() blocks until
-    ALL windows created in that call are destroyed.  We therefore create a
-    fresh webview.start() call per login window inside a daemon thread so the
-    main window keeps responding.
-
-    IMPORTANT: Each call to webview.start() creates an independent GUI event
-    loop.  Only one webview.start() can be active per thread, so the login
-    window runs in its own thread.  On Windows with EdgeChromium this works
-    reliably.
+    pywebview only allows one ``webview.start()`` per process, and on Windows
+    it must run on the main thread.  ``main.py`` already owns that call for
+    the dashboard window.  This module therefore must NEVER call
+    ``webview.start()`` itself — it only calls ``webview.create_window()``,
+    which the existing GUI loop picks up and renders.  Cookie polling and
+    the close handler run from worker threads; pywebview marshals the
+    actual UI work back to the main thread internally.
 """
 
 from __future__ import annotations
@@ -66,6 +63,20 @@ def _flatten_cookies(cookie_list: list[SimpleCookie]) -> dict[str, str]:
 #                    Each is {id, label, placeholder, required}.
 
 PLATFORM_LOGIN: dict[str, dict] = {
+    "ib": {
+        "name": "Inkbunny",
+        "url": "https://inkbunny.net/login.php",
+        "success_check": lambda cookies, url: (
+            "/login.php" not in (url or "")
+            and "inkbunny.net" in (url or "")
+        ),
+        "extract": lambda cookies, url: {},
+        # Inkbunny's API mints its own SID via api_login.php with
+        # username + password — web session cookies aren't usable for
+        # the API.  Browser login here is verification-only; the poller
+        # and poster still authenticate via ib_username / ib_password.
+        "fields": [],
+    },
     "fa": {
         "name": "FurAffinity",
         "url": "https://www.furaffinity.net/login/",
@@ -212,69 +223,82 @@ def login_via_browser(
             "pywebview is not available. Browser login only works in desktop mode."
         )
 
+    # The dashboard's webview.start() (in main.py) must already be running.
+    # If it isn't, we can't open a second window — and we mustn't try to
+    # call webview.start() ourselves (Windows requires the main thread, and
+    # only one start() per process is allowed).
+    if not getattr(webview, "windows", None):
+        raise RuntimeError(
+            "Browser login requires the desktop GUI loop to be running. "
+            "Open this from the desktop dashboard, not the headless server."
+        )
+
     result_queue: queue.Queue[dict | None] = queue.Queue()
+    poll_active = threading.Event()
+    poll_active.set()
 
-    def _run_login_window():
-        """Thread target: creates and runs the login window."""
-        try:
-            window = webview.create_window(
-                f"Login to {plat_cfg['name']} — PawPoller",
-                plat_cfg["url"],
-                width=900,
-                height=700,
-            )
+    try:
+        window = webview.create_window(
+            f"Login to {plat_cfg['name']} — PawPoller",
+            plat_cfg["url"],
+            width=900,
+            height=700,
+        )
+    except Exception as e:
+        logger.error("Failed to open browser login window for %s: %s", platform, e)
+        return None
 
-            poll_active = True
-
-            def _check_login():
-                """Periodically check cookies/URL for successful login."""
-                import time
-                while poll_active:
-                    time.sleep(2)
-                    try:
-                        cookies_raw = window.get_cookies()
-                        url = window.get_current_url() or ""
-                        cookies = _flatten_cookies(cookies_raw)
-
-                        if plat_cfg["success_check"](cookies, url):
-                            creds = plat_cfg["extract"](cookies, url)
-                            logger.info(
-                                "Browser login success for %s (%d cookie keys extracted)",
-                                platform, len(creds),
-                            )
-                            result_queue.put(creds)
-                            # Close the window from a timer to avoid deadlock
-                            window.destroy()
-                            return
-                    except Exception as e:
-                        # Window might be closing or not yet loaded
-                        logger.debug("Cookie check for %s: %s", platform, e)
-
-            # Start the cookie-polling thread
-            checker = threading.Thread(target=_check_login, daemon=True)
-            checker.start()
-
-            # webview.start() blocks until the window is destroyed
-            webview.start()
-
-            # If we get here without a result, user closed the window
-            poll_active = False
-            if result_queue.empty():
-                result_queue.put(None)
-
-        except Exception as e:
-            logger.error("Browser login window error for %s: %s", platform, e)
+    def _on_closed():
+        """User dismissed the window without completing login."""
+        poll_active.clear()
+        if result_queue.empty():
             result_queue.put(None)
 
-    # Run in a thread so we don't block the caller
-    login_thread = threading.Thread(target=_run_login_window, daemon=True)
-    login_thread.start()
+    try:
+        window.events.closed += _on_closed
+    except Exception as e:
+        # Older pywebview without the events API — fall back to polling-only.
+        logger.debug("closed event unavailable for %s: %s", platform, e)
 
-    # Wait for the result (blocks until window closes or timeout)
+    def _check_login():
+        """Poll the window's cookies/URL until success_check passes."""
+        import time
+        while poll_active.is_set():
+            time.sleep(2)
+            try:
+                cookies_raw = window.get_cookies()
+                url = window.get_current_url() or ""
+                cookies = _flatten_cookies(cookies_raw)
+                if plat_cfg["success_check"](cookies, url):
+                    creds = plat_cfg["extract"](cookies, url)
+                    logger.info(
+                        "Browser login success for %s (%d cookie keys extracted)",
+                        platform, len(creds),
+                    )
+                    result_queue.put(creds)
+                    poll_active.clear()
+                    try:
+                        window.destroy()
+                    except Exception:
+                        pass
+                    return
+            except Exception as e:
+                # Window might be closing or not yet loaded
+                logger.debug("Cookie check for %s: %s", platform, e)
+
+    threading.Thread(target=_check_login, daemon=True).start()
+
+    # Wait for the result (blocks the FastAPI executor until the user
+    # finishes login, closes the window, or the timeout fires).
     try:
         creds = result_queue.get(timeout=timeout)
     except queue.Empty:
         logger.warning("Browser login timed out for %s after %ds", platform, timeout)
+        poll_active.clear()
+        try:
+            window.destroy()
+        except Exception:
+            pass
         return None
 
     if creds is None:
