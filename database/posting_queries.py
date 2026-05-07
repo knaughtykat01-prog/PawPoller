@@ -210,16 +210,38 @@ def add_to_queue(
     return cursor.lastrowid
 
 
-def get_pending_queue(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
-    """Get pending queue items ordered by priority then creation time."""
-    rows = conn.execute(
-        """SELECT * FROM posting_queue
-        WHERE status = 'pending'
-          AND (scheduled_at IS NULL OR scheduled_at <= datetime('now'))
-        ORDER BY priority DESC, created_at ASC
-        LIMIT ?""",
-        (limit,),
-    ).fetchall()
+def get_pending_queue(
+    conn: sqlite3.Connection,
+    limit: int = 20,
+    runtime_mode: str | None = None,
+) -> list[dict]:
+    """Get pending queue items ordered by priority then creation time.
+
+    When ``runtime_mode`` is provided, only items whose ``requires`` field is
+    ``'any'`` or matches the mode are returned. This stops a head-of-line block
+    where stale ``requires='desktop'`` rows (e.g. from a removed FA auto-queue
+    path) sit at the top of the FIFO and starve newer compatible items past
+    the LIMIT — the bug item 8 hit when items 1–7 were April-dated zombies.
+    """
+    if runtime_mode is None:
+        rows = conn.execute(
+            """SELECT * FROM posting_queue
+            WHERE status = 'pending'
+              AND (scheduled_at IS NULL OR scheduled_at <= datetime('now'))
+            ORDER BY priority DESC, created_at ASC
+            LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT * FROM posting_queue
+            WHERE status = 'pending'
+              AND (scheduled_at IS NULL OR scheduled_at <= datetime('now'))
+              AND requires IN ('any', ?)
+            ORDER BY priority DESC, created_at ASC
+            LIMIT ?""",
+            (runtime_mode, limit),
+        ).fetchall()
     return [dict(r) for r in rows]
 
 

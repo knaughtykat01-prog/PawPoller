@@ -81,21 +81,20 @@ async def _scheduler_loop() -> None:
                 await asyncio.sleep(SCHEDULER_CHECK_INTERVAL)
                 continue
 
-            # Get next pending item that's compatible with our runtime mode
+            # Get next pending item that's compatible with our runtime mode.
+            # The runtime_mode filter is applied in SQL so incompatible
+            # items (e.g. requires='desktop' on a server instance) don't
+            # block compatible ones at the head of the FIFO.
             conn = get_connection()
             try:
-                items = posting_queries.get_pending_queue(conn, limit=5)
+                items = posting_queries.get_pending_queue(
+                    conn, limit=5, runtime_mode=_runtime_mode
+                )
             finally:
                 conn.close()
 
-            # Filter by runtime mode compatibility
-            compatible = [
-                item for item in items
-                if _is_compatible(item.get("requires", "any"))
-            ]
-
-            if compatible:
-                await _process_queue_item(compatible[0])
+            if items:
+                await _process_queue_item(items[0])
                 # Brief pause between queue items to avoid busy-looping
                 await asyncio.sleep(5)
             else:
@@ -104,13 +103,6 @@ async def _scheduler_loop() -> None:
         except Exception as e:
             logger.error("Posting scheduler error: %s", e, exc_info=True)
             await asyncio.sleep(SCHEDULER_CHECK_INTERVAL)
-
-
-def _is_compatible(requires: str) -> bool:
-    """Check if a queue item's 'requires' mode is compatible with our runtime."""
-    if requires == "any":
-        return True
-    return requires == _runtime_mode
 
 
 async def _process_queue_item(item: dict) -> None:

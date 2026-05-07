@@ -4,6 +4,63 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.16] - 2026-05-07
+
+### Fix: scheduled / queued posts starved by `requires='desktop'` zombies at the head of the FIFO
+
+Caught from a real symptom: a scheduled IB post for `Overtime`
+(queue_id=8, `scheduled_at=2026-05-06 07:07 UTC`, `requires='any'`)
+sat in the queue 26+ hours overdue on the GCP server. Eight items
+total in `posting_queue`; items 1–7 were stale `requires='desktop'`
+rows from 2026-04-04 → 2026-04-17 (SF/IB/SQW/AO3 — none of which
+are desktop-only platforms today; presumably from an older
+auto-queue policy).
+
+Two bugs combined:
+
+1. **Head-of-line blocking.** `posting/scheduler.py:_scheduler_loop`
+   called `posting_queries.get_pending_queue(conn, limit=5)`, then
+   filtered the result in Python via `_is_compatible(item.requires)`.
+   The SQL `LIMIT 5` runs before the Python filter, so the five
+   oldest pending rows came back first — all seven zombies preceded
+   item 8 in the FIFO, so the scheduler always saw five
+   `requires='desktop'` rows, filtered them all out as incompatible
+   on a server-mode instance, and slept for 60s. Item 8 was never
+   fetched. Confirmed live: `get_pending_queue(limit=5)` returned
+   only zombies; `get_pending_queue(limit=20)` returned all eight
+   with item 8 marked compatible.
+
+2. **Stale `requires='desktop'` rows for non-desktop platforms.**
+   Today only `FurAffinityPoster.requires_mode == 'desktop'`; the
+   auto-queue path in `posting/manager.py:210` only fires on FA from
+   server. The seven April-dated rows for SF/IB/SQW/AO3 cannot be
+   produced by current code — they're legacy from an earlier policy.
+   They were silently rotting in the queue and would have rotted
+   indefinitely.
+
+Fix:
+
+- `database/posting_queries.py:get_pending_queue` gains an optional
+  `runtime_mode` parameter. When provided, the `requires IN ('any',
+  :mode)` predicate is applied **in SQL**, so incompatible rows are
+  excluded before `LIMIT` truncates the result. Backward-compatible:
+  `runtime_mode=None` (the default — used by the test suite) keeps
+  the old unfiltered behaviour.
+- `posting/scheduler.py:_scheduler_loop` passes
+  `runtime_mode=_runtime_mode` and drops the now-redundant Python
+  filter + `_is_compatible` helper.
+- The seven zombie rows (queue_ids 1–7) were deleted manually on the
+  GCP server before the deploy; item 8 (Overtime IB scheduled post)
+  was preserved so the next scheduler tick processes it. (No code
+  for an automatic zombie sweep — the user's choice each time.)
+
+Known follow-up: the editor UI has no "cancel queue item" button
+even though `DELETE /api/posting/queue/{queue_id}` already exists in
+`routes/posting_api.py`. Worth wiring up so manual cleanup doesn't
+require SSH + Python next time. Not in this version.
+
+---
+
 ## [2.18.15] - 2026-05-05
 
 ### Fix: EPUB (and PDF / SoFurry HTML / chapter BBCode) hidden from Downloads dropdown after regen
