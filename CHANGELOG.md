@@ -4,6 +4,30 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.21] - 2026-05-08
+
+### Fix: Theme Editor + metadata drawer dropdown options unreadable
+
+The Warning Icon picker and Section Break picker in the Theme Editor
+(plus the rating / category selects in the metadata drawer) opened
+their dropdown popups with options rendered in low-contrast
+grey-on-grey — only the highlighted item was readable. Caused by
+relying on default browser rendering for `<option>` elements in a
+dark theme: Chromium / WebView2 renders the popup as a system widget
+and doesn't inherit the parent `<select>`'s background / colour
+tokens. Same pattern that `.filter-select option` (in
+`components.css`) already worked around for the dashboard.
+
+Fix: add an explicit option rule in `frontend/css/editor.css`
+covering `.theme-row select option` and `.metadata-field select
+option`, setting `background: var(--surface-elevated)` and
+`color: var(--text-primary)` so options are readable across all
+eight themes.
+
+CSS-only change, no Python touched.
+
+---
+
 ## [2.18.20] - 2026-05-08
 
 ### Fix: every styled chapter file rendered "THE END" footer

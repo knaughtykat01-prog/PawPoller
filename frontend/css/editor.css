@@ -521,6 +521,17 @@
     color: var(--text-primary);
 }
 
+/* Explicit <option> styling — the dropdown popup is a system-level
+   widget that doesn't inherit the parent select's tokens in dark
+   themes (Chromium / WebView2 default the popup to system colours,
+   which renders as faint grey-on-grey). Same fix
+   ``.filter-select option`` already uses in components.css. */
+.theme-row select option,
+.metadata-field select option {
+    background: var(--surface-elevated);
+    color: var(--text-primary);
+}
+
 .btn-tiny {
     font-size: 0.65rem;
     padding: 1px 6px;
