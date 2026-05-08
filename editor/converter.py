@@ -1830,6 +1830,8 @@ def _build_styled_chapter(
 ) -> ConversionResult:
     """Build a single styled HTML chapter document."""
     ch = chapters[ch_idx]
+    is_last_chapter = ch_idx == len(chapters) - 1
+    next_ch = chapters[ch_idx + 1] if not is_last_chapter else None
     ch_lines = body_text.split("\n")[ch["line_start"]:ch["line_end"] + 1]
 
     # Skip the chapter heading line itself (it's in the body handler)
@@ -1847,6 +1849,14 @@ def _build_styled_chapter(
     else:
         doc = _fill_template(template, theme, fm, body_html)
 
+    # The styling template hard-codes a `<div class="story-end">` "THE END"
+    # block at the end of every document. For non-final chapter files that's
+    # wrong — it claims the story ends here when there are more chapters
+    # behind it. Replace with a per-chapter "End of X / Continued in Y"
+    # block; only the actual last chapter keeps the THE END footer.
+    if not is_last_chapter and next_ch is not None:
+        doc = _replace_story_end_with_chapter_end(doc, ch["title"], next_ch["title"])
+
     # Update the <title> tag to include chapter name
     chapter_title = ch["title"]
     doc = doc.replace(
@@ -1857,9 +1867,44 @@ def _build_styled_chapter(
     stats = {
         "title": fm.title, "chapter_index": ch_idx,
         "chapter_title": chapter_title, "mode": "chapter",
+        "is_last_chapter": is_last_chapter,
         **body_stats,
     }
     return ConversionResult(output=doc, format="styled_html", stats=stats)
+
+
+def _replace_story_end_with_chapter_end(
+    doc: str, ch_title: str, next_title: str,
+) -> str:
+    """Swap the template's static THE END block for a per-chapter footer.
+
+    The styling template includes a fixed ``<div class="story-end">`` block
+    that reads "THE END" plus the author signature. That belongs on the
+    final chapter only — every earlier chapter file shows a stale
+    "THE END" claim that contradicts the next file's existence.
+
+    The replacement keeps the ``story-end`` class so the existing CSS
+    (centring, padding, end-rule) still applies, and adds ``chapter-end``
+    as a hook for any future per-chapter restyling.
+    """
+    se_start = doc.find('<div class="story-end">')
+    if se_start == -1:
+        return doc
+    se_end = doc.find("</div>", se_start)
+    if se_end == -1:
+        return doc
+    se_end += len("</div>")
+
+    ch_title_esc = _escape_html(ch_title)
+    next_title_esc = _escape_html(next_title)
+    replacement = (
+        '<div class="story-end chapter-end">\n'
+        '        <hr class="end-rule">\n'
+        f"        <p>End of {ch_title_esc}</p>\n"
+        f'        <p class="signature">Continued in {next_title_esc}</p>\n'
+        "    </div>"
+    )
+    return doc[:se_start] + replacement + doc[se_end:]
 
 
 def _replace_warning_page_with_header(doc: str, fm: FrontMatter,

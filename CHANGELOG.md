@@ -4,6 +4,60 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.20] - 2026-05-08
+
+### Fix: every styled chapter file rendered "THE END" footer
+
+Caught from a real symptom: the user posted Overtime ch1 to FA, then
+checked the styled HTML preview and saw "THE END" at the end of
+chapter 1 — claiming the story was over despite three more chapters
+behind it. Same issue on chapters 2 and 3.
+
+Root cause: the styling template
+(`Reference_Guides/Styling/HTML_CSS/STYLING_REFERENCE.md`) hard-codes
+a `<div class="story-end">` block with "THE END" + signature. Every
+styled HTML file fills the same template, including per-chapter
+files, so chapters 1..N all rendered "THE END". Only the actual last
+chapter should.
+
+Fix in `editor/converter.py:_build_styled_chapter`:
+
+- Track `is_last_chapter = ch_idx == len(chapters) - 1`.
+- For non-final chapters, post-process the rendered doc and replace
+  the `<div class="story-end">` block (including its hr / THE END
+  paragraph / signature paragraph) with a per-chapter variant:
+  `<div class="story-end chapter-end">` containing
+  `End of {ch_title}` and `Continued in {next_ch_title}`.
+- The replacement keeps the `story-end` class so the existing CSS
+  (centring, padding, end-rule) applies; `chapter-end` is a hook
+  for any future per-chapter restyling.
+- New helper: `_replace_story_end_with_chapter_end()`.
+- `stats["is_last_chapter"]` exposed for downstream callers.
+
+Smoke-tested on Overtime: all four chapters render correctly
+(ch1 → "End of Chapter 1: Tip-Off / Continued in Chapter 2: Foul";
+ch2 → "End of Chapter 2: Foul / Continued in Chapter 3: Possession";
+ch3 → "End of Chapter 3: Possession / Continued in Chapter 4:
+Whistle"; ch4 → original "THE END" + signature).
+
+Existing per-chapter Styled HTML files on disk still have the old
+footer — needs a Regenerate run on each chaptered story to refresh.
+The full-story Styled HTML and EPUB are unaffected (single-document
+flows; the end marker only emits where MASTER.md actually has
+`*End of Title*`). Plain BBCode / SoFurry HTML / Clean HTML chapter
+files don't render an end marker either since the source slice
+doesn't contain that line — only the Styled HTML pipeline injects
+it via the template.
+
+Side observation worth a follow-up (separate from this bug): when
+a story's MASTER.md has no `<!-- @byline -->` anchor and the
+`default_author` setting is empty, the Styled HTML signature
+renders as `~  ~` (empty). Pre-existing; only affects the last
+chapter / full-story since chapters 1..N-1 no longer emit a
+signature post-fix. Not in this version.
+
+---
+
 ## [2.18.19] - 2026-05-08
 
 ### Fix: per-chapter FA post uploaded the full-story PDF instead
