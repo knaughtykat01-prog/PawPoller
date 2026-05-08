@@ -2278,6 +2278,7 @@ async def upload_chapter_thumbnail(
     rel_path = f"Images/{filename}"
 
     sj = story_dir / "story.json"
+    last_modified: float | None = None
     if sj.is_file():
         try:
             raw = json.loads(sj.read_text(encoding="utf-8"))
@@ -2287,10 +2288,20 @@ async def upload_chapter_thumbnail(
                 raw["images"]["chapter_thumbnails"] = {}
             raw["images"]["chapter_thumbnails"][str(chapter_index)] = rel_path
             sj.write_text(json.dumps(raw, indent=4, ensure_ascii=False), encoding="utf-8")
+            last_modified = sj.stat().st_mtime
         except Exception:
             pass
 
-    return {"ok": True, "filename": rel_path, "size": len(data)}
+    # ``last_modified`` is returned so the metadata drawer can refresh its
+    # cached mtime in lockstep. Without it, the next /metadata PUT would
+    # 409-conflict because this endpoint mutated story.json behind the
+    # drawer's back.
+    return {
+        "ok": True,
+        "filename": rel_path,
+        "size": len(data),
+        "last_modified": last_modified,
+    }
 
 
 class SaveFormatRequest(BaseModel):

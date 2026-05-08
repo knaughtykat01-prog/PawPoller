@@ -3099,6 +3099,19 @@ const MetaEditor = {
                 if (!this.metadata.images) this.metadata.images = {};
                 if (!this.metadata.images.chapter_thumbnails) this.metadata.images.chapter_thumbnails = {};
                 this.metadata.images.chapter_thumbnails[String(chIdx)] = data.filename;
+                // Snapshot the new on-disk write into initialMetadata so
+                // the dirty check doesn't flag the upload as a pending
+                // edit, and bump lastMtime so the next Save doesn't 409.
+                if (typeof data.last_modified === 'number') {
+                    this.lastMtime = data.last_modified;
+                }
+                if (this.initialMetadata) {
+                    if (!this.initialMetadata.images) this.initialMetadata.images = {};
+                    if (!this.initialMetadata.images.chapter_thumbnails) {
+                        this.initialMetadata.images.chapter_thumbnails = {};
+                    }
+                    this.initialMetadata.images.chapter_thumbnails[String(chIdx)] = data.filename;
+                }
                 this._setStatus(`Chapter ${chIdx} thumbnail uploaded`, 'success');
                 this._rerenderChapterDetail(chIdx);
             } else {

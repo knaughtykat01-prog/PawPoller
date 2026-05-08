@@ -4,6 +4,41 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.18] - 2026-05-08
+
+### Fix: chapter-thumbnail upload triggers a 409 on the next metadata Save
+
+Followed up from 2.18.17. The chapter-thumbnail endpoint writes the
+file to `Images/` AND mutates `story.json` directly (adds the new
+path under `images.chapter_thumbnails[chIdx]`). The metadata drawer
+caches the mtime of story.json in `this.lastMtime` at load time and
+sends it as `expected_mtime` on every PUT /metadata for optimistic
+concurrency. When the upload mutated story.json, the drawer's cached
+mtime stayed stale, so the very next Save 409'd and forced the user
+to confirm a reload — even though the upload was their own action a
+moment ago. Functional but surprising; in the bug session that led
+to 2.18.17 the user hit this exact pattern (4× POST then PUT 409
+then GET reload).
+
+Fix:
+
+- `routes/editor_api.py:upload_chapter_thumbnail` now returns
+  `last_modified` from `sj.stat().st_mtime` after the story.json
+  rewrite (or `None` when story.json is missing).
+- `frontend/js/metadata_editor.js:_uploadChapterThumb` consumes
+  `data.last_modified`, updates `this.lastMtime`, AND mirrors the
+  thumbnail write into `this.initialMetadata` so the drawer's dirty
+  check doesn't flag the upload as a pending edit. Without the
+  initial-state mirror, opening the drawer, uploading a thumb, and
+  closing without other edits would still mark the drawer dirty.
+
+`upload_cover` is a different shape — it only writes the cover
+image to disk; the user's Save is what persists the filename change
+into `story.json`. So no mtime drift, no 409, no parallel fix
+needed there.
+
+---
+
 ## [2.18.17] - 2026-05-08
 
 ### Fix: per-chapter thumbnail uploads all landed on chapter 0
