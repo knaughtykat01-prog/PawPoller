@@ -4,6 +4,68 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.19] - 2026-05-08
+
+### Fix: per-chapter FA post uploaded the full-story PDF instead
+
+Caught from a real symptom: posting just chapter 1 of `Overtime` to
+FurAffinity via the publish-check matrix uploaded the entire
+full-story `PDF/Overtime.pdf` to FA, recorded as
+`https://www.furaffinity.net/view/64930670/` with publications row
+`pub_id=60` (`format_file` pointing at `Overtime.pdf`, not
+`Chapter_1_Tip-Off.pdf`).
+
+Two compounding bugs in `posting/story_reader.py`:
+
+1. **`_resolve_format_file` matched on empty filename.** The resolver
+   does `if ch_filename in f.stem`, which is unconditionally True
+   when `ch_filename == ""` (Python's `"" in any_string` is True).
+   For FA's format spec `[("PDF", "*.pdf"), ("Chapters/PDF",
+   "*.pdf")]` this meant the first iteration over `PDF/` matched
+   `Overtime.pdf` immediately and returned, never reaching the
+   per-chapter `Chapters/PDF/` dir or the secondary
+   `f"Chapter_{N}" in f.name` matcher that would have caught the
+   right file.
+
+2. **`_load_from_story_json` parsed split_manifest with wrong keys.**
+   The manifest's chapter entries use `number` (not `index`) and
+   have no top-level `filename` key. The lookup
+   `manifest_chapters[ch.get("index", 0)] = ch` collapsed every
+   chapter to key `0`, and `manifest_ch.get("filename", "")` always
+   returned `""`. Result: every `ChapterInfo.filename` was empty,
+   feeding bug #1.
+
+Fix:
+
+- `_resolve_format_file` guards the filename matcher with
+  `if ch_filename and ch_filename in f.stem` so an empty filename
+  no longer matches every file. Defense in depth — even if filename
+  derivation regresses again, the resolver now falls through to the
+  secondary `f"Chapter_{N}"` matcher and returns the right file.
+- `_load_from_story_json` keys the manifest dict on
+  `ch.get("number", ch.get("index", 0))`, derives a usable
+  filename from any path in the manifest's `files` dict
+  (e.g. `Chapter_1_Tip-Off.md` → `Chapter_1_Tip-Off`), and reads
+  word counts from `words` (the manifest's actual key) before
+  falling back to the historical `word_count`.
+
+Smoke-tested all 6 file-upload platforms × {full-story, ch1, ch4}
+on `Overtime`: every cell now resolves to the expected file (full-
+story bulk for ch0, per-chapter file for ch1/ch4).
+
+`_load_from_legacy` (the tags_upload.txt fallback path) still has
+the same wrong-keys problem but is only used for stories without
+`story.json`. Worth fixing for parity but not in this version.
+
+Cleanup pending: the live FA submission at
+`https://www.furaffinity.net/view/64930670/` (Overtime "ch1" with
+the full-story PDF) and its publications row `pub_id=60` need to
+be reconciled — either delete on FA + delete the row and re-post
+ch1 cleanly, or replace the file via FA's `changestory` endpoint.
+User to decide.
+
+---
+
 ## [2.18.18] - 2026-05-08
 
 ### Fix: chapter-thumbnail upload triggers a 409 on the next metadata Save

@@ -359,23 +359,38 @@ def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) ->
     """Load story metadata from story.json."""
     data = json.loads(json_path.read_text(encoding="utf-8"))
 
-    # Build chapter list from story.json (merge with manifest for file paths)
+    # Build chapter list from story.json (merge with manifest for file paths).
+    # split_manifest.json's chapter entries use ``number``, ``words``, and a
+    # nested ``files`` dict (no top-level ``index``/``filename``/``word_count``
+    # keys). Pre-2.18.19 the lookup used ``ch.get("index", 0)`` which collapsed
+    # every entry to key 0, and ``manifest_ch.get("filename", "")`` always
+    # returned ``""`` — feeding the empty-string match in ``_resolve_format_file``
+    # that broke per-chapter posting.
     chapters = []
     manifest_chapters = {}
     manifest_path = story_path / "Chapters" / "split_manifest.json"
     if manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         for ch in manifest.get("chapters", []):
-            manifest_chapters[ch.get("index", 0)] = ch
+            manifest_chapters[ch.get("number", ch.get("index", 0))] = ch
 
     for ch_data in data.get("chapter_info", []):
         idx = ch_data.get("index", 0)
         manifest_ch = manifest_chapters.get(idx, {})
+        # Derive ``filename`` from any format path in ``files`` — they all
+        # share the same stem (e.g. ``Chapter_1_Tip-Off``), which is what
+        # the resolver's substring match uses.
+        ch_filename = manifest_ch.get("filename", "")
+        if not ch_filename:
+            for path_str in (manifest_ch.get("files") or {}).values():
+                if isinstance(path_str, str) and path_str:
+                    ch_filename = Path(path_str).stem
+                    break
         chapters.append(ChapterInfo(
             index=idx,
             title=ch_data.get("title", ""),
-            filename=manifest_ch.get("filename", ""),
-            word_count=ch_data.get("words", manifest_ch.get("word_count", 0)),
+            filename=ch_filename,
+            word_count=ch_data.get("words", manifest_ch.get("words", manifest_ch.get("word_count", 0))),
             files=manifest_ch.get("files", {}),
         ))
 
@@ -708,10 +723,17 @@ def _resolve_format_file(
             # Look for chapter-specific file
             ch = story.chapters[chapter_index - 1]
             ch_filename = ch.filename
-            # Try matching by chapter filename prefix
-            for f in sorted(search_dir.iterdir()):
-                if f.is_file() and ch_filename in f.stem:
-                    return str(f), file_type
+            # Try matching by chapter filename prefix. Guard against an
+            # empty ``ch_filename`` — without it, ``"" in f.stem`` is True
+            # for every file in the directory, and the first format spec
+            # (often the full-story bulk file dir like ``PDF/``) wins
+            # over the per-chapter dir, returning the whole story for a
+            # chapter request. Pre-2.18.19 this is exactly what made
+            # publishing chapter 1 to FA upload the full-story PDF.
+            if ch_filename:
+                for f in sorted(search_dir.iterdir()):
+                    if f.is_file() and ch_filename in f.stem:
+                        return str(f), file_type
             # Try matching by chapter index
             for f in sorted(search_dir.iterdir()):
                 if f.is_file() and f"Chapter_{chapter_index}" in f.name:
