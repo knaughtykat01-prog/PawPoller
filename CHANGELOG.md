@@ -4,6 +4,53 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.18.17] - 2026-05-08
+
+### Fix: per-chapter thumbnail uploads all landed on chapter 0
+
+Caught from a real symptom: the user uploaded thumbnails for chapters
+1–4 of `Overtime` via the metadata drawer, hit Save, the field showed
+"None" for every chapter on reload. Server logs showed four
+`POST /api/editor/stories/Overtime/chapter-thumbnail` requests all
+returning 200 OK, but only one file on disk
+(`Images/ch0_thumbnail.png`, ~126 KB) and one entry in story.json
+(`chapter_thumbnails["0"]`).
+
+`routes/editor_api.py:upload_chapter_thumbnail` declared
+`chapter_index: int = 0` without a `Form()` annotation. Without
+`Form()`, FastAPI binds an `int` parameter from the **query string**
+only, ignores the multipart form field the frontend sends, and
+silently falls back to the default `0` on every call. So:
+
+- Each upload's file landed at `Images/ch0_thumbnail.png`,
+  overwriting the previous one.
+- `story.json["images"]["chapter_thumbnails"]` only ever got the key
+  `"0"` (which the per-chapter UI never renders — chapter indices
+  start at 1; chapter 0 is the story-level title heading).
+- After the post-save 409 reload (a separate quirk where the upload
+  endpoint mutates story.json directly without bumping the drawer's
+  cached `lastMtime`), the drawer's `thumbs[String(chIdx)]` reads
+  for `chIdx=1..4` all returned undefined → all four fields showed
+  "None".
+
+Fix: add `from fastapi import ..., Form, ...` and change the
+parameter to `chapter_index: int = Form(0)`. The frontend was
+already sending the field correctly via
+`formData.append('chapter_index', String(chIdx))`.
+
+Cleanup applied to the live VM:
+- Deleted the orphaned `Images/ch0_thumbnail.png` from the
+  `Overtime` story folder (no chapter referenced it).
+- Stripped the bogus `chapter_thumbnails["0"]` entry from
+  `Overtime/story.json` so the field is `{}` again.
+
+Only one other upload endpoint exists (`upload_cover` at
+`editor_api.py:2185`) and it takes no parameters besides `file`, so
+no similar bug there. Audited the full router; this was the only
+instance.
+
+---
+
 ## [2.18.16] - 2026-05-07
 
 ### Fix: scheduled / queued posts starved by `requires='desktop'` zombies at the head of the FIFO

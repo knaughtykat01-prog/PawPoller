@@ -13,7 +13,7 @@ import re
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -2245,9 +2245,17 @@ async def upload_cover(story_name: str, file: UploadFile = File(...)):
 async def upload_chapter_thumbnail(
     story_name: str,
     file: UploadFile = File(...),
-    chapter_index: int = 0,
+    chapter_index: int = Form(0),
 ):
-    """Upload a per-chapter thumbnail image."""
+    """Upload a per-chapter thumbnail image.
+
+    ``chapter_index`` MUST be annotated with ``Form()`` — without it FastAPI
+    binds the value from the query string only, ignores the multipart form
+    field the frontend sends, and silently falls back to 0 on every upload.
+    Pre-2.18.17 every per-chapter upload landed at ``Images/ch0_thumbnail.png``
+    and stored ``chapter_thumbnails["0"]`` regardless of which chapter the
+    user picked.
+    """
     story_dir = _resolve_story_dir(story_name)
 
     orig_name = file.filename or ""
