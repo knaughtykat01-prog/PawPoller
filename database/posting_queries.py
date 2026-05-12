@@ -282,34 +282,78 @@ def update_queue_status(
     error: str | None = None,
     pub_id: int | None = None,
 ) -> None:
-    """Update a queue item's status."""
+    """Update a queue item's status.
+
+    Refuses to overwrite a 'cancelled' row. The scheduler resets a row
+    to 'pending' on failure for retry; without this guard, a user-issued
+    cancel mid-flight gets clobbered by the scheduler's failure handler
+    the moment the in-flight post errors out, and the next scheduler
+    tick picks the row back up. The guard makes cancel actually stick.
+    """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     if status == "processing":
         conn.execute(
-            "UPDATE posting_queue SET status = ?, started_at = ?, attempts = attempts + 1 WHERE queue_id = ?",
+            "UPDATE posting_queue SET status = ?, started_at = ?, attempts = attempts + 1 "
+            "WHERE queue_id = ? AND status != 'cancelled'",
             (status, now, queue_id),
         )
     elif status in ("completed", "failed"):
         conn.execute(
-            "UPDATE posting_queue SET status = ?, completed_at = ?, last_error = ?, pub_id = ? WHERE queue_id = ?",
+            "UPDATE posting_queue SET status = ?, completed_at = ?, last_error = ?, pub_id = ? "
+            "WHERE queue_id = ? AND status != 'cancelled'",
             (status, now, error, pub_id, queue_id),
         )
     else:
         conn.execute(
-            "UPDATE posting_queue SET status = ? WHERE queue_id = ?",
+            "UPDATE posting_queue SET status = ? WHERE queue_id = ? AND status != 'cancelled'",
             (status, queue_id),
         )
     conn.commit()
 
 
 def cancel_queue_item(conn: sqlite3.Connection, queue_id: int) -> bool:
-    """Cancel a pending queue item."""
+    """Cancel a queue item if it's in a cancellable state.
+
+    Cancellable: pending, retrying, failed (rare manual cleanup after
+    a giving-up event). 'processing' rows are mid-flight in the
+    scheduler — cancel marks them, and the scheduler treats
+    'cancelled' as a terminal state when it completes the in-flight
+    work, so the next retry won't fire.
+    """
     cursor = conn.execute(
-        "UPDATE posting_queue SET status = 'cancelled' WHERE queue_id = ? AND status = 'pending'",
+        "UPDATE posting_queue SET status = 'cancelled' "
+        "WHERE queue_id = ? AND status IN ('pending', 'retrying', 'processing', 'failed')",
         (queue_id,),
     )
     conn.commit()
     return cursor.rowcount > 0
+
+
+def cancel_all_for(conn: sqlite3.Connection, *, platform: str | None = None,
+                   story_name: str | None = None) -> int:
+    """Bulk-cancel queue items matching the filter. Used by the editor's
+    'cancel all retries for X' affordance and the diagnostics cleanup
+    flow when a poster bug spams the queue.
+
+    Returns the number of rows cancelled. Filters compose with AND
+    semantics; both filters None means cancel-everything-non-terminal
+    which is rarely what callers want — explicit non-None args strongly
+    recommended.
+    """
+    sql = (
+        "UPDATE posting_queue SET status = 'cancelled' "
+        "WHERE status IN ('pending', 'retrying', 'processing', 'failed')"
+    )
+    params: list = []
+    if platform is not None:
+        sql += " AND platform = ?"
+        params.append(platform)
+    if story_name is not None:
+        sql += " AND story_name = ?"
+        params.append(story_name)
+    cursor = conn.execute(sql, params)
+    conn.commit()
+    return cursor.rowcount
 
 
 # ── Posting Log ───────────────────────────────────────────────

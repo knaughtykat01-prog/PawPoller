@@ -1370,6 +1370,31 @@ class AO3Client:
         ch_match = re.search(rf'/works/{work_id}/chapters/(\d+)', final_url)
         chapter_id = ch_match.group(1) if ch_match else ""
 
+        # Same preview-page pattern as create_work: when the form is
+        # submitted via "Preview" rather than "Post Without Preview",
+        # AO3 renders the Preview Work page inline at /works/{id}/chapters
+        # without redirecting, so the URL stays ID-less while the body
+        # carries the chapter ID in every action URL. Detect success-
+        # markers in the body and pull the chapter ID out as fallback.
+        if not chapter_id:
+            body_text = resp.text
+            success_markers = (
+                "Draft was successfully created" in body_text
+                or "Chapter was successfully created" in body_text
+                or "<title>Preview Work" in body_text
+                or "<title>Edit Work" in body_text
+                or "<title>Edit Chapter" in body_text
+            )
+            if success_markers:
+                body_match = re.search(rf'/works/{work_id}/chapters/(\d+)', body_text)
+                if body_match:
+                    chapter_id = body_match.group(1)
+                    logger.info(
+                        "AO3: Added chapter via preview-page response "
+                        "(URL stayed at /works/%s/chapters) chapter_id=%s",
+                        work_id, chapter_id,
+                    )
+
         if not chapter_id:
             raise RuntimeError(
                 f"AO3: Could not extract chapter_id from response URL: {final_url}"

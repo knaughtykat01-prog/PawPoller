@@ -4,6 +4,60 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.20.3] - 2026-05-12
+
+### Fix: AO3 chapter creation duplicate-draft loop + cancel button now sticks
+
+**Two stop-the-bleeding fixes for the AO3 duplicate-draft saga.**
+
+1. **`create_chapter` had the same preview-page bug as `create_work`.**
+   v2.20.1 fixed `create_work` to parse the work ID from the body
+   when AO3 renders the Preview Work page inline at `/works` without
+   redirecting. Turns out `create_chapter` has the identical pattern:
+   POST `/works/{id}/chapters` returns the preview page inline at
+   `/works/{id}/chapters` with no chapter ID in the URL. PawPoller
+   raised `Could not extract chapter_id from response URL`, the
+   retry mechanism re-queued, and each retry created a fresh draft.
+   So even after 2.20.1, every publish attempt to AO3 spawned a new
+   draft per retry cycle. Same fix shape applied: when URL-match
+   fails, look for success markers in the response body
+   (`Draft was successfully created`, `Chapter was successfully
+   created`, `<title>Preview Work / Edit Work / Edit Chapter`) and
+   scan for `/works/{id}/chapters/(\d+)` as a strict fallback.
+
+2. **Cancel button now actually cancels.** Two related bugs:
+   - `cancel_queue_item` only matched `status='pending'`. When the
+     scheduler picked up a row, status became `processing` and the
+     UI cancel button silently did nothing. Now matches `pending`,
+     `retrying`, `processing`, `failed`.
+   - Even when the cancel did set status to `cancelled`, the
+     scheduler's failure path immediately overwrote it with
+     `pending` (line 165 of `scheduler.py` calls
+     `update_queue_status(..., 'pending')` unconditionally to
+     re-queue for retry). The next tick picked it back up. Fix:
+     `update_queue_status` now refuses to overwrite a row whose
+     status is `cancelled` — added `AND status != 'cancelled'` to
+     all UPDATE statements. The cancel sticks even when issued
+     mid-flight; the scheduler completes the in-flight post but
+     the row stays cancelled, and the next tick passes it over.
+   - New helper `cancel_all_for(conn, *, platform=, story_name=)`
+     for bulk-cancel by filter — useful when a poster bug spams
+     the queue and the user wants to nuke a single platform's
+     pending+retrying+processing+failed rows in one shot.
+
+**Files modified:** `clients/ao3/client.py` (`create_chapter` body-
+scan fallback), `database/posting_queries.py` (cancel + status guard
++ new `cancel_all_for` helper), `config.py` (version bump).
+
+**Note for tomorrow:** there's still a double-retry bug —
+`manager._schedule_retry` (when called from `post_story`) creates a
+fresh queue row on failure, AND the scheduler resets the *original*
+row to pending. So one failure spawns two retry attempts. Not
+critical now that the underlying create_chapter bug is gone (no more
+failures = no more retries), but worth fixing if it bites again.
+
+---
+
 ## [2.20.2] - 2026-05-12
 
 ### Fix: AO3 full-story posts used Clean HTML instead of SquidgeWorld OTW format
