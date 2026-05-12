@@ -200,16 +200,25 @@ def _strip_trailing_separators(lines: list[str]) -> list[str]:
     return lines[:end]
 
 
-def _split_into_chapters(lines: list[str], body_start: int) -> list[dict]:
+def _split_into_chapters(
+    lines: list[str], body_start: int, *, default_title: str = "Chapter 1"
+) -> list[dict]:
     """Walk the body and split into chapters at `# ` headings.
 
     Returns [{title, lines}, ...] where lines are the raw body lines for
     that chapter, excluding the heading itself. Trailing blank/separator
     lines are stripped from each chapter so a `---` between chapters in
     the source doesn't render as a stray <hr> at the end of the file.
+
+    Single-chapter stories (no `# Chapter X` separator anywhere after the
+    body anchor) fall back to a synthetic chapter containing the whole
+    body, titled with `default_title` (the caller passes the story title).
+    Chaptered stories are unaffected — content seen before the first
+    `# ` heading is discarded as before.
     """
     chapters: list[dict] = []
     current: dict | None = None
+    orphan_lines: list[str] = []  # body content seen before any '# ' heading
     i = body_start
     while i < len(lines):
         stripped = lines[i].strip()
@@ -222,10 +231,13 @@ def _split_into_chapters(lines: list[str], body_start: int) -> list[dict]:
                 current["lines"] = _strip_trailing_separators(current["lines"])
                 chapters.append(current)
             current = {"title": heading, "lines": []}
+            orphan_lines = []  # a heading exists; orphans no longer relevant
             i += 1
             continue
         if current is None:
-            # Skip stray separators / blank lines before the first chapter.
+            # Stash for single-chapter fallback below. In chaptered stories
+            # this gets discarded the moment the first '# ' appears.
+            orphan_lines.append(lines[i])
             i += 1
             continue
         current["lines"].append(lines[i])
@@ -233,6 +245,15 @@ def _split_into_chapters(lines: list[str], body_start: int) -> list[dict]:
     if current is not None:
         current["lines"] = _strip_trailing_separators(current["lines"])
         chapters.append(current)
+
+    # Single-chapter story fallback — no `# Chapter X` heading anywhere
+    # after the body anchor, but the body has content. Treat the whole
+    # body as one chapter so EPUB / chapter-aware exporters don't choke.
+    if not chapters and any(ln.strip() for ln in orphan_lines):
+        chapters.append({
+            "title": default_title,
+            "lines": _strip_trailing_separators(orphan_lines),
+        })
     return chapters
 
 
@@ -869,7 +890,10 @@ def build_epub(story_dir: str | Path, output_path: str | Path | None = None,
     # ---- Split chapters
     lines = text.split("\n")
     body_start = fm.body_start_line if fm else 0
-    raw_chapters = _split_into_chapters(lines, body_start)
+    # Pass story title as default — used by single-chapter stories
+    # (no '# Chapter X' separator in body) so the whole body becomes
+    # one synthetic chapter titled with the story name.
+    raw_chapters = _split_into_chapters(lines, body_start, default_title=title)
     if not raw_chapters:
         raise ValueError(f"No chapters found in {master_path} after body anchor")
 

@@ -4,6 +4,43 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.20.4] - 2026-05-12
+
+### Fix: Single-chapter EPUB fallback + chapter-marker injection script
+
+Caught from the first bulk Regenerate All in production: `Extra_Credit`
+failed EPUB generation with "No chapters found in MASTER.md after body
+anchor" because its MASTER.md had no `# Chapter X` headings — the
+chapter boundaries lived only in `chapters.json` as line ranges, a
+legacy convention from before PawPoller's editor existed.
+
+**Defensive fallback in `editor/epub_generator.py:_split_into_chapters`**:
+when no `# ` headings appear after `<!-- @body -->` but the body has
+content, treat the whole body as one synthetic chapter using the story
+title as the chapter title. Prevents future EPUB failures for any
+story that drifts into this shape. Multi-chapter stories with proper
+`# Chapter X` headings are unaffected (the fallback only kicks in when
+`chapters` is empty at the end of the split walk).
+
+**New `scripts/inject_chapter_markers.py`**: one-shot rescue tool for
+stories already in this state. Reads `chapters.json` + per-chapter
+files from `Chapters/Markdown/`, locates each chapter's first content
+line in MASTER.md by string-anchor matching, inserts `# Chapter N:
+Title` headings at the right positions. Backs up MASTER.md → .bak;
+sorts chapter files by extracted number (so `Chapter_10` lands after
+`Chapter_9`, not between `Chapter_1` and `Chapter_2`); refuses to
+operate if `# ` headings already exist after the body anchor (idempotent).
+
+**Production fix applied:** ran the script against Extra_Credit;
+injected 10 chapter markers; re-synced via pawsync; regen on the
+server now produces all 9 formats with zero errors (EPUB 208 KB, 10
+chapters split + converted across Markdown/HTML/BBCode/SqW/Styled HTML).
+
+**Files modified:** `editor/epub_generator.py` (fallback), `config.py`
+(version bump). **Added:** `scripts/inject_chapter_markers.py`.
+
+---
+
 ## [2.20.3] - 2026-05-12
 
 ### Fix: AO3 chapter creation duplicate-draft loop + cancel button now sticks
