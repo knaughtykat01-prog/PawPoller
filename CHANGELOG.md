@@ -4,6 +4,53 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.19.2] - 2026-05-12
+
+### Fix: Diagnostics suite — second round of test-definition fixes
+
+The 2.19.1 deploy unmasked four more bugs in the platform test
+definitions (the credential-vault skips were hiding them in 2.19.0).
+None of these are bugs in the platforms themselves; they were bugs
+in how the tests called the platform clients.
+
+**Fixed:**
+
+- **`platforms.sqw.auth` / `platforms.sqw.discovery`** — imported the
+  wrong class name. The class is `SquidgeWorldClient`, not
+  `SqWClient`. Constructor also requires `target_user` as a third
+  positional arg. Discovery now uses `get_all_work_ids()` (no args).
+  Both now also receive `proxy_kwargs(settings, "sqw")` for
+  symmetry, though SqW is an OPTIONAL proxy platform that works
+  direct by default.
+- **`platforms.da.auth` / `platforms.da.discovery`** — `DAClient`
+  constructor requires `target_user` as the second positional arg.
+  `validate_cookies()` takes no args. Discovery uses
+  `get_all_deviation_ids()` (no args). Both now pass
+  `proxy_kwargs(settings, "da")` — DA is a REQUIRED-proxy platform
+  on the server.
+- **`platforms.sf.auth`** — was failing with "SoFurry session did
+  not validate" because the test constructed `SoFurryClient` without
+  the CF Worker proxy creds. SF is a REQUIRED-proxy platform on the
+  server (datacenter IPs are blocked). Now passes
+  `**proxy_kwargs(settings, "sf")` and `display_name=...`, and
+  triggers `ensure_logged_in()` before `validate_session()` so the
+  flow mirrors how the live poller warms the session.
+- **`platforms.sf.discovery`** — same proxy fix; switched to the
+  real discovery method `get_all_gallery_ids()` (no args).
+- **`platforms.ws.discovery`** — switched to the real discovery
+  method `get_all_gallery_ids()`. Also added `proxy_kwargs` for
+  symmetry (WS is OPTIONAL — defaults to direct).
+
+**Files modified:** `testing/tests/platforms.py`, `config.py`
+(version bump).
+
+**Verification:** Run All on the server should now show further
+reduction in errored / failed counts; the only remaining failures
+should be legitimate platform issues (genuinely broken auth) or
+genuine skips (creds not configured).
+
+---
+
 ## [2.19.1] - 2026-05-12
 
 ### Fix: Diagnostics suite — failures surfaced by the first live "Run All"

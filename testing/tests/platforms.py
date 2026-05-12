@@ -136,20 +136,21 @@ async def t_ws_auth(ctx: TestContext) -> None:
 )
 async def t_ws_discovery(ctx: TestContext) -> None:
     from clients.weasyl.client import WeasylClient
+    from polling.cf_proxy import proxy_kwargs
 
     s = config.get_settings()
-    async with WeasylClient(s["ws_api_key"]) as cli:
+    async with WeasylClient(s["ws_api_key"], **proxy_kwargs(s, "ws")) as cli:
         login = await cli.validate_key()
         if not login:
             raise AssertionError("validate_key failed")
         method = (
-            getattr(cli, "get_gallery_page", None)
+            getattr(cli, "get_all_gallery_ids", None)
+            or getattr(cli, "get_gallery_page", None)
             or getattr(cli, "list_gallery", None)
-            or getattr(cli, "get_user_submissions", None)
         )
         if method is None:
             raise ctx.skip("no gallery method exposed on WeasylClient")
-        items = await method(login)
+        items = await method()
         ctx.detail("submission_count", len(items) if hasattr(items, "__len__") else None)
 
 
@@ -166,9 +167,18 @@ async def t_ws_discovery(ctx: TestContext) -> None:
 )
 async def t_sf_auth(ctx: TestContext) -> None:
     from clients.sf.client import SoFurryClient
+    from polling.cf_proxy import proxy_kwargs
 
     s = config.get_settings()
-    async with SoFurryClient(s["sf_username"], s["sf_password"]) as cli:
+    async with SoFurryClient(
+        s["sf_username"], s["sf_password"],
+        display_name=s.get("sf_display_name", ""),
+        **proxy_kwargs(s, "sf"),
+    ) as cli:
+        # validate_session() requires an active login; trigger one first so
+        # the diagnostic mirrors how the poller actually warms the session.
+        if not await cli.ensure_logged_in():
+            raise AssertionError("ensure_logged_in failed (login rejected)")
         result = await cli.validate_session()
         ctx.detail("result", result)
         assert result, "SoFurry session did not validate"
@@ -184,18 +194,23 @@ async def t_sf_auth(ctx: TestContext) -> None:
 )
 async def t_sf_discovery(ctx: TestContext) -> None:
     from clients.sf.client import SoFurryClient
+    from polling.cf_proxy import proxy_kwargs
 
     s = config.get_settings()
-    async with SoFurryClient(s["sf_username"], s["sf_password"]) as cli:
+    async with SoFurryClient(
+        s["sf_username"], s["sf_password"],
+        display_name=s.get("sf_display_name", ""),
+        **proxy_kwargs(s, "sf"),
+    ) as cli:
         await cli.ensure_logged_in()
         method = (
-            getattr(cli, "get_user_submission_ids", None)
+            getattr(cli, "get_all_gallery_ids", None)
+            or getattr(cli, "get_user_submission_ids", None)
             or getattr(cli, "scrape_gallery_ids", None)
-            or getattr(cli, "get_gallery_ids", None)
         )
         if method is None:
             raise ctx.skip("no gallery scrape method exposed on SoFurryClient")
-        ids = await method(s["sf_display_name"])
+        ids = await method()
         ctx.detail("submission_count", len(ids) if hasattr(ids, "__len__") else None)
 
 
@@ -211,10 +226,17 @@ async def t_sf_discovery(ctx: TestContext) -> None:
     timeout_seconds=30.0,
 )
 async def t_sqw_auth(ctx: TestContext) -> None:
-    from clients.sqw.client import SqWClient
+    from clients.sqw.client import SquidgeWorldClient
+    from polling.cf_proxy import proxy_kwargs
 
     s = config.get_settings()
-    async with SqWClient(s["sqw_username"], s["sqw_password"]) as cli:
+    async with SquidgeWorldClient(
+        s["sqw_username"], s["sqw_password"],
+        s.get("sqw_target_user", s["sqw_username"]),
+        **proxy_kwargs(s, "sqw"),
+    ) as cli:
+        if not await cli.ensure_logged_in():
+            raise AssertionError("ensure_logged_in failed (login rejected)")
         out = await cli.validate_session()
         ctx.detail("validated_user", out)
         assert out, "SqW session did not validate"
@@ -229,19 +251,23 @@ async def t_sqw_auth(ctx: TestContext) -> None:
     timeout_seconds=30.0,
 )
 async def t_sqw_discovery(ctx: TestContext) -> None:
-    from clients.sqw.client import SqWClient
+    from clients.sqw.client import SquidgeWorldClient
+    from polling.cf_proxy import proxy_kwargs
 
     s = config.get_settings()
-    async with SqWClient(s["sqw_username"], s["sqw_password"]) as cli:
+    async with SquidgeWorldClient(
+        s["sqw_username"], s["sqw_password"], s["sqw_target_user"],
+        **proxy_kwargs(s, "sqw"),
+    ) as cli:
         await cli.ensure_logged_in()
         method = (
-            getattr(cli, "list_user_works", None)
-            or getattr(cli, "get_user_works", None)
+            getattr(cli, "get_all_work_ids", None)
+            or getattr(cli, "list_user_works", None)
             or getattr(cli, "scrape_works_index", None)
         )
         if method is None:
-            raise ctx.skip("no works-list method exposed on SqWClient")
-        ids = await method(s["sqw_target_user"])
+            raise ctx.skip("no works-list method exposed on SquidgeWorldClient")
+        ids = await method()
         ctx.detail("work_count", len(ids) if hasattr(ids, "__len__") else None)
 
 
@@ -316,10 +342,14 @@ async def t_ao3_discovery(ctx: TestContext) -> None:
 )
 async def t_da_auth(ctx: TestContext) -> None:
     from clients.da.client import DAClient
+    from polling.cf_proxy import proxy_kwargs
 
     s = config.get_settings()
-    async with DAClient(s["da_cookie"]) as cli:
-        ok = await cli.validate_cookies(s["da_target_user"])
+    async with DAClient(
+        s["da_cookie"], s["da_target_user"],
+        **proxy_kwargs(s, "da"),
+    ) as cli:
+        ok = await cli.validate_cookies()
         ctx.detail("validated", ok)
         assert ok, "DA cookies did not validate"
 
@@ -334,16 +364,21 @@ async def t_da_auth(ctx: TestContext) -> None:
 )
 async def t_da_discovery(ctx: TestContext) -> None:
     from clients.da.client import DAClient
+    from polling.cf_proxy import proxy_kwargs
 
     s = config.get_settings()
-    async with DAClient(s["da_cookie"]) as cli:
+    async with DAClient(
+        s["da_cookie"], s["da_target_user"],
+        **proxy_kwargs(s, "da"),
+    ) as cli:
         method = (
-            getattr(cli, "get_gallery_page", None)
+            getattr(cli, "get_all_deviation_ids", None)
+            or getattr(cli, "get_gallery_page", None)
             or getattr(cli, "list_gallery", None)
         )
         if method is None:
             raise ctx.skip("no gallery method exposed on DAClient")
-        items = await method(s["da_target_user"])
+        items = await method()
         ctx.detail("submission_count", len(items) if hasattr(items, "__len__") else None)
 
 
