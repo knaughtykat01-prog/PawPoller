@@ -362,8 +362,8 @@ async def t_wp_auth(ctx: TestContext) -> None:
     from clients.wp.client import WPClient
 
     s = config.get_settings()
-    async with WPClient() as cli:
-        out = await cli.validate_user(s["wp_target_user"])
+    async with WPClient(s["wp_target_user"]) as cli:
+        out = await cli.validate_user()
         ctx.detail("user", out)
         assert out, "Wattpad user did not resolve"
 
@@ -380,15 +380,15 @@ async def t_wp_discovery(ctx: TestContext) -> None:
     from clients.wp.client import WPClient
 
     s = config.get_settings()
-    async with WPClient() as cli:
+    async with WPClient(s["wp_target_user"]) as cli:
         method = (
-            getattr(cli, "get_published_stories", None)
+            getattr(cli, "get_all_story_ids", None)
+            or getattr(cli, "get_published_stories", None)
             or getattr(cli, "list_user_stories", None)
-            or getattr(cli, "get_user_stories", None)
         )
         if method is None:
             raise ctx.skip("no story-list method exposed on WPClient")
-        items = await method(s["wp_target_user"])
+        items = await method()
         ctx.detail("story_count", len(items) if hasattr(items, "__len__") else None)
 
 
@@ -407,8 +407,8 @@ async def t_ik_auth(ctx: TestContext) -> None:
     from clients.ik.client import IKClient
 
     s = config.get_settings()
-    async with IKClient() as cli:
-        out = await cli.validate_user(s["ik_target_user"])
+    async with IKClient(s["ik_target_user"]) as cli:
+        out = await cli.validate_user()
         ctx.detail("user", out)
         assert out, "Itaku user did not resolve"
 
@@ -425,14 +425,15 @@ async def t_ik_discovery(ctx: TestContext) -> None:
     from clients.ik.client import IKClient
 
     s = config.get_settings()
-    async with IKClient() as cli:
+    async with IKClient(s["ik_target_user"]) as cli:
         method = (
-            getattr(cli, "get_gallery_images", None)
+            getattr(cli, "get_all_content_ids", None)
+            or getattr(cli, "get_gallery_images", None)
             or getattr(cli, "list_gallery", None)
         )
         if method is None:
             raise ctx.skip("no gallery method exposed on IKClient")
-        items = await method(s["ik_target_user"])
+        items = await method()
         ctx.detail("image_count", len(items) if hasattr(items, "__len__") else None)
 
 

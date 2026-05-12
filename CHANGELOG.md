@@ -4,6 +4,72 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.19.1] - 2026-05-12
+
+### Fix: Diagnostics suite — failures surfaced by the first live "Run All"
+
+The initial v2.19.0 Diagnostics run from the dashboard surfaced four
+real defects in the test definitions themselves (not the subsystems
+they cover). This patch corrects the test code so the full suite
+reports an accurate picture of system health.
+
+**Fixed:**
+
+- **`platforms.wp.auth` / `platforms.wp.discovery`** — `WPClient()`
+  requires `target_user` as a positional argument; tests now pass
+  it through and call `validate_user()` / `get_all_story_ids()`
+  with no extra args (the client already holds the target on
+  `self.target_user`). Previously the tests raised
+  `TypeError: WPClient.__init__() missing 1 required positional
+  argument`.
+- **`platforms.ik.auth` / `platforms.ik.discovery`** — same fix as
+  WP. `IKClient()` now constructed with `target_user`,
+  `validate_user()` and `get_all_content_ids()` called with no
+  args.
+- **`infra.vault.crypto`** — the original test assumed
+  `_encrypt_vault(payload)` returned a blob and `_decrypt_vault
+  (blob)` accepted one. The real signatures are
+  `_encrypt_vault(creds: dict) -> None` (writes to disk) and
+  `_decrypt_vault() -> dict` (reads from disk). Test now
+  monkeypatches `config.VAULT_PATH` to a tempfile for the round-
+  trip and restores it in `finally`, so the live vault is never
+  touched. Skips cleanly when the vault key isn't reachable.
+- **`external.github.latest_release`** — a 404 from
+  `/repos/{owner}/{repo}/releases/latest` means the repo exists
+  but has no published releases yet; the test now treats that as
+  a clean skip rather than a failure. Genuine HTTP errors still
+  fail.
+- **`archive.pawsync.dry_run`** — `pawsync.py` hard-codes the
+  desktop archive path and fails with `Archive root not found`
+  when run on the server. The skip-phrase matcher now recognises
+  that message (and `no such file`) and skips instead of failing.
+
+**Added:**
+
+- **`infra.credentials_visible`** — new diagnostic test. The first
+  Run All on the server reported 24 tests skipped on "missing
+  credentials", including platforms the user clearly has
+  configured (IB, SF, Telegram). Since `get_settings()` should
+  auto-merge the vault when `credential_mode=local`, this test
+  reports `credential_mode` and lists which credential keys are
+  present vs absent in the live `get_settings()` view. Fails only
+  when vault is enabled but zero credentials are visible (the
+  genuine bug shape); otherwise informational. Lets us tell at a
+  glance whether a platform skip is a vault-merge failure or a
+  genuinely-unset credential.
+
+**Files modified:** `testing/tests/platforms.py`,
+`testing/tests/infra.py`, `testing/tests/external.py`,
+`testing/tests/archive.py`, `config.py` (version bump).
+
+**Verification:** re-run Settings → Diagnostics → Run All on the
+server. Expected: 0 errored, 0 failed (the 3 fails / 4 errors
+from the initial run are eliminated). Skipped count rises by a
+few (vault when no key, github when no releases, pawsync on
+server) — which is the correct behaviour.
+
+---
+
 ## [2.19.0] - 2026-05-12
 
 ### Feature: Diagnostics & testing tab in Settings

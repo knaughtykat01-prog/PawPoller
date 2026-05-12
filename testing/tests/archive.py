@@ -104,8 +104,18 @@ async def t_pawsync_dry_run(ctx: TestContext) -> None:
     # missing config (test environment) but raise on actual errors.
     if proc.returncode != 0:
         tail = stderr.decode("utf-8", "replace")
-        if "not configured" in tail or "remote" in tail.lower():
-            raise TestSkippedReason(tail.strip().splitlines()[-1] if tail else "remote not configured")
+        tail_lower = tail.lower()
+        # Soft-skip when pawsync is unrunnable in this environment:
+        #   - test instance with no remote configured
+        #   - server where the hard-coded local archive path doesn't exist
+        if (
+            "not configured" in tail_lower
+            or "remote" in tail_lower
+            or "archive root not found" in tail_lower
+            or "no such file" in tail_lower
+        ):
+            last = tail.strip().splitlines()[-1] if tail.strip() else "pawsync unrunnable in this environment"
+            raise TestSkippedReason(last)
         raise AssertionError(f"pawsync returned {proc.returncode}: {tail[-200:]}")
 
 

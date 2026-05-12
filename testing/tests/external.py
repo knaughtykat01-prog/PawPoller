@@ -110,6 +110,10 @@ async def t_github_release(ctx: TestContext) -> None:
             headers={"User-Agent": "PawPoller-Diagnostics"},
         )
         ctx.detail("status", resp.status_code)
+        if resp.status_code == 404:
+            # 404 from /releases/latest means the repo exists but has no
+            # published releases yet — not a failure of the diagnostic.
+            raise ctx.skip("repo has no published releases yet (404)")
         assert resp.status_code == 200, f"GitHub returned {resp.status_code}"
         data = resp.json()
         latest = data.get("tag_name", "").lstrip("v")

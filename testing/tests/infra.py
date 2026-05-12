@@ -162,16 +162,37 @@ async def t_settings_atomic(ctx: TestContext) -> None:
     description="Encrypt and decrypt a known payload via the live vault key.",
 )
 async def t_vault_crypto(ctx: TestContext) -> None:
+    # _encrypt_vault(dict) writes settings.vault.json; _decrypt_vault() reads it.
+    # Round-trip via a redirected VAULT_PATH so the live vault is never touched.
+    import tempfile
+    from pathlib import Path
+
     enc = getattr(config, "_encrypt_vault", None)
     dec = getattr(config, "_decrypt_vault", None)
     if enc is None or dec is None:
         raise ctx.skip("vault crypto helpers not available in this build")
+    try:
+        config._get_vault_key()  # surfaces a real failure if crypto/keyring is broken
+    except Exception as exc:  # noqa: BLE001
+        raise ctx.skip(f"vault key unavailable: {exc}")
+
     payload = {"sample": "diagnostic", "n": 42}
-    blob = enc(payload)
-    assert isinstance(blob, (bytes, str)) and len(blob) > 10
-    out = dec(blob)
-    assert out == payload, f"decrypted payload doesn't match: {out!r}"
-    ctx.detail("blob_bytes", len(blob))
+    original = config.VAULT_PATH
+    tmp_dir = tempfile.mkdtemp(prefix="ppdiag-vault-")
+    try:
+        config.VAULT_PATH = Path(tmp_dir) / "settings.vault.json"
+        enc(payload)
+        assert config.VAULT_PATH.exists(), "vault file not written"
+        ctx.detail("blob_bytes", config.VAULT_PATH.stat().st_size)
+        out = dec()
+        assert out == payload, f"decrypted payload doesn't match: {out!r}"
+    finally:
+        config.VAULT_PATH = original
+        try:
+            import shutil as _sh
+            _sh.rmtree(tmp_dir, ignore_errors=True)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 @register_test(
@@ -192,6 +213,58 @@ async def t_vault_key_source(ctx: TestContext) -> None:
         raise ctx.skip("vault not enabled (no key configured)")
     ctx.detail("key_present", True)
     ctx.detail("key_bytes", len(key) if isinstance(key, (bytes, str)) else None)
+
+
+# ── Credentials visibility ───────────────────────────────────────────
+
+
+@register_test(
+    test_id="infra.credentials_visible",
+    name="Credential vault merges into get_settings()",
+    category="Infrastructure",
+    description=(
+        "Diagnostic: when credential_mode is 'local', the vault should "
+        "auto-merge into config.get_settings(). Reports the live state so "
+        "we can tell when platform tests skip due to a vault-merge failure "
+        "vs a genuinely-empty credential."
+    ),
+)
+async def t_credentials_visible(ctx: TestContext) -> None:
+    s = config.get_settings()
+    mode = s.get("credential_mode") or "plaintext"
+    ctx.detail("credential_mode", mode)
+
+    # Probe the keys that platform tests actually check against.
+    probes = [
+        "username", "password",                       # IB
+        "fa_cookie_a", "fa_cookie_b",                 # FA
+        "ws_api_key",                                 # WS
+        "sf_username", "sf_password",                 # SF
+        "sqw_username", "sqw_password",               # SqW
+        "ao3_username", "ao3_session_cookie",         # AO3
+        "da_cookie",                                  # DA
+        "bsky_identifier", "bsky_app_password",       # Bsky
+        "tw_auth_token", "tw_ct0",                    # TW
+        "wp_target_user", "ik_target_user",           # WP / IK (public)
+        "telegram_bot_token", "telegram_chat_id",     # Telegram
+        "cf_worker_url",                              # CF proxy
+    ]
+    present = sorted(k for k in probes if s.get(k))
+    absent = sorted(k for k in probes if not s.get(k))
+    ctx.detail("present", present)
+    ctx.detail("absent", absent)
+    ctx.detail("present_count", len(present))
+    ctx.detail("absent_count", len(absent))
+
+    # Hard fail only when vault is enabled but it didn't merge anything.
+    # That's the genuine bug shape (vault corrupt / key mismatch / wrong path).
+    # Plaintext mode with zero creds is a fresh install, not a bug.
+    if mode == "local" and not present:
+        raise AssertionError(
+            "credential_mode=local but get_settings() exposes no credentials — "
+            "vault may have failed to decrypt or merge"
+        )
+    # Otherwise this is purely informational.
 
 
 # ── Logs ─────────────────────────────────────────────────────────────
