@@ -831,6 +831,30 @@ class AO3Client:
             logger.info("AO3: Created work %s (preview/draft) — %s", work_id, url)
             return {"work_id": work_id, "url": url}
 
+        # Some AO3 paths (e.g. "Preview" button on the new-work form) render
+        # the Preview Work page inline instead of redirecting. The final URL
+        # stays at /works with no ID, but the draft IS created — the page
+        # carries action URLs like /works/{id}/post, /works/{id}/edit,
+        # /works/{id}/preview. Detect the success-shape via the page title
+        # or flash banner, then pull the ID out of the body to avoid false
+        # positives from unrelated work mentions.
+        body = resp.text
+        success_markers = (
+            "Draft was successfully created" in body
+            or "<title>Preview Work" in body
+            or "<title>Edit Work" in body
+        )
+        if success_markers:
+            body_match = re.search(r'/works/(\d+)', body)
+            if body_match:
+                work_id = body_match.group(1)
+                url = f"{_BASE}/works/{work_id}"
+                logger.info(
+                    "AO3: Created work %s (preview-page response, "
+                    "URL stayed at /works) — %s", work_id, url,
+                )
+                return {"work_id": work_id, "url": url}
+
         # Dump body for debugging
         import time
         debug_path = f"/tmp/ao3_create_debug_{int(time.time())}.html"
@@ -838,11 +862,11 @@ class AO3Client:
             with open(debug_path, "w", encoding="utf-8") as f:
                 f.write(f"<!-- final_url: {final_url} -->\n")
                 f.write(f"<!-- status: {resp.status_code} -->\n")
-                f.write(resp.text)
+                f.write(body)
             logger.error("AO3: response body saved to %s", debug_path)
         except Exception:
             pass
-        errors = re.findall(r'class="[^"]*error[^"]*"[^>]*>(.*?)</', resp.text, re.DOTALL)
+        errors = re.findall(r'class="[^"]*error[^"]*"[^>]*>(.*?)</', body, re.DOTALL)
         err_text = "; ".join(re.sub(r'<[^>]+>', '', e).strip()[:200] for e in errors[:5])
         raise RuntimeError(
             f"AO3: Could not extract work ID from {final_url} "

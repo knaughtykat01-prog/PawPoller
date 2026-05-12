@@ -4,6 +4,47 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.20.1] - 2026-05-12
+
+### Fix: AO3 work creation produced silent duplicate drafts
+
+Caught while the user tried to publish `Hypnotic_Claim` to AO3 from
+the publish matrix. AO3 logs showed POST `/works` returning 200
+each retry, but PawPoller failed with `Could not extract work ID
+from https://archiveofourown.org/works`. The Telegram error
+notification fired each time, the queue marked the post as failed,
+the scheduler retried — and each retry created **another draft**
+on AO3 silently, because the create call had actually succeeded
+server-side every cycle. The user's account accumulated multiple
+zombie Hypnotic_Claim drafts that AO3 will auto-delete on
+2026-06-10 (the 30-day draft TTL).
+
+**Root cause:** `clients/ao3/client.py:create_work` only looked at
+the response *URL* for `/works/{id}`. When the user submits the
+new-work form via the **Preview** button, AO3 doesn't redirect —
+it renders the Preview Work page inline at `/works`, so the URL
+stays ID-less while the page body carries the work ID in every
+action button (`/works/{id}/post`, `/works/{id}/edit`,
+`/works/{id}/preview`) and includes a `<title>Preview Work` plus
+a "Draft was successfully created" flash.
+
+**Fix:** when the URL match fails, look for success markers in the
+response body (`Draft was successfully created` flash, `<title>
+Preview Work`, or `<title>Edit Work`) and scan the body for
+`/works/(\d+)` as a fallback. The success-marker gate prevents
+false positives where AO3 might mention unrelated works on a
+failure page. Existing URL-redirect path still wins when AO3 does
+redirect; the body-scan is a strict fallback.
+
+**Cleanup the user needs to do manually:** delete the 5+ duplicate
+Hypnotic_Claim drafts from their AO3 drafts list. Future posts
+will only produce one draft per click.
+
+**Files modified:** `clients/ao3/client.py` (one branch in
+`create_work`), `config.py` (version bump).
+
+---
+
 ## [2.20.0] - 2026-05-12
 
 ### Feature: Regenerate-all-stories — editor button + Diagnostics test
