@@ -4,6 +4,120 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.19.0] - 2026-05-12
+
+### Feature: Diagnostics & testing tab in Settings
+
+A new **Settings → Diagnostics** tab exposes a comprehensive in-app
+test suite that exercises every subsystem of the running PawPoller
+instance, with a live log stream and a one-button full-suite run.
+Adds 82 bespoke live-system tests + the existing pytest suite as a
+parsed sub-runner — ~170 individually-visible tests in the UI.
+
+**Architecture:**
+
+- New `testing/` package: `registry.py` (decorator + TestResult
+  dataclass), `runner.py` (per-test / per-category / full-suite
+  async runners with global concurrency lock), `streamer.py`
+  (per-run SSE event buffer with replay + heartbeats), `store.py`
+  (last 10 runs persisted to `data/diagnostics_results.json`).
+- `testing/tests/` modules grouped by category. Each test is an
+  async function decorated with `@register_test(...)`. Tests use
+  `TestContext.log()` for live streaming, `TestContext.detail()`
+  for structured output, raise `ctx.skip(reason)` to skip cleanly.
+- `routes/testing_api.py` with 8 endpoints:
+  `GET /api/testing/tests`, `GET /last-results`, `GET /active`,
+  `POST /run/{test_id}`, `POST /run-category/{category}`,
+  `POST /run-suite`, `GET /stream/{run_id}` (SSE),
+  `POST /stop/{run_id}`.
+- Frontend `frontend/js/diagnostics.js` consumes SSE via
+  `EventSource`, updates per-test rows in place as events arrive.
+  CSS in `frontend/css/diagnostics.css`. Wired into Settings tab
+  bar in `frontend/js/app.js`.
+- Live updates use SSE (the dashboard's first SSE consumer); the
+  default CSP `connect-src 'self'` already covers it, no policy
+  change needed. Heartbeat every 15s prevents reverse-proxy drops.
+
+**Test inventory (82 bespoke + 1 pytest aggregate):**
+
+| Category | Count | What it checks |
+|---|---|---|
+| Infrastructure | 12 | DB connection / WAL / FKs / integrity / migrations, settings round-trip + atomic-write source check, vault encrypt+decrypt, vault key source, log write, disk space, tag DB files |
+| Dashboard Auth | 6 | Bcrypt round-trip, TOTP generate+verify, API-key SHA-256, signed cookie, HTML escape, isolated rate-limiter window |
+| Platforms — Auth | 11 | Per-platform credential probe (IB, FA, WS, SF, SqW, AO3, DA, WP, IK, Bsky, TW); reuses each client's `validate_*` / `login` path |
+| Platforms — Polling Discovery | 11 | Lightweight gallery listing per platform (no DB writes) |
+| Editor / Converter | 10 | MD → Clean HTML / SoFurry HTML / BBCode / SquidgeWorld / Styled HTML (full + per-chapter inc. THE-END regression for 2.18.20), EPUB structural build, PDF backend availability, theme parser, anchor parser |
+| Story Reader | 6 | Archive resolves + has stories, load_story populates fields, build_package across all posting platforms, full-vs-chapter file resolution regression (2.18.19), manifest parsing regression (2.18.19) |
+| Posting (Dry-Run) | 9 | Per-platform `poster.validate(package)` — no uploads |
+| External Services | 5 | CF Worker reachable + auth rejection, Telegram bot getMe, GitHub latest release, Turnstile widget |
+| Scheduling & Queue | 5 | Poll-orchestrator / posting-scheduler / Telegram-bot thread liveness; queue `requires` filter regression (2.18.16); future `scheduled_at` gate |
+| Notifications | 3 | Telegram send (DESTRUCTIVE — confirmation gated); Windows toast (DESTRUCTIVE); digest text builder |
+| Archive | 3 | Local archive listable, every `story.json` parses + has required fields, `pawsync --dry-run` exits 0 |
+| Pytest Suite | 1 | Spawns `python -m pytest tests/ -v --tb=short -p no:cacheprovider`, parses output, expands to ~91 child results |
+
+**Safety:**
+
+- **Destructive tests** (3 of 82) gated by `destructive: True` flag.
+  Run-suite skips them unless individually opted in via the
+  request body's `include_destructive: [test_id, ...]` list. The
+  route handler returns 403 if a single-test run targets a
+  destructive test without `confirm_destructive: true`. The
+  frontend pops a per-test confirm dialog showing the
+  description before running, and a separate "include destructive"
+  checkbox on the run-all toolbar.
+- **One run at a time**: module-level lock in `testing/runner.py`.
+  Second-run requests get HTTP 409 with the active `run_id` so the
+  frontend can attach to the in-flight stream instead.
+- **Per-test timeout**: 30s default; tests that need longer
+  (AO3, EPUB build, pytest subprocess) declare their own.
+- **Platform pacing**: when `platforms.*` tests run as a category
+  or suite, the runner sleeps the per-platform request-delay
+  between successive ones so we don't burst on rate limiters.
+- **State cleanup**: queue-regression tests insert marker rows and
+  delete them in `finally`; settings round-trip writes a namespaced
+  marker and clears it; nothing leaks into production state.
+- **Auth**: all endpoints sit behind the existing dashboard session
+  middleware. No additions to `_AUTH_EXEMPT_PATHS`.
+
+**Files added:**
+
+- `testing/__init__.py`, `testing/registry.py`, `testing/runner.py`,
+  `testing/streamer.py`, `testing/store.py`
+- `testing/tests/__init__.py`, `testing/tests/infra.py`,
+  `testing/tests/auth.py`, `testing/tests/platforms.py`,
+  `testing/tests/editor.py`, `testing/tests/story_reader.py`,
+  `testing/tests/posting.py`, `testing/tests/external.py`,
+  `testing/tests/scheduling.py`, `testing/tests/notifications.py`,
+  `testing/tests/archive.py`, `testing/tests/pytest_runner.py`
+- `routes/testing_api.py`
+- `frontend/js/diagnostics.js`, `frontend/css/diagnostics.css`
+
+**Files modified:**
+
+- `dashboard.py` — imports `testing.tests` to trigger registration,
+  registers `testing_router`.
+- `frontend/index.html` — references the new CSS + JS with
+  `?v=__APP_VERSION__` cache busting.
+- `frontend/js/app.js` — Diagnostics tab button in `renderSettings`
+  tab bar; lazy-mount via `window.Diagnostics.mount(...)` on tab
+  switch and on initial render when landing on
+  `#/settings/diagnostics`.
+- `config.py` — version bump to 2.19.0.
+
+**Verification on the live VM after deploy:**
+
+1. Open Settings → Diagnostics.
+2. Click ▶ Run All. Expect ~140 tests to run (destructive skipped),
+   completing in 30-60s with platform-pacing applied.
+3. Click ⚠ Run on `notifications.telegram.test_message`, confirm,
+   verify the message arrives on Telegram.
+4. Verify the live log streams events in real time; auto-scroll
+   toggle and filter chips work.
+5. Open a second browser tab during a run — second tab attaches
+   to the in-flight stream and shows the same events.
+
+---
+
 ## [2.18.21] - 2026-05-08
 
 ### Fix: Theme Editor + metadata drawer dropdown options unreadable

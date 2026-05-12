@@ -32,6 +32,12 @@ from routes.posting_api import posting_router
 from routes.editor_api import editor_router
 from routes.dashboard_auth import dashboard_auth_router
 from routes.settings_api import settings_router
+from routes.testing_api import testing_router
+
+# Importing this package triggers @register_test decorators in every
+# submodule, populating testing.registry.REGISTRY before the first
+# request to /api/testing/tests.
+import testing.tests  # noqa: F401
 
 # Logging
 logging.basicConfig(
@@ -302,6 +308,7 @@ app.include_router(tw_router)    # X/Twitter routes (/api/tw/*)
 app.include_router(posting_router)  # Posting module routes (/api/posting/*)
 app.include_router(editor_router)   # Story editor routes (/api/editor/*)
 app.include_router(settings_router)  # Settings sync routes (/api/settings/*)
+app.include_router(testing_router)   # Diagnostics & testing routes (/api/testing/*)
 
 # Serve frontend static files. config.resource_path() resolves differently
 # depending on the build mode:

@@ -5806,6 +5806,16 @@ const App = {
                     <button class="settings-tab ${_settingsTab === 'about' ? 'active' : ''}" data-stab="about">About</button>
                     <button class="settings-tab ${_settingsTab === 'security' ? 'active' : ''}" data-stab="security">Security</button>
                     <button class="settings-tab ${_settingsTab === 'publishing' ? 'active' : ''}" data-stab="publishing">Publishing</button>
+                    <button class="settings-tab ${_settingsTab === 'diagnostics' ? 'active' : ''}" data-stab="diagnostics">Diagnostics</button>
+                </div>
+
+                <!-- ═══ TAB: Diagnostics ═══ -->
+                <div class="settings-tab-content" data-tab-content="diagnostics" ${_settingsTab !== 'diagnostics' ? 'style="display:none"' : ''}>
+                    <div id="diagnostics-mount">
+                        <div class="diagnostics-loading" style="padding:24px;color:var(--text-muted)">
+                            Loading diagnostics suite…
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ═══ TAB: Appearance ═══ -->
@@ -7133,6 +7143,9 @@ const App = {
                     // Auto-load lazy tabs when switching
                     if (tab === 'logs') this._loadLogs();
                     if (tab === 'polling') this._loadPollingTab();
+                    if (tab === 'diagnostics' && window.Diagnostics) {
+                        window.Diagnostics.mount(document.getElementById('diagnostics-mount'));
+                    }
                 });
             }
 
@@ -7140,6 +7153,9 @@ const App = {
             this._pollingTabLoaded = false;
             if (_settingsTab === 'logs') this._loadLogs();
             if (_settingsTab === 'polling') this._loadPollingTab();
+            if (_settingsTab === 'diagnostics' && window.Diagnostics) {
+                window.Diagnostics.mount(document.getElementById('diagnostics-mount'));
+            }
 
             // ── Theme picker (Appearance tab) ─────────────────────────
             // Click any card to apply the theme. applyTheme() persists +
