@@ -121,3 +121,73 @@ async def t_pawsync_dry_run(ctx: TestContext) -> None:
 
 # Local alias so the import at the top stays tidy
 from testing.registry import TestSkipped as TestSkippedReason  # noqa: E402
+
+
+@register_test(
+    test_id="archive.regenerate.all_stories",
+    name="Regenerate every story (no PDF)",
+    category="Archive",
+    description=(
+        "DESTRUCTIVE: rebuilds derived format files (BBCode, Clean HTML, "
+        "SoFurry HTML, Styled HTML, SquidgeWorld, EPUB, chapter splits) "
+        "for every story in the archive. Always skips PDF (too slow for "
+        "the test suite). Calls the editor's per-story regenerate() "
+        "function in-process so behaviour matches the dashboard button."
+    ),
+    destructive=True,
+    timeout_seconds=900.0,  # up to 15 min for a large archive
+)
+async def t_regenerate_all_stories(ctx: TestContext) -> None:
+    # Defer imports so a missing editor module doesn't break test discovery.
+    from routes.editor_api import RegenerateRequest, regenerate, SKIP_DIRS
+
+    archive = story_reader.get_archive_path()
+    if not archive.is_dir():
+        raise ctx.skip(f"archive not a directory: {archive}")
+
+    targets: list[str] = []
+    for entry in sorted(archive.iterdir()):
+        if not entry.is_dir() or entry.name.startswith(".") or entry.name in SKIP_DIRS:
+            continue
+        if (entry / "Markdown" / "MASTER.md").is_file():
+            targets.append(entry.name)
+            continue
+        for sub in sorted(entry.iterdir()):
+            if sub.is_dir() and (sub / "Markdown" / "MASTER.md").is_file():
+                targets.append(f"{entry.name}/{sub.name}")
+
+    if not targets:
+        raise ctx.skip("no stories with MASTER.md in the archive")
+
+    ctx.detail("target_count", len(targets))
+    passed = 0
+    partial = 0
+    failed = 0
+    failures: list[dict] = []
+
+    for i, name in enumerate(targets, start=1):
+        ctx.log(f"[{i}/{len(targets)}] {name}", level="info")
+        try:
+            req = RegenerateRequest(skip_pdf=True)
+            result = await regenerate(name, req)
+            errs = result.get("errors", []) or []
+            if not errs:
+                passed += 1
+            else:
+                partial += 1
+                failures.append({"story": name, "errors": errs})
+                ctx.log(f"    {len(errs)} non-fatal error(s) on {name}", level="warn")
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            failures.append({"story": name, "errors": [f"{type(exc).__name__}: {exc}"]})
+            ctx.log(f"    FAILED on {name}: {exc}", level="error")
+
+    ctx.detail("passed", passed)
+    ctx.detail("partial", partial)
+    ctx.detail("failed", failed)
+    ctx.detail("failures", failures)
+    # Fail the test only on hard failures (exception during regen).
+    # Partials (story regenerated but had per-format warnings) are
+    # surfaced in details but don't fail the run — they're often
+    # cosmetic (e.g. PDF skipped because we asked for skip_pdf).
+    assert failed == 0, f"{failed} stories failed to regenerate"

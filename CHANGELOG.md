@@ -4,6 +4,71 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.20.0] - 2026-05-12
+
+### Feature: Regenerate-all-stories — editor button + Diagnostics test
+
+Bulk rebuild of every story's derived format files (Markdown,
+BBCode, Clean HTML, SoFurry HTML, Styled HTML, SquidgeWorld, EPUB,
+optionally PDF) from each story's `MASTER.md`, exposed in two
+places:
+
+**1. Editor "↻ Regenerate All" button** — top of the story-list
+header (next to + Create New Story / Import from Platform). Click
+opens a confirmation overlay with a "Skip PDF" checkbox (default on
+— PDF adds ~30s/story). Hitting Start kicks off the bulk job and
+the overlay flips to a live log: per-story status with stamps,
+counts (passed / partial / failed), elapsed time, progress bar.
+Streamed via SSE so updates are instant. A Cancel button requests
+graceful stop (current story finishes; the loop then exits). Closing
+the dialog mid-run prompts a "leave it running in background?"
+confirm — useful if you want to reopen the editor to check
+something while the run continues.
+
+**2. Diagnostics test `archive.regenerate.all_stories`** — under
+Settings → Diagnostics → Archive. Destructive (opt-in per-test
+confirmation) so it doesn't fire on a Run All by accident. Runs the
+same in-process logic as the editor button, always with `skip_pdf=True`
+(so the suite doesn't blow past its 15-minute test timeout). Reports
+per-story pass / partial / failed counts plus the list of failures.
+
+**Architecture:**
+
+- New endpoints in `routes/editor_api.py`:
+  - `POST /api/editor/regenerate-all` — kicks off a run, returns
+    `{run_id, total}`. Refuses 409 with the active run_id if a
+    bulk job is already in flight (one at a time).
+  - `GET /api/editor/regenerate-all/active` — returns the current
+    run (if any) so a refreshed tab can reattach.
+  - `GET /api/editor/regenerate-all/stream/{run_id}` — SSE stream
+    with `suite_start`, `story_start`, `story_end`, `cancelled`,
+    `suite_complete` events. Backfills the event buffer to late
+    subscribers; 15s heartbeats so reverse proxies don't kill the
+    stream.
+  - `POST /api/editor/regenerate-all/cancel/{run_id}` — flags the
+    active run for graceful cancellation.
+- Thin orchestrator design: the bulk runner internally calls the
+  existing per-story `regenerate(story_name, req)` handler in
+  process, so per-story behaviour stays the single source of truth.
+  No refactor of the regen body — zero risk to the working
+  per-story endpoint.
+- Frontend in `frontend/js/editor.js:renderStoryList()` —
+  `+ Regenerate All` button, overlay HTML with live log `<pre>` +
+  progress bar + status counts, EventSource consumer in
+  `_streamRegenAll(runId)`.
+
+**Files modified:** `routes/editor_api.py`,
+`frontend/js/editor.js`, `testing/tests/archive.py`, `config.py`
+(version bump).
+
+**Follow-up (deferred to next session):** standalone CLI wrapper
+`m_x/Scripts_Utils/regenerate_all_stories.py` for command-line
+use. The existing per-story `regenerate_story.py` already covers
+the per-story CLI path; the bulk wrapper just loops it. Not in
+this version because it lives in a separate repo.
+
+---
+
 ## [2.19.3] - 2026-05-12
 
 ### Fix: AO3 cookie-only posting + Diagnostics cleanup pass

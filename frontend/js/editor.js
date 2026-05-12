@@ -59,9 +59,10 @@ const Editor = {
                     <h2>Story Editor</h2>
                     <p class="subtitle">Select a story to edit MASTER.md and preview in all formats</p>
                 </div>
-                <div style="margin-bottom:16px;display:flex;gap:10px">
+                <div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">
                     <button class="btn btn-sm" id="create-story-btn">+ Create New Story</button>
                     <button class="btn btn-sm btn-outline" id="import-story-btn">Import from Platform</button>
+                    <button class="btn btn-sm btn-outline" id="regen-all-btn" title="Rebuild every story's derived format files from its MASTER.md">↻ Regenerate All</button>
                 </div>
                 <div class="card-grid">${cards || '<p>No stories found in the archive.</p>'}</div>
 
@@ -164,6 +165,37 @@ const Editor = {
                         <div class="create-story-actions">
                             <button class="btn btn-sm btn-outline" id="delete-story-cancel">Cancel</button>
                             <button class="btn btn-sm btn-danger" id="delete-story-submit" disabled>Delete</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="create-story-overlay" id="regen-all-overlay">
+                    <div class="create-story-dialog" style="max-width:760px;width:90vw">
+                        <h3>Regenerate All Stories</h3>
+                        <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
+                            Rebuilds every derived format file (Markdown chapters, BBCode, Clean HTML,
+                            SoFurry HTML, Styled HTML, SquidgeWorld, EPUB, optionally PDF) for every
+                            story in the archive from its <code>MASTER.md</code>. Existing files are
+                            overwritten. Word counts and story.json metadata are preserved.
+                        </p>
+                        <label class="create-story-label" style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                            <input type="checkbox" id="regen-all-skip-pdf" checked style="width:auto;margin:0">
+                            Skip PDF (recommended — adds ~30s per story)
+                        </label>
+                        <div id="regen-all-progress" style="display:none">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                                <span id="regen-all-counts" style="font-weight:600;font-size:0.92rem"></span>
+                                <span id="regen-all-elapsed" style="color:var(--text-secondary);font-size:0.85rem"></span>
+                            </div>
+                            <div style="background:var(--bg-tertiary);border-radius:var(--radius-sm);height:8px;overflow:hidden;margin-bottom:10px">
+                                <div id="regen-all-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s"></div>
+                            </div>
+                            <pre id="regen-all-log" style="background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;max-height:340px;overflow-y:auto;font-family:var(--font-mono,monospace);font-size:12px;line-height:1.5;margin:0;white-space:pre-wrap;word-break:break-word"></pre>
+                        </div>
+                        <div id="regen-all-actions" class="create-story-actions" style="margin-top:14px">
+                            <button class="btn btn-sm btn-outline" id="regen-all-close">Close</button>
+                            <button class="btn btn-sm btn-outline" id="regen-all-cancel" style="display:none">Cancel</button>
+                            <button class="btn btn-sm" id="regen-all-start">Start</button>
                         </div>
                     </div>
                 </div>
@@ -325,9 +357,169 @@ const Editor = {
                 if (e.key === 'Enter') { e.preventDefault(); Editor._submitManualImport(); }
             });
 
+            // Bind "Regenerate All" overlay
+            const regenOverlay = document.getElementById('regen-all-overlay');
+            const regenLog = document.getElementById('regen-all-log');
+            const regenBar = document.getElementById('regen-all-bar');
+            const regenCounts = document.getElementById('regen-all-counts');
+            const regenElapsed = document.getElementById('regen-all-elapsed');
+            const regenProgressEl = document.getElementById('regen-all-progress');
+            const regenStartBtn = document.getElementById('regen-all-start');
+            const regenCancelBtn = document.getElementById('regen-all-cancel');
+            const regenCloseBtn = document.getElementById('regen-all-close');
+            const regenSkipPdfCb = document.getElementById('regen-all-skip-pdf');
+
+            const appendRegenLog = (line, color = '') => {
+                const stamp = new Date().toLocaleTimeString();
+                const span = document.createElement('span');
+                if (color) span.style.color = color;
+                span.textContent = `${stamp}  ${line}\n`;
+                regenLog.appendChild(span);
+                regenLog.scrollTop = regenLog.scrollHeight;
+            };
+
+            document.getElementById('regen-all-btn').addEventListener('click', () => {
+                regenOverlay.classList.add('open');
+                regenLog.innerHTML = '';
+                regenBar.style.width = '0%';
+                regenCounts.textContent = '';
+                regenElapsed.textContent = '';
+                regenProgressEl.style.display = 'none';
+                regenStartBtn.style.display = '';
+                regenCancelBtn.style.display = 'none';
+                regenStartBtn.disabled = false;
+                Editor._regenAllRunId = null;
+            });
+
+            regenCloseBtn.addEventListener('click', () => {
+                if (Editor._regenAllRunId && !Editor._regenAllCompleted) {
+                    if (!confirm('A regenerate run is in progress. Closing this dialog leaves it running in the background. Continue?')) return;
+                }
+                regenOverlay.classList.remove('open');
+            });
+            regenOverlay.addEventListener('click', (e) => {
+                if (e.target === regenOverlay) regenCloseBtn.click();
+            });
+
+            regenStartBtn.addEventListener('click', async () => {
+                regenStartBtn.disabled = true;
+                regenStartBtn.style.display = 'none';
+                regenCancelBtn.style.display = '';
+                regenProgressEl.style.display = '';
+                appendRegenLog('Starting bulk regenerate…', 'var(--text-secondary)');
+                Editor._regenAllCompleted = false;
+
+                try {
+                    const resp = await fetch('/api/editor/regenerate-all', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ skip_pdf: regenSkipPdfCb.checked }),
+                    });
+                    if (!resp.ok) {
+                        const detail = await resp.json().catch(() => ({ detail: resp.statusText }));
+                        throw new Error(JSON.stringify(detail.detail || detail));
+                    }
+                    const { run_id, total } = await resp.json();
+                    Editor._regenAllRunId = run_id;
+                    appendRegenLog(`Run ${run_id.slice(0, 8)} started — ${total} stories queued`);
+                    Editor._streamRegenAll(run_id);
+                } catch (err) {
+                    appendRegenLog('ERROR: ' + err.message, 'var(--color-error,#e25)');
+                    regenStartBtn.style.display = '';
+                    regenStartBtn.disabled = false;
+                    regenCancelBtn.style.display = 'none';
+                }
+            });
+
+            regenCancelBtn.addEventListener('click', async () => {
+                if (!Editor._regenAllRunId) return;
+                appendRegenLog('Cancellation requested — current story will finish first…', 'var(--text-secondary)');
+                try {
+                    await fetch(`/api/editor/regenerate-all/cancel/${encodeURIComponent(Editor._regenAllRunId)}`, { method: 'POST' });
+                } catch (err) {
+                    appendRegenLog('Cancel failed: ' + err.message, 'var(--color-error,#e25)');
+                }
+            });
+
         } catch (err) {
             App._setContent(`<div class="empty-state"><h3>Error loading stories</h3><p>${err.message}</p></div>`);
         }
+    },
+
+    _streamRegenAll(runId) {
+        const logEl = document.getElementById('regen-all-log');
+        const barEl = document.getElementById('regen-all-bar');
+        const countsEl = document.getElementById('regen-all-counts');
+        const elapsedEl = document.getElementById('regen-all-elapsed');
+        const startBtn = document.getElementById('regen-all-start');
+        const cancelBtn = document.getElementById('regen-all-cancel');
+
+        let total = 0, passed = 0, failed = 0, partial = 0, idx = 0;
+        const t0 = Date.now();
+        const tick = setInterval(() => {
+            elapsedEl.textContent = `${Math.floor((Date.now() - t0) / 1000)}s`;
+        }, 1000);
+
+        const append = (line, color = '') => {
+            const stamp = new Date().toLocaleTimeString();
+            const span = document.createElement('span');
+            if (color) span.style.color = color;
+            span.textContent = `${stamp}  ${line}\n`;
+            logEl.appendChild(span);
+            logEl.scrollTop = logEl.scrollHeight;
+        };
+
+        const updateCounts = () => {
+            countsEl.textContent = `${idx} of ${total}  ·  ${passed} ✓  ·  ${partial} ⚠  ·  ${failed} ✗`;
+            if (total) barEl.style.width = `${Math.round((idx / total) * 100)}%`;
+        };
+
+        const es = new EventSource(`/api/editor/regenerate-all/stream/${encodeURIComponent(runId)}`);
+        es.onmessage = (ev) => {
+            let data; try { data = JSON.parse(ev.data); } catch { return; }
+            if (data.type === 'suite_start') {
+                total = data.total;
+                append(`Suite started — ${total} stories, skip_pdf=${data.skip_pdf}`);
+                updateCounts();
+            } else if (data.type === 'story_start') {
+                append(`▶ [${data.idx}/${data.total}] ${data.story}`);
+            } else if (data.type === 'story_end') {
+                idx = Math.max(idx, total ? Math.min(total, idx + 1) : idx + 1);
+                if (data.status === 'passed') {
+                    passed++;
+                    append(`✓ ${data.story} — ${data.results_count} outputs (${(data.duration_ms / 1000).toFixed(1)}s)`, 'var(--color-success,#3a3)');
+                } else if (data.status === 'partial') {
+                    partial++;
+                    append(`⚠ ${data.story} — ${data.results_count} outputs, ${data.errors.length} errors (${(data.duration_ms / 1000).toFixed(1)}s)`, 'var(--warning,#c83)');
+                    for (const e of (data.errors || [])) append(`    · ${e}`, 'var(--warning,#c83)');
+                } else {
+                    failed++;
+                    append(`✗ ${data.story} — failed`, 'var(--color-error,#e25)');
+                    for (const e of (data.errors || [])) append(`    · ${e}`, 'var(--color-error,#e25)');
+                }
+                updateCounts();
+            } else if (data.type === 'cancelled') {
+                append(`Cancelled at story ${data.at_index + 1}`, 'var(--text-secondary)');
+            } else if (data.type === 'suite_complete') {
+                const s = data.summary || {};
+                append(`Suite complete — ${s.passed} passed, ${s.failed} failed (${((s.duration_ms || 0) / 1000).toFixed(1)}s total)`,
+                    s.failed ? 'var(--color-error,#e25)' : 'var(--color-success,#3a3)');
+                Editor._regenAllCompleted = true;
+                clearInterval(tick);
+                startBtn.style.display = '';
+                startBtn.disabled = false;
+                cancelBtn.style.display = 'none';
+                es.close();
+            }
+        };
+        es.onerror = () => {
+            // Browsers spam onerror on normal close; only log if we haven't seen suite_complete
+            if (!Editor._regenAllCompleted) {
+                append('Stream interrupted — refresh the page to reattach if the run is still going', 'var(--warning,#c83)');
+            }
+            clearInterval(tick);
+            es.close();
+        };
     },
 
     async _submitCreateStory() {

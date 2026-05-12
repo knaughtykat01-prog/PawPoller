@@ -933,6 +933,271 @@ async def regenerate(story_name: str, req: RegenerateRequest):
 
 
 # ---------------------------------------------------------------------------
+# Bulk regenerate (all stories in the archive)
+# ---------------------------------------------------------------------------
+# One concurrent bulk run at a time. SSE-streamed so the UI can show a
+# live log without polling. Built as a thin orchestrator over the existing
+# per-story regenerate() handler so the per-story behaviour is the single
+# source of truth — bulk just iterates and dispatches.
+
+import asyncio as _asyncio  # local alias to avoid touching the top imports
+import threading as _threading
+import time as _time
+import uuid as _uuid
+from typing import Any as _Any
+
+from fastapi.responses import StreamingResponse as _StreamingResponse
+
+
+class BulkRegenerateRequest(BaseModel):
+    skip_pdf: bool = True            # default off — PDF is the slow path
+    only: list[str] | None = None    # optional subset (canonical story names)
+    epub_warning_position: str = "front"
+
+
+class _BulkRegenRun:
+    """In-memory state for a bulk regen run.
+
+    Holds the queue of events delivered to the SSE consumer plus a
+    snapshot of completed-test results. One active run at a time —
+    second-run requests return 409 with the active run_id.
+    """
+
+    def __init__(self, run_id: str, total: int) -> None:
+        self.run_id = run_id
+        self.total = total
+        self.started_at = _time.time()
+        self.events: list[dict] = []
+        self.subscribers: list[_asyncio.Queue] = []
+        self.completed = False
+        self.cancelled = False
+        self.summary: dict | None = None
+
+    def emit(self, event: dict) -> None:
+        event = {**event, "ts": _time.time()}
+        self.events.append(event)
+        for q in self.subscribers:
+            try:
+                q.put_nowait(event)
+            except _asyncio.QueueFull:  # pragma: no cover
+                pass
+
+    def close(self, summary: dict) -> None:
+        self.summary = summary
+        self.completed = True
+        self.emit({"type": "suite_complete", "summary": summary})
+
+
+_bulk_lock = _threading.Lock()
+_bulk_active: _BulkRegenRun | None = None
+
+
+@editor_router.get("/regenerate-all/active")
+async def bulk_regen_active() -> dict:
+    """Return the currently-active bulk run (if any) so a refreshed
+    tab can re-attach to its stream."""
+    with _bulk_lock:
+        if _bulk_active is None or _bulk_active.completed:
+            return {"active": False}
+        return {
+            "active": True,
+            "run_id": _bulk_active.run_id,
+            "total": _bulk_active.total,
+            "started_at": _bulk_active.started_at,
+        }
+
+
+@editor_router.post("/regenerate-all")
+async def regenerate_all(req: BulkRegenerateRequest) -> dict:
+    """Kick off a bulk regen across every story in the archive.
+
+    Returns immediately with {run_id}. Subscribe to the SSE stream
+    at /api/editor/regenerate-all/stream/{run_id} for live events.
+    Refuses with 409 + existing run_id if a run is already in flight.
+    """
+    global _bulk_active
+
+    # Discover stories — same logic as list_stories(), inlined so we can
+    # collect canonical names (with versioned subdirs) cheaply.
+    archive = get_archive_path()
+    if not archive.is_dir():
+        raise HTTPException(404, "Archive directory not found")
+
+    targets: list[str] = []
+    for entry in sorted(archive.iterdir()):
+        if not entry.is_dir() or entry.name.startswith(".") or entry.name in SKIP_DIRS:
+            continue
+        master = entry / "Markdown" / "MASTER.md"
+        if master.is_file():
+            targets.append(entry.name)
+            continue
+        # Versioned story (parent folder + subdir each containing MASTER.md)
+        for sub in sorted(entry.iterdir()):
+            if sub.is_dir() and (sub / "Markdown" / "MASTER.md").is_file():
+                targets.append(f"{entry.name}/{sub.name}")
+
+    if req.only:
+        wanted = set(req.only)
+        targets = [t for t in targets if t in wanted]
+        if not targets:
+            raise HTTPException(400, "no matching stories for the supplied 'only' filter")
+
+    with _bulk_lock:
+        if _bulk_active is not None and not _bulk_active.completed:
+            raise HTTPException(
+                status_code=409,
+                detail={"message": "A bulk regen is already in flight", "run_id": _bulk_active.run_id},
+            )
+        run = _BulkRegenRun(run_id=str(_uuid.uuid4()), total=len(targets))
+        _bulk_active = run
+
+    loop = _asyncio.get_event_loop()
+    loop.create_task(_run_bulk_regen(run, targets, req))
+    return {"run_id": run.run_id, "total": len(targets)}
+
+
+async def _run_bulk_regen(
+    run: _BulkRegenRun,
+    targets: list[str],
+    req: BulkRegenerateRequest,
+) -> None:
+    """Worker task: iterate targets, call regenerate() per story, emit events."""
+    run.emit({"type": "suite_start", "total": run.total, "skip_pdf": req.skip_pdf})
+    passed = 0
+    failed = 0
+    per_story: list[dict] = []
+
+    for idx, name in enumerate(targets):
+        if run.cancelled:
+            run.emit({"type": "cancelled", "at_index": idx})
+            break
+        run.emit({
+            "type": "story_start",
+            "idx": idx + 1,
+            "total": run.total,
+            "story": name,
+        })
+        story_started = _time.perf_counter()
+        try:
+            per_req = RegenerateRequest(
+                skip_pdf=req.skip_pdf,
+                epub_warning_position=req.epub_warning_position,
+            )
+            result = await regenerate(name, per_req)
+            duration_ms = (_time.perf_counter() - story_started) * 1000.0
+            ok_count = len(result.get("results", []))
+            err_count = len(result.get("errors", []))
+            status = "passed" if err_count == 0 else "partial"
+            if status == "passed":
+                passed += 1
+            else:
+                failed += 1
+            entry = {
+                "story": name,
+                "status": status,
+                "duration_ms": duration_ms,
+                "results_count": ok_count,
+                "errors": result.get("errors", []),
+                "word_count": result.get("word_count"),
+            }
+            per_story.append(entry)
+            run.emit({"type": "story_end", **entry})
+        except HTTPException as exc:
+            failed += 1
+            duration_ms = (_time.perf_counter() - story_started) * 1000.0
+            entry = {
+                "story": name,
+                "status": "failed",
+                "duration_ms": duration_ms,
+                "errors": [f"HTTP {exc.status_code}: {exc.detail}"],
+            }
+            per_story.append(entry)
+            run.emit({"type": "story_end", **entry})
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            duration_ms = (_time.perf_counter() - story_started) * 1000.0
+            entry = {
+                "story": name,
+                "status": "failed",
+                "duration_ms": duration_ms,
+                "errors": [f"{type(exc).__name__}: {exc}"],
+            }
+            per_story.append(entry)
+            run.emit({"type": "story_end", **entry})
+            logger.exception("bulk regen: story %s failed", name)
+
+        # Yield to the event loop so SSE consumers receive events promptly
+        await _asyncio.sleep(0)
+
+    summary = {
+        "total": run.total,
+        "passed": passed,
+        "failed": failed,
+        "skip_pdf": req.skip_pdf,
+        "duration_ms": (_time.perf_counter() - run.started_at) * 1000.0
+            if isinstance(run.started_at, float) else None,
+        "stories": per_story,
+    }
+    run.close(summary)
+
+
+@editor_router.get("/regenerate-all/stream/{run_id}")
+async def regenerate_all_stream(run_id: str):
+    """SSE stream of events for a bulk regen run. Replays the full
+    event buffer to new subscribers so reconnections show context."""
+    with _bulk_lock:
+        run = _bulk_active if _bulk_active and _bulk_active.run_id == run_id else None
+    if run is None:
+        raise HTTPException(404, "run not found or already cleaned up")
+
+    queue: _asyncio.Queue = _asyncio.Queue(maxsize=10_000)
+    # Backfill so the client sees prior events even if it attached late
+    for ev in list(run.events):
+        try:
+            queue.put_nowait(ev)
+        except _asyncio.QueueFull:  # pragma: no cover
+            break
+    run.subscribers.append(queue)
+
+    async def _gen() -> _Any:
+        try:
+            # 15s heartbeats so reverse proxies don't kill an idle stream
+            last_send = _time.time()
+            while True:
+                try:
+                    ev = await _asyncio.wait_for(queue.get(), timeout=15.0)
+                except _asyncio.TimeoutError:
+                    if _time.time() - last_send > 14:
+                        yield b": heartbeat\n\n"
+                        last_send = _time.time()
+                    if run.completed and queue.empty():
+                        return
+                    continue
+                yield ("data: " + json.dumps(ev) + "\n\n").encode("utf-8")
+                last_send = _time.time()
+                if ev.get("type") == "suite_complete":
+                    return
+        finally:
+            try:
+                run.subscribers.remove(queue)
+            except ValueError:  # pragma: no cover
+                pass
+
+    return _StreamingResponse(_gen(), media_type="text/event-stream")
+
+
+@editor_router.post("/regenerate-all/cancel/{run_id}")
+async def regenerate_all_cancel(run_id: str) -> dict:
+    """Request graceful cancellation. The active loop checks the flag
+    between stories so an in-flight story finishes; the loop then exits."""
+    with _bulk_lock:
+        if _bulk_active is None or _bulk_active.run_id != run_id:
+            raise HTTPException(404, "run not found or already finished")
+        _bulk_active.cancelled = True
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
 # Publishability check (Phase 6a — read-only validation matrix)
 # ---------------------------------------------------------------------------
 
