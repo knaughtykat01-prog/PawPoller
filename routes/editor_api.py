@@ -1002,26 +1002,38 @@ async def publish_check(story_name: str):
     # one (and internally handles multi-chapter creation).
     WORK_ORIENTED = {"ao3", "sqw", "sf"}
 
-    # Required credentials per platform — if any key is empty/missing,
-    # the platform is shown as "no_credentials" instead of "blocked".
+    # Required credentials per platform. Value is one of:
+    #   ()              — no credentials needed (e.g. public-API IK)
+    #   ("a", "b")      — all keys must be non-empty (AND)
+    #   (("a","b"), ("c",))  — any group's keys all non-empty (OR-of-ANDs),
+    #                   used by AO3 which accepts either username+password
+    #                   OR a pasted session cookie (added in 2.18.8).
     PLATFORM_CREDS = {
         "ib":   ("username", "password"),
         "fa":   ("fa_cookie_a", "fa_cookie_b"),
         "ws":   ("ws_api_key",),
         "sf":   ("sf_username", "sf_password"),
         "sqw":  ("sqw_author_username", "sqw_author_password"),
-        "ao3":  ("ao3_username", "ao3_password"),
+        "ao3":  (("ao3_username", "ao3_password"), ("ao3_session_cookie",)),
         "da":   ("da_cookie",),
         "ik":   (),
         "bsky": ("bsky_identifier", "bsky_app_password"),
     }
     settings = config.get_settings()
-    platform_has_creds = {}
-    for plat_id, _ in PUBLISH_PLATFORMS:
-        required = PLATFORM_CREDS.get(plat_id, ())
-        platform_has_creds[plat_id] = all(
-            settings.get(k) for k in required
-        ) if required else True
+
+    def _has_creds(spec) -> bool:
+        if not spec:
+            return True
+        # OR-of-ANDs: spec is a tuple of tuples
+        if spec and isinstance(spec[0], tuple):
+            return any(all(settings.get(k) for k in group) for group in spec)
+        # AND: spec is a flat tuple of keys
+        return all(settings.get(k) for k in spec)
+
+    platform_has_creds = {
+        plat_id: _has_creds(PLATFORM_CREDS.get(plat_id, ()))
+        for plat_id, _ in PUBLISH_PLATFORMS
+    }
 
     # Build the matrix
     matrix = []

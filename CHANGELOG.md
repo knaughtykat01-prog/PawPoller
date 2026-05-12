@@ -4,6 +4,69 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.19.3] - 2026-05-12
+
+### Fix: AO3 cookie-only posting + Diagnostics cleanup pass
+
+**AO3 cookie-only auth recognised by the Publish matrix.** The
+publish-readiness check in `routes/editor_api.py:get_publish_matrix`
+hard-coded `PLATFORM_CREDS["ao3"] = ("ao3_username", "ao3_password")`,
+so every AO3 cell rendered as "No credentials configured" for users
+on the cookie-only path (added in 2.18.8 as the recommended setup
+for datacenter / blocked-IP environments). Result: the user has a
+valid pasted session cookie + working poller and importer, but
+Publish refuses to send. Fix: `PLATFORM_CREDS` now supports an
+OR-of-ANDs schema — either a flat tuple of required keys (existing
+behaviour) or a tuple of groups where any group satisfying its
+keys is enough. AO3 becomes `(("ao3_username", "ao3_password"),
+("ao3_session_cookie",))`. Posting itself (`posting/platforms/ao3.py`)
+already supported cookie-only auth correctly; this was purely a
+readiness-gate bug. The publish matrix now correctly shows AO3 as
+postable when a session cookie is set.
+
+### Fix: Diagnostics — AO3 cookie-only auth, private-repo GitHub, real digest test
+
+Tidies the diagnostic suite based on the second Run All's skip
+list: AO3 was hard-skipping cookie-only setups, the GitHub test
+treated private repos as failures, the digest builder test
+chased a helper name that doesn't exist, and Turnstile's
+description didn't explain what it was.
+
+**Fixed:**
+
+- **`platforms.ao3.auth` / `platforms.ao3.discovery`** — dropped
+  `ao3_username` from `requires_creds`; AO3 supports cookie-only
+  auth (added in 2.18.8) and the username is optional when a
+  pasted session cookie is configured. Tests now skip only when
+  *neither* cookie nor username+password is set, and pass
+  `target_user` (the AO3Client constructor's 3rd positional arg,
+  which the old test code was missing) plus `proxy_kwargs(s, "ao3")`
+  for the required CF Worker proxy on server. Discovery now uses
+  the real `get_all_work_ids()` method.
+- **`external.github.latest_release`** — repo is private, so an
+  anonymous request 404s permanently (not "no releases yet").
+  Test now uses `github_pat` from settings as a Bearer token when
+  configured; without a PAT, treats 404 as a clean skip with a
+  message that explicitly mentions the private-repo case.
+- **`notifications.digest.data_fetch`** — replaces the old
+  `notifications.digest.builder` (which probed for a non-existent
+  `build_digest_text` helper). New test exercises the actual
+  read-only data helpers behind `send_digest_report()` —
+  `_get_digest_deltas()` and `_get_platform_totals()` — across all
+  10 polling platforms. Confirms the SQL queries the digest
+  depends on still execute against the live schema. Still
+  non-destructive: never sends a digest.
+- **`external.turnstile.reachable`** — description rewritten to
+  explain what Turnstile is (Cloudflare's privacy-friendly CAPTCHA
+  replacement for the dashboard login form) and where to configure
+  it. Behaviour unchanged.
+
+**Files modified:** `testing/tests/platforms.py`,
+`testing/tests/external.py`, `testing/tests/notifications.py`,
+`config.py` (version bump).
+
+---
+
 ## [2.19.2] - 2026-05-12
 
 ### Fix: Diagnostics suite — second round of test-definition fixes

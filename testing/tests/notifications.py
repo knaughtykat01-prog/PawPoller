@@ -71,26 +71,58 @@ async def t_toast(ctx: TestContext) -> None:
 
 
 @register_test(
-    test_id="notifications.digest.builder",
-    name="Telegram digest text builder",
+    test_id="notifications.digest.data_fetch",
+    name="Telegram digest data-fetch helpers",
     category="Notifications",
-    description="Build (but do not send) the 6-hour digest text. Read-only.",
+    description=(
+        "Exercise the read-only data helpers behind send_digest_report() — "
+        "_get_digest_deltas() and _get_platform_totals() — across all "
+        "polling platforms. Confirms the queries the digest depends on "
+        "still execute against the current schema. Does NOT send a digest."
+    ),
 )
-async def t_digest_builder(ctx: TestContext) -> None:
+async def t_digest_data_fetch(ctx: TestContext) -> None:
     try:
         from polling import telegram as tg
     except ImportError:
         raise ctx.skip("polling.telegram unavailable")
-    builder = (
-        getattr(tg, "build_digest_text", None)
-        or getattr(tg, "format_digest_report", None)
-        or getattr(tg, "build_digest_report", None)
-    )
-    if builder is None:
-        raise ctx.skip("no digest builder helper exposed on polling.telegram")
-    text = builder() if callable(builder) else ""
-    if hasattr(text, "__await__"):  # in case async
-        text = await text
-    ctx.detail("bytes", len(str(text)))
-    ctx.detail("preview", str(text)[:120])
-    assert isinstance(text, str), f"digest builder returned {type(text).__name__}"
+    deltas_fn = getattr(tg, "_get_digest_deltas", None)
+    totals_fn = getattr(tg, "_get_platform_totals", None)
+    if deltas_fn is None or totals_fn is None:
+        raise ctx.skip(
+            "digest data helpers (_get_digest_deltas / _get_platform_totals) "
+            "not exposed on polling.telegram in this build"
+        )
+    from database.db import get_connection
+
+    # The platforms the digest iterates over and their (snap_table, sub_table).
+    platforms = {
+        "inkbunny": ("daily_snapshots", "submissions"),
+        "furaffinity": ("fa_daily_snapshots", "fa_submissions"),
+        "weasyl": ("ws_daily_snapshots", "ws_submissions"),
+        "sofurry": ("sf_daily_snapshots", "sf_submissions"),
+        "squidgeworld": ("sqw_daily_snapshots", "sqw_works"),
+        "ao3": ("ao3_daily_snapshots", "ao3_works"),
+        "deviantart": ("da_daily_snapshots", "da_deviations"),
+        "wattpad": ("wp_daily_snapshots", "wp_stories"),
+        "itaku": ("ik_daily_snapshots", "ik_content"),
+        "bluesky": ("bsky_daily_snapshots", "bsky_posts"),
+    }
+    conn = get_connection()
+    try:
+        ok: list[str] = []
+        errors: dict[str, str] = {}
+        for plat, (snap_t, sub_t) in platforms.items():
+            try:
+                deltas = deltas_fn(conn, snap_t, sub_t, plat, 6)
+                totals = totals_fn(conn, sub_t, plat)
+                assert isinstance(deltas, dict), f"{plat} deltas not a dict"
+                assert isinstance(totals, dict), f"{plat} totals not a dict"
+                ok.append(plat)
+            except Exception as exc:  # noqa: BLE001
+                errors[plat] = f"{type(exc).__name__}: {exc}"
+        ctx.detail("ok", ok)
+        ctx.detail("errors", errors)
+        assert not errors, f"{len(errors)} platforms erred: {list(errors)}"
+    finally:
+        conn.close()

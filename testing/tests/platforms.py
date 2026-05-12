@@ -278,25 +278,32 @@ async def t_sqw_discovery(ctx: TestContext) -> None:
     test_id="platforms.ao3.auth",
     name="AO3 — session validates",
     category="Platforms — Auth",
-    description="validate_session() against AO3 (cookie or login).",
-    requires_creds=["ao3_username"],
+    description=(
+        "validate_session() against AO3. Accepts either a pasted session "
+        "cookie OR username+password; ao3_username is not required when "
+        "a cookie is configured (cookie auth is the recommended path)."
+    ),
+    requires_creds=["ao3_target_user"],
     timeout_seconds=45.0,
 )
 async def t_ao3_auth(ctx: TestContext) -> None:
     from clients.ao3.client import AO3Client
+    from polling.cf_proxy import proxy_kwargs
 
     s = config.get_settings()
     cookie = s.get("ao3_session_cookie", "")
+    username = s.get("ao3_username", "")
     pw = s.get("ao3_password", "")
-    if not cookie and not pw:
-        raise ctx.skip("neither session_cookie nor password configured")
+    if not cookie and not (username and pw):
+        raise ctx.skip("neither session_cookie nor username+password configured")
     async with AO3Client(
-        s["ao3_username"],
-        pw,
+        username, pw, s["ao3_target_user"],
         session_cookie=cookie,
+        **proxy_kwargs(s, "ao3"),
     ) as cli:
         out = await cli.validate_session()
         ctx.detail("validated_user", out)
+        ctx.detail("auth_mode", "cookie" if cookie else "password")
         assert out, "AO3 session did not validate"
 
 
@@ -304,28 +311,33 @@ async def t_ao3_auth(ctx: TestContext) -> None:
     test_id="platforms.ao3.discovery",
     name="AO3 — works discovery",
     category="Platforms — Polling Discovery",
-    description="List works for the target user.",
-    requires_creds=["ao3_username", "ao3_target_user"],
+    description="List works for the target user. Cookie or password OK.",
+    requires_creds=["ao3_target_user"],
     timeout_seconds=45.0,
 )
 async def t_ao3_discovery(ctx: TestContext) -> None:
     from clients.ao3.client import AO3Client
+    from polling.cf_proxy import proxy_kwargs
 
     s = config.get_settings()
     cookie = s.get("ao3_session_cookie", "")
+    username = s.get("ao3_username", "")
     pw = s.get("ao3_password", "")
-    if not cookie and not pw:
-        raise ctx.skip("neither session_cookie nor password configured")
-    async with AO3Client(s["ao3_username"], pw, session_cookie=cookie) as cli:
+    if not cookie and not (username and pw):
+        raise ctx.skip("neither session_cookie nor username+password configured")
+    async with AO3Client(
+        username, pw, s["ao3_target_user"],
+        session_cookie=cookie,
+        **proxy_kwargs(s, "ao3"),
+    ) as cli:
         await cli.ensure_logged_in()
         method = (
-            getattr(cli, "list_user_works", None)
-            or getattr(cli, "get_user_works", None)
-            or getattr(cli, "scrape_works_index", None)
+            getattr(cli, "get_all_work_ids", None)
+            or getattr(cli, "list_user_works", None)
         )
         if method is None:
             raise ctx.skip("no works-list method exposed on AO3Client")
-        ids = await method(s["ao3_target_user"])
+        ids = await method()
         ctx.detail("work_count", len(ids) if hasattr(ids, "__len__") else None)
 
 

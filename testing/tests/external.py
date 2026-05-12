@@ -99,21 +99,37 @@ async def t_telegram_get_me(ctx: TestContext) -> None:
     test_id="external.github.latest_release",
     name="GitHub latest release reachable",
     category="External Services",
-    description="Fetch latest PawPoller release tag and compare against APP_VERSION.",
+    description=(
+        "Fetch the PawPoller repo's latest release tag and compare against "
+        "APP_VERSION. Uses github_pat from settings when configured so "
+        "private repos work; without a PAT, an anonymous 404 (private repo "
+        "or no published releases) is treated as a clean skip."
+    ),
     timeout_seconds=15.0,
 )
 async def t_github_release(ctx: TestContext) -> None:
     repo = "knaughtykat01-prog/PawPoller"
+    s = config.get_settings()
+    pat = s.get("github_pat") or ""
+    headers = {"User-Agent": "PawPoller-Diagnostics"}
+    if pat:
+        headers["Authorization"] = f"Bearer {pat}"
     async with httpx.AsyncClient(timeout=10.0) as cli:
         resp = await cli.get(
             f"https://api.github.com/repos/{repo}/releases/latest",
-            headers={"User-Agent": "PawPoller-Diagnostics"},
+            headers=headers,
         )
         ctx.detail("status", resp.status_code)
+        ctx.detail("authenticated", bool(pat))
         if resp.status_code == 404:
-            # 404 from /releases/latest means the repo exists but has no
-            # published releases yet — not a failure of the diagnostic.
-            raise ctx.skip("repo has no published releases yet (404)")
+            if pat:
+                # Authed and still 404 — really no releases yet.
+                raise ctx.skip("repo has no published releases (404 with PAT)")
+            # Anonymous 404 on a private repo is expected — skip cleanly.
+            raise ctx.skip(
+                "anonymous 404 — repo is private (set github_pat in settings "
+                "to query private repos) or has no published releases"
+            )
         assert resp.status_code == 200, f"GitHub returned {resp.status_code}"
         data = resp.json()
         latest = data.get("tag_name", "").lstrip("v")
@@ -131,7 +147,15 @@ async def t_github_release(ctx: TestContext) -> None:
     test_id="external.turnstile.reachable",
     name="Cloudflare Turnstile widget reachable",
     category="External Services",
-    description="Fetch the Turnstile JS bundle. Skip if not configured.",
+    description=(
+        "Turnstile is Cloudflare's privacy-preserving CAPTCHA replacement. "
+        "PawPoller's dashboard login page can render the Turnstile widget "
+        "in front of the password form so brute-force bots can't even "
+        "reach the auth endpoint. Configured via Settings → Dashboard "
+        "(turnstile_site_key + turnstile_secret_key). This test fetches "
+        "the Turnstile JS bundle from Cloudflare to confirm the CDN is "
+        "reachable from the server — skipped when not configured."
+    ),
     timeout_seconds=15.0,
 )
 async def t_turnstile(ctx: TestContext) -> None:
