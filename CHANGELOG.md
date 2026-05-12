@@ -4,6 +4,31 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.20.2] - 2026-05-12
+
+### Fix: AO3 full-story posts used Clean HTML instead of SquidgeWorld OTW format
+
+The AO3 poster's `_read_full_story_html()` preferred
+`HTML/<Story>_Clean.html` (bulk generic HTML) and only fell back
+to concatenating `SquidgeWorld/Chapter_*.html` if Clean was
+missing. But AO3 and SquidgeWorld are both OTW Archive sites —
+they parse the same chapter markers, warning-icon glyphs, and
+semantic anchors. Using Clean HTML for AO3 fed it the generic
+output meant for Inkbunny/Weasyl/etc., not the OTW-shaped HTML
+SqW uses. The per-chapter path (`_read_chapter_html`) already
+used the SqW files correctly; only the full-story path was wrong.
+
+**Fix:** invert the preference order. SquidgeWorld concatenation
+is now the primary source for AO3 full-story posts; Clean HTML
+falls to a last-resort fallback for archives that pre-date the
+SqW output (anything regenerated since 2.18.x has SqW files and
+will hit the new primary path).
+
+**Files modified:** `posting/platforms/ao3.py:_read_full_story_html`,
+`config.py` (version bump).
+
+---
+
 ## [2.20.1] - 2026-05-12
 
 ### Fix: AO3 work creation produced silent duplicate drafts

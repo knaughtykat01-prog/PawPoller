@@ -345,24 +345,27 @@ class AO3Poster(PlatformPoster):
     def _read_full_story_html(story: story_reader.StoryInfo) -> str | None:
         """Read the body-only full-story HTML for AO3.
 
-        Order of preference:
-          1. HTML/<Story>_Clean.html (single bulk file, body-only paragraphs)
-          2. Concatenate SquidgeWorld/Chapter_*.html files (body-only)
-        """
-        html_dir = story.path / "HTML"
-        if html_dir.is_dir():
-            for f in sorted(html_dir.glob("*_Clean.html")):
-                try:
-                    return f.read_text(encoding="utf-8")
-                except Exception:
-                    pass
+        AO3 is an OTW Archive site, same family as SquidgeWorld, so we
+        use the SquidgeWorld per-chapter HTML as the source of truth.
+        That format already has the OTW-style chapter markers, the
+        correct warning-icon glyph, and the same semantic anchor
+        processing the OTW Rails app understands. Concatenating those
+        body fragments yields a complete OTW-compatible body.
 
-        # Fallback: concatenate SquidgeWorld chapter files
+        Order of preference:
+          1. Concatenate SquidgeWorld/Chapter_*.html — same source SqW
+             posts; the right shape for an OTW Archive.
+          2. HTML/<Story>_Clean.html — last-resort fallback for stories
+             that pre-date the SquidgeWorld output. Worth keeping so
+             older archives without per-chapter SqW files still post,
+             but anything regenerated since 2.18.x will have the SqW
+             files and that path will fire instead.
+        """
+        # 1. Prefer SquidgeWorld concatenation (matches SqW poster's source)
         sqw_dir = story.path / "SquidgeWorld"
         if sqw_dir.is_dir():
             chapters: list[str] = []
             for ch in sorted(story.chapters, key=lambda c: c.index):
-                # Match Chapter_<idx>_*.html
                 matches = sorted(sqw_dir.glob(f"Chapter_{ch.index}_*.html"))
                 if not matches:
                     continue
@@ -373,6 +376,15 @@ class AO3Poster(PlatformPoster):
                     pass
             if chapters:
                 return "\n<hr />\n".join(chapters)
+
+        # 2. Legacy fallback: bulk Clean HTML for pre-SqW archives.
+        html_dir = story.path / "HTML"
+        if html_dir.is_dir():
+            for f in sorted(html_dir.glob("*_Clean.html")):
+                try:
+                    return f.read_text(encoding="utf-8")
+                except Exception:
+                    pass
 
         return None
 
