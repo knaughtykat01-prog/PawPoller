@@ -4,6 +4,41 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.20.5] - 2026-05-12
+
+### Fix: PDF rendering no longer blocks the dashboard event loop
+
+Caught during the first bulk Regenerate All with "include PDF"
+ticked. The dashboard stopped responding entirely — page loads
+hung, the regen progress SSE stream stalled, polling ticks
+skipped. CPU sat at ~150% the whole time.
+
+**Root cause.** `editor.pdf_generator.html_to_pdf()` is synchronous
+CPU-bound Python (WeasyPrint), and the regenerate endpoint was
+calling it directly from the async handler. While WeasyPrint
+renders one PDF (~30-80s), it holds the GIL on the main thread
+and the asyncio event loop can't service any other coroutine —
+which means the dashboard, the SSE stream telling the UI about
+progress, and the poll orchestrator all freeze for as long as
+the render takes. 17 stories × ~80s/PDF = ~22 min of unresponsive
+dashboard during a "Regenerate All (with PDF)".
+
+**Fix.** Wrap each `html_to_pdf` call in `asyncio.to_thread(...)`
+so the render runs on Python's threadpool executor. The event
+loop releases on the `await` and gets to service other requests
+during the render. Bulk regen still serialises PDFs (one at a
+time, awaited in order) but the dashboard stays alive throughout.
+
+**Files modified:** `routes/editor_api.py` (two `html_to_pdf`
+calls: full-story + per-chapter loop), `config.py` (version bump).
+
+**Note:** EPUB generation is also sync but completes in ~200ms,
+not worth a thread hop. Other format generators (BBCode, Clean
+HTML, SoFurry HTML, Styled HTML) are also fast enough that the
+event-loop pause is imperceptible.
+
+---
+
 ## [2.20.4] - 2026-05-12
 
 ### Fix: Single-chapter EPUB fallback + chapter-marker injection script

@@ -769,8 +769,17 @@ async def regenerate(story_name: str, req: RegenerateRequest):
             errors.append(f"Styled HTML: {e}")
 
     # --- PDF (full + per-chapter) ---
+    # WeasyPrint is CPU-bound sync code; calling it directly from this
+    # async handler pegs the event loop for ~30-80s per render and the
+    # whole dashboard stops responding for that window. Wrap each render
+    # in asyncio.to_thread so PDF work runs on the threadpool executor
+    # and the event loop stays free to serve page loads, SSE streams,
+    # polling ticks, etc. Bulk regen with PDF still serialises one
+    # render at a time (we await each call) but other requests can
+    # interleave between renders and during them.
     if should_gen("pdf") and not req.skip_pdf:
         try:
+            import asyncio as _asyncio_pdf
             from editor.pdf_generator import html_to_pdf, get_backend
             backend = get_backend()
             if backend == "none":
@@ -783,7 +792,7 @@ async def regenerate(story_name: str, req: RegenerateRequest):
                 full_styled = html_dir / f"{stem}_Styled.html"
                 if full_styled.is_file():
                     full_pdf = pdf_dir / f"{stem}.pdf"
-                    ok, used = html_to_pdf(full_styled, full_pdf)
+                    ok, used = await _asyncio_pdf.to_thread(html_to_pdf, full_styled, full_pdf)
                     if ok:
                         pdf_count += 1
                     else:
@@ -804,7 +813,7 @@ async def regenerate(story_name: str, req: RegenerateRequest):
                     ch_pdf_dir.mkdir(parents=True, exist_ok=True)
                     for ch_html in sorted(ch_styled_dir.glob("Chapter_*.html")):
                         ch_pdf = ch_pdf_dir / (ch_html.stem + ".pdf")
-                        ok, used = html_to_pdf(ch_html, ch_pdf)
+                        ok, used = await _asyncio_pdf.to_thread(html_to_pdf, ch_html, ch_pdf)
                         if ok:
                             pdf_count += 1
                         else:
