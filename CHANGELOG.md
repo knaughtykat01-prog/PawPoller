@@ -4,6 +4,46 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.20.7] - 2026-05-13
+
+### Fix: AO3 `create_chapter` recovers chapter_id when AO3 omits it from the response URL
+
+Hypnotic Claim posted successfully to AO3 — work 84754866 + chapter 2
+(id 223668966) both exist server-side — but the publish task crashed
+with `RuntimeError: AO3: Could not extract chapter_id from response
+URL: https://archiveofourown.org/works/84754866/chapters`. AO3 returned
+the form POST result at the bare `/chapters` URL with no ID, and the
+v2.20.3 body-scan fallback was gated on a `Draft was successfully
+created` / `<title>Preview Work` / `<title>Edit Chapter` success-marker
+string that didn't appear in the actual response body — so the parser
+hard-failed even though the chapter was real and live.
+
+Two changes to `clients/ao3/client.py:create_chapter`:
+
+1. **Drop the success-marker gate on body scanning.** Earlier in the
+   function we already detect AO3's explicit error page ("Sorry! We
+   couldn") and HTTP non-2xx; if we get past those, a chapter ID in
+   the body IS a valid chapter ID. Scan for every
+   `/works/{work_id}/chapters/(\d+)` reference in the body and pick
+   the maximum — AO3 chapter IDs are monotonically increasing, so the
+   newest chapter is always the highest numeric ID even when the
+   response page also references the work's earlier chapters in nav
+   links.
+
+2. **Last-resort `/navigate` fallback.** If the body scan also turns
+   up nothing, fetch `/works/{work_id}/navigate` (the full-page
+   chapter index — includes drafts) and grab the maximum chapter ID.
+
+If both fallbacks fail, the response body is now dumped to
+`{tempdir}/ao3_chapter_debug_{work_id}_{ts}.html` for postmortem so
+the parser can be refined further if AO3 changes its response shape
+again.
+
+**File modified:** `clients/ao3/client.py` (create_chapter response
+parsing), `config.py` (version bump).
+
+---
+
 ## [2.20.6] - 2026-05-13
 
 ### Fix: AO3 publish package file priority — second half of the SqW switch

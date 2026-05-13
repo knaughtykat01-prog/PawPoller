@@ -1370,32 +1370,63 @@ class AO3Client:
         ch_match = re.search(rf'/works/{work_id}/chapters/(\d+)', final_url)
         chapter_id = ch_match.group(1) if ch_match else ""
 
-        # Same preview-page pattern as create_work: when the form is
-        # submitted via "Preview" rather than "Post Without Preview",
-        # AO3 renders the Preview Work page inline at /works/{id}/chapters
-        # without redirecting, so the URL stays ID-less while the body
-        # carries the chapter ID in every action URL. Detect success-
-        # markers in the body and pull the chapter ID out as fallback.
+        # Body fallback: when AO3 stays on a /chapters page without an
+        # ID in the URL (preview flow, or just an ID-less render), pull
+        # the new chapter ID out of the body. We pick the HIGHEST ID
+        # because the response page may also reference the work's
+        # earlier chapters in nav links — the newest one always has
+        # the largest numeric ID on AO3.
         if not chapter_id:
             body_text = resp.text
-            success_markers = (
-                "Draft was successfully created" in body_text
-                or "Chapter was successfully created" in body_text
-                or "<title>Preview Work" in body_text
-                or "<title>Edit Work" in body_text
-                or "<title>Edit Chapter" in body_text
-            )
-            if success_markers:
-                body_match = re.search(rf'/works/{work_id}/chapters/(\d+)', body_text)
-                if body_match:
-                    chapter_id = body_match.group(1)
-                    logger.info(
-                        "AO3: Added chapter via preview-page response "
-                        "(URL stayed at /works/%s/chapters) chapter_id=%s",
-                        work_id, chapter_id,
+            ids_in_body = re.findall(rf'/works/{work_id}/chapters/(\d+)', body_text)
+            if ids_in_body:
+                chapter_id = max(ids_in_body, key=int)
+                logger.info(
+                    "AO3: Added chapter via body-scan fallback "
+                    "(URL=%s) chapter_id=%s (max of %d ids in body)",
+                    final_url, chapter_id, len(ids_in_body),
+                )
+
+        # Last-resort fallback: fetch /works/{work_id}/navigate which
+        # lists every chapter (including drafts) and grab the newest.
+        if not chapter_id:
+            try:
+                nav_html = await self._get_page(
+                    f"{_BASE}/works/{work_id}/navigate"
+                )
+                if nav_html:
+                    nav_ids = re.findall(
+                        rf'/works/{work_id}/chapters/(\d+)', nav_html
                     )
+                    if nav_ids:
+                        chapter_id = max(nav_ids, key=int)
+                        logger.info(
+                            "AO3: Recovered chapter_id=%s from /navigate "
+                            "after POST response had no parseable ID (URL=%s)",
+                            chapter_id, final_url,
+                        )
+            except Exception as nav_err:
+                logger.warning(
+                    "AO3: /navigate fallback failed for work %s: %s",
+                    work_id, nav_err,
+                )
 
         if not chapter_id:
+            # Dump the response body for postmortem so we can refine
+            # the parser if AO3 changes its response shape again.
+            try:
+                import tempfile, time
+                dump_path = (
+                    f"{tempfile.gettempdir()}/ao3_chapter_debug_"
+                    f"{work_id}_{int(time.time())}.html"
+                )
+                with open(dump_path, "w", encoding="utf-8") as f:
+                    f.write(resp.text)
+                logger.error(
+                    "AO3: Dumped failed chapter response to %s", dump_path
+                )
+            except Exception:
+                pass
             raise RuntimeError(
                 f"AO3: Could not extract chapter_id from response URL: {final_url}"
             )
