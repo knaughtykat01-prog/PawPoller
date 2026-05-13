@@ -170,9 +170,15 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
         conn = get_connection()
         log_id = ao3_queries.start_ao3_poll_log(conn)
         # Step 1: Authenticate
+        # Use ensure_logged_in() not validate_session() — the latter does an
+        # extra `/users/{name}` probe to confirm the cookie is alive, which
+        # AO3 rate-limits per-IP at 429 with ~120s backoff (the same throttle
+        # that motivates cookie-only auth in the first place). The cycle's
+        # actual work (works-list scrape + per-work details) will fail
+        # loudly if the cookie has expired, so the probe adds only delay,
+        # not safety. ensure_logged_in() trusts the cookie without fetching.
         _update_ao3_progress("searching", message="Authenticating with AO3...")
-        target = await client.validate_session()
-        if not target:
+        if not await client.ensure_logged_in():
             raise ValueError("AO3 login failed -- check credentials or AO3 may be blocking (see logs for HTTP status)")
 
         # Step 2: Discover works

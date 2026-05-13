@@ -4,6 +4,39 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.3] - 2026-05-13
+
+### Fix: AO3 poll cycle's redundant cookie-validation probe
+
+After 2.22.2 enabled cookie-only AO3 polling, the first live cycle hit
+`AO3: 429 rate limited on https://archiveofourown.org/users/KnaughtyKat,
+waiting 118s` before the actual work-discovery scrape even started. The
+cycle still completed (1 submission, 2 new kudos) but a 2-minute backoff
+on every cycle is the exact problem cookie-only auth was supposed to
+avoid.
+
+Root cause: `polling/ao3_poller.py:run_ao3_poll_cycle` called
+`await client.validate_session()` as step 1. `validate_session()` is
+specced as the `/auth/connect` probe — it does an extra HEAD-equivalent
+fetch of `/users/{target}` to confirm the cookie is alive. AO3's
+per-IP throttle hits that endpoint hard from datacenter IPs. Meanwhile
+`ensure_logged_in()` already trusts a pasted cookie without fetching
+(see the comment block in `clients/ao3/client.py:415-449`) — it was
+written specifically to avoid this throttle.
+
+Fix: switch the poller's step 1 to `ensure_logged_in()`. The cycle's
+actual work (works-list scrape + per-work details) will still fail
+loudly if the cookie has expired, so the probe added only latency, not
+safety.
+
+Files: `polling/ao3_poller.py`.
+
+Verification: trigger a poll via the AO3 button (or `pp.sh` →
+`/api/poll/trigger/ao3`); the cycle should start the works-list scrape
+immediately with no preceding `/users/{target}` 429.
+
+---
+
 ## [2.22.2] - 2026-05-13
 
 ### Fix: AO3 polling skipped on cookie-only auth
