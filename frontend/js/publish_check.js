@@ -805,11 +805,19 @@ window.PublishCheck = (function () {
                         'URL saved (external_id=' + data.external_id + '). Refreshing...',
                         'is-success'
                     );
+                    if (window.toast) {
+                        window.toast.success(
+                            `${platName} URL anchored (id ${data.external_id})`
+                        );
+                    }
                     setTimeout(() => {
                         if (_currentStory === storyName) load(storyName);
                     }, 600);
                 } catch (e) {
                     setResult('Failed: ' + (e.message || e), 'is-error');
+                    if (window.toast) {
+                        window.toast.error(`URL save failed: ${e.message || e}`);
+                    }
                 } finally {
                     applyBtn.disabled = false;
                     applyBtn.textContent = 'Apply';
@@ -851,11 +859,19 @@ window.PublishCheck = (function () {
                         throw new Error(data.detail || 'HTTP ' + resp.status);
                     }
                     setResult('Publication forgotten. Refreshing...', 'is-success');
+                    if (window.toast) {
+                        window.toast.success(
+                            `Forgot ${platName} publication for ${chTitle}`
+                        );
+                    }
                     setTimeout(() => {
                         if (_currentStory === storyName) load(storyName);
                     }, 600);
                 } catch (e) {
                     setResult('Failed: ' + (e.message || e), 'is-error');
+                    if (window.toast) {
+                        window.toast.error(`Forget failed: ${e.message || e}`);
+                    }
                     forgetBtn.disabled = false;
                     forgetBtn.textContent = 'Forget this publication';
                 }
@@ -922,6 +938,26 @@ window.PublishCheck = (function () {
             const data = await resp.json();
             _renderActionResult(data, action);
             _logAction(action, platName, chTitle, data);
+            // Toast feedback for completed actions. Dry-run stays
+            // silent — its result panel is the whole point.
+            if (action !== 'dry_run' && window.toast) {
+                if (data.ok) {
+                    const verb =
+                        action === 'post' ? 'Posted' :
+                        action === 'update' ? 'Updated' :
+                        action === 'update_metadata' ? 'Metadata updated' :
+                        action === 'publish_draft' ? 'Published' :
+                        'Done';
+                    window.toast.success(
+                        `${verb}: ${chTitle} → ${platName}`
+                    );
+                } else {
+                    const detail = data.error || data.detail || 'unknown error';
+                    window.toast.error(
+                        `${platName} ${action} failed: ${detail}`
+                    );
+                }
+            }
             if (action !== 'dry_run' && data.ok) {
                 // Refresh the matrix on success — only if the user is still
                 // looking at the same story. Prevents a late success callback
@@ -934,6 +970,11 @@ window.PublishCheck = (function () {
             if (resultBox) {
                 resultBox.innerHTML = '<div class="publish-action-error">Failed: ' +
                     _escape(e.message) + '</div>';
+            }
+            if (window.toast) {
+                window.toast.error(
+                    `${platName} ${action} failed: ${e.message || e}`
+                );
             }
             _logAction(action, platName, chTitle, { ok: false, error: e.message });
         }
@@ -1434,12 +1475,21 @@ window.PublishCheck = (function () {
             // Refresh the scheduled items list
             _loadScheduledItems(platId, chIdx);
 
+            if (window.toast) {
+                const when = new Date(data.scheduled_at + 'Z');
+                window.toast.success(
+                    `Scheduled: ${chTitle || 'Full story'} → ${platName} at ${when.toLocaleString()}`
+                );
+            }
             _logAction('schedule', platName, chTitle || 'Full story', { ok: true });
         } catch (e) {
             if (resultBox) {
                 resultBox.innerHTML =
                     '<div class="publish-action-error">Schedule failed: ' +
                     _escape(e.message) + '</div>';
+            }
+            if (window.toast) {
+                window.toast.error(`Schedule failed: ${e.message || e}`);
             }
             _logAction('schedule', platName, chTitle || 'Full story', { ok: false, error: e.message });
         }

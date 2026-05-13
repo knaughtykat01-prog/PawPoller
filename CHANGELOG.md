@@ -4,6 +4,61 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.1] - 2026-05-13
+
+### Feature: Global activity spinner + toast notifications
+
+User feedback during the v2.22.0 rollout: when triggering an action
+("Post to AO3", "Schedule", "Forget publication") nothing visible
+happened during the in-flight window, then either the inline result
+panel flickered with text or the matrix refreshed without explicit
+confirmation. Two new always-on UI affordances make it obvious that
+something IS happening:
+
+**1. Top-right activity spinner.** A subtle 18px dot-ring with an
+accent-coloured glow appears whenever any `fetch()` is in flight. New
+module `frontend/js/loading_indicator.js` wraps `window.fetch` once
+(idempotent — safe against hot reload) so every existing API call is
+covered for free without touching call sites. 250ms delay before
+showing so trivially-fast requests don't flash. A small badge shows
+the in-flight count when more than one request is live. SSE
+connections via `EventSource` don't trigger the spinner (different
+API), so long-lived regen / diagnostics streams don't pin it on.
+
+**2. Bottom-right toast stack.** Exposed as
+`window.toast.{success,error,warn,info}`. Auto-dismisses after 4s
+(success/info) or 6s (error/warn); click ✕ to dismiss earlier. Slide-
+in/out transitions; newest on top. Wired into the highest-traffic
+action handlers in `publish_check.js`:
+- `_executeAction` (post / update / update_metadata / publish_draft)
+- `_submitSchedule`
+- Set URL manually (the v2.21.0 control)
+- Forget publication (the v2.21.0 control)
+
+Each toast carries the actual action + platform + chapter context so
+the user knows what just succeeded or failed without scrolling back
+to the matrix.
+
+**3. `withLoading(btn, asyncFn)` helper.** New `window.withLoading`
+that disables a button, swaps its label for a small spinner, and
+preserves the button's width so the layout doesn't jump. Opt-in per
+call site — not auto-applied (some buttons have their own progress
+patterns; forcing a swap would clobber them).
+
+**Files added:**
+- `frontend/js/loading_indicator.js` — fetch wrap, toast API, button helper.
+- `frontend/css/loading_indicator.css` — spinner + toast styles.
+
+**Files modified:**
+- `frontend/index.html` — loads the new CSS + JS (JS loads BEFORE
+  `utils.js` so its fetch wrap is in place before any other module's
+  init code can fire a request).
+- `frontend/js/publish_check.js` — toast calls in `_executeAction`,
+  `_submitSchedule`, URL-anchor handler, forget-publication handler.
+- `config.py` — version bump.
+
+---
+
 ## [2.22.0] - 2026-05-13
 
 ### Feature: PawPoller CLI — menu-driven TUI for the dashboard API

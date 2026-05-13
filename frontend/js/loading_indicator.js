@@ -1,0 +1,169 @@
+/* PawPoller loading + toast UI
+ *
+ * Two affordances:
+ *
+ *   1. A subtle dot-ring spinner that auto-appears in the top-right
+ *      whenever any fetch() is in flight. Hooks window.fetch once so
+ *      every existing API call gets the indicator for free. A small
+ *      badge shows the in-flight count when more than one request is
+ *      live. 250ms delay before showing so fast (<250ms) requests
+ *      don't make the spinner flash on/off.
+ *
+ *   2. A toast stack in the bottom-right for success / error / info
+ *      messages. Exposed as window.toast.{success,error,info,warn}.
+ *      Auto-dismiss after 4s (success/info) or 6s (error/warn); click
+ *      to dismiss earlier. Stacks vertically with newest on top.
+ *
+ * Self-contained — no dependencies. Safe to load before app.js. The
+ * fetch wrap is idempotent (won't double-wrap on hot reload).
+ */
+(function () {
+    'use strict';
+
+    if (window.__pawpollerLoadingInstalled) return;
+    window.__pawpollerLoadingInstalled = true;
+
+    // ─────────────────────────────────────────────────────────────
+    // Spinner
+    // ─────────────────────────────────────────────────────────────
+
+    let activeCount = 0;
+    let showTimer = null;
+    let spinnerEl = null;
+    let badgeEl = null;
+
+    function ensureSpinner() {
+        if (spinnerEl) return spinnerEl;
+        spinnerEl = document.createElement('div');
+        spinnerEl.className = 'pp-spinner-host';
+        spinnerEl.setAttribute('aria-hidden', 'true');
+        spinnerEl.innerHTML =
+            '<div class="pp-spinner-ring"></div>' +
+            '<span class="pp-spinner-badge" id="pp-spinner-badge"></span>';
+        document.body.appendChild(spinnerEl);
+        badgeEl = spinnerEl.querySelector('.pp-spinner-badge');
+        return spinnerEl;
+    }
+
+    function updateSpinner() {
+        ensureSpinner();
+        if (activeCount > 0) {
+            // Delay showing so trivially-fast requests don't flash.
+            if (!showTimer && !spinnerEl.classList.contains('is-visible')) {
+                showTimer = setTimeout(() => {
+                    spinnerEl.classList.add('is-visible');
+                    showTimer = null;
+                }, 250);
+            }
+            badgeEl.textContent = activeCount > 1 ? String(activeCount) : '';
+            badgeEl.style.display = activeCount > 1 ? '' : 'none';
+        } else {
+            if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+            spinnerEl.classList.remove('is-visible');
+        }
+    }
+
+    function trackRequest(promise) {
+        activeCount++;
+        updateSpinner();
+        const done = () => { activeCount--; updateSpinner(); };
+        // Use Promise.prototype.finally style so both fulfill and reject
+        // tick the counter back down.
+        promise.then(done, done);
+        return promise;
+    }
+
+    // Wrap window.fetch
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = function patchedFetch(input, init) {
+        // Skip SSE / streaming endpoints if explicitly marked by caller
+        // (init.__skipSpinner = true), so a 10-minute regen stream
+        // doesn't sit on the spinner the whole time. Detected per-call.
+        const skip = init && init.__skipSpinner;
+        const p = originalFetch(input, init);
+        if (skip) return p;
+        return trackRequest(p);
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // Toasts
+    // ─────────────────────────────────────────────────────────────
+
+    let toastStackEl = null;
+
+    function ensureToastStack() {
+        if (toastStackEl) return toastStackEl;
+        toastStackEl = document.createElement('div');
+        toastStackEl.className = 'pp-toast-stack';
+        document.body.appendChild(toastStackEl);
+        return toastStackEl;
+    }
+
+    function makeToast(message, kind = 'info', timeoutMs = null) {
+        ensureToastStack();
+        const t = document.createElement('div');
+        t.className = 'pp-toast pp-toast-' + kind;
+        const icon =
+            kind === 'success' ? '✓' :
+            kind === 'error'   ? '✕' :
+            kind === 'warn'    ? '⚠' : '·';
+        t.innerHTML =
+            '<span class="pp-toast-icon">' + icon + '</span>' +
+            '<span class="pp-toast-msg"></span>' +
+            '<button class="pp-toast-close" aria-label="Dismiss">&times;</button>';
+        t.querySelector('.pp-toast-msg').textContent = String(message);
+        const close = () => {
+            t.classList.remove('is-visible');
+            setTimeout(() => t.remove(), 200);
+        };
+        t.querySelector('.pp-toast-close').addEventListener('click', close);
+        toastStackEl.insertBefore(t, toastStackEl.firstChild);
+        // next-frame add visible class so the CSS transition runs
+        requestAnimationFrame(() => t.classList.add('is-visible'));
+        if (timeoutMs === null) {
+            timeoutMs = (kind === 'error' || kind === 'warn') ? 6000 : 4000;
+        }
+        if (timeoutMs > 0) {
+            setTimeout(close, timeoutMs);
+        }
+        return { close };
+    }
+
+    window.toast = {
+        success: (m, ms) => makeToast(m, 'success', ms),
+        error:   (m, ms) => makeToast(m, 'error', ms),
+        warn:    (m, ms) => makeToast(m, 'warn', ms),
+        info:    (m, ms) => makeToast(m, 'info', ms),
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // Button loading helper — opt-in per call site.
+    // Usage:
+    //     btn.addEventListener('click', () =>
+    //         withLoading(btn, async () => { await fetch(...); })
+    //     );
+    // ─────────────────────────────────────────────────────────────
+
+    window.withLoading = async function withLoading(btn, asyncFn) {
+        if (!btn) return asyncFn();
+        const originalHTML = btn.innerHTML;
+        const originalDisabled = btn.disabled;
+        btn.disabled = true;
+        btn.classList.add('pp-btn-loading');
+        // Preserve width so the layout doesn't jump when the label
+        // shrinks to just the spinner glyph.
+        const rect = btn.getBoundingClientRect();
+        const stashedMinWidth = btn.style.minWidth;
+        btn.style.minWidth = rect.width + 'px';
+        btn.innerHTML = '<span class="pp-btn-spinner"></span>';
+        try {
+            return await asyncFn();
+        } finally {
+            btn.innerHTML = originalHTML;
+            btn.disabled = originalDisabled;
+            btn.style.minWidth = stashedMinWidth;
+            btn.classList.remove('pp-btn-loading');
+        }
+    };
+
+})();
