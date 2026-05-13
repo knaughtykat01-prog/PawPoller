@@ -3747,6 +3747,86 @@ Returns `{ok, results: [...], errors: [...], word_count}`.
 
 The Regenerate button includes a dropdown with options for All formats, HTML, BBCode, Styled HTML + CSS, SquidgeWorld, PDF, EPUB, and Chapter splits. The backend `RegenerateRequest.formats` field accepts a list of format keys and filters which conversion steps run, avoiding unnecessary rebuilds when only one format has changed. The toolbar also has a separate Downloads ▾ menu that lists every output format with its file size plus a "Download all (zip)" footer that streams the entire story folder via `/api/posting/archive` — convenient for grabbing an EPUB or PDF onto a phone for proofreading.
 
+### Regenerate All Stories (2.20.0+)
+
+Bulk rebuild of every story's derived formats from each `MASTER.md`,
+exposed as a single editor button and a diagnostics test. Two surfaces
+backed by one orchestrator:
+
+- **Editor button.** `↻ Regenerate All` in the story-list header (next
+  to "+ Create New Story" / "Import"). Opens an overlay with a "Skip
+  PDF" checkbox (default on). Start kicks off the run and the overlay
+  flips to a live log: per-story stamps, pass/partial/fail counts,
+  progress bar, elapsed timer.
+- **Diagnostics test.** `archive.regenerate.all_stories` in
+  Settings → Diagnostics → Archive. Destructive (opt-in per-test
+  confirm), `skip_pdf=True` always so the suite stays inside the
+  15-min per-test timeout. Reports per-story pass/partial/failed
+  counts + failures list.
+
+**Endpoints** in `routes/editor_api.py`:
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/editor/regenerate-all` | Start a bulk run. Body: `{skip_pdf: bool}`. Returns `{run_id}`. |
+| GET | `/api/editor/regenerate-all/active` | Reattach probe — returns `{active: bool, run_id?}`. |
+| GET | `/api/editor/regenerate-all/stream/{run_id}` | SSE: `story_start`, `story_end`, `log`, `complete` events. 15s heartbeats + event-buffer backfill so reconnects don't lose history. |
+| POST | `/api/editor/regenerate-all/cancel/{run_id}` | Graceful stop — current story finishes, loop exits. |
+
+**Architecture.** Thin orchestrator calls the existing per-story
+`regenerate()` endpoint in-process for each story, so single-story
+behaviour stays the single source of truth and bug fixes don't have to
+land twice. A module-level `threading.Lock` prevents two bulk runs at
+once (returns 409 with the active `run_id` so the frontend can attach
+to the existing stream).
+
+**PDF safety net (2.20.5).** Each `html_to_pdf()` call is wrapped in
+`asyncio.to_thread(...)` so WeasyPrint's CPU-bound render runs on the
+threadpool executor instead of blocking the event loop. Before this
+fix, the dashboard froze for the ~30-80s/story PDF render and polling
+ticks were skipped for the entire 20+ min bulk run.
+
+**Single-chapter EPUB fallback (2.20.4).** Stories whose `MASTER.md`
+has chapter boundaries only in `chapters.json` (legacy from before the
+editor existed) used to fail with "No chapters found in MASTER.md
+after body anchor". Defensive fallback in
+`editor/epub_generator.py:_split_into_chapters`: when no `# Chapter X`
+headings exist but `<!-- @body -->` content does, treat the whole body
+as one synthetic chapter using the story title. Multi-chapter stories
+with proper headings are unaffected. Companion rescue tool at
+`scripts/inject_chapter_markers.py` reads `chapters.json` +
+`Chapters/Markdown/Chapter_*.md` to anchor each chapter in MASTER.md
+and inject `# Chapter N: Title` headings at the right positions.
+Idempotent; backs up MASTER.md → .bak; sorts by extracted numeric N
+so chapter 10 lands after 9 not between 1 and 2.
+
+### Phone Display / Text Message Styling (2.21.1+)
+
+Stories with phone-call caller IDs (`**ETHAN ❤**`) and SMS-style text
+messages (`**Name:** message`) get rendered as styled phone-bubble UI
+in SquidgeWorld and Styled HTML. Two paths produce this:
+
+- **Semantic anchors** (explicit). MASTER.md uses
+  `<!-- @phone-incoming -->`, `<!-- @text-sent -->`,
+  `<!-- @text-received -->` on the line before the content. The
+  anchor branch in `editor/converter.py:_convert_body_clean_html`
+  emits `<div class="phone-display-wrap"><div class="phone-display">…</div></div>`
+  and `<div class="text-message {sent|received}">…</div>`.
+- **Heuristic fallback** (no anchors required). Same converter
+  detects `**NAME ❤**` and `**Name:** message` patterns via
+  `is_phone_display` and `is_text_message`. Before 2.21.1 the
+  heuristic emitted plain `<p><strong>…</strong></p>` and stories
+  without explicit anchors silently lost their Work Skin styling.
+  2.21.1 made the heuristic emit the same div structure as the
+  anchor branch. Without explicit anchors we can't tell sent from
+  received, so heuristic text-messages get no modifier and inherit
+  the Work Skin's base `.text-message` rule.
+
+Companion fix in `m_x/Scripts_Utils/regenerate_story.py`
+(`apply_phone_text_styling()`) — that script builds SqW + Styled HTML
+output from the SoFurry HTML body, not from PawPoller's converter, so
+the same post-process pass had to land in both code paths.
+
 ### Format Tab Bar
 
 The output format selector in the editor preview pane was changed from a `<select>` dropdown to an inline tab bar (`<div class="format-tabs">` with four `<button class="format-tab">` elements). All four formats (Clean HTML, SoFurry, BBCode, Styled HTML) are now visible at a glance as clickable buttons with an active highlight.
@@ -3814,6 +3894,66 @@ every row is actionable.
 the current file hash via `posting.sync.hash_file()`. Mismatch flips to
 `posted_drifted`. Stored hash comes from `publications.file_hash` recorded
 at post time. Tag-only platforms (IK, BSky) skip the drift check.
+
+### Per-Cell Publish Controls (2.21.0+)
+
+The expanded-cell drawer carries three repair affordances for when
+PawPoller's stored state diverges from upstream reality. All three sit
+under the "Existing publication" block when one exists; they target the
+single (story, chapter, platform) row, never the upstream.
+
+- **Set URL manually.** Paste a live submission URL; the backend regex
+  in `routes/editor_api.py:_URL_ID_PATTERNS` (covers all 11 platforms)
+  extracts the external ID. Both `publications.external_url` and
+  `publications.external_id` are overwritten via
+  `PUT /api/editor/stories/{story}/publication`. Use when PawPoller's
+  stored URL is wrong but the submission exists — drift detection and
+  Edit calls then target the correct submission.
+- **Forget this publication.** Deletes the local `publications` row
+  for the cell; does NOT touch the upstream. Reverts the cell to
+  `ready` so the next post creates a fresh submission instead of
+  editing a phantom one. Confirmed via `prompt()` requiring the user
+  to type the platform code; backend also requires
+  `confirm_platform=<platform>` query param.
+  `DELETE /api/editor/stories/{story}/publication`.
+- **Cancel scheduled (per-row + bulk).** The scheduled-items list
+  under the action panel got two fixes in 2.21.0:
+  - Per-row Cancel button was hidden client-side for non-`pending`
+    rows; backend `cancel_queue_item` has handled
+    pending/retrying/processing/failed since 2.20.3, so the gate was
+    widened.
+  - When the cell has >1 scheduled item, the header gets a
+    "Cancel all (N)" button calling
+    `DELETE /api/editor/stories/{story}/scheduled?platform=&chapter=`
+    backed by `posting_queries.cancel_all_for(..., chapter_index=...)`.
+
+### Activity Spinner + Toasts (2.22.1+)
+
+Universal UI feedback for every fetch in the dashboard. Lives in
+`frontend/js/loading_indicator.js` + `frontend/css/loading_indicator.css`;
+no markup changes required at call sites.
+
+- **Top-right dot-ring spinner.** Module wraps `window.fetch` once
+  (idempotent against hot reload) and tracks an in-flight counter.
+  When the counter is >0, a subtle 18px purple ring appears after a
+  250ms delay (so trivially-fast requests don't flash). A badge shows
+  the count when >1 request is live. SSE via `EventSource` bypasses
+  the wrap, so long-lived regen/diagnostics streams don't pin the
+  spinner on.
+- **Bottom-right toast stack.** `window.toast.{success,error,warn,info}`.
+  Auto-dismiss 4s success/info or 6s error/warn; click ✕ to dismiss
+  earlier; newest on top; slide-in/out transitions. Wired into the
+  highest-traffic publish handlers in `publish_check.js` —
+  `_executeAction`, `_submitSchedule`, the URL-anchor handler, the
+  forget-publication handler — each toast carries
+  action + platform + chapter context.
+- **`window.withLoading(btn, asyncFn)`.** Opt-in per-button helper:
+  disables the button, swaps its label for a 12px spinner, preserves
+  the button's width so layout doesn't jump. Not auto-applied — some
+  buttons already have their own progress patterns.
+
+The JS loads BEFORE `utils.js` in `index.html` so the `fetch` wrap is
+in place before any other module fires a request.
 
 ### Publish Action Panel
 
@@ -3922,3 +4062,280 @@ the new variables table between `<!-- THEME_VARIABLES_START -->` and
 the end marker (notes, credits, extra sections) is preserved by a
 `after = existing[existing.index(marker_end) + len(marker_end):]` split;
 earlier versions silently wiped this content on every save.
+
+---
+
+## 16. Diagnostics & Testing Tab (2.19.0+)
+
+A unified in-app testing suite that catalogues ~82 bespoke live-system
+tests plus the existing pytest suite (parsed as ~91 child results), all
+runnable from a single tab in Settings → Diagnostics with per-test /
+per-category / full-suite run buttons and live SSE-streamed progress.
+
+The motivation: every subsystem of PawPoller has its own way of being
+exercised (one of 11 `/auth/connect` endpoints, one of 11
+`/poll/trigger` endpoints, the Telegram test endpoint, pytest CI, etc.),
+and there was no top-level "is everything healthy?" view. Diagnostics
+gives that view in one place.
+
+### Architecture
+
+```
+testing/
+├── __init__.py
+├── registry.py         # @register_test decorator, TestResult, REGISTRY dict
+├── runner.py           # async run_one / run_category / run_suite
+├── streamer.py         # Per-run in-memory event buffer + SSE generator
+├── store.py            # data/diagnostics_results.json (last 10 runs)
+└── tests/
+    ├── __init__.py     # Imports every test module so @register_test fires
+    ├── infra.py        # 12 tests: DB / settings / vault / disk / tag DB
+    ├── platforms.py    # 22 tests: 11 auth + 11 poll-discovery
+    ├── editor.py       # 10 tests: converter / EPUB / PDF / theme / anchors
+    ├── story_reader.py # 6 tests: archive / build_package / resolution
+    ├── posting.py      # 9 tests: dry-run validate per posting platform
+    ├── auth.py         # 6 tests: bcrypt / TOTP / API key / session / rate-limit
+    ├── external.py     # 5 tests: CF proxy / Telegram / GitHub / Turnstile
+    ├── scheduling.py   # 5 tests: scheduler threads / queue filters
+    ├── notifications.py # 3 tests: telegram_send (destructive) / toast / digest
+    ├── archive.py      # 3 tests: readable / story.json valid / pawsync dry-run
+    └── pytest_runner.py # 1 test that runs pytest and expands to ~91 children
+```
+
+### Registry pattern
+
+```python
+# testing/registry.py
+@dataclass
+class TestResult:
+    test_id: str
+    name: str
+    category: str
+    status: Literal["passed", "failed", "skipped", "errored", "running", "pending"]
+    duration_ms: float
+    message: str = ""
+    details: dict | None = None
+    logs: list[str] = field(default_factory=list)
+    destructive: bool = False
+    requires_creds: list[str] = field(default_factory=list)
+
+REGISTRY: dict[str, TestSpec] = {}
+
+def register_test(id, name, category, *, description="",
+                  destructive=False, requires_creds=None):
+    """Decorator. Async function returning TestResult or raising on error."""
+    ...
+```
+
+### Event streaming (SSE)
+
+`testing/streamer.py` exposes a per-run async event queue. The runner
+emits events; the SSE endpoint pumps them to the client. Event types:
+
+- `{event: "suite_start", run_id, total, started_at}`
+- `{event: "test_start", test_id, name, category, idx, total}`
+- `{event: "log", test_id, level, message, timestamp}`
+- `{event: "test_end", test_id, status, duration_ms, message, details}`
+- `{event: "suite_complete", summary: {passed, failed, skipped, total, duration_ms}}`
+
+15s heartbeat ping so reverse-proxy intermediates don't close the stream.
+A per-run event buffer means late-joiners (refresh, second tab) get the
+full history backfilled before live events start arriving.
+
+### API (`routes/testing_api.py`)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/testing/tests` | Full registry — id, name, category, description, destructive flag, last result. |
+| GET | `/api/testing/last-results` | Last persisted run summary + per-test results. |
+| GET | `/api/testing/active` | `{active: bool, run_id?}` — for reattach. |
+| POST | `/api/testing/run/{test_id}` | Run one test. Returns `{run_id}`. |
+| POST | `/api/testing/run-category/{category}` | Run all tests in a category. Body: `{include_destructive: [...]}`. |
+| POST | `/api/testing/run-suite` | Run full suite. Body: `{include_destructive: [...], skip_categories: [...]}`. |
+| GET | `/api/testing/stream/{run_id}` | SSE event stream. |
+| POST | `/api/testing/stop/{run_id}` | Request graceful cancellation. |
+
+All endpoints sit behind the existing dashboard session auth.
+
+### UI
+
+Settings → Diagnostics tab (`frontend/js/diagnostics.js` +
+`frontend/css/diagnostics.css`). Two-pane layout:
+
+- **Left — test catalog.** Sticky search box + status filter chips
+  (All / Passed / Failed / Skipped / Destructive). Category accordions
+  for the 12 categories. Each row: status icon, name, last duration,
+  Run button, expand for details/logs.
+- **Right — live log + summary.** Sticky run-summary card (X of Y, Z
+  passed, W failed, progress bar, elapsed time). Action bar: Run All,
+  Run Failed, Stop, Clear Log, Download Log, Copy Results. Log line
+  filter chips. `<pre>` with auto-scroll-on-new (toggleable), 5000-line
+  in-memory cap.
+
+### Concurrency + safety
+
+- **One run at a time** — module-level `threading.Lock` in the runner;
+  a second run request returns 409 with the active `run_id` and the
+  frontend switches to spectator mode on the existing stream.
+- **Per-test timeout** — default 30s; tests that need longer (e.g.
+  AO3 auth at 3s + probe) declare their own.
+- **Cleanup hooks** — tests that mutate state (queue insert, settings
+  marker) wrap in try/finally so cleanup runs on failure.
+- **Destructive gating** — route layer refuses to run a destructive
+  test unless `confirm_destructive: true` is in the request body. The
+  frontend asks for per-test confirmation. Run-all auto-skips
+  destructive tests unless the user explicitly opts in.
+- **Run history** — last 10 runs kept in `data/diagnostics_results.json`;
+  older entries rotated out. Persists across container rebuilds (same
+  volume as `pawpoller.db`).
+- **Rate-limit pacing** — platform-auth tests sleep
+  `{P}_REQUEST_DELAY_SECONDS` between platforms when run as a category
+  or suite, so we don't burst into AO3's 429 wall.
+
+### Test inventory (categories)
+
+| Category | Count | What it exercises |
+|---|---|---|
+| Infrastructure | 12 | DB integrity, WAL mode, foreign keys, settings round-trip, vault crypto, disk space, log writes, tag DB files. |
+| Dashboard Auth | 6 | Bcrypt, TOTP, API key SHA-256, session cookie sign/unsign, escape_html, rate-limiter (isolated instance). |
+| Platforms · Auth | 11 | One per platform — validate `/auth/connect` logic without UI side effects; skipped if creds missing. |
+| Platforms · Polling | 11 | One per platform — call the gallery-discovery method, report submission count. |
+| Editor / Converter | 10 | MD→Clean HTML, MD→SoFurry HTML, MD→BBCode, SqW chapter split, Styled HTML chapter end-marker (regression for 2.18.20), EPUB spine, PDF backend availability, theme parser, anchor parser. |
+| Story Reader | 6 | Archive path resolves, has_stories≥1, load_story, build_packages_all_platforms, format resolution chapter≠full-story (regression for 2.18.19), manifest parsing `number` key. |
+| Posting Dry-Run | 9 | One per posting platform — build package, `poster.validate(package)`. No network upload. |
+| External Services | 5 | CF Worker proxy ping, Telegram getMe, GitHub latest_release (PAT-aware), Turnstile reachable. |
+| Scheduling & Queue | 5 | Poll orchestrator + posting scheduler + Telegram bot thread alive; queue `requires` filter regression (2.18.16); `scheduled_at` gate. |
+| Notifications | 3 (all destructive) | Telegram test message, Windows toast (desktop only), digest builder data-fetch. |
+| Archive | 3 | Local archive readable, story.json valid across every story, pawsync dry-run subprocess. (2.20.0 added `archive.regenerate.all_stories` here too.) |
+| Pytest Suite | 1 → ~91 children | Subprocess `pytest tests/ -v` parsed via regex; child outcomes expand under a "Pytest Suite" accordion. |
+
+Grand total: **~82 bespoke + ~91 pytest = ~170 test rows** visible in
+the UI.
+
+### Out of scope (explicitly)
+
+- Scheduled / cron-triggered diagnostic runs. Doable as follow-up.
+- Email / Slack alerts on failures.
+- Per-test trend graphs across runs.
+- "Run on every PR" CI integration — the existing GitHub Actions
+  `pytest` already covers static code; Diagnostics is a runtime tool,
+  not a CI gate.
+
+---
+
+## 17. PawPoller CLI (2.22.0+)
+
+A menu-driven Python TUI under `cli/pawpoller_cli.py` that talks to a
+PawPoller server over the same HTTP API as the dashboard. Same script
+runs locally (against the GCP VM) or on the VM itself (against
+127.0.0.1) with identical UX.
+
+### Goals
+
+- Anything you can do without rendering a story body should be doable
+  from the CLI — polling control, queue ops, publishing, diagnostics,
+  story regen.
+- Drop-in for SSH workflows where opening a browser is overkill.
+- No new auth surface — uses the existing `pp_…` API keys.
+- Single file, two deps (`rich`, `httpx`), runs on any Python 3.10+.
+
+### Files
+
+```
+cli/
+├── pawpoller_cli.py     # ~1100 LOC single-file TUI
+├── requirements.txt     # rich >= 13, httpx >= 0.27
+├── pp.cmd               # Windows launcher (calls python pawpoller_cli.py)
+└── pp.sh                # Unix launcher (used on the VM)
+
+deploy/
+└── pawcli.bat           # One-command Windows wrapper: SSHes into the
+                         # VM with -t and launches pp.sh as kithetiger.
+```
+
+### Config resolution
+
+In order:
+
+1. Env vars `PAWPOLLER_URL` + `PAWPOLLER_KEY`.
+2. `~/.pawpoller-cli.json` — created on first run via the setup prompt.
+3. VM fallback hint: the SQLite `api_keys` table stores only hashes,
+   not plaintext keys, so the CLI prints a message asking the user to
+   run `python pawpoller_cli.py setup` and paste the key manually.
+
+### Top-level menu
+
+```
+PawPoller CLI                                  [○ Healthy]
+─────────────────────────────────────────────────────────
+Polling: live · Queue: 3 pending · Diagnostics: idle
+
+  1. Polling
+  2. Publishing & Queue
+  3. Diagnostics
+  4. Stories
+  5. Settings & Status
+  q. Quit
+```
+
+Each section is a numbered submenu. Pickers (story / platform / chapter
+/ test) display as numbered tables and accept `1-N` or `q` to go back.
+Long-running operations (regen, diagnostics suite) attach to the SSE
+stream and render live with per-event colour coding; Ctrl-C detaches
+without cancelling the server-side run.
+
+### Submenu coverage
+
+| Section | Actions |
+|---|---|
+| Polling | Status (per-platform progress table), pause/resume toggle, trigger one platform, full resync. |
+| Publishing & Queue | View queue, cancel queue item, publish matrix grid, post / update / update_metadata / dry-run with draft + live-publish confirmation, schedule, forget publication, set URL manually. |
+| Diagnostics | Last results summary + failures, run one test, run category, run full suite, attach to active run. SSE-streamed with per-test status colours. |
+| Stories | List with chapter/word counts, regen one (with PDF toggle), regen all (SSE-streamed bulk progress + Ctrl-C detach), publish matrix, probe drafts. |
+| Settings & Status | Ping (latency), view posting settings, list API key prefixes, show current CLI config, re-run setup. |
+
+### Tech
+
+- **`rich`** — `Table`, `Panel`, `Prompt`, `Confirm` for menus + tables
+  + colours.
+- **`httpx`** — sync client for normal requests; `client.stream("GET", path)`
+  for SSE. Hand-parses `data: …` lines as JSON; ignores comments and
+  empty events.
+- **Idempotent helpers** — `pick_from(label, options)`,
+  `numbered_menu(title, items)`, `withLoading` button helper.
+- **Error display** — `show_error()` unwraps `HTTPStatusError` to print
+  the API's `detail` field instead of a stack trace.
+
+### Deployment
+
+**Local**:
+```cmd
+pip install -r PawPoller\cli\requirements.txt
+python PawPoller\cli\pawpoller_cli.py
+```
+
+**On the VM** (already installed via `git pull` in the v2.22.0 deploy):
+```bash
+sudo -u kithetiger python3 -m pip install --user --break-system-packages \
+    -r /home/kithetiger/PawPoller/cli/requirements.txt
+chmod +x /home/kithetiger/PawPoller/cli/pp.sh
+echo 'alias pp=/home/kithetiger/PawPoller/cli/pp.sh' >> ~/.bashrc
+```
+
+**One-command launch from Windows** (`deploy/pawcli.bat`):
+```cmd
+gcloud compute ssh pawpoller --zone=us-east1-c --ssh-flag="-t" \
+    --command="sudo -u kithetiger -i /home/kithetiger/PawPoller/cli/pp.sh"
+```
+
+With `C:\Users\rhysc\claude\PawPoller\deploy` on the user PATH, typing
+`pawcli` from any cmd window SSHes in and drops straight into the menu.
+
+### Out of scope (v1)
+
+- Story body editing — the menu intentionally has no rich-text editor;
+  use the web editor.
+- Auto-launch on SSH login — one-line `.bashrc` follow-up if wanted.
+- API key / TOTP setup — stays in the web UI for the security flow.
+- Real-time `app.log` tailing — would need a streaming log endpoint
+  the dashboard doesn't expose yet.
