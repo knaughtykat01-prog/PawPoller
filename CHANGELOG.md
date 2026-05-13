@@ -4,6 +4,59 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.0] - 2026-05-13
+
+### Feature: PawPoller CLI — menu-driven TUI for the dashboard API
+
+A single-file Python TUI under `cli/pawpoller_cli.py` that lets any
+authenticated user drive the same API the web dashboard uses, from a
+terminal. Built so the same script runs locally (against the GCP VM)
+or on the VM itself (against 127.0.0.1) with identical UX.
+
+**Top-level menu**:
+1. Polling — pause/resume, trigger a single platform, full resync,
+   per-platform status table.
+2. Publishing & Queue — view/cancel queue, publish matrix, run any
+   publish action (post/update/update_metadata/dry_run) with draft
+   gating and live-publish confirmation, schedule, forget publication,
+   set URL manually.
+3. Diagnostics — list/run one test, run a category, run the full
+   suite, attach to active runs. Live SSE stream of every event with
+   per-test status colours and final summary.
+4. Stories — list, regenerate one, regenerate all (with SSE-streamed
+   bulk progress + detach via Ctrl-C), publish matrix, probe drafts.
+5. Settings & Status — ping, view posting settings, list API key
+   prefixes, show current CLI config, re-run setup.
+
+**Config resolution** (in order):
+1. Env vars `PAWPOLLER_URL` + `PAWPOLLER_KEY`.
+2. `~/.pawpoller-cli.json` (created on first run via setup prompt).
+3. VM-fallback hint that points the user at `setup` because the
+   sqlite `api_keys` table stores key hashes, not plaintext.
+
+**Tech**: `rich` for menus + tables + panels + colours, `httpx` for
+HTTP + SSE streaming. Single file, no submodules, ~1100 LOC. Both
+runners ship: `cli/pp.cmd` (Windows wrapper) and `cli/pp.sh` (Unix
+wrapper for the VM).
+
+**Run**:
+- Local: `pip install -r PawPoller/cli/requirements.txt` →
+  `python PawPoller/cli/pawpoller_cli.py` (or `pp.cmd`).
+- VM: SSH in → `python3 /home/kithetiger/PawPoller/cli/pawpoller_cli.py`
+  (or symlink `pp.sh` into `~/.local/bin`).
+
+**Out of scope for v1** (mentioned so the contract is explicit):
+- Story body editing (the menu skips it — use the web editor).
+- Auto-launch on SSH login (one-line `.bashrc` follow-up).
+- API key / TOTP setup (stays in the web UI for the security flow).
+
+**Files added:**
+- `cli/pawpoller_cli.py` — the TUI.
+- `cli/requirements.txt` — `rich`, `httpx`.
+- `cli/pp.cmd`, `cli/pp.sh` — thin launcher wrappers.
+
+---
+
 ## [2.21.1] - 2026-05-13
 
 ### Fix: SquidgeWorld / AO3 phone-call and text-message styling lost without explicit anchors
