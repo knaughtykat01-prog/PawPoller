@@ -534,12 +534,23 @@ def _convert_body_clean_html(lines: list[str], start: int = 0) -> tuple[list[str
             i += 1
             continue
 
-        # Non-anchored text message detection (heuristic fallback)
+        # Non-anchored text message detection (heuristic fallback).
+        # Emits the same div structure as the semantic-anchor branch
+        # above so SquidgeWorld / AO3 work-skin CSS (.phone-display-wrap,
+        # .text-message) styles these correctly even when the source
+        # MASTER.md doesn't carry explicit `<!-- @phone-incoming -->` /
+        # `<!-- @text-sent -->` / `<!-- @text-received -->` anchors.
+        # Without explicit anchors we can't tell sent from received, so
+        # text-message divs get no modifier class — the Work Skin's
+        # base `.text-message` rule still applies.
         phone_m = is_phone_display(stripped)
         if phone_m:
             flush()
             caller = phone_m.group(1).strip()
-            body_parts.append(_center_html(f"<strong>{_escape_html(caller)}</strong>"))
+            body_parts.append(
+                f'<div class="phone-display-wrap"><div class="phone-display">'
+                f'{_escape_html(caller)}</div></div>'
+            )
             stats["text_messages"] += 1
             i += 1
             continue
@@ -550,7 +561,9 @@ def _convert_body_clean_html(lines: list[str], start: int = 0) -> tuple[list[str
             sender = msg_m.group(1).strip()
             message = msg_m.group(2).strip()
             body_parts.append(
-                f"<p><strong>{_escape_html(sender)}:</strong> {format_paragraph_html(message)}</p>"
+                f'<div class="text-message">'
+                f'<strong>{_escape_html(sender)}</strong> '
+                f'{format_paragraph_html(message)}</div>'
             )
             stats["text_messages"] += 1
             i += 1

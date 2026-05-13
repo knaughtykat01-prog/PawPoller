@@ -4,6 +4,40 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.21.1] - 2026-05-13
+
+### Fix: SquidgeWorld / AO3 phone-call and text-message styling lost without explicit anchors
+
+User reported that `Hypnotic_Claim` on SquidgeWorld was rendering the
+phone-call caller ID (`**ETHAN ❤**`) and text messages
+(`**ETHAN ❤: Hey babe ...**`) as plain centred / left-aligned bold
+paragraphs instead of the styled phone-bubble UI defined in the Work
+Skin CSS (`.phone-display-wrap`, `.phone-display`, `.text-message`).
+
+Root cause in `editor/converter.py:_convert_body_clean_html` — the
+heuristic fallback (non-anchored detection via `is_phone_display` and
+`is_text_message`) was emitting:
+
+- `<p style="text-align:center"><strong>NAME ❤</strong></p>` (plain centre)
+- `<p><strong>NAME:</strong> message</p>` (plain prose)
+
+…instead of the styled divs that the parallel semantic-anchor branch
+above it (lines 500–535) already emits when `<!-- @phone-incoming -->`
+/ `<!-- @text-sent -->` / `<!-- @text-received -->` anchors are
+present. Stories without explicit anchors silently fell back to plain
+markup, defeating the Work Skin.
+
+Fix: heuristic fallback now emits the same `<div class="phone-display-wrap">`
+and `<div class="text-message">` structure as the anchor path.
+Without explicit anchors we can't tell sent from received, so
+text-message divs get no modifier class — the Work Skin's base
+`.text-message` rule still applies.
+
+**File modified:** `editor/converter.py`
+(`_convert_body_clean_html` heuristic branch), `config.py` (version bump).
+
+---
+
 ## [2.21.0] - 2026-05-13
 
 ### Feature: Per-cell publish-check controls — manual URL anchoring, forget publication, cancel scheduled
