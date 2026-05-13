@@ -19,10 +19,18 @@ Replaces the original pawsync.bat which suffered two intermittent bugs:
    problem.
 
 Usage:
-    python deploy/pawsync.py [--prune] [--dry-run]
+    python deploy/pawsync.py [--prune] [--dry-run] [--force]
     pawsync.bat                  # Thin wrapper around this script
 
 Behaviour:
+    - **Pre-flight freshness check:** before upload, compares every
+      ``story.json`` on the server with the local copy. If any server
+      file is newer by >60s (the threshold above tar's mtime-restore
+      precision), aborts with an actionable message telling the user
+      to run ``pawpull`` first. This catches the failure mode where a
+      dashboard edit on the running container is silently clobbered by
+      a pawsync run from a stale local copy. ``--force`` skips the
+      check — use only when you intentionally want local to win.
     - Packs every story under ``m_x/Archives/Complete_Stories/`` (excluding
       ``Backups/``, ``Drafts/``, ``Styled_HTML/``) into a tar.gz in %TEMP%.
     - Uploads to ``/tmp/story-archive.tar.gz`` on the GCP VM as user
@@ -40,14 +48,19 @@ Behaviour:
     With ``--dry-run``: prints what prune would remove without removing it.
     Implies ``--prune``. Still uploads + extracts.
 
+    With ``--force``: skips the pre-flight freshness check. Local wins
+    unconditionally. Equivalent to the pre-2.22.7 behaviour.
+
 Exit codes:
     0  success
     1  generic error (tar pack, scp, ssh, extract)
     2  user-cancelled / unexpected
+    3  freshness check failed — server has newer story.json than local
 """
 from __future__ import annotations
 
 import argparse
+import datetime
 import os
 import sys
 import subprocess
@@ -200,6 +213,88 @@ def _ssh(remote_cmd: str, *, timeout: int = 120) -> str:
     return result.stdout
 
 
+# ── Freshness check (added 2.22.7) ─────────────────────────────────────────
+
+# Threshold above which a server-newer story.json is considered an
+# independent server-side edit rather than tar-restore noise. Tar
+# preserves mtimes to whole-second precision; in practice post-extract
+# server mtime equals local mtime exactly. 60s gives generous headroom
+# for clock skew without masking real dashboard edits (which always
+# produce deltas of minutes or more).
+_FRESHNESS_SKEW_SECONDS = 60
+
+
+def _server_story_json_mtimes() -> dict[str, float]:
+    """Return {relative_path: unix_mtime} for every story.json on the server.
+
+    Relative path is rooted at GCP_DEST_DIR, e.g. "Tombstone/story.json"
+    or "The_Abstinent_Bet/Nice_Version/story.json". Matches the relative
+    layout used by ARCHIVE_ROOT locally, so paths can be compared 1:1.
+    """
+    # find ... -printf "%T@ %P\n" gives "1778210960.1234567890 Tombstone/story.json"
+    # per line. Sorting and parsing is trivial.
+    out = _ssh(
+        f"find {GCP_DEST_DIR} -name story.json -type f -printf '%T@ %P\\n'"
+    )
+    result: dict[str, float] = {}
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ts_str, rel = line.split(" ", 1)
+            result[rel] = float(ts_str)
+        except ValueError:
+            # Defensive: if find emits anything malformed, skip rather than crash
+            continue
+    return result
+
+
+def _local_story_json_mtimes() -> dict[str, float]:
+    """Return {relative_path: unix_mtime} for every story.json locally.
+
+    Relative path is rooted at ARCHIVE_ROOT, using forward slashes to
+    match server-side output regardless of host OS.
+    """
+    result: dict[str, float] = {}
+    for p in ARCHIVE_ROOT.rglob("story.json"):
+        # Skip excluded directories
+        rel_parts = p.relative_to(ARCHIVE_ROOT).parts
+        if any(part in EXCLUDE_DIR_NAMES for part in rel_parts):
+            continue
+        rel = p.relative_to(ARCHIVE_ROOT).as_posix()
+        result[rel] = p.stat().st_mtime
+    return result
+
+
+def check_server_freshness() -> list[tuple[str, float, float]]:
+    """Return list of (path, server_ts, local_ts) where server is meaningfully newer.
+
+    Empty list means it's safe to overwrite — nothing on the server has
+    state that pawsync would clobber. A non-empty list is the failure
+    mode this check exists to catch.
+    """
+    print("[0/4] Checking server freshness (story.json mtimes)")
+    server = _server_story_json_mtimes()
+    local = _local_story_json_mtimes()
+    newer: list[tuple[str, float, float]] = []
+    for path, server_ts in server.items():
+        local_ts = local.get(path)
+        if local_ts is None:
+            # File exists only on server — pawsync's tar doesn't touch
+            # paths it doesn't include, so this isn't a clobber risk.
+            # (It'd only be lost on --prune, which only affects top-level
+            # story dirs missing locally, not individual files.)
+            continue
+        if server_ts - local_ts > _FRESHNESS_SKEW_SECONDS:
+            newer.append((path, server_ts, local_ts))
+    if newer:
+        print(f"  {len(newer)} story.json file(s) newer on server than local")
+    else:
+        print(f"  ok — {len(server)} server story.json files checked, none newer than local")
+    return newer
+
+
 def _list_remote_top_level() -> list[str]:
     """Return server-side top-level directory names under GCP_DEST_DIR."""
     # find ... -printf '%f\n' lists basenames, one per line, no trailing slashes.
@@ -255,6 +350,15 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="With --prune, print what would be removed instead of removing. Implies --prune.",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Skip the pre-flight server freshness check. Local wins "
+            "unconditionally. Use only when you intentionally want to "
+            "overwrite dashboard-side edits on the server."
+        ),
+    )
     args = parser.parse_args(argv)
     do_prune = args.prune or args.dry_run
 
@@ -263,6 +367,29 @@ def main(argv: list[str] | None = None) -> int:
     print("=" * 70)
     local_tar = _local_tarball()
     try:
+        # Pre-flight freshness check (2.22.7). Catches the failure mode
+        # where a dashboard edit on the server would be clobbered by a
+        # pawsync run from a stale local copy. --force bypasses.
+        if not args.force:
+            newer = check_server_freshness()
+            if newer:
+                print()
+                print("ERROR: Server has newer story.json files than local:", file=sys.stderr)
+                for path, server_ts, local_ts in sorted(newer):
+                    server_dt = datetime.datetime.fromtimestamp(server_ts).strftime("%Y-%m-%d %H:%M:%S")
+                    local_dt = datetime.datetime.fromtimestamp(local_ts).strftime("%Y-%m-%d %H:%M:%S")
+                    delta_min = (server_ts - local_ts) / 60
+                    print(f"  {path}", file=sys.stderr)
+                    print(f"    server: {server_dt}  local: {local_dt}  (server +{delta_min:.1f} min)", file=sys.stderr)
+                print(file=sys.stderr)
+                print(
+                    "These are dashboard edits that pawsync would overwrite.\n"
+                    "Run `deploy\\pawpull.bat` first to bring them down to local,\n"
+                    "or re-run with --force to discard them intentionally.",
+                    file=sys.stderr,
+                )
+                return 3
+
         top_level = pack(local_tar)
         scp_upload(local_tar)
         ssh_extract()

@@ -4,6 +4,66 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.7] - 2026-05-14
+
+### Fix: pawsync silently clobbered dashboard edits — added pre-flight freshness check
+
+**Failure mode discovered:** when the user added cover/chapter-thumbnail
+references to a story's `story.json` via the dashboard's editor →
+metadata tab, those edits lived only on the server's running container
+copy until a `pawpull` brought them down to local. If the user instead
+ran `pawsync` (local → server) before pawpull, pawsync's unconditional
+tar-overwrite silently wiped the dashboard edits. The clobbered version
+was preserved in `story.json.bak.<unix-ts>` on the server (the dashboard
+makes a backup on every save), so recovery was possible — but only if
+the user knew the trap existed.
+
+This actually happened to Overtime's cover + 4 chapter thumbnails (wired
+up via dashboard, clobbered by a later pawsync; intact wiring sat in
+`/home/kithetiger/story-archive/Overtime/story.json.bak.1778210960`).
+
+**Fix:** new pre-flight step `check_server_freshness()` in `pawsync.py`,
+runs before pack/scp/extract. SSHes to the server and enumerates every
+`story.json` mtime via `find ... -printf '%T@ %P\n'`, compares with
+local mtimes. If any server file is newer than its local counterpart by
+more than 60 seconds (well above tar's mtime-restore precision — pawsync
+itself produces deltas of zero), pawsync aborts with exit code 3 and a
+clear error listing every offending path, server timestamp, local
+timestamp, and minute-delta. The user is directed to run pawpull first
+or pass `--force` to discard the server edits intentionally.
+
+The 60s threshold catches dashboard edits (always minutes+ deltas) while
+ignoring sub-second tar-restore noise. False-positive rate should be
+zero on a healthy sync flow.
+
+**New flag:** `--force` skips the freshness check entirely. Equivalent
+to pre-2.22.7 behaviour.
+
+**Sample failure output:**
+
+```
+[0/4] Checking server freshness (story.json mtimes)
+  2 story.json file(s) newer on server than local
+
+ERROR: Server has newer story.json files than local:
+  Overtime/story.json
+    server: 2026-05-14 09:32:11  local: 2026-05-12 18:04:30  (server +2128.5 min)
+  Tombstone/story.json
+    server: 2026-05-14 10:01:44  local: 2026-05-13 21:15:02  (server +766.7 min)
+
+These are dashboard edits that pawsync would overwrite.
+Run `deploy\pawpull.bat` first to bring them down to local,
+or re-run with --force to discard them intentionally.
+```
+
+Files: `deploy/pawsync.py`, `config.py` (version bump).
+
+Doesn't require server redeploy — pawsync is a local dev tool that
+SSHes to the server. The `pawpoller` GCP container keeps running 2.22.6
+behaviour unchanged.
+
+---
+
 ## [2.22.6] - 2026-05-14
 
 ### Feature: AO3 backoff-state cache — skip cycles inside an observed throttle window
