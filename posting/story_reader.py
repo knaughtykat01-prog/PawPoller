@@ -49,8 +49,12 @@ PLATFORM_FORMAT_MAP: dict[str, list[tuple[str, str, str]]] = {
         ("Chapters/SoFurry_HTML", "*.html", "html"),
     ],
     "ao3": [
-        ("HTML", "*_Clean.html", "html"),       # Full-story body-only HTML
-        ("SquidgeWorld", "*.html", "html"),     # Same OTW format as SQW (per-chapter)
+        # AO3 is an OTW Archive site like SquidgeWorld — same chapter
+        # markers, warning-glyph, semantic anchors. SqW per-chapter HTML
+        # is the right shape. Clean HTML is the legacy fallback for
+        # archives that pre-date SqW output.
+        ("SquidgeWorld", "*.html", "html"),
+        ("HTML", "*_Clean.html", "html"),
         ("Chapters/SoFurry_HTML", "*.html", "html"),
     ],
     "da": [

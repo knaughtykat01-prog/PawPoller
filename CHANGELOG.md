@@ -4,6 +4,25 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.20.6] - 2026-05-13
+
+### Fix: AO3 publish package file priority — second half of the SqW switch
+
+v2.20.2 fixed `posting/platforms/ao3.py:_read_full_story_html` to
+prefer SquidgeWorld concatenation over Clean HTML for the AO3 post
+*content*. But the AO3 entry in `posting/story_reader.py:FORMAT_SPECS`
+still listed `HTML/*_Clean.html` first — so the publish matrix's
+`file_path` (the upload source the UI shows + what `validate()` checks
++ what gets stamped on the publication row) still pointed at the Clean
+HTML even though the actual POST body came from SqW. Swap the priority
+order to match: SquidgeWorld first, Clean as fallback for archives
+that pre-date the SqW output.
+
+**File modified:** `posting/story_reader.py` (FORMAT_SPECS["ao3"]),
+`config.py` (version bump).
+
+---
+
 ## [2.20.5] - 2026-05-12
 
 ### Fix: PDF rendering no longer blocks the dashboard event loop
