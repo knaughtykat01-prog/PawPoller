@@ -147,6 +147,28 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
     """
     global _ao3_poll_running, _ao3_first_poll
 
+    # Backoff-state gate (2.22.6): if a previous request hit a 429 with
+    # a Retry-After window that's still active, AO3 will just 429 us
+    # again — and each fresh request inside the window can extend the
+    # punishment. Skip the cycle entirely until the window expires. The
+    # 240-min orchestrator interval means we'll catch up on the next
+    # natural cycle without escalating the throttle.
+    from clients.ao3.client import get_backoff_until_ts
+    backoff_until = get_backoff_until_ts()
+    if backoff_until:
+        remaining = backoff_until - time.time()
+        if remaining > 0:
+            logger.warning(
+                "AO3 poll skipped — %d s remain in observed throttle window",
+                int(remaining),
+            )
+            return {
+                "submissions_found": 0,
+                "snapshots_inserted": 0,
+                "new_kudos_found": 0,
+                "skipped_reason": f"throttled, {int(remaining)}s remaining",
+            }
+
     if not _ao3_poll_lock.acquire(blocking=False):
         logger.warning("AO3 poll already running -- skipping")
         return {}

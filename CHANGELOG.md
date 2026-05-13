@@ -4,6 +4,50 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.6] - 2026-05-14
+
+### Feature: AO3 backoff-state cache — skip cycles inside an observed throttle window
+
+The 2.22.4/2.22.5 delay tunes (3s → 6s → 12s) reduce the rate at which
+we fill our per-IP bucket, but they can't get us *out* of a punishment
+window once we're inside one. We landed in exactly that hole during the
+2.22.2-2.22.5 deploy sprint: enough cumulative pressure across the
+afternoon's cycles that AO3 escalated to `Retry-After: 349s` and then
+`Retry-After: 326s` on back-to-back test triggers. Every fresh request
+inside an active throttle window can extend the punishment, so the
+*right* response isn't to retry harder — it's to not request at all
+until the window expires.
+
+Implementation:
+- Module-level `_ao3_backoff_until_ts: float` in `clients/ao3/client.py`,
+  updated by `_get_page()` every time it observes a 429+`Retry-After`.
+- New public helper `get_backoff_until_ts()` returns the unix timestamp
+  the throttle window expires (or 0.0 if no window observed).
+- `run_ao3_poll_cycle()` at `polling/ao3_poller.py:138` checks this
+  before doing any work; if a window is active, returns a stub stats
+  dict with `skipped_reason` and logs a clear warning, so the orchestrator
+  log line for the cycle shows the skip but doesn't look like an error.
+
+Side effects:
+- The poll-progress JSON stays at `phase=idle` for skipped cycles —
+  the cache is transparent to the dashboard.
+- The Telegram consolidated summary's per-platform entry shows 0/0/0
+  for AO3 when skipped, which is correct: nothing happened, on purpose.
+- Process-local only: the cache lives in module state, so a container
+  restart resets it. Not worth persisting — the throttle is on AO3's
+  side and they don't tell us how much of the window is left after a
+  cold start, but a fresh cycle will observe any active throttle on
+  its very first request and rebuild the cache.
+
+Defense-in-depth shape: 2.22.4/2.22.5 (slower pacing) prevents new
+throttles; 2.22.6 (this) prevents existing throttles from being
+extended by our own retries. Together they should keep AO3 polling
+clean indefinitely on the steady-state cadence.
+
+Files: `clients/ao3/client.py`, `polling/ao3_poller.py`.
+
+---
+
 ## [2.22.5] - 2026-05-14
 
 ### Tune: AO3 inter-request delay 6s → 12s (aggressive generosity)

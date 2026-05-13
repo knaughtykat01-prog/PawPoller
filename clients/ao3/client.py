@@ -16,6 +16,7 @@ import asyncio
 import logging
 import random
 import re
+import time
 from html import unescape
 
 import httpx
@@ -25,6 +26,35 @@ import config
 logger = logging.getLogger(__name__)
 
 _BASE = "https://archiveofourown.org"
+
+
+# Module-level backoff cache (2.22.6).
+# When a request gets 429 with Retry-After: N, we record `time.time() + N`
+# here so the poll orchestrator can skip a cycle entirely instead of
+# enqueuing requests that will inevitably wait + re-429. This prevents
+# the punishment window from escalating further because of our own
+# retries, which is the failure mode we observed across 2.22.2-2.22.5.
+# Read by `get_backoff_until_ts()`; written by `_get_page` on 429.
+_ao3_backoff_until_ts: float = 0.0
+
+
+def get_backoff_until_ts() -> float:
+    """Return the unix timestamp until which AO3 is throttling us, or 0.0
+    if no throttle is currently observed. Polled by the orchestrator
+    before scheduling an AO3 cycle.
+    """
+    return _ao3_backoff_until_ts
+
+
+def _record_throttle(wait_seconds: int) -> None:
+    """Record an observed AO3 throttle window. Called from inside _get_page
+    when a 429 fires. Takes the max of any existing window and the new
+    one so concurrent observers don't shorten the cooldown.
+    """
+    global _ao3_backoff_until_ts
+    new_until = time.time() + wait_seconds
+    if new_until > _ao3_backoff_until_ts:
+        _ao3_backoff_until_ts = new_until
 
 # Realistic browser headers — Chrome 131 on Windows 10. Full Sec-Fetch +
 # Sec-Ch-Ua set is required to get past AO3's "Shields are up!" page when
@@ -177,6 +207,9 @@ class AO3Client:
                     wait = self._parse_retry_after(resp, default=int(jittered))
                     logger.warning("AO3: 429 rate limited on %s, waiting %ds (attempt %d/%d)",
                                    url, wait, attempt, max_attempts)
+                    # Record throttle so orchestrator can skip future cycles
+                    # while we're still inside the punishment window.
+                    _record_throttle(wait)
                     await asyncio.sleep(wait)
                     last_exc = RuntimeError("429 rate limited")
                     continue
