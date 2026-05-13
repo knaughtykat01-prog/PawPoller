@@ -210,7 +210,8 @@ def _start_poll_orchestrator():
              "sf", run_sf_poll_cycle),
             (settings.get("sqw_username") and settings.get("sqw_password"),
              "sqw", run_sqw_poll_cycle),
-            (settings.get("ao3_username") and settings.get("ao3_password"),
+            ((settings.get("ao3_username") and settings.get("ao3_password"))
+             or settings.get("ao3_session_cookie"),
              "ao3", run_ao3_poll_cycle),
             (settings.get("da_cookie") and settings.get("da_target_user"),
              "da", run_da_poll_cycle),

@@ -4,6 +4,41 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.2] - 2026-05-13
+
+### Fix: AO3 polling skipped on cookie-only auth
+
+The poll orchestrator's per-platform credential gate at `server.py:213-214`
+required both `ao3_username` AND `ao3_password` before AO3 was scheduled
+for polling. AO3 has supported cookie-only auth since v2.19.3 — the gate
+was never updated to match, so any deployment that configured AO3 via
+`_otwarchive_session` (the recommended path for datacenter IPs, since the
+form-login endpoint is rate-limited to 5-10 min cooldowns and effectively
+unusable from GCP) was silently excluded from every poll cycle. AO3
+submissions therefore never appeared in the dashboard, kudos counts
+stayed at 0, kudos users were never tracked, and the daily activity
+digest had no AO3 section.
+
+Fix: widen the gate to accept either (username AND password) OR
+session_cookie. Mirrors the auth flexibility the AO3 client itself
+already supports — `_get_or_create_client()` and `validate_session()`
+both handle cookie mode end-to-end.
+
+Files: `server.py`.
+
+Verification: deploy → wait one poll cycle → `docker compose logs` shows
+`Polling N platforms (..., ao3, ...)` and the AO3 client logs work
+discovery + per-work detail fetches. AO3 dashboard tab populates after
+the cycle commits.
+
+(SquidgeWorld polling was already working — same code path, but the SqW
+gate at `server.py:211-212` was correctly written to accept username+
+password. The user's "likewise for squidge" was a precaution; verified
+in the same poll-orchestrator audit that no further SqW change was
+needed.)
+
+---
+
 ## [2.22.1] - 2026-05-13
 
 ### Feature: Global activity spinner + toast notifications

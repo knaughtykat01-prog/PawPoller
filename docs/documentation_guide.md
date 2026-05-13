@@ -769,6 +769,8 @@ Same OTW authentication as SquidgeWorld. Key differences:
 
 The cookie path is the recommended setup for server deployments; the `ao3_session_cookie` field is stored encrypted in the vault alongside other credentials.
 
+**Poll-orchestrator gate (server.py:~213)**: the server's per-platform credential check uses an OR — `(ao3_username AND ao3_password) OR ao3_session_cookie`. Cookie-only deployments are valid and AO3 will be scheduled into every poll cycle. (Pre-2.22.2 this gate was AND-only and silently excluded cookie-only deployments from polling; symptoms were "AO3 dashboard tab empty + kudos counts stuck at 0" with no error in logs — the orchestrator simply skipped the platform.)
+
 **Rate limiting**: 3-second delay between requests — the slowest of any client. AO3 is run entirely by volunteers with limited infrastructure. The delay is deliberately conservative to avoid impacting real users. The client also handles 429 (rate limited) responses with a 30-second backoff (or `Retry-After` header value when present).
 
 **Stats extraction** (regex from HTML):
