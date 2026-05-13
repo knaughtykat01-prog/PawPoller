@@ -287,10 +287,10 @@ Startup sequence in detail:
 init_db()  # Creates tables/schema if the DB file does not exist yet
 ```
 
-**Step 2: Launch 15 daemon threads**
+**Step 2: Launch up to 16 daemon threads (see §3 for the full table)**
 All threads are `daemon=True` so they terminate automatically when the main thread (pywebview) exits. No explicit shutdown signalling is needed. Each thread is named for debugging (`threading.Thread(name="FA poller")`).
 
-Thread launch order: Uvicorn → IB poller → FA poller → WS poller → SF poller → SqW poller → AO3 poller → DA poller → WP poller → IK poller → BSKY poller → TW poller → Telegram digest → Telegram bot → Posting scheduler.
+Thread launch order when `polling_owner == "local"`: Uvicorn → IB poller → FA poller → WS poller → SF poller → SqW poller → AO3 poller → DA poller → WP poller → IK poller → BSKY poller → TW poller → Telegram digest → Telegram bot → Posting scheduler → pystray tray. When `polling_owner == "remote"`, the 11 platform pollers are skipped.
 
 **Step 3: System tray icon**
 ```python
@@ -401,33 +401,53 @@ Key differences from `main.py`:
 - CF proxy debug logging gated behind `PAWPOLLER_DEBUG_PROXY` env var
 - No pywebview, pystray, Pillow, or winotify dependencies
 
+### `cli/pawpoller_cli.py` — Menu TUI (2.22.0+)
+
+A third entry point — a Python TUI that connects to a running
+PawPoller server over HTTP (against the GCP VM remotely, or
+`127.0.0.1:8420` when run on the VM itself). Not a server; just a
+client. Same script works locally or on the VM with identical UX.
+See §17 for full architecture, menu structure, and config resolution.
+
+Launchers:
+- `cli/pp.cmd` — Windows wrapper invoking `python pawpoller_cli.py`.
+- `cli/pp.sh` — POSIX wrapper used on the VM; aliased to `pp` in
+  kithetiger's `~/.bashrc`.
+- `deploy/pawcli.bat` — Windows one-command launcher that SSHes into
+  the VM and drops directly into the menu. With
+  `PawPoller/deploy/` on the user PATH, typing `pawcli` from any cmd
+  shell is enough.
+
 ---
 
 ## 3. Threading Model
 
 `main.py` and `server.py` use different threading architectures:
 
-### `main.py` — 15-Thread Model (Desktop)
+### `main.py` — 16-Thread Model (Desktop, polling owner = local)
 
-`main.py` spawns 15 daemon threads plus the main thread (pywebview). Each platform gets its own poller thread with an independent poll interval:
+`main.py` spawns up to 16 daemon threads plus the main thread (pywebview). The 11 per-platform pollers only start when `polling_owner == "local"` (i.e. polling is not delegated to a remote server); Uvicorn / Telegram bot / Telegram digest / Posting scheduler / pystray tray icon run regardless of the polling owner.
 
-| Thread | Purpose | Interval Source | Default |
-|--------|---------|----------------|---------|
-| Uvicorn | FastAPI dashboard server | N/A (always-on) | — |
-| IB poller | Inkbunny stat collection | `poll_interval_minutes` | 60 min |
-| FA poller | FurAffinity stat collection | `fa_poll_interval_minutes` | 60 min |
-| WS poller | Weasyl stat collection | `ws_poll_interval_minutes` | 60 min |
-| SF poller | SoFurry stat collection | `sf_poll_interval_minutes` | 60 min |
-| SqW poller | SquidgeWorld stat collection | `sqw_poll_interval_minutes` | 60 min |
-| AO3 poller | AO3 stat collection | `ao3_poll_interval_minutes` | 60 min |
-| DA poller | DeviantArt stat collection | `da_poll_interval_minutes` | 60 min |
-| WP poller | Wattpad stat collection | `wp_poll_interval_minutes` | 60 min |
-| IK poller | Itaku stat collection | `ik_poll_interval_minutes` | 60 min |
-| BSKY poller | Bluesky stat collection | `bsky_poll_interval_minutes` | 60 min |
-| TW poller | X/Twitter stat collection | `tw_poll_interval_minutes` | 60 min |
-| Telegram digest | 6-hourly cross-platform summary | Fixed 6 hours | — |
-| Telegram bot | Command listener (long-poll) | Continuous | — |
-| Posting scheduler | Processes posting_queue table | Fixed 60 seconds | — |
+| Thread | Purpose | Interval Source | Default | Conditional |
+|--------|---------|----------------|---------|-------------|
+| Uvicorn | FastAPI dashboard server | N/A (always-on) | — | always |
+| IB poller | Inkbunny stat collection | `poll_interval_minutes` | 60 min | local-only |
+| FA poller | FurAffinity stat collection | `fa_poll_interval_minutes` | 60 min | local-only |
+| WS poller | Weasyl stat collection | `ws_poll_interval_minutes` | 60 min | local-only |
+| SF poller | SoFurry stat collection | `sf_poll_interval_minutes` | 60 min | local-only |
+| SqW poller | SquidgeWorld stat collection | `sqw_poll_interval_minutes` | 60 min | local-only |
+| AO3 poller | AO3 stat collection | `ao3_poll_interval_minutes` | 60 min | local-only |
+| DA poller | DeviantArt stat collection | `da_poll_interval_minutes` | 60 min | local-only |
+| WP poller | Wattpad stat collection | `wp_poll_interval_minutes` | 60 min | local-only |
+| IK poller | Itaku stat collection | `ik_poll_interval_minutes` | 60 min | local-only |
+| BSKY poller | Bluesky stat collection | `bsky_poll_interval_minutes` | 60 min | local-only |
+| TW poller | X/Twitter stat collection | `tw_poll_interval_minutes` | 60 min | local-only |
+| Telegram digest | Cross-platform summary scheduler | `telegram_digest_interval_hours` (configurable; default 6h) | 6h | always |
+| Telegram bot | Command listener (long-poll) | Continuous | — | always |
+| Posting scheduler | Processes posting_queue table | Fixed 60 seconds | — | always |
+| Pystray tray | System tray icon + context menu | N/A (event-driven) | — | always |
+
+When polling is delegated to a remote server (`polling_owner == "remote"`), the 11 platform pollers stay idle and the local instance acts as a thin UI + posting + bot client; total thread count drops to 5.
 
 ### `server.py` — 4-Thread Model (Headless/Docker)
 
@@ -634,9 +654,13 @@ Rating unlock calls `/api_userrating.php` with `tag[2]=yes&tag[3]=yes&tag[4]=yes
 }
 ```
 
-**Watcher spam detection**: FA has a persistent problem with bot/spam watchers. The client includes `sniff_watcher_profiles()` which checks FAExport's user profile endpoint for activity indicators:
-- Zero submissions + zero favorites + zero watches = likely bot
-- Returns `{username: is_spam}` dict, capped at 10 profiles per poll to avoid excessive API calls
+**Watcher spam detection**: FA has a persistent problem with bot/spam watchers. The poller (`polling/fa_poller.py`) combines three filter layers before the dashboard notifies on a new watcher:
+
+1. **Keyword filter** — `_SPAM_KEYWORDS` regex rejects usernames containing gambling/adult-spam keywords (1xbet, casino, viagra, onlyfans, escort, etc.) immediately.
+2. **Alphanumeric soup filter** — `_ALPHANUM_SOUP` regex catches bot-generated names like `2charlottec262ye0` (8+ characters, mostly digits mixed with letters, >40% digit ratio).
+3. **Profile sniffing** — `sniff_watcher_profiles()` checks FAExport's user profile endpoint for activity indicators (zero submissions + zero favorites + zero watches = likely bot). Returns `{username: is_spam}` dict, capped at 10 profiles per poll. See §5 for the full 5-step watcher pipeline including the 2-cycle confirmation gate and bulk-wave threshold.
+
+Helper utility: `_safe_int()` parses comma-formatted strings like `"1,234"` from FAExport's inconsistent count fields (sometimes int, sometimes int-shaped string).
 
 ### Weasyl (`clients/weasyl/client.py`) — `WeasylClient`
 
@@ -738,7 +762,14 @@ detail["media_url"] = data.get("media", {}).get("submission", [{}])[0].get("url"
 
 Same OTW authentication as SquidgeWorld. Key differences:
 
-**Rate limiting**: 3-second delay between requests — the slowest of any client. AO3 is run entirely by volunteers with limited infrastructure. The delay is deliberately conservative to avoid impacting real users. The client also handles 429 (rate limited) responses with a 30-second backoff.
+**Dual-mode auth (2.18.8+)**: AO3 throttles per-IP login attempts aggressively (5-60 min lockout after a single failed probe), and datacenter IPs typically can't log in at all. The client supports two auth paths:
+
+1. **Username/password** — classic form login, fine from residential IPs.
+2. **Session cookie** — paste your `_otwarchive_session` cookie value from a logged-in browser; the constructor accepts `session_cookie=""` and when truthy, injects it at `domain="archiveofourown.org"` and asserts `_logged_in=True` up front. `ensure_logged_in()` skips the verify fetch when a cookie is set (the verify fetch itself is rate-limited, so probing creates false negatives). When AO3 reports we're no longer logged in via a real request, the cookie is cleared and the user prompted to re-paste — there is no fallback to form login, which would just re-trip the rate limiter.
+
+The cookie path is the recommended setup for server deployments; the `ao3_session_cookie` field is stored encrypted in the vault alongside other credentials.
+
+**Rate limiting**: 3-second delay between requests — the slowest of any client. AO3 is run entirely by volunteers with limited infrastructure. The delay is deliberately conservative to avoid impacting real users. The client also handles 429 (rate limited) responses with a 30-second backoff (or `Retry-After` header value when present).
 
 **Stats extraction** (regex from HTML):
 ```python
@@ -1226,9 +1257,10 @@ Four pollers switched from per-item INSERT loops to `executemany` + `INSERT OR I
 SQLite with per-connection PRAGMAs set in `database/db.py:get_connection()`:
 
 ```python
-conn = sqlite3.connect(str(config.DB_PATH), timeout=10)
+conn = sqlite3.connect(str(config.DB_PATH), timeout=30)
 conn.row_factory = sqlite3.Row    # Dict-like access: row["column_name"]
 conn.execute("PRAGMA journal_mode=WAL")   # Concurrent readers + single writer
+conn.execute("PRAGMA busy_timeout=30000") # 30s SQLite-level busy wait
 conn.execute("PRAGMA foreign_keys=ON")    # Enforce FK constraints
 ```
 
@@ -1236,7 +1268,7 @@ conn.execute("PRAGMA foreign_keys=ON")    # Enforce FK constraints
 
 **Why explicit FK enforcement**: SQLite does not enforce FOREIGN KEY constraints by default (for backward compatibility). Without `PRAGMA foreign_keys=ON`, you could insert a snapshot referencing a non-existent `submission_id`. This must be enabled per-connection.
 
-**Timeout of 10 seconds**: If a writer is holding the WAL lock, readers wait up to 10 seconds before raising `sqlite3.OperationalError`. This is generous enough for normal operation but prevents indefinite hangs.
+**Timeout of 30 seconds**: Both the Python-level `connect(timeout=30)` and the SQLite-level `PRAGMA busy_timeout=30000` are set. If a writer is holding the WAL lock, readers wait up to 30 seconds before raising `sqlite3.OperationalError`. Generous on purpose — bulk regen and full-resync runs can hold the writer for several seconds at a time.
 
 ### Inkbunny Schema (`database/schema.sql`) — Primary Platform
 
@@ -1578,61 +1610,121 @@ The Settings page (`#/settings`) uses a tabbed layout with 7 tabs: **General**, 
 
 ### REST API Endpoints — Complete Reference
 
+The dashboard mounts ~11 routers under `/api/`. Use `grep -rEn
+"^@\w+_router\.(get|post|put|delete)" routes/` for an authoritative
+current inventory — versions ship rapidly and this table can drift.
+The high-level groups:
+
+| Router | Module | Prefix | Auth-exempt paths |
+|---|---|---|---|
+| Core API | `routes/api.py` | `/api/*` | `/api/health` |
+| Dashboard auth | `routes/dashboard_auth.py` | `/api/auth/*` | `dashboard-status`, `dashboard-login`, `dashboard-setup` |
+| Settings sync | `routes/settings_api.py` | `/api/settings/*` | — |
+| Posting module | `routes/posting_api.py` | `/api/posting/*` | — |
+| Editor / stories | `routes/editor_api.py` | `/api/editor/*` | — |
+| Diagnostics | `routes/testing_api.py` | `/api/testing/*` | — |
+| Per-platform × 11 | `routes/{ib,fa,ws,sf,sqw,ao3,da,wp,ik,bsky,tw}_api.py` | `/api/{p}/*` | — |
+
+Router registration order in `dashboard.py:include_router(...)`:
+dashboard auth first (so its exempt paths register before the session
+middleware applies), then core, then per-platform, then posting,
+editor, settings, testing.
+
 **Core API (`routes/api.py` — `/api/*`)**:
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| GET | `/api/health` | Health check for Docker (`{"status": "ok"}`) |
-| GET | `/api/auth/status` | Check if credentials are configured |
-| POST | `/api/auth/login` | Login with username/password |
-| POST | `/api/auth/logout` | Clear session credentials |
-| GET | `/api/submissions` | List IB submissions (sortable, paginated) |
-| GET | `/api/submissions/{id}` | Single IB submission detail |
-| GET | `/api/snapshots/{id}` | IB submission time-series (filterable by date range) |
-| GET | `/api/aggregate` | Cross-submission IB totals |
-| GET | `/api/comparison` | Multi-submission IB comparison data |
-| GET | `/api/comments/{id}` | Comments for an IB submission |
-| GET | `/api/faving-users/{id}` | Faving users for an IB submission |
-| GET | `/api/watchers` | IB watcher list |
-| POST | `/api/poll/trigger` | Trigger manual IB poll |
-| POST | `/api/poll/full-resync` | Force full re-fetch of all data |
-| GET | `/api/poll/progress` | Real-time IB poll status |
-| GET | `/api/poll_log` | IB poll audit trail |
-| GET | `/api/top-fans` | Cross-platform fan leaderboard |
-| GET | `/api/trending` | Submissions with unusual growth (spike detection) |
-| GET | `/api/settings/credentials` | Get IB credential status (username + has_password flag) |
-| POST | `/api/settings/credentials` | Save IB credentials (partial updates OK) |
-| GET | `/api/settings/preferences` | Get all preferences with defaults (see below) |
-| POST | `/api/settings/preferences` | Save preferences (see below) |
-| GET | `/api/settings/telegram` | Telegram connection status |
-| POST | `/api/settings/telegram` | Connect Telegram bot (validates via getUpdates) |
-| POST | `/api/settings/telegram/test` | Send test Telegram message |
-| POST | `/api/settings/telegram/disconnect` | Remove Telegram configuration |
-| GET | `/api/settings/telegram/features` | Telegram feature toggles |
-| POST | `/api/settings/telegram/features` | Update Telegram feature toggles |
-| POST | `/api/settings/telegram/digest` | Manually trigger Telegram digest |
-| GET | `/api/groups` | List submission groups |
-| POST | `/api/groups` | Create a new group |
-| GET | `/api/groups/{id}` | Group detail with members |
-| PUT | `/api/groups/{id}` | Update group name/description |
-| DELETE | `/api/groups/{id}` | Delete group (CASCADE removes members) |
-| POST | `/api/groups/{id}/members` | Add submission to group |
-| DELETE | `/api/groups/{gid}/members/{mid}` | Remove submission from group |
-| GET | `/api/links` | List cross-platform submission links |
-| POST | `/api/links` | Create cross-platform link |
-| DELETE | `/api/links/{id}` | Delete link |
-| GET | `/api/update/check` | Check for new version on GitHub |
-| POST | `/api/update/apply` | Download and apply update |
-| GET | `/api/thumbnail` | Proxy for IB CDN thumbnails (CORS bypass) |
-| GET | `/api/export/csv` | Export submissions as CSV |
-| GET | `/api/goals` | List user goals |
-| POST | `/api/goals` | Create a new goal |
-| DELETE | `/api/goals/{id}` | Delete a goal |
-| GET | `/api/tags` | List user tags |
-| POST | `/api/tags` | Create a new tag |
-| DELETE | `/api/tags/{id}` | Delete a tag |
-| POST | `/api/tags/{id}/assign` | Assign tag to submission |
-| DELETE | `/api/tags/{tid}/submissions/{platform}/{sid}` | Remove tag assignment |
+| GET | `/api/health` | Health check for Docker / liveness probe (`{"status": "ok"}`). Auth-exempt. |
+| GET | `/api/status` | Polling status, last/next poll time, submission counts. |
+| GET | `/api/summary` | Dashboard summary (totals, top 5, growth rates, watcher stats). |
+| GET | `/api/submissions` | List IB submissions (sortable, paginated). |
+| GET | `/api/submissions/{id}` | Single IB submission detail. |
+| GET | `/api/snapshots/{id}` | IB submission time-series (filterable by date range). |
+| GET | `/api/aggregate` | Cross-submission IB totals. |
+| GET | `/api/comparison` | Multi-submission IB comparison data. |
+| GET | `/api/watchers` | IB watcher list. |
+| POST | `/api/poll/trigger` | Trigger manual IB poll. |
+| POST | `/api/poll/full-resync` | Force full re-fetch of all data. |
+| GET | `/api/poll/progress` | Real-time IB poll status. |
+| GET | `/api/poll/all-progress` | Aggregate progress across every platform. |
+| POST | `/api/poll/pause` | Pause the orchestrator (all platforms). |
+| POST | `/api/poll/resume` | Resume polling. |
+| GET | `/api/poll/paused` | `{paused: bool}` state probe. |
+| POST | `/api/session/clear` | Clear server-side session state. |
+| GET | `/api/poll_log` | IB poll audit trail. |
+| GET | `/api/analytics/top-fans` | Cross-platform fan leaderboard. |
+| GET | `/api/analytics/trending` | Submissions with unusual growth (spike detection). |
+| GET | `/api/analytics/historical` | Historical analytics rollup. |
+| GET | `/api/groups` / POST / GET `/{id}` / PUT / DELETE | Submission groups CRUD. |
+| GET | `/api/groups/{id}/stats` | Per-group submission stats. |
+| POST | `/api/groups/{id}/members` / DELETE `/{gid}/members/{mid}` | Group membership. |
+| GET | `/api/links` / POST / DELETE `/{id}` | Cross-platform submission links. |
+| GET | `/api/links/{id}/stats` | Link aggregate stats. |
+| GET | `/api/links/{id}/snapshots` | Link time-series. |
+| GET | `/api/links/suggestions` | Auto-detected cross-platform link candidates. |
+| GET | `/api/pins` / POST / DELETE | Pinned submissions. |
+| GET | `/api/update/check` / POST `/apply` | GitHub release check + auto-update. |
+| GET | `/api/thumbnail` | Proxy for IB CDN thumbnails (CORS bypass). |
+| GET | `/api/export/submissions` / `/api/export/snapshots` | CSV exports. |
+| GET | `/api/backup/database` / POST `/api/backup/restore` | Backup / restore the SQLite DB. |
+| GET | `/api/logs` | Tail of `logs/app.log`. |
+| GET | `/api/goals` / POST / DELETE `/{id}` | User goals. |
+| GET | `/api/tags` / POST / DELETE `/{id}` / POST `/{id}/assign` / DELETE `/{tid}/submissions/{platform}/{sid}` | User-defined tag CRUD + assignment. |
+| GET | `/api/settings/credentials` / POST | IB credential status (username + has_password flag). |
+| GET | `/api/settings/preferences` / POST | Preferences (see below for accepted keys). |
+| GET | `/api/settings/telegram` / POST / DELETE / `/test` / `/disconnect` / `/features` / `/digest` | Telegram bot + digest controls. |
+
+**Dashboard auth (`routes/dashboard_auth.py` — `/api/auth/*`)**:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/auth/dashboard-status` | Auth state probe. Auth-exempt. |
+| POST | `/api/auth/dashboard-login` | Username + password (+ TOTP if enabled). Auth-exempt. |
+| POST | `/api/auth/dashboard-setup` | First-time admin creation. Auth-exempt. |
+| POST | `/api/auth/dashboard-logout` | Clear cookie session. |
+| POST | `/api/auth/dashboard-change-password` | Rotate password. |
+| POST | `/api/auth/totp-setup` / `/totp-enable` / `/totp-disable` | TOTP 2FA flow. |
+| GET | `/api/auth/api-keys` / POST / DELETE `/{prefix}` | API key CRUD — Bearer `pp_xxx` keys. |
+| POST | `/api/auth/turnstile-config` | Save Turnstile site/secret keys. |
+
+The historical `/api/auth/login` / `/api/auth/logout` / `/api/auth/status`
+endpoints documented in earlier versions of this guide were renamed to
+`dashboard-login` / `dashboard-logout` / `dashboard-status` when the
+multi-platform auth refactor landed (the per-platform `/auth/*` paths
+still exist under each platform router).
+
+**Settings sync (`routes/settings_api.py` — `/api/settings/*`)**:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/api/settings/sync` | Push local settings.json → remote (desktop↔server pairing). |
+| GET | `/api/settings/sync/status` | Last sync metadata. |
+| POST | `/api/settings/vault/enable` / `/disable` / GET `/status` | Credential vault toggle. |
+| GET | `/api/settings/setup-status` / POST `/setup-reset` / `/setup-complete` / `/setup-mode` | First-run wizard. |
+| POST | `/api/settings/pair-test` | Verify remote pairing works. |
+| GET | `/api/settings/browser-login/platforms` / POST `/browser-login/{platform}` | Embedded pywebview login. |
+
+**Posting module (`routes/posting_api.py` — `/api/posting/*`)**: 20+
+endpoints covering story listing, file/image/archive proxies, post and
+update entry points, publications list + stats + detail, queue CRUD,
+posting log, posting settings, retroactive sync (claim, changes,
+sync/upload, sync/push, sync/status). Full surface visible via
+`grep "@posting_router"` in `routes/posting_api.py`.
+
+**Editor / stories (`routes/editor_api.py` — `/api/editor/*`)**: 40+
+endpoints — story CRUD, content read/write, preview, regenerate one,
+regenerate-all + SSE stream + cancel + active probe, publish-check,
+verify posted, probe-drafts, publish action, schedule, scheduled list
++ per-row cancel + bulk cancel (2.21.0), publication forget +
+URL-anchor PUT/DELETE (2.21.0), theme save, metadata, chapter
+thumbnail upload, cover upload, import endpoints + manual ID/URL
+import. See §15 for the editor flows; the testing-tab and diagnostics
+endpoints live under `/api/testing/` (§16).
+
+**Diagnostics (`routes/testing_api.py` — `/api/testing/*`)**: see §16
+for full coverage. Endpoints: `tests`, `last-results`, `active`,
+`run/{test_id}`, `run-category/{category}`, `run-suite`,
+`stream/{run_id}` (SSE), `stop/{run_id}`.
 
 **Per-platform API pattern** (each platform router provides):
 
@@ -2214,7 +2306,7 @@ Uses `HKCU` (not `HKLM`) so no admin privileges are needed.
 ### Other App Constants
 
 ```python
-APP_VERSION = "2.13.8"  # check config.py for current — bumped on every ship
+APP_VERSION = "2.22.1"  # check config.py for current — bumped on every ship
 INKBUNNY_API_BASE = "https://inkbunny.net"
 FA_BASE = "https://www.furaffinity.net"
 FAEXPORT_BASE = "https://faexport.spangle.org.uk"
@@ -2755,7 +2847,7 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 
 ### Overview
 
-The posting module enables PawPoller to upload stories to 6 platforms, edit existing submissions, track what has been posted where, and detect when local story files have changed since the last upload. It is the reverse complement to the polling system: polling reads stats *from* platforms, posting pushes content *to* them.
+The posting module enables PawPoller to upload stories to 9 platforms, edit existing submissions (where the platform supports it), track what has been posted where, and detect when local story files have changed since the last upload. It is the reverse complement to the polling system: polling reads stats *from* platforms, posting pushes content *to* them.
 
 Supported platforms for posting:
 
@@ -2766,11 +2858,24 @@ Supported platforms for posting:
 | Weasyl | `WeasylPoster` | API key | Yes | Yes | No | any |
 | SoFurry | `SoFurryPoster` | Email/password + CSRF | Yes | Yes | Yes | any |
 | SquidgeWorld | `SquidgeWorldPoster` | Author user/pass + CSRF | Yes | Yes | Yes | any |
+| AO3 | `AO3Poster` | Username/password OR session cookie | Yes | Yes | Yes | any |
+| DeviantArt | `DAPoster` | OAuth2 access token | Yes | Yes (limited) | No | any |
+| Itaku | `ItakuPoster` | API token | Yes | No | No | any |
 | Bluesky | `BlueskyPoster` | App password → JWT | Yes | No* | No | any |
 
-*Bluesky does not support in-place editing. The only option is delete + repost, which loses engagement.
+*Bluesky / Itaku do not support in-place editing — delete + repost loses engagement so the matrix treats them as post-only platforms.
+
+**Wattpad note**: `wp` appears in tag-parsing paths (`story_reader.py`) but
+has no poster implementation; the `wp` column never appears in the
+publish matrix. Treat as a planned-but-unbuilt path.
 
 FurAffinity requires `desktop` mode because FA blocks datacenter IP ranges. When a server-mode post to FA fails, the scheduler automatically queues it for desktop pickup.
+
+**Cross-reference**: §15 documents the v2.21.0 Per-Cell Publish
+Controls (Set URL manually, Forget publication, Cancel scheduled bulk)
+which act directly on rows in this module's `publications` registry
+via `database/posting_queries.py:delete_publication`,
+`update_publication_url`, and `cancel_all_for(chapter_index=...)`.
 
 ### Architecture
 
@@ -2782,6 +2887,7 @@ posting/
 ├── scheduler.py            Daemon thread: checks posting_queue every 60s
 ├── story_reader.py         Reads archive → builds StoryUploadPackage objects
 ├── sync.py                 Retroactive claim + change detection
+├── importer.py             Pulls submissions from platforms into local archive
 ├── generate_story_json.py  CLI: generates story.json from legacy data
 └── platforms/
     ├── base.py             PlatformPoster ABC + data classes
@@ -2790,6 +2896,9 @@ posting/
     ├── weasyl.py           WeasylPoster
     ├── sofurry.py          SoFurryPoster
     ├── squidgeworld.py     SquidgeWorldPoster
+    ├── ao3.py              AO3Poster — chapter-aware OTW Archive flow
+    ├── deviantart.py       DAPoster — OAuth2 + plain text
+    ├── itaku.py            ItakuPoster — art-gallery primary use
     └── bluesky.py          BlueskyPoster
 ```
 
@@ -3178,14 +3287,30 @@ Short-circuits chapter body re-upload but still iterates chapters to push title 
 - **AO3 from residential IPs** is currently shielded with the "Shields are up!" CF JavaScript challenge — vanilla httpx cannot pass it. All AO3 testing must run from the GCP container.
 - The post-flight safety check uses **tri-state** state checks (`True | False | None`). When `is_work_in_drafts` returns `None` (fetch failed), the check trusts `preview_button` and logs a warning instead of triggering a destructive auto-delete. Without this, AO3 timeouts caused spurious aborts that tried (and failed) to delete healthy drafts.
 
-**Format files** (`PLATFORM_FORMAT_MAP["ao3"]`, in priority order):
+**Format files** (`FORMAT_SPECS["ao3"]`, in priority order — flipped in v2.20.6):
 | Priority | Path | Pattern |
 |---|---|---|
-| 1 | `HTML/` | `*_Clean.html` (full-story body HTML, single bulk) |
-| 2 | `SquidgeWorld/` | `*.html` (per-chapter, body-only) |
-| 3 | `Chapters/SoFurry_HTML/` | `*.html` (per-chapter) |
+| 1 | `SquidgeWorld/` | `*.html` (per-chapter, body-only — OTW Archive shape) |
+| 2 | `HTML/` | `*_Clean.html` (full-story Clean HTML — legacy fallback for pre-SqW archives) |
+| 3 | `Chapters/SoFurry_HTML/` | `*.html` (per-chapter SoFurry shape — last resort) |
 
-For full-story posting (`chapter_index=0`) priority 3 is skipped automatically because of the `Chapters/` skip in `_resolve_format_file`. Priority 1 wins for any story with a `Clean.html` full-story file (which is all of them after the 2026-04-07 converter regen).
+v2.20.6 inverted the priority because AO3 is an OTW Archive site like
+SquidgeWorld: the SqW per-chapter HTML carries the OTW chapter
+markers, warning-icon glyph, and semantic anchors AO3 expects, while
+Clean HTML is the generic shape for Inkbunny/Weasyl. Both the read
+path (`_read_full_story_html`) and the publish-matrix package builder
+(`FORMAT_SPECS["ao3"]`) now prefer SqW so the matrix's `file_path`
+matches the actual POST body. For full-story posts (`chapter_index=0`)
+the `Chapters/` skip in `_resolve_format_file` removes priority 3.
+
+**Chapter-creation recovery (v2.20.7)**: `clients/ao3/client.py:create_chapter`
+no longer crashes when AO3's POST response lands on the bare
+`/works/{id}/chapters` URL with no chapter ID. Body fallback scans the
+response for `/works/{work_id}/chapters/(\d+)` references and picks
+the highest numeric ID (AO3 chapter IDs are monotonically increasing);
+a `/works/{id}/navigate` fetch is the last-resort. Both fallbacks
+include diagnostic body dumps to `{tempdir}/ao3_chapter_debug_*.html`
+when they fail.
 
 **Safety helpers** (`AO3Client`):
 - `delete_work(work_id)` — confirm_delete flow (`_method=delete`, `commit=Yes, Delete Work`). Use with care.
@@ -3254,7 +3379,7 @@ CREATE TABLE publications (
     story_name          TEXT NOT NULL,       -- "Extra_Credit"
     chapter_index       INTEGER DEFAULT 0,   -- 0 = full story, 1+ = chapter
     chapter_title       TEXT DEFAULT '',
-    platform            TEXT NOT NULL,       -- "ib", "fa", "ws", "sf", "sqw", "bsky"
+    platform            TEXT NOT NULL,       -- "ib", "fa", "ws", "sf", "sqw", "ao3", "da", "ik", "bsky"
     external_id         TEXT NOT NULL DEFAULT '',  -- Platform's submission ID
     external_url        TEXT DEFAULT '',
     format_file         TEXT DEFAULT '',     -- Path to file that was uploaded
@@ -3274,12 +3399,30 @@ CREATE TABLE publications (
 
 Publications are enriched with live stats by `get_publications_with_stats()`, which joins each publication's `external_id` against the platform-specific submission table (e.g. `submissions` for IB, `fa_submissions` for FA) to pull current views, faves, and comments.
 
+**Manual-repair helpers (v2.21.0+)**: three helpers in
+`database/posting_queries.py` back the publish-check drawer's per-cell
+repair controls (see §15 → Per-Cell Publish Controls):
+
+| Function | Purpose |
+|---|---|
+| `delete_publication(conn, story_name, chapter_index, platform)` | Drops the local row only — never touches the upstream submission. Used by `DELETE /api/editor/stories/{story}/publication`. |
+| `update_publication_url(conn, story_name, chapter_index, platform, *, external_url, external_id)` | Overwrites both URL + ID after the user pastes a known-good submission link. Used by `PUT /api/editor/stories/{story}/publication`. |
+| `cancel_all_for(conn, *, platform=None, story_name=None, chapter_index=None)` | Bulk-cancel queue items matching any combination of filters. The `chapter_index` filter was added in 2.21.0 so a single cell's stuck/processing rows can be nuked in one call. |
+
 ### Posting Queue
 
 The `posting_queue` table holds pending uploads and updates. Items can be:
 - **Immediate**: `scheduled_at` is NULL — processed on the next scheduler check
 - **Scheduled**: `scheduled_at` is a future datetime — processed when due
 - **Retryable**: Failed items with `attempts < max_attempts` (default 3)
+
+**Status enum** (`posting_queue.status`): `pending` → `processing` →
+{`completed` | `failed` | `cancelled`}. The `cancelled` terminal state
+was hardened in v2.20.3: `cancel_queue_item` accepts rows in
+pending/retrying/processing/failed (not just pending), and every
+`UPDATE` in `update_queue_status` carries `AND status != 'cancelled'`
+so the scheduler's failure path can no longer overwrite a cancellation
+back to pending mid-flight.
 
 **`requires` field**: Each queue item carries a `requires` value indicating the runtime mode needed:
 - `"any"` — processable by both desktop and server (default for most platforms)
