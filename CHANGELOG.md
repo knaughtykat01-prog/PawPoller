@@ -4,6 +4,34 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.5] - 2026-05-14
+
+### Tune: AO3 inter-request delay 6s → 12s (aggressive generosity)
+
+2.22.4's bump 3s → 6s was the external-tool baseline, but the first
+live cycle on the new pacing still hit `AO3: 429 rate limited on
+.../users/KnaughtyKat/works?page=1, waiting 349s (attempt 1/3)`. The
+proximate cause was the cumulative pressure from earlier 3s-pacing
+cycles plus the 2.22.2 probe-burning cycles — once you're inside AO3's
+punishment window, it escalates the longer you stay there.
+
+So double again: `AO3_REQUEST_DELAY_SECONDS = 6.0 → 12.0`. This makes
+us slower than every comparable AO3 scraper and gives the per-IP bucket
+comfortable headroom to drain between requests.
+
+Cost: ~60s extra wall time per ten-work cycle. Still invisible at the
+240-min cadence.
+
+If 12s isn't enough either, the next move isn't more delay — it's
+**backoff-state caching** (skip a cycle entirely when we know we're
+mid-punishment-window) rather than enqueuing requests that will
+inevitably 429. Not shipping that today — wait and see how 12s does
+across a few cycles first.
+
+Files: `config.py`.
+
+---
+
 ## [2.22.4] - 2026-05-14
 
 ### Tune: AO3 inter-request delay 3s → 6s

@@ -388,15 +388,18 @@ SF_REQUEST_DELAY_SECONDS = 1.5  # Rate-limit delay between SoFurry page scrapes 
 SQW_REQUEST_DELAY_SECONDS = 2.0  # Rate-limit delay between SquidgeWorld page scrapes (higher due to anti-bot)
 
 # ── AO3 settings ──
-# Why 6 seconds: AO3 is volunteer-run with limited infrastructure, AND has
-# tightened its per-IP throttle since the 2023 DDoS / 2024-25 AI-scraper
-# escalations.  The widely-used kenalba/ao3-scraper paces at 6s between
-# requests; matching that gives us a known-safe rate and roughly halves our
-# per-cycle request rate. The cost is ~30s extra wall time on a 10-work
-# cycle, which is invisible since polling is async/background.
-# Bumped 3.0 → 6.0 in 2.22.4 after FanFicFare issue #1149 + ao3-scraper
-# comparison confirmed AO3's current throttle is tighter than 2023's.
-AO3_REQUEST_DELAY_SECONDS = 6.0
+# Why 12 seconds: 2.22.4 bumped 3s → 6s based on kenalba/ao3-scraper's
+# baseline. First live test still hit `Retry-After: 349s` because we'd
+# already cooked the per-IP bucket with earlier cycles that day. AO3's
+# throttle escalates the longer you're inside the punishment window.
+# 12s is "be aggressively generous" — double the external-tool baseline,
+# which makes us slower than every comparable scraper and gives the
+# bucket comfortable headroom to drain between requests.
+# Cost: ~60s extra wall time per ten-work cycle. Still invisible at the
+# 240-min polling cadence.
+# Bumped 6.0 → 12.0 in 2.22.5 after observing 349s throttle escalation
+# on a 6s-pacing cycle.
+AO3_REQUEST_DELAY_SECONDS = 12.0
 
 # ── DeviantArt settings ──
 DA_REQUEST_DELAY_SECONDS = 2.0  # Rate-limit delay between DeviantArt API requests
@@ -632,7 +635,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.22.4"
+APP_VERSION = "2.22.5"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL
