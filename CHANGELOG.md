@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.4] - 2026-05-14
+
+### Tune: AO3 inter-request delay 3s → 6s
+
+Comparative read of three external AO3 tools (FanFicFare issue #1149,
+kenalba/ao3-scraper, and the AO3 admin posts around the 2024-25 AI-scraper
+escalation) confirmed our 3s pacing is more aggressive than the widely-
+used baseline of 6s. AO3 tightened its per-IP throttle after the 2023
+DDoS and again during the AI-scraper situation; 3s used to be fine,
+6s is the current "polite-citizen" rate that most actively-maintained
+downloaders converged on.
+
+Concrete change: `AO3_REQUEST_DELAY_SECONDS = 3.0 → 6.0` in `config.py`.
+
+Cost: ~30s extra wall time per cycle for a ten-work scrape — invisible
+since polling runs background-async on a 240-minute interval. Benefit:
+halves the rate at which we can fill our own per-IP bucket, which makes
+back-to-back throttle hits across cycles vanishingly unlikely.
+
+Architecture note from the comparison audit: PawPoller is already ahead
+of every comparable external tool on AO3 throttling — cookie-only auth,
+CF Worker egress, real `Retry-After` parsing, multi-attempt retries with
+backoff. The only missing piece was the conservative inter-request delay;
+this tune closes that gap.
+
+Files: `config.py`.
+
+---
+
 ## [2.22.3] - 2026-05-13
 
 ### Fix: AO3 poll cycle's redundant cookie-validation probe
