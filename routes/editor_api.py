@@ -1929,6 +1929,208 @@ async def cancel_scheduled(story_name: str, queue_id: int):
     return {"ok": True, "queue_id": queue_id}
 
 
+# Per-platform regex used by "Set URL manually" to extract the external
+# submission ID from a pasted URL. Each entry is a list of patterns
+# tried in order; the first match wins. Patterns must define a single
+# capturing group containing the ID string. Kept narrow on purpose —
+# loose patterns risk matching a user/gallery slug instead of a real
+# submission ID.
+_URL_ID_PATTERNS: dict[str, list[str]] = {
+    "ao3":   [r"/works/(\d+)"],
+    "sqw":   [r"/works/(\d+)"],
+    "ib":    [r"/s/(\d+)", r"/submission/(\d+)"],
+    "fa":    [r"/view/(\d+)"],
+    "ws":    [r"/submission/(\d+)", r"/~[^/]+/submissions/(\d+)"],
+    "sf":    [r"/view/(\d+)", r"/~[^/]+/art/[^/]+-(\d+)"],
+    "da":    [r"-(\d+)\b"],
+    "wp":    [r"/story/(\d+)", r"/(\d{6,})-"],
+    "ik":    [r"/post/(\d+)", r"/posts/(\d+)"],
+    "bsky":  [r"/post/([A-Za-z0-9]+)"],
+    "tw":    [r"/status/(\d+)"],
+}
+
+
+def _parse_external_id(platform: str, url: str) -> str:
+    """Extract the platform's external submission ID from a pasted URL.
+
+    Returns the ID string, or "" if no pattern matched. Caller decides
+    whether to reject the URL or accept it ID-less (some platforms can
+    operate with just the URL).
+    """
+    import re as _re
+    patterns = _URL_ID_PATTERNS.get(platform, [])
+    for pat in patterns:
+        m = _re.search(pat, url)
+        if m:
+            return m.group(1)
+    return ""
+
+
+class _PublicationUrlReq(BaseModel):
+    platform: str
+    chapter: int
+    url: str
+
+
+@editor_router.put("/stories/{story_name:path}/publication")
+async def update_publication_url(story_name: str, req: _PublicationUrlReq):
+    """Manually overwrite the URL of an existing publications row.
+
+    Pastes a live submission URL, extracts the platform's external ID
+    via `_URL_ID_PATTERNS`, and updates both fields on the publications
+    row. Useful when PawPoller's stored URL is wrong (legacy data,
+    failed-but-actually-posted, manually-moved submission) — lets the
+    user re-anchor without deleting and re-posting.
+    """
+    from database.db import get_connection
+    from database import posting_queries
+
+    story_dir = _resolve_story_dir(story_name)
+    canonical = str(story_dir.relative_to(get_archive_path()))
+
+    url = (req.url or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="URL is required")
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(
+            status_code=400,
+            detail="URL must start with http:// or https://",
+        )
+
+    external_id = _parse_external_id(req.platform, url)
+    if not external_id:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Could not extract submission ID from URL. Expected a "
+                f"{req.platform} URL like the platform's standard "
+                f"submission link."
+            ),
+        )
+
+    conn = get_connection()
+    try:
+        ok = posting_queries.update_publication_url(
+            conn, canonical, req.chapter, req.platform,
+            external_url=url, external_id=external_id,
+        )
+    finally:
+        conn.close()
+
+    if not ok:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "No existing publication for this cell — nothing to "
+                "update. Post to the platform first, then re-anchor."
+            ),
+        )
+
+    logger.info(
+        "Updated publication URL for %s ch%d on %s: %s (id=%s)",
+        canonical, req.chapter, req.platform, url, external_id,
+    )
+
+    return {
+        "ok": True,
+        "external_url": url,
+        "external_id": external_id,
+    }
+
+
+@editor_router.delete("/stories/{story_name:path}/publication")
+async def delete_publication(
+    story_name: str,
+    platform: str,
+    chapter: int = 0,
+    confirm_platform: str = "",
+):
+    """Forget the publications row for (story, chapter, platform).
+
+    Sets the cell back to 'ready' as if it had never been posted — the
+    next post creates a fresh submission rather than editing the lost
+    one. Used when the user has manually deleted the upstream draft
+    or submission and wants PawPoller's local memory cleared.
+
+    Requires `confirm_platform` query param to equal the platform ID
+    (the same shape as `delete_story`'s `confirm_name` gate).
+    """
+    from database.db import get_connection
+    from database import posting_queries
+
+    story_dir = _resolve_story_dir(story_name)
+    canonical = str(story_dir.relative_to(get_archive_path()))
+
+    if confirm_platform != platform:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"confirm_platform must equal '{platform}' "
+                f"(got '{confirm_platform}'). Type the platform code "
+                f"in the confirm box to proceed."
+            ),
+        )
+
+    conn = get_connection()
+    try:
+        ok = posting_queries.delete_publication(
+            conn, canonical, chapter, platform,
+        )
+    finally:
+        conn.close()
+
+    if not ok:
+        raise HTTPException(
+            status_code=404,
+            detail="No publication row to forget (already clean).",
+        )
+
+    logger.info(
+        "Forgot publication for %s ch%d on %s",
+        canonical, chapter, platform,
+    )
+
+    return {"ok": True}
+
+
+@editor_router.delete("/stories/{story_name:path}/scheduled")
+async def cancel_scheduled_bulk(
+    story_name: str,
+    platform: str | None = None,
+    chapter: int | None = None,
+):
+    """Cancel ALL scheduled queue items for this story (or a sub-filter).
+
+    The per-row `DELETE /scheduled/{queue_id}` endpoint targets one row
+    at a time. This bulk variant is the backing for the publish-check
+    panel's "Cancel all scheduled for this cell" button (called with
+    platform + chapter) and the story-wide cancel-everything path.
+    """
+    from database.db import get_connection
+    from database import posting_queries
+
+    story_dir = _resolve_story_dir(story_name)
+    canonical = str(story_dir.relative_to(get_archive_path()))
+
+    conn = get_connection()
+    try:
+        cancelled = posting_queries.cancel_all_for(
+            conn,
+            platform=platform,
+            story_name=canonical,
+            chapter_index=chapter,
+        )
+    finally:
+        conn.close()
+
+    logger.info(
+        "Bulk-cancelled %d scheduled item(s) for %s (platform=%s chapter=%s)",
+        cancelled, canonical, platform, chapter,
+    )
+
+    return {"ok": True, "cancelled": cancelled}
+
+
 @editor_router.delete("/stories/{story_name:path}")
 async def delete_story(story_name: str, confirm_name: str = ""):
     """Permanently delete a story folder from the local archive.

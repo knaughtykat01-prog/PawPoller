@@ -2690,6 +2690,78 @@
     font-weight: 600;
     color: var(--text-secondary);
     margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.schedule-cancel-all-btn {
+    margin-left: auto;
+}
+
+/* Manual URL anchoring + forget-publication controls inside the
+   "Existing publication" section of the publish-check detail panel. */
+.publish-pub-controls {
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px dashed var(--border-color, rgba(255,255,255,0.12));
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.02);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.publish-pub-url-row,
+.publish-pub-forget-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.publish-pub-url-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.publish-pub-url-input {
+    flex: 1 1 auto;
+    min-width: 200px;
+    padding: 4px 8px;
+    font-size: 12px;
+    background: var(--input-bg, rgba(0,0,0,0.2));
+    color: var(--text-primary, #eee);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.15));
+    border-radius: 4px;
+}
+
+.publish-pub-forget-hint {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.btn-danger-text {
+    color: #d66 !important;
+    border-color: #d66 !important;
+}
+
+.publish-pub-controls-msg {
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.publish-pub-controls-msg.is-error {
+    background: rgba(200, 50, 50, 0.15);
+    color: #f88;
+}
+
+.publish-pub-controls-msg.is-success {
+    background: rgba(50, 160, 80, 0.15);
+    color: #7d8;
 }
 
 .schedule-pending-item {

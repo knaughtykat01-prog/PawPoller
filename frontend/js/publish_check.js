@@ -553,7 +553,29 @@ window.PublishCheck = (function () {
                 html += '<li>Last updated: ' + _escape(cell.existing.updated_at) +
                     (rel ? ' <span class="time-relative">(' + rel + ')</span>' : '') + '</li>';
             }
-            html += '</ul></div>';
+            html += '</ul>';
+
+            // Manual URL anchoring + forget-publication controls — when the
+            // stored URL is wrong (failed-but-actually-posted, legacy data,
+            // upstream submission moved) or the user has deleted the
+            // upstream submission and wants PawPoller's local memory cleared
+            // so the next post is a fresh create instead of an edit.
+            html += '<div class="publish-pub-controls">';
+            html += '<div class="publish-pub-url-row">';
+            html += '<label class="publish-pub-url-label">Set URL:</label>';
+            html += '<input type="url" class="publish-pub-url-input" id="publish-pub-url-input" ' +
+                'placeholder="Paste the live submission URL">';
+            html += '<button class="btn btn-xs btn-outline" id="publish-pub-url-apply">Apply</button>';
+            html += '</div>';
+            html += '<div class="publish-pub-forget-row">';
+            html += '<button class="btn btn-xs btn-outline btn-danger-text" ' +
+                'id="publish-pub-forget">Forget this publication</button>';
+            html += '<span class="publish-pub-forget-hint">Clears local memory only — does not touch the upstream submission.</span>';
+            html += '</div>';
+            html += '<div class="publish-pub-controls-result" id="publish-pub-controls-result"></div>';
+            html += '</div>';
+
+            html += '</div>';
         }
 
         // --- Action panel (Phase 6b) ---
@@ -732,6 +754,113 @@ window.PublishCheck = (function () {
 
         // Load any scheduled items for this cell
         _loadScheduledItems(platId, chIdx);
+
+        // Bind manual URL + forget-publication controls (rendered only
+        // when cell.existing — they don't exist for fresh cells).
+        _bindPublicationControls(platId, platName, chIdx, chTitle, cell);
+    }
+
+    function _bindPublicationControls(platId, platName, chIdx, chTitle, cell) {
+        const storyName = _currentStory;
+        if (!storyName) return;
+
+        const resultBox = document.getElementById('publish-pub-controls-result');
+        const setResult = (text, cls) => {
+            if (!resultBox) return;
+            resultBox.innerHTML = '<div class="publish-pub-controls-msg ' +
+                (cls || '') + '">' + _escape(text) + '</div>';
+        };
+
+        // --- Apply manual URL ---
+        const applyBtn = document.getElementById('publish-pub-url-apply');
+        const urlInput = document.getElementById('publish-pub-url-input');
+        if (applyBtn && urlInput) {
+            applyBtn.addEventListener('click', async () => {
+                const url = (urlInput.value || '').trim();
+                if (!url) {
+                    setResult('Paste a URL first.', 'is-error');
+                    return;
+                }
+                applyBtn.disabled = true;
+                applyBtn.textContent = 'Saving...';
+                try {
+                    const resp = await fetch(
+                        '/api/editor/stories/' + encodeURIComponent(storyName) +
+                        '/publication',
+                        {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                platform: platId,
+                                chapter: chIdx,
+                                url: url,
+                            }),
+                        }
+                    );
+                    const data = await resp.json();
+                    if (!resp.ok) {
+                        throw new Error(data.detail || 'HTTP ' + resp.status);
+                    }
+                    setResult(
+                        'URL saved (external_id=' + data.external_id + '). Refreshing...',
+                        'is-success'
+                    );
+                    setTimeout(() => {
+                        if (_currentStory === storyName) load(storyName);
+                    }, 600);
+                } catch (e) {
+                    setResult('Failed: ' + (e.message || e), 'is-error');
+                } finally {
+                    applyBtn.disabled = false;
+                    applyBtn.textContent = 'Apply';
+                }
+            });
+        }
+
+        // --- Forget this publication ---
+        const forgetBtn = document.getElementById('publish-pub-forget');
+        if (forgetBtn) {
+            forgetBtn.addEventListener('click', async () => {
+                const typed = prompt(
+                    'Forget PawPoller’s memory of this ' + platName +
+                    ' publication for "' + chTitle + '"?\n\n' +
+                    'This only clears the local row — it does NOT delete ' +
+                    'anything on ' + platName + '. The cell will revert to ' +
+                    '"ready" and the next post will create a fresh ' +
+                    'submission rather than editing the old one.\n\n' +
+                    'Type the platform code "' + platId + '" to confirm:'
+                );
+                if (typed === null) return; // cancelled
+                if (typed !== platId) {
+                    setResult('Confirmation did not match platform code.', 'is-error');
+                    return;
+                }
+                forgetBtn.disabled = true;
+                forgetBtn.textContent = 'Forgetting...';
+                try {
+                    const qs = '?platform=' + encodeURIComponent(platId) +
+                        '&chapter=' + encodeURIComponent(chIdx) +
+                        '&confirm_platform=' + encodeURIComponent(platId);
+                    const resp = await fetch(
+                        '/api/editor/stories/' + encodeURIComponent(storyName) +
+                        '/publication' + qs,
+                        { method: 'DELETE' }
+                    );
+                    const data = await resp.json();
+                    if (!resp.ok) {
+                        throw new Error(data.detail || 'HTTP ' + resp.status);
+                    }
+                    setResult('Publication forgotten. Refreshing...', 'is-success');
+                    setTimeout(() => {
+                        if (_currentStory === storyName) load(storyName);
+                    }, 600);
+                } catch (e) {
+                    setResult('Failed: ' + (e.message || e), 'is-error');
+                    forgetBtn.disabled = false;
+                    forgetBtn.textContent = 'Forget this publication';
+                }
+            });
+        }
     }
 
     async function _executeAction(action, platId, platName, chIdx, chTitle) {
@@ -1339,7 +1468,17 @@ window.PublishCheck = (function () {
                 return;
             }
 
-            let html = '<div class="schedule-pending-header">Scheduled:</div>';
+            // Header includes a bulk-cancel button when more than one
+            // scheduled item exists for this cell. Backend's
+            // cancel_all_for already understands platform+chapter scoping.
+            let html = '<div class="schedule-pending-header">';
+            html += '<span>Scheduled:</span>';
+            if (items.length > 1) {
+                html += ' <button class="btn btn-xs btn-outline schedule-cancel-all-btn">' +
+                    'Cancel all (' + items.length + ')</button>';
+            }
+            html += '</div>';
+
             for (const item of items) {
                 const when = item.scheduled_at
                     ? new Date(item.scheduled_at + 'Z').toLocaleString()
@@ -1349,7 +1488,11 @@ window.PublishCheck = (function () {
                     '<span class="schedule-pending-icon">&#128340;</span> ' +
                     _escape(item.action) + ' — ' + when +
                     ' <span class="schedule-pending-status">(' + _escape(item.status) + ')</span>';
-                if (item.status === 'pending') {
+                // Backend's cancel_queue_item (v2.20.3+) accepts
+                // pending/retrying/processing/failed — surface Cancel
+                // for every status the backend can actually act on.
+                const cancellableStatuses = ['pending', 'retrying', 'processing', 'failed'];
+                if (cancellableStatuses.includes(item.status)) {
                     html += ' <button class="btn btn-xs btn-outline schedule-cancel-btn" ' +
                         'data-queue-id="' + item.queue_id + '">Cancel</button>';
                 }
@@ -1357,7 +1500,7 @@ window.PublishCheck = (function () {
             }
             container.innerHTML = html;
 
-            // Bind cancel buttons
+            // Bind per-row cancel buttons
             container.querySelectorAll('.schedule-cancel-btn').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const queueId = btn.dataset.queueId;
@@ -1380,6 +1523,38 @@ window.PublishCheck = (function () {
                     }
                 });
             });
+
+            // Bind bulk cancel-all button
+            const cancelAllBtn = container.querySelector('.schedule-cancel-all-btn');
+            if (cancelAllBtn) {
+                cancelAllBtn.addEventListener('click', async () => {
+                    if (!confirm('Cancel all ' + items.length + ' scheduled item(s) for this cell?')) {
+                        return;
+                    }
+                    cancelAllBtn.disabled = true;
+                    cancelAllBtn.textContent = 'Cancelling...';
+                    try {
+                        const qs = '?platform=' + encodeURIComponent(platId) +
+                            '&chapter=' + encodeURIComponent(chIdx);
+                        const resp = await fetch(
+                            '/api/editor/stories/' + encodeURIComponent(storyName) +
+                            '/scheduled' + qs,
+                            { method: 'DELETE' }
+                        );
+                        if (!resp.ok) {
+                            const d = await resp.json();
+                            throw new Error(d.detail || 'HTTP ' + resp.status);
+                        }
+                        _loadScheduledItems(platId, chIdx);
+                    } catch (e) {
+                        cancelAllBtn.textContent = 'Error';
+                        setTimeout(() => {
+                            cancelAllBtn.textContent = 'Cancel all (' + items.length + ')';
+                            cancelAllBtn.disabled = false;
+                        }, 2000);
+                    }
+                });
+            }
         } catch (e) {
             // Silently fail — scheduled display is supplementary
         }

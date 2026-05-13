@@ -330,13 +330,14 @@ def cancel_queue_item(conn: sqlite3.Connection, queue_id: int) -> bool:
 
 
 def cancel_all_for(conn: sqlite3.Connection, *, platform: str | None = None,
-                   story_name: str | None = None) -> int:
+                   story_name: str | None = None,
+                   chapter_index: int | None = None) -> int:
     """Bulk-cancel queue items matching the filter. Used by the editor's
     'cancel all retries for X' affordance and the diagnostics cleanup
     flow when a poster bug spams the queue.
 
     Returns the number of rows cancelled. Filters compose with AND
-    semantics; both filters None means cancel-everything-non-terminal
+    semantics; all filters None means cancel-everything-non-terminal
     which is rarely what callers want — explicit non-None args strongly
     recommended.
     """
@@ -351,9 +352,64 @@ def cancel_all_for(conn: sqlite3.Connection, *, platform: str | None = None,
     if story_name is not None:
         sql += " AND story_name = ?"
         params.append(story_name)
+    if chapter_index is not None:
+        sql += " AND chapter_index = ?"
+        params.append(chapter_index)
     cursor = conn.execute(sql, params)
     conn.commit()
     return cursor.rowcount
+
+
+def delete_publication(
+    conn: sqlite3.Connection,
+    story_name: str,
+    chapter_index: int,
+    platform: str,
+) -> bool:
+    """Remove the publications row for (story, chapter, platform).
+
+    Used by the "forget publication" affordance in the publish-check
+    panel when the user has manually deleted the upstream submission
+    and wants PawPoller's local memory cleared so the cell reverts to
+    'ready' (next post is a fresh create, not an edit).
+
+    Returns True if a row was deleted, False if no matching row existed.
+    """
+    cursor = conn.execute(
+        "DELETE FROM publications "
+        "WHERE story_name = ? AND chapter_index = ? AND platform = ?",
+        (story_name, chapter_index, platform),
+    )
+    conn.commit()
+    return cursor.rowcount > 0
+
+
+def update_publication_url(
+    conn: sqlite3.Connection,
+    story_name: str,
+    chapter_index: int,
+    platform: str,
+    *,
+    external_url: str,
+    external_id: str,
+) -> bool:
+    """Overwrite the URL + external ID of an existing publications row.
+
+    Used by the "set URL manually" affordance when PawPoller's stored
+    URL is wrong or empty but the upstream submission exists — letting
+    the user paste the live URL and have edit/drift work correctly
+    against it.
+
+    Returns True if a row was updated, False if no matching row existed.
+    """
+    cursor = conn.execute(
+        "UPDATE publications "
+        "SET external_url = ?, external_id = ? "
+        "WHERE story_name = ? AND chapter_index = ? AND platform = ?",
+        (external_url, external_id, story_name, chapter_index, platform),
+    )
+    conn.commit()
+    return cursor.rowcount > 0
 
 
 # ── Posting Log ───────────────────────────────────────────────

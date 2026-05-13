@@ -4,6 +4,61 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.21.0] - 2026-05-13
+
+### Feature: Per-cell publish-check controls — manual URL anchoring, forget publication, cancel scheduled
+
+Three additions to the expanded cell in the Publish Check matrix, all
+driven by real friction in the Hypnotic_Claim AO3 incident: PawPoller's
+publications row was stuck on a draft the user had manually cleaned up,
+the URL pointed at the wrong thing, and three queue rows for the same
+cell were jammed in `processing` with no way to cancel from the UI.
+
+**1. Manually set the URL.** A "Set URL:" input + Apply button inside
+the "Existing publication" block. User pastes the live submission URL
+(e.g. `https://archiveofourown.org/works/84754866`), PawPoller extracts
+the external ID via per-platform regex (`_URL_ID_PATTERNS` in
+`routes/editor_api.py`) and updates both `publications.external_url`
+and `publications.external_id`. Drift/edit operations now target the
+right submission. Patterns cover all 11 platforms; backend rejects
+URLs that don't match the platform's expected shape.
+
+**2. Forget this publication.** A button below the URL input that
+deletes the publications row for (story, chapter, platform) — local
+memory only, never touches the upstream submission. Used when the
+user has manually deleted the draft/submission on the platform and
+wants the cell to revert to "ready" so the next post creates a fresh
+submission instead of editing a dead one. Confirmation requires
+typing the platform code via `prompt()` (matches the `delete_story`
+type-the-name pattern); backend also requires
+`confirm_platform=<platform>` query param.
+
+**3. Cancel scheduled — processing rows + bulk cancel.** Two
+follow-ups to v2.20.3's cancel-sticky fix:
+- The per-row Cancel button was gated client-side on `status === 'pending'`
+  but the backend (since v2.20.3) handles `pending/retrying/processing/failed`.
+  Frontend gate widened to match.
+- When the cell has more than one scheduled item, the header gets a
+  "Cancel all (N)" button that calls a new bulk endpoint
+  (`DELETE /api/editor/stories/{story}/scheduled` with `platform` +
+  `chapter` query params). Backing helper `cancel_all_for` extended to
+  accept `chapter_index` filter.
+
+**Files modified:**
+- `database/posting_queries.py` — `cancel_all_for` gains `chapter_index`
+  parameter; new `delete_publication()` and `update_publication_url()`
+  helpers.
+- `routes/editor_api.py` — three new endpoints: `PUT /publication`,
+  `DELETE /publication`, `DELETE /scheduled` (bulk). `_URL_ID_PATTERNS`
+  table + `_parse_external_id()` helper.
+- `frontend/js/publish_check.js` — Set URL / Forget controls in the
+  Existing publication section; bulk Cancel button in scheduled
+  header; widened per-row cancel status gate.
+- `frontend/css/editor.css` — styles for the new controls block.
+- `config.py` — version bump.
+
+---
+
 ## [2.20.7] - 2026-05-13
 
 ### Fix: AO3 `create_chapter` recovers chapter_id when AO3 omits it from the response URL
