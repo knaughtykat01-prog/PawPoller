@@ -157,16 +157,41 @@ async def _process_queue_item(item: dict) -> None:
             await _notify_completion(story_name, chapter_index, platform, action, True)
         else:
             error = results[0].get("error", "Unknown error") if results else "No results"
-            # Retry if under max_attempts, otherwise mark as failed
-            retry = item["attempts"] < item["max_attempts"]
+            # 2.22.10c: manager.post_story / update_story already call
+            # _schedule_retry on failure, which adds a NEW queue row with
+            # proper backoff (60s / 300s / 1800s). Previously the scheduler
+            # ALSO set this same row back to "pending" with no scheduled_at
+            # bump, causing tight-loop reprocessing every 5 seconds and
+            # burning the queue item's attempts/max_attempts counter in
+            # under 30 seconds. The fix: trust the manager's retry_queued
+            # signal. If a new row was already queued (or desktop fallback
+            # was used), mark this row "failed" so the scheduler stops
+            # picking it up. If neither happened (edge case), keep the
+            # legacy inline retry path so the row doesn't silently die.
+            retry_queued = bool(results[0].get("retry_queued")) if results else False
+            queued_for_desktop = bool(results[0].get("queued_desktop")) if results else False
+            handed_off = retry_queued or queued_for_desktop
+
+            if handed_off:
+                new_status = "failed"
+            else:
+                new_status = "pending" if item["attempts"] < item["max_attempts"] else "failed"
+
             conn = get_connection()
             try:
                 posting_queries.update_queue_status(
-                    conn, queue_id, "pending" if retry else "failed", error=error
+                    conn, queue_id, new_status, error=error
                 )
             finally:
                 conn.close()
-            if retry:
+
+            if handed_off:
+                logger.info(
+                    "Queue item #%d failed; handoff to %s — marking this row failed",
+                    queue_id,
+                    "retry queue" if retry_queued else "desktop queue",
+                )
+            elif new_status == "pending":
                 logger.warning("Queue item #%d failed (attempt %d/%d), will retry: %s",
                                queue_id, item["attempts"], item["max_attempts"], error)
             else:
