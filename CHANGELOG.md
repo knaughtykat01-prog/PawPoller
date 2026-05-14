@@ -4,6 +4,39 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.11b] - 2026-05-14
+
+### Hotfix: AO3 poster also honours PROXY_OPTIONAL classification + UI catches up
+
+2.22.11 moved AO3 from `PROXY_REQUIRED_PLATFORMS` to
+`PROXY_OPTIONAL_PLATFORMS` in `polling/cf_proxy.py`, but the post-deploy
+log still showed `AO3 client using CF proxy: …`. The poller's
+`_get_or_create_client` was already routed through `proxy_kwargs()`, but
+the poster's `_ensure_client` in `posting/platforms/ao3.py` had its own
+hardcoded read of `cf_worker_url`/`cf_worker_key` from settings, bypassing
+the platform classification entirely.
+
+**Fix:**
+- `posting/platforms/ao3.py:_ensure_client` now uses
+  `proxy_kwargs(settings, "ao3")` like the poller. AO3 picks up the new
+  optional classification (direct by default, opt-in fallback).
+- `frontend/js/app.js:_loadCFProxyToggles` — UI catches up:
+  - "CF Proxy Backup" explainer text updated: "**DeviantArt and SoFurry**
+    always use the configured CF Worker proxy" (was "AO3, DeviantArt,
+    and SoFurry").
+  - AO3 added to the per-platform toggle list (9 platforms now, ordered
+    ib / fa / ws / sqw / ao3 / bsky / ik / wp / tw). Backed by the
+    existing `ao3_use_cf_proxy` settings key.
+
+**Verified by:** The Silk-Threaded Bonds (5-chapter, work 84822261) →
+clean post-deploy run at 05:16. The log line `AO3 client using CF proxy`
+is gone; the resume flow saw `[1, 2, 3]` existing chapters on AO3,
+added chapters 4 and 5, fired `publish=True` on the last chapter, and
+the publication row flipped from `partial` → `posted`. End-to-end
+verification of the entire 2.22.8 → 2.22.11b cascade.
+
+---
+
 ## [2.22.11] - 2026-05-14
 
 ### Fix: AO3 routes direct from GCP IP, not through the shared CF Worker
@@ -57,6 +90,50 @@ being necessary for AO3 — it just kept being used because of the
 325s window observed pre-fix; the first post-deploy request will hit
 a fresh throttle state. Either the GCP IP has clean quota → direct
 works; or GCP is also throttled → user enables the proxy toggle.
+
+---
+
+## [2.22.10c] - 2026-05-14
+
+### Hotfix: scheduler stops tight-loop reprocessing of failed queue items
+
+Post-2.22.10b deploy log showed queue item #220 reprocessed every 5
+seconds with attempts incrementing 0/3 → 1/3 → 2/3 → 3/3 inside half a
+minute. Two retry mechanisms were colliding:
+
+- `manager._schedule_retry` adds a NEW queue row with proper backoff
+  (60s / 300s / 1800s)
+- `scheduler._process_queue_item` set the SAME row back to `pending`
+  with no `scheduled_at` bump, so `get_pending_queue` picked it up
+  every 5 seconds (scheduler check interval)
+
+**Fix in `posting/scheduler.py:_process_queue_item`:** check
+`results[0].retry_queued` and `results[0].queued_desktop`. If either is
+true, the manager already handed off to a fresh queue row or to desktop
+— mark this row `failed` instead of `pending`. The new row scheduled
+by `_schedule_retry` remains and fires on its proper delay. Legacy
+inline-retry path preserved as fallback for edge cases where neither
+handoff flag was set.
+
+---
+
+## [2.22.10b] - 2026-05-14
+
+### Hotfix: wrap _http.get/post so throttle gate applies to ALL requests
+
+2.22.10's pre-flight check on `_get_page` and `_post_with_retry` wasn't
+enough — raw `self._http.get()` calls (chapter form load in
+`create_chapter`, edit-page fetches, work-deletion confirms,
+work-skin form lookups, etc.) dodged the gate.
+
+**Fix in `clients/ao3/client.py:__init__`:** wrap `self._http.get` and
+`self._http.post` so every request goes through pre-flight check
+(short-circuit with synthetic 429 response if window active) and
+`_record_throttle` on observed 429. Wrap is installed once at client
+construction; no need to touch the 13 raw `_http.get/post` call sites
+scattered through the file. Existing pre-flight checks in `_get_page`
+and `_post_with_retry` still apply — they no-op when the wrap catches
+it first.
 
 ---
 

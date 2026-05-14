@@ -944,7 +944,7 @@ Two decision points in `polling/cf_proxy.py`:
 
 ```python
 proxy_kwargs(settings, platform_code)
-    # default-path: PROXY_REQUIRED (ao3/da/sf) only.
+    # default-path: PROXY_REQUIRED (da/sf) only.
     # OPTIONAL platforms always get {} from this — they run direct.
 
 proxy_kwargs_fallback(settings, platform_code)
@@ -956,6 +956,20 @@ is_blocking_failure(exc) -> bool
     # "Cloudflare", connect/read timeouts, Anubis challenge,
     # "rate-limit", "blocked".
 ```
+
+**AO3 reclassification (2.22.11):** AO3 was originally in `PROXY_REQUIRED`
+because its login form throttles datacenter IPs ("Shields are up!"). Once
+cookie-mode auth (2.18.8) bypassed `/users/login`, the proxy stopped being
+necessary — but the classification persisted, routing every AO3 request
+through the shared CF Worker egress IP pool. **All Worker tenants share
+that egress IP, so AO3's per-IP throttle (300 req / 300s from
+`config/initializers/rack_attack.rb` at otwarchive v0.9.475.3) saw
+aggregate traffic from across all tenants** and stayed saturated even
+with near-zero local activity. AO3 moved to `PROXY_OPTIONAL` in 2.22.11;
+default is direct from the GCP VM IP (unique to us, our own quota), with
+the proxy as a manual opt-in fallback. **Rule of thumb:** CF Worker proxy
+is for bypassing IP blocks, not rate limits — sharing egress IP makes
+rate-limit problems strictly worse.
 
 Pattern in importers (AO3, SqW, IB, FA):
 
@@ -977,10 +991,11 @@ except Exception as e:
 ```
 
 UI: a "CF Proxy Backup" accordion in **Settings → Polling** lists the
-eight opt-in platforms with one checkbox each. Backed by the eight
-`<platform>_use_cf_proxy` keys and a derived `cf_worker_configured`
-boolean returned by `GET /api/settings/preferences`. Toggles are
-disabled when worker creds aren't configured.
+nine opt-in platforms (ib, fa, ws, sqw, ao3, bsky, ik, wp, tw) with one
+checkbox each. Backed by the `<platform>_use_cf_proxy` keys and a
+derived `cf_worker_configured` boolean returned by
+`GET /api/settings/preferences`. Toggles are disabled when worker creds
+aren't configured.
 
 **Not wrapped (yet):** poll cycles. They retry naturally on the next
 scheduled cycle, so the failure mode is bounded. Adding per-cycle
@@ -3250,14 +3265,18 @@ First match wins, restricted to png/jpg/jpeg/gif. The IB poster forwards `packag
 **Same OTW Archive software as SquidgeWorld** — identical form structure, HTML handling, and chapter editing. The `AO3Poster` is a near-mirror of `SquidgeWorldPoster` after the 2026-04-08 refactor.
 
 **Post flow**:
-1. Read full StoryInfo from `story.json` (fandom, warnings, categories, characters, relationships)
-2. Trim freeform tags to fit OTW's 75-tag total budget (`fandom + relationships + characters + freeform <= 75`)
-3. `_ensure_work_skin(client, story)` — find or create the per-story Work Skin on AO3 from `SquidgeWorld/Work_Skin.css`, auto-refresh CSS on every post. Returns skin_id or `""` (no skin applied if no CSS file).
-4. Chaptered detection (`story.total_chapters > 1`):
-   - **Multi-chapter**: read chapter 1 body from `SquidgeWorld/Chapter_1_*.html`, create_work with ch1 content, then iterate ch2..N via `create_chapter(work_id, title=, content=, position=, publish=False)`. Chapter titles are stripped of `Chapter N:` / `Part N:` / `Prelude:` / `Epilogue:` prefixes via `_strip_chapter_prefix()` since AO3 auto-prefixes on display.
+1. **Resume detection** (2.22.9): look up publication for `(story_name, 0, "ao3")`. If `external_id` is set and `status != "posted"`, a previous run created the work but didn't finish — `existing_work_id` becomes the resume target. `probe_exists(work_id)` confirms the work still lives on AO3; if confirmed 404, clear the resume target and fall through to fresh create.
+2. Read full StoryInfo from `story.json` (fandom, warnings, categories, characters, relationships)
+3. Trim freeform tags to fit OTW's 75-tag total budget (`fandom + relationships + characters + freeform <= 75`)
+4. `_ensure_work_skin(client, story)` — find or create the per-story Work Skin on AO3 from `SquidgeWorld/Work_Skin.css`, auto-refresh CSS on every post. Returns skin_id or `""` (no skin applied if no CSS file).
+5. Chaptered detection (`story.total_chapters > 1`):
+   - **Multi-chapter**: read chapter 1 body from `SquidgeWorld/Chapter_1_*.html`, create_work with ch1 content, then iterate ch2..N via `create_chapter(work_id, title=, content=, position=, publish=…)`. Chapter titles are stripped of `Chapter N:` / `Part N:` / `Prelude:` / `Epilogue:` prefixes via `_strip_chapter_prefix()` since AO3 auto-prefixes on display.
    - **Single-chapter / unsplit**: read `HTML/<Story>_Clean.html` (full-story body) and upload as one chapter.
-5. `client.create_work(...)` with `preview_button` — work lands in `/works/{id}/preview` (drafts), NOT published.
-6. SAFETY: post-flight `is_work_published` check — only aborts on POSITIVE confirmation of publish (handles AO3 timeouts gracefully). Each `create_chapter` call is also safety-checked.
+6. **Resume branch**: if `existing_work_id` was set in step 1, skip `create_work`, call `get_chapter_ids(work_id)` to learn which chapters are already on AO3, build `already_created_chapter_indices`, and skip those in the chapter loop. Otherwise call `client.create_work(...)` normally.
+7. **Checkpoint after create_work** (2.22.9): immediately `upsert_publication(status="partial", external_id=work_id)` so a chapter failure preserves the work_id handle for the next retry. Without this, the manager's `upsert_publication(external_id="")` on bubble-up would erase the only handle on the partial work, and the retry would create a duplicate draft.
+8. **Publish-live wiring** (2.22.8): `publish_live = not bool(package.extra.get("draft", True))` reflects the user's "live" toggle from dashboard. Single-chapter: pass `publish=publish_live` directly to `create_work` (uses `post_without_preview_button=Post` when True). Multi-chapter: keep work as draft on `create_work` and pass `publish=publish_live` only on the LAST chapter — AO3's "Post Without Preview" on a chapter publishes the whole work. The `_verify_still_draft` safety check is bypassed when `publish_live=True`.
+9. SAFETY: post-flight `is_work_published` check on create — only aborts on POSITIVE confirmation of publish (handles AO3 timeouts gracefully). Each `create_chapter` call is also safety-checked. On any chapter-loop exception, re-checkpoint before re-raising.
+10. **Failure path** carries `external_id=work_id` in the returned `PostResult` so the manager's `upsert` preserves the resume handle.
 
 **Edit flow** (metadata + per-chapter content):
 1. `_ensure_work_skin` — refresh skin CSS before the metadata write so skin changes propagate.
@@ -3275,18 +3294,26 @@ Short-circuits chapter body re-upload but still iterates chapters to push title 
 - `work[category_strings][]` — plural array. Valid: `F/F`, `F/M`, `Gen`, `M/M`, `Multi`, `NB/F`, `NB/M`, `NB/NB`, `Other`, `QPR`
 - `work[language_id]` — **numeric** ID; `1` = English. The previous code passed `"en"` (ISO code) which AO3 silently treated as blank → `"Language cannot be blank."` validation error.
 - `work[wip_length]` — `"1"` for completed works (no WIP)
-- `preview_button` — `"Preview"` lands in drafts; `post_button` would publish (we never use it)
+- `preview_button` / `post_without_preview_button` — `preview_button=Preview` lands the work in drafts (default); `post_without_preview_button=Post` publishes the work live. `create_work` and `create_chapter` both accept a `publish: bool` parameter (added 2.22.8) that swaps which button is sent. Multi-chapter posts keep the work draft on `create_work` and pass `publish=publish_live` only on the LAST `create_chapter` — AO3's "Post Without Preview" on a chapter publishes the entire work.
 
 **Rating mapping**: General → "General Audiences"; Mature → "Mature"; Teen → "Teen And Up Audiences"; Adult/Explicit → "Explicit".
 
 **HTML whitespace collapse**: `_collapse_html_whitespace()` joins multi-line `<p>` and `<div>` tags onto single lines to prevent OTW's auto-formatter from inserting `<br />` tags.
 
-**Rate limiting**: 3 seconds between requests (`config.AO3_REQUEST_DELAY_SECONDS`). Bulk runs use a 10-second inter-post sleep on top of that — AO3 is volunteer-run with limited infrastructure.
+**Rate limiting**: 12 seconds between requests (`config.AO3_REQUEST_DELAY_SECONDS`, bumped 3 → 6 → 12 across 2.22.4/2.22.5 in response to AO3's post-AI-scraper tightening). Comfortably under the 1 req/sec sustained limit derived from AO3's Rack::Attack throttle (300 req / 300 s per IP). Bulk runs use a 10-second inter-post sleep on top of that — AO3 is volunteer-run with limited infrastructure.
+
+**Throttle handling** (2.22.6 / 2.22.10):
+- **Module-level backoff cache** — `_ao3_backoff_until_ts: float` in `clients/ao3/client.py`. Updated on every observed 429 (both GET via `_get_page` and POST via `_post_with_retry`). Process-local; resets on container restart.
+- **Pre-flight gate** — `__init__` monkey-patches `self._http.get` and `self._http.post` so every raw call (chapter-form GET, work-skin POST, edit-page GET, etc.) checks the cache first. If `_ao3_backoff_until_ts > time.time()`, return a synthetic `429` response with `Retry-After` headers — no HTTP fired. This prevents the "request inside an active window counts toward the NEXT window's quota" failure mode that kept us perpetually throttled.
+- **No in-method retries on 429** — `_get_page` returns `None` on 429 after recording; `_post_with_retry` raises `AO3ThrottledError(retry_after, url)`. Each failed post bubbles up to `manager.post_story`, which `_schedule_retry`s the work for after the window expires. The retry hits the pre-flight gate and short-circuits cleanly until the window drains.
+- **Why no sleep-and-retry?** AO3's Rack::Attack throttle is a fixed-window counter (`Time.now.to_i / period`). Retry-After reports time until the current 300s window rolls over, but **requests inside the window count toward the NEXT window's quota**. Sleeping Retry-After then re-firing the same request at window rollover immediately eats the new window's budget — that's how we got stuck in 2.22.10 before this fix.
+- **Poll orchestrator gate** — `run_ao3_poll_cycle` calls `get_backoff_until_ts()` and returns a stub `{skipped_reason: "throttled, Ns remaining"}` if a window is active, instead of enqueuing requests that will inevitably 429.
 
 **Network reliability** (the one really painful difference from SQW):
 - **AO3 from datacenter IPs** sees frequent `ReadTimeout` and `525 origin SSL handshake fail` responses — about 1 in 5 requests. The drafts page (`/users/<user>/works/drafts`) is particularly slow and times out the most.
 - `_get_page()` retries 3 times with backoff on timeout/525. Hard 403/404 are not retried.
 - **AO3 from residential IPs** is currently shielded with the "Shields are up!" CF JavaScript challenge — vanilla httpx cannot pass it. All AO3 testing must run from the GCP container.
+- **AO3 routes direct from the GCP VM IP, not through the CF Worker proxy** (2.22.11). Cookie-mode auth (2.18.8) bypasses the login form, and routing through the shared CF Worker egress pool shares AO3's per-IP quota with every other Worker tenant. AO3 was reclassified `PROXY_OPTIONAL` — direct is the default; `ao3_use_cf_proxy: true` enables fallback through the Worker on block-like failure.
 - The post-flight safety check uses **tri-state** state checks (`True | False | None`). When `is_work_in_drafts` returns `None` (fetch failed), the check trusts `preview_button` and logs a warning instead of triggering a destructive auto-delete. Without this, AO3 timeouts caused spurious aborts that tried (and failed) to delete healthy drafts.
 
 **Format files** (`FORMAT_SPECS["ao3"]`, in priority order — flipped in v2.20.6):
