@@ -4,6 +4,62 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.11] - 2026-05-14
+
+### Fix: AO3 routes direct from GCP IP, not through the shared CF Worker
+
+After 2.22.10 + .10b + .10c stopped the in-window retries and the
+tight-loop reprocessing, the AO3 throttle window still refused to
+drain. 14 minutes of doing nothing — only one HTTP request per minute
+from the queue retry — and the observed `Retry-After` had dropped
+from 386s to only 325s. **Something else was keeping the throttle hot,
+not us.**
+
+Cause: AO3 was classified as `PROXY_REQUIRED_PLATFORMS` in
+`polling/cf_proxy.py`, meaning every AO3 request from the server went
+through `pawproxy.knaughtykat01.workers.dev` (the Cloudflare Worker
+originally added to bypass AO3's "Shields are up!" page for
+datacenter logins). Cloudflare Workers exit through a shared pool of
+egress IPs — meaning **we were sharing AO3's per-IP quota with every
+other Worker tenant pinging AO3 from the same outbound IP**. AO3's
+Rack::Attack throttle (300 req / 300s per IP, from
+`config/initializers/rack_attack.rb` at otwarchive v0.9.475.3) sees
+the aggregate of all those tenants and keeps the shared egress IP
+perpetually throttled.
+
+User memory note from earlier sessions had captured this:
+*"CF proxy: Only needed for DA + SF on server (datacenter IP blocks).
+Other 9 platforms work from any IP."* — AO3 was in the right category
+conceptually but mis-wired in code.
+
+**Fix:** AO3 moved from `PROXY_REQUIRED_PLATFORMS` to
+`PROXY_OPTIONAL_PLATFORMS` in `polling/cf_proxy.py`. After this:
+
+- **Default behaviour:** AO3 routes direct from the GCP VM IP. The
+  GCP IP is unique to us; AO3's per-IP quota is ours alone.
+- **Fallback:** if the user sets `ao3_use_cf_proxy: true` in
+  settings, optional-platform fallback kicks in — try direct first,
+  retry through the Worker if a direct call hits a block-like
+  failure (Shields are up, 429, etc.).
+
+**Why the original classification existed:** the AO3 login form
+(`POST /users/login`) does throttle datacenter IPs aggressively
+("Shields are up!" 403 for 5-10 minutes after one bad attempt). The
+proxy was the workaround. But cookie-mode auth (added 2.18.8) bypasses
+the login endpoint entirely — we paste an `_otwarchive_session`
+cookie from a warm browser session and never call `/users/login`.
+Once cookie-mode became the default-on-GCP path, the proxy stopped
+being necessary for AO3 — it just kept being used because of the
+2.18.6 classification.
+
+**Container restart side-effect:** module-level
+`_ao3_backoff_until_ts` is process-local. The redeploy clears the
+325s window observed pre-fix; the first post-deploy request will hit
+a fresh throttle state. Either the GCP IP has clean quota → direct
+works; or GCP is also throttled → user enables the proxy toggle.
+
+---
+
 ## [2.22.10] - 2026-05-14
 
 ### Fix: AO3 throttle handling — empty-username URL, unified backoff cache, no in-window retries

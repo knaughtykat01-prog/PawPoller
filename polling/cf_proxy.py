@@ -28,29 +28,41 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-# ── Per-platform proxy gating (2.18.6 / 2.18.7) ─────────────────
-# Three platforms (AO3, DA, SF) need the CF proxy to function from
+# ── Per-platform proxy gating (2.18.6 / 2.18.7 / 2.22.11) ───────
+# Two platforms (DA, SF) need the CF proxy to function from
 # datacenter IPs and use it implicitly whenever cf_worker_url is
 # configured — *_use_cf_proxy toggles do not apply to them.
 #
-# The remaining eight work direct by default. Their per-platform
+# All other platforms work direct by default. Their per-platform
 # toggle (`<platform>_use_cf_proxy`) means "if a direct call hits a
 # block-like failure, retry once through the CF Worker". The proxy
 # is *never* the default transport for these platforms — only a
 # fallback. That keeps the worker quota low (we only burn it when
 # direct actually fails) and keeps server-IP-based access patterns
 # (cookie scope, IP-locked sessions) intact in the happy path.
+#
+# 2.22.11: AO3 moved from REQUIRED to OPTIONAL. The original
+# classification was because AO3's login form throttles datacenter
+# IPs ("Shields are up!"). Cookie-mode auth (added 2.18.8 / made the
+# default-on-GCP path) bypasses the login endpoint entirely, so the
+# proxy is no longer needed. Routing AO3 through the CF Worker
+# turned out to be actively harmful: every Worker tenant shares
+# Cloudflare's egress IP pool, and AO3's per-IP throttle (300 req /
+# 300s, from rack_attack.rb in otwarchive v0.9.475.3) saw aggregate
+# Worker traffic from across all tenants — keeping our shared egress
+# IP perpetually throttled. The GCP VM's IP is unique to us;
+# direct from there gives us our own quota.
 
 # Optional platforms — toggle `<platform>_use_cf_proxy` enables the
 # fallback retry. Direct is always tried first.
 PROXY_OPTIONAL_PLATFORMS = frozenset({
-    "ib", "fa", "ws", "sqw", "bsky", "ik", "wp", "tw",
+    "ib", "fa", "ws", "sqw", "bsky", "ik", "wp", "tw", "ao3",
 })
 
 # Required platforms — proxy is the *default* transport whenever
 # cf_worker_url is configured. No fallback / no toggle: these
 # platforms don't work direct from datacenter IPs at all.
-PROXY_REQUIRED_PLATFORMS = frozenset({"ao3", "da", "sf"})
+PROXY_REQUIRED_PLATFORMS = frozenset({"da", "sf"})
 
 
 def proxy_kwargs(settings: dict, platform_code: str) -> dict:
