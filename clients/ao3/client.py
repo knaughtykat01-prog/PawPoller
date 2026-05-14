@@ -139,6 +139,50 @@ class AO3Client:
             headers=_HEADERS,
             transport=transport,
         )
+        # 2.22.10: wrap _http.get/post so EVERY request gets pre-flight
+        # throttle check + 429 recording, regardless of which method in
+        # the client called it. Without this wrap, raw self._http.get(...)
+        # calls (the chapter form load in create_chapter, edit-page
+        # fetches, work-deletion confirm pages, etc.) would dodge the
+        # checks built into _get_page and _post_with_retry.
+        _orig_get = self._http.get
+        _orig_post = self._http.post
+
+        async def _wrapped_get(url, **kw):
+            if _ao3_backoff_until_ts > time.time():
+                remaining = int(_ao3_backoff_until_ts - time.time())
+                logger.warning(
+                    "AO3: short-circuit GET %s — %ds remain in throttle window",
+                    url, remaining,
+                )
+                return httpx.Response(
+                    429, headers={"Retry-After": str(remaining)},
+                )
+            resp = await _orig_get(url, **kw)
+            if resp.status_code == 429:
+                wait = self._parse_retry_after(resp, default=300)
+                _record_throttle(wait)
+            return resp
+
+        async def _wrapped_post(url, **kw):
+            if _ao3_backoff_until_ts > time.time():
+                remaining = int(_ao3_backoff_until_ts - time.time())
+                logger.warning(
+                    "AO3: short-circuit POST %s — %ds remain in throttle window",
+                    url, remaining,
+                )
+                return httpx.Response(
+                    429, headers={"Retry-After": str(remaining)},
+                )
+            resp = await _orig_post(url, **kw)
+            if resp.status_code == 429:
+                wait = self._parse_retry_after(resp, default=300)
+                _record_throttle(wait)
+            return resp
+
+        self._http.get = _wrapped_get
+        self._http.post = _wrapped_post
+
         self._logged_in = False
         self._pseud_id: str | None = None  # cached after first form fetch
 
