@@ -1246,6 +1246,7 @@ class AO3Client:
         summary: str | None = None,
         notes_begin: str | None = None,
         notes_end: str | None = None,
+        publish: bool | None = None,
     ) -> dict:
         """Edit a chapter using the safe form-fetch overlay pattern.
 
@@ -1256,6 +1257,23 @@ class AO3Client:
         for title-only edits (chapter rename without re-uploading the
         body). Collapses HTML whitespace in content to prevent AO3's
         auto-formatter from inserting <br /> inside elements.
+
+        Args:
+            publish: Controls which submit button is sent.
+                True  → force ``post_without_preview_button=Post`` — keeps
+                        the chapter LIVE after the edit. Use when the
+                        caller wants to ensure a draft chapter becomes
+                        live, or that a live chapter stays live.
+                False → force ``save_button=Save As Draft`` — keeps the
+                        chapter as a DRAFT after the edit. Errors if the
+                        edit form doesn't expose save_button (e.g.,
+                        chapter is already live).
+                None  → auto-detect based on form (legacy behaviour):
+                        prefer ``save_button`` when present (drafts),
+                        else ``post_without_preview_button``. This causes
+                        draft chapters to STAY drafts even when the
+                        caller wants them live, so prefer passing
+                        publish=True explicitly when publishing.
         """
         if not self._logged_in:
             if not await self.ensure_logged_in():
@@ -1347,14 +1365,43 @@ class AO3Client:
             else:
                 new_fields.append((name, value))
 
-        # Button selection: prefer save_button for drafts, post_without_preview
-        # for published works. OTW's chapter edit form exposes whichever one
-        # matches the current state.
-        button_name = "post_without_preview_button"
-        button_value = "Post"
-        if 'name="save_button"' in form_body:
-            button_name = "save_button"
-            button_value = "Save As Draft"
+        # Button selection.
+        # publish=True  → force post_without_preview_button (keep live)
+        # publish=False → force save_button if available (keep as draft)
+        # publish=None  → legacy auto-detect: prefer save_button when
+        #                 present, which keeps drafts as drafts after the
+        #                 edit. Bad for "Update + publish live" flows; the
+        #                 caller should pass publish=True when they want
+        #                 the chapter to end up live regardless of its
+        #                 current state.
+        has_save = 'name="save_button"' in form_body
+        if publish is True:
+            button_name = "post_without_preview_button"
+            button_value = "Post"
+        elif publish is False:
+            if has_save:
+                button_name = "save_button"
+                button_value = "Save As Draft"
+            else:
+                # Chapter is already live and the form has no Save As
+                # Draft button. Fall through to post_without_preview;
+                # caller asked for draft but AO3 doesn't expose that path
+                # here. Log so callers see what happened.
+                button_name = "post_without_preview_button"
+                button_value = "Post"
+                logger.warning(
+                    "AO3: edit_chapter(publish=False) requested but chapter "
+                    "%s on work %s has no save_button (already live?); "
+                    "submitting with post_without_preview_button",
+                    chapter_id, work_id,
+                )
+        else:
+            # publish=None — legacy auto-detect
+            button_name = "post_without_preview_button"
+            button_value = "Post"
+            if has_save:
+                button_name = "save_button"
+                button_value = "Save As Draft"
 
         from urllib.parse import urlencode
         submit_data: list[tuple[str, str]] = [

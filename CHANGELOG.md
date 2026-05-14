@@ -4,6 +4,64 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.14] - 2026-05-14
+
+### Fix: edit_chapter respects publish_live, doesn't silently re-draft chapters
+
+User tested 2.22.13's "Update with live publish" path on work 84822261 —
+the log showed `publish-all-drafts ... published=2, already_posted=3`,
+but the drafts came back. Trace revealed the root cause:
+
+`AO3Client.edit_chapter` was choosing the submit button by sniffing
+the edit-form HTML — `save_button` (Save As Draft) was preferred when
+present. For DRAFT chapters, AO3 renders BOTH "Save As Draft" and
+"Post Without Preview"; `edit_chapter` picked "Save As Draft", which
+**preserved the chapter as a draft after the edit**. So the flow per
+chapter became:
+
+1. `edit_chapter` (called from poster `edit()` loop) — saves content
+   AS A DRAFT
+2. `publish_all_draft_chapters` (called at end) — finds drafts, posts
+   them via `/chapters/{cid}/post`
+
+That worked once. But if the user clicked Update again (or another
+edit() raced), step 1 re-drafted the chapters and step 2 had to
+re-publish them. The log's `published=2, already_posted=3` pattern
+recurring on both Round 1 and Round 2 was the signature.
+
+**Fix in `clients/ao3/client.py:edit_chapter`:** new `publish: bool |
+None` parameter.
+
+- `publish=True` → force `post_without_preview_button=Post`; keeps the
+  chapter LIVE after the edit (publishes draft chapters, leaves live
+  ones live).
+- `publish=False` → force `save_button=Save As Draft` if available;
+  keeps the chapter as a DRAFT after the edit (logs a warning + falls
+  back to post_without_preview if the form has no Save As Draft, i.e.
+  chapter is already live and AO3 doesn't allow draft-mode editing).
+- `publish=None` → legacy auto-detect (the buggy behaviour, preserved
+  for callers that don't know about live/draft yet).
+
+**Wired in `posting/platforms/ao3.py:edit()`:** every `edit_chapter`
+call now passes `publish=publish_live if publish_live else None`.
+
+- When user updates with live publish toggled on → `publish=True` on
+  every chapter edit → chapters end up LIVE directly from the
+  edit_chapter POST.
+- When user updates without live publish → `publish=None` → legacy
+  behaviour preserved (live chapters stay live, drafts stay drafts).
+
+`publish_all_draft_chapters` still runs at the end as a safety net for
+chapters that don't get edited (e.g., AO3 has more chapters than
+local source).
+
+**For work 84822261 going forward:** hit dashboard Update with live
+publish toggled on. Each chapter's edit_chapter call now publishes
+directly. publish_all_drafts at the end should report
+`published=0, already_posted=5`.
+
+---
+
 ## [2.22.13] - 2026-05-14
 
 ### Fix: AO3 multi-chapter live posts walk every chapter and publish drafts

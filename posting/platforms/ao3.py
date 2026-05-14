@@ -869,6 +869,7 @@ class AO3Poster(PlatformPoster):
                                 await client.edit_chapter(
                                     external_id, ao3_ch["chapter_id"],
                                     title=new_title,  # content=None preserves body
+                                    publish=publish_live if publish_live else None,
                                 )
                                 logger.info(
                                     "AO3: Retitled chapter %s -> %r (metadata-only)",
@@ -928,6 +929,7 @@ class AO3Poster(PlatformPoster):
                             external_id, ao3_ch["chapter_id"],
                             title=_strip_chapter_prefix(local_ch.title),
                             content=ch_content,
+                            publish=publish_live if publish_live else None,
                         )
                         logger.info(
                             "AO3: Updated chapter %s (local idx %d) of work %s",
@@ -957,6 +959,7 @@ class AO3Poster(PlatformPoster):
                     if content:
                         await client.edit_chapter(
                             external_id, ao3_chapters[0]["chapter_id"], content=content,
+                            publish=publish_live if publish_live else None,
                         )
                         logger.info(
                             "AO3: Updated chapter %s content of work %s",
