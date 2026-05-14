@@ -4,6 +4,82 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.9] - 2026-05-14
+
+### Fix: AO3 multi-chapter retry creates duplicate works on transient failure
+
+After 2.22.8's publish-live wire-up was deployed, a live test of The
+Silk-Threaded Bonds (multi-chapter) hit a 429 on `GET /works/{id}/chapters/new`
+after `POST /works` had already succeeded. The work was created on AO3
+(`84818276`, as a draft per multi-chapter design), but the retry queued
+by the poster restarted from `create_work` instead of resuming at
+`create_chapter`. Every retry would have created another orphaned draft
+work.
+
+**Root cause:** `AO3Poster.post()` had no checkpoint between
+`create_work` and the chapter loop, and no resume logic at the top of
+the method. When the chapter form 429'd, the exception bubbled up to
+`manager.post_story`, which upserted the publication row with
+`external_id=""` (the original `PostResult` on failure carried no
+external_id) and queued a fresh `post` action. On retry, the poster
+ran the full sequence again with no awareness that work
+`84818276` already existed.
+
+**Fix in `posting/platforms/ao3.py:post()`:**
+
+1. **Resume detection at entry:** look up the publication row for
+   `(story_name, 0, "ao3")`. If `external_id` is non-empty AND status
+   != "posted", the previous run got partway through. Set
+   `existing_work_id` from that row.
+
+2. **Verify the work still exists:** call `probe_exists(work_id)` —
+   if `False` (user manually deleted the orphaned draft), clear the
+   resume target and fall through to a fresh `create_work`. If `None`
+   (probe failed), trust the checkpoint and try anyway.
+
+3. **Skip create_work on resume:** when resuming, fetch already-posted
+   chapters via `client.get_chapter_ids(work_id)`, build a
+   `already_created_chapter_indices` set, and skip those in the
+   chapter loop. The remaining chapters are added normally with
+   `publish=publish_live` on the LAST one.
+
+4. **Checkpoint after create_work:** immediately upsert the publication
+   row with `external_id=work_id` and `status="partial"` (for
+   multi-chapter) so any later chapter failure persists the work_id.
+   Single-chapter posts use `status="failed"` since there's no chapter
+   loop to checkpoint between — manager will flip to "posted" on
+   success.
+
+5. **Checkpoint inside the chapter loop:** on any chapter exception,
+   re-checkpoint before re-raising so the resume target is fresh
+   (status="partial", external_id=work_id).
+
+6. **Failure path carries work_id:** the exception handler at the
+   bottom of `post()` now returns `PostResult(success=False,
+   external_id=failed_work_id, ...)` instead of an empty result. This
+   ensures `manager.post_story` upserts the publication row with
+   `external_id` set, so the *next* retry sees the resume target.
+
+**Effect:**
+
+- Multi-chapter post + transient 429 on chapter form → next retry
+  resumes into existing work, skips chapters already on AO3, only adds
+  the missing ones. No duplicate works.
+- User manually deletes the partial work between retries → resume
+  detects the 404 and falls back to fresh `create_work`.
+- Probe transient failure (Cloudflare blip) → resume trusts the
+  checkpoint and surfaces a clearer error if the work truly is gone.
+
+**Still NOT fixed (carried from 2.22.8 note):**
+
+- The empty-username URL bug at `/users//skins`, `/users//works`
+- `_post_with_retry` does not call `_record_throttle()`, so post-side
+  429s still don't populate the 2.22.6 backoff cache.
+
+These remain as future work — flagged here so they aren't lost.
+
+---
+
 ## [2.22.8] - 2026-05-14
 
 ### Fix: AO3 always posted as draft, ignoring user's "live" selection

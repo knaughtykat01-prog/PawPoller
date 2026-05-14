@@ -44,6 +44,8 @@ import logging
 import re
 
 import config
+from database.db import get_connection
+from database import posting_queries
 from posting import story_reader
 from posting.platforms.base import PlatformPoster, PostResult, StoryUploadPackage
 from clients.ao3.client import AO3Client
@@ -468,6 +470,53 @@ class AO3Poster(PlatformPoster):
                 )
             # in_published is False -> definitely not published, safe
 
+        # Resume detection: if a previous post() for this story left a
+        # publication row with external_id set and status != "posted", a
+        # work was created on AO3 but the chapter loop didn't finish.
+        # We resume into that work instead of creating a duplicate.
+        existing_work_id = ""
+        existing_work_url = ""
+        try:
+            conn = get_connection()
+            try:
+                pubs = posting_queries.get_publications(
+                    conn, story_name=package.story_name, platform="ao3",
+                )
+            finally:
+                conn.close()
+            for p in pubs:
+                if p.get("chapter_index") == 0 and p.get("external_id") and p.get("status") != "posted":
+                    existing_work_id = p["external_id"]
+                    existing_work_url = p.get("external_url") or ""
+                    break
+        except Exception as _resume_lookup_err:
+            logger.warning(
+                "AO3: Resume lookup failed for %s: %s — continuing as fresh post",
+                package.story_name, _resume_lookup_err,
+            )
+
+        def _checkpoint(work_id_inner: str, url_inner: str, status_inner: str) -> None:
+            """Persist work_id + status to publications so a later retry can resume."""
+            try:
+                conn = get_connection()
+                try:
+                    posting_queries.upsert_publication(
+                        conn,
+                        package.story_name,
+                        0,  # AO3 always uses ch_idx=0 (full-work record)
+                        "ao3",
+                        external_id=work_id_inner,
+                        external_url=url_inner,
+                        status=status_inner,
+                    )
+                finally:
+                    conn.close()
+            except Exception as ck_err:
+                logger.warning(
+                    "AO3: Checkpoint write failed for work %s (status=%s): %s",
+                    work_id_inner, status_inner, ck_err,
+                )
+
         try:
             client = await self._ensure_client()
             story = story_reader.load_story(package.story_name)
@@ -529,39 +578,89 @@ class AO3Poster(PlatformPoster):
             # the skin_id can be passed through.
             skin_id = await self._ensure_work_skin(client, story)
 
-            # 5. Create the work in preview/draft state (with ch1 content)
-            create_kwargs: dict = dict(
-                title=work_title,
-                content=content,
-                fandom=fandom,
-                rating=rating,
-                warnings=warnings,
-                categories=categories,
-                relationship=relationships_str,
-                characters=characters_str,
-                additional_tags=additional_tags,
-                summary=summary,
-                language_id="1",  # AO3 English (numeric, like SQW's "15")
-                work_skin_id=skin_id,
-            )
-            if chapter_1_title:
-                create_kwargs["chapter_title"] = chapter_1_title
-            # Single-chapter stories: publish the work directly when user
-            # selected live. For multi-chapter, keep as draft here and flip
-            # to live on the LAST chapter (mirrors AO3's "Post Without
-            # Preview" semantics, which publishes the whole work).
-            if publish_live and not has_chapters:
-                create_kwargs["publish"] = True
-            create_result = await client.create_work(**create_kwargs)
-            work_id = create_result["work_id"]
-            url = create_result.get("url", f"https://archiveofourown.org/works/{work_id}")
-            state_str = "published" if create_result.get("published") else "preview/draft"
-            logger.info("AO3: Created work %s (%s) for %s — %s",
-                        work_id, state_str, story.name, url)
+            # 5. Create or resume the work.
+            # If a prior post() left a checkpointed work_id behind, verify
+            # the work still exists, then resume into it. If the user
+            # manually deleted the orphaned draft, fall back to a fresh
+            # create_work.
+            already_created_chapter_indices: set[int] = set()
+            if existing_work_id:
+                still_exists = await self.probe_exists(existing_work_id)
+                if still_exists is False:
+                    logger.info(
+                        "AO3: Checkpointed work %s for %s no longer exists "
+                        "(likely user-deleted) — falling back to fresh post",
+                        existing_work_id, story.name,
+                    )
+                    existing_work_id = ""
+                    existing_work_url = ""
+                # still_exists is None (probe failed) → trust the checkpoint
+                # and try anyway; a 404 in the chapter form will surface clearly
 
-            # SAFETY: verify the new work is in drafts (skipped when
-            # publish_live: user intentionally wanted it live)
-            await _verify_still_draft(client, work_id, "create_work")
+            if existing_work_id:
+                work_id = existing_work_id
+                url = existing_work_url or f"https://archiveofourown.org/works/{work_id}"
+                logger.info(
+                    "AO3: Resuming into existing work %s for %s — skipping create_work",
+                    work_id, story.name,
+                )
+                try:
+                    ao3_chapters = await client.get_chapter_ids(work_id)
+                    already_created_chapter_indices = {
+                        c.get("index") for c in ao3_chapters if c.get("index")
+                    }
+                    logger.info(
+                        "AO3: Work %s has %d existing chapters: %s",
+                        work_id, len(already_created_chapter_indices),
+                        sorted(already_created_chapter_indices),
+                    )
+                except Exception as nav_err:
+                    logger.warning(
+                        "AO3: Could not list chapters on work %s during resume: %s — "
+                        "will attempt to add all and rely on AO3's idempotency",
+                        work_id, nav_err,
+                    )
+            else:
+                create_kwargs: dict = dict(
+                    title=work_title,
+                    content=content,
+                    fandom=fandom,
+                    rating=rating,
+                    warnings=warnings,
+                    categories=categories,
+                    relationship=relationships_str,
+                    characters=characters_str,
+                    additional_tags=additional_tags,
+                    summary=summary,
+                    language_id="1",  # AO3 English (numeric, like SQW's "15")
+                    work_skin_id=skin_id,
+                )
+                if chapter_1_title:
+                    create_kwargs["chapter_title"] = chapter_1_title
+                # Single-chapter stories: publish the work directly when user
+                # selected live. For multi-chapter, keep as draft here and flip
+                # to live on the LAST chapter (mirrors AO3's "Post Without
+                # Preview" semantics, which publishes the whole work).
+                if publish_live and not has_chapters:
+                    create_kwargs["publish"] = True
+                create_result = await client.create_work(**create_kwargs)
+                work_id = create_result["work_id"]
+                url = create_result.get("url", f"https://archiveofourown.org/works/{work_id}")
+                state_str = "published" if create_result.get("published") else "preview/draft"
+                logger.info("AO3: Created work %s (%s) for %s — %s",
+                            work_id, state_str, story.name, url)
+                # Checkpoint: persist work_id so any subsequent chapter
+                # failure can resume rather than create a duplicate work.
+                # Status="partial" for multi-chapter (more chapters to add),
+                # "posted" not used here — manager.post_story flips to
+                # "posted" only on full success.
+                checkpoint_status = "partial" if has_chapters else "failed"
+                _checkpoint(work_id, url, checkpoint_status)
+                already_created_chapter_indices = {1}  # ch1 in via create_work
+
+                # SAFETY: verify the new work is in drafts (skipped when
+                # publish_live: user intentionally wanted it live)
+                await _verify_still_draft(client, work_id, "create_work")
 
             # 6. Add remaining chapters (Ch2..N).
             # For multi-chapter posts: all chapters except the LAST are
@@ -575,6 +674,12 @@ class AO3Poster(PlatformPoster):
                 )
                 last_idx = remaining[-1].index if remaining else None
                 for ch in remaining:
+                    if ch.index in already_created_chapter_indices:
+                        logger.info(
+                            "AO3: Chapter %d already on work %s — skipping",
+                            ch.index, work_id,
+                        )
+                        continue
                     ch_content = self._read_chapter_content(story, ch.index)
                     if not ch_content:
                         logger.warning(
@@ -584,13 +689,21 @@ class AO3Poster(PlatformPoster):
                         continue
                     is_last = (ch.index == last_idx)
                     publish_this_chapter = publish_live and is_last
-                    await client.create_chapter(
-                        work_id,
-                        title=_strip_chapter_prefix(ch.title),
-                        content=ch_content,
-                        position=ch.index,
-                        publish=publish_this_chapter,
-                    )
+                    try:
+                        await client.create_chapter(
+                            work_id,
+                            title=_strip_chapter_prefix(ch.title),
+                            content=ch_content,
+                            position=ch.index,
+                            publish=publish_this_chapter,
+                        )
+                    except Exception as ch_err:
+                        # Checkpoint partial progress before bubbling the
+                        # failure up — the retry will pick up from the next
+                        # missing chapter rather than recreating the work.
+                        _checkpoint(work_id, url, "partial")
+                        raise
+                    already_created_chapter_indices.add(ch.index)
                     logger.info(
                         "AO3: Added chapter %d to %s (work_id=%s, publish=%s)",
                         ch.index, story.name, work_id, publish_this_chapter,
@@ -608,7 +721,25 @@ class AO3Poster(PlatformPoster):
             )
         except Exception as e:
             logger.error("AO3 post failed: %s", e, exc_info=True)
-            return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
+            # Return work_id on the failure result so the manager's
+            # upsert_publication preserves it for the next retry. Without
+            # this, the manager would write external_id="" and resume
+            # logic would never trigger.
+            failed_work_id = ""
+            try:
+                failed_work_id = work_id  # noqa: F821 — only set if create_work ran
+            except NameError:
+                failed_work_id = existing_work_id  # resume failed mid-chapter loop
+            failed_url = ""
+            if failed_work_id:
+                failed_url = f"https://archiveofourown.org/works/{failed_work_id}"
+            return PostResult(
+                success=False,
+                external_id=failed_work_id,
+                external_url=failed_url,
+                error=str(e),
+                duration_seconds=self._elapsed(_t),
+            )
 
     async def edit(self, external_id: str, package: StoryUploadPackage) -> PostResult:
         """Edit an existing AO3 work — metadata + per-chapter content refresh.
