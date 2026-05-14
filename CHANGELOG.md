@@ -4,6 +4,58 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.13] - 2026-05-14
+
+### Fix: AO3 multi-chapter live posts walk every chapter and publish drafts
+
+User checked work 84822261 after the 2.22.11b success run: stats showed
+`Chapters: 2/?` with chapter 2 ("Beneath the Steam") rendered with a
+**"This chapter is a draft and hasn't been posted yet!"** banner. The
+work itself was live and chapter 5 was visible, but chapters 2-4 sat
+as drafts. AO3's HTML dev-tools confirmed the per-chapter "Post
+Chapter" button POSTs to `/works/{wid}/chapters/{cid}/post`.
+
+**Root cause:** 2.22.8's publish-live wire-up assumed
+`post_without_preview_button=Post` on the last `create_chapter` would
+flip the entire work — including all draft chapters — to live. Wrong.
+**AO3 chapters have independent draft state.** Sending
+`post_without_preview_button` on a single chapter publishes that
+specific chapter (and may flip the work-level "posted" flag), but
+does NOT auto-publish other draft chapters. Each draft must be POSTed
+to its own `/post` endpoint individually.
+
+**Fix:**
+
+1. **New `AO3Client.post_chapter(work_id, chapter_id)`** — fetches a
+   fresh CSRF token from the chapter page, POSTs to
+   `/works/{wid}/chapters/{cid}/post` with `commit=Post Chapter`.
+   Idempotent: if the page lacks a `/post` form (chapter already
+   live), returns `{already_posted: True}` without firing the POST.
+
+2. **New `AO3Client.publish_all_draft_chapters(work_id)`** — iterates
+   `get_chapter_ids()` and calls `post_chapter` for each. Polite delay
+   between calls. Returns `{total, published, already_posted, failed}`
+   summary. Doesn't raise on individual failures — surfaces them in
+   the `failed` list so the caller can log/continue.
+
+3. **`AO3Poster.post()`**: after the chapter loop, if `publish_live`
+   and `has_chapters`, call `publish_all_draft_chapters(work_id)`.
+   Bug fix is automatic on subsequent multi-chapter live posts.
+
+4. **`AO3Poster.edit()`**: now reads
+   `publish_live = not bool(package.extra.get("draft", True))` (same
+   shape as post). After the metadata/chapter-content updates, if
+   `publish_live`, call `publish_all_draft_chapters`. This is the
+   user-facing recovery path: hit "Update" on the dashboard with the
+   live-publish toggle set, and any remaining draft chapters get
+   posted automatically.
+
+**For existing work 84822261:** hit dashboard Update with live
+publish toggled on. The edit() flow now walks all 5 chapters and
+posts the 3 that remain as drafts.
+
+---
+
 ## [2.22.12] - 2026-05-14
 
 ### Fix: resumed AO3 posts now attach the Work Skin to the work

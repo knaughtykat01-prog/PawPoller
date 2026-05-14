@@ -740,6 +740,36 @@ class AO3Poster(PlatformPoster):
                         client, work_id, f"create_chapter ch{ch.index}",
                     )
 
+            # 7. If publishing live on a multi-chapter work, walk every
+            # chapter and publish any that are still drafts. AO3 chapters
+            # have INDEPENDENT draft state — `post_without_preview_button`
+            # on the last chapter only publishes that chapter (and may
+            # flip the work to "posted"), it doesn't auto-publish other
+            # draft chapters. Without this loop, multi-chapter live posts
+            # land with only the final chapter visible.
+            # Bug surfaced on work 84822261 (The Silk-Threaded Bonds,
+            # 5 chapters): the 2.22.11b success run published ch5 live
+            # but chs 2-4 remained drafts. Fixed in 2.22.13.
+            if has_chapters and publish_live:
+                try:
+                    publish_summary = await client.publish_all_draft_chapters(work_id)
+                    logger.info(
+                        "AO3: post() publish-all-drafts for %s — published=%d, "
+                        "already_posted=%d, failed=%d (total %d)",
+                        story.name,
+                        publish_summary["published"],
+                        publish_summary["already_posted"],
+                        len(publish_summary["failed"]),
+                        publish_summary["total"],
+                    )
+                except Exception as pub_err:
+                    logger.warning(
+                        "AO3: publish_all_draft_chapters failed for work %s on %s: %s "
+                        "(work_id will remain checkpointed; user can re-trigger via "
+                        "dashboard Update to retry)",
+                        work_id, story.name, pub_err,
+                    )
+
             return PostResult(
                 success=True,
                 external_id=work_id,
@@ -779,6 +809,12 @@ class AO3Poster(PlatformPoster):
         the local source after this call.
         """
         _t = self._start_timer()
+        # User's "live" toggle from dashboard (same shape as post()).
+        # When True (dashboard "Save as draft" unchecked), edit() walks
+        # every chapter at the end and publishes any drafts. Default is
+        # False — preserves existing draft/posted state per chapter.
+        publish_live = not bool(package.extra.get("draft", True))
+
         try:
             client = await self._ensure_client()
             story = story_reader.load_story(package.story_name)
@@ -841,6 +877,24 @@ class AO3Poster(PlatformPoster):
                     except Exception as ch_err:
                         logger.warning(
                             "AO3: Chapter title refresh failed: %s", ch_err,
+                        )
+                # If publishing live, walk every chapter and post any drafts.
+                # See post()'s identical call site for the rationale (AO3
+                # chapters have independent draft state).
+                if publish_live:
+                    try:
+                        ps = await client.publish_all_draft_chapters(external_id)
+                        logger.info(
+                            "AO3: edit(metadata-only) publish-all-drafts for %s — "
+                            "published=%d, already_posted=%d, failed=%d (total %d)",
+                            story.name, ps["published"], ps["already_posted"],
+                            len(ps["failed"]), ps["total"],
+                        )
+                    except Exception as pub_err:
+                        logger.warning(
+                            "AO3: publish_all_draft_chapters failed on metadata-only "
+                            "edit of work %s: %s",
+                            external_id, pub_err,
                         )
                 logger.info(
                     "AO3: Metadata-only edit complete for %s (body content preserved)",
@@ -910,6 +964,26 @@ class AO3Poster(PlatformPoster):
                         )
             except Exception as ch_err:
                 logger.warning("AO3: Chapter content update failed: %s", ch_err)
+
+            # If publishing live on an edit, walk every chapter and post
+            # any drafts. Mirrors post()'s identical call site. Critical
+            # for resumed/legacy works where create_work + later partial
+            # runs left some chapters as drafts.
+            if publish_live:
+                try:
+                    ps = await client.publish_all_draft_chapters(external_id)
+                    logger.info(
+                        "AO3: edit() publish-all-drafts for %s — "
+                        "published=%d, already_posted=%d, failed=%d (total %d)",
+                        story.name, ps["published"], ps["already_posted"],
+                        len(ps["failed"]), ps["total"],
+                    )
+                except Exception as pub_err:
+                    logger.warning(
+                        "AO3: publish_all_draft_chapters failed on edit of "
+                        "work %s: %s",
+                        external_id, pub_err,
+                    )
 
             return PostResult(
                 success=True,

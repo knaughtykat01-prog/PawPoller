@@ -1405,6 +1405,139 @@ class AO3Client:
             for ch_id, idx, title in chapters
         ]
 
+    async def post_chapter(self, work_id: str, chapter_id: str) -> dict:
+        """Publish a draft chapter by POSTing to /chapters/{cid}/post.
+
+        AO3 chapters have INDEPENDENT draft state. When a work is created
+        via preview_button, its ch1 is a draft. Chapters added with
+        create_chapter(publish=False) are also drafts. Using
+        post_without_preview_button=Post on a chapter only publishes that
+        specific chapter (and may flip the work to "posted"); it does
+        NOT auto-publish other draft chapters on the same work. To clean
+        up all drafts on a work, iterate get_chapter_ids() and call this
+        for each.
+
+        Form fields (from the per-chapter "Post Chapter" button on AO3):
+          - authenticity_token: extracted from a fresh page fetch
+          - commit: "Post Chapter"
+
+        Returns dict with keys:
+          - work_id, chapter_id: echoes input
+          - already_posted: True if AO3 indicated the chapter was already
+            live (idempotent no-op)
+          - published: True if this call published it
+        """
+        if not self._logged_in:
+            if not await self.ensure_logged_in():
+                raise RuntimeError("AO3: Not logged in")
+
+        page_url = f"{_BASE}/works/{work_id}/chapters/{chapter_id}"
+        html = await self._get_page(page_url)
+        if not html:
+            raise RuntimeError(
+                f"AO3: Could not load chapter {chapter_id} page (work {work_id})"
+            )
+
+        # Already-posted chapters render the normal show page with no
+        # "Post Chapter" button. If no /post form is present, treat as
+        # already-posted no-op (don't waste a POST that AO3 will reject).
+        if "/chapters/" + str(chapter_id) + "/post" not in html:
+            return {
+                "work_id": work_id,
+                "chapter_id": chapter_id,
+                "already_posted": True,
+                "published": False,
+            }
+
+        token_m = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', html)
+        if not token_m:
+            token_m = re.search(r'value="([^"]+)"[^>]*name="authenticity_token"', html)
+        if not token_m:
+            raise RuntimeError(
+                f"AO3: Could not extract CSRF token from chapter {chapter_id} page"
+            )
+        token = token_m.group(1)
+
+        post_url = f"{_BASE}/works/{work_id}/chapters/{chapter_id}/post"
+        from urllib.parse import urlencode
+        body = urlencode([
+            ("authenticity_token", token),
+            ("commit", "Post Chapter"),
+        ])
+        resp = await self._post_with_retry(
+            post_url,
+            content=body,
+            headers={
+                "Referer": page_url,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            timeout=60.0,
+        )
+
+        # 302 redirect to /works/{wid}/chapters/{cid} = success.
+        # 200 with "already posted" / "already published" notice = no-op.
+        already = (
+            resp.status_code == 200
+            and ("already posted" in resp.text.lower()
+                 or "already published" in resp.text.lower())
+        )
+        published = not already and resp.status_code < 400
+        return {
+            "work_id": work_id,
+            "chapter_id": chapter_id,
+            "already_posted": already,
+            "published": published,
+        }
+
+    async def publish_all_draft_chapters(self, work_id: str) -> dict:
+        """Iterate every chapter on a work and publish any that are drafts.
+
+        Used after a multi-chapter post()/edit() with publish_live=True to
+        clean up draft chapters left behind by AO3's independent-state
+        chapter model.
+
+        Returns dict with:
+          - total: total chapters on the work
+          - published: count of chapters this call newly published
+          - already_posted: count that were already live
+          - failed: list of (chapter_id, error_string) for chapters that
+            errored — does not raise, surfaces them in the result so the
+            caller can log/continue
+        """
+        chapters = await self.get_chapter_ids(work_id)
+        published = 0
+        already_posted = 0
+        failed: list[tuple[str, str]] = []
+
+        for ch in chapters:
+            cid = ch.get("chapter_id")
+            if not cid:
+                continue
+            try:
+                result = await self.post_chapter(work_id, cid)
+                if result.get("published"):
+                    published += 1
+                    logger.info(
+                        "AO3: Published chapter %s (idx %s) on work %s",
+                        cid, ch.get("index"), work_id,
+                    )
+                else:
+                    already_posted += 1
+            except Exception as e:
+                failed.append((cid, str(e)))
+                logger.warning(
+                    "AO3: Failed to publish chapter %s on work %s: %s",
+                    cid, work_id, e,
+                )
+            await self._polite_delay()
+
+        return {
+            "total": len(chapters),
+            "published": published,
+            "already_posted": already_posted,
+            "failed": failed,
+        }
+
     async def create_chapter(
         self,
         work_id: str,
