@@ -99,11 +99,17 @@ class AO3Poster(PlatformPoster):
         if not session_cookie and (not username or not password):
             raise RuntimeError("AO3 credentials not configured")
 
+        # 2.22.11: route through the cf_proxy module's proxy_kwargs() so
+        # the per-platform classification (PROXY_REQUIRED_PLATFORMS vs
+        # PROXY_OPTIONAL_PLATFORMS) is honoured. Previously this hardcoded
+        # the proxy whenever cf_worker_url was set in settings, regardless
+        # of category — which kept AO3 routing through the shared CF
+        # Worker egress IP pool even after AO3 was reclassified.
+        from polling.cf_proxy import proxy_kwargs
         self._client = AO3Client(
             username, password, target_user,
-            proxy_url=settings.get("cf_worker_url", ""),
-            proxy_key=settings.get("cf_worker_key", ""),
             session_cookie=session_cookie,
+            **proxy_kwargs(settings, "ao3"),
         )
         if not await self._client.ensure_logged_in():
             raise RuntimeError("AO3 login failed")
