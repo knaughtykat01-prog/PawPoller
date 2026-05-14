@@ -4,6 +4,75 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.8] - 2026-05-14
+
+### Fix: AO3 always posted as draft, ignoring user's "live" selection
+
+User reported posting The Silk-Threaded Bonds to AO3 with "live" selected
+in the dashboard, but the work landed in drafts (work 84817651). Log
+showed the work was created via the preview-page response path, which is
+the draft-state output of AO3's `preview_button=Preview` form submission.
+
+**Root cause:** Three-tier bug chain.
+
+1. **Dashboard route** (`routes/editor_api.py:1679-1681`): the `publish`
+   handler built `extras` conditionally on `req.draft` truthiness, so
+   `draft=False` produced an empty `extras` dict — the poster never saw
+   the user's "live" choice.
+
+2. **AO3 client** (`clients/ao3/client.py:create_work`): hardcoded
+   `("preview_button", "Preview")` in the form body, so every call
+   created a draft regardless of intent. Docstring explicitly said
+   "Create a new work on AO3 as a DRAFT."
+
+3. **AO3 poster** (`posting/platforms/ao3.py:post`): had no path to
+   request a live post. The `allow_publish` flag in `package.extra` only
+   suppressed the post-create safety check; it didn't change what was
+   actually sent to AO3.
+
+**Fix:**
+
+- `editor_api.py`: always carry `extras["draft"] = bool(req.draft)`.
+  Posters that don't distinguish live/draft can ignore it.
+- `clients/ao3/client.py:create_work`: new `publish: bool = False`
+  parameter mirroring the `add_chapter(publish=...)` pattern. When True,
+  swaps `preview_button=Preview` for `post_without_preview_button=Post`.
+  Return dict now includes `published: bool`. Preview-page response
+  branch handles the "publish=True requested but landed in draft anyway"
+  case with a warning log (returns `published=False` so the caller knows).
+- `posting/platforms/ao3.py:post`: reads `publish_live = not
+  bool(package.extra.get("draft", True))` (defaults to draft for safety
+  when flag absent). Single-chapter posts pass `publish=publish_live`
+  directly to `create_work`. Multi-chapter posts create the work as a
+  draft, post chapters Ch2..Ch(N-1) with `publish=False`, then call
+  `create_chapter(publish=publish_live)` on the LAST chapter — AO3's
+  "Post Without Preview" on a chapter publishes the whole work. The
+  `_verify_still_draft` safety check is bypassed when `publish_live`
+  is True (user intentionally wants live).
+
+**Note on existing draft (work 84817651):** The Silk-Threaded Bonds is
+currently sitting in the user's AO3 drafts. After this deploy, deleting
+that draft and re-posting with live selected should work end-to-end.
+Alternative: manually click "Post" on the preview page on AO3.
+
+**Note on separate AO3 bugs surfaced in the same investigation
+(NOT FIXED in 2.22.8, log as future work):**
+
+- Empty-username URL bug: `/users//skins`, `/users//works` — the AO3
+  username slot is empty in URL construction at the work-skin creation
+  and post-verification steps. Pattern visible across multiple endpoints
+  in `posting/platforms/ao3.py`. Triggers spurious 429s on malformed
+  paths. Should be diagnosed in a future session.
+- Post-side 429s don't populate the backoff cache: 2.22.6's
+  `_record_throttle()` is only called from `_get_page`, not from
+  `_post_with_retry`. After a post 429s, the polling orchestrator's
+  cache stays empty and the next poll fires blind.
+
+Files: `routes/editor_api.py`, `clients/ao3/client.py`,
+`posting/platforms/ao3.py`, `config.py`.
+
+---
+
 ## [2.22.7] - 2026-05-14
 
 ### Fix: pawsync silently clobbered dashboard edits — added pre-flight freshness check

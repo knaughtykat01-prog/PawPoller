@@ -727,16 +727,22 @@ class AO3Client:
         language_id: str = "1",  # AO3 numeric language ID; 1 = English
         chapter_title: str = "",
         work_skin_id: str = "",
+        publish: bool = False,
         # Backwards-compat single-value parameters
         warning: str | None = None,
         category: str | None = None,
     ) -> dict:
-        """Create a new work on AO3 as a DRAFT (preview state).
+        """Create a new work on AO3 as a DRAFT (default) or PUBLISHED.
 
-        Same OTW form as SquidgeWorld. Uses ``preview_button`` so the work
-        lands in the user's drafts at /works/{id}/preview without being
-        published. Click "Post" on the preview page (or call ``post_work()``)
-        to publish.
+        Same OTW form as SquidgeWorld. When ``publish=False`` (default),
+        uses ``preview_button`` so the work lands in the user's drafts at
+        ``/works/{id}/preview`` without being published.
+
+        When ``publish=True``, uses ``post_without_preview_button=Post``
+        which AO3 treats as "Post Work Without Preview" — the work is
+        created already in published state. Use this when the caller has
+        verified the post is safe to go live (e.g. dashboard's "live"
+        toggle, set ``publish_live=True`` on the package).
 
         Args:
             title: Work title.
@@ -832,8 +838,12 @@ class AO3Client:
             ("work[wip_length]", "1"),
             ("work[chapter_attributes][title]", chapter_title),
             ("work[chapter_attributes][content]", clean_content),
-            ("preview_button", "Preview"),
         ])
+        # Button choice determines draft-vs-live (mirrors add_chapter pattern)
+        if publish:
+            form_data.append(("post_without_preview_button", "Post"))
+        else:
+            form_data.append(("preview_button", "Preview"))
 
         # Manual urlencode because httpx 0.28.x AsyncClient has a bug with
         # list-of-tuples data= (raises "sync request with an AsyncClient").
@@ -861,8 +871,9 @@ class AO3Client:
         if work_match:
             work_id = work_match.group(1)
             url = f"{_BASE}/works/{work_id}"
-            logger.info("AO3: Created work %s (preview/draft) — %s", work_id, url)
-            return {"work_id": work_id, "url": url}
+            state = "published" if publish else "preview/draft"
+            logger.info("AO3: Created work %s (%s) — %s", work_id, state, url)
+            return {"work_id": work_id, "url": url, "published": publish}
 
         # Some AO3 paths (e.g. "Preview" button on the new-work form) render
         # the Preview Work page inline instead of redirecting. The final URL
@@ -882,11 +893,21 @@ class AO3Client:
             if body_match:
                 work_id = body_match.group(1)
                 url = f"{_BASE}/works/{work_id}"
+                # If publish=True was requested but we still got a preview
+                # response, that's a meaningful warning — the button didn't
+                # take effect for some reason and the work IS still a draft.
+                if publish:
+                    logger.warning(
+                        "AO3: Work %s created but landed in preview/draft "
+                        "despite publish=True. Manual publish needed at %s",
+                        work_id, url,
+                    )
+                    return {"work_id": work_id, "url": url, "published": False}
                 logger.info(
                     "AO3: Created work %s (preview-page response, "
                     "URL stayed at /works) — %s", work_id, url,
                 )
-                return {"work_id": work_id, "url": url}
+                return {"work_id": work_id, "url": url, "published": False}
 
         # Dump body for debugging
         import time

@@ -418,6 +418,10 @@ class AO3Poster(PlatformPoster):
         """
         _t = self._start_timer()
         allow_publish = bool(package.extra.get("allow_publish", False))
+        # User's "live" toggle from dashboard. package.extra["draft"] is True
+        # if user wants draft, False if user wants live. Default to draft for
+        # safety when the flag is absent (older clients / direct API callers).
+        publish_live = not bool(package.extra.get("draft", True))
 
         async def _verify_still_draft(client_inst, work_id_inner: str, step: str) -> None:
             """Best-effort verification that the work is in draft state.
@@ -432,7 +436,10 @@ class AO3Poster(PlatformPoster):
               False -> definitely not          -> safe, return
               None  -> fetch failed (timeout)  -> warn but trust preview_button
             """
-            if allow_publish:
+            # Skip safety check if either:
+            #  - allow_publish: re-publishing an already-live work (no need to verify draft)
+            #  - publish_live: user explicitly chose to publish live — work SHOULD be live
+            if allow_publish or publish_live:
                 return
             await asyncio.sleep(2)  # let AO3 catch up
             in_published = await client_inst.is_work_published(work_id_inner)
@@ -539,21 +546,35 @@ class AO3Poster(PlatformPoster):
             )
             if chapter_1_title:
                 create_kwargs["chapter_title"] = chapter_1_title
+            # Single-chapter stories: publish the work directly when user
+            # selected live. For multi-chapter, keep as draft here and flip
+            # to live on the LAST chapter (mirrors AO3's "Post Without
+            # Preview" semantics, which publishes the whole work).
+            if publish_live and not has_chapters:
+                create_kwargs["publish"] = True
             create_result = await client.create_work(**create_kwargs)
             work_id = create_result["work_id"]
             url = create_result.get("url", f"https://archiveofourown.org/works/{work_id}")
-            logger.info("AO3: Created work %s for %s — %s", work_id, story.name, url)
+            state_str = "published" if create_result.get("published") else "preview/draft"
+            logger.info("AO3: Created work %s (%s) for %s — %s",
+                        work_id, state_str, story.name, url)
 
-            # SAFETY: verify the new work is in drafts
+            # SAFETY: verify the new work is in drafts (skipped when
+            # publish_live: user intentionally wanted it live)
             await _verify_still_draft(client, work_id, "create_work")
 
-            # 6. Add remaining chapters (Ch2..N) as drafts.
-            # publish=False keeps the work in its current (draft) state —
-            # the OTW preview_button flow adds the chapter without flipping
-            # the work to published, verified by SQW's test suite.
+            # 6. Add remaining chapters (Ch2..N).
+            # For multi-chapter posts: all chapters except the LAST are
+            # added as drafts. The LAST chapter uses publish=publish_live —
+            # AO3's "Post Without Preview" on a chapter publishes the
+            # whole work in one shot.
             if has_chapters:
-                remaining = [c for c in story.chapters if c.index > 1]
-                for ch in sorted(remaining, key=lambda c: c.index):
+                remaining = sorted(
+                    [c for c in story.chapters if c.index > 1],
+                    key=lambda c: c.index,
+                )
+                last_idx = remaining[-1].index if remaining else None
+                for ch in remaining:
                     ch_content = self._read_chapter_content(story, ch.index)
                     if not ch_content:
                         logger.warning(
@@ -561,16 +582,18 @@ class AO3Poster(PlatformPoster):
                             ch.index, story.name,
                         )
                         continue
+                    is_last = (ch.index == last_idx)
+                    publish_this_chapter = publish_live and is_last
                     await client.create_chapter(
                         work_id,
                         title=_strip_chapter_prefix(ch.title),
                         content=ch_content,
                         position=ch.index,
-                        publish=False,
+                        publish=publish_this_chapter,
                     )
                     logger.info(
-                        "AO3: Added chapter %d to %s (work_id=%s)",
-                        ch.index, story.name, work_id,
+                        "AO3: Added chapter %d to %s (work_id=%s, publish=%s)",
+                        ch.index, story.name, work_id, publish_this_chapter,
                     )
                     # SAFETY: verify still draft after each chapter
                     await _verify_still_draft(

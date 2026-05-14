@@ -1676,9 +1676,9 @@ async def publish(story_name: str, req: PublishRequest):
             detail=f"action='{req.action}' requires confirm_live=true (safety guard)",
         )
 
-    extras: dict = {}
-    if req.draft:
-        extras["draft"] = True
+    # Always carry the draft flag so posters see the user's explicit choice.
+    # Posters that have no live/draft distinction can ignore it.
+    extras: dict = {"draft": bool(req.draft)}
     if req.action == "update_metadata":
         extras["skip_content_refresh"] = True
 
