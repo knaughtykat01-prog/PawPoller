@@ -4,6 +4,37 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.12] - 2026-05-14
+
+### Fix: resumed AO3 posts now attach the Work Skin to the work
+
+The 2.22.11b end-to-end success run revealed a follow-up nit: work
+84822261 was successfully posted but the Work Skin (`The Silk Threaded
+Bonds Skin`, skin_id 11035401) wasn't applied to the work. The skin
+CSS was uploaded and saved on AO3, but the work itself had no
+`work[work_skin_id]` set.
+
+**Root cause:** `_ensure_work_skin` finds/creates/refreshes the skin
+and returns its ID. The fresh-post path passes `work_skin_id=skin_id`
+to `create_work` so AO3 stores the work-skin association at creation.
+The resume branch (2.22.9) skipped `create_work` entirely — so the
+skin attachment also got skipped. Work 84822261 was created in an
+earlier throttled run before the skin existed, so the work never had
+the skin attached.
+
+**Fix in `posting/platforms/ao3.py:post()`:** after the resume branch
+detects an existing work, if `skin_id` is non-empty, push
+`edit_work(work_id, work_skin_id=skin_id)` to attach it. Idempotent —
+re-submitting the same skin_id is a no-op on AO3. Wrapped in
+try/except so a failure here doesn't block the chapter loop (skin can
+still be attached manually via dashboard Update).
+
+**For existing work 84822261:** hit "Update" on it from the dashboard —
+`poster.edit()` already does this correctly; this fix just ensures it
+happens automatically on resume too.
+
+---
+
 ## [2.22.11b] - 2026-05-14
 
 ### Hotfix: AO3 poster also honours PROXY_OPTIONAL classification + UI catches up

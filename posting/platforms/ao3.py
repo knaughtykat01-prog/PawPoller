@@ -610,6 +610,27 @@ class AO3Poster(PlatformPoster):
                     "AO3: Resuming into existing work %s for %s — skipping create_work",
                     work_id, story.name,
                 )
+                # The resume branch skips create_work, which is normally where
+                # work_skin_id gets attached to the work. If the original
+                # create_work ran before the Work Skin existed (the case for
+                # work 84822261 — fix shipped 2.22.12), the skin CSS is on
+                # AO3 but isn't applied to the work itself. Push edit_work
+                # to attach it now. Idempotent: re-submitting the same
+                # skin_id is a no-op on AO3's side.
+                if skin_id:
+                    try:
+                        await client.edit_work(work_id, work_skin_id=skin_id)
+                        logger.info(
+                            "AO3: Attached Work Skin %s to resumed work %s",
+                            skin_id, work_id,
+                        )
+                    except Exception as skin_attach_err:
+                        logger.warning(
+                            "AO3: Could not attach Work Skin %s to work %s on "
+                            "resume: %s (continuing — skin can be attached "
+                            "manually via Update)",
+                            skin_id, work_id, skin_attach_err,
+                        )
                 try:
                     ao3_chapters = await client.get_chapter_ids(work_id)
                     already_created_chapter_indices = {
