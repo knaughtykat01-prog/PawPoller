@@ -4,6 +4,86 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.22.10] - 2026-05-14
+
+### Fix: AO3 throttle handling — empty-username URL, unified backoff cache, no in-window retries
+
+After 2.22.9 verified that work_id checkpointing works (work 84822261
+created and persisted with status="partial", external_id preserved
+across retries), the actual post still couldn't complete because
+`_post_with_retry` kept retrying inside AO3's 5-minute punishment
+window, extending the throttle every cycle. Investigation of the OTW
+Archive source code at v0.9.475.3 (the actual code running on AO3)
+clarified the mechanics:
+
+**From `config/initializers/rack_attack.rb`:**
+
+```ruby
+throttle('req/ip', limit: 300, period: 300) do |req|
+  req.ip
+end
+```
+
+- **One per-IP bucket: 300 requests / 300 seconds (~1 rps).** Every
+  endpoint we hit feeds it: `/works`, `/chapters`, `/works/new`,
+  `/skins`, even the empty-username 404.
+- **Fixed window, not sliding.** `Retry-After` reports time until the
+  current window rolls over.
+- **No login bonus** for work-posting endpoints. Cookie auth doesn't
+  help here.
+- **No exponential backoff on AO3's side.** Each "punishment" is just
+  `period - (now % period)`.
+- **Requests inside the window count toward the NEXT window's quota.**
+  This is the killer — `_post_with_retry` was sleeping the Retry-After
+  then firing the same request at window rollover, immediately eating
+  the new window's budget.
+
+**Three concrete fixes:**
+
+1. **Empty-username URL bug** in `clients/ao3/client.py`. In
+   cookie-only auth mode `self.username` is empty (the cookie carries
+   identity, not the form-login handle). Three methods —
+   `is_work_in_drafts`, `is_work_published`, `find_work_skin_by_title`
+   — built URLs like `/users//works/drafts`, `/users//works`,
+   `/users//skins?skin_type=WorkSkin`. AO3 served these as 404s but
+   they still counted against the per-IP bucket. Fix: `owner =
+   self.username or self.target_user` before building the URL. Saves
+   ~3 wasted requests per post() call.
+
+2. **Unified backoff cache.** `_record_throttle()` is now called from
+   both `_get_page` AND `_post_with_retry` on 429 (previously only
+   `_get_page`). The 2.22.6 module-level `_ao3_backoff_until_ts` now
+   reflects every observed throttle window regardless of HTTP method.
+
+3. **No in-method retries on 429.** Both `_get_page` and
+   `_post_with_retry` now:
+   - **Pre-flight check** — if `_ao3_backoff_until_ts > time.time()`,
+     short-circuit immediately without firing the request. Returns
+     `None` (`_get_page`) or raises `AO3ThrottledError`
+     (`_post_with_retry`).
+   - **On 429** — record the throttle, log clearly, and abort. No
+     sleep-and-retry. The queue retry will run later; if the window
+     is still active when it runs, the pre-flight check
+     short-circuits it.
+
+**New exception:** `AO3ThrottledError(retry_after, url)` — raised by
+`_post_with_retry` so callers can distinguish "throttled, will recover"
+from generic HTTP failures. Currently bubbles up to the AO3 poster's
+outer `except Exception` which returns `PostResult(success=False,
+external_id=work_id)` — the work_id checkpoint from 2.22.9 means the
+next queue retry resumes into the same work after the window expires.
+
+**Known follow-up (not in 2.22.10):** the queue retry counter (1min →
+5min → 30min) can exhaust all three attempts inside a single 5-minute
+throttle window if the first attempt landed near the window start.
+With pre-flight short-circuit those wasted attempts are cheap (no HTTP
+fired) but they still count toward `max_attempts=3`. Future fix: have
+`_schedule_retry()` consult `get_backoff_until_ts()` and schedule
+beyond it (or don't increment the attempt counter when the failure
+was a throttle).
+
+---
+
 ## [2.22.9] - 2026-05-14
 
 ### Fix: AO3 multi-chapter retry creates duplicate works on transient failure

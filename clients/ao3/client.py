@@ -47,14 +47,38 @@ def get_backoff_until_ts() -> float:
 
 
 def _record_throttle(wait_seconds: int) -> None:
-    """Record an observed AO3 throttle window. Called from inside _get_page
-    when a 429 fires. Takes the max of any existing window and the new
-    one so concurrent observers don't shorten the cooldown.
+    """Record an observed AO3 throttle window. Called from both _get_page
+    and _post_with_retry on 429. Takes the max of any existing window and
+    the new one so concurrent observers don't shorten the cooldown.
     """
     global _ao3_backoff_until_ts
     new_until = time.time() + wait_seconds
     if new_until > _ao3_backoff_until_ts:
         _ao3_backoff_until_ts = new_until
+
+
+class AO3ThrottledError(RuntimeError):
+    """Raised when AO3 has us in an active rate-limit window.
+
+    Investigation of the OTW Archive source (otwarchive v0.9.475.3,
+    config/initializers/rack_attack.rb) confirmed:
+      - Single per-IP bucket: 300 requests / 300 seconds for everything
+      - Fixed window (not sliding), so Retry-After reports time until the
+        current 300s window rolls over
+      - Requests INSIDE the window count toward the NEXT window's quota
+    The third point is why in-method retry-on-429 hurts us — each retry
+    wakes up at window rollover and immediately starts eating the new
+    window's budget. The 2.22.10 fix raises this error instead of
+    sleeping-and-retrying so the caller can fail fast; the scheduler
+    short-circuits subsequent attempts via the backoff cache until the
+    window has fully drained.
+    """
+    def __init__(self, retry_after: int, url: str):
+        self.retry_after = retry_after
+        self.url = url
+        super().__init__(
+            f"AO3 throttled on {url}, window expires in {retry_after}s"
+        )
 
 # Realistic browser headers — Chrome 131 on Windows 10. Full Sec-Fetch +
 # Sec-Ch-Ua set is required to get past AO3's "Shields are up!" page when
@@ -186,7 +210,24 @@ class AO3Client:
         requests). The transport-level retries=2 in __init__ only helps with
         connect failures, not read timeouts after the headers arrive. We
         retry the whole GET up to max_attempts times with a brief pause.
+
+        429 handling (2.22.10): no in-method retry. AO3's per-IP bucket is
+        300 req / 300s, fixed window — retries inside the window count
+        against the NEXT window's quota and just keep us throttled. On 429
+        we record the throttle, log, and return None. The backoff cache
+        gates future requests until the window expires.
         """
+        # Pre-flight: if we know we're throttled, don't even attempt the
+        # request. Saves a wasted round-trip that would just count toward
+        # the next window's quota.
+        if _ao3_backoff_until_ts > time.time():
+            remaining = int(_ao3_backoff_until_ts - time.time())
+            logger.warning(
+                "AO3: skipping GET %s — %ds remain in observed throttle window",
+                url, remaining,
+            )
+            return None
+
         last_exc: Exception | None = None
         for attempt in range(1, max_attempts + 1):
             try:
@@ -198,21 +239,15 @@ class AO3Client:
                         logger.error("AO3: 403 Forbidden for %s", url)
                     return None
                 if resp.status_code == 429:
-                    # Exponential backoff with jitter: 30, 60, 120s base, ±20%
-                    # randomised so concurrent retriers don't synchronise on
-                    # identical wake-up times. Retry-After header (when AO3
-                    # provides one) overrides the exponential default.
-                    base = 30 * (2 ** (attempt - 1))
-                    jittered = base * random.uniform(0.8, 1.2)
-                    wait = self._parse_retry_after(resp, default=int(jittered))
-                    logger.warning("AO3: 429 rate limited on %s, waiting %ds (attempt %d/%d)",
-                                   url, wait, attempt, max_attempts)
-                    # Record throttle so orchestrator can skip future cycles
-                    # while we're still inside the punishment window.
+                    wait = self._parse_retry_after(resp, default=300)
+                    logger.warning(
+                        "AO3: 429 rate limited on %s — recording throttle "
+                        "window (%ds remaining) and aborting; queue retry "
+                        "will run after window expires",
+                        url, wait,
+                    )
                     _record_throttle(wait)
-                    await asyncio.sleep(wait)
-                    last_exc = RuntimeError("429 rate limited")
-                    continue
+                    return None
                 if resp.status_code == 525:
                     logger.warning("AO3: 525 SSL handshake from origin (attempt %d/%d)", attempt, max_attempts)
                     last_exc = RuntimeError("525 origin SSL")
@@ -265,19 +300,38 @@ class AO3Client:
 
     async def _post_with_retry(self, url: str, max_attempts: int = 3,
                                 **kwargs) -> httpx.Response:
-        """POST with 429 retry + Retry-After parsing.
+        """POST with throttle awareness.
 
-        Returns the response on success. Raises on permanent failure.
+        2.22.10: no in-method retry on 429. AO3's per-IP bucket is 300 req
+        / 300s fixed window — sleeping the Retry-After and retrying just
+        wakes up at window rollover and starts eating the next window's
+        quota immediately. On 429 we record the throttle, raise
+        AO3ThrottledError, and let the caller bubble up to the queue
+        retry, which gates on the backoff cache.
+
+        max_attempts is retained for non-429 transient failures (none
+        currently handled — kept for signature compatibility).
         """
-        for attempt in range(1, max_attempts + 1):
-            resp = await self._http.post(url, **kwargs)
-            if resp.status_code == 429:
-                wait = self._parse_retry_after(resp, default=30 * attempt)
-                logger.warning("AO3: 429 on POST %s, waiting %ds (attempt %d/%d)",
-                               url, wait, attempt, max_attempts)
-                await asyncio.sleep(wait)
-                continue
-            return resp
+        # Pre-flight: short-circuit if we know we're throttled.
+        if _ao3_backoff_until_ts > time.time():
+            remaining = int(_ao3_backoff_until_ts - time.time())
+            logger.warning(
+                "AO3: skipping POST %s — %ds remain in observed throttle window",
+                url, remaining,
+            )
+            raise AO3ThrottledError(remaining, url)
+
+        resp = await self._http.post(url, **kwargs)
+        if resp.status_code == 429:
+            wait = self._parse_retry_after(resp, default=300)
+            logger.warning(
+                "AO3: 429 on POST %s — recording throttle window (%ds "
+                "remaining) and aborting; queue retry will run after "
+                "window expires",
+                url, wait,
+            )
+            _record_throttle(wait)
+            raise AO3ThrottledError(wait, url)
         return resp
 
     # ── Authentication ──────────────────────────────────────────
@@ -1565,7 +1619,12 @@ class AO3Client:
         """
         if not self._logged_in:
             await self.ensure_logged_in()
-        url = f"{_BASE}/users/{self.username}/works/drafts"
+        # In cookie-only auth mode self.username is empty (the cookie carries
+        # the identity, not the form-login handle). Fall back to target_user
+        # so we don't hit /users//works/drafts — that URL 429s as a 404 and
+        # burns budget on a dead request.
+        owner = self.username or self.target_user
+        url = f"{_BASE}/users/{owner}/works/drafts"
         html = await self._get_page(url)
         if html is None:
             return None
@@ -1581,7 +1640,8 @@ class AO3Client:
         """
         if not self._logged_in:
             await self.ensure_logged_in()
-        url = f"{_BASE}/users/{self.username}/works"
+        owner = self.username or self.target_user
+        url = f"{_BASE}/users/{owner}/works"
         html = await self._get_page(url)
         if html is None:
             return None
@@ -1602,7 +1662,8 @@ class AO3Client:
         if not self._logged_in:
             await self.ensure_logged_in()
 
-        url = f"{_BASE}/users/{self.username}/skins?skin_type=WorkSkin"
+        owner = self.username or self.target_user
+        url = f"{_BASE}/users/{owner}/skins?skin_type=WorkSkin"
         resp = await self._http.get(url)
         if resp.status_code != 200:
             return None
