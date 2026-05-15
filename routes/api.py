@@ -16,12 +16,15 @@ This is the primary Inkbunny (IB) routes module. It handles:
 """
 
 from __future__ import annotations
+import asyncio
 import csv
 import io
+import json
 import logging
 import sqlite3
 import shutil
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -32,7 +35,11 @@ from fastapi import APIRouter, Query, HTTPException, UploadFile, File
 from fastapi.responses import Response, StreamingResponse
 
 from database.db import get_connection, init_db
-from database import queries, fa_queries, ws_queries, sf_queries, group_queries, analytics_queries
+from database import (
+    queries, fa_queries, ws_queries, sf_queries, sqw_queries, ao3_queries,
+    da_queries, wp_queries, ik_queries, bsky_queries, tw_queries,
+    group_queries, analytics_queries,
+)
 from polling.poller import run_poll_cycle, poll_progress
 from clients.ib.client import InkbunnyClient
 import config
@@ -265,6 +272,203 @@ def get_all_poll_progress():
     _safe("tw", lambda: __import__("polling.tw_poller", fromlist=["tw_poll_progress"]).tw_poll_progress)
 
     return progress
+
+
+# Per-platform health endpoint config: (code, queries module, last-poll
+# fn, interval setting key, "is configured" predicate). Drives the
+# /api/platforms/health endpoint that powers sidebar status dots,
+# platform-header "last polled · next in" subtitles, and throttle
+# banners — one fetch instead of fanning out 11 × poll_log requests.
+_PLATFORM_HEALTH_CONFIG = [
+    ("ib",   queries,      "get_last_poll",      "poll_interval_minutes",      lambda s: bool(s.get("username") and s.get("password"))),
+    ("fa",   fa_queries,   "get_fa_last_poll",   "fa_poll_interval_minutes",   lambda s: bool(s.get("fa_cookie_a") and s.get("fa_cookie_b"))),
+    ("ws",   ws_queries,   "get_ws_last_poll",   "ws_poll_interval_minutes",   lambda s: bool(s.get("ws_api_key"))),
+    ("sf",   sf_queries,   "get_sf_last_poll",   "sf_poll_interval_minutes",   lambda s: bool(s.get("sf_username") and s.get("sf_password"))),
+    ("sqw",  sqw_queries,  "get_sqw_last_poll",  "sqw_poll_interval_minutes",  lambda s: bool(s.get("sqw_username") and s.get("sqw_password"))),
+    # AO3 accepts username+password OR session cookie (mirrors server.py:213 gate)
+    ("ao3",  ao3_queries,  "get_ao3_last_poll",  "ao3_poll_interval_minutes",  lambda s: bool((s.get("ao3_username") and s.get("ao3_password")) or s.get("ao3_session_cookie"))),
+    ("da",   da_queries,   "get_da_last_poll",   "da_poll_interval_minutes",   lambda s: bool(s.get("da_cookie") and s.get("da_target_user"))),
+    ("wp",   wp_queries,   "get_wp_last_poll",   "wp_poll_interval_minutes",   lambda s: bool(s.get("wp_target_user"))),
+    ("ik",   ik_queries,   "get_ik_last_poll",   "ik_poll_interval_minutes",   lambda s: bool(s.get("ik_target_user"))),
+    ("bsky", bsky_queries, "get_bsky_last_poll", "bsky_poll_interval_minutes", lambda s: bool(s.get("bsky_identifier") and s.get("bsky_app_password"))),
+    ("tw",   tw_queries,   "get_tw_last_poll",   "tw_poll_interval_minutes",   lambda s: bool(s.get("tw_auth_token") and s.get("tw_ct0"))),
+]
+
+
+@router.get("/platforms/health")
+def get_platforms_health():
+    """Per-platform health snapshot.
+
+    Single endpoint that backs the sidebar status dot, the per-platform
+    page-header "last polled · next in" subtitle, and the throttle
+    banner that surfaces AO3's per-IP cooldown. Frontend polls this on
+    a 60s interval; it's cheap (one DB connection, 11 indexed lookups
+    against {p}_poll_log + a settings dict read) so a single fetch
+    fans out across every status surface that needs the same data.
+
+    Per-platform shape:
+        configured       : bool   — credentials present
+        last_poll_at     : ISO datetime | None
+        last_poll_status : 'success' | 'error' | 'running' | None
+        last_poll_error  : str | None
+        interval_minutes : int    — configured poll interval
+        next_poll_at     : ISO datetime | None — last_poll_at + interval
+        throttled_until  : ISO datetime | None — currently AO3-only
+                           (sourced from ao3 client backoff cache)
+    """
+    from datetime import datetime, timedelta, timezone
+    settings = config.get_settings()
+    fallback_interval = int(settings.get("poll_interval_minutes", 60))
+    out: dict = {}
+    conn = get_connection()
+    try:
+        for code, qmodule, fn_name, interval_key, configured_fn in _PLATFORM_HEALTH_CONFIG:
+            entry = {
+                "configured": False,
+                "last_poll_at": None,
+                "last_poll_status": None,
+                "last_poll_error": None,
+                "interval_minutes": int(settings.get(interval_key, fallback_interval)),
+                "next_poll_at": None,
+                "throttled_until": None,
+            }
+            try:
+                entry["configured"] = bool(configured_fn(settings))
+                last = getattr(qmodule, fn_name)(conn)
+                if last:
+                    started = last.get("started_at")
+                    entry["last_poll_at"] = started
+                    entry["last_poll_status"] = last.get("status")
+                    if last.get("status") == "error":
+                        entry["last_poll_error"] = last.get("error_message")
+                    if started:
+                        # SQLite stores started_at via datetime('now') as
+                        # naive UTC; tag it explicitly so the frontend's
+                        # Date parser doesn't drift by the local offset.
+                        try:
+                            dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
+                            if dt.tzinfo is None:
+                                dt = dt.replace(tzinfo=timezone.utc)
+                            entry["next_poll_at"] = (
+                                dt + timedelta(minutes=entry["interval_minutes"])
+                            ).isoformat()
+                        except ValueError:
+                            pass
+            except Exception as e:
+                logger.debug("platforms/health: %s lookup failed: %s", code, e)
+            out[code] = entry
+
+        # AO3 throttle bolt-on. Module-level state in
+        # clients.ao3.client._ao3_backoff_until_ts is process-local and
+        # rebuilt by the first 429 each cycle; reading it here is safe
+        # even if the import fails (e.g. partial deploy) because the
+        # whole probe is wrapped.
+        try:
+            from clients.ao3.client import get_backoff_until_ts
+            until_ts = get_backoff_until_ts()
+            if until_ts and until_ts > datetime.now(timezone.utc).timestamp():
+                out["ao3"]["throttled_until"] = (
+                    datetime.fromtimestamp(until_ts, timezone.utc).isoformat()
+                )
+        except Exception as e:
+            logger.debug("platforms/health: ao3 throttle probe failed: %s", e)
+    finally:
+        conn.close()
+    return out
+
+
+def _format_poll_summary(log: dict) -> str:
+    """Compose a single-line summary like '+2 faves, +1 comment' from
+    a poll_log row's delta counters. Returns 'no changes' when nothing
+    new came back, or 'failed' on error. Used by /api/activity/recent."""
+    if log.get("status") == "error":
+        return "poll failed"
+    if log.get("status") == "running":
+        return "poll in progress"
+    parts = []
+    for counter, label in [
+        ("new_faves_found", "fave"),
+        ("new_comments_found", "comment"),
+        ("new_watchers_found", "watcher"),
+    ]:
+        n = log.get(counter) or 0
+        if n:
+            parts.append(f"+{n} {label}{'s' if n != 1 else ''}")
+    if not parts:
+        subs = log.get("submissions_found") or 0
+        return f"no changes ({subs} subs scanned)" if subs else "no changes"
+    return ", ".join(parts)
+
+
+def _format_post_summary(log: dict) -> str:
+    """Single-line summary for a posting_log row."""
+    action = log.get("action", "post")
+    story = log.get("story_name", "?")
+    chapter = log.get("chapter_index") or 0
+    chap_suffix = f" ch{chapter}" if chapter else ""
+    if log.get("status") == "error":
+        return f"{action} failed: {story}{chap_suffix}"
+    return f"{action} {story}{chap_suffix}"
+
+
+@router.get("/activity/recent")
+def get_recent_activity(limit: int = 30):
+    """Unified system-event timeline across all 11 platforms + posting.
+
+    Merges every platform's most-recent poll_log entries with recent
+    posting_log entries into one chronological feed. Powers the
+    Overview page's "Recent System Events" panel — answers the
+    "what's the system actually doing?" question without needing to
+    open per-platform poll-log tables.
+
+    Each entry shape:
+        timestamp : ISO datetime — when the event happened
+        platform  : platform code ('ib','fa','ws',…) or 'posting'
+        kind      : 'poll' | 'post' | 'edit' | 'update' | …
+        status    : 'success' | 'error' | 'running' | 'partial' | …
+        summary   : short single-line description for the feed line
+        detail    : longer detail (error message) or None
+    """
+    out: list[dict] = []
+    per_platform = max(1, limit // 4)
+    conn = get_connection()
+    try:
+        for code, qmodule, _last_fn, _interval, _configured in _PLATFORM_HEALTH_CONFIG:
+            log_fn_name = "get_poll_log" if code == "ib" else f"get_{code}_poll_log"
+            try:
+                logs = getattr(qmodule, log_fn_name)(conn, per_platform)
+                for log in logs:
+                    out.append({
+                        "timestamp": log.get("started_at"),
+                        "platform": code,
+                        "kind": "poll",
+                        "status": log.get("status"),
+                        "summary": _format_poll_summary(log),
+                        "detail": log.get("error_message"),
+                    })
+            except Exception as e:
+                logger.debug("activity/recent: %s poll_log failed: %s", code, e)
+
+        # Posting events are wrapped separately so a missing posting
+        # schema (older deployments) doesn't break the rest of the feed.
+        try:
+            from database.posting_queries import get_posting_log
+            for log in get_posting_log(conn, story_name=None, limit=limit):
+                out.append({
+                    "timestamp": log.get("created_at"),
+                    "platform": log.get("platform") or "posting",
+                    "kind": log.get("action") or "post",
+                    "status": log.get("status"),
+                    "summary": _format_post_summary(log),
+                    "detail": log.get("error_message"),
+                })
+        except Exception as e:
+            logger.debug("activity/recent: posting_log skipped: %s", e)
+    finally:
+        conn.close()
+
+    out.sort(key=lambda e: e.get("timestamp") or "", reverse=True)
+    return {"events": out[:limit], "limit": limit}
 
 
 @router.get("/status")
@@ -1785,6 +1989,111 @@ def get_logs(lines: int = Query(200, ge=10, le=2000), file: str = Query("server"
         return {"lines": tail, "file": file, "total_lines": len(all_lines)}
     except OSError as e:
         raise HTTPException(500, f"Failed to read log file: {e}")
+
+
+_LOG_TAIL_ALLOWED = {"server", "app", "polling"}
+
+
+def _log_sse(payload: dict) -> bytes:
+    return f"data: {json.dumps(payload, default=str)}\n\n".encode("utf-8")
+
+
+@router.get("/logs/stream")
+async def stream_logs(
+    file: str = Query("app"),
+    backfill: int = Query(50, ge=0, le=500),
+):
+    """SSE tail-follow for a log file.
+
+    Initial backfill of the last N lines, then polls the file every
+    500ms and emits any newly-appended lines as SSE events. Heartbeat
+    every 15s so reverse-proxy intermediates don't reap the stream.
+    Recovers from log rotation by detecting size shrinkage and
+    re-seeking from the new file's start.
+
+    Backs the floating logs panel — opt-in widget on the dashboard
+    that surfaces app.log / polling.log without an SSH session. The
+    one-shot /api/logs endpoint above is still preferred for static
+    snapshots; this one is for live tailing.
+    """
+    if file not in _LOG_TAIL_ALLOWED:
+        raise HTTPException(
+            400,
+            f"Invalid log file. Allowed: {', '.join(sorted(_LOG_TAIL_ALLOWED))}",
+        )
+    log_path = config.LOGS_DIR / f"{file}.log"
+
+    async def gen():
+        # Initial backfill — read the last N lines so the panel
+        # opens with context, not blank.
+        if log_path.exists():
+            try:
+                all_lines = log_path.read_text(
+                    encoding="utf-8", errors="replace",
+                ).splitlines()
+                tail = all_lines[-backfill:] if backfill > 0 else []
+                for line in tail:
+                    yield _log_sse({"line": line, "backfill": True})
+            except Exception as e:
+                yield _log_sse({"event": "error", "message": str(e)})
+
+        # Tail-follow loop. We track byte offset rather than line
+        # count so partial last-line writes don't get duplicated on
+        # the next poll. File-size shrink ⇒ rotation ⇒ reset offset.
+        try:
+            last_size = log_path.stat().st_size if log_path.exists() else 0
+        except OSError:
+            last_size = 0
+        last_heartbeat = time.monotonic()
+
+        while True:
+            try:
+                if not log_path.exists():
+                    # File hasn't been created yet (first run); wait
+                    # politely and emit a heartbeat so the client
+                    # knows we're still here.
+                    if time.monotonic() - last_heartbeat > 15:
+                        yield b": heartbeat\n\n"
+                        last_heartbeat = time.monotonic()
+                    await asyncio.sleep(1.0)
+                    continue
+                stat = log_path.stat()
+                if stat.st_size < last_size:
+                    # Rotation / truncation: reset offset, no need
+                    # to backfill (the new file is the head we want).
+                    last_size = 0
+                if stat.st_size > last_size:
+                    with open(log_path, "rb") as f:
+                        f.seek(last_size)
+                        chunk = f.read(stat.st_size - last_size)
+                    last_size = stat.st_size
+                    text = chunk.decode("utf-8", errors="replace")
+                    # Trailing newline produces an empty trailing
+                    # element from splitlines() — fine, we just skip
+                    # empties below.
+                    for line in text.splitlines():
+                        if line:
+                            yield _log_sse({"line": line})
+                    last_heartbeat = time.monotonic()
+                elif time.monotonic() - last_heartbeat > 15:
+                    yield b": heartbeat\n\n"
+                    last_heartbeat = time.monotonic()
+                await asyncio.sleep(0.5)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug("logs/stream tail loop error: %s", e)
+                yield _log_sse({"event": "error", "message": str(e)})
+                await asyncio.sleep(2.0)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disable nginx buffering
+        },
+    )
 
 
 # ── Historical Analytics ──────────────────────────────────────

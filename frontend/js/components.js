@@ -1607,4 +1607,75 @@ const Components = {
             </div>
         `;
     },
+
+    /* ── Platform empty state (unconfigured) ─────────────────
+     * Drop-in replacement for the stat cards / charts when a
+     * platform has no configured credentials. Friendlier than
+     * empty cells; the connect CTA points at Settings → Platforms
+     * so the user has a one-click path to fix it. */
+    platformEmptyState(code, opts = {}) {
+        const labels = (window.PlatformHealth && window.PlatformHealth.LABELS) || {};
+        const label = labels[code] || code.toUpperCase();
+        const emojis = {
+            ib: '\u{1F43E}', fa: '\u{1F98A}', ws: '\u{1F98E}', sf: '\u{1F43A}',
+            sqw: '\u{1F991}', ao3: '\u{1F4D6}', da: '\u{1F3A8}', wp: '\u{1F4D9}',
+            ik: '\u{1F3AF}', bsky: '\u{1F98B}', tw: '\u{1F426}',
+        };
+        const emoji = emojis[code] || '\u{1F517}';
+        const reason = opts.reason || `Connect ${label} to start polling.`;
+        return `
+            <div class="platform-empty-state">
+                <div class="empty-state-emoji">${emoji}</div>
+                <h3>${Utils.escapeHtml(label)} not connected</h3>
+                <p>${Utils.escapeHtml(reason)}</p>
+                <a href="#/settings" class="btn btn-primary">Set up ${Utils.escapeHtml(label)}</a>
+                <div class="empty-state-secondary">
+                    <a href="https://github.com/knaughtykat01-prog/PawPoller#readme" target="_blank" rel="noopener">Setup guide</a>
+                </div>
+            </div>
+        `;
+    },
+
+    /* ── System Events Feed (Overview) ───────────────────────
+     * Renders the Recent System Events panel — backed by
+     * /api/activity/recent. Each event is a poll completion or
+     * post action with status colour and platform badge. Showing
+     * "the system is working" reduces the ambient anxiety the
+     * user reported with the silent-button problem in Batch 1. */
+    systemEventsFeed(events) {
+        const labels = (window.PlatformHealth && window.PlatformHealth.LABELS) || {};
+        if (!events || events.length === 0) {
+            return `
+                <div class="chart-container">
+                    <h3>Recent System Events</h3>
+                    <div class="empty-state-mini">No recent activity yet — events will appear here as polls run.</div>
+                </div>
+            `;
+        }
+        const rows = events.map((e) => {
+            const platLabel = labels[e.platform] || (e.platform || '').toUpperCase();
+            const when = (window.PlatformHealth && window.PlatformHealth.relativePast)
+                ? window.PlatformHealth.relativePast(e.timestamp)
+                : (e.timestamp || '');
+            const statusClass = `sys-evt-status-${e.status || 'unknown'}`;
+            const tooltip = e.detail
+                ? ` data-tooltip="${Utils.escapeHtml(e.detail)}"`
+                : '';
+            return `
+                <li class="sys-evt-row ${statusClass}"${tooltip}>
+                    <span class="sys-evt-dot"></span>
+                    <span class="sys-evt-platform">${Utils.escapeHtml(platLabel)}</span>
+                    <span class="sys-evt-kind">${Utils.escapeHtml(e.kind || 'event')}</span>
+                    <span class="sys-evt-summary">${Utils.escapeHtml(e.summary || '')}</span>
+                    <span class="sys-evt-when">${Utils.escapeHtml(when)}</span>
+                </li>
+            `;
+        }).join('');
+        return `
+            <div class="chart-container">
+                <h3>Recent System Events</h3>
+                <ul class="sys-evt-list">${rows}</ul>
+            </div>
+        `;
+    },
 };

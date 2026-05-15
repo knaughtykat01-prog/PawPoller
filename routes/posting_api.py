@@ -566,6 +566,95 @@ def get_publications_with_stats(story_name: str = Query(None)):
         conn.close()
 
 
+@posting_router.get("/preview-file")
+def preview_publication_file(
+    story_name: str = Query(...),
+    platform: str = Query(...),
+    chapter_index: int = Query(0),
+    max_lines: int = Query(120),
+):
+    """Drift preview — what's in the local file, vs what was uploaded.
+
+    Backs the "Preview before update" affordance in the publish-check
+    cell drawer. Resolves the format file PawPoller would push for
+    (story, chapter, platform), hashes it, and compares against the
+    publication's stored file_hash. Returns a head excerpt of the
+    local file plus drift status — enough for the user to sanity-
+    check what they'd be uploading without firing a blind update.
+
+    No upstream fetch — that's expensive (auth + per-platform parse)
+    and most of the value of this endpoint is "what would I push?",
+    which only requires the local side.
+    """
+    from posting import story_reader, sync as posting_sync
+    conn = get_connection()
+    try:
+        pubs = posting_queries.get_publications(
+            conn, story_name=story_name, platform=platform,
+        )
+        # Find the matching publication for this chapter
+        pub = next(
+            (p for p in pubs if int(p.get("chapter_index") or 0) == chapter_index),
+            None,
+        )
+        try:
+            story = story_reader.load_story(story_name)
+        except Exception as e:
+            raise HTTPException(404, detail=f"story not found: {e}")
+
+        file_path, _format_key = story_reader._resolve_format_file(
+            story, chapter_index, platform,
+        )
+        if not file_path or not os.path.isfile(file_path):
+            raise HTTPException(404, detail=f"no file resolved for ({story_name}, ch{chapter_index}, {platform})")
+
+        current_hash = posting_sync.hash_file(file_path)
+        posted_hash = (pub or {}).get("file_hash") or ""
+        size = os.path.getsize(file_path)
+        modified_at = None
+        try:
+            from datetime import datetime, timezone
+            modified_at = datetime.fromtimestamp(
+                os.path.getmtime(file_path), timezone.utc,
+            ).isoformat()
+        except Exception:
+            pass
+
+        # Read a head excerpt — enough to spot-check chapter
+        # boundaries / opening lines without dumping a 50KB body
+        # into the editor's HTTP response.
+        excerpt_lines: list[str] = []
+        truncated = False
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                for i, line in enumerate(f):
+                    if i >= max_lines:
+                        truncated = True
+                        break
+                    excerpt_lines.append(line.rstrip("\n"))
+        except Exception as e:
+            logger.debug("preview-file: excerpt read failed for %s: %s", file_path, e)
+
+        return {
+            "story_name": story_name,
+            "chapter_index": chapter_index,
+            "platform": platform,
+            "file_path": str(Path(file_path).relative_to(Path(file_path).anchor)) if Path(file_path).is_absolute() else file_path,
+            "file_size": size,
+            "modified_at": modified_at,
+            "current_hash": current_hash,
+            "posted_hash": posted_hash,
+            "drifted": bool(posted_hash and current_hash and posted_hash != current_hash),
+            "ever_posted": bool(pub),
+            "posted_at": (pub or {}).get("last_updated_at") or (pub or {}).get("first_posted_at"),
+            "excerpt": "\n".join(excerpt_lines),
+            "excerpt_truncated": truncated,
+            "excerpt_lines": len(excerpt_lines),
+        }
+    finally:
+        conn.close()
+
+
 @posting_router.get("/publications/{pub_id}")
 def get_publication(pub_id: int):
     """Get a single publication by ID."""

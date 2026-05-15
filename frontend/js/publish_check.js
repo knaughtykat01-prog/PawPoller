@@ -661,6 +661,12 @@ window.PublishCheck = (function () {
             html += '<button class="btn btn-sm btn-outline" data-publish-action="update_metadata"' +
                 (canEdit ? '' : ' disabled title="Platform does not support edit"') + '>' +
                 'Metadata only</button>';
+            // Drift preview — shows what would actually get pushed.
+            // Most useful on drifted cells but available on any
+            // posted cell so the user can spot-check before any update.
+            html += '<button class="btn btn-sm btn-outline" data-drift-preview="1" ' +
+                'title="Show local file head + drift status before pushing">' +
+                'Preview file</button>';
             if (canEdit && isDrifted) {
                 html += '<button class="btn btn-sm btn-outline" data-schedule-action="update">' +
                     'Schedule update</button>';
@@ -706,6 +712,14 @@ window.PublishCheck = (function () {
                 const action = btn.dataset.publishAction;
                 _executeAction(action, platId, platName, chIdx, chTitle);
             });
+        });
+
+        // Drift preview — fetches /api/posting/preview-file and
+        // expands an inline panel showing the local file head +
+        // hash comparison so the user can sanity-check before
+        // hitting Update on a drifted cell.
+        detail.querySelectorAll('[data-drift-preview]').forEach(btn => {
+            btn.addEventListener('click', () => _toggleDriftPreview(btn, platId, chIdx));
         });
         const draftCb = document.getElementById('publish-opt-draft');
         const liveBanner = document.getElementById('publish-live-banner');
@@ -877,6 +891,73 @@ window.PublishCheck = (function () {
                 }
             });
         }
+    }
+
+    // Drift preview — toggle an inline panel showing the local
+    // file head + hash comparison. Lazy-fetched on first open so a
+    // drawer with the button doesn't auto-fire the read.
+    async function _toggleDriftPreview(btn, platId, chIdx) {
+        const storyName = _currentStory;
+        if (!storyName) return;
+        const detail = document.getElementById('publish-check-detail');
+        if (!detail) return;
+        let panel = detail.querySelector('.drift-preview-panel');
+        if (panel && panel.dataset.open === '1') {
+            panel.dataset.open = '0';
+            panel.style.display = 'none';
+            btn.textContent = 'Preview file';
+            return;
+        }
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.className = 'drift-preview-panel';
+            btn.parentElement.insertAdjacentElement('afterend', panel);
+        }
+        panel.dataset.open = '1';
+        panel.style.display = '';
+        btn.textContent = 'Hide preview';
+        panel.innerHTML = '<div class="drift-preview-loading">Loading preview…</div>';
+        try {
+            const params = new URLSearchParams({
+                story_name: storyName,
+                platform: platId,
+                chapter_index: String(chIdx || 0),
+            });
+            const resp = await fetch('/api/posting/preview-file?' + params.toString());
+            if (!resp.ok) {
+                const text = await resp.text();
+                throw new Error('HTTP ' + resp.status + ': ' + text.slice(0, 240));
+            }
+            const data = await resp.json();
+            panel.innerHTML = _renderDriftPreview(data);
+        } catch (e) {
+            panel.innerHTML = '<div class="drift-preview-error">Preview failed: ' +
+                _escape(e.message || String(e)) + '</div>';
+        }
+    }
+
+    function _renderDriftPreview(data) {
+        const sizeKb = (data.file_size / 1024).toFixed(1);
+        const driftBadge = data.drifted
+            ? '<span class="drift-badge drift-badge-drifted">drifted</span>'
+            : (data.posted_hash
+                ? '<span class="drift-badge drift-badge-clean">in sync</span>'
+                : '<span class="drift-badge drift-badge-unposted">never posted</span>');
+        const truncNote = data.excerpt_truncated
+            ? '<div class="drift-preview-note">… (truncated to first ' + data.excerpt_lines + ' lines)</div>'
+            : '';
+        return [
+            '<div class="drift-preview-header">',
+            '  <div class="drift-preview-meta">',
+            '    <div><strong>File:</strong> ', _escape(data.file_path), ' (', sizeKb, ' KB)</div>',
+            '    <div><strong>Modified:</strong> ', _escape(data.modified_at || '—'),
+            '         &nbsp;·&nbsp; <strong>Last posted:</strong> ', _escape(data.posted_at || 'never'), '</div>',
+            '    <div><strong>Status:</strong> ', driftBadge, '</div>',
+            '  </div>',
+            '</div>',
+            '<pre class="drift-preview-excerpt">', _escape(data.excerpt || ''), '</pre>',
+            truncNote,
+        ].join('');
     }
 
     async function _executeAction(action, platId, platName, chIdx, chTitle) {

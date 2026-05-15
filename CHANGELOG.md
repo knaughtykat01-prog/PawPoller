@@ -4,6 +4,206 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.23.0] - 2026-05-15
+
+### Feature: dashboard UX batch — silence-killers, status surfacing, and a real navigation layer
+
+User reported the persistent "I clicked a button and got nothing"
+problem with the per-platform Poll Now / Full Resync controls — the
+existing button-text flip ("Polling…" → "Done!") was visible for
+1.5s before the page re-rendered, easy to miss, and gave no
+durable confirmation. Same complaint surfaced against the editor's
+Regenerate button (which dumped the full per-file regen result into
+the toolbar status, pushing word-count and other controls
+off-screen) and against the lack of any always-visible per-platform
+health signal. This release ships eighteen small-to-medium changes
+across three batches that resolve those root issues end-to-end.
+
+**Batch 1 — kill the silence (immediate fixes):**
+
+- **Slop scorer 0.0 fix.** `editor/slop.py` was looking for
+  `slop_words.json` + `slop_trigrams.json` at three candidate
+  paths; only `m_x/Scripts_Utils/` (sibling-to-PawPoller, local-
+  desktop only) actually had them. On the cloud server the files
+  weren't found, the loader silently set `_LOADED = True` to
+  prevent retry, and every call to `score_text()` returned 0.0
+  with empty hit dicts — reading as "perfectly clean prose." Fix:
+  copy both JSON files into `PawPoller/scripts_utils/` so the
+  bundled-fallback path resolves under Docker. Added
+  `is_available()` accessor + logger warning when files aren't
+  found; the editor route now exposes `available: bool` and the
+  toolbar renders "Slop: —" instead of "Slop: 0.0" when the
+  scorer can't load.
+- **CSS Decorations dropdown contrast.** The Warning Icon /
+  Section Break / Approach selects in the editor's CSS tab
+  rendered unselected `<option>` rows with the accent colour at
+  low opacity — barely readable against the dark background.
+  Root cause: `frontend/css/editor.css` referenced never-defined
+  CSS custom properties (`--surface-elevated`, `--border-primary`,
+  `--color-success/warning/error`); the `var()` lookups silently
+  fell through to browser defaults. Added legacy-token aliases at
+  the `:root` of `tokens.css` mapping to the existing
+  `--bg-card` / `--border` / `--success` / etc. — the alias
+  RHS uses `var()` so per-theme values still take effect. Fixes
+  the dropdown contrast bug AND every other silent fallback in
+  editor.css / diagnostics.css / components.css at the same time.
+- **Regen result toast.** The editor's Regenerate handler used to
+  dump `data.results.join(', ')` (a 200+-character per-file
+  manifest) into the toolbar status field. Replaced with a
+  concise `window.toast.success("Regenerated N formats · X
+  words")`; the full per-file detail goes to `console.info` for
+  DevTools inspection. The Downloads dropdown already shows the
+  canonical post-regen file list, so no information is lost.
+- **Toast wiring across all 33 poll/resync entry points.** The
+  per-platform `_dashPoll` / `_dashResync` helpers (4 surfaces,
+  used by every platform dashboard's header buttons), the
+  poll-all / resync-all aggregate handlers (2 surfaces), and
+  every Settings → Polling-tab card's per-platform poll/resync
+  pair (10 platforms × 2 = 20 surfaces) now fire
+  `window.toast.{success,warn,error}` on completion. The 22
+  polling-tab handlers were collapsed onto a shared
+  `_pollingTabPoll` / `_pollingTabResync` pair (~240 lines
+  removed), so the consistency win is enforced by structure
+  rather than by every callsite remembering.
+- **Sharper Full Resync confirms.** Generic "this may take a
+  while" replaced with platform-specific text quoting both the
+  platform name and the rate-limit risk: e.g. "Full resync re-
+  fetches every SoFurry submission from scratch. This can take
+  several minutes and will hit SoFurry's rate limits hard.
+  Continue?"
+
+**Batch 2 — status surfacing (durable awareness):**
+
+- **`GET /api/platforms/health` endpoint** — single-fetch
+  per-platform health snapshot. Returns `{configured,
+  last_poll_at, last_poll_status, last_poll_error,
+  interval_minutes, next_poll_at, throttled_until}` for all 11
+  platforms. The throttle field is sourced from the AO3 client's
+  module-level `_ao3_backoff_until_ts` cache (other platforms
+  return null). Reads the existing `{p}_poll_log` tables via
+  `get_{p}_last_poll`; one DB connection, 11 indexed lookups,
+  cheap enough for the 60s frontend tick.
+- **`frontend/js/platform_health.js`** — new module that polls
+  the endpoint and fans the result out to every status surface.
+  Exposes `window.PlatformHealth.{get, getAll, classify,
+  subscribe, LABELS}` so future surfaces can read cached state
+  without their own HTTP. Auto-starts only after the dashboard
+  auth gate passes — no 401-spam on the login page.
+- **Sidebar health dots.** The platform-grid popover already
+  had empty `<span class="platform-grid-status" id="pg-
+  status-{p}">` placeholders for each of the 11 platforms;
+  platform_health.js fills them with `pp-health-{state}`
+  coloured dots (green/amber/red/grey + animated blue for
+  running) plus `data-tooltip` showing last-poll relative time
+  and any error.
+- **Per-platform header subtitle.** A small `.platform-page-
+  subtitle` div is auto-injected under each platform dashboard's
+  `<h2>` — "Last polled 47m ago · next in 13m" or "throttled 3m
+  remaining". Implemented via a `MutationObserver` on `#app`
+  (rAF-throttled) so the subtitle re-attaches after every SPA
+  route change without touching the 11 individual
+  `renderXDashboard()` methods.
+- **Throttle / error banners.** Same module renders a coloured
+  banner beneath the page-header when AO3 is in a known throttle
+  window or the platform's last poll failed, with an "Open
+  settings" action button for reconnect. Uses two visual
+  variants: amber for throttle, red for error.
+- **Reusable `[data-tooltip]` helper.** Lifted the 1.2s-hover
+  pattern from the anchor toolbar (2.13.7/8) into
+  `loading_indicator.js`. Single shared DOM node + event
+  delegation on `document` so dynamically-rendered elements
+  pick it up. Hidden on mouseleave / mousedown / scroll /
+  Escape. Used by the dots + subtitle + every future control
+  that wants inline help.
+
+**Batch 3 — bigger surfaces:**
+
+- **`GET /api/activity/recent` + Recent System Events panel.**
+  New endpoint merges every platform's `{p}_poll_log` with
+  `posting_log` into one chronological feed (poll completions,
+  errors, posting actions). The Overview page renders the top
+  20 events as a styled timeline with status dots and relative
+  timestamps. Answers "what's the system actually doing?"
+  without needing per-platform poll-log table dives.
+- **Empty-state CTAs across all 11 platform dashboards.** New
+  `Components.platformEmptyState(code, opts)` helper. Each
+  `renderXDashboard()` short-circuits to the friendly empty
+  state when the platform isn't configured (per
+  `PlatformHealth`) or has zero submissions polled. The CTA
+  button links to Settings → Platforms. Replaces the previous
+  blank stat-cards / empty tables.
+- **Cmd+K command palette.** New
+  `frontend/js/command_palette.js` — keyboard-first nav modelled
+  on GitHub / VS Code / Linear. Cmd+K (mac) / Ctrl+K (linux/win)
+  opens a centred overlay with fuzzy-ranked commands across 11
+  platforms × 2 sub-pages each + Settings/Editor/Stories/Queue
+  + 3 actions (toggle theme, pause/resume polling). Up/Down
+  arrows + Enter + Esc as expected; mouse hover synchronises with
+  keyboard active state.
+- **Notification test suite extension.** Added 3 non-destructive
+  payload-format tests to `testing/tests/notifications.py`:
+  `format_telegram_summary`, `_classify_error` (5 representative
+  exception cases), `_format_error_for_telegram`. Catches
+  accidental regressions to the helper signatures without
+  burning a real Telegram-message budget. Plus 13 new toast /
+  status-surface checklist rows in
+  `qa/TESTING_CHECKLIST_WEBAPP.html` covering every Batch-1+2
+  callsite.
+- **Drift preview in Publish Check.** New `GET
+  /api/posting/preview-file?story=X&platform=Y&chapter=Z`
+  returns the local file's head excerpt (first 120 lines), size,
+  modified-at, post-time, stored hash + current hash, drifted
+  bool. The publish-check cell drawer gets a "Preview file"
+  button that toggles an inline panel. No more blind Update on
+  drifted cells — sanity-check what would actually get pushed
+  before clicking.
+- **Floating logs panel.** New `GET /api/logs/stream` SSE
+  endpoint tail-follows `logs/{server,app,polling}.log` with a
+  50–500-line backfill, byte-offset tracking for partial-line
+  safety, log-rotation detection (size-shrink reset), 15s
+  heartbeat. New `frontend/js/logs_panel.js` widget — pill
+  toggle bottom-left, expands to a 520×360 panel with file
+  picker, level filter, pause/clear, sticky-bottom auto-scroll.
+  EventSource opens only when panel is visible and on
+  `visibilitychange` to spare bandwidth. Open/file/level state
+  persisted in `localStorage`.
+
+**Files touched (selected):**
+`config.py` (APP_VERSION bump), `editor/slop.py`,
+`routes/api.py` (3 new endpoints + helpers + token aliases),
+`routes/posting_api.py` (drift preview), `routes/editor_api.py`
+(slop response + available flag), `frontend/js/api.js` (3 new
+methods), `frontend/js/app.js` (toast wiring + 11 empty-state
+guards + PlatformHealth.start), `frontend/js/components.js`
+(`systemEventsFeed` + `platformEmptyState`),
+`frontend/js/editor.js` (slop "—" + regen toast),
+`frontend/js/loading_indicator.js` (tooltip delegation),
+`frontend/js/platform_health.js` (new),
+`frontend/js/command_palette.js` (new),
+`frontend/js/logs_panel.js` (new),
+`frontend/js/publish_check.js` (preview button + handler),
+`frontend/css/tokens.css` (legacy aliases),
+`frontend/css/loading_indicator.css` (tooltip + dots + subtitle +
+banner + logs panel), `frontend/css/components.css` (events feed
++ empty state + command palette), `frontend/css/editor.css`
+(drift preview), `frontend/index.html` (3 new script tags),
+`testing/tests/notifications.py` (3 format tests),
+`scripts_utils/{slop_words,slop_trigrams}.json` (bundled, 36KB),
+`qa/TESTING_CHECKLIST_WEBAPP.html` (13 new rows).
+
+**Known follow-ups (not in this release):**
+- The 22 polling-tab handlers were collapsed onto a shared
+  helper, but the 4 dashboard-header `_dashPoll`/`_dashResync`
+  + 2 poll-all/resync-all handlers were left structurally
+  unchanged (they already had distinct UI-state needs). A
+  future refactor could fold those into the same helper for
+  full consistency.
+- Drift preview shows the LOCAL file's head; it doesn't fetch
+  the upstream version for a real diff. Adding upstream-side
+  fetch is a future enhancement (per-platform parse cost).
+
+---
+
 ## [2.22.14] - 2026-05-14
 
 ### Fix: edit_chapter respects publish_live, doesn't silently re-draft chapters

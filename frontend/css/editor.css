@@ -4609,3 +4609,89 @@ html[data-mobile="1"] .sidebar.open .nav-section {
 html[data-mobile="1"] .sidebar {
     width: min(320px, 88vw);
 }
+
+/* ── Drift preview panel (Publish Check cell drawer) ────────
+ * Inline expansion shown when the user clicks "Preview file"
+ * on a posted/drifted cell. Backed by /api/posting/preview-file. */
+.drift-preview-panel {
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--bg-tertiary, #2d2840);
+    border: 1px solid var(--border, #3d3556);
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.drift-preview-loading,
+.drift-preview-error {
+    padding: 8px;
+    text-align: center;
+    color: var(--text-secondary, #a99fc0);
+}
+
+.drift-preview-error {
+    color: var(--danger, #f07070);
+}
+
+.drift-preview-header {
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border, #3d3556);
+}
+
+.drift-preview-meta div {
+    margin: 2px 0;
+    color: var(--text-secondary, #a99fc0);
+}
+
+.drift-preview-meta strong {
+    color: var(--text-primary, #f0edf5);
+    font-weight: 600;
+}
+
+.drift-badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 4px;
+}
+
+.drift-badge-drifted {
+    background: rgba(240, 160, 80, 0.18);
+    color: var(--accent-warm, #f0a050);
+}
+
+.drift-badge-clean {
+    background: rgba(90, 224, 160, 0.16);
+    color: var(--success, #5ae0a0);
+}
+
+.drift-badge-unposted {
+    background: rgba(110, 100, 136, 0.20);
+    color: var(--text-muted, #6e6488);
+}
+
+.drift-preview-excerpt {
+    margin: 0;
+    padding: 8px 10px;
+    background: var(--bg-primary, #13111a);
+    border: 1px solid var(--border, #3d3556);
+    border-radius: 4px;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--text-primary, #f0edf5);
+    max-height: 320px;
+    overflow: auto;
+    white-space: pre;
+}
+
+.drift-preview-note {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-muted, #6e6488);
+    text-align: right;
+}

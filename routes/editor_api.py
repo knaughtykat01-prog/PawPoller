@@ -2831,9 +2831,11 @@ class SlopRequest(BaseModel):
 @editor_router.post("/stories/{story_name:path}/slop")
 async def slop_score(story_name: str, req: SlopRequest):
     """Run the slop scorer on the provided content."""
-    from editor.slop import score_text
+    from editor.slop import is_available, score_text
+    available = is_available()
     result = score_text(req.content)
     return {
+        "available": available,
         "score": result.score,
         "rating": result.rating,
         "word_count": result.word_count,

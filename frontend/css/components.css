@@ -1898,3 +1898,287 @@ a.stat-card:hover {
     .posting-form .form-control { font-size: 16px; min-height: 48px; }
     .preview-card p { font-size: 12px; }
 }
+
+/* ── System Events Feed (Overview) ─────────────────────────────
+ * Backed by Components.systemEventsFeed() + /api/activity/recent.
+ * One row per system event (poll completion, post action, error)
+ * with a status dot, platform badge, summary, and relative time. */
+.sys-evt-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sys-evt-row {
+    display: grid;
+    grid-template-columns: 14px 90px 56px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-secondary, #a99fc0);
+    transition: background 150ms ease;
+}
+
+.sys-evt-row:hover {
+    background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+}
+
+.sys-evt-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted, #6e6488);
+    justify-self: center;
+    flex-shrink: 0;
+}
+
+.sys-evt-status-success .sys-evt-dot { background: var(--success, #5ae0a0); }
+.sys-evt-status-error   .sys-evt-dot { background: var(--danger, #f07070); }
+.sys-evt-status-running .sys-evt-dot { background: var(--info, #70a0ff); }
+.sys-evt-status-partial .sys-evt-dot { background: var(--warning, #fbc050); }
+
+.sys-evt-status-error {
+    color: var(--danger, #f07070);
+}
+
+.sys-evt-platform {
+    font-weight: 600;
+    color: var(--text-primary, #f0edf5);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sys-evt-kind {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted, #6e6488);
+}
+
+.sys-evt-summary {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sys-evt-when {
+    font-size: 11px;
+    color: var(--text-muted, #6e6488);
+    white-space: nowrap;
+}
+
+.empty-state-mini {
+    padding: 18px;
+    text-align: center;
+    color: var(--text-muted, #6e6488);
+    font-size: 13px;
+}
+
+@media (max-width: 768px) {
+    .sys-evt-row {
+        grid-template-columns: 14px 1fr auto;
+        grid-template-rows: auto auto;
+        column-gap: 8px;
+        row-gap: 2px;
+    }
+    .sys-evt-platform { grid-column: 2; }
+    .sys-evt-when     { grid-column: 3; align-self: start; }
+    .sys-evt-kind     { grid-column: 2 / 4; grid-row: 2; }
+    .sys-evt-summary  { grid-column: 2 / 4; grid-row: 2; padding-left: 56px; }
+}
+
+/* ── Platform empty state ───────────────────────────────────────
+ * Friendlier replacement for blank stat cards when a platform
+ * isn't configured (or has zero polled data). Used by
+ * Components.platformEmptyState(). */
+.platform-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 48px 24px;
+    margin: 24px auto;
+    max-width: 520px;
+    background: var(--bg-card, #241f30);
+    border: 1px dashed var(--border, #3d3556);
+    border-radius: 12px;
+}
+
+.platform-empty-state .empty-state-emoji {
+    font-size: 48px;
+    line-height: 1;
+    margin-bottom: 16px;
+    opacity: 0.85;
+}
+
+.platform-empty-state h3 {
+    margin: 0 0 8px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary, #f0edf5);
+}
+
+.platform-empty-state p {
+    margin: 0 0 20px;
+    color: var(--text-secondary, #a99fc0);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.platform-empty-state .btn {
+    min-width: 180px;
+}
+
+.platform-empty-state .empty-state-secondary {
+    margin-top: 14px;
+    font-size: 12px;
+}
+
+.platform-empty-state .empty-state-secondary a {
+    color: var(--text-muted, #6e6488);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--text-muted, #6e6488);
+}
+
+.platform-empty-state .empty-state-secondary a:hover {
+    color: var(--text-secondary, #a99fc0);
+}
+
+/* ── Command palette (Cmd+K / Ctrl+K) ──────────────────────────
+ * Modal overlay backed by /js/command_palette.js. Inspired by
+ * the GitHub / VS Code / Linear keyboard-first nav pattern. */
+.cmdk-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10002;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 12vh 16px 16px;
+    background: var(--overlay-backdrop, rgba(0, 0, 0, 0.5));
+    backdrop-filter: blur(6px);
+    animation: cmdk-fade-in 120ms ease-out;
+}
+
+.cmdk-overlay[hidden] {
+    display: none;
+}
+
+@keyframes cmdk-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.cmdk-panel {
+    width: 100%;
+    max-width: 560px;
+    background: var(--bg-card, #241f30);
+    border: 1px solid var(--border, #3d3556);
+    border-radius: 12px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.50);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    animation: cmdk-slide-in 160ms ease-out;
+}
+
+@keyframes cmdk-slide-in {
+    from { transform: translateY(-12px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.cmdk-input {
+    width: 100%;
+    padding: 16px 18px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border, #3d3556);
+    color: var(--text-primary, #f0edf5);
+    font-size: 15px;
+    font-family: var(--font-sans, sans-serif);
+    outline: none;
+}
+
+.cmdk-input::placeholder {
+    color: var(--text-muted, #6e6488);
+}
+
+.cmdk-list {
+    list-style: none;
+    margin: 0;
+    padding: 6px 0;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.cmdk-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 18px;
+    cursor: pointer;
+    transition: background 80ms ease;
+}
+
+.cmdk-row.is-active {
+    background: var(--bg-hover, rgba(155, 125, 255, 0.12));
+}
+
+.cmdk-row-label {
+    font-size: 14px;
+    color: var(--text-primary, #f0edf5);
+    flex-shrink: 0;
+}
+
+.cmdk-row-hint {
+    font-size: 12px;
+    color: var(--text-muted, #6e6488);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cmdk-empty {
+    padding: 18px;
+    text-align: center;
+    color: var(--text-muted, #6e6488);
+    font-size: 13px;
+}
+
+.cmdk-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 14px;
+    padding: 8px 18px;
+    border-top: 1px solid var(--border, #3d3556);
+    font-size: 11px;
+    color: var(--text-muted, #6e6488);
+}
+
+.cmdk-footer kbd {
+    display: inline-block;
+    padding: 1px 6px;
+    margin: 0 2px;
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    color: var(--text-secondary, #a99fc0);
+    background: var(--bg-tertiary, #2d2840);
+    border: 1px solid var(--border, #3d3556);
+    border-radius: 3px;
+    line-height: 1.6;
+}
+
+@media (max-width: 480px) {
+    .cmdk-overlay { padding: 6vh 8px 8px; }
+    .cmdk-panel { max-width: 100%; }
+    .cmdk-input { font-size: 16px; padding: 14px; }
+}

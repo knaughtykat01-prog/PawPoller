@@ -719,6 +719,20 @@
                     { id: 303, name: "Pause polling via API", steps: `curl -H "Bearer pp_..." -X POST /api/poll/pause`, expected: `200 + paused state. Subsequent polls skip` },
                     { id: 304, name: "Resume polling via API", steps: `Same with /resume`, expected: `200 + paused=false. Polls resume next interval` },
                     { id: 305, name: "Pause state visible", steps: `Dashboard sidebar`, expected: `"Polling paused" indicator shown when paused` },
+                    // ── In-app dashboard toasts + status surfacing (shipped in 2.22.x UX batch)
+                    { id: 305.1, name: "Per-platform Poll Now toast", steps: `Settings → Polling → SoFurry → Poll Now`, expected: `Bottom-right toast: "SoFurry: poll triggered" within 1s. Button shows "Done!" before re-render.` },
+                    { id: 305.2, name: "Per-platform Full Resync confirm + toast", steps: `Same panel → Full Resync`, expected: `Confirm dialog quotes platform name + "rate limits hard". On OK: success toast "SoFurry: full resync triggered (allow several minutes)".` },
+                    { id: 305.3, name: "Poll-all toast aggregates", steps: `Polling tab → Poll Now All`, expected: `Toast reads "Triggered poll on N platforms" (or warn variant on partial failure).` },
+                    { id: 305.4, name: "Full-Resync-All confirm wording", steps: `Polling tab → Full Resync All`, expected: `Confirm dialog mentions "10+ minutes" and "rate limits hard". OK fires success toast.` },
+                    { id: 305.5, name: "Editor regen toast (no inline dump)", steps: `Open story → Regenerate ▾ → All`, expected: `Toolbar status flips to "Loaded" briefly; bottom-right toast "Regenerated N formats · X words". No multi-line file list dumped into the toolbar.` },
+                    { id: 305.6, name: "Sidebar health dot — healthy", steps: `Open Platforms popover after a successful poll cycle`, expected: `Dot beside platform card is green. Hover (1.2s delay) shows tooltip with last-poll relative time.` },
+                    { id: 305.7, name: "Sidebar health dot — error", steps: `Force a poll error (bad creds)`, expected: `Dot is red. Tooltip lists "Last error: …".` },
+                    { id: 305.8, name: "Platform header — last polled subtitle", steps: `Navigate to any configured platform dashboard`, expected: `Small subtitle under <h2>: "Last polled Nm ago · next in Nm".` },
+                    { id: 305.9, name: "Throttle banner — AO3 cooldown", steps: `Trigger AO3 backoff (or wait for natural 429)`, expected: `Amber banner under page-header: "AO3 is throttled — Resumes at HH:MM (Nm remaining)".` },
+                    { id: 305.10, name: "Cmd+K command palette opens", steps: `Press Cmd+K (mac) or Ctrl+K (linux/win)`, expected: `Centred overlay with input + filtered command list. Up/down arrows, Enter to navigate, Esc to close.` },
+                    { id: 305.11, name: "Cmd+K fuzzy search", steps: `Open palette → type "sofu"`, expected: `"SoFurry dashboard" + "SoFurry submissions" rank to top.` },
+                    { id: 305.12, name: "Recent System Events feed", steps: `Open Overview after at least one poll cycle`, expected: `New "Recent System Events" panel above Recent Activity / Top Fans, listing recent polls with status dots + relative timestamps.` },
+                    { id: 305.13, name: "Empty-state CTA — unconfigured platform", steps: `Open SF dashboard with no SF credentials`, expected: `"SoFurry not connected" empty state with "Set up SoFurry" button → Settings.` },
                 ]
             },
             {

@@ -126,3 +126,100 @@ async def t_digest_data_fetch(ctx: TestContext) -> None:
         assert not errors, f"{len(errors)} platforms erred: {list(errors)}"
     finally:
         conn.close()
+
+
+# ── Non-destructive payload format tests ─────────────────────────
+# Verify the helpers that build Telegram message bodies still
+# produce the expected output. These don't talk to Telegram or
+# Windows — they exercise pure formatting code so a regression in
+# the helper signatures or output shape surfaces in Diagnostics
+# without burning a real-message budget.
+
+
+@register_test(
+    test_id="notifications.format.telegram_summary",
+    name="format_telegram_summary builds the expected layout",
+    category="Notifications",
+    description=(
+        "Non-destructive: invokes format_telegram_summary() with a "
+        "header and a list of items. Confirms the header is preserved, "
+        "items render with the '  • ' bullet prefix, and the overflow "
+        "tail fires when the list exceeds max_visible."
+    ),
+)
+async def t_format_telegram_summary(ctx: TestContext) -> None:
+    try:
+        from polling.notifications import format_telegram_summary
+    except ImportError as e:
+        raise ctx.skip(f"polling.notifications not importable: {e}")
+    items = [f"item {i}" for i in range(7)]
+    result = format_telegram_summary("<b>Header</b>", items, max_visible=3)
+    ctx.detail("output", result)
+    lines = result.split("\n")
+    assert lines[0] == "<b>Header</b>", f"header not preserved: {lines[0]!r}"
+    bulleted = [ln for ln in lines if ln.startswith("  • ")]
+    assert len(bulleted) == 3, f"expected 3 bulleted lines, got {len(bulleted)}"
+    overflow = [ln for ln in lines if "more" in ln]
+    assert overflow, "overflow tail missing for items > max_visible"
+    assert "4 more" in overflow[0], f"overflow count wrong: {overflow[0]!r}"
+
+
+@register_test(
+    test_id="notifications.format.error_classify",
+    name="_classify_error maps raw exceptions to user-friendly labels",
+    category="Notifications",
+    description=(
+        "Non-destructive: probes _classify_error against a handful of "
+        "representative error strings (Cloudflare block, 429, timeout, "
+        "SSL, generic). Catches accidental regressions to the pattern "
+        "list that would degrade Telegram error UX to bare stack-traces."
+    ),
+)
+async def t_classify_error(ctx: TestContext) -> None:
+    try:
+        from polling.telegram import _classify_error
+    except ImportError as e:
+        raise ctx.skip(f"polling.telegram not importable: {e}")
+    cases = [
+        ("Cloudflare challenge encountered",          "Cloudflare"),
+        ("429 Too Many Requests",                     "rate"),
+        ("ReadTimeout while contacting platform",     "Timed out"),
+        ("ConnectError: connection refused",          "Connection"),
+        ("SSL handshake failure",                     "SSL"),
+    ]
+    misses = []
+    results = []
+    for raw, expected_substr in cases:
+        label, hint = _classify_error(raw)
+        results.append({"raw": raw, "label": label, "hint": hint})
+        if expected_substr.lower() not in label.lower():
+            misses.append({"raw": raw, "expected_in_label": expected_substr, "got_label": label})
+    ctx.detail("results", results)
+    ctx.detail("misses", misses)
+    # Allow generic "Error" fallback only for cases we don't expect to
+    # match a specific pattern. The five above all should map to a
+    # non-generic label.
+    assert not misses, f"{len(misses)} classifier misses: {misses}"
+
+
+@register_test(
+    test_id="notifications.format.error_for_telegram",
+    name="_format_error_for_telegram includes platform name + label + hint",
+    category="Notifications",
+    description=(
+        "Non-destructive: composes a fake AO3 throttle error through "
+        "_format_error_for_telegram and asserts the platform name, "
+        "label, and hint all appear in the output."
+    ),
+)
+async def t_format_error_for_telegram(ctx: TestContext) -> None:
+    try:
+        from polling.telegram import _format_error_for_telegram
+    except ImportError as e:
+        raise ctx.skip(f"polling.telegram not importable: {e}")
+    out = _format_error_for_telegram("ao3", "429 Too Many Requests from AO3")
+    ctx.detail("output", out)
+    assert "AO3" in out, f"platform name missing: {out!r}"
+    assert "rate" in out.lower(), f"rate-limit label missing: {out!r}"
+    # Hint is wrapped in <i>...</i> tags via the formatter
+    assert "<i>" in out, f"hint formatting missing: {out!r}"

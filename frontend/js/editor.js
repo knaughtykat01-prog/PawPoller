@@ -1803,11 +1803,28 @@ const Editor = {
             });
             const data = await resp.json();
 
+            // Status field stays terse — the full per-file report used
+            // to be dumped here and pushed everything else off-screen.
+            // Toast carries the headline; console keeps the detail for
+            // anyone debugging via DevTools; the Downloads dropdown
+            // shows the canonical post-regen file list.
             if (data.ok) {
-                const summary = data.results.join(', ');
-                this._updateStatus(`Regenerated: ${summary}`);
+                const count = (data.results || []).length;
+                const wordSuffix = data.word_count ? ` · ${data.word_count.toLocaleString()} words` : '';
+                this._updateStatus('Loaded');
+                console.info('[regen]', data.results);
+                if (window.toast) {
+                    window.toast.success(`Regenerated ${count} format${count === 1 ? '' : 's'}${wordSuffix}`);
+                }
             } else {
-                this._updateStatus(`Regen errors: ${(data.errors || []).join(', ')}`);
+                const errs = data.errors || [];
+                this._updateStatus('Regen errors');
+                console.warn('[regen errors]', errs);
+                if (window.toast) {
+                    const first = errs[0] || 'unknown error';
+                    const more = errs.length > 1 ? ` (+${errs.length - 1} more)` : '';
+                    window.toast.error(`Regen failed: ${first}${more}`);
+                }
             }
             // File set may have changed — invalidate downloads menu so
             // a fresh fetch happens on next open.
@@ -1817,7 +1834,11 @@ const Editor = {
                 dlMenu.innerHTML = '<div class="downloads-loading" style="padding:0.4em 0.75em;color:#888">Loading…</div>';
             }
         } catch (err) {
-            this._updateStatus(`Regen error: ${err.message}`);
+            this._updateStatus('Regen error');
+            console.error('[regen exception]', err);
+            if (window.toast) {
+                window.toast.error(`Regen error: ${err.message || err}`);
+            }
         } finally {
             if (btn) btn.disabled = false;
         }
@@ -1949,6 +1970,14 @@ const Editor = {
             if (!resp.ok) { el.textContent = 'Slop: ?'; return; }
             const data = await resp.json();
             this.slopScore = data;
+
+            // Distinguish "scorer unavailable" from a genuine 0.0. A
+            // missing word/trigram bundle reads as perfectly clean prose
+            // otherwise — silently misleading.
+            if (data.available === false) {
+                el.innerHTML = `<span style="color:var(--text-muted)" title="Slop scorer data files not loaded — see server logs">Slop: —</span>`;
+                return;
+            }
 
             const score = data.score.toFixed(1);
             const rating = data.rating;

@@ -7,10 +7,13 @@ for in-memory scoring without file I/O.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Data loading (one-time at import)
@@ -21,17 +24,27 @@ _SLOP_TRIGRAMS: set[str] = set()
 _LOADED = False
 
 
+def is_available() -> bool:
+    """True when the slop word/trigram data files were loaded successfully."""
+    _ensure_loaded()
+    return bool(_SLOP_WORDS and _SLOP_TRIGRAMS)
+
+
 def _ensure_loaded():
     global _SLOP_WORDS, _SLOP_TRIGRAMS, _LOADED
     if _LOADED:
         return
 
-    # Look for data files in Scripts_Utils
-    for base in [
+    # Look for data files in Scripts_Utils. Local desktop wins via the
+    # m_x/ sibling so user edits to the canonical files take effect; the
+    # bundled PawPoller/scripts_utils/ copy is the fallback used by the
+    # Docker container (which doesn't mount m_x/).
+    candidates = [
         Path(__file__).resolve().parent.parent.parent / "m_x" / "Scripts_Utils",
         Path(__file__).resolve().parent.parent / "scripts_utils",
         Path(os.environ.get("SLOP_DATA_DIR", "")),
-    ]:
+    ]
+    for base in candidates:
         words_path = base / "slop_words.json"
         trigrams_path = base / "slop_trigrams.json"
         if words_path.is_file() and trigrams_path.is_file():
@@ -55,9 +68,19 @@ def _ensure_loaded():
                     _SLOP_TRIGRAMS.add(str(entry).lower().strip())
 
             _LOADED = True
+            logger.info(
+                "Slop scorer loaded %d words + %d trigrams from %s",
+                len(_SLOP_WORDS), len(_SLOP_TRIGRAMS), base,
+            )
             return
 
-    # If we get here, data files weren't found — scoring won't work
+    # Data files not found at any candidate path — scoring will return
+    # 0.0 with empty hit dicts. Frontend reads is_available() to render
+    # an "unavailable" state instead of a misleading clean score.
+    logger.warning(
+        "Slop scorer data files not found; scoring disabled. Searched: %s",
+        ", ".join(str(p) for p in candidates if str(p)),
+    )
     _LOADED = True  # don't retry
 
 

@@ -140,6 +140,13 @@ const App = {
             console.warn('[App] Dashboard status check failed:', err);
         }
 
+        // Past the auth gate — safe to start the platform health
+        // poller. /api/platforms/health requires a valid session, so
+        // starting earlier would 401-spam the login page on its 60s tick.
+        if (window.PlatformHealth) {
+            window.PlatformHealth.start();
+        }
+
         /* First-run setup wizard — if setup_complete is not set, show
          * the guided wizard instead of the normal dashboard. This check
          * runs after dashboard auth (so the user is authenticated) but
@@ -914,32 +921,94 @@ const App = {
     },
 
     /* ── Per-Platform Poll/Resync helpers (used by dashboard headers + polling tab) */
+
+    // Display labels for toast messages — "sf" → "SoFurry" reads better
+    // than the raw platform code in user-facing notifications.
+    _platformLabels: {
+        ib: 'Inkbunny', fa: 'FurAffinity', ws: 'Weasyl', sf: 'SoFurry',
+        sqw: 'SquidgeWorld', ao3: 'AO3', da: 'DeviantArt', wp: 'Wattpad',
+        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter',
+    },
+
     async _dashPoll(btn, platform) {
+        const label = this._platformLabels[platform] || platform.toUpperCase();
         btn.disabled = true;
         btn.textContent = 'Polling...';
         const fns = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll', sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll', wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll' };
         try {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
+            if (window.toast) window.toast.success(`${label}: poll triggered`);
             setTimeout(() => this.route(), 1500);
         } catch (err) {
             btn.textContent = 'Error';
+            if (window.toast) window.toast.error(`${label}: poll failed — ${err.message || err}`);
             setTimeout(() => { btn.textContent = 'Poll Now'; btn.disabled = false; }, 2000);
         }
     },
 
     async _dashResync(btn, platform) {
-        if (!confirm('Full resync will re-fetch all data. This may take a while. Continue?')) return;
+        const label = this._platformLabels[platform] || platform.toUpperCase();
+        if (!confirm(`Full resync re-fetches every ${label} submission from scratch. This can take several minutes and will hit ${label}'s rate limits hard. Continue?`)) return;
         btn.disabled = true;
         btn.textContent = 'Syncing...';
         const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync' };
         try {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
+            if (window.toast) window.toast.success(`${label}: full resync triggered (may take several minutes)`);
             setTimeout(() => this.route(), 1500);
         } catch (err) {
             btn.textContent = 'Error';
+            if (window.toast) window.toast.error(`${label}: resync failed — ${err.message || err}`);
             setTimeout(() => { btn.textContent = 'Full Resync'; btn.disabled = false; }, 2000);
+        }
+    },
+
+    /* ── Settings → Polling tab handlers (per-platform card buttons)
+     * Each platform's card in the Polling tab has its own poll/resync
+     * button with an inline ``{p}-msg`` element for error display.
+     * The helpers below collapse 10 × 2 = 20 near-identical handlers
+     * down to two functions; before this, each platform had ~14 lines
+     * of copy-pasted boilerplate. The inline msg element is preserved
+     * for in-card error context; the toast adds out-of-card success
+     * feedback. */
+    async _pollingTabPoll({ btn, msgId, platform, apiMethod }) {
+        const label = this._platformLabels[platform] || platform.toUpperCase();
+        const msg = msgId ? document.getElementById(msgId) : null;
+        btn.disabled = true;
+        btn.textContent = 'Polling...';
+        if (msg) msg.textContent = '';
+        try {
+            await API[apiMethod]();
+            btn.textContent = 'Done!';
+            if (window.toast) window.toast.success(`${label}: poll triggered`);
+            setTimeout(() => this.renderSettings(), 1500);
+        } catch (err) {
+            btn.textContent = 'Error';
+            if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+            if (window.toast) window.toast.error(`${label}: poll failed — ${err.message || err}`);
+            setTimeout(() => this.renderSettings(), 2000);
+        }
+    },
+
+    async _pollingTabResync({ btn, msgId, platform, apiMethod }) {
+        const label = this._platformLabels[platform] || platform.toUpperCase();
+        if (!confirm(`Full resync re-fetches every ${label} submission from scratch. This can take several minutes and will hit ${label}'s rate limits hard. Continue?`)) return;
+        const msg = msgId ? document.getElementById(msgId) : null;
+        btn.disabled = true;
+        btn.textContent = 'Syncing...';
+        if (msg) msg.textContent = '';
+        try {
+            await API[apiMethod]();
+            btn.textContent = 'Done!';
+            if (window.toast) window.toast.success(`${label}: full resync triggered (allow several minutes)`);
+            setTimeout(() => this.renderSettings(), 1500);
+        } catch (err) {
+            btn.textContent = 'Error';
+            if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
+            if (window.toast) window.toast.error(`${label}: resync failed — ${err.message || err}`);
+            setTimeout(() => this.renderSettings(), 2000);
         }
     },
 
@@ -1769,6 +1838,10 @@ const App = {
                 API.getTopFans(10).catch(() => ({ fans: [] })),
                 API.getTrending({ hours: 24, threshold: 2.0 }).catch(() => ({ trending: [] })),
             ]);
+            // System events feed — fetched separately so a slow
+            // /api/activity/recent doesn't block the rest of the
+            // page render. Failure falls back to an empty list.
+            const systemActivity = await API.getRecentActivity(20).catch(() => ({ events: [] }));
 
             const ib = ibSummary || {};
             const fa = faSummary || {};
@@ -1993,6 +2066,8 @@ const App = {
                     </div>
                 </div>
 
+                ${Components.systemEventsFeed((systemActivity.events || []).slice(0, 20))}
+
                 <div class="chart-row">
                     <div class="chart-container">
                         <h3>Recent Activity</h3>
@@ -2072,6 +2147,18 @@ const App = {
             ]);
             const ibPins = (pins.pins || []).filter(p => p.platform === 'ib');
             const ibGoals = (goals.goals || []).filter(g => g.platform === 'ib' || g.platform === 'all');
+
+            // Empty-state short-circuit: see SF dashboard for the pattern.
+            const ibHealth = window.PlatformHealth && window.PlatformHealth.get('ib');
+            const isUnconfigured = ibHealth && ibHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>Inkbunny Dashboard</h2></div>
+                    ${Components.platformEmptyState('ib', isUnconfigured ? {} : { reason: 'Inkbunny is configured but no submissions have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
 
             const html = `
                 ${this._refreshIndicatorHtml()}
@@ -2421,6 +2508,18 @@ const App = {
             ]);
             const faPins = (pins.pins || []).filter(p => p.platform === 'fa');
             const faGoals = (goals.goals || []).filter(g => g.platform === 'fa' || g.platform === 'all');
+
+            // Empty-state short-circuit: see SF dashboard for the pattern.
+            const faHealth = window.PlatformHealth && window.PlatformHealth.get('fa');
+            const isUnconfigured = faHealth && faHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>FurAffinity Dashboard</h2></div>
+                    ${Components.platformEmptyState('fa', isUnconfigured ? {} : { reason: 'FurAffinity is configured but no submissions have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
 
             const html = `
                 ${this._refreshIndicatorHtml()}
@@ -2773,6 +2872,18 @@ const App = {
             const wsPins = (pins.pins || []).filter(p => p.platform === 'ws');
             const wsGoals = (goals.goals || []).filter(g => g.platform === 'ws' || g.platform === 'all');
 
+            // Empty-state short-circuit: see SF dashboard for the pattern.
+            const wsHealth = window.PlatformHealth && window.PlatformHealth.get('ws');
+            const isUnconfigured = wsHealth && wsHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>Weasyl Dashboard</h2></div>
+                    ${Components.platformEmptyState('ws', isUnconfigured ? {} : { reason: 'Weasyl is configured but no submissions have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
+
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
@@ -3087,6 +3198,24 @@ const App = {
             const sfPins = (pins.pins || []).filter(p => p.platform === 'sf');
             const sfGoals = (goals.goals || []).filter(g => g.platform === 'sf' || g.platform === 'all');
 
+            // Empty-state short-circuit: if SoFurry hasn't been
+            // configured (or has zero submissions polled yet) show
+            // the friendly connect CTA instead of empty cards.
+            const sfHealth = window.PlatformHealth && window.PlatformHealth.get('sf');
+            const isUnconfigured = sfHealth && sfHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header">
+                        <h2>SoFurry Dashboard</h2>
+                    </div>
+                    ${Components.platformEmptyState('sf', isUnconfigured
+                        ? {}
+                        : { reason: 'SoFurry is configured but no submissions have been polled yet. The first poll may still be running — give it a minute.' })}
+                `);
+                return;
+            }
+
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
@@ -3382,6 +3511,18 @@ const App = {
             const sqwPins = (pins.pins || []).filter(p => p.platform === 'sqw');
             const sqwGoals = (goals.goals || []).filter(g => g.platform === 'sqw' || g.platform === 'all');
 
+            // Empty-state short-circuit: see SF dashboard for the pattern.
+            const sqwHealth = window.PlatformHealth && window.PlatformHealth.get('sqw');
+            const isUnconfigured = sqwHealth && sqwHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>SquidgeWorld Dashboard</h2></div>
+                    ${Components.platformEmptyState('sqw', isUnconfigured ? {} : { reason: 'SquidgeWorld is configured but no works have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
+
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
@@ -3672,6 +3813,18 @@ const App = {
             ]);
             const ao3Pins = (pins.pins || []).filter(p => p.platform === 'ao3');
             const ao3Goals = (goals.goals || []).filter(g => g.platform === 'ao3' || g.platform === 'all');
+
+            // Empty-state short-circuit: see SF dashboard for the pattern.
+            const ao3Health = window.PlatformHealth && window.PlatformHealth.get('ao3');
+            const isUnconfigured = ao3Health && ao3Health.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>AO3 Dashboard</h2></div>
+                    ${Components.platformEmptyState('ao3', isUnconfigured ? {} : { reason: 'AO3 is configured but no works have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
 
             const html = `
                 ${this._refreshIndicatorHtml()}
@@ -3965,6 +4118,18 @@ const App = {
             ]);
             const daPins = (pins.pins || []).filter(p => p.platform === 'da');
             const daGoals = (goals.goals || []).filter(g => g.platform === 'da' || g.platform === 'all');
+
+            // Empty-state short-circuit: see SF dashboard for the pattern.
+            const daHealth = window.PlatformHealth && window.PlatformHealth.get('da');
+            const isUnconfigured = daHealth && daHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>DeviantArt Dashboard</h2></div>
+                    ${Components.platformEmptyState('da', isUnconfigured ? {} : { reason: 'DeviantArt is configured but no deviations have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
 
             const html = `
                 ${this._refreshIndicatorHtml()}
@@ -4270,6 +4435,18 @@ const App = {
             const wpPins = (pins.pins || []).filter(p => p.platform === 'wp');
             const wpGoals = (goals.goals || []).filter(g => g.platform === 'wp' || g.platform === 'all');
 
+            // Empty-state short-circuit: see SF dashboard for the pattern.
+            const wpHealth = window.PlatformHealth && window.PlatformHealth.get('wp');
+            const isUnconfigured = wpHealth && wpHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>Wattpad Dashboard</h2></div>
+                    ${Components.platformEmptyState('wp', isUnconfigured ? {} : { reason: 'Wattpad is configured but no stories have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
+
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
@@ -4572,6 +4749,18 @@ const App = {
             const ikPins = (pins.pins || []).filter(p => p.platform === 'ik');
             const ikGoals = (goals.goals || []).filter(g => g.platform === 'ik' || g.platform === 'all');
 
+            // Empty-state short-circuit: see SF dashboard for the pattern.
+            const ikHealth = window.PlatformHealth && window.PlatformHealth.get('ik');
+            const isUnconfigured = ikHealth && ikHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>Itaku Dashboard</h2></div>
+                    ${Components.platformEmptyState('ik', isUnconfigured ? {} : { reason: 'Itaku is configured but no content has been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
+
             const html = `
                 ${this._refreshIndicatorHtml()}
                 <div class="page-header">
@@ -4865,6 +5054,18 @@ const App = {
             ]);
             const bskyPins = (pins.pins || []).filter(p => p.platform === 'bsky');
             const bskyGoals = (goals.goals || []).filter(g => g.platform === 'bsky' || g.platform === 'all');
+
+            // Empty-state short-circuit: see SF dashboard for the pattern.
+            const bskyHealth = window.PlatformHealth && window.PlatformHealth.get('bsky');
+            const isUnconfigured = bskyHealth && bskyHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>Bluesky Dashboard</h2></div>
+                    ${Components.platformEmptyState('bsky', isUnconfigured ? {} : { reason: 'Bluesky is configured but no posts have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
 
             const html = `
                 ${this._refreshIndicatorHtml()}
@@ -5167,6 +5368,18 @@ const App = {
             ]);
             const twPins = (pins.pins || []).filter(p => p.platform === 'tw');
             const twGoals = (goals.goals || []).filter(g => g.platform === 'tw' || g.platform === 'all');
+
+            // Empty-state short-circuit: see SF dashboard for the pattern.
+            const twHealth = window.PlatformHealth && window.PlatformHealth.get('tw');
+            const isUnconfigured = twHealth && twHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>X/Twitter Dashboard</h2></div>
+                    ${Components.platformEmptyState('tw', isUnconfigured ? {} : { reason: 'X/Twitter is configured but no tweets have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
 
             const html = `
                 ${this._refreshIndicatorHtml()}
@@ -7363,10 +7576,17 @@ const App = {
                     const results = await Promise.allSettled(triggers);
                     const failed = results.filter(r => r.status === 'rejected');
                     btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';
+                    if (window.toast) {
+                        if (failed.length) {
+                            window.toast.warn(`Polled ${results.length - failed.length}/${results.length} platforms — ${failed.length} failed`);
+                        } else {
+                            window.toast.success(`Triggered poll on ${results.length} platforms`);
+                        }
+                    }
                     setTimeout(() => this.renderSettings(), 1500);
                 } catch (err) {
                     btn.textContent = 'Error';
-                    alert('Poll failed: ' + err.message);
+                    if (window.toast) window.toast.error(`Poll all failed: ${err.message || err}`);
                     setTimeout(() => this.renderSettings(), 2000);
                 }
             });
@@ -7375,7 +7595,7 @@ const App = {
             // Confirms with the user first since this is a long operation.
             document.getElementById('full-resync-btn').addEventListener('click', async (e) => {
                 const btn = e.target;
-                if (!confirm('Full resync will re-scrape all data for every submission across all connected platforms. This may take a while. Continue?')) return;
+                if (!confirm('Full resync re-scrapes every submission across every connected platform from scratch. This can take 10+ minutes and will hit each platform\'s rate limits hard. Use only when you suspect data is stale. Continue?')) return;
                 btn.disabled = true;
                 btn.textContent = 'Syncing all...';
                 try {
@@ -7394,10 +7614,17 @@ const App = {
                     const results = await Promise.allSettled(resyncs);
                     const failed = results.filter(r => r.status === 'rejected');
                     btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';
+                    if (window.toast) {
+                        if (failed.length) {
+                            window.toast.warn(`Resynced ${results.length - failed.length}/${results.length} platforms — ${failed.length} failed`);
+                        } else {
+                            window.toast.success(`Triggered full resync on ${results.length} platforms (allow several minutes)`);
+                        }
+                    }
                     setTimeout(() => this.renderSettings(), 1500);
                 } catch (err) {
                     btn.textContent = 'Error';
-                    alert('Resync failed: ' + err.message);
+                    if (window.toast) window.toast.error(`Resync all failed: ${err.message || err}`);
                     setTimeout(() => this.renderSettings(), 2000);
                 }
             });
@@ -7821,46 +8048,19 @@ const App = {
                 });
             }
 
-            // FA Poll Now: triggers an immediate FA data-fetch cycle
+            // FA Poll Now / Full Resync — see _pollingTabPoll/_pollingTabResync
+            // for the shared implementation (toast feedback + inline msg + confirm).
             const faPollBtn = document.getElementById('fa-poll-btn');
             if (faPollBtn) {
-                faPollBtn.addEventListener('click', async () => {
-                    const msg = document.getElementById('fa-msg');
-                    faPollBtn.disabled = true;
-                    faPollBtn.textContent = 'Polling...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.triggerFAPoll();
-                        faPollBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        faPollBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                faPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: faPollBtn, msgId: 'fa-msg', platform: 'fa', apiMethod: 'triggerFAPoll',
+                }));
             }
-
-            // FA Full Resync: re-fetches all FA submission details and comments.
-            // Confirms first since this is a long-running operation.
             const faResyncBtn = document.getElementById('fa-resync-btn');
             if (faResyncBtn) {
-                faResyncBtn.addEventListener('click', async () => {
-                    if (!confirm('FA full resync will re-fetch all submission details and comments. This may take a while. Continue?')) return;
-                    const msg = document.getElementById('fa-msg');
-                    faResyncBtn.disabled = true;
-                    faResyncBtn.textContent = 'Syncing...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.fullFAResync();
-                        faResyncBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        faResyncBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                faResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: faResyncBtn, msgId: 'fa-msg', platform: 'fa', apiMethod: 'fullFAResync',
+                }));
             }
 
             // FA Notifications toggle: enables/disables FA desktop + Telegram alerts
@@ -7957,45 +8157,18 @@ const App = {
                 });
             }
 
-            // WS: Poll Now
+            // WS: Poll Now / Full Resync — see _pollingTabPoll/_pollingTabResync
             const wsPollBtn = document.getElementById('ws-poll-btn');
             if (wsPollBtn) {
-                wsPollBtn.addEventListener('click', async () => {
-                    const msg = document.getElementById('ws-msg');
-                    wsPollBtn.disabled = true;
-                    wsPollBtn.textContent = 'Polling...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.triggerWSPoll();
-                        wsPollBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        wsPollBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                wsPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: wsPollBtn, msgId: 'ws-msg', platform: 'ws', apiMethod: 'triggerWSPoll',
+                }));
             }
-
-            // WS: Full Resync
             const wsResyncBtn = document.getElementById('ws-resync-btn');
             if (wsResyncBtn) {
-                wsResyncBtn.addEventListener('click', async () => {
-                    if (!confirm('WS full resync will re-fetch all submission details. Continue?')) return;
-                    const msg = document.getElementById('ws-msg');
-                    wsResyncBtn.disabled = true;
-                    wsResyncBtn.textContent = 'Syncing...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.fullWSResync();
-                        wsResyncBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        wsResyncBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                wsResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: wsResyncBtn, msgId: 'ws-msg', platform: 'ws', apiMethod: 'fullWSResync',
+                }));
             }
 
             // WS: Notifications toggle
@@ -8145,45 +8318,18 @@ const App = {
                 });
             }
 
-            // SF: Poll Now
+            // SF: Poll Now / Full Resync — see _pollingTabPoll/_pollingTabResync
             const sfPollBtn = document.getElementById('sf-poll-btn');
             if (sfPollBtn) {
-                sfPollBtn.addEventListener('click', async () => {
-                    const msg = document.getElementById('sf-msg');
-                    sfPollBtn.disabled = true;
-                    sfPollBtn.textContent = 'Polling...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.triggerSFPoll();
-                        sfPollBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        sfPollBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                sfPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: sfPollBtn, msgId: 'sf-msg', platform: 'sf', apiMethod: 'triggerSFPoll',
+                }));
             }
-
-            // SF: Full Resync
             const sfResyncBtn = document.getElementById('sf-resync-btn');
             if (sfResyncBtn) {
-                sfResyncBtn.addEventListener('click', async () => {
-                    if (!confirm('SF full resync will re-fetch all submission details. Continue?')) return;
-                    const msg = document.getElementById('sf-msg');
-                    sfResyncBtn.disabled = true;
-                    sfResyncBtn.textContent = 'Syncing...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.fullSFResync();
-                        sfResyncBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        sfResyncBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                sfResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: sfResyncBtn, msgId: 'sf-msg', platform: 'sf', apiMethod: 'fullSFResync',
+                }));
             }
 
             // SF: Notifications toggle
@@ -8245,45 +8391,18 @@ const App = {
                 });
             }
 
-            // SQW: Poll Now
+            // SQW: Poll Now / Full Resync — see _pollingTabPoll/_pollingTabResync
             const sqwPollBtn = document.getElementById('sqw-poll-btn');
             if (sqwPollBtn) {
-                sqwPollBtn.addEventListener('click', async () => {
-                    const msg = document.getElementById('sqw-msg');
-                    sqwPollBtn.disabled = true;
-                    sqwPollBtn.textContent = 'Polling...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.triggerSQWPoll();
-                        sqwPollBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        sqwPollBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                sqwPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: sqwPollBtn, msgId: 'sqw-msg', platform: 'sqw', apiMethod: 'triggerSQWPoll',
+                }));
             }
-
-            // SQW: Full Resync
             const sqwResyncBtn = document.getElementById('sqw-resync-btn');
             if (sqwResyncBtn) {
-                sqwResyncBtn.addEventListener('click', async () => {
-                    if (!confirm('SqW full resync will re-fetch all work details. Continue?')) return;
-                    const msg = document.getElementById('sqw-msg');
-                    sqwResyncBtn.disabled = true;
-                    sqwResyncBtn.textContent = 'Syncing...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.fullSQWResync();
-                        sqwResyncBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        sqwResyncBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                sqwResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: sqwResyncBtn, msgId: 'sqw-msg', platform: 'sqw', apiMethod: 'fullSQWResync',
+                }));
             }
 
             // SQW: Notifications toggle
@@ -8352,45 +8471,18 @@ const App = {
                 });
             }
 
-            // AO3: Poll Now
+            // AO3: Poll Now / Full Resync — see _pollingTabPoll/_pollingTabResync
             const ao3PollBtn = document.getElementById('ao3-poll-btn');
             if (ao3PollBtn) {
-                ao3PollBtn.addEventListener('click', async () => {
-                    const msg = document.getElementById('ao3-msg');
-                    ao3PollBtn.disabled = true;
-                    ao3PollBtn.textContent = 'Polling...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.triggerAO3Poll();
-                        ao3PollBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        ao3PollBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                ao3PollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: ao3PollBtn, msgId: 'ao3-msg', platform: 'ao3', apiMethod: 'triggerAO3Poll',
+                }));
             }
-
-            // AO3: Full Resync
             const ao3ResyncBtn = document.getElementById('ao3-resync-btn');
             if (ao3ResyncBtn) {
-                ao3ResyncBtn.addEventListener('click', async () => {
-                    if (!confirm('AO3 full resync will re-fetch all work details. Continue?')) return;
-                    const msg = document.getElementById('ao3-msg');
-                    ao3ResyncBtn.disabled = true;
-                    ao3ResyncBtn.textContent = 'Syncing...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.fullAO3Resync();
-                        ao3ResyncBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        ao3ResyncBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                ao3ResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: ao3ResyncBtn, msgId: 'ao3-msg', platform: 'ao3', apiMethod: 'fullAO3Resync',
+                }));
             }
 
             // AO3: Notifications toggle
@@ -8451,45 +8543,18 @@ const App = {
                 });
             }
 
-            // DA Poll Now: triggers an immediate DA data-fetch cycle
+            // DA Poll Now / Full Resync — see _pollingTabPoll/_pollingTabResync
             const daPollBtn = document.getElementById('da-poll-btn');
             if (daPollBtn) {
-                daPollBtn.addEventListener('click', async () => {
-                    const msg = document.getElementById('da-msg');
-                    daPollBtn.disabled = true;
-                    daPollBtn.textContent = 'Polling...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.triggerDAPoll();
-                        daPollBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        daPollBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                daPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: daPollBtn, msgId: 'da-msg', platform: 'da', apiMethod: 'triggerDAPoll',
+                }));
             }
-
-            // DA Full Resync: re-fetches all DA submission details.
             const daResyncBtn = document.getElementById('da-resync-btn');
             if (daResyncBtn) {
-                daResyncBtn.addEventListener('click', async () => {
-                    if (!confirm('DA full resync will re-fetch all submission details. This may take a while. Continue?')) return;
-                    const msg = document.getElementById('da-msg');
-                    daResyncBtn.disabled = true;
-                    daResyncBtn.textContent = 'Syncing...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.fullDAResync();
-                        daResyncBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        daResyncBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                daResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: daResyncBtn, msgId: 'da-msg', platform: 'da', apiMethod: 'fullDAResync',
+                }));
             }
 
             // DA: Notifications toggle
@@ -8549,45 +8614,18 @@ const App = {
                 });
             }
 
-            // WP Poll Now: triggers an immediate Wattpad data-fetch cycle
+            // WP Poll Now / Full Resync — see _pollingTabPoll/_pollingTabResync
             const wpPollBtn = document.getElementById('wp-poll-btn');
             if (wpPollBtn) {
-                wpPollBtn.addEventListener('click', async () => {
-                    const msg = document.getElementById('wp-msg');
-                    wpPollBtn.disabled = true;
-                    wpPollBtn.textContent = 'Polling...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.triggerWPPoll();
-                        wpPollBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        wpPollBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                wpPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: wpPollBtn, msgId: 'wp-msg', platform: 'wp', apiMethod: 'triggerWPPoll',
+                }));
             }
-
-            // WP Full Resync: re-fetches all WP submission details.
             const wpResyncBtn = document.getElementById('wp-resync-btn');
             if (wpResyncBtn) {
-                wpResyncBtn.addEventListener('click', async () => {
-                    if (!confirm('WP full resync will re-fetch all submission details. This may take a while. Continue?')) return;
-                    const msg = document.getElementById('wp-msg');
-                    wpResyncBtn.disabled = true;
-                    wpResyncBtn.textContent = 'Syncing...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.fullWPResync();
-                        wpResyncBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        wpResyncBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                wpResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: wpResyncBtn, msgId: 'wp-msg', platform: 'wp', apiMethod: 'fullWPResync',
+                }));
             }
 
             // WP: Notifications toggle
@@ -8647,45 +8685,18 @@ const App = {
                 });
             }
 
-            // IK Poll Now: triggers an immediate Itaku data-fetch cycle
+            // IK Poll Now / Full Resync — see _pollingTabPoll/_pollingTabResync
             const ikPollBtn = document.getElementById('ik-poll-btn');
             if (ikPollBtn) {
-                ikPollBtn.addEventListener('click', async () => {
-                    const msg = document.getElementById('ik-msg');
-                    ikPollBtn.disabled = true;
-                    ikPollBtn.textContent = 'Polling...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.triggerIKPoll();
-                        ikPollBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        ikPollBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                ikPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: ikPollBtn, msgId: 'ik-msg', platform: 'ik', apiMethod: 'triggerIKPoll',
+                }));
             }
-
-            // IK Full Resync: re-fetches all IK submission details.
             const ikResyncBtn = document.getElementById('ik-resync-btn');
             if (ikResyncBtn) {
-                ikResyncBtn.addEventListener('click', async () => {
-                    if (!confirm('IK full resync will re-fetch all submission details. This may take a while. Continue?')) return;
-                    const msg = document.getElementById('ik-msg');
-                    ikResyncBtn.disabled = true;
-                    ikResyncBtn.textContent = 'Syncing...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.fullIKResync();
-                        ikResyncBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        ikResyncBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                ikResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: ikResyncBtn, msgId: 'ik-msg', platform: 'ik', apiMethod: 'fullIKResync',
+                }));
             }
 
             // IK: Notifications toggle
@@ -8746,45 +8757,18 @@ const App = {
                 });
             }
 
-            // BSKY Poll Now
+            // BSKY Poll Now / Full Resync — see _pollingTabPoll/_pollingTabResync
             const bskyPollBtn = document.getElementById('bsky-poll-btn');
             if (bskyPollBtn) {
-                bskyPollBtn.addEventListener('click', async () => {
-                    const msg = document.getElementById('bsky-msg');
-                    bskyPollBtn.disabled = true;
-                    bskyPollBtn.textContent = 'Polling...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.triggerBSKYPoll();
-                        bskyPollBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        bskyPollBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                bskyPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: bskyPollBtn, msgId: 'bsky-msg', platform: 'bsky', apiMethod: 'triggerBSKYPoll',
+                }));
             }
-
-            // BSKY Full Resync
             const bskyResyncBtn = document.getElementById('bsky-resync-btn');
             if (bskyResyncBtn) {
-                bskyResyncBtn.addEventListener('click', async () => {
-                    if (!confirm('BSKY full resync will re-fetch all post details. This may take a while. Continue?')) return;
-                    const msg = document.getElementById('bsky-msg');
-                    bskyResyncBtn.disabled = true;
-                    bskyResyncBtn.textContent = 'Syncing...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.fullBSKYResync();
-                        bskyResyncBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        bskyResyncBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                bskyResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: bskyResyncBtn, msgId: 'bsky-msg', platform: 'bsky', apiMethod: 'fullBSKYResync',
+                }));
             }
 
             // BSKY: Notifications toggle
@@ -8846,45 +8830,18 @@ const App = {
                 });
             }
 
-            // TW Poll Now
+            // TW Poll Now / Full Resync — see _pollingTabPoll/_pollingTabResync
             const twPollBtn = document.getElementById('tw-poll-btn');
             if (twPollBtn) {
-                twPollBtn.addEventListener('click', async () => {
-                    const msg = document.getElementById('tw-msg');
-                    twPollBtn.disabled = true;
-                    twPollBtn.textContent = 'Polling...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.triggerTWPoll();
-                        twPollBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        twPollBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                twPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: twPollBtn, msgId: 'tw-msg', platform: 'tw', apiMethod: 'triggerTWPoll',
+                }));
             }
-
-            // TW Full Resync
             const twResyncBtn = document.getElementById('tw-resync-btn');
             if (twResyncBtn) {
-                twResyncBtn.addEventListener('click', async () => {
-                    if (!confirm('TW full resync will re-fetch all tweet details. This may take a while. Continue?')) return;
-                    const msg = document.getElementById('tw-msg');
-                    twResyncBtn.disabled = true;
-                    twResyncBtn.textContent = 'Syncing...';
-                    if (msg) msg.textContent = '';
-                    try {
-                        await API.fullTWResync();
-                        twResyncBtn.textContent = 'Done!';
-                        setTimeout(() => this.renderSettings(), 1500);
-                    } catch (err) {
-                        twResyncBtn.textContent = 'Error';
-                        if (msg) { msg.textContent = err.message; msg.style.color = 'var(--danger)'; }
-                        setTimeout(() => this.renderSettings(), 2000);
-                    }
-                });
+                twResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: twResyncBtn, msgId: 'tw-msg', platform: 'tw', apiMethod: 'fullTWResync',
+                }));
             }
 
             // TW: Notifications toggle

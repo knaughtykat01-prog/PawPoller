@@ -96,6 +96,21 @@
     --platform-ik:   #009688;
     --platform-bsky: #0085ff;
     --platform-tw:   #1d9bf0;
+
+    /* ── Legacy token aliases ────────────────────────────── */
+    /* Older CSS (editor.css, diagnostics.css, components.css) was
+       written against names that were never defined in the token
+       set, so var() lookups silently fell through to browser
+       defaults — the visible symptom was unreadable <option> rows
+       in the editor's CSS-tab dropdowns and faint-grey card edges
+       on Diagnostics. Aliases re-resolve per active theme because
+       the right-hand side is itself a var() call. */
+    --surface-elevated: var(--bg-card);
+    --surface-primary:  var(--bg-secondary);
+    --border-primary:   var(--border);
+    --color-success:    var(--success);
+    --color-warning:    var(--warning);
+    --color-error:      var(--danger);
 }
 
 /* ── Light ───────────────────────────────────────────────── */

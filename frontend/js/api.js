@@ -100,6 +100,12 @@ const API = {
     // ticker. Returns { ib: {...}, fa: {...}, ws: {...}, ... } in one
     // request instead of fanning out to 11 per-platform endpoints.
     getAllPollProgress() { return this.get('/api/poll/all-progress'); },
+    // Per-platform health snapshot (single fetch for sidebar dots,
+    // header subtitles, and throttle banners).
+    getPlatformsHealth() { return this.get('/api/platforms/health'); },
+    // Unified system-event feed (poll_log + posting_log merged) for
+    // the Overview's "Recent System Events" panel.
+    getRecentActivity(limit = 30) { return this.get('/api/activity/recent', { limit }); },
     getCredentials() { return this.get('/api/settings/credentials'); },
     saveCredentials(data) { return this.post('/api/settings/credentials', data); },
     getPreferences() { return this.get('/api/settings/preferences'); },

@@ -4510,4 +4510,321 @@ With `C:\Users\rhysc\claude\PawPoller\deploy` on the user PATH, typing
 - Auto-launch on SSH login — one-line `.bashrc` follow-up if wanted.
 - API key / TOTP setup — stays in the web UI for the security flow.
 - Real-time `app.log` tailing — would need a streaming log endpoint
-  the dashboard doesn't expose yet.
+  the dashboard doesn't expose yet. *(Done in 2.23.0 — see section 18.)*
+
+---
+
+## 18. Dashboard UX Layer (2.23.0+)
+
+The 2.23.0 release added a dedicated UX surface on top of the existing
+SPA. Nothing in `polling/`, `database/`, or `*_client/` changed —
+this is a frontend + thin-API addition that makes existing state
+visible. If you're chasing a "why didn't anything happen when I
+clicked?" bug, this section is where it lives.
+
+### 18.1 Architecture
+
+```
++-----------------------------------------------------------+
+|                      Browser SPA                          |
+|                                                           |
+|  app.js (page renderers)                                  |
+|     |                                                     |
+|     +-- toast() ------------ loading_indicator.js         |
+|     +-- [data-tooltip] ----- loading_indicator.js (delegated)
+|     +-- PlatformHealth ----- platform_health.js          |
+|     +-- CommandPalette ----- command_palette.js (Cmd+K)  |
+|     +-- LogsPanel ---------- logs_panel.js (bottom-left) |
+|     +-- Components.* ------- components.js                |
+|                                                           |
++--------------------|--------------------------------------+
+                     |
+                     v
++-----------------------------------------------------------+
+|                      FastAPI                              |
+|                                                           |
+|  routes/api.py                                            |
+|    GET /api/platforms/health                              |
+|    GET /api/activity/recent?limit=N                       |
+|    GET /api/logs/stream                  (SSE)            |
+|                                                           |
+|  routes/posting_api.py                                    |
+|    GET /api/posting/preview-file                          |
+|                                                           |
+|  routes/editor_api.py                                     |
+|    /editor/slop  (now includes "available" flag)          |
++-----------------------------------------------------------+
+```
+
+The UX modules subscribe to existing data — none of them mutate
+polling state. They reuse `API.*` helpers from `js/api.js`.
+
+### 18.2 Backend endpoints
+
+#### `GET /api/platforms/health` (`routes/api.py`)
+
+Returns a single snapshot of every platform's recent poll log:
+
+```json
+{
+  "ts": 1715722800,
+  "platforms": {
+    "ib": {
+      "last_poll_ts": 1715722500,
+      "last_status": "ok",
+      "last_error": null,
+      "next_poll_ts": 1715722800,
+      "throttled_until_ts": null
+    },
+    "ao3": {
+      "last_poll_ts": 1715720100,
+      "last_status": "throttled",
+      "last_error": "AO3 backoff active",
+      "next_poll_ts": 1715723700,
+      "throttled_until_ts": 1715723700
+    }
+  }
+}
+```
+
+- Driven by `_PLATFORM_HEALTH_CONFIG` — one entry per platform with
+  `(queries_module, table_name, throttle_attr)`.
+- Uses each platform's own `*_queries.get_recent_poll_summary()` if
+  available; falls back to a generic `SELECT … FROM <platform>_poll_log
+  ORDER BY started_at DESC LIMIT 1`.
+- AO3 picks up `_ao3_backoff_until_ts` from the global state cache so
+  the dashboard can show "throttled until …" without a separate poll.
+- Polled by `platform_health.js` every 60s; cheap because every query
+  is `LIMIT 1` against a covering index.
+
+#### `GET /api/activity/recent?limit=N` (`routes/api.py`)
+
+Unified feed of the last N events across polls and posts:
+
+```json
+{
+  "events": [
+    {
+      "ts": 1715722500,
+      "kind": "poll",
+      "platform": "sf",
+      "level": "ok",
+      "summary": "SoFurry: 3 new submissions (12 watchers)"
+    },
+    {
+      "ts": 1715722200,
+      "kind": "post",
+      "platform": "ib",
+      "level": "error",
+      "summary": "Inkbunny: post failed — ratelimit"
+    }
+  ]
+}
+```
+
+- `_format_poll_summary` and `_format_post_summary` keep the wording
+  consistent so the renderer doesn't need per-platform templates.
+- `level` is `ok` / `warn` / `error` for the sidebar dot mapping.
+- Used by overview's "Recent activity" feed (`Components.systemEventsFeed`).
+
+#### `GET /api/logs/stream` (SSE)
+
+Streaming log tail. `app.log`, `server.log`, and per-platform polling
+logs each have their own SSE source:
+
+```
+data: {"file":"app","ts":1715722500,"level":"INFO","line":"…"}
+data: {"file":"app","ts":1715722501,"level":"WARN","line":"…"}
+```
+
+- Tracks **byte offset** (not line count) per file. Detects log rotation
+  when `os.stat(path).st_size` shrinks below the cursor — resets to 0
+  and re-emits.
+- Honours `?file=app|server|polling` query param (defaults to `app`).
+- Sends `: keepalive\n\n` every 15s so reverse proxies don't kill it.
+- Closes cleanly on client disconnect (`asyncio.CancelledError`).
+
+#### `GET /api/posting/preview-file` (`routes/posting_api.py`)
+
+Compares a story's local file with what was last sent for posting:
+
+```json
+{
+  "story_uid": "velvet_and_vice",
+  "platform": "ib",
+  "file_exists": true,
+  "head": "[b]Velvet and Vice[/b]\n\n…",   // first 4096 chars
+  "local_hash": "sha256:abcd…",
+  "posted_hash": "sha256:wxyz…",
+  "drift": true
+}
+```
+
+Used by `publish_check.js` "Preview file" button in the cell drawer
+to surface drift before a republish.
+
+### 18.3 Frontend modules
+
+All three new modules are auto-registered globals; you don't need to
+`import` them — including the `<script>` tag is enough.
+
+#### `frontend/js/platform_health.js`
+
+```js
+window.PlatformHealth = {
+  start(),         // Begins polling /api/platforms/health every 60s
+  stop(),          // Stops polling and tears down observers
+  fetchOnce(),     // Manual refresh; resolves to the snapshot
+  get(code),       // Returns cached state for one platform
+  getAll(),        // Returns the full map
+  classify(state), // -> "ok" | "warn" | "error" | "throttled" | "unknown"
+  relativePast(ts),    // "3 min ago"
+  relativeFuture(ts),  // "in 2 min"
+  subscribe(fn),   // Call fn(snapshot) on every refresh
+  LABELS,          // { ib: "Inkbunny", … }
+}
+```
+
+- `start()` is called once after the auth check in `app.js`.
+- A `MutationObserver` on `#app` re-applies sidebar dots, page subtitle,
+  and throttle banners after every SPA route change. Throttled with
+  `requestAnimationFrame` so route changes don't trigger render floods.
+- Tick interval is 30s for relative-time refresh; full fetch is 60s.
+  These are independent so the UI feels live without doubling network
+  traffic.
+
+#### `frontend/js/command_palette.js`
+
+```js
+// Cmd+K (mac) or Ctrl+K (everything else) opens it.
+// Esc, click-outside, or Enter closes it.
+```
+
+- 22 platform pages (Polling/Stories/Posting per platform) + 9
+  top-level sections + 3 actions ("Pause polling", "Resume polling",
+  "Open logs panel") are registered at module load.
+- Fuzzy ranking: prefix match > substring > subsequence. Ties broken
+  by command type (page > action) then alpha.
+- Up/Down arrows navigate; Enter executes; selection wraps at edges.
+- Renders into a `<div class="cmdk-overlay">` portal at body root;
+  doesn't depend on the page being mounted.
+
+#### `frontend/js/logs_panel.js`
+
+The bottom-left toggle pill + 520x360 floating panel.
+
+```js
+// Persisted to localStorage as `pp_logs_panel_state`:
+{
+  visible: false,
+  file: "app",       // app | server | polling
+  level: "INFO",     // INFO | WARN | ERROR
+  paused: false,
+  height: 360,
+}
+```
+
+- SSE `EventSource` to `/api/logs/stream?file=…` opens **only** when
+  the panel is visible AND the tab is focused. Closes on tab blur or
+  panel hide. Avoids the "logs piled up while I was on Slack" memory
+  bloat.
+- Sticky-bottom auto-scroll: if the user scrolls up, new lines append
+  silently; scroll back to bottom resumes auto-scroll.
+- 1500-line memory cap; oldest lines drop off when the cap is hit.
+- Pause button freezes the view but keeps the SSE connection open so
+  history doesn't gap.
+- File picker re-opens the SSE stream on change.
+
+#### `frontend/js/loading_indicator.js` (extension)
+
+The `[data-tooltip]` event delegation system was added here to keep
+all hover/popup behaviour in one module:
+
+```html
+<button data-tooltip="Re-fetch all watchlists">Poll all</button>
+```
+
+- 1.2s show delay (no jitter on quick pointer movement).
+- Clamps to viewport edges so tooltips on right-most buttons don't
+  clip.
+- Hides on scroll, Esc, or `mousedown` anywhere.
+- Single delegated `mouseover`/`mouseout` listener at `document.body`,
+  so dynamically rendered SPA content gets tooltips for free.
+
+### 18.4 Components
+
+`frontend/js/components.js` gained two helpers that the page renderers
+in `app.js` use directly:
+
+```js
+Components.platformEmptyState("sf", {
+  hasStories: false,        // Affects copy and CTA
+  primaryAction: {label: "Add story", onclick: "App.addStory('sf')"},
+})
+// -> Renders the "No SoFurry stories yet" card with a CTA button.
+
+Components.systemEventsFeed(events)
+// -> <ul class="sys-evt-list"> with one <li class="sys-evt-row sys-evt-{level}">
+//    per event, time-relative timestamp, platform tag, summary.
+```
+
+Both helpers degrade gracefully — `systemEventsFeed([])` renders
+"No recent activity yet." instead of an empty `<ul>`.
+
+### 18.5 Drift preview UI (`publish_check.js`)
+
+The Publish Check cell drawer gained a **Preview file** button that:
+
+1. Calls `GET /api/posting/preview-file?story_uid=…&platform=…`
+2. Renders the first 4096 chars in a monospace panel
+3. Shows the local-vs-posted hash comparison
+4. Highlights "drift" when local hash != last posted hash
+
+Implemented in `_toggleDriftPreview` and `_renderDriftPreview` —
+the panel is collapsible so the cell drawer stays compact when not
+needed.
+
+### 18.6 Token aliases (CSS hygiene)
+
+`frontend/css/tokens.css` gained a "legacy alias" block at `:root`:
+
+```css
+--surface-elevated: var(--bg-card);
+--border-primary: var(--border);
+--color-success: var(--success);
+--color-warning: var(--warn);
+--color-error: var(--error);
+--color-text: var(--text);
+--color-text-muted: var(--muted);
+```
+
+These existed in the SCSS-style names that several components were
+already calling but were **never defined** — falling silently through
+to browser defaults (white-on-white dropdowns being the most visible
+symptom). Aliasing them keeps the call sites unchanged while the
+canonical tokens stay in `--bg-card` etc.
+
+### 18.7 Slop scorer bundling
+
+`scripts_utils/slop_words.json` (1,648 entries) and
+`scripts_utils/slop_trigrams.json` (430 entries) are now bundled
+**inside** the PawPoller tree. Previously the editor's slop scorer
+read them from `m_x/Scripts_Utils/` — fine on the dev machine, but
+non-existent on the GCP VM, where `/editor/slop` silently returned
+0.0 for every story.
+
+`editor/slop.py` now exposes `is_available()`; `routes/editor_api.py`
+adds an `available: bool` field to the response so the editor can
+render "Slop: -" instead of a misleading 0.0 if the data ever goes
+missing again.
+
+### 18.8 Out of scope
+
+- Persistent log retention beyond what `app.log` already does — the
+  panel is a live tail, not a search UI.
+- Per-user dashboard layouts — the empty states, command palette, and
+  logs panel are fixed-position. Re-themable via tokens, but not
+  draggable.
+- Throttle banners for non-AO3 platforms — only AO3 and Bsky surface
+  enough throttle metadata to be worth showing. Other platforms fall
+  through to the generic error banner.

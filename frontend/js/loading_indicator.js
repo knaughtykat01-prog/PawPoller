@@ -166,4 +166,96 @@
         }
     };
 
+    // ─────────────────────────────────────────────────────────────
+    // Generic [data-tooltip] hover tooltip.
+    //
+    // Any element with a non-empty data-tooltip attribute gets a
+    // styled hover tooltip after a 1.2s delay (matches the anchor
+    // toolbar from 2.13.7/8). One shared DOM node + event
+    // delegation on document — works for elements added later in
+    // the SPA lifecycle without any explicit init call. Used by
+    // sidebar health dots, platform-page "last polled" subtitles,
+    // and anywhere else inline help is wanted.
+    //
+    // Hidden on mouseleave / mousedown / scroll / Escape so it
+    // never traps a user mid-action.
+    // ─────────────────────────────────────────────────────────────
+
+    const TOOLTIP_DELAY_MS = 1200;
+    let tooltipEl = null;
+    let tooltipTimer = null;
+    let activeTarget = null;
+
+    function ensureTooltipEl() {
+        if (tooltipEl) return tooltipEl;
+        tooltipEl = document.createElement('div');
+        tooltipEl.className = 'pp-tooltip';
+        tooltipEl.setAttribute('role', 'tooltip');
+        document.body.appendChild(tooltipEl);
+        return tooltipEl;
+    }
+
+    function showTooltip(target) {
+        const text = target.getAttribute('data-tooltip');
+        if (!text) return;
+        const tip = ensureTooltipEl();
+        tip.textContent = text;
+        tip.classList.add('is-visible');
+        const rect = target.getBoundingClientRect();
+        const tipW = tip.offsetWidth;
+        const tipH = tip.offsetHeight;
+        // Default below; flip above if it would overflow the viewport.
+        let left = Math.max(8, Math.min(rect.left, window.innerWidth - tipW - 8));
+        let top = rect.bottom + 6;
+        if (top + tipH > window.innerHeight - 8) {
+            top = Math.max(8, rect.top - tipH - 6);
+        }
+        tip.style.left = `${left}px`;
+        tip.style.top = `${top}px`;
+    }
+
+    function hideTooltip() {
+        clearTimeout(tooltipTimer);
+        tooltipTimer = null;
+        activeTarget = null;
+        if (tooltipEl) tooltipEl.classList.remove('is-visible');
+    }
+
+    function findTooltipTarget(node) {
+        // Walk up from the actual hovered child to find the nearest
+        // ancestor that owns the data-tooltip attribute. Handles e.g.
+        // a tooltip on a button whose hover lands on the inner span.
+        for (let n = node; n && n !== document; n = n.parentNode) {
+            if (n.nodeType === 1 && n.hasAttribute && n.hasAttribute('data-tooltip')) {
+                return n;
+            }
+        }
+        return null;
+    }
+
+    document.addEventListener('mouseover', (e) => {
+        const target = findTooltipTarget(e.target);
+        if (!target || target === activeTarget) return;
+        activeTarget = target;
+        clearTimeout(tooltipTimer);
+        tooltipTimer = setTimeout(() => showTooltip(target), TOOLTIP_DELAY_MS);
+    }, true);
+
+    document.addEventListener('mouseout', (e) => {
+        const target = findTooltipTarget(e.target);
+        if (!target) return;
+        // Only hide if leaving the owning element entirely (not
+        // moving between its children).
+        if (e.relatedTarget && target.contains(e.relatedTarget)) return;
+        hideTooltip();
+    }, true);
+
+    // Belt-and-braces: any click, scroll, or escape kills the tooltip
+    // so it doesn't sit stale on top of an action-in-progress UI.
+    document.addEventListener('mousedown', hideTooltip, true);
+    document.addEventListener('scroll', hideTooltip, true);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') hideTooltip();
+    });
+
 })();
