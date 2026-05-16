@@ -9,7 +9,7 @@ Posting flow (single-bulk-file convention, mirrors the IB convention):
   1. Read StoryInfo from the archive (story.json)
   2. Trim freeform tags to fit OTW's 75-tag total limit
      (fandom + relationship + character + freeform <= 75)
-  3. Read full-story body-only HTML (HTML/<story>_Clean.html)
+  3. Read full-story body-only HTML (HTML/<story>_SoFurry.html)
   4. create_work via preview_button — work lands in /works/{id}/preview
      (AO3's draft equivalent), NOT published
   5. SAFETY: verify the new work is in /users/{user}/works/drafts.
@@ -31,7 +31,7 @@ Rating mapping:
 Notes for the AO3-vs-SQW differences:
   - AO3 client does NOT yet support multi-chapter create_chapter or Work
     Skins. For chaptered prose we use the IB-style single bulk file
-    (HTML/<story>_Clean.html) which contains all chapters as <p> elements
+    (HTML/<story>_SoFurry.html) which contains all chapters as <p> elements
     in one big body.
   - AO3 has no "preview" → "publish" automated flow here. Work stays in
     preview/draft until you manually click Post on AO3.
@@ -388,7 +388,7 @@ class AO3Poster(PlatformPoster):
         # 2. Legacy fallback: bulk Clean HTML for pre-SqW archives.
         html_dir = story.path / "HTML"
         if html_dir.is_dir():
-            for f in sorted(html_dir.glob("*_Clean.html")):
+            for f in sorted(html_dir.glob("*_SoFurry.html")):
                 try:
                     return f.read_text(encoding="utf-8")
                 except Exception:
@@ -571,7 +571,7 @@ class AO3Poster(PlatformPoster):
                 if not content:
                     return PostResult(
                         success=False,
-                        error=f"No AO3 content for {story.name} (no HTML/<story>_Clean.html and no fallback)",
+                        error=f"No AO3 content for {story.name} (no HTML/<story>_SoFurry.html and no fallback)",
                         duration_seconds=self._elapsed(_t),
                     )
 

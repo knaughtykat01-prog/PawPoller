@@ -342,7 +342,7 @@ def render_front_matter_sofurry(fm: FrontMatter) -> list[str]:
     parts: list[str] = []
     tc = lambda inner: f'<p class="text-center">{inner}</p>'
 
-    parts.append(f'<h2 class="text-center">{_escape_html(fm.title)}</h2>')
+    parts.append(f'<p class="text-center"><strong>{_escape_html(fm.title)}</strong></p>')
     if fm.subtitle:
         parts.append(tc(f"<em>{_escape_html(fm.subtitle)}</em>"))
     if fm.byline:
@@ -785,7 +785,7 @@ def _convert_body_sofurry(lines: list[str], start: int = 0) -> tuple[list[str], 
             flush()
             pending_semantic = None
             heading = _escape_html(stripped[2:].strip())
-            body_parts.append(f'<h3 class="text-center">{heading}</h3>')
+            body_parts.append(f'<p class="text-center"><strong>{heading}</strong></p>')
             stats["chapters"].append(heading)
             i += 1
             continue
@@ -1008,9 +1008,9 @@ def convert_to_sofurry_html(markdown_text: str) -> ConversionResult:
         if stripped.startswith("# "):
             flush(); in_warning_block = False; heading = _escape_html(stripped[2:].strip())
             if not title_seen:
-                body_parts.append(f'<h2 class="text-center">{heading}</h2>'); title_seen = True; stats["title"] = heading
+                body_parts.append(f'<p class="text-center"><strong>{heading}</strong></p>'); title_seen = True; stats["title"] = heading
             else:
-                body_parts.append(f'<h3 class="text-center">{heading}</h3>'); stats["chapters"].append(heading); subtitle_done = True
+                body_parts.append(f'<p class="text-center"><strong>{heading}</strong></p>'); stats["chapters"].append(heading); subtitle_done = True
             i += 1; continue
         if title_seen and not subtitle_done:
             if stripped == "": flush(); i += 1; continue

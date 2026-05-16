@@ -4,6 +4,125 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.23.1] - 2026-05-16
+
+### Fix: SoFurry centring + collapse `_Clean.html` / `_SoFurry.html` to one file
+
+User reported `Chosen` on SoFurry was rendering left-aligned for
+everything that should have been centred (title, chapter headings,
+content warning block, disclaimer). The editor preview rendered it
+correctly, which masked the bug. Two distinct problems were stacked
+on top of each other:
+
+**Root cause 1 — converter output**: the SoFurry HTML converter
+emitted chapter titles as `<h3 class="text-center">…</h3>` and
+story titles as `<h2 class="text-center">…</h2>`. SoFurry's site CSS
+honours `.text-center` on `<p>` elements but not on user-uploaded
+heading tags, so the class was silently dropped on render. The
+editor preview defines its own `.text-center` rule in
+`editor.css:398` covering `<h2>`/`<h3>`, so the preview looked
+right — there was no way to spot the divergence from inside the
+editor.
+
+**Root cause 2 — stale dual-file scheme**: `posting/story_reader.py`
+preferred `HTML/*_SoFurry.html` over `HTML/*_Clean.html` for SF
+posting (and used `_Clean.html` as the AO3 single-bulk-file source).
+But `regenerate_story.py` only ever rebuilt `_Clean.html` — it had
+never written `_SoFurry.html`. So the per-story `_SoFurry.html`
+files on disk were months-stale snapshots, and SF posting was
+uploading those instead of the freshly-regenerated `_Clean.html`
+right next to them. The "fix the converter" change above had no
+visible effect for the same reason.
+
+User asked why both files existed at all. They didn't, meaningfully —
+both were produced by the same SoFurry-format pipeline and the only
+difference was a `_Clean.html` write step in the editor's regen
+endpoint that nobody had collapsed. Going to one canonical file.
+
+#### Converter (`editor/converter.py`)
+
+Four sites in the SoFurry HTML output now emit
+`<p class="text-center"><strong>…</strong></p>` instead of
+`<h2 class="text-center">…</h2>` / `<h3 class="text-center">…</h3>`:
+
+- `render_front_matter_sofurry` — story title (h2 → p+strong)
+- `_convert_body_sofurry` — chapter heading (h3 → p+strong)
+- `convert_to_sofurry_html` heuristic fallback — both title and chapter sites
+
+The clean_html converter path (`render_front_matter_clean_html`,
+`_convert_body_clean_html`) is unchanged — it's still used internally
+by the SquidgeWorld chapter splitter (`convert_to_sqw_chapters`),
+just no longer written to a `_Clean.html` file on disk.
+
+#### Regenerator (`m_x/Scripts_Utils/regenerate_story.py`)
+
+Renamed `clean_html_path` variable to `sofurry_html_path`.
+Output filename changed from `{story_name}_Clean.html` to
+`{story_name}_SoFurry.html`. Comments and print labels updated
+("Clean HTML" → "SoFurry HTML"). The converter call is unchanged —
+it was already invoking the SoFurry converter, just writing the
+output to the wrong filename.
+
+#### PawPoller (`posting/story_reader.py`, `posting/platforms/ao3.py`, `routes/editor_api.py`)
+
+- `PLATFORM_FORMAT_MAP["sf"]` — removed the `_Clean.html` fallback
+  line, now reads `_SoFurry.html` then per-chapter SoFurry HTML.
+- `PLATFORM_FORMAT_MAP["ao3"]` — replaced `_Clean.html` with
+  `_SoFurry.html` as the bulk-file fallback after SquidgeWorld
+  concatenation. Same content, consistent naming.
+- `_FORMAT_KEY_PATTERNS["html"]` and `["sofurry_html"]` — both now
+  point at `_SoFurry.html` (the generic `"html"` format alias used
+  by the editor's Available Formats badge list).
+- `ao3.py` — module docstring + `_read_full_story_html` glob
+  pattern updated from `*_Clean.html` to `*_SoFurry.html`.
+- `editor_api.py` — `regenerate_all_formats` no longer writes
+  `_Clean.html`. The `save_format_file` endpoint dropped its
+  `clean_html` route (only `sofurry_html`, `bbcode`, `styled_html`
+  remain).
+
+#### Tests + docs
+
+- `tests/bulk_ao3_drafts.py`, `tests/bulk_sf_drafts.py`,
+  `tests/edit_sf_after_converter_rewrite.py`,
+  `tests/sync_sf_drafts_to_server.py` — all renamed `_Clean.html`
+  → `_SoFurry.html` for the new file location.
+
+#### Story archive
+
+Bulk-regenerated all 16 active story HTML files via
+`regenerate_story.py` — every story under `Complete_Stories/*/HTML/`
+now has a fresh `_SoFurry.html` with the corrected centring markup.
+Deleted the 17 stale `_Clean.html` files from active HTML
+directories. Backups (`Backups/`, `Chapters_backup_*/`,
+`Old_Format_Files/`) preserved untouched.
+
+#### Known follow-ups
+
+- `Chosen` (and any other story previously posted to SoFurry from the
+  stale `_Clean.html` path) needs a manual re-upload from PawPoller
+  to push the corrected centring to the live SF page. The Velvet and
+  Vice live version was already correct because its `_SoFurry.html`
+  must have been written through the editor's regen endpoint at some
+  point.
+- The editor's "Clean HTML" preview tab in `frontend/js/editor.js`
+  still exists for visual comparison — it just renders inline via
+  `/editor/preview`, no file artefact. Not removing it because side-
+  by-side preview is the easiest way to spot future drift.
+
+#### Files touched
+
+- `PawPoller/config.py` — APP_VERSION bump 2.23.0 → 2.23.1
+- `PawPoller/editor/converter.py`
+- `PawPoller/posting/story_reader.py`
+- `PawPoller/posting/platforms/ao3.py`
+- `PawPoller/routes/editor_api.py`
+- `PawPoller/tests/{bulk_ao3_drafts,bulk_sf_drafts,edit_sf_after_converter_rewrite,sync_sf_drafts_to_server}.py`
+- `m_x/Scripts_Utils/regenerate_story.py`
+- `m_x/Archives/Complete_Stories/*/HTML/*_SoFurry.html` — all
+  regenerated, 17 stale `_Clean.html` files deleted
+
+---
+
 ## [2.23.0] - 2026-05-15
 
 ### Feature: dashboard UX batch — silence-killers, status surfacing, and a real navigation layer

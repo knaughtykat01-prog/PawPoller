@@ -40,9 +40,8 @@ PLATFORM_FORMAT_MAP: dict[str, list[tuple[str, str, str]]] = {
         ("Markdown", "MASTER.md", "markdown"),
     ],
     "sf": [
-        ("HTML", "*_SoFurry.html", "html"),       # SF-specific HTML (h2/h3/text-center)
+        ("HTML", "*_SoFurry.html", "html"),       # canonical SF body HTML (p.text-center + strong)
         ("Chapters/SoFurry_HTML", "*.html", "html"),
-        ("HTML", "*_Clean.html", "html"),          # fallback: generic body HTML
     ],
     "sqw": [
         ("SquidgeWorld", "*.html", "html"),
@@ -51,10 +50,10 @@ PLATFORM_FORMAT_MAP: dict[str, list[tuple[str, str, str]]] = {
     "ao3": [
         # AO3 is an OTW Archive site like SquidgeWorld — same chapter
         # markers, warning-glyph, semantic anchors. SqW per-chapter HTML
-        # is the right shape. Clean HTML is the legacy fallback for
-        # archives that pre-date SqW output.
+        # is the right shape. SoFurry HTML is the fallback for archives
+        # that pre-date SqW output.
         ("SquidgeWorld", "*.html", "html"),
-        ("HTML", "*_Clean.html", "html"),
+        ("HTML", "*_SoFurry.html", "html"),
         ("Chapters/SoFurry_HTML", "*.html", "html"),
     ],
     "da": [
@@ -288,8 +287,8 @@ def detect_cover_relative(story_path: Path) -> str:
 _FORMAT_KEY_PATTERNS: dict[str, list[tuple[str, str]]] = {
     "bbcode": [("BBCode", "*_bbcode.txt")],
     "chapter_bbcode": [("Chapters/BBCode", "*.txt")],
-    "html": [("HTML", "*_Clean.html"), ("HTML", "*.html")],
-    "sofurry_html": [("HTML", "*_sofurry.html"), ("Chapters/SoFurry_HTML", "*.html")],
+    "html": [("HTML", "*_SoFurry.html"), ("HTML", "*.html")],
+    "sofurry_html": [("HTML", "*_SoFurry.html"), ("Chapters/SoFurry_HTML", "*.html")],
     "squidgeworld": [("SquidgeWorld", "*.html")],
     "markdown": [("Markdown", "MASTER.md"), ("Markdown", "*.md")],
     "pdf": [("PDF", "*.pdf"), ("Chapters/PDF", "*.pdf")],

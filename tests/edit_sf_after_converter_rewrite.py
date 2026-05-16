@@ -43,7 +43,7 @@ def find_clean_html(folder: str) -> Path | None:
     html_dir = ARCHIVE / folder / "HTML"
     if not html_dir.is_dir():
         return None
-    for f in html_dir.glob("*_Clean.html"):
+    for f in html_dir.glob("*_SoFurry.html"):
         return f
     for f in html_dir.glob("*_sofurry.html"):
         return f

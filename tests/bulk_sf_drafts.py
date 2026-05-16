@@ -60,7 +60,7 @@ async def register_existing(client, conn) -> None:
             description_used=story.description,
             tags_used=story.tags_by_platform.get("sofurry", story.tags_by_platform.get("default", [])),
             rating_used="adult",
-            format_file=str(story.path / "HTML" / f"{story_name}_Clean.html"),
+            format_file=str(story.path / "HTML" / f"{story_name}_SoFurry.html"),
             word_count=story.total_words,
             status="draft",
         )

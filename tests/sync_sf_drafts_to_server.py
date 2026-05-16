@@ -28,7 +28,7 @@ for story_name, sub_id, word_count in SF_DRAFTS:
         description_used="",
         tags_used=[],
         rating_used="adult",
-        format_file=f"HTML/{story_name}_Clean.html",
+        format_file=f"HTML/{story_name}_SoFurry.html",
         word_count=word_count,
         status="draft",
     )

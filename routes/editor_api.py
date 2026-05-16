@@ -661,15 +661,6 @@ async def regenerate(story_name: str, req: RegenerateRequest):
     html_dir.mkdir(exist_ok=True)
     bb_dir.mkdir(exist_ok=True)
 
-    # --- Full-story Clean HTML ---
-    if should_gen("html"):
-        try:
-            html_result = convert(content, "clean_html")
-            (html_dir / f"{stem}_Clean.html").write_text(html_result.output, encoding="utf-8")
-            results.append(f"HTML/{stem}_Clean.html ({len(html_result.output):,} bytes)")
-        except Exception as e:
-            errors.append(f"Clean HTML: {e}")
-
     # --- Full-story SoFurry HTML ---
     if should_gen("html"):
         try:
@@ -2804,7 +2795,6 @@ async def save_format_file(story_name: str, req: SaveFormatRequest):
     stem = story_dir.name
 
     format_paths = {
-        "clean_html": story_dir / "HTML" / f"{stem}_Clean.html",
         "sofurry_html": story_dir / "HTML" / f"{stem}_SoFurry.html",
         "bbcode": story_dir / "BBCode" / f"{stem}_bbcode.txt",
         "styled_html": story_dir / "HTML" / f"{stem}_Styled.html",
