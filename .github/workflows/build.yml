@@ -32,17 +32,53 @@ jobs:
           cd dist
           Compress-Archive -Path PawPoller -DestinationPath PawPoller-windows-x64.zip
 
-      - name: Upload artifact
+      # Read APP_VERSION from config.py so the installer filename + the
+      # Add/Remove Programs entry both carry the real version without
+      # duplicating it in two places.
+      - name: Read app version
+        id: version
+        shell: powershell
+        run: |
+          $line = Select-String -Path config.py -Pattern '^APP_VERSION\s*=\s*"([^"]+)"' | Select-Object -First 1
+          if (-not $line) { throw 'APP_VERSION not found in config.py' }
+          $version = $line.Matches[0].Groups[1].Value
+          Write-Host "Detected version: $version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      # Inno Setup ships pre-installed on github's windows-latest runner
+      # (under "C:\Program Files (x86)\Inno Setup 6\" — verified
+      # 2026-05-20). Falls back to choco install if a future runner
+      # image drops it.
+      - name: Build installer
+        shell: powershell
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+            $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          }
+          & "$iscc" /DMyAppVersion="${{ steps.version.outputs.version }}" installer\PawPoller.iss
+          if ($LASTEXITCODE -ne 0) { throw "iscc exited $LASTEXITCODE" }
+
+      - name: Upload zip artifact
         uses: actions/upload-artifact@v4
         with:
           name: PawPoller-windows-x64
           path: dist/PawPoller-windows-x64.zip
 
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PawPoller-Setup
+          path: installer/Output/PawPoller-Setup-*.exe
+
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/PawPoller-windows-x64.zip
+          files: |
+            dist/PawPoller-windows-x64.zip
+            installer/Output/PawPoller-Setup-*.exe
           generate_release_notes: true
 
   test:

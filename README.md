@@ -44,10 +44,18 @@ Full walkthrough: [**docs/SETUP.md**](docs/SETUP.md) — covers desktop, Docker 
 
 ### Option A: Download the release (Windows)
 
-1. Download the latest `PawPoller-windows-x64.zip` from [Releases](../../releases)
-2. Extract and run `PawPoller.exe`
-3. The setup wizard guides you through connecting your platforms
-4. Add stories and start publishing
+Two formats on every release — pick one:
+
+- **`PawPoller-Setup-{version}.exe`** (recommended): single-file installer.
+  Per-user install by default (no UAC prompt); optional Start Menu /
+  desktop shortcuts; optional "Run on Windows startup". Comes with a
+  proper uninstaller in **Add or Remove Programs** that offers to keep
+  your data folder so reinstalls don't wipe your SQLite DB / settings.
+- **`PawPoller-windows-x64.zip`**: portable build. Extract and run
+  `PawPoller.exe` from anywhere. No installer artefacts on your system.
+
+After the first launch, the in-app setup wizard guides you through
+connecting your platforms.
 
 ### Option B: Run from source
 

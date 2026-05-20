@@ -4,6 +4,80 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.24.0] - 2026-05-20
+
+### Feature: Windows install wizard
+
+Replaces the "download zip, extract, run exe" first-run experience with
+a proper single-file installer. The portable zip stays — both are
+attached to every tagged release.
+
+#### `installer/PawPoller.iss` (Inno Setup script, ~90 LOC)
+
+- **Per-user install by default**, no UAC. Users can flip to system-wide
+  (Program Files) via the privileges page if they want.
+- **Start Menu shortcut** always; **desktop shortcut** optional (task
+  on the components page, unchecked by default).
+- **"Run on Windows startup"** optional task — when ticked, writes a
+  per-user `HKCU\…\Run` entry pointing at `PawPoller.exe`. Mirrors the
+  in-app Settings → General toggle so either path works.
+- **"Launch PawPoller now"** tick-on-finish, `skipifsilent` so the
+  auto-updater's eventual silent installs won't pop the GUI.
+- **Uninstaller**: properly registered under Add or Remove Programs.
+  On uninstall, a confirm dialog offers to delete `%APPDATA%\PawPoller`
+  (default No — most uninstalls are upgrades or troubleshooting, not
+  "delete everything"; user can still tick Yes for a clean slate).
+- **Best-effort process kill** via `taskkill /F /IM PawPoller.exe` before
+  uninstall so file deletions don't trip "in use" errors.
+- **AppId** = fixed GUID so future installs upgrade in place rather than
+  installing alongside an older copy.
+- **AppVersion** is injected at build time via `/DMyAppVersion=…`
+  passed to `iscc`, sourced from `config.py:APP_VERSION` so there's no
+  duplicated version string to drift.
+
+#### `.github/workflows/build.yml`
+
+After the existing PyInstaller + zip step, new steps:
+
+1. **Read app version** from `config.py` into a job output.
+2. **Build installer** — Inno Setup 6 is pre-installed on
+   `windows-latest` runners (verified 2026-05-20), with a fallback to
+   `choco install innosetup` if a future image drops it. Runs
+   `iscc /DMyAppVersion="<version>" installer\PawPoller.iss`.
+3. **Upload artifact** `PawPoller-Setup` alongside the existing
+   `PawPoller-windows-x64` zip.
+4. **GitHub Release** now attaches both files to the published release.
+
+#### Skipped on purpose
+
+- **Code signing.** Without an Authenticode cert (~$200-400/yr), the
+  installer will trip Windows SmartScreen on first run — same friction
+  the existing zip + exe already has, so the installer doesn't make
+  trust worse. Deferred until there's a real cost/benefit case for the
+  cert (non-technical users hitting SmartScreen at scale).
+- **Custom installer icon.** The repo only has `assets/tray_icon.png`,
+  not an `.ico`. Inno's default installer icon is used until someone
+  cuts a proper `.ico`.
+- **MSI / MSIX.** Wrong shape for an indie desktop app with system
+  tray + HKCU autostart needs. Inno Setup is what 80% of comparable
+  Python/PyInstaller apps ship.
+
+#### Release notes for end users
+
+- Existing zip users: nothing forces a switch. The portable zip is
+  still produced and uploaded.
+- New users on the next tagged release will see two download options;
+  README updated to point at `PawPoller-Setup-{version}.exe` as the
+  recommended path.
+
+#### Tag-cut reminder
+
+The installer only ships on `v*` tag pushes (the existing release
+workflow trigger). Pushing this to master does not produce an installer
+artefact — cut a `v2.24.0` tag when ready to publish.
+
+---
+
 ## [2.23.3] - 2026-05-20
 
 ### Fix: AO3 form-fetch 525s killed posts that should have retried
