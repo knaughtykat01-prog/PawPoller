@@ -4,6 +4,55 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.23.3] - 2026-05-20
+
+### Fix: AO3 form-fetch 525s killed posts that should have retried
+
+Live AO3 update for `Drumheller_Detour` on 2026-05-20 06:47:15 hit a
+single Cloudflare 525 (origin SSL handshake fail) on
+`GET /works/85113586/edit` and the entire edit operation raised
+`RuntimeError: AO3: Could not load edit form (status 525)` immediately,
+bouncing the work into the retry queue.
+
+`_get_page()` already retries 3× with backoff on 525 (documented in
+`documentation_guide.md` §"AO3 from datacenter IPs sees frequent
+ReadTimeout and 525 origin SSL handshake fail responses — about 1 in 5
+requests"). But `edit_work`, `edit_chapter`, `create_chapter`,
+`find_work_skin_by_title`, `create_work_skin`, and `update_work_skin`
+were all using `self._http.get(...)` directly — bypassing the retry
+loop. So a transient 525 surfaced as a hard failure instead of being
+absorbed by the 3-attempt retry.
+
+Same log also showed `find_work_skin_by_title` silently returning None
+on its 525 — `_ensure_work_skin` then logged the cryptic
+`"AO3: Work skin creation failed for Drumheller_Detour:"` (with an
+empty error string because the skin lookup just said "not found"
+rather than reporting the transient error).
+
+Routed all six form-fetch GETs through `_get_page` in
+`clients/ao3/client.py`:
+
+| Method | Line | What it fetches |
+|---|---|---|
+| `edit_work` | 1073 | `/works/{id}/edit` |
+| `edit_chapter` | 1283 | `/works/{id}/chapters/{ch}/edit` |
+| `create_chapter` | 1630 | `/works/{id}/chapters/new` |
+| `find_work_skin_by_title` | 1891 | `/users/{u}/skins?skin_type=WorkSkin` |
+| `create_work_skin` | 1932 | `/skins/new?skin_type=WorkSkin` |
+| `update_work_skin` | 2034 | `/skins/{id}/edit` |
+
+All callers now check `html is None` instead of `resp.status_code != 200`
+and raise with a "transient fetch failure" message that distinguishes
+the case from a hard 4xx — useful for log triage. The 3-attempt 525
+retry inside `_get_page` (2s/4s/6s backoff) absorbs the kind of brief
+CF blip that fired tonight.
+
+Delete-confirm GETs (`delete_work` lines 1789, 1823) intentionally left
+alone — they're admin-only operations not in the hot path, and a 525
+there returns None gracefully via the existing checks.
+
+---
+
 ## [2.23.2] - 2026-05-20
 
 ### Fix: Publish-check action log overlapping action panel

@@ -1070,13 +1070,17 @@ class AO3Client:
                 raise RuntimeError("AO3: Not logged in")
 
         edit_url = f"{_BASE}/works/{work_id}/edit"
-        form_resp = await self._http.get(edit_url)
-        if form_resp.status_code != 200:
+        # Use _get_page so transient 525 / ReadTimeout from CF retry up to
+        # 3× before the whole edit operation fails. Direct self._http.get
+        # here used to surface a single 525 as a hard RuntimeError and
+        # bounce the work into the retry queue for no good reason.
+        form_html = await self._get_page(edit_url)
+        if form_html is None:
             raise RuntimeError(
-                f"AO3: Could not load edit form (status {form_resp.status_code})"
+                "AO3: Could not load edit form (transient fetch failure)"
             )
 
-        token, current_fields = _extract_work_form_fields(form_resp.text)
+        token, current_fields = _extract_work_form_fields(form_html)
 
         new_fields: list[tuple[str, str]] = []
         warnings_handled = False
@@ -1280,12 +1284,11 @@ class AO3Client:
                 raise RuntimeError("AO3: Not logged in")
 
         edit_url = f"{_BASE}/works/{work_id}/chapters/{chapter_id}/edit"
-        form_resp = await self._http.get(edit_url)
-        if form_resp.status_code != 200:
+        html = await self._get_page(edit_url)
+        if html is None:
             raise RuntimeError(
-                f"AO3: Could not load chapter edit form (status {form_resp.status_code})"
+                "AO3: Could not load chapter edit form (transient fetch failure)"
             )
-        html = form_resp.text
 
         token_m = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', html)
         if not token_m:
@@ -1627,12 +1630,11 @@ class AO3Client:
                 raise RuntimeError("AO3: Not logged in")
 
         form_url = f"{_BASE}/works/{work_id}/chapters/new"
-        form_resp = await self._http.get(form_url)
-        if form_resp.status_code != 200:
+        html = await self._get_page(form_url)
+        if html is None:
             raise RuntimeError(
-                f"AO3: Could not load chapter form (status {form_resp.status_code})"
+                "AO3: Could not load chapter form (transient fetch failure)"
             )
-        html = form_resp.text
 
         token_m = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', html)
         if not token_m:
@@ -1888,10 +1890,9 @@ class AO3Client:
 
         owner = self.username or self.target_user
         url = f"{_BASE}/users/{owner}/skins?skin_type=WorkSkin"
-        resp = await self._http.get(url)
-        if resp.status_code != 200:
+        html = await self._get_page(url)
+        if html is None:
             return None
-        html = resp.text
 
         for m in re.finditer(
             r'<a\s+href="/skins/(\d+)"[^>]*>([^<]+)</a>',
@@ -1929,18 +1930,18 @@ class AO3Client:
                 raise RuntimeError("AO3: Not logged in")
 
         form_url = f"{_BASE}/skins/new?skin_type=WorkSkin"
-        form_resp = await self._http.get(form_url)
-        if form_resp.status_code != 200:
+        form_html = await self._get_page(form_url)
+        if form_html is None:
             raise RuntimeError(
-                f"AO3: Could not load skin form (status {form_resp.status_code})"
+                "AO3: Could not load skin form (transient fetch failure)"
             )
 
         token_m = re.search(
-            r'name="authenticity_token"[^>]*value="([^"]+)"', form_resp.text
+            r'name="authenticity_token"[^>]*value="([^"]+)"', form_html
         )
         if not token_m:
             token_m = re.search(
-                r'value="([^"]+)"[^>]*name="authenticity_token"', form_resp.text
+                r'value="([^"]+)"[^>]*name="authenticity_token"', form_html
             )
         if not token_m:
             raise RuntimeError("AO3: Could not get CSRF token from skin form")
@@ -2031,12 +2032,11 @@ class AO3Client:
                 raise RuntimeError("AO3: Not logged in")
 
         edit_url = f"{_BASE}/skins/{skin_id}/edit"
-        form_resp = await self._http.get(edit_url)
-        if form_resp.status_code != 200:
+        html = await self._get_page(edit_url)
+        if html is None:
             raise RuntimeError(
-                f"AO3: Could not load skin edit form (status {form_resp.status_code})"
+                "AO3: Could not load skin edit form (transient fetch failure)"
             )
-        html = form_resp.text
 
         token_m = re.search(
             r'name="authenticity_token"[^>]*value="([^"]+)"', html
