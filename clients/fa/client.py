@@ -86,6 +86,40 @@ class FAClient:
         """Return the FA session cookies as a dict for httpx cookie injection."""
         return {"a": self.cookie_a, "b": self.cookie_b}
 
+    async def _get_with_retry(
+        self,
+        url: str,
+        *,
+        params: dict | None = None,
+        max_retries: int = 1,
+        max_sleep: float = 60.0,
+    ) -> httpx.Response:
+        """GET via the FAExport client with bounded Retry-After handling on 429.
+
+        FAExport's bucket is shared across all its users — a 429 here is usually
+        someone else's traffic, not ours. Sleeping the server-supplied
+        `Retry-After` and retrying once recovers the call instead of dropping
+        the data for the cycle. Non-429 responses are returned untouched (the
+        caller still owns raise_for_status for genuine 4xx/5xx).
+        """
+        attempt = 0
+        while True:
+            resp = await self._http.get(url, params=params)
+            if resp.status_code != 429 or attempt >= max_retries:
+                return resp
+            retry_after_raw = resp.headers.get("retry-after", "")
+            try:
+                sleep_for = float(retry_after_raw) if retry_after_raw else 30.0
+            except ValueError:
+                sleep_for = 30.0
+            sleep_for = min(max(sleep_for, 1.0), max_sleep)
+            logger.warning(
+                "FAExport 429 on %s — sleeping %.1fs then retrying (attempt %d/%d)",
+                url, sleep_for, attempt + 1, max_retries,
+            )
+            await asyncio.sleep(sleep_for)
+            attempt += 1
+
     async def _get_fa_http(self) -> httpx.AsyncClient:
         """Lazy-init the direct FA client with session cookies.
 
@@ -145,7 +179,7 @@ class FAClient:
         (title, thumbnail, etc.) rather than just bare submission IDs.
         FAExport returns an empty list when the page is beyond the last page.
         """
-        resp = await self._http.get(
+        resp = await self._get_with_retry(
             f"{config.FAEXPORT_BASE}/user/{self.username}/gallery.json",
             params={"page": str(page), "full": "1"},
         )
@@ -196,7 +230,7 @@ class FAClient:
         it into our internal DB format via _normalize_submission() so the rest of
         the application works with a consistent structure regardless of platform.
         """
-        resp = await self._http.get(
+        resp = await self._get_with_retry(
             f"{config.FAEXPORT_BASE}/submission/{submission_id}.json",
         )
         resp.raise_for_status()
@@ -235,7 +269,7 @@ class FAClient:
         that returns structured JSON with full comment text, threading info, and
         timestamps. Each comment is normalised to our internal format.
         """
-        resp = await self._http.get(
+        resp = await self._get_with_retry(
             f"{config.FAEXPORT_BASE}/submission/{submission_id}/comments.json",
         )
         resp.raise_for_status()
@@ -255,7 +289,7 @@ class FAClient:
         new watchers for bot characteristics (zero submissions, zero favorites).
         """
         try:
-            resp = await self._http.get(
+            resp = await self._get_with_retry(
                 f"{config.FAEXPORT_BASE}/user/{username}.json",
             )
             if resp.status_code != 200:
@@ -306,7 +340,7 @@ class FAClient:
         FAExport returns a plain JSON array of username strings for the watchers
         endpoint. Returns an empty list when the page is beyond the last page.
         """
-        resp = await self._http.get(
+        resp = await self._get_with_retry(
             f"{config.FAEXPORT_BASE}/user/{self.username}/watchers.json",
             params={"page": str(page)},
         )

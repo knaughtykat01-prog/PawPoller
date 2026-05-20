@@ -291,15 +291,18 @@ window.PublishCheck = (function () {
         const isMobile = (typeof App !== 'undefined') && App.isMobileLayoutActive && App.isMobileLayoutActive();
         let html = isMobile ? _renderMobileMatrix(data) : _renderDesktopMatrix(data);
 
-        // Detail panel placeholder
+        // Detail panel placeholder. The action log used to live here as a
+        // sibling, but that put it in flex-column stacking next to the
+        // detail panel — when the detail panel content was tall and the
+        // body's gap collapsed weirdly, the log overlapped the action
+        // panel. Moved into the action panel itself (see _renderActionPanel
+        // → final action-log placeholder) so flow ordering is guaranteed.
         html += '<div class="publish-check-detail" id="publish-check-detail">' +
             '<div class="publish-check-detail-empty">' +
             (isMobile ? 'Tap any platform row for details.' : 'Click any cell for details.') +
             '</div></div>';
-        html += '<div class="action-log" id="publish-action-log"></div>';
 
         body.innerHTML = html;
-        _renderActionLog();
 
         // Cache matrix data for bulk target collection
         _lastMatrixData = data;
@@ -583,6 +586,10 @@ window.PublishCheck = (function () {
 
         detail.innerHTML = html;
         _bindActionPanel(platId, platName, chIdx, chTitle, cell);
+        // The action-log placeholder is now inside the action panel, so it's
+        // recreated empty on every cell render — repopulate from the
+        // session-scoped _actionLog array.
+        _renderActionLog();
     }
 
     function _renderActionPanel(cell, platId, platName, chIdx, chTitle) {
@@ -700,6 +707,11 @@ window.PublishCheck = (function () {
         html += '<div class="schedule-pending" id="schedule-pending"></div>';
 
         html += '<div class="publish-action-result" id="publish-action-result"></div>';
+        // Recent actions history lives at the bottom of the action panel
+        // so the per-session log is guaranteed to render below the action
+        // buttons, not on top of the option row (regression seen 2026-05-20
+        // when the log was a sibling of the detail panel).
+        html += '<div class="action-log" id="publish-action-log"></div>';
         html += '</div>';
         return html;
     }

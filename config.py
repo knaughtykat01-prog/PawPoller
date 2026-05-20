@@ -372,7 +372,7 @@ INKBUNNY_PASSWORD = _settings.get("password") or os.getenv("INKBUNNY_PASSWORD", 
 FA_BASE = "https://www.furaffinity.net"          # Main FA website for scraping
 FAEXPORT_BASE = "https://faexport.spangle.org.uk"  # Third-party FA API proxy
 FA_POLL_INTERVAL_HOURS = 1       # Default hours between FA poll cycles
-FA_REQUEST_DELAY_SECONDS = 1.0   # Delay between consecutive FA API requests (rate limiting)
+FA_REQUEST_DELAY_SECONDS = 1.5   # Delay between consecutive FA API requests (rate limiting)
 FA_USERNAME = _settings.get("fa_username", "")
 # FA uses session cookies (cookie_a and cookie_b) instead of username/password auth
 FA_COOKIE_A = _settings.get("fa_cookie_a", "")
@@ -635,7 +635,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.23.1"
+APP_VERSION = "2.23.2"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

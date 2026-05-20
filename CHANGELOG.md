@@ -4,6 +4,95 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.23.2] - 2026-05-20
+
+### Fix: Publish-check action log overlapping action panel
+
+User reported the "Recent actions" log (`Recent actions (N)` header
+plus most-recent log entries) was visually overlapping the "Actions:"
+header + "Save as draft (where supported)" row inside the publish
+check cell drawer — making both unreadable. The log was rendered as a
+**sibling** of the detail panel inside `.publish-check-body`
+(`display: flex; flex-direction: column; gap: 16px`). In some
+states — populated `_actionLog`, tall detail content — the flex gap
+collapsed and the log painted over the action panel's option row.
+
+Fix in `frontend/js/publish_check.js`: move the action-log placeholder
+**inside** the action panel, as the last child after
+`.publish-action-result`. The log is now in normal flow under the
+action buttons rather than competing with the action panel via flex
+stacking. Bonus: it's semantically closer to where the user just
+clicked, so they don't have to look elsewhere to confirm what just
+happened.
+
+Also re-call `_renderActionLog()` after every `detail.innerHTML = html`
+so the per-session `_actionLog` array (closure-scoped, survives
+re-renders) repopulates the fresh placeholder on every cell click.
+
+Three edits:
+- `_renderMatrix` no longer emits the sibling `<div id="publish-action-log">`.
+- `_renderActionPanel` emits it as the last element before the closing
+  `</div>` of `.publish-action-panel`.
+- `_showDetail` calls `_renderActionLog()` after `detail.innerHTML`.
+
+### Fix: FAExport 429 → Retry-After + small pacing bump
+
+A real production poll cycle on 2026-05-20 hit two back-to-back 429s
+from FAExport within 2ms — first on the submission detail batch (one
+submission dropped, log warning, batch continued) and then on the
+watchers fetch (caught by the broad `try/except` at
+`polling/fa_poller.py:392`, so the cycle didn't die, but the watcher
+list was lost for that cycle). Same per-IP throttle window; the
+detail-loop pacing ran out and we slammed straight into the watchers
+endpoint while already inside the bucket.
+
+FAExport's bucket is shared across every PawPoller-like user on
+`faexport.spangle.org.uk`, so a 429 there is often someone else's
+traffic, not ours — bumping `FA_REQUEST_DELAY_SECONDS` alone wouldn't
+prevent it. AO3's full backoff-cache pattern (2.22.6 / 2.22.10) is the
+wrong shape for FAExport: AO3 has a fixed-window Rack::Attack counter
+where requests inside the window extend the punishment, FAExport is a
+thin proxy without that pathology. Honouring `Retry-After` is the
+minimum correct change.
+
+#### `clients/fa/client.py`
+
+New `_get_with_retry(url, *, params, max_retries=1, max_sleep=60.0)`
+helper. Routes every FAExport `GET` through it. On 429:
+- Reads `Retry-After` header, parses as float seconds; falls back to
+  30s if missing or unparseable.
+- Clamps to `[1.0, max_sleep]` (default cap 60s) so a bogus huge
+  `Retry-After` can't hang a poll cycle indefinitely.
+- Sleeps, then retries once. Non-429 responses passed through
+  untouched — callers still own `raise_for_status` for genuine 4xx/5xx.
+
+Five FAExport callers converted: `get_gallery_page`,
+`get_submission_detail`, `get_submission_comments`, `get_user_profile`
+(profile sniff), `get_watchers_page`. Direct-FA cookie-validation
+path (`_fa_http`) is unchanged — FA's site has different throttling
+shape and isn't what fired here.
+
+#### `config.py`
+
+`FA_REQUEST_DELAY_SECONDS = 1.0 → 1.5`. Cheap insurance against
+self-inflicted bursts; doesn't help against shared-bucket pressure
+(that's what the retry handles) but cuts our own contribution by a
+third. ~5s extra wall time per ten-submission detail batch — invisible
+at the 240-min cadence.
+
+#### Behaviour change
+
+Previous: FA poll cycle silently drops watcher list (and the latest
+snapshot for whichever submission 429'd in the detail batch) when the
+shared FAExport bucket is hot.
+
+Now: FA poll cycle sleeps the server-supplied `Retry-After`, retries,
+and recovers the data. Worst case if FAExport stays throttled past the
+retry: same outcome as before — log warning, cycle continues, data
+backfills on the next cycle.
+
+---
+
 ## [2.23.1] - 2026-05-16
 
 ### Fix: SoFurry centring + collapse `_Clean.html` / `_SoFurry.html` to one file
