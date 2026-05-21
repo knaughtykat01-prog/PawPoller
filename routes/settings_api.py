@@ -375,3 +375,67 @@ async def browser_login(platform: str, req: BrowserLoginRequest | None = None):
         "message": f"Successfully logged in to {PLATFORM_LOGIN[platform]['name']}.",
         "keys_saved": list(creds.keys()),
     }
+
+
+# ── Uninstall ────────────────────────────────────────────────────────
+# In-app uninstall flow (Settings → General → Danger zone). See
+# uninstall.py for the per-OS detection + cleanup scripts.
+
+class UninstallRequest(BaseModel):
+    remove_data: bool = True
+    remove_autostart: bool = True
+    remove_app: bool = True
+    confirm: str = ""   # must equal "UNINSTALL" to proceed — typed by user
+
+
+@settings_router.get("/uninstall/plan")
+async def get_uninstall_plan() -> dict:
+    """Return what an uninstall would touch — for the confirm dialog.
+
+    Pure / no side effects. Frontend renders the resulting paths +
+    install-type so the user can sanity-check before confirming.
+    """
+    import uninstall  # lazy import — keeps server.py startup snappy
+    plan = uninstall.detect()
+    return {
+        "install_type": plan.install_type.value,
+        "app_path": plan.app_path,
+        "data_dir": plan.data_dir,
+        "autostart_target": plan.autostart_target,
+        "has_keyring_key": plan.has_keyring_key,
+    }
+
+
+@settings_router.post("/uninstall")
+async def do_uninstall(req: UninstallRequest) -> dict:
+    """Kick off the uninstall.
+
+    Requires `confirm: "UNINSTALL"` in the body — typed by the user in the
+    dialog to prevent accidental fires (and to make scripted/curl calls
+    explicit about intent).
+
+    Spawns a detached cleanup script and returns immediately. The frontend
+    is responsible for showing a "goodbye" screen; the server shuts itself
+    down via os._exit shortly after.
+    """
+    if req.confirm != "UNINSTALL":
+        raise HTTPException(
+            status_code=400,
+            detail='Set "confirm": "UNINSTALL" in the request body to proceed.',
+        )
+
+    import uninstall
+    result = uninstall.execute(
+        remove_data=req.remove_data,
+        remove_autostart=req.remove_autostart,
+        remove_app=req.remove_app,
+    )
+
+    # Schedule app shutdown after the response is sent. asyncio.get_event_loop
+    # + call_later gives the response time to flush before we yank the process.
+    import asyncio
+    import os as _os
+    asyncio.get_event_loop().call_later(2.0, lambda: _os._exit(0))
+
+    result["shutdown_in_seconds"] = 2
+    return result

@@ -4,6 +4,137 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.26.0] - 2026-05-21
+
+### Feature: in-app Uninstall flow + Windows Search integration polish
+
+Closes the "I deleted the .AppImage / extracted folder, but the data
+and autostart entries are still on my machine" gap. New
+**Settings → General → Danger zone → Uninstall PawPoller** button that
+detects the install type and runs a per-OS cleanup script.
+
+The Inno Setup installer was already correctly registering with
+Windows Search / Apps & features / Control Panel via the
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\{AppId}_is1`
+key (`AppId` + `UninstallDisplayName` + `UninstallDisplayIcon` were
+all set in 2.24.0). Right-clicking the Start Menu search result for
+"PawPoller" already showed Open / Pin / Uninstall. This release wires
+the in-app button to delegate to the same `unins000.exe /SILENT` that
+Windows Search invokes — both paths share one uninstaller.
+
+#### `uninstall.py` (new ~290 LOC)
+
+Per-OS detection + cleanup-script builder.
+
+`InstallType` enum: `WINDOWS_INSTALLER` (Inno — has unins000.exe next
+to PawPoller.exe), `WINDOWS_PORTABLE` (zip extract — no unins000),
+`LINUX_APPIMAGE` (`APPIMAGE` env var set), `DEV` (running from source
+under Python interpreter), `UNKNOWN`.
+
+`detect()` returns an `UninstallPlan` dataclass — pure / no side
+effects, safe to call from the UI for the confirm dialog. Reports:
+- app_path (install dir / AppImage path / source root)
+- data_dir (`%APPDATA%\PawPoller` or `~/.local/share/PawPoller`)
+- autostart_target (registry key path or `.desktop` file path)
+- has_keyring_key (best-effort probe via `keyring.get_credential`)
+
+`execute()`:
+1. Synchronously removes the autostart entry via the existing
+   `config.set_run_on_startup(False)` (handles registry on Windows /
+   `.desktop` file on Linux).
+2. Synchronously removes the vault encryption key from the OS keyring
+   via `keyring.delete_password("PawPoller", "vault_key")`.
+3. Asynchronously spawns a detached cleanup script per install type:
+   - **Inno installer** → `unins000.exe /SILENT`. Same uninstaller
+     Windows Search → Uninstall invokes. The script's existing
+     `[Code] CurUninstallStepChanged` prompt still fires for user
+     data; the in-app dialog pre-emptively deletes
+     `%APPDATA%\PawPoller` first if the user ticked the box.
+   - **Windows portable** → `.bat` that waits 3s, `taskkill`,
+     `rmdir /S /Q` on the install dir and (if requested) data dir.
+     Defensive `if exist "{install}\PawPoller.exe"` guard so a
+     misconfiguration can't `rmdir C:\` style nuke an unrelated dir.
+   - **Linux AppImage** → `.sh` that waits 3s, `pkill -f PawPoller`,
+     `rm -f $APPIMAGE`, `rm -rf` data dir + autostart `.desktop`.
+   - **Dev mode** → refuses to delete the source tree (won't nuke a
+     developer's working copy); cleans data + autostart only.
+
+`_spawn_detached()` uses `os.startfile` on Windows and
+`subprocess.Popen(..., start_new_session=True, stdin/out/err=DEVNULL)`
+on Linux so the script survives the parent exiting.
+
+#### `routes/settings_api.py`
+
+Two new endpoints:
+
+- `GET /api/settings/uninstall/plan` — returns the detected install
+  type + paths. Pure / no side effects.
+- `POST /api/settings/uninstall` — kicks off the cleanup. Requires
+  `confirm: "UNINSTALL"` in the body as a guard against accidental
+  fires (user types it in the dialog). After spawning the script,
+  schedules `os._exit(0)` for 2s later via
+  `asyncio.get_event_loop().call_later` so the response flushes
+  cleanly before shutdown.
+
+#### `frontend/js/app.js`
+
+New Settings → General accordion "Danger zone" with red-tinted
+styling. The Uninstall button opens a two-step modal:
+
+1. `_showUninstallDialog()` fetches `/uninstall/plan` and renders the
+   detected paths in a monospace block. Three checkboxes for
+   app / data / autostart. Dev-mode disables the app-files
+   checkbox (and explains why). Confirm input field requires the
+   literal text `UNINSTALL` before the proceed button activates.
+2. On confirm, POSTs `/uninstall` and swaps the modal body to a
+   "Goodbye 👋" screen with the queued-actions list. The server's
+   `os._exit(0)` fires 2s later; the user closes the tab manually.
+
+#### What Windows Search → Uninstall does today
+
+Already wired by Inno Setup. The relevant registry key is automatic:
+
+```
+HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\{A8E2F7B4-...}_is1
+  DisplayName        = PawPoller
+  DisplayVersion     = 2.26.0
+  Publisher          = KnaughtyKat
+  DisplayIcon        = <install>\PawPoller.exe
+  UninstallString    = <install>\unins000.exe
+  QuietUninstallString = <install>\unins000.exe /SILENT
+  URLInfoAbout       = https://github.com/knaughtykat01-prog/PawPoller
+  HelpLink           = https://github.com/knaughtykat01-prog/PawPoller/issues
+  URLUpdateInfo      = https://github.com/knaughtykat01-prog/PawPoller/releases
+```
+
+Surfaces:
+- **Start Menu search** "pawpoller" → right-click → Uninstall
+- **Settings → Apps & features** → PawPoller → Uninstall
+- **Control Panel → Programs and Features** → PawPoller → Uninstall
+
+All three trigger the same `unins000.exe`, which:
+1. Asks confirmation (unless `/SILENT` is passed).
+2. Runs the `[UninstallRun]` `taskkill /F /IM PawPoller.exe`.
+3. Removes everything Inno's installer tracked.
+4. Runs the `[Code]` `CurUninstallStepChanged` to prompt about
+   `%APPDATA%\PawPoller` (default No — keep user data for reinstalls).
+5. Deletes the HKCU `Run` entry (the `Tasks: startupicon; Flags:
+   uninsdeletevalue` directive handles this).
+6. Cleans up Start Menu shortcuts.
+
+#### Known limitations
+
+- **Vault key in OS keyring** is only cleaned up via the in-app
+  Uninstall button. Users who uninstall via Windows Search →
+  Uninstall (or `rm` the AppImage manually) will leave a 64-char hex
+  value in Windows Credential Manager / Secret Service. Tiny, no
+  security impact (the encrypted vault file is gone too), but it's
+  a stray entry. Documented in HANDOFF.
+- **macOS** uninstall path not yet implemented (raises
+  `RuntimeError` on `darwin`). Lands with the macOS native app.
+
+---
+
 ## [2.25.0] - 2026-05-21
 
 ### Feature: Linux desktop support (AppImage)

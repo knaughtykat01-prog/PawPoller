@@ -75,7 +75,30 @@ In-app: the auto-updater checks GitHub for new releases and surfaces a notificat
 
 Manual: download the new release zip / installer, install over the old version (the installer upgrades in place; for the zip, extract over the old folder while keeping your `data\` and `logs\` folders untouched), re-launch. The database auto-migrates.
 
-### 1.6 Build from source (advanced)
+### 1.6 Uninstalling
+
+Three ways, all use the same uninstaller under the hood:
+
+1. **Windows Search** — type "pawpoller", right-click → **Uninstall**.
+2. **Settings → Apps & features** — find PawPoller in the list, click → **Uninstall**.
+3. **Control Panel → Programs and Features** — same.
+
+The Inno Setup uninstaller asks once for confirmation, then offers to also delete `%APPDATA%\PawPoller\` (default **No** — keeps your data so a reinstall picks back up).
+
+If you installed via the **portable zip**, there's no Add/Remove Programs entry. Use the in-app **Settings → General → Danger zone → Uninstall PawPoller** button instead — it builds a `.bat` that waits for the process to exit, then removes the install folder + optionally your data folder + autostart entry. Type `UNINSTALL` in the confirm box.
+
+Manual fallback for the portable zip:
+
+```powershell
+# Remove the folder you extracted PawPoller into (no installer = no auto-cleanup)
+Remove-Item -Recurse -Force "C:\Path\To\PawPoller"
+# Optional: remove user data + autostart + keyring entry
+Remove-Item -Recurse -Force "$env:APPDATA\PawPoller"
+Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "PawPoller" -ErrorAction SilentlyContinue
+cmdkey /delete:PawPoller   # if vault was enabled
+```
+
+### 1.7 Build from source (advanced)
 
 If you'd rather build the exe yourself:
 
@@ -145,6 +168,25 @@ Settings → General → **Run on Windows startup** (the label is generic) toggl
 In-app: the auto-updater downloads the new AppImage and replaces the file at `$APPIMAGE` in place, then re-execs. The path of the currently-running AppImage is preserved.
 
 Manual: download the new AppImage, replace the old file, `chmod +x`, re-launch.
+
+### 1B.7 Uninstalling
+
+The cleanest path is **Settings → General → Danger zone → Uninstall PawPoller** in the dashboard. Tick which of these to remove (all three are checked by default):
+
+- **Application files** — the `.AppImage` itself, found via the `$APPIMAGE` env var
+- **User data** — your SQLite DB, settings, vault, logs (`~/.local/share/PawPoller/`)
+- **Autostart entry** — the `.desktop` file under `~/.config/autostart/`
+
+Type `UNINSTALL` in the confirm input, click Uninstall. The dashboard shows a goodbye screen; the process spawns a detached shell script that waits 3s, removes whatever you chose, and exits. Close the browser tab when done.
+
+Manual fallback — if you'd rather just `rm` it yourself:
+
+```bash
+rm -f /path/to/PawPoller-*.AppImage          # the AppImage
+rm -rf ~/.local/share/PawPoller              # data
+rm -f ~/.config/autostart/PawPoller.desktop  # autostart
+# Optional: secret-tool clear service PawPoller user vault_key   # vault key
+```
 
 ### 1B.7 Build from source (advanced)
 

@@ -5953,6 +5953,129 @@ const App = {
     // elements: save/logout/poll/resync buttons, toggle switches, select dropdowns,
     // connect/disconnect buttons, threshold inputs, and apply-update button.
 
+    // Danger zone — uninstall flow.
+    // Two-step modal:
+    //   1. GET /api/settings/uninstall/plan → show what would be deleted
+    //   2. User ticks checkboxes + types "UNINSTALL" → POST /api/settings/uninstall
+    // After POST the server fires a detached cleanup script and shuts itself
+    // down in ~2s. We show a goodbye panel; the user closes the tab manually.
+    async _showUninstallDialog() {
+        let plan;
+        try {
+            plan = await API.get('/api/settings/uninstall/plan');
+        } catch (e) {
+            alert('Could not load uninstall plan: ' + e.message);
+            return;
+        }
+
+        const INSTALL_TYPE_LABELS = {
+            windows_installer: 'Windows installer (Inno Setup)',
+            windows_portable:  'Windows portable (zip extract)',
+            linux_appimage:    'Linux AppImage',
+            dev:               'Dev mode (running from source)',
+            unknown:           'Unknown install type',
+        };
+        const typeLabel = INSTALL_TYPE_LABELS[plan.install_type] || plan.install_type;
+        const isDev = plan.install_type === 'dev';
+
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.zIndex = '10020';
+        overlay.innerHTML = `
+            <div class="modal" style="max-width:560px">
+                <div class="modal-header" style="background:rgba(180,60,60,0.08);border-bottom:1px solid #a44">
+                    <h3 style="color:#c66;margin:0">Uninstall PawPoller</h3>
+                </div>
+                <div class="modal-body" style="font-size:13px;line-height:1.5">
+                    <p><strong>Detected install:</strong> ${Utils.escapeHtml(typeLabel)}</p>
+                    <div style="background:var(--bg-secondary);padding:10px 12px;border-radius:4px;font-family:monospace;font-size:11px;margin:8px 0">
+                        <div><span style="color:var(--text-muted)">app path:</span> ${Utils.escapeHtml(plan.app_path)}</div>
+                        <div><span style="color:var(--text-muted)">data dir:</span> ${Utils.escapeHtml(plan.data_dir)}</div>
+                        <div><span style="color:var(--text-muted)">autostart:</span> ${Utils.escapeHtml(plan.autostart_target)}</div>
+                        ${plan.has_keyring_key ? '<div><span style="color:var(--text-muted)">keyring:</span> vault key present</div>' : ''}
+                    </div>
+                    ${isDev ? `
+                        <p style="color:#c93;font-size:12px">
+                            <strong>Dev mode detected.</strong> The source tree will NOT be deleted —
+                            only user data and autostart entries can be cleaned up. Delete the
+                            cloned folder manually if you also want the code gone.
+                        </p>
+                    ` : ''}
+                    <p style="margin-top:14px"><strong>What to remove:</strong></p>
+                    <label style="display:block;margin:6px 0">
+                        <input type="checkbox" id="uninst-app" checked ${isDev ? 'disabled' : ''}>
+                        Application files (${Utils.escapeHtml(plan.app_path)})
+                    </label>
+                    <label style="display:block;margin:6px 0">
+                        <input type="checkbox" id="uninst-data" checked>
+                        User data: database, settings, vault, logs (${Utils.escapeHtml(plan.data_dir)})
+                    </label>
+                    <label style="display:block;margin:6px 0">
+                        <input type="checkbox" id="uninst-autostart" checked>
+                        Autostart entry
+                    </label>
+                    <p style="margin-top:14px">
+                        Type <code>UNINSTALL</code> to confirm:
+                    </p>
+                    <input type="text" id="uninst-confirm" class="search-input"
+                           placeholder="UNINSTALL" autocomplete="off"
+                           style="width:100%;font-family:monospace">
+                    <div id="uninst-msg" style="margin-top:10px;font-size:12px"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="uninst-cancel">Cancel</button>
+                    <button class="btn" id="uninst-go"
+                            style="background:#a44;color:#fff;border-color:#a44" disabled>
+                        Uninstall
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const goBtn = overlay.querySelector('#uninst-go');
+        const confirmInput = overlay.querySelector('#uninst-confirm');
+        const msg = overlay.querySelector('#uninst-msg');
+
+        confirmInput.addEventListener('input', () => {
+            goBtn.disabled = confirmInput.value !== 'UNINSTALL';
+        });
+        overlay.querySelector('#uninst-cancel').addEventListener('click', () => overlay.remove());
+
+        goBtn.addEventListener('click', async () => {
+            goBtn.disabled = true;
+            msg.textContent = 'Spawning cleanup script…';
+            msg.style.color = 'var(--text-muted)';
+            try {
+                const result = await API.post('/api/settings/uninstall', {
+                    remove_app:       overlay.querySelector('#uninst-app').checked,
+                    remove_data:      overlay.querySelector('#uninst-data').checked,
+                    remove_autostart: overlay.querySelector('#uninst-autostart').checked,
+                    confirm: 'UNINSTALL',
+                });
+                overlay.querySelector('.modal-body').innerHTML = `
+                    <h4 style="margin-top:0">Goodbye 👋</h4>
+                    <p>PawPoller is shutting down. A cleanup script is running in the
+                       background and will finish removing files after this process exits.</p>
+                    <p style="font-size:12px;color:var(--text-muted)">
+                        Actions queued:<br>${(result.actions || []).map(a => '• ' + Utils.escapeHtml(a)).join('<br>')}
+                    </p>
+                    <p style="font-size:12px;color:var(--text-muted)">
+                        Server shutdown in ${result.shutdown_in_seconds || 2}s. Close this tab
+                        when you're done.
+                    </p>
+                `;
+                overlay.querySelector('.modal-footer').innerHTML =
+                    '<button class="btn btn-secondary" id="uninst-close-tab">Close</button>';
+                overlay.querySelector('#uninst-close-tab').addEventListener('click', () => overlay.remove());
+            } catch (e) {
+                msg.textContent = 'Uninstall failed: ' + e.message;
+                msg.style.color = 'var(--danger)';
+                goBtn.disabled = false;
+            }
+        });
+    },
+
     async renderSettings() {
         this._loading();
         try {
@@ -6475,6 +6598,23 @@ const App = {
                     <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
                         <button class="btn btn-primary" id="save-milestones-btn">Save Milestones</button>
                         <span id="milestones-msg" style="font-size:13px"></span>
+                    </div>
+                    </div>
+                </details>
+
+                <details class="settings-accordion" style="border-color:#a44;background:rgba(180,60,60,0.04)">
+                    <summary style="color:#c66">Danger zone <span class="summary-meta">— uninstall, factory reset</span></summary>
+                    <div class="accordion-body">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+                        Removes PawPoller from this machine. The detected install type and
+                        paths are shown in the confirmation dialog so you can sanity-check
+                        before anything is deleted.
+                    </div>
+                    <div style="margin-top:12px">
+                        <button class="btn" id="uninstall-btn"
+                                style="background:#a44;color:#fff;border-color:#a44">
+                            Uninstall PawPoller…
+                        </button>
                     </div>
                     </div>
                 </details>
@@ -8872,6 +9012,11 @@ const App = {
                 } catch (err) {
                     msg.textContent = 'Error: ' + err.message; msg.style.color = 'var(--danger)';
                 }
+            });
+
+            // Danger zone — Uninstall PawPoller
+            document.getElementById('uninstall-btn')?.addEventListener('click', () => {
+                this._showUninstallDialog();
             });
 
             // Backup Download

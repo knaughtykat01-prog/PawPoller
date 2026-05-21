@@ -2750,6 +2750,82 @@ all three artefacts attached. Marketing site (`site/`) is deployed
 separately by Cloudflare Pages on every push to master that touches
 `site/**` (no CI step needed — CF Pages auto-builds).
 
+### In-app Uninstall (`uninstall.py`)
+
+Settings → General → Danger zone → "Uninstall PawPoller" button. Closes
+the cleanup gap for portable-zip and AppImage installs (Inno Setup
+already had a proper uninstaller via Add/Remove Programs).
+
+**Install-type detection** (`uninstall.detect()`):
+
+```python
+class InstallType(Enum):
+    WINDOWS_INSTALLER = "windows_installer"  # Inno — has unins000.exe
+    WINDOWS_PORTABLE  = "windows_portable"   # zip extract
+    LINUX_APPIMAGE    = "linux_appimage"     # APPIMAGE env var set
+    DEV               = "dev"                # `python main.py`
+    UNKNOWN           = "unknown"
+```
+
+Detection rules:
+- `unins000.exe` next to `sys.executable` → `WINDOWS_INSTALLER`
+- frozen but no `unins000.exe` and `sys.platform == "win32"` → `WINDOWS_PORTABLE`
+- `os.environ.get("APPIMAGE")` set → `LINUX_APPIMAGE`
+- not frozen → `DEV`
+
+`detect()` is pure (no side effects), used by the
+`GET /api/settings/uninstall/plan` endpoint to populate the confirm
+dialog with the paths the cleanup would touch.
+
+**Cleanup flow** (`execute()`):
+
+1. Synchronous: `config.set_run_on_startup(False)` removes the
+   per-OS autostart entry (HKCU registry / XDG `.desktop`).
+2. Synchronous: `keyring.delete_password("PawPoller", "vault_key")`
+   removes the vault encryption key from Windows Credential Manager /
+   Secret Service. Best-effort — swallows exceptions.
+3. Async: builds and spawns a detached cleanup script per install type.
+
+**Per-OS scripts**:
+
+| Install type | Script | Notes |
+|---|---|---|
+| `WINDOWS_INSTALLER` | `.bat` that runs `unins000.exe /SILENT` | Delegates to Inno's uninstaller — same code path as Windows Search → Uninstall. Inno's own `[UninstallRun]` taskkill + `[Code] CurUninstallStepChanged` data-dir prompt still fires |
+| `WINDOWS_PORTABLE` | `.bat` with `taskkill /F /IM PawPoller.exe` + `rmdir /S /Q` on install dir + data dir | Defensive `if exist "{install}\PawPoller.exe"` guard to prevent a misconfiguration from `rmdir`ing C:\ |
+| `LINUX_APPIMAGE` | `.sh` with `pkill -f PawPoller` + `rm -f "$APPIMAGE"` + `rm -rf` data dir + autostart `.desktop` | Reads the AppImage path from the `APPIMAGE` env var (set by the AppImage runtime) |
+| `DEV` | Cleans data + autostart only | Refuses to delete the source tree |
+
+Scripts all wait 3s before touching files so the parent PawPoller
+process can release file locks. Self-delete on completion via
+`del "%~f0"` / `rm -f -- "$0"`.
+
+**Detached spawn**:
+- Windows: `os.startfile(script_path)` — runs detached from our process.
+- Linux: `subprocess.Popen(["bash", script], stdin/out/err=DEVNULL,
+  start_new_session=True)` — same idea.
+
+**Server shutdown**: after the script is spawned, the endpoint
+schedules `os._exit(0)` via `asyncio.get_event_loop().call_later(2.0,
+…)` so the JSON response flushes cleanly before the process dies.
+
+**Windows Search / Apps & features integration**: this is automatic
+once a user installs via `PawPoller-Setup-*.exe`. Inno Setup writes
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\{AppId}_is1`
+with `UninstallString` = `unins000.exe`. All three Windows uninstall
+surfaces (Start Menu search context, Settings → Apps & features,
+Control Panel → Programs and Features) read this key. The in-app
+Uninstall button delegates to the same `unins000.exe` so behaviour is
+consistent regardless of where the user triggers it.
+
+**Known limitations**:
+- Users uninstalling via Windows Search → Uninstall (not the in-app
+  button) bypass the keyring cleanup — leaves a stray 64-char hex
+  value in Windows Credential Manager. Tiny, no security impact
+  (the encrypted vault file is gone too). Same gap on Linux for
+  users who just `rm` the AppImage.
+- macOS uninstall raises `RuntimeError("Uninstall not yet supported
+  on darwin")` — lands with the macOS native app.
+
 ### Auto-Update (`updater.py` — Desktop Only)
 
 Version checking against GitHub Releases:
