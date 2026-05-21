@@ -387,6 +387,178 @@ gcloud compute ssh pawpoller --zone=us-east1-c --command="curl -s -H 'Authorizat
 
 ---
 
+## Claude Code automation for PawPoller (added 2026-05-21)
+
+Two skills + two subagents wire the recurring release/deploy rituals
+into single commands. All four live under `~/.claude/` (global, not in
+the PawPoller repo).
+
+**Skills** (`~/.claude/skills/<name>/SKILL.md`) — recipes the current
+Claude session follows when invoked via `/<name>`. Same conversation,
+same context.
+
+**Subagents** (`~/.claude/agents/<name>.md`) — separate Claude sessions
+spawned via the Agent tool. Restricted tools, clean context, return a
+single report. Used for verification jobs where sandboxing matters.
+
+### `/pp-release <version> "<blurb>"` (skill, user-only)
+
+Cuts a PawPoller release end-to-end. Same flow we've manually run for
+v2.23.2 through v2.26.0 — bundled.
+
+1. Spawns **release-verifier** AND **security-reviewer** in parallel.
+2. Surfaces any failed checks; offers to write missing artefacts
+   (CHANGELOG / HANDOFF / config bump) if release-verifier flagged them.
+3. Commits with the proper message format.
+4. Tags `vX.Y.Z` + pushes.
+5. Watches the build via `gh run watch` in background.
+6. Verifies all three assets attached. Auto-handles the documented
+   transient softprops "Server Error" pattern via `gh run rerun --failed`.
+7. Reports version + asset sizes + URL.
+
+`disable-model-invocation: true` — Claude (any session) cannot auto-fire
+this skill by inferring intent. Only the user typing `/pp-release` triggers
+it. The git push + GitHub Release side effects are too destructive to
+allow inference-fire.
+
+### `/pp-deploy [<version>]` (skill, user-only)
+
+Bundles the `pawupdate` workflow from MEMORY.md. Same shape every time.
+
+1. Confirms `local master == origin/master`. Refuses if local has
+   unpushed commits (would deploy stale code).
+2. Shows commit + version + impact ("polling pauses 2-3 min during
+   rebuild") and waits for explicit `y`.
+3. Runs `gcloud compute ssh ... "cd PawPoller && sudo -u kithetiger git pull && sudo docker compose up -d --build"`
+   in background. Handles the MEMORY-documented gotchas (sudo-u for
+   git pull, sudo for docker, --build mandatory).
+4. After SSH disconnects: `curl /api/health`, confirms version matches.
+5. `docker compose logs --tail 30`, scans for ERROR / Traceback,
+   confirms uvicorn + orchestrator started cleanly.
+6. Reports.
+
+Also `disable-model-invocation: true`. Container rebuild on production
+is not something to fire by inference.
+
+### `release-verifier` subagent
+
+Six procedural pre-tag checks (read-only — tools restricted to
+`Read, Grep, Glob, Bash`):
+
+1. `APP_VERSION` in `config.py` matches target
+2. `CHANGELOG.md` top header == `## [target]`
+3. `docs/HANDOFF.md` "Current version:" line mentions target
+4. **`installer/PawPoller.iss` AppId GUID unchanged** —
+   `{A8E2F7B4-3D9C-4F1E-8B5A-2C7D9E1F0A6B}`. If this drifts, every
+   existing Windows install becomes orphaned (Windows treats it as a
+   different app). Catastrophic + silent — verifier is the only thing
+   that would notice.
+5. `pytest tests/ -v` passes
+6. Git working tree clean (warn-only, not fail)
+
+Verdict strings: `SAFE TO TAG` / `SAFE TO TAG with confirmation` /
+`DO NOT TAG`. `/pp-release` blocks on `DO NOT TAG`.
+
+**Standalone invocation:** `Use the release-verifier subagent. Pass the
+target version "2.27.0".` No tag/push happens — verifier is read-only.
+
+### `security-reviewer` subagent
+
+Read-only audit (`Read, Grep, Glob, Bash` — no Edit/Write). Scoped to
+PawPoller's actual threat surface (single-tenant desktop+server,
+**not** generic OWASP SaaS shape):
+
+**Watchlist:** `auth/browser_login.py`, `config.py`, `routes/dashboard_auth.py`,
+`routes/settings_api.py`, `posting/sync.py`, `polling/cf_proxy.py`,
+`uninstall.py` (new — shell-script generator with path interpolation),
+`updater.py` (Linux apply path), `dashboard.py`.
+
+**10 specific checks:** shell injection via interpolated paths, SQL
+injection (catches drift from `?` parameterisation), path traversal,
+secret leakage in logs, CSRF-on-GET, cookie config (HttpOnly +
+SameSite=lax post-2.16.8), rate limiter behaviour, vault key handling,
+auth-exempt path safety, and a deep-dive on `uninstall.py:_build_*_script`
+for shell-quoting around the new path interpolation.
+
+Verdict strings: `SAFE TO RELEASE` / `SAFE WITH MITIGATIONS` / `BLOCK RELEASE`.
+`/pp-release` blocks on `BLOCK RELEASE`; Mediums get a "fix now or
+document and ship" prompt.
+
+**Standalone invocation:** `Use the security-reviewer subagent. Pass
+"since 2.26.0".` (Accepts a git ref or file list to scope; default is
+full watchlist.)
+
+### `claude-automation-recommender` skill
+
+Imported from Anthropic's official plugin repo
+(`anthropics/claude-plugins-official/plugins/claude-code-setup`). Pure
+analyser — scans a codebase and recommends what hooks / skills / agents /
+MCP servers would help. Read-only, doesn't modify anything. We used it
+to scope the four items above. Useful next time you start a new project
+or revisit PawPoller's automation surface.
+
+**Invocation:** `recommend automations for this project`
+
+### Workflow at release time
+
+```
+You finish writing v2.27.0 (bump config.py, write CHANGELOG, update HANDOFF)
+   │
+   ▼
+/pp-release 2.27.0 "Feature: foo bar"
+   │
+   ├─► release-verifier subagent (5s)   ─┐
+   │                                      ├─► both verdicts combined → decision
+   └─► security-reviewer subagent (~30s) ─┘
+   │
+   ▼ (if both clean)
+commit → tag → push → gh run watch → verify 3 assets → report ✓
+   │
+   ▼ (separately, when ready to push to prod)
+/pp-deploy 2.27.0
+   │
+   ▼
+git sync check → confirm with user → gcloud ssh + docker rebuild
+   → verify /api/health → tail logs → report ✓
+```
+
+### Where to point the user
+
+Common requests and the right pointer:
+
+| User asks… | Point them to |
+|---|---|
+| "cut v2.27.0" / "release the new version" | `/pp-release 2.27.0 "..."` |
+| "deploy to prod" / "push to the VM" / "pawupdate" | `/pp-deploy [version]` |
+| "is my release ready to tag?" | `Use the release-verifier subagent. Pass "2.27.0".` |
+| "audit the security of recent changes" | `Use the security-reviewer subagent. Pass "since 2.26.0".` |
+| "what other Claude Code automations would help?" | `recommend automations for this project` (or `/claude-automation-recommender`) |
+
+### What ISN'T automated yet (worth knowing)
+
+- **Marketing site refresh** (Hero version chip + GetIt CTA label) is
+  still a manual edit after a release. CF Pages auto-deploys on push.
+  Could become a hook on tag push.
+- **Story archive sync** (`pawsync.bat` / `pawpull.bat`) stays manual —
+  separate concern from app deploy.
+- **macOS desktop build** — on the public roadmap, no skill yet because
+  the work hasn't been done. Same shape as Linux when ready.
+- **CHANGELOG entry generation from git log** — intentionally not
+  automated. The prose matters for HANDOFF + release notes. Hand-written.
+
+### Files for reference
+
+- `~/.claude/skills/pp-release/SKILL.md` — release recipe
+- `~/.claude/skills/pp-deploy/SKILL.md` — deploy recipe
+- `~/.claude/skills/claude-automation-recommender/SKILL.md` — analyser
+- `~/.claude/agents/release-verifier.md` — procedural verifier
+- `~/.claude/agents/security-reviewer.md` — security auditor
+
+All live under the user's global `~/.claude/`, not in this repo. Will
+not show up in `git status` and don't deploy with the app.
+
+---
+
 ## For the next session
 
 If the user asks to resume, the most useful things to read first are:
