@@ -4,17 +4,20 @@ This is a new-user install guide. Pick the mode that fits you:
 
 | Mode | Who it's for | Data stays on | Dashboard reachable from |
 |------|--------------|---------------|--------------------------|
-| **Desktop (Windows)** | One user, one machine | Your PC | `127.0.0.1:8420` only |
+| **Desktop (Windows)** | One user, one machine, Windows | Your PC | `127.0.0.1:8420` only |
+| **Desktop (Linux)** | One user, one machine, Linux | Your PC | `127.0.0.1:8420` only |
 | **Docker / headless** | Self-hosted, always-on polling, access from phone/laptop | Your server | LAN or the public internet (you choose) |
-| **From source** | Devs, Linux/macOS users, anyone wanting to hack on it | Wherever you clone | Same as whichever entry point you run |
+| **From source** | Devs, macOS users, anyone wanting to hack on it | Wherever you clone | Same as whichever entry point you run |
 
-All three share the same code, database, and UI — the only difference is how it's packaged and where the process runs.
+All four share the same code, database, and UI — the only difference is how it's packaged and where the process runs.
+
+**macOS**: native desktop build is on the roadmap. For now run via Docker or from source.
 
 ---
 
 ## 1. Desktop (Windows)
 
-The simplest path. A single `.exe` with the dashboard, all pollers, and the publishing pipeline bundled.
+The simplest path on Windows. Single-file installer or portable zip, your choice.
 
 ### 1.1 Requirements
 
@@ -24,10 +27,23 @@ The simplest path. A single `.exe` with the dashboard, all pollers, and the publ
 
 ### 1.2 Install
 
+Two formats — pick whichever:
+
+**A) Installer (recommended)**
+
 1. Open the [Releases page](https://github.com/knaughtykat01-prog/PawPoller/releases/latest).
-2. Download `PawPoller-windows-x64.zip`.
-3. Right-click → Properties → **Unblock** (Windows sometimes flags unsigned zips). Then extract anywhere — e.g. `C:\PawPoller`.
-4. Double-click `PawPoller.exe`.
+2. Download `PawPoller-Setup-{version}.exe`.
+3. Run it. Windows SmartScreen will warn ("Windows protected your PC") because the installer is unsigned — click **More info → Run anyway**.
+4. The installer defaults to a per-user install (no UAC prompt). Tick the boxes for **Desktop shortcut** and **Run on Windows startup** if you want them.
+5. **Launch PawPoller now** is ticked on the final page; clear it if you want to start manually.
+
+To uninstall, use **Add or Remove Programs**. The uninstaller will offer to keep your `%APPDATA%\PawPoller\` data folder (default Yes — your SQLite DB / settings / vault survive a reinstall).
+
+**B) Portable zip**
+
+1. Download `PawPoller-windows-x64.zip` from the same Releases page.
+2. Right-click → Properties → **Unblock** (Windows sometimes flags unsigned zips). Then extract anywhere — e.g. `C:\PawPoller`.
+3. Double-click `PawPoller.exe`.
 
 On first launch a pywebview window opens with the setup wizard. The app also installs a tray icon — right-click it for **Show / Hide / Quit**.
 
@@ -36,7 +52,7 @@ On first launch a pywebview window opens with the setup wizard. The app also ins
 The wizard walks you through four steps:
 
 1. **Welcome** — overview.
-2. **Story archive path** — point at a folder where your stories live (or will live). See §4 for the expected layout.
+2. **Story archive path** — point at a folder where your stories live (or will live). See §5 for the expected layout.
 3. **Platform connections** — cards for all 11 platforms. You can skip this and fill it in later from Settings.
 4. **Done**. Dashboard opens.
 
@@ -47,7 +63,7 @@ The wizard walks you through four steps:
 ├── data\
 │   ├── pawpoller.db            SQLite database (polling stats, publications, queue)
 │   ├── settings.json           Non-secret settings
-│   └── settings.vault.json     Encrypted credentials (if vault enabled — see §5.4)
+│   └── settings.vault.json     Encrypted credentials (if vault enabled — see §6.4)
 └── logs\                       Rotated log files
 ```
 
@@ -55,7 +71,9 @@ Back these two folders up and you've got everything.
 
 ### 1.5 Updating
 
-Download the new release zip, extract over the old folder (keep your `data\` and `logs\` folders untouched), re-launch. The database auto-migrates.
+In-app: the auto-updater checks GitHub for new releases and surfaces a notification with a one-click update flow.
+
+Manual: download the new release zip / installer, install over the old version (the installer upgrades in place; for the zip, extract over the old folder while keeping your `data\` and `logs\` folders untouched), re-launch. The database auto-migrates.
 
 ### 1.6 Build from source (advanced)
 
@@ -70,6 +88,87 @@ pip install -r requirements.txt
 pip install pyinstaller
 python -m PyInstaller pawpoller.spec --noconfirm
 # Output: dist\PawPoller\PawPoller.exe
+```
+
+To also build the Inno Setup installer, install [Inno Setup 6](https://jrsoftware.org/isinfo.php) and run `iscc /DMyAppVersion="<version>" installer\PawPoller.iss`. Output lands in `installer\Output\`.
+
+---
+
+## 1B. Desktop (Linux)
+
+Single-file AppImage. No install, no root, no package manager — `chmod +x` and run.
+
+### 1B.1 Requirements
+
+- x86_64 Linux with glibc 2.35 or newer
+  - **Tested on**: Ubuntu 22.04+, Fedora 37+, Debian 12+, Arch
+  - Older distros (Ubuntu 20.04, Debian 11) won't run the AppImage — use the Docker mode or build from source on a newer base
+- ~200 MB disk space
+- Optional: `libnotify-bin` (`sudo apt install libnotify-bin` on Debian/Ubuntu, equivalents on other distros) for desktop toast notifications. The AppImage works without it; you just won't see toast pop-ups.
+
+### 1B.2 Install
+
+```bash
+# Replace {version} with the actual release tag, e.g. 2.25.0
+wget https://github.com/knaughtykat01-prog/PawPoller/releases/latest/download/PawPoller-{version}-x86_64.AppImage
+chmod +x PawPoller-*.AppImage
+./PawPoller-*.AppImage
+```
+
+Or grab it from the [Releases page](https://github.com/knaughtykat01-prog/PawPoller/releases/latest) in a browser, then `chmod +x` and double-click in your file manager.
+
+The first launch opens the setup wizard. PawPoller installs a system-tray icon via libappindicator on KDE / GNOME (with the AppIndicator extension installed) / XFCE / MATE / Cinnamon.
+
+### 1B.3 First-run wizard
+
+Same four steps as Windows — see §1.3 above.
+
+### 1B.4 Where your data lives
+
+```
+~/.local/share/PawPoller/      (XDG_DATA_HOME)
+├── data/
+│   ├── pawpoller.db
+│   ├── settings.json
+│   └── settings.vault.json
+└── logs/
+```
+
+Some Linux distros put `%APPDATA%`-equivalent data under `~/.config/PawPoller/` depending on Python's `appdirs` resolution. Check the app's startup log if you're not sure — `[INFO] Config dir: …` is logged at boot.
+
+### 1B.5 Run on login
+
+Settings → General → **Run on Windows startup** (the label is generic) toggle writes a `.desktop` entry to `~/.config/autostart/PawPoller.desktop`. Standard XDG autostart spec — honoured by GNOME, KDE, XFCE, Cinnamon, MATE, LXQt automatically.
+
+### 1B.6 Updating
+
+In-app: the auto-updater downloads the new AppImage and replaces the file at `$APPIMAGE` in place, then re-execs. The path of the currently-running AppImage is preserved.
+
+Manual: download the new AppImage, replace the old file, `chmod +x`, re-launch.
+
+### 1B.7 Build from source (advanced)
+
+```bash
+git clone https://github.com/knaughtykat01-prog/PawPoller.git
+cd PawPoller
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt          # Pulls PyQt6 + PyQt6-WebEngine for Linux
+pip install pyinstaller
+
+# System runtime deps (Ubuntu / Debian — adjust for your distro)
+sudo apt install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libcairo2 \
+                 libgdk-pixbuf-2.0-0 libffi8 fonts-dejavu-core libnotify-bin \
+                 libgl1 libegl1 libxkbcommon-x11-0 libdbus-1-3 \
+                 libnss3 libxcomposite1 libxdamage1 libxrandr2 libasound2 \
+                 libfuse2          # only needed for the AppImage step
+
+python -m PyInstaller pawpoller.spec --noconfirm
+# Output: dist/PawPoller/PawPoller
+
+# Optional: bundle as an AppImage
+./installer/build-appimage.sh <version>
+# Output: installer/Output/PawPoller-<version>-x86_64.AppImage
 ```
 
 ---

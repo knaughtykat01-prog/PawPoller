@@ -31,9 +31,19 @@ The tech stack is FastAPI + SQLite (WAL mode) + Vanilla JS SPA + pywebview + pys
 
 ### Two Operating Modes
 
-**Desktop** (`main.py`): pywebview native window + pystray system tray + all pollers. Designed for Windows. The dashboard runs at `127.0.0.1:8420` and is accessed through an embedded browser window. Requires desktop-only dependencies: pywebview, pystray, Pillow, winotify.
+**Desktop** (`main.py`): pywebview native window + pystray system tray + all pollers. Runs on Windows and Linux; macOS is on the public roadmap. The dashboard runs at `127.0.0.1:8420` and is accessed through an embedded browser window. Desktop-only dependencies vary by OS — `winotify` on Windows, `PyQt6 + PyQt6-WebEngine` on Linux (the pywebview backend, set via `gui='qt'` in `webview.start()`); `pywebview`, `pystray`, and `Pillow` are common to both. See `requirements.txt` for env-marker syntax (`; sys_platform == "..."`).
 
 **Headless** (`server.py`): pollers + dashboard only, no GUI dependencies. Designed for Docker / Linux server deployment. Binds `0.0.0.0:8420` by default. Uses `requirements-server.txt` which excludes all desktop dependencies.
+
+### Cross-platform desktop matrix
+
+| OS | Build target | Autostart mechanism | Notifications backend | pywebview backend |
+|---|---|---|---|---|
+| Windows | `PawPoller-Setup-{ver}.exe` (Inno Setup installer) + `PawPoller-windows-x64.zip` (portable) | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` value | `winotify` (Windows 10/11 native toast) | Edge WebView2 (default) |
+| Linux | `PawPoller-{ver}-x86_64.AppImage` (single file, no install) | XDG `~/.config/autostart/PawPoller.desktop` | `notify-send` (libnotify) shell-out | Qt6 + QtWebEngine (set via `webview.start(gui='qt')`) |
+| macOS | *planned* — `.app` bundle inside `.dmg` | *planned* — launch agent plist at `~/Library/LaunchAgents/` | *planned* — `pync` or `osascript` shell-out | Cocoa via PyObjC (default) |
+
+The per-OS branching for autostart and notifications lives behind two single-entry-point helpers (`config.set_run_on_startup()` / `polling.notifications.show_toast()`) so callers stay platform-blind. See §8 (Notifications) and §9 (Configuration System) for the implementations.
 
 ### High-Level Component Map
 
@@ -103,7 +113,7 @@ PawPoller/
 ├── server.py                # Headless entry point (Docker / server, unified poll orchestrator)
 ├── config.py                # Paths, credentials, settings.json helpers
 ├── dashboard.py             # FastAPI app factory, session auth middleware, rate limiting, security headers, SPA serving
-├── updater.py               # Auto-update (desktop only)
+├── updater.py               # Auto-update (desktop only); per-OS asset matching + apply path
 ├── auto_sync.py             # Settings auto-sync: debounced push + 5-min pull thread (desktop ↔ server)
 │
 ├── clients/                 # Per-platform HTTP clients (all 11 platforms in one place — 2.14.3)
@@ -255,7 +265,9 @@ PawPoller/
 ├── Dockerfile               # Python 3.11 slim + HEALTHCHECK
 ├── docker-compose.yml       # Single service, 2 named volumes, .env file
 ├── .env.example             # 25+ environment variable template
-├── requirements.txt         # Desktop dependencies (pywebview, pystray, Pillow, winotify, etc.)
+├── requirements.txt         # Desktop dependencies. Common: pywebview, pystray, Pillow.
+│                            #   Windows-only (env marker `sys_platform == "win32"`): winotify.
+│                            #   Linux-only (env marker `sys_platform == "linux"`): PyQt6, PyQt6-WebEngine.
 ├── requirements-server.txt  # Headless/Docker dependencies (no GUI): fastapi, uvicorn, httpx, bcrypt, pyotp, itsdangerous
 ├── pawpoller.spec          # PyInstaller build spec
 ├── build.bat               # Windows build script
@@ -925,7 +937,7 @@ Step 5: Comments / Faves / Watchers (platform-dependent)
     │  WS/DA/WP/IK/BSKY/TW: none
     ▼
 Step 6: Notifications
-    │  Windows toast (desktop only, winotify)
+    │  Desktop toast (Windows: winotify; Linux: notify-send)
     │  Telegram (summaries, milestones, errors)
     │  First poll suppressed (baseline collection)
     ▼
@@ -1943,17 +1955,49 @@ CSP rationale: All JS loaded via `<script src=...>` *except* one tiny inline boo
 
 ## 8. Notifications
 
-### Windows Toast Notifications (Desktop Only)
+### Desktop Toast Notifications (per-OS shim)
 
-Uses `winotify` library. Every notification call is wrapped in try/except with an ImportError guard:
+`polling/notifications.py:show_toast()` is a single-entry-point helper
+that branches on `sys.platform`. Callers (the 11 pollers) just call it
+with a title + line list and don't care which backend fires.
+
+**Windows** — `winotify` (Windows 10/11 native toast). Lazy-imported so
+the module loads cleanly on non-Windows builds:
+
 ```python
-try:
+if sys.platform == "win32":
     from winotify import Notification
-except ImportError:
-    logger.debug("winotify not installed — skipping notifications")
-    return
+    Notification(app_id="PawPoller", title=title, msg=msg).show()
+    return True
 ```
-This means the server/Docker deployment silently skips toasts without any error.
+
+**Linux** — shell-out to `notify-send` (libnotify CLI). Present by
+default on every major desktop environment (GNOME, KDE, XFCE, MATE,
+Cinnamon, LXQt). `--app-name=PawPoller` groups our toasts together in
+DE notification centres; `--expire-time=8000` (8s) matches the
+Windows toast dwell:
+
+```python
+if sys.platform.startswith("linux"):
+    subprocess.run([
+        "notify-send", "--app-name=PawPoller", "--expire-time=8000",
+        title, msg,
+    ], check=False, timeout=3.0)
+    return True
+```
+
+Silently no-ops (returns False + debug log) when `notify-send` isn't on
+PATH — headless servers, minimal containers, AppImage runs on hosts
+that haven't installed libnotify. PawPoller still works; the user just
+doesn't get desktop toasts.
+
+**macOS / other** — no-op + debug log for now. The launch-agent plist
+work plus a `pync`/`osascript` notifications branch will land when the
+macOS native app ships.
+
+The server/Docker deployment silently skips toasts on all platforms
+because all three branches gracefully degrade when their backend is
+missing (no winotify, no notify-send, no `sys.platform == "darwin"`).
 
 **Notification types per platform**:
 - New comments: "IB: 3 New Comments" with up to 3 lines of "User commented on Title"
@@ -2306,24 +2350,49 @@ BSKY_REQUEST_DELAY_SECONDS     = 1.0    # Bluesky AT Protocol (generous rate lim
 TW_REQUEST_DELAY_SECONDS       = 2.0    # X/Twitter GraphQL (aggressive rate limiting)
 ```
 
-### Windows Auto-Start (Registry)
+### Run-on-startup (per-OS shim)
 
-PawPoller can register itself to start with Windows via the per-user Run registry key:
+`config.get_run_on_startup()` and `config.set_run_on_startup(enabled)`
+are the single entry points used by the Settings → General toggle in
+the dashboard. Both branch on `sys.platform`. The exec-string
+construction is shared (`_exec_command_for_autostart()`) — frozen
+builds register the bundled binary; dev mode registers `python main.py`.
+
+**Windows** — per-user Run registry key. No admin privileges needed:
 
 ```python
 _STARTUP_REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 _STARTUP_REG_NAME = "PawPoller"
-
-# Frozen: writes exe path directly ("C:\...\PawPoller.exe")
-# Dev: writes python + script path ("python" "main.py")
+# HKCU (not HKLM) — runs only for the current user, no admin needed.
 ```
 
-Uses `HKCU` (not `HKLM`) so no admin privileges are needed.
+**Linux** — XDG autostart `.desktop` file at
+`~/.config/autostart/PawPoller.desktop`. Honoured by every major
+desktop environment automatically (no user action beyond the toggle
+itself). Honours `$XDG_CONFIG_HOME` if set. File contents:
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=PawPoller
+Comment=Multi-platform story publishing + analytics
+Exec=/path/to/PawPoller.AppImage
+Terminal=false
+X-GNOME-Autostart-enabled=true
+```
+
+`X-GNOME-Autostart-enabled` is GNOME-specific but harmless on other DEs;
+`OnlyShowIn=` is intentionally omitted so every DE picks it up.
+
+**macOS** — not implemented yet. Would use a launch agent plist at
+`~/Library/LaunchAgents/com.knaughtykat.pawpoller.plist`. Currently
+`set_run_on_startup` logs a warning and returns; `get_run_on_startup`
+returns False. The Settings toggle still renders for UI parity.
 
 ### Other App Constants
 
 ```python
-APP_VERSION = "2.22.1"  # check config.py for current — bumped on every ship
+APP_VERSION = "2.25.0"  # check config.py for current — bumped on every ship
 INKBUNNY_API_BASE = "https://inkbunny.net"
 FA_BASE = "https://www.furaffinity.net"
 FAEXPORT_BASE = "https://faexport.spangle.org.uk"
@@ -2621,6 +2690,66 @@ gcloud compute ssh pawpoller --zone=us-east1-c --command="sudo docker compose -f
 - Uses `sudo` for docker commands
 - Handles ARM architecture compatibility (Oracle's free instances are ARM-based)
 
+### Desktop Installer / Bundles (Windows + Linux)
+
+Native desktop builds are produced by `.github/workflows/build.yml` on
+every `v*` tag push. Three artefacts ship with each release:
+
+| Artefact | Platform | Built by | Purpose |
+|---|---|---|---|
+| `PawPoller-windows-x64.zip` | Windows | PyInstaller `--onedir` + `Compress-Archive` | Portable install — extract anywhere, run `PawPoller.exe` |
+| `PawPoller-Setup-{ver}.exe` | Windows | Inno Setup 6 (`installer/PawPoller.iss`) | Single-file installer with proper uninstaller in Add/Remove Programs. Per-user install by default (no UAC); optional Start Menu / desktop shortcuts / autostart task |
+| `PawPoller-{ver}-x86_64.AppImage` | Linux | PyInstaller + `installer/build-appimage.sh` (appimagetool) | Single-file distro-independent build. Runs on Ubuntu 22.04+ / Fedora 37+ / Debian 12+ / Arch. GLIBC 2.35 floor for forward-compat. |
+
+**Windows installer** (`installer/PawPoller.iss`): Inno Setup 6 script.
+Fixed AppId GUID so reinstalls upgrade in place. AppVersion injected
+at build time via `iscc /DMyAppVersion="..."` so there's no
+duplicated version string. Per-user install model writes a HKCU
+`Run` value when "Run on Windows startup" task is ticked; uninstaller
+offers (default No) to delete `%APPDATA%\PawPoller\` so most uninstalls
+preserve user data. Best-effort `taskkill /F /IM PawPoller.exe` runs
+before file deletes to avoid "in use" errors.
+
+**Linux AppImage** (`installer/build-appimage.sh`): builds an `AppDir`
+from PyInstaller's `dist/PawPoller/` tree (the `--onedir` output, with
+PyInstaller's bundled `_internal/` libs):
+
+```
+PawPoller.AppDir/
+├── AppRun                       # launcher script; exec's usr/bin/PawPoller/PawPoller
+├── PawPoller.desktop            # required by AppImage spec
+├── PawPoller.png                # icon (sourced from assets/tray_icon.png)
+├── .DirIcon -> PawPoller.png    # AppImage runtime reads this for previews
+└── usr/bin/PawPoller/           # entire dist/PawPoller/ tree
+    ├── PawPoller                # the bundled binary
+    └── _internal/               # PyInstaller's bundled libs (Qt6, WebEngine, WeasyPrint, …)
+```
+
+`appimagetool` then packages the AppDir into a single executable
+AppImage with the AppImage runtime prepended. Script auto-downloads
+appimagetool from AppImageKit's continuous build if not on PATH, and
+falls back to `--appimage-extract-and-run` when libfuse2 is missing
+(rare on dev machines, but happens on minimal CI runners — see the
+"libfuse2" line in `build.yml`).
+
+**CI structure** (`.github/workflows/build.yml`):
+
+- `build-windows` job on `windows-latest`: PyInstaller → zip →
+  Inno Setup → uploads zip + installer + attaches both to the release.
+- `build-linux` job on `ubuntu-22.04`: apt-installs WeasyPrint deps,
+  libnotify-bin, Qt6 platform plugin deps (libgl1, libegl1, libxcb-*,
+  libxkbcommon-x11-0, libdbus-1-3), QtWebEngine deps (libnss3,
+  libxcomposite1, libxdamage1, libxrandr2, libasound2), and libfuse2.
+  Runs PyInstaller, then `build-appimage.sh`, then uploads + attaches
+  the AppImage.
+- `test` job on `ubuntu-latest`: runs the pytest suite (91 tests) +
+  py_compile sanity check.
+
+All three jobs run in parallel on tag push; the release ends up with
+all three artefacts attached. Marketing site (`site/`) is deployed
+separately by Cloudflare Pages on every push to master that touches
+`site/**` (no CI step needed — CF Pages auto-builds).
+
 ### Auto-Update (`updater.py` — Desktop Only)
 
 Version checking against GitHub Releases:
@@ -2634,7 +2763,34 @@ async def check_for_update():
         return {"available": True, "version": latest, "download_url": asset["browser_download_url"]}
 ```
 
-Download uses streaming (8KB chunks) to avoid memory bloat. Extraction to a temp directory. 120-second timeout for slow connections. Supports authenticated requests via `github_pat` token for private repos.
+Download uses streaming (8KB chunks) to avoid memory bloat. 120-second
+timeout for slow connections. Supports authenticated requests via
+`github_pat` token for private repos.
+
+**Per-OS asset matching** (`_pick_update_asset`): the in-app updater
+is for incremental upgrades of an already-installed app, so it picks:
+
+- **Linux** → `*-x86_64.AppImage` (in-place replace via `$APPIMAGE`).
+- **Windows** → `*.zip` (extract + robocopy mirror into the install
+  dir). The `*-Setup.exe` installer is intentionally NOT chosen —
+  that's for fresh installs from the website / Releases page.
+
+**Per-OS apply path**:
+
+- **Windows** (`apply_update`): extracts the zip to a temp dir then
+  writes a `_update.bat` that sleeps 2s, runs `robocopy /MIR /XD data
+  logs` against the install dir, restarts the .exe, and self-deletes.
+  `os.startfile` launches the .bat detached.
+- **Linux** (`_apply_update_linux`): reads the current AppImage path
+  from the `APPIMAGE` env var (standard, set by the AppImage runtime),
+  writes a `_update.sh` that sleeps 2s, `mv -f`'s the new file over
+  the current path, chmod +x, exec's the new AppImage. Spawned
+  detached via `subprocess.Popen(stdin/stdout/stderr=DEVNULL,
+  start_new_session=True)`.
+
+Both paths refuse to run in dev mode (`getattr(sys, "frozen", False)
+== False`) — auto-updating a venv would clobber the developer's
+working tree.
 
 ---
 

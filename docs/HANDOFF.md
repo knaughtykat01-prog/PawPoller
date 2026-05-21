@@ -132,6 +132,8 @@ cover/chapter thumbnail uploads, and GitHub release packaging.
 | **Format downloads (mobile-friendly)** | 2.17.3 | EPUB triple-broken in 2.17.0–2.17.2 — not in `_FORMAT_KEY_PATTERNS`, not in `_DOWNLOAD_EXTENSIONS`, no media-type. All three fixed. New `GET /api/posting/archive` streams the entire story folder (excluding `Backups/`) as a zip via `StreamingResponse`. Two surfaces: "Download all (zip)" footer on the Available Formats card on the published-story page, and a new "Downloads ▾" dropdown in the editor toolbar that lazy-fetches the format list and includes the zip. |
 | **Downloads dropdown polish** | 2.17.4 | One row per format, fixed display order (EPUB → PDF → Styled HTML → Clean HTML → SoFurry HTML → BBCode → Markdown). Per-chapter formats (`chapter_bbcode`, `squidgeworld`) hidden — the zip covers them. Proper CSS (`.downloads-row` flex layout, `.downloads-zip` styled footer, `.downloads-empty` muted state). |
 | **`pawsync --prune`** | 2.17.5 | Closes the "manual `rm -rf` after deleting test stories" gap. `pawsync.py` accepts `--prune` (removes server-side top-level dirs missing locally; `Backups`/`Drafts`/`Styled_HTML` untouchable) and `--dry-run` (lists without removing). Default behaviour unchanged — `pawsync.bat` keeps the additive `tar xzf` semantics. Roadmap also corrected: cache-buster consistency and CI pytest items were stale (already done in earlier versions). |
+| **Linux desktop (AppImage)** | 2.25.0 | Per-OS shims for the four Windows-isms (autostart → XDG `.desktop`; toasts → notify-send; pystray backend → `_appindicator`; pywebview backend → Qt6+QtWebEngine via `gui='qt'`). `requirements.txt` env-markers gate `winotify` to Windows and `PyQt6 + PyQt6-WebEngine` to Linux. New `installer/build-appimage.sh` packages PyInstaller's `dist/PawPoller/` as an `AppDir` + runs `appimagetool`. New `build-linux` job in CI on `ubuntu-22.04` (GLIBC 2.35 floor). `updater.py` picks `.AppImage` on Linux and replaces in place via `$APPIMAGE`. README + SETUP.md + marketing site + documentation_guide all updated. macOS detailed as planned in ROADMAP_PUBLIC (Apple Developer cert + notarization decision open). |
+| **Windows install wizard** | 2.24.0 | Inno Setup single-file installer (`installer/PawPoller.iss`, ~90 LOC). Per-user install by default (no UAC); optional Start Menu / desktop shortcuts; optional autostart task that writes HKCU `Run`. Uninstaller registers under Add or Remove Programs; offers (default No) to delete `%APPDATA%\PawPoller`. Best-effort `taskkill` before file deletes. Fixed AppId GUID so upgrades replace in place. AppVersion injected at build via `iscc /DMyAppVersion=...` from `config.py`. CI: new "Read app version" + "Build installer" steps on `windows-latest` (Inno Setup 6 pre-installed; choco fallback). Both installer .exe + portable zip attached to releases. |
 | **In-app EPUB viewer** | 2.17.6 | Vendors `epub.js` 0.3.93 + `jszip` 3.10.1 to `frontend/vendor/`. New `frontend/epub-viewer.html` + `frontend/js/epub-viewer.js`: minimal toolbar (close/title/prev/percent/next/download), full-bleed reader, 18% tap zones, keyboard arrows, theme tokens resolved into the rendered iframe via `rendition.themes.default`. `dashboard.py` mounts `/vendor` static prefix (auth-exempt parity with `/css/`, `/js/`), serves `/epub-viewer.html` with cache-buster substitution, and adds `_build_epub_viewer_csp()` — a path-scoped relaxed CSP that allows `blob:` in style/img/font/connect/frame so epub.js's extracted resources render. Strict default CSP unchanged for every other path. Editor Downloads dropdown grows a "↗ Preview in browser" sub-row under EPUB. Two non-obvious gotchas: (1) `ePub(url, { openAs: 'epub' })` is mandatory — the URL path is `/api/posting/file` (the `.epub` lives in the query string), so epub.js's default extension sniff fails and the loader hangs trying to read `META-INF/container.xml` as a directory; (2) the inline boot script in the viewer must be byte-identical to `index.html`'s so the existing CSP SHA-256 hash covers it (verified via `hashlib.sha256` — both hash to `WudoxBejEmzS4SXsQBia7rsNZctlaFiey3RvF0r8SzA=`). |
 | **Mobile Mode (Phase 5 sweep)** | 2.16.4–2.16.8 | After-deploy audit pass. **2.16.4** hot-fixed the silent CSP block that had been dropping every `data-mobile` rule since 2.16.0 — inline boot-script SHA-256 hash had to be re-computed in `dashboard.py`. **2.16.5** added page-header `padding-left:60px` so titles ("Overview", "Settings") aren't half-hidden behind the hamburger, and `!important` on stats-grid 1-col rule to beat the inline JS style on the per-platform grid. **2.16.6** wrapped `.page-header` and gave its inline-styled action div 100%-width / 50%-flex buttons so 4-button rows (Save Settings / Poll Now / Full Resync / Clear Session) flow into 2×2 instead of forcing the doc to 830px. **2.16.7** clamped `.settings-tabs` (`max-width:100%`+`min-width:0`) so the existing scroll-x actually engages, plus `.main-content { max-width:100vw; overflow-x:hidden }` as defense-in-depth. **2.16.8** closed deferred backlog: SameSite=Strict→lax (fixes periodic 401 bursts on prod), favicon-401 exemption, `/api/health` exposes `version`. |
 | **Mobile Mode (Phase 3)** | 2.16.2 | Vertical sweep — every multi-col grid (growth/goal/card/story/tag/chart-row/theme/fa-metadata/setup-platforms) forced to 1-col on mobile. Detail header → thumb-on-top vertical. Pinned row scroll-snap → vertical stack. Compare chips → full-width buttons. Date range → wraps in 3-up rows. Settings rows toggle right-aligned. Log + timeline → single column. |
@@ -399,24 +401,45 @@ If the user asks to resume, the most useful things to read first are:
 6. `routes/editor_api.py` + `routes/settings_api.py` — main API surface
 7. `auto_sync.py` — new in 2.14.2; small (~170 LOC), worth a glance before touching settings persistence
 
-### CI / release pipeline state (updated 2026-05-02)
+### CI / release pipeline state (updated 2026-05-21)
 
-The `Build & Release` workflow fires on `v*` tag pushes and has two
-jobs: `test` (Ubuntu, `python -m pytest tests/ -v` since 2.13.8) and
-`build-windows` (PyInstaller → zip → `softprops/action-gh-release@v2`).
+The `Build & Release` workflow fires on `v*` tag pushes and has three
+jobs running in parallel:
+
+- **`build-windows`** (`windows-latest`): PyInstaller → zip + Inno Setup
+  installer (2.24.0+). Uploads both + attaches to the release.
+- **`build-linux`** (`ubuntu-22.04`, GLIBC 2.35 floor for forward-compat,
+  added 2.25.0): apt deps (WeasyPrint runtime libs + libnotify-bin +
+  Qt6 platform plugin deps + QtWebEngine deps + libfuse2 for
+  appimagetool) → PyInstaller → `installer/build-appimage.sh` →
+  AppImage. Attaches to the release.
+- **`test`** (`ubuntu-latest`): `python -m pytest tests/ -v` since
+  2.13.8. 91 tests, all green.
+
 The `Lint` workflow fires on every push to master (ruff + JS syntax).
 `requirements-server.txt` pins the test deps (`pytest~=8.3`,
-`pytest-asyncio~=1.3`, `respx~=0.22`). 91 tests, all green.
+`pytest-asyncio~=1.3`, `respx~=0.22`).
 
-**Tag drift**: `v2.13.8` is still the most recent published release.
-2.13.9 → 2.17.6 (24 versions: vault init fix, 8-theme picker, Vibe
-Pack, auto-sync, file-tree refactor, audit-debt refactor, coordinated
-desktop ↔ server, mobile mode phases 0–5, BUG-* sweep, EPUB output,
-mobile downloads, pawsync prune, in-app EPUB viewer) has shipped to
-master + GCP but no Windows artifacts have been published. Cutting
-`v2.17.6` would re-run the build job and produce a fresh
-`PawPoller-windows-x64.zip` artifact; worth doing as a "release
-everything that's accumulated" pass before the next feature push.
+**Tag drift resolved**: was 2.13.8 → master (24 versions). Caught up
+2026-05-20 by cutting `v2.24.0` (Inno Setup installer feature), then
+`v2.25.0` on 2026-05-21 (Linux desktop / AppImage). Both releases
+green; v2.25.0 has all three artefacts:
+
+- `PawPoller-windows-x64.zip` (38 MB)
+- `PawPoller-Setup-2.25.0.exe` (31 MB)
+- `PawPoller-2.25.0-x86_64.AppImage` (61 MB)
+
+The marketing site at https://pawpoller.pages.dev auto-deploys via
+Cloudflare Pages on every push to master that touches `site/**` — no
+separate tag step needed.
+
+**Known one-off**: v2.25.0's first build hit a transient
+`softprops/action-gh-release@v2` "Server Error" on the Windows
+installer asset upload (Linux + zip uploaded fine). `gh run rerun
+--failed` picked it up cleanly on the second pass. Watch for the
+same pattern on future re-tag pushes — softprops deletes existing
+assets before re-uploading, and GitHub's asset-upload API can flake
+under that pattern.
 
 ### QA status as of 2026-04-26
 
