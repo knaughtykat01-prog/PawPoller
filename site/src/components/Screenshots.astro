@@ -1,30 +1,32 @@
 ---
-// Marketing screenshots — sourced from production dashboard captures.
-// All four are mobile-mode shots (real device width) because PawPoller's
-// responsive layout is a deliberate feature and the marketing audience
-// largely browses on phones. Files live in /public/screens/.
+// Marketing screenshots — captured from the production dashboard via
+// playwright at 1920×1080. All four show the desktop layout because
+// that's what most writers will work with day-to-day. Mobile mode
+// exists too (and is captured separately if needed); the marketing
+// audience reads the site on whatever device they have but the
+// app's "wow" view is the wide-window desktop one.
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 const shots = [
   {
-    file: 'analytics.png',
-    title: 'Analytics across every platform',
-    caption: 'Views, favourites, and comments tracked over time on Inkbunny, FurAffinity, SoFurry, Weasyl, AO3 and more — one dashboard, one timeline view.',
+    file: 'analytics-overview.png',
+    title: 'Analytics across 11 platforms',
+    caption: 'Submission totals, view trends, favourite counts and comment activity for every platform you publish to — Inkbunny, FurAffinity, Weasyl, SoFurry, SquidgeWorld, AO3, DeviantArt, Wattpad, Itaku, Bluesky, X/Twitter — on a single dashboard.',
   },
   {
-    file: 'editor.png',
-    title: 'Markdown editor with semantic anchors',
-    caption: 'Write once in Markdown; HTML-comment anchors (<!-- @title -->, <!-- @warning -->) flag the structural parts so the converters can emit the right markup for each platform.',
+    file: 'editor-anchors.png',
+    title: 'Four-pane editor, one source',
+    caption: 'Markdown source on the left with semantic anchors (<!-- @title -->, <!-- @warning -->, <!-- @disclaimer -->). Rich preview, Clean HTML source, and HTML render side by side. Edit once; every derived format stays in sync.',
   },
   {
-    file: 'stories.png',
-    title: 'Story archive at a glance',
-    caption: 'Every story, every chapter count, every word count in one list. Click in to edit MASTER.md and regenerate every derived format.',
+    file: 'publish-check-matrix.png',
+    title: 'Publish to 9 platforms in one grid',
+    caption: 'Chapter × platform matrix shows where every chapter stands: ready, posted, drifted (local file changed since upload), blocked (validation failure), or not-supported. Hit "Publish all new" once and the matrix walks every cell.',
   },
   {
-    file: 'publish.png',
-    title: 'One-click publish to nine platforms',
-    caption: 'Picks the right format per platform (BBCode for Inkbunny, HTML for SoFurry, work skin for AO3, plain text for Bluesky) and uploads with per-platform tags + descriptions.',
+    file: 'story-archive.png',
+    title: 'Story archive with cover art',
+    caption: 'Every completed story in one grid — cover art, rating, character relationships, word counts, status badges. The "Stories" hub is the entry point for writing, importing, regenerating, and publishing.',
   },
 ];
 ---
@@ -34,19 +36,19 @@ const shots = [
       <span class="chip">See it</span>
       <h2 class="mt-4 text-4xl text-ink-50 md:text-5xl">The interface writers actually use.</h2>
       <p class="mt-6 text-ink-300">
-        Real captures from the production dashboard. The mobile layout is shown here because PawPoller works equally well on a phone — open the dashboard from any device, hit save, and the desktop / Docker instance picks it up.
+        Real captures from the production dashboard — no mockups, no
+        prettified Figma frames. This is what you'll see on day one.
       </p>
     </div>
 
-    <div class="mt-14 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="mt-14 grid gap-8 lg:grid-cols-2">
       {shots.map((s) => (
         <figure class="card overflow-hidden flex flex-col">
-          {/* Phone-frame container: dark bezel + rounded corners hint at
-              "this is a mobile UI" without faking an actual device chrome.
-              aspect-[9/16] matches a typical phone viewport so the
-              screenshot fills the frame without letterboxing. */}
-          <div class="relative bg-ink-950 p-3">
-            <div class="overflow-hidden rounded-lg bg-ink-900 aspect-[9/16]">
+          {/* aspect-video (16:9) matches the captured 1920×1080 viewport
+              so the screenshots fill the frame without cropping. A subtle
+              dark surround mimics the dashboard's own chrome. */}
+          <div class="relative bg-ink-950">
+            <div class="overflow-hidden bg-ink-900 aspect-video">
               <img
                 src={`${base}/screens/${s.file}`}
                 alt={s.title}
@@ -56,9 +58,9 @@ const shots = [
               />
             </div>
           </div>
-          <figcaption class="flex flex-1 flex-col border-t border-ink-700/60 bg-ink-900/60 px-5 py-4">
-            <div class="font-serif text-lg text-ink-100">{s.title}</div>
-            <p class="mt-2 text-xs leading-relaxed text-ink-300">{s.caption}</p>
+          <figcaption class="flex flex-1 flex-col border-t border-ink-700/60 bg-ink-900/60 px-6 py-5">
+            <div class="font-serif text-xl text-ink-100">{s.title}</div>
+            <p class="mt-2 text-sm leading-relaxed text-ink-300">{s.caption}</p>
           </figcaption>
         </figure>
       ))}
