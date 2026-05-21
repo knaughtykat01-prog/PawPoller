@@ -635,7 +635,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.24.0"
+APP_VERSION = "2.25.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL
@@ -830,68 +830,129 @@ def migrate_dashboard_auth() -> None:
     logger.info("Migrated dashboard password to bcrypt hash for user '%s'", legacy_user)
 
 
-# ── Run-on-startup (Windows registry) ────────────────────────
-# Windows auto-start is implemented by writing a value to the per-user
-# "Run" registry key at HKCU\Software\Microsoft\Windows\CurrentVersion\Run.
-# Each value in that key is a program path that Windows launches at logon.
-# We use HKCU (not HKLM) so no admin privileges are needed.
+# ── Run-on-startup ────────────────────────────────────────────
+# Per-OS implementation behind a single get/set pair:
 #
-# The value stored differs by mode:
-#   Frozen:  the .exe path directly (e.g. "C:\...\PawPoller.exe")
-#   Dev:     a quoted python + script path (e.g. "python" "main.py")
+#   Windows: HKCU\Software\Microsoft\Windows\CurrentVersion\Run value.
+#            Per-user, no admin needed.
+#   Linux:   ~/.config/autostart/PawPoller.desktop (XDG autostart spec).
+#            Per-user, no root needed. Honoured by GNOME, KDE, XFCE,
+#            Cinnamon, MATE, LXQt — every major desktop environment.
+#   macOS:   Not implemented yet — would use a launch agent plist at
+#            ~/Library/LaunchAgents/com.knaughtykat.pawpoller.plist.
+#
+# The value/exec string differs by mode:
+#   Frozen:  the executable path directly (e.g. "C:\...\PawPoller.exe"
+#            on Windows, or the AppImage path on Linux)
+#   Dev:     python interpreter + main.py path
 
 _STARTUP_REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-_STARTUP_REG_NAME = "PawPoller"  # Registry value name -- identifies our entry
+_STARTUP_REG_NAME = "PawPoller"  # Windows registry value name
+
+
+def _linux_autostart_path() -> Path:
+    """Return the XDG autostart .desktop path for the current user.
+
+    Honours $XDG_CONFIG_HOME if set (rare), else ~/.config/autostart.
+    """
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".config"
+    return base / "autostart" / "PawPoller.desktop"
+
+
+def _exec_command_for_autostart() -> str:
+    """Build the Exec= / registry value pointing at this PawPoller install.
+
+    Same logic for both OSes — only the quoting style differs and the
+    callers handle that.
+    """
+    if getattr(sys, "frozen", False):
+        # Frozen: sys.executable is the bundled binary (PawPoller.exe or
+        # the Linux PyInstaller binary inside the AppImage)
+        return sys.executable
+    # Dev mode: invoke the interpreter against main.py
+    script = str(Path(__file__).resolve().parent / "main.py")
+    return f'"{sys.executable}" "{script}"'
 
 
 def get_run_on_startup() -> bool:
-    """Check whether the app is registered to start with Windows.
+    """Check whether the app is registered to start on user login.
 
-    Returns True if our named value exists under the Run key, regardless of
-    whether the path it points to is still valid.
+    Returns True iff the per-OS registration exists. Path/exec validity
+    is NOT checked — a stale registration still returns True so the UI
+    can show the toggle state honestly.
     """
-    if sys.platform != "win32":
-        return False  # No-op on non-Windows platforms
-    try:
-        import winreg
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _STARTUP_REG_KEY, 0, winreg.KEY_READ) as key:
-            winreg.QueryValueEx(key, _STARTUP_REG_NAME)  # Throws if not found
-            return True
-    except FileNotFoundError:
-        return False  # Value does not exist -- not registered
-    except OSError:
-        return False  # Registry access error -- treat as not registered
+    if sys.platform == "win32":
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _STARTUP_REG_KEY, 0, winreg.KEY_READ) as key:
+                winreg.QueryValueEx(key, _STARTUP_REG_NAME)  # Throws if not found
+                return True
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return False
+    if sys.platform.startswith("linux"):
+        return _linux_autostart_path().exists()
+    # macOS and others: not implemented
+    return False
 
 
 def set_run_on_startup(enabled: bool) -> None:
-    """Add or remove the app from Windows startup via the registry.
+    """Add or remove the app from per-user startup.
 
-    When enabling, the registry value is set to the executable path so
-    Windows will launch PawPoller automatically at user logon.  When
-    disabling, the value is deleted (silently succeeds if already absent).
+    Windows: writes/deletes the HKCU Run registry value.
+    Linux: writes/removes the XDG autostart .desktop file.
+    Other platforms: logs a warning and returns.
     """
-    if sys.platform != "win32":
-        logger.warning("set_run_on_startup is only supported on Windows")
-        return
-    import winreg
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _STARTUP_REG_KEY, 0, winreg.KEY_SET_VALUE) as key:
-            if enabled:
-                exe_path = sys.executable
-                if getattr(sys, "frozen", False):
-                    # Frozen: sys.executable is already the .exe path
-                    exe_path = sys.executable
+    if sys.platform == "win32":
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _STARTUP_REG_KEY, 0, winreg.KEY_SET_VALUE) as key:
+                if enabled:
+                    exe_path = _exec_command_for_autostart()
+                    winreg.SetValueEx(key, _STARTUP_REG_NAME, 0, winreg.REG_SZ, exe_path)
+                    logger.info("Added to Windows startup: %s", exe_path)
                 else:
-                    # Dev mode: need to invoke the Python interpreter with main.py
-                    script = str(Path(__file__).resolve().parent / "main.py")
-                    exe_path = f'"{sys.executable}" "{script}"'
-                winreg.SetValueEx(key, _STARTUP_REG_NAME, 0, winreg.REG_SZ, exe_path)
-                logger.info("Added to Windows startup: %s", exe_path)
-            else:
-                try:
-                    winreg.DeleteValue(key, _STARTUP_REG_NAME)
-                    logger.info("Removed from Windows startup")
-                except FileNotFoundError:
-                    pass  # Already absent -- nothing to remove
-    except OSError as e:
-        logger.error("Failed to modify startup registry: %s", e)
+                    try:
+                        winreg.DeleteValue(key, _STARTUP_REG_NAME)
+                        logger.info("Removed from Windows startup")
+                    except FileNotFoundError:
+                        pass  # Already absent
+        except OSError as e:
+            logger.error("Failed to modify startup registry: %s", e)
+        return
+
+    if sys.platform.startswith("linux"):
+        desktop_path = _linux_autostart_path()
+        if enabled:
+            exec_cmd = _exec_command_for_autostart()
+            desktop_path.parent.mkdir(parents=True, exist_ok=True)
+            # Standard XDG autostart .desktop format. X-GNOME-Autostart-enabled
+            # is honoured by GNOME but harmless elsewhere; OnlyShowIn omitted
+            # so every DE picks it up.
+            content = (
+                "[Desktop Entry]\n"
+                "Type=Application\n"
+                "Name=PawPoller\n"
+                "Comment=Multi-platform story publishing + analytics\n"
+                f"Exec={exec_cmd}\n"
+                "Terminal=false\n"
+                "X-GNOME-Autostart-enabled=true\n"
+            )
+            try:
+                desktop_path.write_text(content, encoding="utf-8")
+                logger.info("Added to Linux autostart: %s", desktop_path)
+            except OSError as e:
+                logger.error("Failed to write Linux autostart file %s: %s", desktop_path, e)
+        else:
+            try:
+                desktop_path.unlink()
+                logger.info("Removed from Linux autostart: %s", desktop_path)
+            except FileNotFoundError:
+                pass  # Already absent
+            except OSError as e:
+                logger.error("Failed to remove Linux autostart file %s: %s", desktop_path, e)
+        return
+
+    logger.warning("set_run_on_startup is not supported on this platform (%s)", sys.platform)

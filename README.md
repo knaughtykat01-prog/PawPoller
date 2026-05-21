@@ -42,9 +42,11 @@ PawPoller is a desktop app and self-hosted server for publishing fiction across 
 
 Full walkthrough: [**docs/SETUP.md**](docs/SETUP.md) — covers desktop, Docker self-hosting (including reverse proxy / Cloudflare Tunnel for public access), and running from source.
 
-### Option A: Download the release (Windows)
+### Option A: Download the release (Desktop)
 
-Two formats on every release — pick one:
+Native builds for Windows and Linux — pick whatever fits your machine:
+
+**Windows** (two formats):
 
 - **`PawPoller-Setup-{version}.exe`** (recommended): single-file installer.
   Per-user install by default (no UAC prompt); optional Start Menu /
@@ -53,6 +55,19 @@ Two formats on every release — pick one:
   your data folder so reinstalls don't wipe your SQLite DB / settings.
 - **`PawPoller-windows-x64.zip`**: portable build. Extract and run
   `PawPoller.exe` from anywhere. No installer artefacts on your system.
+
+**Linux** (single file):
+
+- **`PawPoller-{version}-x86_64.AppImage`**: distro-independent single-file
+  build. `chmod +x` and double-click (or run from a terminal). Works
+  on Ubuntu 22.04+, Fedora 37+, Debian 12+, Arch — anything with
+  glibc 2.35 or newer. Optional autostart via the in-app Settings →
+  General toggle (writes a `.desktop` file under `~/.config/autostart/`).
+- Need desktop notifications? `sudo apt install libnotify-bin` (or
+  your distro's equivalent). The AppImage works without it; you just
+  won't see toast pop-ups.
+
+**macOS**: not yet — on the roadmap. Run via Docker for now.
 
 After the first launch, the in-app setup wizard guides you through
 connecting your platforms.

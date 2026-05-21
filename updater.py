@@ -76,13 +76,14 @@ def check_for_update() -> dict:
         # numerically (see _version_newer below).
         available = _version_newer(latest_tag, current)
 
-        # Scan release assets for a ZIP file containing the updated build.
-        # Takes the first .zip found — releases should have exactly one.
-        download_url = None
-        for asset in data.get("assets", []):
-            if asset.get("name", "").endswith(".zip"):
-                download_url = asset.get("browser_download_url")
-                break
+        # Pick the right release asset for this OS. Each tagged release
+        # attaches the Windows zip, the Windows installer .exe, and the
+        # Linux AppImage. The auto-updater here prefers the *upgradable*
+        # asset for the current OS (zip on Windows since it slot-replaces
+        # the install dir; AppImage on Linux since it replaces in place).
+        # The Windows .exe installer ships for fresh installs and shows
+        # up on the website, but isn't what the in-app updater pulls.
+        download_url = _pick_update_asset(data.get("assets", []))
 
         return {
             "available": available,
@@ -97,9 +98,18 @@ def check_for_update() -> dict:
 
 
 def download_update(download_url: str) -> Path:
-    """Download update ZIP to temp directory. Returns path to downloaded file."""
+    """Download the update asset to a temp dir. Returns path to downloaded file.
+
+    The asset shape differs by OS — a .zip on Windows, an .AppImage on
+    Linux. The downloaded filename uses the URL's basename so the
+    extension is preserved (apply_update branches on sys.platform, not
+    on filename, but a sensible name helps log triage).
+    """
     temp_dir = Path(tempfile.mkdtemp(prefix="iba_update_"))
-    zip_path = temp_dir / "update.zip"
+    # Best-effort filename from URL; fall back to "update.bin" for opaque URLs.
+    from urllib.parse import urlparse
+    url_name = Path(urlparse(download_url).path).name or "update.bin"
+    zip_path = temp_dir / url_name
 
     # Auth header for private repo asset downloads.
     headers = {"Accept": "application/octet-stream"}
@@ -130,10 +140,11 @@ def download_update(download_url: str) -> Path:
 
 
 def apply_update(zip_path: Path) -> None:
-    """Extract update and write a batch script to copy files and restart.
+    """Apply the downloaded update.
 
-    The batch script waits for the current process to exit, copies new files,
-    and restarts the application.
+    Windows: extract the zip + write a batch script that mirrors the
+    extracted tree into the install dir and restarts.
+    Linux: hand off to _apply_update_linux (in-place AppImage replace).
     """
     # Auto-update only works in frozen (PyInstaller) builds because:
     # 1. In dev, files are spread across source directories and venvs — robocopy
@@ -142,7 +153,13 @@ def apply_update(zip_path: Path) -> None:
     #    interpreter in dev — so the restart command would be wrong.
     # 3. Developers should update via git pull, not self-update.
     if not getattr(sys, "frozen", False):
-        raise RuntimeError("Auto-update is only supported in frozen (exe) builds")
+        raise RuntimeError("Auto-update is only supported in frozen builds")
+
+    # Linux: the "zip_path" is actually the AppImage file (download_update
+    # writes whatever the asset is — see _pick_update_asset).
+    if sys.platform.startswith("linux"):
+        _apply_update_linux(zip_path)
+        return
 
     # Extract the downloaded ZIP into a sibling "extracted" folder inside temp.
     # Validate all paths before extraction to prevent Zip Slip attacks
@@ -184,6 +201,80 @@ del "%~f0"
     # The caller is expected to exit the app immediately after this call so the
     # batch script's timeout elapses while the process is shutting down.
     os.startfile(str(bat_path))
+
+
+_LINUX_ASSET_SUFFIX = "-x86_64.AppImage"
+_WINDOWS_ASSET_SUFFIX = ".zip"
+
+
+def _pick_update_asset(assets: list) -> str | None:
+    """Return the browser_download_url for the right asset on this OS.
+
+    Per-OS preference:
+      Linux   -> *-x86_64.AppImage (one file, in-place replace)
+      Windows -> *.zip             (extract + robocopy mirror)
+
+    The Windows installer .exe is intentionally NOT chosen here — the
+    in-app updater is for incremental upgrades of an already-installed
+    app, and running the installer would either UAC-prompt or no-op
+    (it's already installed). Fresh-install users grab the .exe from
+    the website / Releases page directly.
+    """
+    suffix = _LINUX_ASSET_SUFFIX if sys.platform.startswith("linux") else _WINDOWS_ASSET_SUFFIX
+    for asset in assets:
+        name = asset.get("name", "")
+        if name.endswith(suffix):
+            # Skip the Windows installer (.exe) — handled by the suffix
+            # match above (the suffix is .zip on Windows, so .exe assets
+            # are naturally excluded). Defensive check anyway.
+            if sys.platform == "win32" and name.endswith("-Setup.exe"):
+                continue
+            return asset.get("browser_download_url")
+    return None
+
+
+def _apply_update_linux(appimage_path: Path) -> None:
+    """In-place replace the running AppImage with the downloaded one.
+
+    AppImage's standard `APPIMAGE` env var carries the absolute path of
+    the .AppImage file currently executing. We replace that file with
+    the freshly downloaded one and re-exec.
+
+    Spawns a detached shell script so the running process can exit
+    cleanly before the move; the script then runs the new AppImage.
+    """
+    current = os.environ.get("APPIMAGE")
+    if not current:
+        raise RuntimeError(
+            "Cannot find APPIMAGE env var — auto-update only works when "
+            "running as an AppImage. Re-download manually from Releases."
+        )
+    current_path = Path(current)
+
+    # tempdir is created by download_update one level up from appimage_path.
+    script_path = appimage_path.parent / "_update.sh"
+    script_content = f"""#!/usr/bin/env bash
+# PawPoller AppImage self-update — generated by updater.py
+set -e
+sleep 2
+mv -f "{appimage_path}" "{current_path}"
+chmod +x "{current_path}"
+exec "{current_path}"
+"""
+    script_path.write_text(script_content, encoding="utf-8")
+    script_path.chmod(0o755)
+    logger.info("Update script written to %s", script_path)
+
+    # Detach: spawn the script with stdin/stdout/stderr closed and
+    # setsid so it survives the parent exiting.
+    import subprocess
+    subprocess.Popen(
+        ["bash", str(script_path)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
 
 
 def _version_newer(latest: str, current: str) -> bool:

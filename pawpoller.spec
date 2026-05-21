@@ -1,9 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for PawPoller desktop app."""
+"""PyInstaller spec for PawPoller desktop app.
+
+Cross-platform: the hidden-imports block branches on sys.platform so
+Windows builds pull in pystray._win32 + winotify, Linux builds pull in
+pystray._appindicator (and the GTK backend), and macOS (when shipped)
+will use pystray._darwin. CI's runners-os matrix picks the right
+spec implicitly because PyInstaller is invoked from the relevant OS.
+"""
 
 import os
+import sys
 
 block_cipher = None
+
+# Per-OS hidden imports — pystray has a different backend per platform
+# and PyInstaller can't autodetect which one will be loaded at runtime.
+_PLATFORM_HIDDEN_IMPORTS = {
+    'win32':  ['pystray._win32', 'winotify'],
+    'linux':  ['pystray._appindicator', 'pystray._gtk'],
+    'darwin': ['pystray._darwin'],
+}
+_platform_key = 'linux' if sys.platform.startswith('linux') else sys.platform
+_platform_hidden = _PLATFORM_HIDDEN_IMPORTS.get(_platform_key, [])
 
 a = Analysis(
     ['main.py'],
@@ -38,9 +56,8 @@ a = Analysis(
         'uvicorn.lifespan.on',
         'apscheduler.schedulers.asyncio',
         'apscheduler.triggers.interval',
-        'pystray._win32',
         'PIL',
-        'winotify',
+        *_platform_hidden,
     ],
     hookspath=[],
     hooksconfig={},

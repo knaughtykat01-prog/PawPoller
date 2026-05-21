@@ -921,7 +921,16 @@ def main():
     # It blocks here until the window is DESTROYED (not just hidden).
     # When minimize-to-tray is active, _on_closing returns False to
     # prevent destruction, so this only unblocks on a true exit.
-    webview.start()
+    #
+    # On Linux force the Qt backend explicitly. pywebview's default
+    # GTK backend needs PyGObject + WebKit2GTK system bindings that
+    # are brittle to bundle via PyInstaller (and AppImage); Qt with
+    # QtWebEngine is pip-installable, ships its own native libs, and
+    # bundles cleanly. Windows and macOS use their native backend.
+    _start_kwargs = {}
+    if sys.platform.startswith("linux"):
+        _start_kwargs["gui"] = "qt"
+    webview.start(**_start_kwargs)
 
     # --- Step 7: Cleanup ---
     # Stop the tray icon thread if it is still running (e.g. the user

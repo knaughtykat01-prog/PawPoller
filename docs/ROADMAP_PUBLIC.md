@@ -1,8 +1,8 @@
 # PawPoller Public Release Roadmap
 
 **Status:** Public beta shipped
-**Date:** 2026-05-02
-**Current version:** 2.17.5
+**Date:** 2026-05-21
+**Current version:** 2.25.0
 **Latest release:** https://github.com/knaughtykat01-prog/PawPoller/releases/tag/v2.13.8 (master is 22 versions ahead — see HANDOFF.md "CI / release pipeline state" for the tag-drift status)
 
 ---
@@ -140,6 +140,46 @@ Design decisions that keep Stage 3 achievable later without breaking Stage 1/2:
 - New database tables should carry an optional `owner_id` column (nullable for single-user mode).
 - New routes should accept (but not yet require) an authenticated user identity.
 - Avoid sprinkling `/app/data/` paths into new code — use `config.DATA_DIR` so it can be per-user later.
+
+### Cross-platform desktop
+
+- [x] **Linux AppImage** — shipped 2.25.0. Single-file distro-independent
+  build via PyInstaller + appimagetool. Per-OS shims for the only
+  Windows-isms in the codebase: autostart (HKCU registry → XDG
+  `.desktop` file under `~/.config/autostart/`); desktop notifications
+  (winotify → `notify-send`); pystray backend (`_win32` → `_appindicator`).
+  pywebview switched to the Qt backend on Linux so PyInstaller can
+  bundle QtWebEngine cleanly (the GTK backend's PyGObject + WebKit2GTK
+  system bindings don't bundle well). New `installer/build-appimage.sh`
+  drives the AppDir layout + appimagetool invocation; CI's
+  `build-linux` job runs on `ubuntu-22.04` (GLIBC 2.35 floor for max
+  distro compat). Auto-updater (`updater.py`) picks the Linux
+  AppImage asset on Linux runs and replaces in place via `APPIMAGE`
+  env var.
+
+- [ ] **macOS native app** — planned. Same shape as Linux work:
+  - Reuses the per-OS autostart / notifications / pystray shims
+    already in place.
+  - pywebview's macOS backend (Cocoa via PyObjC) bundles cleanly via
+    PyInstaller `--windowed` → `.app` bundle.
+  - WeasyPrint needs Cairo + Pango via Homebrew (`brew install pango
+    cairo`); CI runner needs the brew install step.
+  - Packaging: `.app` bundle via PyInstaller, then wrap in a `.dmg`
+    via `create-dmg` or `dmgbuild`.
+  - **Apple Developer cert + notarization is the open question** —
+    without one, Gatekeeper blocks first-run on macOS 10.15+, and
+    macOS 14+ tightens this further (users have to right-click →
+    Open the first time, every install). Costs $99/yr for the cert
+    + notarization tooling. Decision pending: ship unsigned and
+    accept the friction, or wait until there's enough demand to
+    justify the recurring cost.
+  - **CI** would add a `build-macos` job on `macos-latest` (Apple
+    Silicon) and probably `macos-13` (x86) for a universal build,
+    or just ship Apple Silicon and let Rosetta 2 handle x86.
+  - Notifications: replace the Linux `notify-send` branch with
+    either `pync` (pip-installable) or shell-out to `osascript`.
+  - Estimated effort: 2-3 days plus Apple Developer onboarding if
+    going signed.
 
 ### Long-term / "nice someday"
 

@@ -4,6 +4,143 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.25.0] - 2026-05-21
+
+### Feature: Linux desktop support (AppImage)
+
+PawPoller now ships native builds for both Windows and Linux. The Linux
+build is a single-file `.AppImage` — distro-independent, no install
+required, double-click to run on Ubuntu 22.04+, Fedora 37+, Debian 12+,
+Arch, etc. macOS support is on the public roadmap.
+
+The codebase had only four Windows-isms; each got a per-OS shim rather
+than a `if sys.platform` sprinkle:
+
+#### Autostart (`config.py`)
+
+`get_run_on_startup()` / `set_run_on_startup()` now branch on
+`sys.platform`:
+
+- **Windows** — HKCU registry value (unchanged).
+- **Linux** — XDG autostart `.desktop` file at
+  `~/.config/autostart/PawPoller.desktop`. Honoured by every major DE.
+- **macOS / other** — `set_run_on_startup` logs a warning and returns;
+  `get_run_on_startup` returns False. Wired so the Settings → General
+  toggle in the dashboard still renders but is a no-op until the macOS
+  launch-agent plist branch lands.
+
+Shared `_exec_command_for_autostart()` helper handles the frozen vs
+dev-mode exec-string difference once.
+
+#### Desktop notifications (`polling/notifications.py:show_toast`)
+
+- **Windows** — `winotify` (unchanged).
+- **Linux** — shell-out to `notify-send` (libnotify). Present by default
+  on every major DE. `--app-name=PawPoller` groups our toasts together
+  in DE notification centres. Silently no-ops if `notify-send` isn't on
+  PATH (headless servers, minimal containers).
+- **macOS / other** — no-op + debug log.
+
+#### PyInstaller spec (`pawpoller.spec`)
+
+`hiddenimports` now branches via `_PLATFORM_HIDDEN_IMPORTS`:
+
+| OS | Backend modules |
+|---|---|
+| Windows | `pystray._win32`, `winotify` |
+| Linux | `pystray._appindicator`, `pystray._gtk` |
+| macOS | `pystray._darwin` (for future use) |
+
+#### pywebview backend on Linux (`main.py`)
+
+The default GTK backend needs PyGObject + WebKit2GTK system bindings
+that don't bundle cleanly via PyInstaller / AppImage. Switched to the
+Qt backend (`webview.start(gui='qt')`) on Linux — pip-installable Qt6
++ QtWebEngine ship their own native libs and bundle cleanly. Windows
+and macOS use their respective native backends unchanged.
+
+#### Requirements (`requirements.txt`)
+
+Env markers so the right deps land per-OS without a separate
+`requirements-linux.txt`:
+
+```
+winotify>=1.1.0 ; sys_platform == "win32"
+PyQt6>=6.6 ; sys_platform == "linux"
+PyQt6-WebEngine>=6.6 ; sys_platform == "linux"
+```
+
+#### AppImage build (`installer/build-appimage.sh` + CI)
+
+New `installer/build-appimage.sh` constructs the AppDir layout from
+`dist/PawPoller/` (PyInstaller --onedir output), writes an `AppRun`
+launcher script + `PawPoller.desktop` entry + `PawPoller.png` icon (from
+existing `assets/tray_icon.png`), then runs `appimagetool` to produce
+`installer/Output/PawPoller-{version}-x86_64.AppImage`. Falls back to
+downloading `appimagetool` from the AppImageKit continuous build if not
+on PATH (local runs).
+
+New `build-linux` job in `.github/workflows/build.yml` runs on
+`ubuntu-22.04` (GLIBC 2.35 — lowest commonly-available, best
+forward-compat with newer distros). Installs:
+
+- WeasyPrint runtime libs (libpango, libcairo, libgdk-pixbuf, libffi)
+- libnotify-bin for notify-send
+- Qt6 platform plugin runtime deps (libgl1, libegl1, libxcb-*,
+  libxkbcommon-x11-0, libdbus-1-3)
+- libnss3, libxcomposite1, libxdamage1, libxrandr2, libasound2 —
+  QtWebEngine dependencies
+
+Runs PyInstaller against `pawpoller.spec`, then `build-appimage.sh`,
+then uploads + attaches `PawPoller-*-x86_64.AppImage` to the GitHub
+Release.
+
+#### Auto-updater (`updater.py`)
+
+`_pick_update_asset()` picks per-OS:
+
+- **Linux** — `*-x86_64.AppImage` (single file, in-place replace).
+- **Windows** — `*.zip` (extract + robocopy mirror, unchanged).
+
+The Windows installer `.exe` is intentionally NOT chosen by the
+in-app updater — it's for fresh installs, not incremental upgrades
+of an already-installed app.
+
+New `_apply_update_linux(appimage_path)` writes a tiny bash script
+that sleeps 2s (lets the parent process exit), `mv`'s the new
+AppImage over the path in `$APPIMAGE` (standard env var set by the
+AppImage runtime), chmod +x, exec the new one. Spawned detached via
+`subprocess.Popen` + `start_new_session=True`.
+
+`download_update()` now derives the temp filename from the URL
+basename so the downloaded file's extension is preserved (`.zip`
+on Windows, `.AppImage` on Linux) — helps log triage.
+
+#### Public-facing changes
+
+- **README.md** — split Quick Start "Option A" into Windows (installer
+  or portable zip) + Linux (AppImage, optional `libnotify-bin`)
+  subsections. Mentions macOS not-yet-available.
+- **Marketing site** (`site/`) — Hero version chip → v2.25.0;
+  download CTA → "Download for Windows + Linux"; "Desktop" tier
+  subtitle → "Windows · Linux · macOS planned"; body copy mentions
+  AppImage and the planned macOS work.
+- **`docs/ROADMAP_PUBLIC.md`** — new "Cross-platform desktop"
+  section. Linux marked done; macOS detailed as planned with the
+  open Apple Developer cert / notarization question called out
+  honestly.
+
+#### What's NOT in this release
+
+- **macOS native app** — on the roadmap, not shipping in 2.25.0.
+  Same shape as Linux work (per-OS shims already done) plus
+  `.app` / `.dmg` packaging plus the signing/notarization decision.
+- **Linux ARM (aarch64)** AppImage — x86_64 only for now.
+  Raspberry Pi / ARM Linux users should keep using the Docker path
+  (multi-arch image).
+
+---
+
 ## [2.24.0] - 2026-05-20
 
 ### Feature: Windows install wizard

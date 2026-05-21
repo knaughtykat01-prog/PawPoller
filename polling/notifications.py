@@ -24,6 +24,8 @@ Three layers, smallest first:
 from __future__ import annotations
 
 import logging
+import subprocess
+import sys
 from typing import Any
 
 import httpx
@@ -77,22 +79,59 @@ def show_toast(
     lines: list[str],
     max_visible: int = TOAST_DEFAULT_VISIBLE,
 ) -> bool:
-    """Fire a Windows toast. Returns True iff actually shown.
+    """Fire a desktop toast. Returns True iff actually shown.
 
-    Lazy-imports winotify so server/Linux builds and the test
-    environment can load this module without crashing on the missing
-    dep. An empty ``lines`` list is treated as a no-op (returns False).
+    Per-OS backends:
+      Windows -- winotify (Windows 10/11 native toast).
+      Linux   -- notify-send (libnotify) via subprocess. Available
+                 by default on every major desktop environment;
+                 silently no-ops if the binary isn't on PATH (e.g.
+                 headless server, minimal container).
+      macOS / other -- no-op for now (logged at debug level).
+
+    Lazy-imports / shell-outs so server builds can load this module
+    without any of these deps present. An empty ``lines`` list is a
+    no-op (returns False).
     """
     if not lines:
         return False
-    try:
-        from winotify import Notification
-    except ImportError:
-        logger.debug("winotify not available — toast suppressed: %s", title)
-        return False
     msg = "\n".join(truncate_with_overflow(lines, max_visible))
-    Notification(app_id="PawPoller", title=title, msg=msg).show()
-    return True
+
+    if sys.platform == "win32":
+        try:
+            from winotify import Notification
+        except ImportError:
+            logger.debug("winotify not available — toast suppressed: %s", title)
+            return False
+        Notification(app_id="PawPoller", title=title, msg=msg).show()
+        return True
+
+    if sys.platform.startswith("linux"):
+        # notify-send is the libnotify CLI — present on GNOME, KDE, XFCE,
+        # MATE, Cinnamon, etc. by default. --app-name groups our toasts
+        # under "PawPoller" in DE notification centres.
+        try:
+            subprocess.run(
+                [
+                    "notify-send",
+                    "--app-name=PawPoller",
+                    "--expire-time=8000",
+                    title,
+                    msg,
+                ],
+                check=False,
+                timeout=3.0,
+            )
+            return True
+        except FileNotFoundError:
+            logger.debug("notify-send not installed — toast suppressed: %s", title)
+            return False
+        except (subprocess.TimeoutExpired, OSError) as e:
+            logger.debug("notify-send failed (%s) — toast suppressed: %s", e, title)
+            return False
+
+    logger.debug("Desktop toasts not implemented on %s — suppressed: %s", sys.platform, title)
+    return False
 
 
 async def send_telegram(

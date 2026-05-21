@@ -8,6 +8,12 @@ pywebview>=5.0
 pystray>=0.17
 Pillow>=9.0
 pyinstaller>=6.0
-winotify>=1.1.0
+winotify>=1.1.0 ; sys_platform == "win32"
+# Linux: pywebview's GTK backend needs WebKit2GTK + PyGObject system
+# bindings that don't bundle cleanly via PyInstaller/AppImage. Use Qt
+# (QtWebEngine) instead — pip-installable, brings its own native libs,
+# bundles cleanly. main.py:webview.start() passes gui='qt' on Linux.
+PyQt6>=6.6 ; sys_platform == "linux"
+PyQt6-WebEngine>=6.6 ; sys_platform == "linux"
 weasyprint>=68.0
 cryptography>=44.0.0
