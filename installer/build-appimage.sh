@@ -80,12 +80,24 @@ else
   APPIMAGETOOL=appimagetool
 fi
 
+# appimagetool is itself an AppImage; running it needs libfuse2. On hosts
+# without FUSE (newer Ubuntu defaults, some containers), the AppImage
+# runtime accepts --appimage-extract-and-run which extracts to a temp
+# dir and runs from there — slower but works without FUSE. Probe with
+# `ldconfig -p` so we don't pay the extract cost when FUSE is available.
+APPIMAGETOOL_PREFLAGS=()
+if ! ldconfig -p 2>/dev/null | grep -q libfuse.so.2; then
+  echo "==> libfuse2 not detected — using --appimage-extract-and-run"
+  APPIMAGETOOL_PREFLAGS+=(--appimage-extract-and-run)
+fi
+
 OUTPUT_FILE="${OUTPUT_DIR}/PawPoller-${VERSION}-x86_64.AppImage"
 
 # ARCH=x86_64 hints appimagetool when running on a build machine that
 # could be ambiguous (e.g. CI containers). VERSION goes into the
 # embedded metadata for `appimagetool --get-bundle-id` etc.
 ARCH=x86_64 VERSION="${VERSION}" "${APPIMAGETOOL}" \
+  "${APPIMAGETOOL_PREFLAGS[@]}" \
   --no-appstream \
   "${APPDIR}" \
   "${OUTPUT_FILE}"

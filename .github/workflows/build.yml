@@ -98,12 +98,19 @@ jobs:
       #   libxkbcommon-x11-0, libdbus-1-3 — Qt6 cross-platform input/notify
       #   libxcb-cursor0 — added in Qt6.5+, missing on stock ubuntu-22.04
       - name: Install system dependencies
+        # libfuse2 is what AppImages need to mount themselves at runtime.
+        # ubuntu-22.04 ships libfuse3 by default — without libfuse2 the
+        # appimagetool .AppImage download below can't execute itself.
+        # build-appimage.sh also falls back to --appimage-extract-and-run
+        # if FUSE is unavailable, but installing the lib is the cleaner
+        # path on CI.
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libcairo2 \
             libgdk-pixbuf-2.0-0 libffi8 fonts-dejavu-core \
             libnotify-bin \
+            libfuse2 \
             libgl1 libegl1 libxkbcommon-x11-0 libdbus-1-3 \
             libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
             libxcb-render-util0 libxcb-shape0 libxcb-sync1 libxcb-xfixes0 \
