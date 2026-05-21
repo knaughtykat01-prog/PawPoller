@@ -1,12 +1,31 @@
 ---
-// Placeholder panel — drop real screenshots into /public/screens/ and reference them here.
+// Marketing screenshots — sourced from production dashboard captures.
+// All four are mobile-mode shots (real device width) because PawPoller's
+// responsive layout is a deliberate feature and the marketing audience
+// largely browses on phones. Files live in /public/screens/.
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 const shots = [
-  { title: 'Publish-check matrix',  caption: 'Every chapter × platform combination at a glance.' },
-  { title: 'Editor with anchor toolbar',  caption: 'Insert semantic anchors without remembering their names.' },
-  { title: 'Metadata drawer',  caption: 'Per-platform descriptions, tags, and chapter thumbnails in one place.' },
-  { title: 'Analytics dashboard', caption: 'Views, favourites, and comments across every platform you post to.' },
+  {
+    file: 'analytics.png',
+    title: 'Analytics across every platform',
+    caption: 'Views, favourites, and comments tracked over time on Inkbunny, FurAffinity, SoFurry, Weasyl, AO3 and more — one dashboard, one timeline view.',
+  },
+  {
+    file: 'editor.png',
+    title: 'Markdown editor with semantic anchors',
+    caption: 'Write once in Markdown; HTML-comment anchors (<!-- @title -->, <!-- @warning -->) flag the structural parts so the converters can emit the right markup for each platform.',
+  },
+  {
+    file: 'stories.png',
+    title: 'Story archive at a glance',
+    caption: 'Every story, every chapter count, every word count in one list. Click in to edit MASTER.md and regenerate every derived format.',
+  },
+  {
+    file: 'publish.png',
+    title: 'One-click publish to nine platforms',
+    caption: 'Picks the right format per platform (BBCode for Inkbunny, HTML for SoFurry, work skin for AO3, plain text for Bluesky) and uploads with per-platform tags + descriptions.',
+  },
 ];
 ---
 <section class="py-24">
@@ -15,21 +34,32 @@ const shots = [
       <span class="chip">See it</span>
       <h2 class="mt-4 text-4xl text-ink-50 md:text-5xl">The interface writers actually use.</h2>
       <p class="mt-6 text-ink-300">
-        Screenshots coming in the next release. Below is a sketch of what each view does.
+        Real captures from the production dashboard. The mobile layout is shown here because PawPoller works equally well on a phone — open the dashboard from any device, hit save, and the desktop / Docker instance picks it up.
       </p>
     </div>
 
-    <div class="mt-14 grid gap-6 md:grid-cols-2">
+    <div class="mt-14 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
       {shots.map((s) => (
-        <figure class="card overflow-hidden">
-          <div class="relative flex aspect-video items-center justify-center bg-gradient-to-br from-ink-800 via-ink-900 to-ink-950">
-            <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(208,129,54,0.10),transparent_60%)]"></div>
-            <div class="relative text-center">
-              <div class="font-mono text-xs uppercase tracking-widest text-copper-400">Preview</div>
-              <div class="mt-3 font-serif text-2xl text-ink-100">{s.title}</div>
+        <figure class="card overflow-hidden flex flex-col">
+          {/* Phone-frame container: dark bezel + rounded corners hint at
+              "this is a mobile UI" without faking an actual device chrome.
+              aspect-[9/16] matches a typical phone viewport so the
+              screenshot fills the frame without letterboxing. */}
+          <div class="relative bg-ink-950 p-3">
+            <div class="overflow-hidden rounded-lg bg-ink-900 aspect-[9/16]">
+              <img
+                src={`${base}/screens/${s.file}`}
+                alt={s.title}
+                loading="lazy"
+                decoding="async"
+                class="h-full w-full object-cover object-top"
+              />
             </div>
           </div>
-          <figcaption class="border-t border-ink-700/60 bg-ink-900/60 px-6 py-4 text-sm text-ink-300">{s.caption}</figcaption>
+          <figcaption class="flex flex-1 flex-col border-t border-ink-700/60 bg-ink-900/60 px-5 py-4">
+            <div class="font-serif text-lg text-ink-100">{s.title}</div>
+            <p class="mt-2 text-xs leading-relaxed text-ink-300">{s.caption}</p>
+          </figcaption>
         </figure>
       ))}
     </div>
