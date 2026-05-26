@@ -26,6 +26,8 @@ import time
 from datetime import datetime, timezone
 from html import escape as _esc
 
+import httpx
+
 from polling import notifications
 
 import config
@@ -34,6 +36,52 @@ from database.db import get_connection
 from database import fa_queries
 
 logger = logging.getLogger(__name__)
+
+
+class FAExportUpstreamError(Exception):
+    """FAExport (the third-party FA scraper) returned an error PawPoller cannot fix.
+
+    Raised in place of the raw httpx exception so logs / dashboard / Telegram /
+    DB error_message all show an actionable explanation instead of a confusing
+    5xx URL dump that looks like a PawPoller bug when it isn't.
+    """
+
+
+def _humanize_fa_error(e: BaseException) -> BaseException:
+    """Translate known upstream failures into a clearer exception.
+
+    Returns the original exception unchanged if no pattern matches, so we never
+    mask a genuine bug behind a generic message. FAExport (faexport.spangle.org.uk)
+    is a third-party proxy maintained by Deer-Spangle — when it 5xxs, the issue
+    is on their side (their session against FA expired, FA changed HTML, or FA
+    is challenging their egress IP), not ours.
+    """
+    if isinstance(e, httpx.HTTPStatusError):
+        try:
+            status = e.response.status_code
+            url = str(e.request.url)
+        except Exception:
+            return e
+        if "faexport." in url:
+            if 500 <= status < 600:
+                return FAExportUpstreamError(
+                    f"FAExport upstream error ({status}) — third-party proxy "
+                    "faexport.spangle.org.uk could not fetch data from "
+                    "FurAffinity. Not a PawPoller bug; will retry next cycle. "
+                    "If it persists for more than a day, see "
+                    "https://github.com/Deer-Spangle/faexport/issues."
+                )
+            if status == 429:
+                return FAExportUpstreamError(
+                    "FAExport rate-limited (429) — shared-bucket pressure "
+                    "across all FAExport users. Will retry next cycle."
+                )
+            if status == 404:
+                return FAExportUpstreamError(
+                    f"FAExport returned 404 for {url} — FA username may be "
+                    "wrong or the account was removed from FurAffinity."
+                )
+    return e
 
 # ── Progress tracking ────────────────────────────────────────
 # Shared mutable dict read by /api/fa/poll/progress -- same pattern as
@@ -469,19 +517,25 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
 
     except Exception as e:
         # Top-level failure -- record partial stats and propagate.
+        # Translate known upstream patterns (FAExport 5xx/429/404) into clearer
+        # messages before they reach the dashboard / Telegram / poll-log table.
         duration = time.time() - start_time
-        _update_fa_progress("error", message=str(e))
-        logger.error("FA poll failed: %s", e, exc_info=True)
+        friendly = _humanize_fa_error(e)
+        friendly_msg = str(friendly)
+        _update_fa_progress("error", message=friendly_msg)
+        logger.error("FA poll failed: %s", friendly_msg, exc_info=True)
         if conn and log_id:
-            fa_queries.finish_fa_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
+            fa_queries.finish_fa_poll_log(conn, log_id, "error", error_message=friendly_msg, duration_seconds=duration, **stats)
             conn.commit()
         # Send error alert via Telegram
         from polling.telegram import send_poll_error
         try:
-            await send_poll_error("fa", e)
+            await send_poll_error("fa", friendly)
         except Exception:
             logger.debug("Error alert send failed", exc_info=True)
-        raise
+        if friendly is e:
+            raise
+        raise friendly from e
     finally:
         # Always clear the guard and release resources.
         # Also clear _fa_first_poll so that a failed first attempt doesn't

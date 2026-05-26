@@ -4,6 +4,72 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.26.1] - 2026-05-26
+
+### Fix: FA poll error messages no longer look like PawPoller bugs
+
+Live polling on 2026-05-26 surfaced every FA cycle (every ~4h) failing
+with the same opaque line:
+
+```
+FA poll failed: Server error '500 Internal Server Error' for url
+'https://faexport.spangle.org.uk/user/knaughtykat/gallery.json?page=1&full=1'
+```
+
+The error was the raw `httpx.HTTPStatusError` from `resp.raise_for_status()`
+bubbling all the way up to the top-level handler in `polling/fa_poller.py`.
+Investigation showed FAExport itself was healthy (root page renders,
+running latest `v2025.12.1`), but its gallery endpoint was 500ing for
+every user (verified against `fender` as a known-good control). FA itself
+was responding fine to our IP — so the breakage was in FAExport's own
+scraper session against FA (their session expired, FA changed HTML, or
+FA challenged their egress IP). Nothing PawPoller could fix.
+
+The user-visible problem wasn't the outage — it was that the error
+message gave no signal whether to debug PawPoller, replace cookies,
+contact the FAExport maintainer, or just wait. Three surfaces got the
+same confusing 500-URL dump: the dashboard error toast, the Telegram
+alert, and the `fa_poll_log.error_message` column.
+
+Fix in `polling/fa_poller.py`:
+
+- New `FAExportUpstreamError` exception class — a typed marker for
+  "third-party FA proxy failed in a way we can't fix from this side."
+- New `_humanize_fa_error(e)` helper that pattern-matches `httpx.HTTPStatusError`
+  by URL host (`faexport.`) and status code:
+  - **5xx** → "FAExport upstream error (N) — third-party proxy
+    faexport.spangle.org.uk could not fetch data from FurAffinity.
+    Not a PawPoller bug; will retry next cycle." + a link to
+    `Deer-Spangle/faexport/issues` for persistent outages.
+  - **429** → "FAExport rate-limited (429) — shared-bucket pressure
+    across all FAExport users. Will retry next cycle." (complements
+    the 2.23.2 in-client `_get_with_retry` which already handles
+    transient 429s; this catches the case where the retry also fails.)
+  - **404** → "FAExport returned 404 for {url} — FA username may be
+    wrong or the account was removed from FurAffinity."
+  - Any other exception passes through unchanged (no false-positive
+    masking of genuine bugs).
+- Top-level except in `run_fa_poll_cycle` now computes the friendly
+  exception, uses its message for the four reporting paths (progress
+  dict, logger.error, `fa_poll_log.error_message`, Telegram alert),
+  and re-raises with `raise friendly from e` so the original traceback
+  is preserved for postmortems via `exc_info=True`.
+
+The orchestrator's secondary log line in `server.py:249` (`Poll fa
+failed: ...`) now also picks up the friendly message because it logs
+`str(result)` against the propagated exception.
+
+No behaviour change for transient FAExport 429s that recover via the
+in-client retry path (added 2.23.2) — those never reach this handler.
+
+#### Files
+
+- `polling/fa_poller.py` — new `FAExportUpstreamError`, new `_humanize_fa_error`,
+  swapped top-level except to translate before reporting.
+- `config.py` — `APP_VERSION` bump to `2.26.1`.
+
+---
+
 ## [2.26.0] - 2026-05-21
 
 ### Feature: in-app Uninstall flow + Windows Search integration polish
