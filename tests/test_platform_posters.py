@@ -142,7 +142,10 @@ class TestBlueskyPoster:
         assert result.success is True
         assert "at://" in result.external_id
         assert "bsky.app" in result.external_url
-        assert result.duration_seconds > 0
+        # >= 0, not > 0: time.perf_counter() granularity on Windows is ~16ms,
+        # so a mocked HTTP call that completes faster gives duration = 0.0.
+        # We just need the field populated, not measurably non-zero.
+        assert result.duration_seconds >= 0
 
     def test_validate_empty_description(self):
         from posting.platforms.bluesky import BlueskyPoster

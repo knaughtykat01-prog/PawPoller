@@ -4,6 +4,64 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.26.2] - 2026-05-26
+
+### Fix: CI build unblocked — bump `softprops/action-gh-release` v2 → v3
+
+The 2.26.1 tag-push triggered the Build & Release workflow, which then
+failed three consecutive times at "Set up job" on both `build-windows`
+and `build-linux` jobs with:
+
+```
+Failed to download archive
+'https://codeload.github.com/softprops/action-gh-release/{zip|tar.gz}/
+ 3bb12739c298aeb8a4eeaf626c5b8d85266b0e65' after 1 attempts.
+An action could not be found at the URI '...'
+```
+
+Direct `curl` of the same archive URL returned HTTP 200 with a valid
+zip, and the GitHub API confirmed the `v2` tag still resolves to that
+commit — so the archive itself was reachable. The failure was inside
+GitHub Actions' Marketplace lookup for the pinned commit, not a
+codeload.github.com outage. Three reruns over 5 minutes all failed
+identically, ruling out the documented transient "softprops Server
+Error" pattern from the 2.25.0 HANDOFF (which `gh run rerun --failed`
+recovered on second pass).
+
+Background: `softprops/action-gh-release@v3.0.0` shipped 2026-04-12 —
+a runtime-only bump from Node 20 to Node 24, no input/API changes. The
+last successful build (v2.26.0 on 2026-05-21) used `@v2` and worked.
+Something on GitHub's side between then and 2026-05-26 broke v2
+resolution for our specific commit. Rather than wait it out on an
+opaque infra issue, bump to `@v3`:
+
+- `.github/workflows/build.yml` — both `softprops/action-gh-release@v2`
+  refs (`build-windows` line 77, `build-linux` line 149) now pin to
+  `@v3`. v3 is a drop-in for v2 — same `files`/`generate_release_notes`
+  inputs, just Node 24 under the hood. GitHub-hosted runners
+  (`windows-latest`, `ubuntu-22.04`) both support the Node 24 Actions
+  runtime since early 2026.
+
+#### Files
+
+- `.github/workflows/build.yml` — `@v2` → `@v3` on both jobs.
+- `config.py` — `APP_VERSION` bump to `2.26.2`.
+- `tests/test_platform_posters.py` — flake fix surfaced by the
+  release verifier: `TestBlueskyPoster::test_post_success` asserted
+  `result.duration_seconds > 0`, which fails on Windows because
+  `time.perf_counter()` has ~16ms granularity and the mocked HTTP
+  call completes faster than that. The assertion intent was "field
+  populated," not "measurably non-zero," so relaxed to `>= 0`. CI
+  test job runs on Linux (microsecond timer precision) and has been
+  passing 91/91 for every prior tag — local-only flake.
+
+The broken `v2.26.1` tag stays in the tag history — no force-push to
+re-point it (destructive on already-published tags). v2.26.2 carries
+the 2.26.1 FA error-message fix plus this CI unblock and the
+verifier-surfaced test flake fix.
+
+---
+
 ## [2.26.1] - 2026-05-26
 
 ### Fix: FA poll error messages no longer look like PawPoller bugs
