@@ -4,6 +4,82 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.26.3] - 2026-06-10
+
+### Fix: pollers no longer hold the SQLite write lock across network awaits
+
+Investigating "look for Inkbunny errors" after the 2026-06 billing-lapse
+outage turned up six intermittent IB poll failures over the preceding ten
+days, two of them `database is locked` — plus one more IK failure with the
+same message on the first post-restart cycle. The locked errors were
+puzzling because `database/db.py:get_connection` already sets
+`PRAGMA busy_timeout=30000`: a victim waits a full 30 seconds before
+giving up, so something had to be *holding* the write lock longer than
+that.
+
+Root cause: four pollers opened an implicit write transaction (Python's
+sqlite3 begins one on the first INSERT/UPDATE and holds it until
+`commit()`) and then performed long network awaits before committing.
+The smoking-gun log sequence from 2026-06-10 01:08–01:09: the IB poller
+wrote a submission snapshot at 01:08:32 (transaction open), then awaited
+its faving-users fetch which took 60s; the IK poller tried to write at
+01:08:32, waited out its 30s busy_timeout, and died at exactly 01:09:02
+with `database is locked`. IB was the holder, IK the victim.
+
+Audit of all 11 pollers found the write-across-await pattern in four:
+
+- **IB** (`polling/poller.py`) — snapshot upsert held open across the
+  faving-users fetch (commit only happened if faves were fetched) and
+  across comment-scrape awaits on subsequent loop iterations.
+- **FA** (`polling/fa_poller.py`) — snapshot upsert held open across the
+  conditional comment fetch (rate-limit sleep + FAExport call).
+- **SqW** (`polling/sqw_poller.py`) — snapshot upsert held open across
+  the kudos-users fetch.
+- **AO3** (`polling/ao3_poller.py`) — worst offender: snapshot upsert
+  held open across the kudos-users fetch, which paces requests at 12s
+  intervals (2.22.5), so a single work's kudos scrape could hold the
+  write lock for minutes.
+
+The other seven pollers (WS, SF, DA, WP, IK, Bsky, TW) already write
+only after all fetching completes — safe as-is.
+
+Fix shape: commit immediately after the snapshot upsert in each of the
+four, before any conditional fetch awaits; IB additionally commits after
+each iteration's comment upserts so the transaction never spans the next
+iteration's awaits. Per-row WAL commits are cheap; the lock window drops
+from "however long the network takes" to microseconds. The principle,
+now documented inline at each site: **never hold an open write
+transaction across an await.**
+
+### Fix: blank "Poll ib failed: " error messages
+
+Two of the IB failures from the same ten-day window logged literally
+`Poll ib failed: ` with no reason. The traceback showed why:
+`httpx.ReadTimeout` (and the timeout family generally — `httpcore.ReadTimeout`,
+`asyncio.TimeoutError`) stringify to an empty string, so every surface
+that formatted `str(e)` — orchestrator log line, per-poller error log,
+`poll_log.error_message` (shown on the dashboard), the Telegram alert's
+`<code>` block, and the poll-progress error state — displayed nothing.
+
+New `describe_error(e)` helper in `polling/notifications.py`: returns
+`str(e)` when non-empty, otherwise the qualified exception type
+(`httpx.ReadTimeout`). Exceptions with real messages are untouched, so
+the 2.26.1 FA-humanized strings and `_classify_error`'s pattern matching
+behave exactly as before. Applied at every poll-failure surface: all 11
+pollers' error handlers (progress message + error log + poll_log
+error_message), the FA poller's `_humanize_fa_error` pass-through path,
+`server.py`'s orchestrator result loop, and `polling/telegram.py:send_poll_error`.
+
+### Ops note (no code change)
+
+GCP billing lapsed in early June and Google TERMINATED the `pawpoller`
+VM — polling was down until billing was re-enabled and the instance
+restarted on 2026-06-10. The container came back healthy on its restart
+policy. The ephemeral external IP changed (35.243.213.49 →
+35.231.162.181); anything pointing at the old IP needs updating.
+
+---
+
 ## [2.26.2] - 2026-05-26
 
 ### Fix: CI build unblocked — bump `softprops/action-gh-release` v2 → v3

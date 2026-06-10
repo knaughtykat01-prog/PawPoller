@@ -201,7 +201,8 @@ async def send_poll_error(platform: str, error: Exception) -> None:
 
     emoji = PLATFORM_EMOJI.get(platform, "")
     name = PLATFORM_NAME.get(platform, platform.upper())
-    error_str = str(error)[:200]
+    from polling.notifications import describe_error
+    error_str = describe_error(error)[:200]
     label, hint = _classify_error(error_str)
     lines = [f"<b>{emoji} {name} Poll Failed</b>"]
     lines.append(f"  {_esc(label)}")

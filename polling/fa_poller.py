@@ -29,6 +29,7 @@ from html import escape as _esc
 import httpx
 
 from polling import notifications
+from polling.notifications import describe_error
 
 import config
 from clients.fa.client import FAClient
@@ -332,6 +333,10 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                 fa_queries.upsert_fa_submission(conn, detail)
                 fa_queries.insert_fa_snapshot(conn, sub_id, views, faves, comments, polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
+                # Commit before the conditional comment fetch below: holding
+                # the implicit write transaction across its awaits blocks
+                # every other poller's writes past the 30s busy_timeout.
+                conn.commit()
 
                 # ── Step 4: Fetch comments (conditional) ───────
                 # Uses the FAExport /submission/{id}.json endpoint to get
@@ -521,7 +526,7 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
         # messages before they reach the dashboard / Telegram / poll-log table.
         duration = time.time() - start_time
         friendly = _humanize_fa_error(e)
-        friendly_msg = str(friendly)
+        friendly_msg = describe_error(friendly)
         _update_fa_progress("error", message=friendly_msg)
         logger.error("FA poll failed: %s", friendly_msg, exc_info=True)
         if conn and log_id:

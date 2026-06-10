@@ -25,6 +25,7 @@ from html import escape as _esc
 import config
 from clients.ik.client import IKClient
 from database.db import get_connection
+from polling.notifications import describe_error
 from database import ik_queries
 from polling import notifications
 
@@ -235,11 +236,11 @@ async def run_ik_poll_cycle(force_full: bool = False) -> dict:
 
     except Exception as e:
         duration = time.time() - start_time
-        _update_ik_progress("error", message=str(e))
-        logger.error("IK poll failed: %s", e, exc_info=True)
+        _update_ik_progress("error", message=describe_error(e))
+        logger.error("IK poll failed: %s", describe_error(e), exc_info=True)
         if conn and log_id:
             ik_queries.finish_ik_poll_log(conn, log_id, "error",
-                                          error_message=str(e),
+                                          error_message=describe_error(e),
                                           duration_seconds=duration, **stats)
             conn.commit()
         from polling.telegram import send_poll_error

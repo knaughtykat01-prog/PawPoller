@@ -21,6 +21,7 @@ from html import escape as _esc
 import config
 from clients.sf.client import SoFurryClient
 from database.db import get_connection
+from polling.notifications import describe_error
 from database import sf_queries
 from polling import notifications
 
@@ -319,11 +320,11 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
 
     except Exception as e:
         duration = time.time() - start_time
-        _update_sf_progress("error", message=str(e))
-        logger.error("SF poll failed: %s", e, exc_info=True)
+        _update_sf_progress("error", message=describe_error(e))
+        logger.error("SF poll failed: %s", describe_error(e), exc_info=True)
         if conn and log_id:
             sf_queries.finish_sf_poll_log(conn, log_id, "error",
-                                          error_message=str(e),
+                                          error_message=describe_error(e),
                                           duration_seconds=duration, **stats)
             conn.commit()
         # Send error alert via Telegram

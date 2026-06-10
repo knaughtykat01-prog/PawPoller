@@ -246,8 +246,11 @@ def _start_poll_orchestrator():
         results = []
         for plat, result in zip(names, raw):
             if isinstance(result, Exception):
-                logger.warning("Poll %s failed: %s", plat, result)
-                results.append({"platform": plat, "error": str(result)})
+                # describe_error: timeout-family exceptions stringify to "",
+                # which used to produce blank "Poll ib failed: " lines here.
+                from polling.notifications import describe_error
+                logger.warning("Poll %s failed: %s", plat, describe_error(result))
+                results.append({"platform": plat, "error": describe_error(result)})
             else:
                 results.append({"platform": plat, "stats": result or {}})
         return results

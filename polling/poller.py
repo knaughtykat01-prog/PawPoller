@@ -24,6 +24,7 @@ from html import escape as _esc
 import config
 from clients.ib.client import InkbunnyClient
 from database.db import get_connection
+from polling.notifications import describe_error
 from database import queries
 from polling import notifications
 
@@ -309,6 +310,11 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
                 queries.upsert_submission(conn, db_dict)
                 queries.insert_snapshot(conn, sub_id, views, faves, comments, polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
+                # Commit before the conditional fetches below: holding the
+                # implicit write transaction across their awaits (rate-limit
+                # sleeps + network calls) blocks every other poller's writes
+                # past the 30s busy_timeout -> "database is locked".
+                conn.commit()
 
                 # ── Step 5: Fetch faving users (conditional) ───
                 # Fetching faving users is an extra API call per submission
@@ -361,6 +367,8 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
                             if is_new:
                                 stats["new_comments_found"] += 1
                                 new_comment_details.append({"username": c.get("username", ""), "title": db_dict.get("title", "")})
+                        # Release the write lock before the next iteration's awaits.
+                        conn.commit()
                     except Exception as ce:
                         # Comment scraping failures are non-fatal --
                         # the rest of the submission data is still valid.
@@ -446,10 +454,10 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         # Top-level failure (auth error, network outage, etc.) -- record
         # partial stats and re-raise so the scheduler knows the cycle failed.
         duration = time.time() - start_time
-        _update_progress("error", message=str(e))
-        logger.error("Poll failed: %s", e, exc_info=True)
+        _update_progress("error", message=describe_error(e))
+        logger.error("Poll failed: %s", describe_error(e), exc_info=True)
         if conn and log_id:
-            queries.finish_poll_log(conn, log_id, "error", error_message=str(e), duration_seconds=duration, **stats)
+            queries.finish_poll_log(conn, log_id, "error", error_message=describe_error(e), duration_seconds=duration, **stats)
             conn.commit()
         # Send error alert via Telegram
         from polling.telegram import send_poll_error

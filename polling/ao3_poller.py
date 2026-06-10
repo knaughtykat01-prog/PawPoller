@@ -21,6 +21,7 @@ from html import escape as _esc
 import config
 from clients.ao3.client import AO3Client
 from database.db import get_connection
+from polling.notifications import describe_error
 from database import ao3_queries
 from polling import notifications
 
@@ -241,6 +242,11 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
                 ao3_queries.insert_ao3_snapshot(conn, wid, views, faves, comments,
                                                 bookmarks, polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
+                # Commit before the kudos fetch below: AO3 paces requests at
+                # 12s intervals, so holding the implicit write transaction
+                # across that await starves every other poller's writes past
+                # the 30s busy_timeout -> "database is locked".
+                conn.commit()
 
                 # Step 5: Track kudos users
                 try:
@@ -311,11 +317,11 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
 
     except Exception as e:
         duration = time.time() - start_time
-        _update_ao3_progress("error", message=str(e))
-        logger.error("AO3 poll failed: %s", e, exc_info=True)
+        _update_ao3_progress("error", message=describe_error(e))
+        logger.error("AO3 poll failed: %s", describe_error(e), exc_info=True)
         if conn and log_id:
             ao3_queries.finish_ao3_poll_log(conn, log_id, "error",
-                                             error_message=str(e),
+                                             error_message=describe_error(e),
                                              duration_seconds=duration, **stats)
             conn.commit()
         from polling.telegram import send_poll_error

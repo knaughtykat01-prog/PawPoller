@@ -22,6 +22,7 @@ from html import escape as _esc
 import config
 from clients.tw.client import TWClient
 from database.db import get_connection
+from polling.notifications import describe_error
 from database import tw_queries
 from polling import notifications
 
@@ -246,11 +247,11 @@ async def run_tw_poll_cycle(force_full: bool = False) -> dict:
 
     except Exception as e:
         duration = time.time() - start_time
-        _update_tw_progress("error", message=str(e))
-        logger.error("TW poll failed: %s", e, exc_info=True)
+        _update_tw_progress("error", message=describe_error(e))
+        logger.error("TW poll failed: %s", describe_error(e), exc_info=True)
         if conn and log_id:
             tw_queries.finish_tw_poll_log(conn, log_id, "error",
-                                          error_message=str(e),
+                                          error_message=describe_error(e),
                                           duration_seconds=duration, **stats)
             conn.commit()
         from polling.telegram import send_poll_error

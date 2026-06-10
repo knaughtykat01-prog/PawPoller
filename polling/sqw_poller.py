@@ -22,6 +22,7 @@ from html import escape as _esc
 import config
 from clients.sqw.client import SquidgeWorldClient
 from database.db import get_connection
+from polling.notifications import describe_error
 from database import sqw_queries
 from polling import notifications
 
@@ -213,6 +214,10 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
                 sqw_queries.insert_sqw_snapshot(conn, wid, views, faves, comments,
                                                 bookmarks, polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
+                # Commit before the kudos fetch below: holding the implicit
+                # write transaction across its await blocks every other
+                # poller's writes past the 30s busy_timeout.
+                conn.commit()
 
                 # Step 5: Track kudos users
                 try:
@@ -283,11 +288,11 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
 
     except Exception as e:
         duration = time.time() - start_time
-        _update_sqw_progress("error", message=str(e))
-        logger.error("SqW poll failed: %s", e, exc_info=True)
+        _update_sqw_progress("error", message=describe_error(e))
+        logger.error("SqW poll failed: %s", describe_error(e), exc_info=True)
         if conn and log_id:
             sqw_queries.finish_sqw_poll_log(conn, log_id, "error",
-                                             error_message=str(e),
+                                             error_message=describe_error(e),
                                              duration_seconds=duration, **stats)
             conn.commit()
         from polling.telegram import send_poll_error

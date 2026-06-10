@@ -1299,6 +1299,8 @@ conn.execute("PRAGMA foreign_keys=ON")    # Enforce FK constraints
 
 **Timeout of 30 seconds**: Both the Python-level `connect(timeout=30)` and the SQLite-level `PRAGMA busy_timeout=30000` are set. If a writer is holding the WAL lock, readers wait up to 30 seconds before raising `sqlite3.OperationalError`. Generous on purpose — bulk regen and full-resync runs can hold the writer for several seconds at a time.
 
+**Never hold an open write transaction across an `await` (2.26.3)**: Python's sqlite3 begins an implicit write transaction on the first INSERT/UPDATE and holds it until `commit()`. Four pollers (IB, FA, SqW, AO3) used to upsert a snapshot and then await rate-limited network fetches (faving users / comments / kudos) before committing — holding the single WAL write lock for 60s+ (minutes on AO3's 12s pacing), which starved every other concurrently-polling platform past the 30s busy_timeout and produced intermittent `database is locked` poll failures. Fixed in 2.26.3 by committing immediately after the snapshot upsert, before any conditional fetch awaits. When writing new poller code, commit before every `await` that follows a write.
+
 ### Inkbunny Schema (`database/schema.sql`) — Primary Platform
 
 **Table: `submissions`** (primary key: `submission_id`)

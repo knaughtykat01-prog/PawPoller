@@ -37,6 +37,25 @@ TELEGRAM_DEFAULT_VISIBLE = 5
 TELEGRAM_HTTP_TIMEOUT = 10.0
 
 
+def describe_error(e: BaseException) -> str:
+    """str(e), falling back to the exception type name when the message is empty.
+
+    Timeout-family exceptions (httpx.ReadTimeout, httpcore.ReadTimeout,
+    asyncio.TimeoutError, ...) stringify to "" — which produced blank
+    "Poll ib failed: " log lines and empty dashboard/Telegram error fields.
+    Falling back to the qualified type name makes those self-explanatory
+    while leaving exceptions with real messages untouched.
+    """
+    msg = str(e).strip()
+    if msg:
+        return msg
+    module = type(e).__module__
+    name = type(e).__name__
+    if module and module not in ("builtins", "__main__"):
+        return f"{module}.{name}"
+    return name
+
+
 # ── Formatters ────────────────────────────────────────────────────────
 
 def truncate_with_overflow(items: list[str], max_visible: int) -> list[str]:
