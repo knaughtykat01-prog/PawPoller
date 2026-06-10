@@ -20,3 +20,6 @@ settings.vault.json
 .idea/
 .vscode/
 *.swp
+
+# Claude Code context router (local only)
+CLAUDE.md
