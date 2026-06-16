@@ -50,43 +50,64 @@ def _schedule_retry(story_name: str, ch_idx: int, platform: str, action: str,
         conn.close()
     return True
 
-# Platform poster registry — lazy-loaded to avoid circular imports
-_posters: dict[str, PlatformPoster] = {}
+# Platform poster registry — lazy-loaded to avoid circular imports.
+# Keyed by (platform, account_id) so each account keeps its own authenticated
+# client/session — reusing one poster across accounts would leak account A's
+# logged-in session into account B's uploads.
+_posters: dict[tuple[str, int | None], PlatformPoster] = {}
 
 
-def _get_poster(platform: str) -> PlatformPoster:
-    """Get or create a platform poster instance."""
-    if platform not in _posters:
+def _get_poster(platform: str, account_id: int | None = None) -> PlatformPoster:
+    """Get or create a platform poster instance for a specific account."""
+    key = (platform, account_id)
+    if key not in _posters:
         if platform == "ib":
             from posting.platforms.inkbunny import InkbunnyPoster
-            _posters["ib"] = InkbunnyPoster()
+            poster: PlatformPoster = InkbunnyPoster()
         elif platform == "bsky":
             from posting.platforms.bluesky import BlueskyPoster
-            _posters["bsky"] = BlueskyPoster()
+            poster = BlueskyPoster()
         elif platform == "ws":
             from posting.platforms.weasyl import WeasylPoster
-            _posters["ws"] = WeasylPoster()
+            poster = WeasylPoster()
         elif platform == "sf":
             from posting.platforms.sofurry import SoFurryPoster
-            _posters["sf"] = SoFurryPoster()
+            poster = SoFurryPoster()
         elif platform == "fa":
             from posting.platforms.furaffinity import FurAffinityPoster
-            _posters["fa"] = FurAffinityPoster()
+            poster = FurAffinityPoster()
         elif platform == "sqw":
             from posting.platforms.squidgeworld import SquidgeWorldPoster
-            _posters["sqw"] = SquidgeWorldPoster()
+            poster = SquidgeWorldPoster()
         elif platform == "ao3":
             from posting.platforms.ao3 import AO3Poster
-            _posters["ao3"] = AO3Poster()
+            poster = AO3Poster()
         elif platform == "ik":
             from posting.platforms.itaku import ItakuPoster
-            _posters["ik"] = ItakuPoster()
+            poster = ItakuPoster()
         elif platform == "da":
             from posting.platforms.deviantart import DeviantArtPoster
-            _posters["da"] = DeviantArtPoster()
+            poster = DeviantArtPoster()
         else:
             raise ValueError(f"Unknown platform: {platform}")
-    return _posters[platform]
+        # All posters carry an account_id; account-aware posters (IB, and FA
+        # once refactored) read it in _ensure_client to authenticate as the
+        # right account. None means "the platform's default account".
+        poster.account_id = account_id
+        _posters[key] = poster
+    return _posters[key]
+
+
+def _resolve_account_id(platform: str, account_id: int | None) -> int:
+    """Return a concrete account_id for a platform, defaulting to its default account."""
+    if account_id is not None:
+        return account_id
+    from database import accounts as accounts_db
+    conn = get_connection()
+    try:
+        return accounts_db.get_default_account_id(conn, platform, create=True)
+    finally:
+        conn.close()
 
 
 def get_platform_requires(platform: str) -> str:
@@ -145,6 +166,7 @@ async def post_story(
     platforms: list[str],
     chapters: list[int] | None = None,
     extras: dict[str, Any] | None = None,
+    account_ids: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     """Post a story to multiple platforms.
 
@@ -155,10 +177,14 @@ async def post_story(
         extras: Per-package overrides merged into ``package.extra`` before
             posting (e.g. ``{"draft": True}`` to post as a draft on
             platforms that support it).
+        account_ids: Optional ``{platform: account_id}`` selecting which account
+            to post AS per platform. Platforms not listed use their default
+            account.
 
     Returns:
         List of result dicts with platform, chapter, success, url, error.
     """
+    account_ids = account_ids or {}
     story = story_reader.load_story(story_name)
     results: list[dict[str, Any]] = []
 
@@ -172,7 +198,8 @@ async def post_story(
         chapter_list = chapters
 
     for platform in platforms:
-        poster = _get_poster(platform)
+        account_id = _resolve_account_id(platform, account_ids.get(platform))
+        poster = _get_poster(platform, account_id)
         for ch_idx in chapter_list:
             package = story_reader.build_package(story, ch_idx, platform)
             if extras:
@@ -212,12 +239,13 @@ async def post_story(
                     try:
                         posting_queries.add_to_queue(
                             conn, story_name, ch_idx, platform, "post",
+                            account_id=account_id,
                             requires="desktop",
                         )
                         queued_for_desktop = True
                         logger.info(
-                            "Auto-queued %s ch%d on %s for desktop (server post failed: %s)",
-                            story_name, ch_idx, platform, result.error,
+                            "Auto-queued %s ch%d on %s (account %s) for desktop (server post failed: %s)",
+                            story_name, ch_idx, platform, account_id, result.error,
                         )
                     finally:
                         conn.close()
@@ -231,6 +259,7 @@ async def post_story(
             try:
                 pub_id = posting_queries.upsert_publication(
                     conn, story_name, ch_idx, platform,
+                    account_id=account_id,
                     external_id=result.external_id,
                     external_url=result.external_url,
                     title_used=package.title,
@@ -245,6 +274,7 @@ async def post_story(
                 posting_queries.log_posting_action(
                     conn, platform, story_name, ch_idx,
                     action="post",
+                    account_id=account_id,
                     status="success" if result.success else ("queued_desktop" if queued_for_desktop else "failed"),
                     pub_id=pub_id,
                     external_id=result.external_id,
@@ -280,10 +310,12 @@ async def update_story(
     platforms: list[str] | None = None,
     chapters: list[int] | None = None,
     extras: dict[str, Any] | None = None,
+    account_filter: int | None = None,
 ) -> list[dict[str, Any]]:
     """Push updates to already-posted submissions.
 
-    Looks up existing publications and sends updated metadata/files.
+    Looks up existing publications and sends updated metadata/files. Each
+    publication is updated AS the account it was posted under (pub.account_id).
 
     Args:
         story_name: Story folder name.
@@ -293,6 +325,9 @@ async def update_story(
             the edit runs (e.g. ``{"skip_content_refresh": True}`` to
             push metadata only, skipping the file/chapter content
             upload where supported).
+        account_filter: When set, only update publications owned by this
+            account_id (used by the scheduler to update the specific account a
+            queued item targeted).
 
     Returns:
         List of result dicts.
@@ -305,11 +340,13 @@ async def update_story(
         # Include both posted and failed publications (failed ones may need retrying)
         posted = posting_queries.get_publications(conn, story_name=story_name, status="posted")
         failed = posting_queries.get_publications(conn, story_name=story_name, status="failed")
-        # Deduplicate by (story, chapter, platform) — prefer posted over failed
+        # Deduplicate by (story, chapter, platform, account) — prefer posted over
+        # failed. account_id is part of the key so two accounts' copies of the
+        # same chapter are updated independently.
         seen = set()
         pubs = []
         for p in posted + failed:
-            key = (p["story_name"], p["chapter_index"], p["platform"])
+            key = (p["story_name"], p["chapter_index"], p["platform"], p["account_id"])
             if key not in seen:
                 seen.add(key)
                 pubs.append(p)
@@ -324,15 +361,18 @@ async def update_story(
         plat = pub["platform"]
         ch_idx = pub["chapter_index"]
         ext_id = pub["external_id"]
+        account_id = pub["account_id"]
 
         if platforms and plat not in platforms:
             continue
         if chapters and ch_idx not in chapters:
             continue
+        if account_filter is not None and account_id != account_filter:
+            continue
         if not ext_id:
             continue
 
-        poster = _get_poster(plat)
+        poster = _get_poster(plat, account_id)
         package = story_reader.build_package(story, ch_idx, plat)
         if extras:
             package.extra.update(extras)
@@ -364,12 +404,13 @@ async def update_story(
                 try:
                     posting_queries.add_to_queue(
                         conn, story_name, ch_idx, plat, "update",
+                        account_id=account_id,
                         requires="desktop",
                     )
                     queued_for_desktop = True
                     logger.info(
-                        "Auto-queued %s ch%d on %s for desktop (server edit failed: %s)",
-                        story_name, ch_idx, plat, result.error,
+                        "Auto-queued %s ch%d on %s (account %s) for desktop (server edit failed: %s)",
+                        story_name, ch_idx, plat, account_id, result.error,
                     )
                 finally:
                     conn.close()
@@ -390,6 +431,7 @@ async def update_story(
                 # re-postable. Keep the external_id/url for history.
                 posting_queries.upsert_publication(
                     conn, story_name, ch_idx, plat,
+                    account_id=account_id,
                     external_id=ext_id,
                     external_url=pub["external_url"],
                     title_used=package.title,
@@ -404,6 +446,7 @@ async def update_story(
             elif result.success:
                 posting_queries.upsert_publication(
                     conn, story_name, ch_idx, plat,
+                    account_id=account_id,
                     external_id=result.external_id or ext_id,
                     external_url=result.external_url or pub["external_url"],
                     title_used=package.title,
@@ -424,6 +467,7 @@ async def update_story(
             posting_queries.log_posting_action(
                 conn, plat, story_name, ch_idx,
                 action="update",
+                account_id=account_id,
                 status=log_status,
                 pub_id=pub["pub_id"],
                 external_id=result.external_id or ext_id,

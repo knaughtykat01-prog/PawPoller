@@ -199,60 +199,96 @@ def _start_poll_orchestrator():
         from polling.tw_poller import run_tw_poll_cycle
 
         settings = config.get_settings()
-        checks = [
-            (settings.get("username") and settings.get("password"),
-             "ib", run_poll_cycle),
-            (settings.get("fa_username") and settings.get("fa_cookie_a"),
-             "fa", run_fa_poll_cycle),
-            (settings.get("ws_api_key"),
-             "ws", run_ws_poll_cycle),
-            (settings.get("sf_username") and settings.get("sf_password"),
-             "sf", run_sf_poll_cycle),
-            (settings.get("sqw_username") and settings.get("sqw_password"),
-             "sqw", run_sqw_poll_cycle),
-            ((settings.get("ao3_username") and settings.get("ao3_password"))
-             or settings.get("ao3_session_cookie"),
-             "ao3", run_ao3_poll_cycle),
-            (settings.get("da_cookie") and settings.get("da_target_user"),
-             "da", run_da_poll_cycle),
-            (settings.get("wp_target_user"),
-             "wp", run_wp_poll_cycle),
-            (settings.get("ik_target_user"),
-             "ik", run_ik_poll_cycle),
-            (settings.get("bsky_identifier") and settings.get("bsky_app_password"),
-             "bsky", run_bsky_poll_cycle),
-            (settings.get("tw_auth_token") and settings.get("tw_target_user"),
-             "tw", run_tw_poll_cycle),
-        ]
+        from polling.notifications import describe_error
+        from database.db import get_connection
+        from database import accounts as accounts_db
 
-        targets = [(plat, fn) for creds_ok, plat, fn in checks if creds_ok]
-        if not targets:
+        # Account-aware platforms enumerate their ENABLED accounts (polled
+        # sequentially within a platform to respect per-IP rate limits). Other
+        # platforms still poll once via their legacy single-account path until
+        # their pollers learn account_id.
+        account_aware = {"ib": run_poll_cycle, "fa": run_fa_poll_cycle,
+                         "ws": run_ws_poll_cycle, "da": run_da_poll_cycle,
+                         "wp": run_wp_poll_cycle, "ik": run_ik_poll_cycle,
+                         "bsky": run_bsky_poll_cycle, "tw": run_tw_poll_cycle,
+                         "sf": run_sf_poll_cycle, "sqw": run_sqw_poll_cycle,
+                         "ao3": run_ao3_poll_cycle}
+
+        # Ensure every configured platform has its default account row (covers
+        # creds added since the last startup migration), then read enabled ones.
+        conn = get_connection()
+        try:
+            accounts_db.seed_default_accounts(conn, settings)
+            enabled_accounts = accounts_db.list_accounts(conn, enabled_only=True)
+        finally:
+            conn.close()
+        accts_by_platform: dict[str, list] = {}
+        for a in enabled_accounts:
+            accts_by_platform.setdefault(a["platform"], []).append(a)
+
+        # All 11 platforms are now account-aware — no legacy single-account path.
+        legacy_checks: list = []
+
+        async def _poll_accounts(platform, fn, accts):
+            """Poll each enabled account on one platform, in sequence."""
+            out = []
+            check = accounts_db.DEFAULT_CRED_CHECKS.get(platform, lambda s: True)
+            for a in accts:
+                creds = config.resolve_account_credentials(
+                    platform, a["account_id"], bool(a["is_default"]), settings)
+                if not check(creds):
+                    continue  # account has no usable credentials — skip
+                label = a.get("label") or platform
+                try:
+                    stats = await fn(a["account_id"])
+                    out.append({"platform": platform, "account_id": a["account_id"],
+                                "label": label, "stats": stats or {}})
+                except Exception as e:  # noqa: BLE001 — one account must not kill the cycle
+                    out.append({"platform": platform, "account_id": a["account_id"],
+                                "label": label, "error": describe_error(e)})
+            return out
+
+        async def _poll_legacy(platform, fn):
+            try:
+                stats = await fn()
+                return [{"platform": platform, "stats": stats or {}}]
+            except Exception as e:  # noqa: BLE001
+                return [{"platform": platform, "error": describe_error(e)}]
+
+        # Build one task group per platform — account-aware platforms poll their
+        # accounts sequentially inside the group; groups run concurrently.
+        tasks = []
+        for plat, fn in account_aware.items():
+            accts = accts_by_platform.get(plat, [])
+            if accts:
+                tasks.append(_poll_accounts(plat, fn, accts))
+        for creds_ok, plat, fn in legacy_checks:
+            if creds_ok:
+                tasks.append(_poll_legacy(plat, fn))
+
+        if not tasks:
             logger.info("No platforms configured — skipping poll cycle")
             return []
 
-        names = [p for p, _ in targets]
-        logger.info("Polling %d platforms (%s)...", len(targets), ", ".join(names))
+        logger.info("Polling %d platform group(s)...", len(tasks))
 
         # Suppress individual per-platform Telegram summaries/errors —
         # we send one consolidated message after all polls complete.
         _tg.orchestrated_poll_active = True
         try:
-            raw = await asyncio.gather(
-                *(fn() for _, fn in targets), return_exceptions=True,
-            )
+            grouped = await asyncio.gather(*tasks, return_exceptions=True)
         finally:
             _tg.orchestrated_poll_active = False
 
         results = []
-        for plat, result in zip(names, raw):
-            if isinstance(result, Exception):
-                # describe_error: timeout-family exceptions stringify to "",
-                # which used to produce blank "Poll ib failed: " lines here.
-                from polling.notifications import describe_error
-                logger.warning("Poll %s failed: %s", plat, describe_error(result))
-                results.append({"platform": plat, "error": describe_error(result)})
-            else:
-                results.append({"platform": plat, "stats": result or {}})
+        for g in grouped:
+            if isinstance(g, Exception):
+                logger.warning("Poll task group crashed: %s", describe_error(g))
+                continue
+            results.extend(g)
+        for r in results:
+            if "error" in r:
+                logger.warning("Poll %s failed: %s", r["platform"], r["error"])
         return results
 
     async def _run():

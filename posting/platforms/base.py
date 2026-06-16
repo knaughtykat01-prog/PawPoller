@@ -51,6 +51,34 @@ class PlatformPoster(ABC):
     max_file_size: int = 0          # Bytes (0 = no limit)
     accepted_file_types: list[str] = []
     requires_mode: str = "any"      # "any", "desktop", or "server"
+    # Which account to post as. Set by manager._get_poster; None = the
+    # platform's default account. Account-aware posters (IB, FA) read it in
+    # _ensure_client to authenticate as the right account.
+    account_id: int | None = None
+
+    def _resolve_creds(self, platform: str, settings: dict | None = None) -> dict:
+        """Return this poster's account's credentials, keyed by canonical field.
+
+        Resolves ``self.account_id`` (set by manager._get_poster; None → the
+        platform's default account) to its credential set via
+        ``config.resolve_account_credentials``. Posters call this in
+        ``_ensure_client`` instead of reading flat ``settings.get(...)`` so they
+        authenticate as the selected account.
+        """
+        import config
+        from database.db import get_connection
+        from database import accounts as _accts
+        conn = get_connection()
+        try:
+            acct_id = self.account_id
+            if acct_id is None:
+                acct_id = _accts.get_default_account_id(conn, platform, create=True)
+                self.account_id = acct_id
+            acct = _accts.get_account(conn, acct_id)
+            is_default = bool(acct["is_default"]) if acct else True
+        finally:
+            conn.close()
+        return config.resolve_account_credentials(platform, acct_id, is_default, settings)
 
     @abstractmethod
     async def post(self, package: StoryUploadPackage) -> PostResult:

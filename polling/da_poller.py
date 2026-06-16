@@ -40,7 +40,8 @@ da_poll_progress = {
 
 _da_poll_running = False
 _da_poll_lock = threading.Lock()
-_da_first_poll = True
+# Per-account first-poll suppression (single lock serialises DA polls).
+_da_first_poll_done: set[int] = set()
 
 # Persistent client — reused across poll cycles
 _da_client: DAClient | None = None
@@ -90,11 +91,13 @@ async def _send_da_telegram(new_details: list[dict]) -> None:
     )
 
 
-def _get_or_create_client(settings: dict) -> DAClient:
-    """Return the persistent DAClient, creating or updating as needed."""
+def _get_or_create_client(settings: dict, da_cookie: str, da_target: str) -> DAClient:
+    """Return the persistent DAClient, re-pointed at the given account's creds.
+
+    DA accounts poll sequentially (single lock), so one persistent client that
+    gets its credentials updated each cycle is sufficient.
+    """
     global _da_client
-    da_cookie = settings.get("da_cookie", "")
-    da_target = settings.get("da_target_user", "")
 
     if _da_client is None:
         from polling.cf_proxy import proxy_kwargs
@@ -109,8 +112,8 @@ def _get_or_create_client(settings: dict) -> DAClient:
     return _da_client
 
 
-async def run_da_poll_cycle(force_full: bool = False) -> dict:
-    """Execute one complete DA poll cycle.
+async def run_da_poll_cycle(account_id: int | None = None, force_full: bool = False) -> dict:
+    """Execute one complete DA poll cycle for a single account.
 
     Steps:
       1. Validate cookies by accessing gallery page
@@ -118,10 +121,21 @@ async def run_da_poll_cycle(force_full: bool = False) -> dict:
       3. Fetch details for each deviation
       4. Upsert deviations and record snapshots
     """
-    global _da_poll_running, _da_first_poll
+    global _da_poll_running
+
+    from database import accounts as accounts_db
+    _ac = get_connection()
+    try:
+        if account_id is None:
+            account_id = accounts_db.get_default_account_id(_ac, "da", create=True)
+        account_row = accounts_db.get_account(_ac, account_id)
+    finally:
+        _ac.close()
+    is_default = bool(account_row["is_default"]) if account_row else True
+    is_first = account_id not in _da_first_poll_done
 
     if not _da_poll_lock.acquire(blocking=False):
-        logger.warning("DA poll already running -- skipping")
+        logger.warning("DA poll already running -- skipping (account %s)", account_id)
         return {}
     _da_poll_running = True
     _update_da_progress("starting", message="Initialising DA poll cycle...")
@@ -136,11 +150,13 @@ async def run_da_poll_cycle(force_full: bool = False) -> dict:
     }
 
     settings = config.get_settings()
-    client = _get_or_create_client(settings)
+    creds = config.resolve_account_credentials("da", account_id, is_default, settings)
+    client = _get_or_create_client(settings, creds.get("da_cookie", ""),
+                                   creds.get("da_target_user", ""))
 
     try:
         conn = get_connection()
-        log_id = da_queries.start_da_poll_log(conn)
+        log_id = da_queries.start_da_poll_log(conn, account_id)
         # Step 1: Validate cookies
         _update_da_progress("searching", message="Validating DA cookies...")
         valid = await client.validate_cookies()
@@ -187,8 +203,8 @@ async def run_da_poll_cycle(force_full: bool = False) -> dict:
                              or comments > prev.get("comments_count", 0)):
                     new_activity_details.append({"title": detail.get("title", "")})
 
-                da_queries.upsert_da_submission(conn, detail)
-                da_queries.insert_da_snapshot(conn, dev_id, views, faves, comments,
+                da_queries.upsert_da_submission(conn, detail, account_id)
+                da_queries.insert_da_snapshot(conn, account_id, dev_id, views, faves, comments,
                                              downloads, polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
 
@@ -199,9 +215,9 @@ async def run_da_poll_cycle(force_full: bool = False) -> dict:
         conn.commit()
 
         # ── Notifications ─────────────────────────────────────
-        if _da_first_poll:
-            logger.info("First DA poll after startup -- suppressing %d activity notifications",
-                        len(new_activity_details))
+        if is_first:
+            logger.info("First DA poll for account %s -- suppressing %d activity notifications",
+                        account_id, len(new_activity_details))
         else:
             try:
                 _send_da_notifications(new_activity_details)
@@ -223,7 +239,7 @@ async def run_da_poll_cycle(force_full: bool = False) -> dict:
                      duration, stats["submissions_found"], stats["snapshots_inserted"])
 
         # ── Telegram notifications ────────────────────────────
-        if not _da_first_poll:
+        if not is_first:
             from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
             try:
                 await send_poll_summary("da", stats, duration)
@@ -256,8 +272,7 @@ async def run_da_poll_cycle(force_full: bool = False) -> dict:
             logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
-        if _da_first_poll:
-            _da_first_poll = False
+        _da_first_poll_done.add(account_id)
         _da_poll_running = False
         _da_poll_lock.release()
         if conn:

@@ -20,15 +20,16 @@ from typing import Any
 
 # -- TW Submissions ----------------------------------------------------------
 
-def upsert_tw_submission(conn: sqlite3.Connection, sub: dict) -> None:
+def upsert_tw_submission(conn: sqlite3.Connection, sub: dict, account_id: int) -> None:
     """Insert or update a tweet's metadata and latest stats."""
     keywords_json = json.dumps(sub.get("keywords", []))
+    # account_id set on INSERT only; the ON CONFLICT UPDATE leaves it alone.
     conn.execute(
         """INSERT INTO tw_submissions
-           (submission_id, title, username, posted_at, content_type, rating,
+           (submission_id, account_id, title, username, posted_at, content_type, rating,
             description, keywords, link, thumbnail_url,
             views, likes, retweets, replies, quotes, bookmarks, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
            ON CONFLICT(submission_id) DO UPDATE SET
             title=excluded.title, username=excluded.username,
             content_type=excluded.content_type, rating=excluded.rating,
@@ -40,7 +41,7 @@ def upsert_tw_submission(conn: sqlite3.Connection, sub: dict) -> None:
             updated_at=datetime('now')
         """,
         (
-            sub["tweet_id"], sub.get("title", ""), sub.get("username", ""),
+            sub["tweet_id"], account_id, sub.get("title", ""), sub.get("username", ""),
             sub.get("posted_at"), sub.get("content_type", "tweet"),
             sub.get("rating", ""), sub.get("description", ""),
             keywords_json, sub.get("link", ""),
@@ -69,14 +70,14 @@ def get_all_tw_submissions(conn: sqlite3.Connection, sort_by: str = "views", ord
 
 # -- TW Snapshots ------------------------------------------------------------
 
-def insert_tw_snapshot(conn: sqlite3.Connection, submission_id: str,
+def insert_tw_snapshot(conn: sqlite3.Connection, account_id: int, submission_id: str,
                         views: int, likes: int, retweets: int,
                         replies: int, quotes: int, bookmarks: int,
                         polled_at: str | None = None) -> None:
     ts = polled_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
-        "INSERT INTO tw_snapshots (submission_id, polled_at, views, likes, retweets, replies, quotes, bookmarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (submission_id, ts, views, likes, retweets, replies, quotes, bookmarks),
+        "INSERT INTO tw_snapshots (account_id, submission_id, polled_at, views, likes, retweets, replies, quotes, bookmarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (account_id, submission_id, ts, views, likes, retweets, replies, quotes, bookmarks),
     )
 
 
@@ -137,8 +138,10 @@ def get_tw_comparison_snapshots(conn: sqlite3.Connection, submission_ids: list[s
 
 # -- TW Poll Log -------------------------------------------------------------
 
-def start_tw_poll_log(conn: sqlite3.Connection) -> int:
-    cur = conn.execute("INSERT INTO tw_poll_log (started_at, status) VALUES (datetime('now'), 'running')")
+def start_tw_poll_log(conn: sqlite3.Connection, account_id: int = 0) -> int:
+    cur = conn.execute(
+        "INSERT INTO tw_poll_log (started_at, status, account_id) VALUES (datetime('now'), 'running', ?)",
+        (account_id,))
     conn.commit()
     return cur.lastrowid
 

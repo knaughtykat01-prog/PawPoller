@@ -19,7 +19,7 @@ from typing import Any
 
 # -- SqW Submissions ---------------------------------------------------
 
-def upsert_sqw_submission(conn: sqlite3.Connection, sub: dict) -> None:
+def upsert_sqw_submission(conn: sqlite3.Connection, sub: dict, account_id: int) -> None:
     """Insert or update a SquidgeWorld work's metadata and latest stats."""
     keywords_json = json.dumps(sub.get("keywords", []))
     chapters = sub.get("chapters", "1/1")
@@ -30,12 +30,13 @@ def upsert_sqw_submission(conn: sqlite3.Connection, sub: dict) -> None:
         tot = sub.get("chapters_total", "1")
         chapters = f"{cur}/{tot}"
 
+    # account_id set on INSERT only; the ON CONFLICT UPDATE leaves it alone.
     conn.execute(
         """INSERT INTO sqw_submissions
-           (submission_id, title, username, posted_at, fandom, rating,
+           (submission_id, account_id, title, username, posted_at, fandom, rating,
             description, keywords, link, word_count, chapters,
             views, favorites_count, comments_count, bookmarks_count, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
            ON CONFLICT(submission_id) DO UPDATE SET
             title=excluded.title, username=excluded.username,
             fandom=excluded.fandom, rating=excluded.rating,
@@ -48,7 +49,7 @@ def upsert_sqw_submission(conn: sqlite3.Connection, sub: dict) -> None:
             updated_at=datetime('now')
         """,
         (
-            sub["work_id"], sub.get("title", ""), sub.get("username", ""),
+            sub["work_id"], account_id, sub.get("title", ""), sub.get("username", ""),
             sub.get("posted_at"), sub.get("fandom", ""),
             sub.get("rating", ""), sub.get("description", ""),
             keywords_json, sub.get("link", ""),
@@ -85,13 +86,13 @@ def get_all_sqw_submissions(conn: sqlite3.Connection, sort_by: str = "views", or
 
 # -- SqW Snapshots -----------------------------------------------------
 
-def insert_sqw_snapshot(conn: sqlite3.Connection, submission_id: int, views: int,
+def insert_sqw_snapshot(conn: sqlite3.Connection, account_id: int, submission_id: int, views: int,
                         favorites_count: int, comments_count: int, bookmarks_count: int,
                         polled_at: str | None = None) -> None:
     ts = polled_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
-        "INSERT INTO sqw_snapshots (submission_id, polled_at, views, favorites_count, comments_count, bookmarks_count) VALUES (?, ?, ?, ?, ?, ?)",
-        (submission_id, ts, views, favorites_count, comments_count, bookmarks_count),
+        "INSERT INTO sqw_snapshots (account_id, submission_id, polled_at, views, favorites_count, comments_count, bookmarks_count) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (account_id, submission_id, ts, views, favorites_count, comments_count, bookmarks_count),
     )
 
 
@@ -151,7 +152,7 @@ def get_sqw_comparison_snapshots(conn: sqlite3.Connection, submission_ids: list[
 
 # -- SqW Kudos Users ---------------------------------------------------
 
-def upsert_sqw_kudos_user(conn: sqlite3.Connection, submission_id: int, username: str) -> bool:
+def upsert_sqw_kudos_user(conn: sqlite3.Connection, account_id: int, submission_id: int, username: str) -> bool:
     """Insert a kudos user if not already known. Returns True if new."""
     existing = conn.execute(
         "SELECT 1 FROM sqw_kudos_users WHERE submission_id = ? AND username = ?",
@@ -160,20 +161,20 @@ def upsert_sqw_kudos_user(conn: sqlite3.Connection, submission_id: int, username
     if existing:
         return False
     conn.execute(
-        "INSERT INTO sqw_kudos_users (submission_id, username) VALUES (?, ?)",
-        (submission_id, username),
+        "INSERT INTO sqw_kudos_users (account_id, submission_id, username) VALUES (?, ?, ?)",
+        (account_id, submission_id, username),
     )
     return True
 
 
-def upsert_sqw_kudos_users_batch(conn: sqlite3.Connection, submission_id: int, usernames: list[str]) -> int:
+def upsert_sqw_kudos_users_batch(conn: sqlite3.Connection, account_id: int, submission_id: int, usernames: list[str]) -> int:
     """Batch insert kudos users. Returns count of new kudos."""
     if not usernames:
         return 0
     before = conn.execute("SELECT COUNT(*) FROM sqw_kudos_users WHERE submission_id = ?", (submission_id,)).fetchone()[0]
     conn.executemany(
-        "INSERT OR IGNORE INTO sqw_kudos_users (submission_id, username) VALUES (?, ?)",
-        [(submission_id, u) for u in usernames],
+        "INSERT OR IGNORE INTO sqw_kudos_users (account_id, submission_id, username) VALUES (?, ?, ?)",
+        [(account_id, submission_id, u) for u in usernames],
     )
     after = conn.execute("SELECT COUNT(*) FROM sqw_kudos_users WHERE submission_id = ?", (submission_id,)).fetchone()[0]
     return after - before
@@ -189,8 +190,10 @@ def get_sqw_kudos_users(conn: sqlite3.Connection, submission_id: int) -> list[di
 
 # -- SqW Poll Log ------------------------------------------------------
 
-def start_sqw_poll_log(conn: sqlite3.Connection) -> int:
-    cur = conn.execute("INSERT INTO sqw_poll_log (started_at, status) VALUES (datetime('now'), 'running')")
+def start_sqw_poll_log(conn: sqlite3.Connection, account_id: int = 0) -> int:
+    cur = conn.execute(
+        "INSERT INTO sqw_poll_log (started_at, status, account_id) VALUES (datetime('now'), 'running', ?)",
+        (account_id,))
     conn.commit()
     return cur.lastrowid
 

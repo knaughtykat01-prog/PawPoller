@@ -25,7 +25,7 @@ from typing import Any
 
 # ── FA Submissions ────────────────────────────────────────────
 
-def upsert_fa_submission(conn: sqlite3.Connection, sub: dict) -> None:
+def upsert_fa_submission(conn: sqlite3.Connection, sub: dict, account_id: int) -> None:
     """Insert or update an FA submission's metadata and latest stats.
 
     Same upsert pattern as queries.upsert_submission: INSERT with ON CONFLICT
@@ -38,13 +38,14 @@ def upsert_fa_submission(conn: sqlite3.Connection, sub: dict) -> None:
     """
     # Serialize keywords list to JSON string, same pattern as IB.
     keywords_json = json.dumps(sub.get("keywords", []))
+    # account_id is set on INSERT only; the ON CONFLICT UPDATE leaves it alone.
     conn.execute(
         """INSERT INTO fa_submissions
-           (submission_id, title, username, posted_at, category, theme,
+           (submission_id, account_id, title, username, posted_at, category, theme,
             species, gender, rating, thumbnail_url, download_url,
             description, keywords, link,
             views, favorites_count, comments_count, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
            ON CONFLICT(submission_id) DO UPDATE SET
             title=excluded.title, username=excluded.username,
             category=excluded.category, theme=excluded.theme,
@@ -56,7 +57,7 @@ def upsert_fa_submission(conn: sqlite3.Connection, sub: dict) -> None:
             comments_count=excluded.comments_count, updated_at=datetime('now')
         """,
         (
-            sub["submission_id"], sub.get("title", ""), sub.get("username", ""),
+            sub["submission_id"], account_id, sub.get("title", ""), sub.get("username", ""),
             sub.get("posted_at"), sub.get("category", ""), sub.get("theme", ""),
             sub.get("species", ""), sub.get("gender", ""), sub.get("rating", ""),
             sub.get("thumbnail_url", ""), sub.get("download_url", ""),
@@ -101,12 +102,12 @@ def get_all_fa_submissions(conn: sqlite3.Connection, sort_by: str = "views", ord
 # Snapshot time-series for FA submissions. Same append-only pattern as IB
 # snapshots -- one row per submission per poll cycle.
 
-def insert_fa_snapshot(conn: sqlite3.Connection, submission_id: int, views: int, favorites_count: int, comments_count: int, polled_at: str | None = None) -> None:
+def insert_fa_snapshot(conn: sqlite3.Connection, account_id: int, submission_id: int, views: int, favorites_count: int, comments_count: int, polled_at: str | None = None) -> None:
     # Append-only: each poll cycle adds a new row, never updates existing ones.
     ts = polled_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
-        "INSERT INTO fa_snapshots (submission_id, polled_at, views, favorites_count, comments_count) VALUES (?, ?, ?, ?, ?)",
-        (submission_id, ts, views, favorites_count, comments_count),
+        "INSERT INTO fa_snapshots (account_id, submission_id, polled_at, views, favorites_count, comments_count) VALUES (?, ?, ?, ?, ?, ?)",
+        (account_id, submission_id, ts, views, favorites_count, comments_count),
     )
 
 
@@ -171,7 +172,7 @@ def get_fa_comparison_snapshots(conn: sqlite3.Connection, submission_ids: list[i
 # Note: comment_id is stored as a string (str()) because FA comment IDs
 # from scraping may not be purely numeric.
 
-def upsert_fa_comment(conn: sqlite3.Connection, comment: dict) -> bool:
+def upsert_fa_comment(conn: sqlite3.Connection, comment: dict, account_id: int = 0) -> bool:
     """Insert an FA comment if not already tracked. Returns True if new.
 
     Same deduplication pattern as IB: rely on UNIQUE constraint + catch
@@ -181,13 +182,13 @@ def upsert_fa_comment(conn: sqlite3.Connection, comment: dict) -> bool:
     """
     try:
         conn.execute(
-            """INSERT INTO fa_comments (comment_id, submission_id, username, comment_text,
+            """INSERT INTO fa_comments (comment_id, account_id, submission_id, username, comment_text,
                commented_at, first_seen_at, reply_to, reply_level, is_deleted)
-               VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)""",
             (
                 # FA comment IDs are cast to string because they may come from
                 # scraping in non-integer formats.
-                str(comment["comment_id"]), comment["submission_id"], comment.get("username", ""),
+                str(comment["comment_id"]), account_id, comment["submission_id"], comment.get("username", ""),
                 comment.get("comment_text", ""), comment.get("commented_at"),
                 comment.get("reply_to"), comment.get("reply_level", 0),
                 1 if comment.get("is_deleted") else 0,
@@ -198,16 +199,16 @@ def upsert_fa_comment(conn: sqlite3.Connection, comment: dict) -> bool:
         return False
 
 
-def upsert_fa_comments_batch(conn: sqlite3.Connection, comments: list[dict]) -> int:
+def upsert_fa_comments_batch(conn: sqlite3.Connection, account_id: int, comments: list[dict]) -> int:
     """Batch insert FA comments. Returns count of new comments."""
     if not comments:
         return 0
     before = conn.total_changes
     conn.executemany(
-        """INSERT OR IGNORE INTO fa_comments (comment_id, submission_id, username, comment_text,
+        """INSERT OR IGNORE INTO fa_comments (comment_id, account_id, submission_id, username, comment_text,
            commented_at, first_seen_at, reply_to, reply_level, is_deleted)
-           VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)""",
-        [(str(c["comment_id"]), c["submission_id"], c.get("username", ""),
+           VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)""",
+        [(str(c["comment_id"]), account_id, c["submission_id"], c.get("username", ""),
           c.get("comment_text", ""), c.get("commented_at"),
           c.get("reply_to"), c.get("reply_level", 0),
           1 if c.get("is_deleted") else 0) for c in comments],
@@ -255,8 +256,10 @@ def get_fa_previous_comments_count(conn: sqlite3.Connection, submission_id: int)
 # new_comments_found but NOT new_faves_found (since FA lacks individual
 # fave user tracking -- unlike IB's poll log which includes both).
 
-def start_fa_poll_log(conn: sqlite3.Connection) -> int:
-    cur = conn.execute("INSERT INTO fa_poll_log (started_at, status) VALUES (datetime('now'), 'running')")
+def start_fa_poll_log(conn: sqlite3.Connection, account_id: int = 0) -> int:
+    cur = conn.execute(
+        "INSERT INTO fa_poll_log (started_at, status, account_id) VALUES (datetime('now'), 'running', ?)",
+        (account_id,))
     conn.commit()
     return cur.lastrowid
 
@@ -454,7 +457,7 @@ def get_fa_submission_deltas(conn: sqlite3.Connection) -> dict[int, dict]:
 
 # ── FA Watcher Queries ────────────────────────────────────────────
 
-def upsert_fa_watcher(conn: sqlite3.Connection, username: str) -> bool:
+def upsert_fa_watcher(conn: sqlite3.Connection, account_id: int, username: str) -> bool:
     """Insert an FA watcher if not already tracked, or update last_seen_at.
 
     New watchers start with confirmed=0 (pending). On the next poll cycle,
@@ -466,21 +469,21 @@ def upsert_fa_watcher(conn: sqlite3.Connection, username: str) -> bool:
     """
     try:
         conn.execute(
-            "INSERT INTO fa_watchers (username, first_seen_at, last_seen_at, confirmed, notified) "
-            "VALUES (?, datetime('now'), datetime('now'), 0, 0)",
-            (username,),
+            "INSERT INTO fa_watchers (account_id, username, first_seen_at, last_seen_at, confirmed, notified) "
+            "VALUES (?, ?, datetime('now'), datetime('now'), 0, 0)",
+            (account_id, username),
         )
         return True
     except sqlite3.IntegrityError:
         # Already exists -- update last_seen_at to track continued presence
         conn.execute(
-            "UPDATE fa_watchers SET last_seen_at = datetime('now') WHERE username = ?",
-            (username,),
+            "UPDATE fa_watchers SET last_seen_at = datetime('now') WHERE account_id = ? AND username = ?",
+            (account_id, username),
         )
         return False
 
 
-def confirm_pending_watchers(conn: sqlite3.Connection) -> list[str]:
+def confirm_pending_watchers(conn: sqlite3.Connection, account_id: int) -> list[str]:
     """Promote pending watchers (confirmed=0) that are still present (last_seen_at
     updated this cycle) to confirmed=1. Returns list of newly confirmed usernames.
 
@@ -492,59 +495,62 @@ def confirm_pending_watchers(conn: sqlite3.Connection) -> list[str]:
     # FAExport list) gets promoted. We check that last_seen_at > first_seen_at
     # (meaning it was refreshed at least once after initial insert).
     rows = conn.execute(
-        "SELECT username FROM fa_watchers WHERE confirmed = 0 AND last_seen_at > first_seen_at"
+        "SELECT username FROM fa_watchers WHERE account_id = ? AND confirmed = 0 AND last_seen_at > first_seen_at",
+        (account_id,),
     ).fetchall()
     confirmed_names = [r["username"] for r in rows]
     if confirmed_names:
         conn.execute(
-            "UPDATE fa_watchers SET confirmed = 1 WHERE confirmed = 0 AND last_seen_at > first_seen_at"
+            "UPDATE fa_watchers SET confirmed = 1 WHERE account_id = ? AND confirmed = 0 AND last_seen_at > first_seen_at",
+            (account_id,),
         )
     return confirmed_names
 
 
-def mark_watchers_spam(conn: sqlite3.Connection, usernames: list[str]) -> None:
-    """Flag watchers as spam (is_spam=1). They remain in the DB but are
-    excluded from notifications."""
+def mark_watchers_spam(conn: sqlite3.Connection, account_id: int, usernames: list[str]) -> None:
+    """Flag watchers as spam (is_spam=1) for this account. They remain in the DB
+    but are excluded from notifications."""
     if not usernames:
         return
     placeholders = ",".join("?" for _ in usernames)
     conn.execute(
-        f"UPDATE fa_watchers SET is_spam = 1 WHERE username IN ({placeholders})",
-        usernames,
+        f"UPDATE fa_watchers SET is_spam = 1 WHERE account_id = ? AND username IN ({placeholders})",
+        [account_id, *usernames],
     )
 
 
-def get_unnotified_confirmed_watchers(conn: sqlite3.Connection) -> list[str]:
-    """Get confirmed, non-spam watchers that haven't been notified yet."""
+def get_unnotified_confirmed_watchers(conn: sqlite3.Connection, account_id: int) -> list[str]:
+    """Get confirmed, non-spam watchers for this account that haven't been notified yet."""
     rows = conn.execute(
-        "SELECT username FROM fa_watchers WHERE confirmed = 1 AND notified = 0 AND is_spam = 0"
+        "SELECT username FROM fa_watchers WHERE account_id = ? AND confirmed = 1 AND notified = 0 AND is_spam = 0",
+        (account_id,),
     ).fetchall()
     return [r["username"] for r in rows]
 
 
-def mark_watchers_notified(conn: sqlite3.Connection, usernames: list[str]) -> None:
-    """Mark watchers as notified so we don't re-notify."""
+def mark_watchers_notified(conn: sqlite3.Connection, account_id: int, usernames: list[str]) -> None:
+    """Mark this account's watchers as notified so we don't re-notify."""
     if not usernames:
         return
     placeholders = ",".join("?" for _ in usernames)
     conn.execute(
-        f"UPDATE fa_watchers SET notified = 1 WHERE username IN ({placeholders})",
-        usernames,
+        f"UPDATE fa_watchers SET notified = 1 WHERE account_id = ? AND username IN ({placeholders})",
+        [account_id, *usernames],
     )
 
 
-def remove_stale_fa_watchers(conn: sqlite3.Connection, current_usernames: list[str]) -> int:
-    """Remove FA watchers no longer on the live watcher list.
+def remove_stale_fa_watchers(conn: sqlite3.Connection, account_id: int, current_usernames: list[str]) -> int:
+    """Remove this account's FA watchers no longer on the live watcher list.
 
     Accounts that get banned, deleted, or unwatch disappear from FAExport.
-    This prunes the DB to match reality. Returns the number of rows deleted.
+    This prunes the DB to match reality, scoped to one account. Returns rows deleted.
     """
     if not current_usernames:
         return 0
     placeholders = ",".join("?" for _ in current_usernames)
     cur = conn.execute(
-        f"DELETE FROM fa_watchers WHERE username NOT IN ({placeholders})",
-        current_usernames,
+        f"DELETE FROM fa_watchers WHERE account_id = ? AND username NOT IN ({placeholders})",
+        [account_id, *current_usernames],
     )
     return cur.rowcount
 
@@ -566,12 +572,12 @@ def get_fa_recent_watchers(conn: sqlite3.Connection, limit: int = 20) -> list[di
 
 # ── FA Profile Stats ─────────────────────────────────────────
 
-def insert_fa_profile_stats(conn: sqlite3.Connection, pageviews: int, polled_at: str | None = None) -> None:
-    """Record a profile pageviews snapshot. One row per poll cycle."""
+def insert_fa_profile_stats(conn: sqlite3.Connection, account_id: int, pageviews: int, polled_at: str | None = None) -> None:
+    """Record a profile pageviews snapshot for this account. One row per poll cycle."""
     ts = polled_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
-        "INSERT INTO fa_profile_stats (polled_at, pageviews) VALUES (?, ?)",
-        (ts, pageviews),
+        "INSERT INTO fa_profile_stats (account_id, polled_at, pageviews) VALUES (?, ?, ?)",
+        (account_id, ts, pageviews),
     )
 
 

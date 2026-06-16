@@ -857,6 +857,7 @@ def get_preferences():
         "theme": settings.get("theme", "dark"),
         "mobile_mode": settings.get("mobile_mode", "auto"),
         "auto_sync_enabled": settings.get("auto_sync_enabled", True),
+        "fa_direct_polling": settings.get("fa_direct_polling", False),
         # ── Per-platform notification master toggles ───────────────
         "notifications_enabled": settings.get("notifications_enabled", True),
         "fa_notifications_enabled": settings.get("fa_notifications_enabled", True),
@@ -938,6 +939,11 @@ def save_preferences(body: dict):
         update["telegram_enabled"] = bool(body["telegram_enabled"])
     if "auto_sync_enabled" in body:
         update["auto_sync_enabled"] = bool(body["auto_sync_enabled"])
+    # FA direct-polling: when true, skip the (currently Cloudflare-blocked)
+    # FAExport proxy and scrape FurAffinity directly via cookies. Only works
+    # from a residential IP (the desktop instance), not the datacenter server.
+    if "fa_direct_polling" in body:
+        update["fa_direct_polling"] = bool(body["fa_direct_polling"])
     # Theme — accepted as opaque string; client-side validates against the
     # THEMES catalogue so unknown ids never reach here. Whitelist anyway as
     # belt-and-braces against rogue clients.

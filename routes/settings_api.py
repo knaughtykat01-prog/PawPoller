@@ -439,3 +439,141 @@ async def do_uninstall(req: UninstallRequest) -> dict:
 
     result["shutdown_in_seconds"] = 2
     return result
+
+
+# ── Accounts CRUD (multi-account) ─────────────────────────────────────
+# Manages the per-platform account registry. The default account keeps the
+# legacy flat credential keys; extra accounts store credentials under
+# acct_<id>_<field> keys (config.account_setting_key / get_account_credentials).
+
+accounts_router = APIRouter(prefix="/api/accounts", tags=["accounts"])
+
+
+class AccountCreate(BaseModel):
+    platform: str
+    label: str = ""
+    handle: str = ""
+    enabled: bool = True
+    credentials: dict = {}   # {canonical_field: value}
+
+
+class AccountUpdate(BaseModel):
+    label: str | None = None
+    handle: str | None = None
+    enabled: bool | None = None
+    credentials: dict | None = None
+
+
+def _accounts_conn():
+    from database import db
+    return db.get_connection()
+
+
+def _platform_fields_meta() -> dict:
+    """Per-platform credential field list + secret flags, for the UI form."""
+    return {
+        plat: [{"field": f, "secret": config.is_credential_key(f)} for f in fields]
+        for plat, fields in config.PLATFORM_CREDENTIAL_FIELDS.items()
+    }
+
+
+def _save_account_credentials(account: dict, creds: dict | None) -> None:
+    """Persist provided credential fields under the account's settings keys."""
+    if not creds:
+        return
+    platform = account["platform"]
+    is_default = bool(account["is_default"])
+    allowed = set(config.PLATFORM_CREDENTIAL_FIELDS.get(platform, []))
+    payload = {}
+    for field, value in creds.items():
+        if field in allowed:
+            payload[config.account_setting_key(account["account_id"], field, is_default)] = value
+    if payload:
+        config.save_settings(payload)
+
+
+@accounts_router.get("")
+async def list_accounts_endpoint(platform: str | None = None):
+    """List accounts (optionally for one platform) + field metadata for forms."""
+    from database import accounts as adb
+    conn = _accounts_conn()
+    try:
+        rows = adb.list_accounts(conn, platform=platform)
+        # Attach per-account stat rollups so the UI can show numbers side by side.
+        for r in rows:
+            r["stats"] = adb.account_stats(conn, r["account_id"], r["platform"])
+    finally:
+        conn.close()
+    return {
+        "accounts": rows,
+        "platform_names": adb.PLATFORM_NAMES,
+        "platform_fields": _platform_fields_meta(),
+    }
+
+
+@accounts_router.post("")
+async def create_account_endpoint(req: AccountCreate):
+    """Create a new account on a platform and store its credentials."""
+    from database import accounts as adb
+    if req.platform not in adb.PLATFORMS:
+        raise HTTPException(status_code=400, detail=f"Unknown platform: {req.platform}")
+    conn = _accounts_conn()
+    try:
+        handle = req.handle or adb.derive_handle(req.platform, req.credentials or {})
+        aid = adb.create_account(conn, req.platform, req.label,
+                                 handle=handle, enabled=req.enabled)
+        account = adb.get_account(conn, aid)
+    finally:
+        conn.close()
+    _save_account_credentials(account, req.credentials)
+    logger.info("Created %s account #%s (%s)", req.platform, aid, account.get("label"))
+    return {"ok": True, "account": account}
+
+
+@accounts_router.patch("/{account_id}")
+async def update_account_endpoint(account_id: int, req: AccountUpdate):
+    """Rename / enable / disable an account and optionally update credentials."""
+    from database import accounts as adb
+    conn = _accounts_conn()
+    try:
+        account = adb.get_account(conn, account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        adb.update_account(conn, account_id, label=req.label,
+                           handle=req.handle, enabled=req.enabled)
+        account = adb.get_account(conn, account_id)
+    finally:
+        conn.close()
+    if req.credentials:
+        _save_account_credentials(account, req.credentials)
+    return {"ok": True, "account": account}
+
+
+@accounts_router.delete("/{account_id}")
+async def delete_account_endpoint(account_id: int):
+    """Delete a non-default account and its namespaced credentials.
+
+    Refuses to delete a platform's default account — that account owns the
+    legacy flat credential keys and the pre-multi-account data history.
+    """
+    from database import accounts as adb
+    conn = _accounts_conn()
+    try:
+        account = adb.get_account(conn, account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        if account["is_default"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete the default account for a platform.",
+            )
+        adb.delete_account(conn, account_id)
+    finally:
+        conn.close()
+    # Remove the account's namespaced credential keys.
+    keys = [config.account_setting_key(account_id, f, False)
+            for f in config.PLATFORM_CREDENTIAL_FIELDS.get(account["platform"], [])]
+    if keys:
+        config.delete_settings_keys(keys)
+    logger.info("Deleted %s account #%s", account["platform"], account_id)
+    return {"ok": True}

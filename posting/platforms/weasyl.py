@@ -42,7 +42,8 @@ class WeasylPoster(PlatformPoster):
         if self._client:
             return self._client
         settings = config.get_settings()
-        api_key = settings.get("ws_api_key", "")
+        creds = self._resolve_creds("ws", settings)
+        api_key = creds.get("ws_api_key", "")
         if not api_key:
             raise RuntimeError("Weasyl API key not configured")
         self._client = WeasylClient(api_key=api_key)

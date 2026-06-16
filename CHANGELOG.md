@@ -4,6 +4,111 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.27.0] - 2026-06-16 - Multiple accounts per platform
+
+Support for **multiple accounts per platform** (e.g. two FurAffinity accounts),
+all active at once, for both polling and posting — across **all 11 platforms**.
+Built as a phased rollout (IB + FA pilot, then the rest). Backward-compatible:
+existing single-account installs behave exactly as before (the default account
+keeps the legacy flat credential keys; no credential migration). Add a second
+account on the **Accounts page** (`#/accounts`) and it's polled on the next cycle
+with its own credentials, session, and segregated data; pick which account to
+**post as** from the publish-check matrix.
+
+**Landed (foundation + all-platform polling + posting + orchestrator):**
+
+- **Account registry** — new `accounts` table (`database/accounts.py`) with a
+  global surrogate `account_id` and one `is_default` account per platform
+  (enforced by a partial unique index). Seeded during migration for every
+  platform that already has credentials; the default account inherits the
+  pre-multi-account data history.
+- **Credential namespacing** — the default account keeps the existing flat
+  settings keys verbatim (`username`, `fa_cookie_a`…), so existing installs need
+  **zero credential migration**. Additional accounts store the same canonical
+  fields under `acct_<id>_<field>` keys. New helpers in `config.py`:
+  `get_account_credentials`, `resolve_account_credentials`, `is_credential_key`
+  (routes namespaced secrets to the encrypted vault), `PLATFORM_CREDENTIAL_FIELDS`.
+- **Schema migration** — additive `account_id` columns on the Inkbunny analytics
+  tables and `posting_queue`/`posting_log`, backfilled to each platform's default
+  account (which is NOT uniformly id 1 — `account_id` is AUTOINCREMENT across
+  platforms). Constraint-changing rebuilds run on a dedicated foreign-keys-off
+  connection (`_run_table_rebuilds` in `database/db.py`): `session_cache`
+  singleton (`CHECK id=1`) → one row per account (`PK account_id`); `watchers`
+  `UNIQUE(username)` → `UNIQUE(account_id, username)`; `publications`
+  `UNIQUE(story_name, chapter_index, platform)` → `+account_id` so the same
+  chapter can be published to two accounts on one platform. Idempotent.
+- **Inkbunny runtime** — `database/queries.py` writes are account-scoped;
+  `polling/poller.py` is now `run_poll_cycle(account_id=None, …)` with per-account
+  credentials, per-account cached session, and per-account first-poll suppression;
+  the Inkbunny poster authenticates per account (the singleton `session_cache
+  WHERE id=1` read is removed — it would have shared one auth token across
+  accounts).
+- **FurAffinity runtime** — same treatment for the `fa_*` tables (no session
+  cache; cookie auth) plus `fa_profile_stats` per account and the watcher
+  spam-confirmation flow (`upsert/confirm/mark/remove`) scoped to
+  `(account_id, username)`. `fa_watchers` rebuilt to `UNIQUE(account_id, username)`
+  preserving the confirmed/last_seen_at/is_spam/notified columns.
+  `polling/fa_poller.py` is `run_fa_poll_cycle(account_id=None, …)`.
+- **Orchestrator + ALL 11 platforms account-aware for polling** — `server.py`
+  `_poll_all` enumerates enabled accounts for every platform (ib, fa, ws, da, wp,
+  ik, bsky, tw, sf, sqw, ao3); a platform's accounts poll sequentially, platforms
+  run concurrently; the legacy single-account path is gone. Each platform got its
+  schema migration (additive `account_id` via the reusable
+  `db._add_account_id_and_backfill`; watcher rebuilds for `sf_watchers`; kudos
+  tables `sqw_kudos_users`/`ao3_kudos_users` gained additive `account_id`),
+  account-scoped queries, and a per-account poller (`run_<p>_poll_cycle(account_id=None)`).
+- **Posting "post as account"** — account-aware end to end: `POST /api/posting/post`
+  accepts `account_ids: {platform: id}` and `/api/posting/update` accepts
+  `account_id`; `posting/manager.py` resolves a concrete account per platform,
+  caches posters per `(platform, account_id)` so sessions never bleed between
+  accounts, and tags `publications`/`posting_queue`/`posting_log` with it; the IB
+  and FA posters authenticate as the selected account; the scheduler posts queued
+  items (incl. the desktop FA auto-queue) as the account they were queued for.
+  `update_story` updates each publication as its own `account_id`.
+- **Per-account stats** — the Accounts page shows each account's submission count
+  + views/faves/comments side by side (`accounts.account_stats` rolls up the
+  platform's submissions table by `account_id`; attached to `GET /api/accounts`).
+- **Telegram** — the consolidated poll summary labels accounts when a platform
+  has more than one in a cycle (e.g. "🐾 Main: 9  🐾 Alt: 4").
+- **Drift** — `posting/sync.py` change records now carry `account_id`; a changed
+  local file correctly flags every account it was posted to.
+- **API + UI** — account CRUD endpoints (`/api/accounts`) and an Accounts page
+  (`frontend/js/accounts.js`, `#/accounts`). Settings sync carries an
+  `_accounts_manifest` so desktop and server agree on which accounts exist.
+- **Tests** — `tests/test_accounts.py` (resolver, vault routing, registry CRUD,
+  manifest) and `tests/test_migration_multiaccount.py` (legacy single-account DB
+  upgrades correctly: seeding, backfill, all three constraint rebuilds, idempotency).
+
+**Known limitations / follow-ups:** the main per-submission dashboard charts in
+`app.js` still aggregate across a platform's accounts (the **Accounts page** shows
+per-account rollups, and reads accept an `account_id` filter); the diagnostics tab
+is not yet per-account; and the `publish_draft` action doesn't thread `account_id`
+(post/update do). None block multi-account use. See `docs/HANDOFF.md`.
+
+### FurAffinity direct-polling fallback
+
+FA polling has been dead since ~2026-05-26 because the public FAExport instance
+(`faexport.spangle.org.uk`) is stuck behind a persistent Cloudflare challenge —
+the maintainer confirmed on [faexport#129](https://github.com/Deer-Spangle/faexport/issues/129)
+that he changed his VPS IP and still gets blocked, and now self-hosts FAExport.
+
+Added a **direct-FA scraping fallback** (`clients/fa/client.py`): when FAExport is
+unavailable, the FA poller scrapes FurAffinity's own gallery + submission HTML
+directly with the user's session cookies (`get_all_gallery_ids_direct` /
+`get_submission_details_batch_direct` / `_parse_submission_html`), producing the
+same dict shape as the FAExport path so the poller is source-agnostic. The poll
+cycle tries FAExport first and **auto-falls-back to direct on failure**;
+`fa_direct_polling=true` in settings skips FAExport entirely (recommended while it
+stays blocked). Comment/watcher/profile data (FAExport-only) are skipped in direct
+mode — the core view/fave/comment snapshot time-series still works.
+
+**Constraint:** FA's Cloudflare blocks datacenter IPs (the same reason FA *posting*
+requires desktop), so direct polling only works from a **residential IP** — i.e.
+the desktop instance, not the GCP server. Verified with `tests/test_fa_direct.py`
+(parser against representative FA Beta HTML).
+
+---
+
 ## [2.26.3] - 2026-06-10
 
 ### Fix: pollers no longer hold the SQLite write lock across network awaits

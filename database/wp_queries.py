@@ -20,16 +20,17 @@ from typing import Any
 
 # -- WP Submissions -------------------------------------------------------
 
-def upsert_wp_submission(conn: sqlite3.Connection, sub: dict) -> None:
+def upsert_wp_submission(conn: sqlite3.Connection, sub: dict, account_id: int) -> None:
     """Insert or update a Wattpad story's metadata and latest stats."""
     keywords_json = json.dumps(sub.get("keywords", []))
 
+    # account_id set on INSERT only; the ON CONFLICT UPDATE leaves it alone.
     conn.execute(
         """INSERT INTO wp_submissions
-           (submission_id, title, username, posted_at, category, rating,
+           (submission_id, account_id, title, username, posted_at, category, rating,
             description, keywords, link, cover_url, word_count, num_parts,
             completed, reads, votes, comments_count, num_lists, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
            ON CONFLICT(submission_id) DO UPDATE SET
             title=excluded.title, username=excluded.username,
             category=excluded.category, rating=excluded.rating,
@@ -41,7 +42,7 @@ def upsert_wp_submission(conn: sqlite3.Connection, sub: dict) -> None:
             num_lists=excluded.num_lists, updated_at=datetime('now')
         """,
         (
-            sub["story_id"], sub.get("title", ""), sub.get("username", ""),
+            sub["story_id"], account_id, sub.get("title", ""), sub.get("username", ""),
             sub.get("posted_at"), sub.get("category", ""),
             sub.get("rating", ""), sub.get("description", ""),
             keywords_json, sub.get("link", ""), sub.get("cover_url", ""),
@@ -78,13 +79,13 @@ def get_all_wp_submissions(conn: sqlite3.Connection, sort_by: str = "reads", ord
 
 # -- WP Snapshots ---------------------------------------------------------
 
-def insert_wp_snapshot(conn: sqlite3.Connection, submission_id: int, reads: int,
+def insert_wp_snapshot(conn: sqlite3.Connection, account_id: int, submission_id: int, reads: int,
                        votes: int, comments_count: int, num_lists: int,
                        polled_at: str | None = None) -> None:
     ts = polled_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
-        "INSERT INTO wp_snapshots (submission_id, polled_at, reads, votes, comments_count, num_lists) VALUES (?, ?, ?, ?, ?, ?)",
-        (submission_id, ts, reads, votes, comments_count, num_lists),
+        "INSERT INTO wp_snapshots (account_id, submission_id, polled_at, reads, votes, comments_count, num_lists) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (account_id, submission_id, ts, reads, votes, comments_count, num_lists),
     )
 
 
@@ -144,8 +145,10 @@ def get_wp_comparison_snapshots(conn: sqlite3.Connection, submission_ids: list[i
 
 # -- WP Poll Log ----------------------------------------------------------
 
-def start_wp_poll_log(conn: sqlite3.Connection) -> int:
-    cur = conn.execute("INSERT INTO wp_poll_log (started_at, status) VALUES (datetime('now'), 'running')")
+def start_wp_poll_log(conn: sqlite3.Connection, account_id: int = 0) -> int:
+    cur = conn.execute(
+        "INSERT INTO wp_poll_log (started_at, status, account_id) VALUES (datetime('now'), 'running', ?)",
+        (account_id,))
     conn.commit()
     return cur.lastrowid
 

@@ -38,7 +38,7 @@ bsky_poll_progress = {
 
 _bsky_poll_running = False
 _bsky_poll_lock = threading.Lock()
-_bsky_first_poll = True
+_bsky_first_poll_done: set[int] = set()
 
 # Persistent client — reused across poll cycles
 _bsky_client: BskyClient | None = None
@@ -88,11 +88,9 @@ async def _send_bsky_telegram(new_details: list[dict]) -> None:
     )
 
 
-def _get_or_create_client(settings: dict) -> BskyClient:
-    """Return the persistent BskyClient, creating or updating as needed."""
+def _get_or_create_client(settings: dict, bsky_identifier: str, bsky_app_password: str) -> BskyClient:
+    """Return the persistent BskyClient, re-pointed at the account's credentials."""
     global _bsky_client
-    bsky_identifier = settings.get("bsky_identifier", "")
-    bsky_app_password = settings.get("bsky_app_password", "")
 
     if _bsky_client is None:
         from polling.cf_proxy import proxy_kwargs
@@ -107,8 +105,8 @@ def _get_or_create_client(settings: dict) -> BskyClient:
     return _bsky_client
 
 
-async def run_bsky_poll_cycle(force_full: bool = False) -> dict:
-    """Execute one complete Bluesky poll cycle.
+async def run_bsky_poll_cycle(account_id: int | None = None, force_full: bool = False) -> dict:
+    """Execute one complete Bluesky poll cycle for a single account.
 
     Steps:
       1. Login via AT Protocol createSession
@@ -116,10 +114,21 @@ async def run_bsky_poll_cycle(force_full: bool = False) -> dict:
       3. Fetch details for each post (batched, 25 per request)
       4. Upsert posts and record snapshots
     """
-    global _bsky_poll_running, _bsky_first_poll
+    global _bsky_poll_running
+
+    from database import accounts as accounts_db
+    _ac = get_connection()
+    try:
+        if account_id is None:
+            account_id = accounts_db.get_default_account_id(_ac, "bsky", create=True)
+        account_row = accounts_db.get_account(_ac, account_id)
+    finally:
+        _ac.close()
+    is_default = bool(account_row["is_default"]) if account_row else True
+    is_first = account_id not in _bsky_first_poll_done
 
     if not _bsky_poll_lock.acquire(blocking=False):
-        logger.warning("BSKY poll already running -- skipping")
+        logger.warning("BSKY poll already running -- skipping (account %s)", account_id)
         return {}
     _bsky_poll_running = True
     _update_bsky_progress("starting", message="Initialising BSKY poll cycle...")
@@ -134,11 +143,13 @@ async def run_bsky_poll_cycle(force_full: bool = False) -> dict:
     }
 
     settings = config.get_settings()
-    client = _get_or_create_client(settings)
+    creds = config.resolve_account_credentials("bsky", account_id, is_default, settings)
+    client = _get_or_create_client(settings, creds.get("bsky_identifier", ""),
+                                   creds.get("bsky_app_password", ""))
 
     try:
         conn = get_connection()
-        log_id = bsky_queries.start_bsky_poll_log(conn)
+        log_id = bsky_queries.start_bsky_poll_log(conn, account_id)
 
         # Step 1: Login
         _update_bsky_progress("searching", message="Logging in to Bluesky...")
@@ -185,8 +196,8 @@ async def run_bsky_poll_cycle(force_full: bool = False) -> dict:
                              or reposts > prev.get("reposts", 0)):
                     new_activity_details.append({"title": detail.get("title", "")})
 
-                bsky_queries.upsert_bsky_submission(conn, detail)
-                bsky_queries.insert_bsky_snapshot(conn, uri, likes, reposts,
+                bsky_queries.upsert_bsky_submission(conn, detail, account_id)
+                bsky_queries.insert_bsky_snapshot(conn, account_id, uri, likes, reposts,
                                                   replies, quotes, polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
 
@@ -197,9 +208,9 @@ async def run_bsky_poll_cycle(force_full: bool = False) -> dict:
         conn.commit()
 
         # ── Notifications ─────────────────────────────────────
-        if _bsky_first_poll:
-            logger.info("First BSKY poll after startup -- suppressing %d activity notifications",
-                        len(new_activity_details))
+        if is_first:
+            logger.info("First BSKY poll for account %s -- suppressing %d activity notifications",
+                        account_id, len(new_activity_details))
         else:
             try:
                 _send_bsky_notifications(new_activity_details)
@@ -220,7 +231,7 @@ async def run_bsky_poll_cycle(force_full: bool = False) -> dict:
                      duration, stats["submissions_found"], stats["snapshots_inserted"])
 
         # -- Telegram notifications ----------------------------------------
-        if not _bsky_first_poll:
+        if not is_first:
             from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
             try:
                 await send_poll_summary("bsky", stats, duration)
@@ -253,8 +264,7 @@ async def run_bsky_poll_cycle(force_full: bool = False) -> dict:
             logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
-        if _bsky_first_poll:
-            _bsky_first_poll = False
+        _bsky_first_poll_done.add(account_id)
         _bsky_poll_running = False
         _bsky_poll_lock.release()
         if conn:

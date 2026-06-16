@@ -103,8 +103,10 @@ fa_poll_progress = {
 _fa_poll_running = False
 _fa_poll_lock = threading.Lock()
 
-# First-poll suppression: silent baseline on first poll after startup.
-_fa_first_poll = True
+# First-poll suppression is PER ACCOUNT (silent baseline on each account's first
+# poll). Tracks which accounts have completed a cycle. A single lock still
+# serialises all FA polls — accounts on one platform poll sequentially.
+_fa_first_poll_done: set[int] = set()
 
 # ── Watcher spam filter ──────────────────────────────────────
 # FA attracts waves of bot/spam watchers with obvious patterns.
@@ -223,8 +225,8 @@ async def _send_fa_telegram(new_comment_details: list[dict],
     )
 
 
-async def run_fa_poll_cycle(force_full: bool = False) -> dict:
-    """Execute one complete FurAffinity poll cycle.
+async def run_fa_poll_cycle(account_id: int | None = None, force_full: bool = False) -> dict:
+    """Execute one complete FurAffinity poll cycle for a single account.
 
     Follows the same pattern as the IB poller (run_poll_cycle) but with a
     reduced step count because FA's data model is more limited:
@@ -249,13 +251,23 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
         Stats dict with keys: submissions_found, snapshots_inserted,
         new_comments_found.  Empty dict if a poll was already running.
     """
-    global _fa_poll_running, _fa_first_poll
+    global _fa_poll_running
 
-    # Concurrency guard -- identical pattern to the IB poller.
-    # The Lock makes the check-and-set atomic so two near-simultaneous
-    # callers cannot both slip through.
+    # ── Resolve the account to poll (default FA account when unspecified) ──
+    from database import accounts as accounts_db
+    _ac = get_connection()
+    try:
+        if account_id is None:
+            account_id = accounts_db.get_default_account_id(_ac, "fa", create=True)
+        account_row = accounts_db.get_account(_ac, account_id)
+    finally:
+        _ac.close()
+    is_default = bool(account_row["is_default"]) if account_row else True
+    is_first = account_id not in _fa_first_poll_done
+
+    # Concurrency guard -- one FA poll cycle at a time (accounts poll sequentially).
     if not _fa_poll_lock.acquire(blocking=False):
-        logger.warning("FA poll already running — skipping")
+        logger.warning("FA poll already running — skipping (account %s)", account_id)
         return {}
     _fa_poll_running = True
     _update_fa_progress("starting", message="Initialising FA poll cycle...")
@@ -273,32 +285,51 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
     }
 
     # FA authentication uses cookie_a / cookie_b rather than a session ID.
-    # These are stored in the user's settings and passed to the FAClient
-    # constructor directly.
+    # Resolve this account's credentials (default → legacy flat keys; extra
+    # accounts → namespaced keys) and pass them to the FAClient.
     settings = config.get_settings()
+    creds = config.resolve_account_credentials("fa", account_id, is_default, settings)
     from polling.cf_proxy import proxy_kwargs
     client = FAClient(
-        username=settings.get("fa_username", ""),
-        cookie_a=settings.get("fa_cookie_a", ""),
-        cookie_b=settings.get("fa_cookie_b", ""),
+        username=creds.get("fa_username", ""),
+        cookie_a=creds.get("fa_cookie_a", ""),
+        cookie_b=creds.get("fa_cookie_b", ""),
         **proxy_kwargs(settings, "fa"),
     )
 
     try:
         conn = get_connection()
-        log_id = fa_queries.start_fa_poll_log(conn)
-        # ── Step 1: Discover gallery submissions via FAExport ──
-        # FAExport provides a JSON list of submission IDs for a user's
-        # gallery, which avoids the need to scrape FA's HTML gallery pages.
+        log_id = fa_queries.start_fa_poll_log(conn, account_id)
+        # ── Step 1: Discover gallery submissions ──────────────
+        # Primary source is FAExport (JSON proxy). When it's unavailable (the
+        # long Cloudflare block on faexport.spangle.org.uk — faexport#129) we
+        # fall back to scraping FA's gallery/submission HTML directly via the
+        # user's cookies. Direct mode only works from a residential IP (the
+        # desktop instance) — FA's Cloudflare blocks the datacenter server IP,
+        # the same constraint as FA posting. Set fa_direct_polling=true to skip
+        # FAExport entirely (recommended while it stays blocked).
         _update_fa_progress("searching", message="Validating FA cookies...")
         if not await client.validate_cookies():
             raise ValueError("FA cookies expired — update cookie_a and cookie_b in Settings")
 
-        _update_fa_progress("searching", message="Fetching gallery from FAExport...")
-        gallery = await client.get_all_gallery_ids()
+        use_direct = bool(settings.get("fa_direct_polling", False))
+        if use_direct:
+            _update_fa_progress("searching", message="Scraping gallery directly from FA...")
+            gallery = await client.get_all_gallery_ids_direct()
+        else:
+            _update_fa_progress("searching", message="Fetching gallery from FAExport...")
+            try:
+                gallery = await client.get_all_gallery_ids()
+            except Exception as ge:  # noqa: BLE001 — FAExport down → try direct FA
+                logger.warning("FAExport gallery failed (%s) — falling back to direct FA scraping",
+                               describe_error(ge))
+                use_direct = True
+                _update_fa_progress("searching", message="FAExport down — scraping FA directly...")
+                gallery = await client.get_all_gallery_ids_direct()
         submission_ids = [s["submission_id"] for s in gallery]
         stats["submissions_found"] = len(submission_ids)
-        logger.info("FA: Found %d submissions", len(submission_ids))
+        logger.info("FA: Found %d submissions (%s)", len(submission_ids),
+                    "direct" if use_direct else "FAExport")
 
         if not submission_ids:
             _update_fa_progress("complete", message="No FA submissions found.")
@@ -308,7 +339,10 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
 
         # ── Step 2: Fetch details for each submission ──────────
         _update_fa_progress("fetching_details", message=f"Fetching details for {len(submission_ids)} submissions...")
-        details = await client.get_submission_details_batch(submission_ids)
+        if use_direct:
+            details = await client.get_submission_details_batch_direct(submission_ids)
+        else:
+            details = await client.get_submission_details_batch(submission_ids)
         logger.info("FA: Fetched details for %d submissions", len(details))
 
         # ── Step 3 & 4: Upsert + snapshot, then conditional comments ──
@@ -330,8 +364,8 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                 prev_comments = fa_queries.get_fa_previous_comments_count(conn, sub_id)
 
                 # Step 3: Upsert submission and record snapshot.
-                fa_queries.upsert_fa_submission(conn, detail)
-                fa_queries.insert_fa_snapshot(conn, sub_id, views, faves, comments, polled_at=poll_timestamp)
+                fa_queries.upsert_fa_submission(conn, detail, account_id)
+                fa_queries.insert_fa_snapshot(conn, account_id, sub_id, views, faves, comments, polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
                 # Commit before the conditional comment fetch below: holding
                 # the implicit write transaction across its awaits blocks
@@ -343,8 +377,10 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                 # comments as structured JSON, unlike the IB poller which
                 # scrapes HTML.  Same delta-based optimisation: only fetch
                 # when count has changed or on force_full.
-                should_fetch_comments = force_full and comments > 0
-                if not should_fetch_comments:
+                # Comment scraping uses FAExport; skip it in direct mode (the
+                # snapshot already captured comments_count from the page).
+                should_fetch_comments = (not use_direct) and force_full and comments > 0
+                if not should_fetch_comments and not use_direct:
                     if (prev_comments is not None and comments > prev_comments) or \
                        (prev_comments is None and comments > 0):
                         should_fetch_comments = True
@@ -357,7 +393,7 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                         scraped = await client.get_submission_comments(sub_id)
                         # Batch insert: get existing comment_ids first to identify new ones
                         existing_cids = {r["comment_id"] for r in fa_queries.get_fa_comments(conn, sub_id)}
-                        new_count = fa_queries.upsert_fa_comments_batch(conn, scraped)
+                        new_count = fa_queries.upsert_fa_comments_batch(conn, account_id, scraped)
                         conn.commit()
                         stats["new_comments_found"] += new_count
                         for c in scraped:
@@ -394,16 +430,19 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
         new_watcher_names = []
         confirmed_watcher_names = []
         try:
+            # Watcher list comes from FAExport — unavailable in direct mode, so
+            # we skip the scrape (and the stale-prune, which only runs when we
+            # actually fetched a list).
             _update_fa_progress("fetching_watchers", message="Fetching watcher list...")
-            watchers = await client.get_all_watchers()
+            watchers = [] if use_direct else await client.get_all_watchers()
             for username in watchers:
-                is_new = fa_queries.upsert_fa_watcher(conn, username)
+                is_new = fa_queries.upsert_fa_watcher(conn, account_id, username)
                 if is_new:
                     stats["new_watchers_found"] += 1
                     new_watcher_names.append(username)
             # Remove watchers no longer on the live list (banned/deleted/unwatched)
             if watchers:
-                removed = fa_queries.remove_stale_fa_watchers(conn, watchers)
+                removed = fa_queries.remove_stale_fa_watchers(conn, account_id, watchers)
                 if removed:
                     logger.info("FA: pruned %d stale watchers from DB", removed)
             conn.commit()
@@ -413,13 +452,13 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                 # Keyword-filter obvious spam immediately and mark in DB
                 keyword_spam = [n for n in new_watcher_names if _is_spam_watcher(n)]
                 if keyword_spam:
-                    fa_queries.mark_watchers_spam(conn, keyword_spam)
+                    fa_queries.mark_watchers_spam(conn, account_id, keyword_spam)
                     conn.commit()
                     logger.info("FA watcher keyword filter: %d/%d flagged as obvious bots (e.g. %s)",
                                 len(keyword_spam), len(new_watcher_names), ", ".join(keyword_spam[:3]))
 
             # Confirm pending watchers that survived from a previous cycle
-            confirmed_watcher_names = fa_queries.confirm_pending_watchers(conn)
+            confirmed_watcher_names = fa_queries.confirm_pending_watchers(conn, account_id)
             conn.commit()
 
             if confirmed_watcher_names:
@@ -435,7 +474,7 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
                         sniff_results = await client.sniff_watcher_profiles(to_sniff)
                         profile_spam = [name for name, is_spam in sniff_results.items() if is_spam]
                         if profile_spam:
-                            fa_queries.mark_watchers_spam(conn, profile_spam)
+                            fa_queries.mark_watchers_spam(conn, account_id, profile_spam)
                             conn.commit()
                             logger.info("FA profile sniff: %d/%d confirmed watchers flagged as bots (zero activity)",
                                         len(profile_spam), len(to_sniff))
@@ -450,12 +489,13 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
         # how many times the user's profile page has been visited. We snapshot
         # this value each poll cycle for historical charting.
         try:
+            # Profile pageviews come from FAExport — skip in direct mode.
             _update_fa_progress("fetching_profile", message="Fetching profile stats...")
-            profile = await client.get_user_profile(client.username)
+            profile = None if use_direct else await client.get_user_profile(client.username)
             if profile and "pageviews" in profile:
                 from clients.fa.client import _safe_int
                 pv = _safe_int(profile["pageviews"])
-                fa_queries.insert_fa_profile_stats(conn, pv, polled_at=poll_timestamp)
+                fa_queries.insert_fa_profile_stats(conn, account_id, pv, polled_at=poll_timestamp)
                 conn.commit()
                 logger.info("FA: Profile pageviews recorded: %d", pv)
         except Exception as pe:
@@ -470,12 +510,12 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
         settings = config.get_settings()
         watcher_mode = settings.get("fa_watcher_notification_mode", "immediate")
         notify_watchers = []
-        if not _fa_first_poll and watcher_mode == "immediate":
-            notify_watchers = fa_queries.get_unnotified_confirmed_watchers(conn)
+        if not is_first and watcher_mode == "immediate":
+            notify_watchers = fa_queries.get_unnotified_confirmed_watchers(conn, account_id)
 
-        if _fa_first_poll:
-            logger.info("First FA poll after startup — suppressing %d comment, %d watcher notifications",
-                        len(new_comment_details), len(new_watcher_names))
+        if is_first:
+            logger.info("First FA poll for account %s — suppressing %d comment, %d watcher notifications",
+                        account_id, len(new_comment_details), len(new_watcher_names))
         else:
             # Comments always notify immediately; watchers depend on mode
             try:
@@ -490,7 +530,7 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
 
             # Mark as notified so we don't re-send
             if notify_watchers:
-                fa_queries.mark_watchers_notified(conn, notify_watchers)
+                fa_queries.mark_watchers_notified(conn, account_id, notify_watchers)
                 conn.commit()
 
         # ── Finalise ───────────────────────────────────────────
@@ -504,7 +544,7 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
 
         # ── Telegram summaries + milestones ───────────────────
         from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
-        if not _fa_first_poll:
+        if not is_first:
             try:
                 await send_poll_summary("fa", stats, duration)
             except Exception as te:
@@ -542,11 +582,10 @@ async def run_fa_poll_cycle(force_full: bool = False) -> dict:
             raise
         raise friendly from e
     finally:
-        # Always clear the guard and release resources.
-        # Also clear _fa_first_poll so that a failed first attempt doesn't
-        # suppress notifications on the next successful poll.
-        if _fa_first_poll:
-            _fa_first_poll = False
+        # Always clear the guard and release resources. Mark this account's
+        # first poll as done so a failed first attempt doesn't suppress
+        # notifications on the next successful poll.
+        _fa_first_poll_done.add(account_id)
         _fa_poll_running = False
         _fa_poll_lock.release()
         await client.close()
@@ -573,14 +612,28 @@ async def send_fa_watcher_digest() -> None:
 
     conn = get_connection()
     try:
-        pending = fa_queries.get_unnotified_confirmed_watchers(conn)
-        if not pending:
+        from database import accounts as accounts_db
+        fa_accounts = accounts_db.list_accounts(conn, platform="fa", enabled_only=True)
+        if not fa_accounts:
+            default_id = accounts_db.get_default_account_id(conn, "fa")
+            if default_id is not None:
+                fa_accounts = [{"account_id": default_id, "label": "FA"}]
+
+        # Collect this-cycle's pending watchers per account.
+        per_account = []
+        all_pending = []
+        for a in fa_accounts:
+            pending = fa_queries.get_unnotified_confirmed_watchers(conn, a["account_id"])
+            if pending:
+                per_account.append((a["account_id"], pending))
+                all_pending.extend(pending)
+        if not all_pending:
             return
 
         text = notifications.format_telegram_summary(
-            f"<b>🦊 FA Daily Watcher Digest: {len(pending)} New Watcher"
-            f"{'s' if len(pending) != 1 else ''}</b>",
-            [f"<b>{_esc(name)}</b>" for name in pending],
+            f"<b>🦊 FA Daily Watcher Digest: {len(all_pending)} New Watcher"
+            f"{'s' if len(all_pending) != 1 else ''}</b>",
+            [f"<b>{_esc(name)}</b>" for name in all_pending],
             max_visible=10,
         )
         # Use the lower-level send_telegram primitive so we can branch on
@@ -592,8 +645,10 @@ async def send_fa_watcher_digest() -> None:
         if not ok:
             return
 
-        fa_queries.mark_watchers_notified(conn, pending)
+        for acct_id, pending in per_account:
+            fa_queries.mark_watchers_notified(conn, acct_id, pending)
         conn.commit()
-        logger.info("FA watcher digest sent: %d watchers", len(pending))
+        logger.info("FA watcher digest sent: %d watchers across %d account(s)",
+                    len(all_pending), len(per_account))
     finally:
         conn.close()

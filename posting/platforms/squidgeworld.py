@@ -84,9 +84,10 @@ class SquidgeWorldPoster(PlatformPoster):
             return self._client
 
         settings = config.get_settings()
-        username = settings.get("sqw_author_username", "") or settings.get("sqw_username", "")
-        password = settings.get("sqw_author_password", "") or settings.get("sqw_password", "")
-        target_user = settings.get("sqw_target_user", "")
+        creds = self._resolve_creds("sqw", settings)
+        username = creds.get("sqw_author_username", "") or creds.get("sqw_username", "")
+        password = creds.get("sqw_author_password", "") or creds.get("sqw_password", "")
+        target_user = creds.get("sqw_target_user", "")
         if not username or not password:
             raise RuntimeError("SquidgeWorld author credentials not configured")
 

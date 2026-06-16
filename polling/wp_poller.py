@@ -40,7 +40,7 @@ wp_poll_progress = {
 
 _wp_poll_running = False
 _wp_poll_lock = threading.Lock()
-_wp_first_poll = True
+_wp_first_poll_done: set[int] = set()
 
 # Persistent client — reused across poll cycles
 _wp_client: WPClient | None = None
@@ -90,10 +90,9 @@ async def _send_wp_telegram(new_details: list[dict]) -> None:
     )
 
 
-def _get_or_create_client(settings: dict) -> WPClient:
-    """Return the persistent WPClient, creating or updating as needed."""
+def _get_or_create_client(settings: dict, wp_target: str) -> WPClient:
+    """Return the persistent WPClient, re-pointed at the account's target user."""
     global _wp_client
-    wp_target = settings.get("wp_target_user", "")
 
     if _wp_client is None:
         from polling.cf_proxy import proxy_kwargs
@@ -104,8 +103,8 @@ def _get_or_create_client(settings: dict) -> WPClient:
     return _wp_client
 
 
-async def run_wp_poll_cycle(force_full: bool = False) -> dict:
-    """Execute one complete Wattpad poll cycle.
+async def run_wp_poll_cycle(account_id: int | None = None, force_full: bool = False) -> dict:
+    """Execute one complete Wattpad poll cycle for a single account.
 
     Steps:
       1. Validate the target user exists
@@ -113,10 +112,21 @@ async def run_wp_poll_cycle(force_full: bool = False) -> dict:
       3. Fetch details for each story
       4. Upsert stories and record snapshots
     """
-    global _wp_poll_running, _wp_first_poll
+    global _wp_poll_running
+
+    from database import accounts as accounts_db
+    _ac = get_connection()
+    try:
+        if account_id is None:
+            account_id = accounts_db.get_default_account_id(_ac, "wp", create=True)
+        account_row = accounts_db.get_account(_ac, account_id)
+    finally:
+        _ac.close()
+    is_default = bool(account_row["is_default"]) if account_row else True
+    is_first = account_id not in _wp_first_poll_done
 
     if not _wp_poll_lock.acquire(blocking=False):
-        logger.warning("WP poll already running -- skipping")
+        logger.warning("WP poll already running -- skipping (account %s)", account_id)
         return {}
     _wp_poll_running = True
     _update_wp_progress("starting", message="Initialising WP poll cycle...")
@@ -131,11 +141,12 @@ async def run_wp_poll_cycle(force_full: bool = False) -> dict:
     }
 
     settings = config.get_settings()
-    client = _get_or_create_client(settings)
+    creds = config.resolve_account_credentials("wp", account_id, is_default, settings)
+    client = _get_or_create_client(settings, creds.get("wp_target_user", ""))
 
     try:
         conn = get_connection()
-        log_id = wp_queries.start_wp_poll_log(conn)
+        log_id = wp_queries.start_wp_poll_log(conn, account_id)
         # Step 1: Validate user
         _update_wp_progress("searching", message="Validating Wattpad user...")
         target = await client.validate_user()
@@ -182,8 +193,8 @@ async def run_wp_poll_cycle(force_full: bool = False) -> dict:
                              or comments > prev.get("comments_count", 0)):
                     new_activity_details.append({"title": detail.get("title", "")})
 
-                wp_queries.upsert_wp_submission(conn, detail)
-                wp_queries.insert_wp_snapshot(conn, sid, reads, votes, comments,
+                wp_queries.upsert_wp_submission(conn, detail, account_id)
+                wp_queries.insert_wp_snapshot(conn, account_id, sid, reads, votes, comments,
                                               num_lists, polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
 
@@ -194,9 +205,9 @@ async def run_wp_poll_cycle(force_full: bool = False) -> dict:
         conn.commit()
 
         # ── Notifications ─────────────────────────────────────
-        if _wp_first_poll:
-            logger.info("First WP poll after startup -- suppressing %d activity notifications",
-                        len(new_activity_details))
+        if is_first:
+            logger.info("First WP poll for account %s -- suppressing %d activity notifications",
+                        account_id, len(new_activity_details))
         else:
             try:
                 _send_wp_notifications(new_activity_details)
@@ -217,7 +228,7 @@ async def run_wp_poll_cycle(force_full: bool = False) -> dict:
                      duration, stats["submissions_found"], stats["snapshots_inserted"])
 
         # -- Telegram notifications ----------------------------------------
-        if not _wp_first_poll:
+        if not is_first:
             from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
             try:
                 await send_poll_summary("wp", stats, duration)
@@ -250,8 +261,7 @@ async def run_wp_poll_cycle(force_full: bool = False) -> dict:
             logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
-        if _wp_first_poll:
-            _wp_first_poll = False
+        _wp_first_poll_done.add(account_id)
         _wp_poll_running = False
         _wp_poll_lock.release()
         if conn:

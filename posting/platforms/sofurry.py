@@ -96,12 +96,14 @@ class SoFurryPoster(PlatformPoster):
             return self._client
 
         settings = config.get_settings()
-        username = settings.get("sf_username", "")
-        password = settings.get("sf_password", "")
-        display_name = settings.get("sf_display_name", "")
+        creds = self._resolve_creds("sf", settings)
+        username = creds.get("sf_username", "")
+        password = creds.get("sf_password", "")
+        display_name = creds.get("sf_display_name", "")
         if not username or not password:
             raise RuntimeError("SoFurry credentials not configured")
 
+        # CF proxy settings are global (not per-account).
         proxy_url = settings.get("cf_worker_url", "")
         proxy_key = settings.get("cf_worker_key", "")
 
@@ -113,8 +115,8 @@ class SoFurryPoster(PlatformPoster):
             proxy_key=proxy_key,
         )
 
-        # Restore cookies if available
-        saved_cookies = settings.get("sf_session_cookies")
+        # Restore this account's saved cookies if available
+        saved_cookies = creds.get("sf_session_cookies")
         if saved_cookies:
             self._client.import_cookies(saved_cookies)
 

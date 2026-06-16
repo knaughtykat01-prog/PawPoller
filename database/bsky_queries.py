@@ -19,15 +19,16 @@ from typing import Any
 
 # -- BSKY Submissions --------------------------------------------------------
 
-def upsert_bsky_submission(conn: sqlite3.Connection, sub: dict) -> None:
+def upsert_bsky_submission(conn: sqlite3.Connection, sub: dict, account_id: int) -> None:
     """Insert or update a Bluesky post's metadata and latest stats."""
     keywords_json = json.dumps(sub.get("keywords", []))
+    # account_id set on INSERT only; the ON CONFLICT UPDATE leaves it alone.
     conn.execute(
         """INSERT INTO bsky_submissions
-           (submission_id, title, full_text, username, posted_at, content_type,
+           (submission_id, account_id, title, full_text, username, posted_at, content_type,
             rating, description, keywords, link, thumbnail_url,
             likes, reposts, replies, quotes, has_media, embed_type, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
            ON CONFLICT(submission_id) DO UPDATE SET
             title=excluded.title, full_text=excluded.full_text,
             username=excluded.username, content_type=excluded.content_type,
@@ -40,7 +41,7 @@ def upsert_bsky_submission(conn: sqlite3.Connection, sub: dict) -> None:
             updated_at=datetime('now')
         """,
         (
-            sub["post_uri"], sub.get("title", ""), sub.get("full_text", ""),
+            sub["post_uri"], account_id, sub.get("title", ""), sub.get("full_text", ""),
             sub.get("username", ""), sub.get("posted_at"),
             sub.get("content_type", "post"), sub.get("rating", ""),
             sub.get("description", ""), keywords_json,
@@ -78,13 +79,13 @@ def get_all_bsky_submissions(conn: sqlite3.Connection, sort_by: str = "likes", o
 
 # -- BSKY Snapshots ----------------------------------------------------------
 
-def insert_bsky_snapshot(conn: sqlite3.Connection, submission_id: str,
+def insert_bsky_snapshot(conn: sqlite3.Connection, account_id: int, submission_id: str,
                           likes: int, reposts: int, replies: int, quotes: int,
                           polled_at: str | None = None) -> None:
     ts = polled_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
-        "INSERT INTO bsky_snapshots (submission_id, polled_at, likes, reposts, replies, quotes) VALUES (?, ?, ?, ?, ?, ?)",
-        (submission_id, ts, likes, reposts, replies, quotes),
+        "INSERT INTO bsky_snapshots (account_id, submission_id, polled_at, likes, reposts, replies, quotes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (account_id, submission_id, ts, likes, reposts, replies, quotes),
     )
 
 
@@ -144,8 +145,10 @@ def get_bsky_comparison_snapshots(conn: sqlite3.Connection, submission_ids: list
 
 # -- BSKY Poll Log -----------------------------------------------------------
 
-def start_bsky_poll_log(conn: sqlite3.Connection) -> int:
-    cur = conn.execute("INSERT INTO bsky_poll_log (started_at, status) VALUES (datetime('now'), 'running')")
+def start_bsky_poll_log(conn: sqlite3.Connection, account_id: int = 0) -> int:
+    cur = conn.execute(
+        "INSERT INTO bsky_poll_log (started_at, status, account_id) VALUES (datetime('now'), 'running', ?)",
+        (account_id,))
     conn.commit()
     return cur.lastrowid
 

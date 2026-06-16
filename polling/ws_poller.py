@@ -50,7 +50,9 @@ ws_poll_progress = {
 # boolean remains as a readable status indicator.
 _ws_poll_running = False
 _ws_poll_lock = threading.Lock()
-_ws_first_poll = True
+# Per-account first-poll suppression (single lock still serialises WS polls —
+# a platform's accounts poll sequentially).
+_ws_first_poll_done: set[int] = set()
 
 
 def _update_ws_progress(phase: str, current: int = 0, total: int = 0, message: str = ""):
@@ -101,8 +103,8 @@ async def _send_ws_telegram(new_details: list[dict]) -> None:
     )
 
 
-async def run_ws_poll_cycle(force_full: bool = False) -> dict:
-    """Execute one complete Weasyl poll cycle.
+async def run_ws_poll_cycle(account_id: int | None = None, force_full: bool = False) -> dict:
+    """Execute one complete Weasyl poll cycle for a single account.
 
     This is the most streamlined of the three pollers because Weasyl's API
     does not provide user-level fave or comment data.  The cycle is:
@@ -130,13 +132,23 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
         Stats dict with keys: submissions_found, snapshots_inserted.
         Empty dict if a poll was already running.
     """
-    global _ws_poll_running, _ws_first_poll
+    global _ws_poll_running
 
-    # Concurrency guard -- same pattern as the other pollers.
-    # The Lock makes the check-and-set atomic so two near-simultaneous
-    # callers cannot both slip through.
+    # ── Resolve the account to poll (default WS account when unspecified) ──
+    from database import accounts as accounts_db
+    _ac = get_connection()
+    try:
+        if account_id is None:
+            account_id = accounts_db.get_default_account_id(_ac, "ws", create=True)
+        account_row = accounts_db.get_account(_ac, account_id)
+    finally:
+        _ac.close()
+    is_default = bool(account_row["is_default"]) if account_row else True
+    is_first = account_id not in _ws_first_poll_done
+
+    # Concurrency guard -- one WS poll at a time (accounts poll sequentially).
     if not _ws_poll_lock.acquire(blocking=False):
-        logger.warning("WS poll already running — skipping")
+        logger.warning("WS poll already running — skipping (account %s)", account_id)
         return {}
     _ws_poll_running = True
     _update_ws_progress("starting", message="Initialising Weasyl poll cycle...")
@@ -152,13 +164,14 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
     }
 
     settings = config.get_settings()
+    creds = config.resolve_account_credentials("ws", account_id, is_default, settings)
     from polling.cf_proxy import proxy_kwargs
-    client = WeasylClient(api_key=settings.get("ws_api_key", ""),
+    client = WeasylClient(api_key=creds.get("ws_api_key", ""),
                           **proxy_kwargs(settings, "ws"))
 
     try:
         conn = get_connection()
-        log_id = ws_queries.start_ws_poll_log(conn)
+        log_id = ws_queries.start_ws_poll_log(conn, account_id)
         # ── Step 1: Validate API key ───────────────────────────
         # The Weasyl API requires a valid API key for all requests.
         # We call validate_key() first to fail fast with a clear error
@@ -204,8 +217,8 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
                 if prev_faves is not None and faves > prev_faves:
                     new_activity_details.append({"title": detail.get("title", "")})
 
-                ws_queries.upsert_ws_submission(conn, detail)
-                ws_queries.insert_ws_snapshot(conn, sub_id, views, faves, comments, polled_at=poll_timestamp)
+                ws_queries.upsert_ws_submission(conn, detail, account_id)
+                ws_queries.insert_ws_snapshot(conn, account_id, sub_id, views, faves, comments, polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
 
             except Exception as e:
@@ -216,9 +229,9 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
         conn.commit()
 
         # ── Notifications ─────────────────────────────────────
-        if _ws_first_poll:
-            logger.info("First WS poll after startup — suppressing %d activity notifications",
-                        len(new_activity_details))
+        if is_first:
+            logger.info("First WS poll for account %s — suppressing %d activity notifications",
+                        account_id, len(new_activity_details))
         else:
             try:
                 _send_ws_notifications(new_activity_details)
@@ -238,7 +251,7 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
                      duration, stats["submissions_found"], stats["snapshots_inserted"])
 
         # ── Telegram notifications ────────────────────────────
-        if not _ws_first_poll:
+        if not is_first:
             from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
             try:
                 await send_poll_summary("ws", stats, duration)
@@ -272,8 +285,7 @@ async def run_ws_poll_cycle(force_full: bool = False) -> dict:
         raise
     finally:
         # Always clear the guard and release resources.
-        if _ws_first_poll:
-            _ws_first_poll = False
+        _ws_first_poll_done.add(account_id)
         _ws_poll_running = False
         _ws_poll_lock.release()
         await client.close()

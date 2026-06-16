@@ -51,10 +51,11 @@ class DeviantArtPoster(PlatformPoster):
     async def _ensure_client(self) -> tuple[DAClient, str]:
         """Get client and a valid access token."""
         settings = config.get_settings()
+        creds = self._resolve_creds("da", settings)
 
-        client_id = settings.get("da_client_id", "")
-        client_secret = settings.get("da_client_secret", "")
-        refresh_token = settings.get("da_refresh_token", "")
+        client_id = creds.get("da_client_id", "")
+        client_secret = creds.get("da_client_secret", "")
+        refresh_token = creds.get("da_refresh_token", "")
 
         if not client_id or not client_secret or not refresh_token:
             raise RuntimeError(
@@ -64,8 +65,8 @@ class DeviantArtPoster(PlatformPoster):
 
         if not self._client:
             self._client = DAClient(
-                cookie=settings.get("da_cookie", ""),
-                target_user=settings.get("da_target_user", ""),
+                cookie=creds.get("da_cookie", ""),
+                target_user=creds.get("da_target_user", ""),
             )
 
         # Refresh access token if expired or missing

@@ -390,6 +390,125 @@ class FAClient:
     # the rest of the application (same shape as Inkbunny's to_db_dict output).
     #
 
+    # ── Direct FA scraping (FAExport fallback) ────────────────
+    # When FAExport (the third-party proxy) is unavailable — e.g. the
+    # long-running Cloudflare block on faexport.spangle.org.uk
+    # (Deer-Spangle/faexport#129) — these scrape FurAffinity's own HTML
+    # directly using the user's session cookies, mirroring what FAExport does
+    # server-side. CONSTRAINT: FA's Cloudflare blocks datacenter IPs (the same
+    # reason FA *posting* requires desktop), so direct polling only works from a
+    # residential IP (the desktop instance), not the GCP server. Output dicts
+    # match _normalize_submission so the poller is agnostic to the source.
+
+    _GALLERY_SID_RE = re.compile(r'id="sid-(\d+)"')
+
+    async def get_all_gallery_ids_direct(self, max_pages: int = 50) -> list[dict]:
+        """Scrape the user's gallery submission IDs directly from FA.
+
+        Paginates /gallery/{user}/{page}/ until a page yields no new IDs.
+        Requires valid cookies (the poller validates them first).
+        """
+        client = await self._get_fa_http()
+        ids: list[int] = []
+        seen: set[int] = set()
+        page = 1
+        while page <= max_pages:
+            resp = await client.get(f"{config.FA_BASE}/gallery/{self.username}/{page}/")
+            if resp.status_code != 200:
+                break
+            page_ids = [int(m) for m in self._GALLERY_SID_RE.findall(resp.text)]
+            new_ids = [i for i in page_ids if i not in seen]
+            if not new_ids:
+                break
+            for i in new_ids:
+                seen.add(i)
+                ids.append(i)
+            page += 1
+            await asyncio.sleep(config.FA_REQUEST_DELAY_SECONDS)
+        logger.info("FA direct: scraped %d gallery submission ids across %d page(s)",
+                    len(ids), page - 1)
+        return [{"submission_id": i} for i in ids]
+
+    async def get_submission_detail_direct(self, submission_id: int) -> dict:
+        """Scrape one submission page directly from FA into our DB dict format."""
+        client = await self._get_fa_http()
+        resp = await client.get(f"{config.FA_BASE}/view/{submission_id}/")
+        resp.raise_for_status()
+        return self._parse_submission_html(resp.text, submission_id, self.username)
+
+    async def get_submission_details_batch_direct(self, submission_ids: list[int]) -> list[dict]:
+        """Scrape multiple submission pages directly, paced by the FA rate-limit delay."""
+        out: list[dict] = []
+        for sid in submission_ids:
+            try:
+                out.append(await self.get_submission_detail_direct(sid))
+            except Exception as e:  # noqa: BLE001 — one bad page must not abort the cycle
+                logger.warning("FA direct scrape failed for submission %s: %s", sid, e)
+            await asyncio.sleep(config.FA_REQUEST_DELAY_SECONDS)
+        return out
+
+    @staticmethod
+    def _parse_submission_html(html: str, submission_id: int, username: str) -> dict:
+        """Parse a FurAffinity (Beta) submission page into our DB submission dict.
+
+        Best-effort regex scraping — extracts the stats that drive the snapshot
+        time-series (views/favourites/comments) plus title/rating/tags/thumbnail.
+        Fields FA doesn't surface cheaply (category/species/gender/description)
+        are left blank; the poller only requires the id + stats.
+        """
+        def _stat(css_class: str) -> int:
+            # e.g. <div class="views"><span class="font-large">1,234</span> Views</div>
+            m = re.search(rf'class="{css_class}"[^>]*>\s*(?:<[^>]+>\s*)?([\d,]+)', html)
+            return _safe_int(m.group(1)) if m else 0
+
+        views = _stat("views")
+        favorites = _stat("favorites")
+        comments = _stat("comments")
+
+        # Title: prefer the submission-title block, fall back to <title>.
+        tm = re.search(r'class="submission-title"[^>]*>.*?<p>(.*?)</p>', html, re.S) \
+            or re.search(r'<title>(.*?)\s+by\s+.*?Fur Affinity', html, re.S)
+        title = _strip_tags(tm.group(1)).strip() if tm else ""
+
+        # Rating: <span class="rating-box general">General</span>
+        rm = re.search(r'class="rating-box[^"]*"[^>]*>\s*([A-Za-z]+)', html)
+        rating = rm.group(1).strip() if rm else ""
+
+        # Posted date: <span class="popup_date" title="Mon DD, YYYY HH:MM AM">
+        pm = re.search(r'class="popup_date"[^>]*title="([^"]+)"', html)
+        posted_at = pm.group(1).strip() if pm else ""
+
+        # Thumbnail / main image.
+        im = re.search(r'id="submissionImg"[^>]*\bsrc="([^"]+)"', html) \
+            or re.search(r'id="submissionImg"[^>]*\bdata-fullview-src="([^"]+)"', html)
+        thumb = im.group(1).strip() if im else ""
+        if thumb.startswith("//"):
+            thumb = "https:" + thumb
+
+        # Tags: within the tags-row section, each tag is an <a> link.
+        tags: list[str] = []
+        tr = re.search(r'class="tags-row".*?</section>', html, re.S)
+        if tr:
+            tags = [_strip_tags(t).strip() for t in re.findall(r'<a[^>]*>([^<]+)</a>', tr.group(0))]
+            tags = [t for t in tags if t]
+
+        return {
+            "submission_id": submission_id,
+            "title": title,
+            "username": username,
+            "posted_at": posted_at,
+            "category": "", "theme": "", "species": "", "gender": "",
+            "rating": rating,
+            "thumbnail_url": thumb,
+            "download_url": thumb,
+            "description": "",
+            "keywords": tags,
+            "link": f"https://www.furaffinity.net/view/{submission_id}/",
+            "views": views,
+            "favorites_count": favorites,
+            "comments_count": comments,
+        }
+
     @staticmethod
     def _normalize_submission(raw: dict, submission_id: int) -> dict:
         """Normalize FAExport submission JSON to our DB dict format.
@@ -748,6 +867,12 @@ class FAClient:
         form_html = form_match.group(1)
         m = re.search(r'<input[^>]*name="scrap"[^>]*>', form_html)
         return bool(m and re.search(r'\bchecked\b', m.group(0)))
+
+
+def _strip_tags(text: str) -> str:
+    """Remove any HTML tags and unescape basic entities from a scraped fragment."""
+    import html as _html
+    return _html.unescape(re.sub(r"<[^>]+>", "", text or ""))
 
 
 def _safe_int(val: Any) -> int:

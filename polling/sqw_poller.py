@@ -39,7 +39,7 @@ sqw_poll_progress = {
 
 _sqw_poll_running = False
 _sqw_poll_lock = threading.Lock()
-_sqw_first_poll = True
+_sqw_first_poll_done: set[int] = set()
 
 # Persistent client — reused across poll cycles
 _sqw_client: SquidgeWorldClient | None = None
@@ -113,12 +113,9 @@ async def _send_sqw_kudos_telegram(new_kudos: list[dict]) -> None:
     )
 
 
-def _get_or_create_client(settings: dict) -> SquidgeWorldClient:
-    """Return the persistent SquidgeWorldClient, creating or updating as needed."""
+def _get_or_create_client(settings: dict, sqw_user: str, sqw_pass: str, sqw_target: str) -> SquidgeWorldClient:
+    """Return the persistent SquidgeWorldClient, re-pointed at the account's creds."""
     global _sqw_client
-    sqw_user = settings.get("sqw_username", "")
-    sqw_pass = settings.get("sqw_password", "")
-    sqw_target = settings.get("sqw_target_user", "")
 
     if _sqw_client is None:
         from polling.cf_proxy import proxy_kwargs
@@ -134,8 +131,8 @@ def _get_or_create_client(settings: dict) -> SquidgeWorldClient:
     return _sqw_client
 
 
-async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
-    """Execute one complete SquidgeWorld poll cycle.
+async def run_sqw_poll_cycle(account_id: int | None = None, force_full: bool = False) -> dict:
+    """Execute one complete SquidgeWorld poll cycle for a single account.
 
     Steps:
       1. Login and validate session
@@ -144,10 +141,21 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
       4. Upsert works and record snapshots
       5. Track kudos users
     """
-    global _sqw_poll_running, _sqw_first_poll
+    global _sqw_poll_running
+
+    from database import accounts as accounts_db
+    _ac = get_connection()
+    try:
+        if account_id is None:
+            account_id = accounts_db.get_default_account_id(_ac, "sqw", create=True)
+        account_row = accounts_db.get_account(_ac, account_id)
+    finally:
+        _ac.close()
+    is_default = bool(account_row["is_default"]) if account_row else True
+    is_first = account_id not in _sqw_first_poll_done
 
     if not _sqw_poll_lock.acquire(blocking=False):
-        logger.warning("SqW poll already running -- skipping")
+        logger.warning("SqW poll already running -- skipping (account %s)", account_id)
         return {}
     _sqw_poll_running = True
     _update_sqw_progress("starting", message="Initialising SquidgeWorld poll cycle...")
@@ -163,11 +171,13 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
     }
 
     settings = config.get_settings()
-    client = _get_or_create_client(settings)
+    creds = config.resolve_account_credentials("sqw", account_id, is_default, settings)
+    client = _get_or_create_client(settings, creds.get("sqw_username", ""),
+                                   creds.get("sqw_password", ""), creds.get("sqw_target_user", ""))
 
     try:
         conn = get_connection()
-        log_id = sqw_queries.start_sqw_poll_log(conn)
+        log_id = sqw_queries.start_sqw_poll_log(conn, account_id)
         # Step 1: Authenticate
         _update_sqw_progress("searching", message="Authenticating with SquidgeWorld...")
         # Reset login state so ensure_logged_in() attempts a fresh login
@@ -210,8 +220,8 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
                 comments = detail.get("comments_count", 0)
                 bookmarks = detail.get("bookmarks_count", 0)
 
-                sqw_queries.upsert_sqw_submission(conn, detail)
-                sqw_queries.insert_sqw_snapshot(conn, wid, views, faves, comments,
+                sqw_queries.upsert_sqw_submission(conn, detail, account_id)
+                sqw_queries.insert_sqw_snapshot(conn, account_id, wid, views, faves, comments,
                                                 bookmarks, polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
                 # Commit before the kudos fetch below: holding the implicit
@@ -224,7 +234,7 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
                     kudos_users = await client.get_kudos_users(wid)
                     # Batch insert: get existing usernames first to identify new ones
                     existing_usernames = {r["username"] for r in sqw_queries.get_sqw_kudos_users(conn, wid)}
-                    new_count = sqw_queries.upsert_sqw_kudos_users_batch(conn, wid, kudos_users)
+                    new_count = sqw_queries.upsert_sqw_kudos_users_batch(conn, account_id, wid, kudos_users)
                     conn.commit()
                     stats["new_kudos_found"] += new_count
                     for ku in kudos_users:
@@ -243,9 +253,9 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
         conn.commit()
 
         # ── Notifications (kudos) ────────────────────────────
-        if _sqw_first_poll:
-            logger.info("First SqW poll after startup -- suppressing %d kudos notifications",
-                        len(new_kudos_details))
+        if is_first:
+            logger.info("First SqW poll for account %s -- suppressing %d kudos notifications",
+                        account_id, len(new_kudos_details))
         else:
             if new_kudos_details:
                 try:
@@ -269,7 +279,7 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
                      stats["new_kudos_found"])
 
         # ── Telegram notifications ────────────────────────────
-        if not _sqw_first_poll:
+        if not is_first:
             from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
             try:
                 await send_poll_summary("sqw", stats, duration)
@@ -302,8 +312,7 @@ async def run_sqw_poll_cycle(force_full: bool = False) -> dict:
             logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
-        if _sqw_first_poll:
-            _sqw_first_poll = False
+        _sqw_first_poll_done.add(account_id)
         _sqw_poll_running = False
         _sqw_poll_lock.release()
         if conn:

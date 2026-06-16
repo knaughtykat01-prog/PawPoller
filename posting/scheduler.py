@@ -112,10 +112,14 @@ async def _process_queue_item(item: dict) -> None:
     chapter_index = item["chapter_index"]
     platform = item["platform"]
     action = item["action"]
+    # account_id may be 0 on rows queued before multi-account — treat as
+    # "default account" (None lets the manager resolve the platform default).
+    account_id = item["account_id"] if "account_id" in item.keys() else None
+    account_id = account_id or None
 
     logger.info(
-        "Processing queue item #%d: %s %s ch%d on %s",
-        queue_id, action, story_name, chapter_index, platform,
+        "Processing queue item #%d: %s %s ch%d on %s (account %s)",
+        queue_id, action, story_name, chapter_index, platform, account_id,
     )
 
     # Mark as processing
@@ -128,11 +132,13 @@ async def _process_queue_item(item: dict) -> None:
     try:
         if action == "post":
             results = await manager.post_story(
-                story_name, [platform], [chapter_index]
+                story_name, [platform], [chapter_index],
+                account_ids={platform: account_id} if account_id else None,
             )
         elif action == "update":
             results = await manager.update_story(
-                story_name, [platform], [chapter_index]
+                story_name, [platform], [chapter_index],
+                account_filter=account_id,
             )
         else:
             raise ValueError(f"Unknown action: {action}")
@@ -143,7 +149,7 @@ async def _process_queue_item(item: dict) -> None:
             try:
                 # Find the pub_id that was created/updated
                 pub = posting_queries.get_publication_by_story(
-                    conn, story_name, chapter_index, platform
+                    conn, story_name, chapter_index, platform, account_id
                 )
                 pub_id = pub["pub_id"] if pub else None
                 posting_queries.update_queue_status(

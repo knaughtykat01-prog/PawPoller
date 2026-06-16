@@ -46,8 +46,9 @@ class BlueskyPoster(PlatformPoster):
             return self._client
 
         settings = config.get_settings()
-        identifier = settings.get("bsky_identifier", "")
-        app_password = settings.get("bsky_app_password", "")
+        creds = self._resolve_creds("bsky", settings)
+        identifier = creds.get("bsky_identifier", "")
+        app_password = creds.get("bsky_app_password", "")
         if not identifier or not app_password:
             raise RuntimeError("Bluesky credentials not configured")
 

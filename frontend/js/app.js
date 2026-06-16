@@ -713,6 +713,8 @@ const App = {
             this.renderCrossPlatform();
         } else if (parts[0] === 'analytics') {
             this.renderAnalytics();
+        } else if (parts[0] === 'accounts') {
+            if (window.Accounts) window.Accounts.render();
         } else if (parts[0] === 'settings') {
             this.renderSettings();
         } else if (parts[0] === 'posting' && !parts[1]) {

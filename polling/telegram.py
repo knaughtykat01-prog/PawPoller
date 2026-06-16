@@ -242,12 +242,20 @@ async def send_consolidated_poll_summary(results: list[dict], duration: float) -
 
     lines = [f"<b>{header}</b>"]
 
-    # Platform summary line: "🐾 IB: 9  🦊 FA: 7  🐺 SF: 8"
+    # Platform summary line: "🐾 IB: 9  🦊 FA: 7  🐺 SF: 8". When a platform has
+    # more than one account in this cycle, label each so they're distinguishable
+    # (e.g. "🐾 Main: 9  🐾 Alt: 4").
+    plat_counts: dict[str, int] = {}
+    for r in ok:
+        plat_counts[r["platform"]] = plat_counts.get(r["platform"], 0) + 1
     parts = []
     for r in ok:
         emoji = PLATFORM_EMOJI.get(r["platform"], "")
         subs = r["stats"].get("submissions_found", 0)
-        parts.append(f"{emoji}{subs}")
+        if plat_counts.get(r["platform"], 0) > 1 and r.get("label"):
+            parts.append(f"{emoji} {r['label']}: {subs}")
+        else:
+            parts.append(f"{emoji}{subs}")
     if parts:
         lines.append("  " + "  ".join(parts))
 

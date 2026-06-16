@@ -24,7 +24,7 @@ from typing import Any
 
 # ── WS Submissions ────────────────────────────────────────────
 
-def upsert_ws_submission(conn: sqlite3.Connection, sub: dict) -> None:
+def upsert_ws_submission(conn: sqlite3.Connection, sub: dict, account_id: int) -> None:
     """Insert or update a Weasyl submission's metadata and latest stats.
 
     Same upsert pattern as IB and FA (INSERT ... ON CONFLICT ... DO UPDATE).
@@ -36,13 +36,14 @@ def upsert_ws_submission(conn: sqlite3.Connection, sub: dict) -> None:
     """
     # Serialize keywords list to JSON string, same pattern as IB and FA.
     keywords_json = json.dumps(sub.get("keywords", []))
+    # account_id set on INSERT only; the ON CONFLICT UPDATE leaves it alone.
     conn.execute(
         """INSERT INTO ws_submissions
-           (submission_id, title, username, posted_at, subtype,
+           (submission_id, account_id, title, username, posted_at, subtype,
             rating, thumbnail_url, media_url,
             description, keywords, link,
             views, favorites_count, comments_count, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
            ON CONFLICT(submission_id) DO UPDATE SET
             title=excluded.title, username=excluded.username,
             subtype=excluded.subtype,
@@ -53,7 +54,7 @@ def upsert_ws_submission(conn: sqlite3.Connection, sub: dict) -> None:
             comments_count=excluded.comments_count, updated_at=datetime('now')
         """,
         (
-            sub["submission_id"], sub.get("title", ""), sub.get("username", ""),
+            sub["submission_id"], account_id, sub.get("title", ""), sub.get("username", ""),
             sub.get("posted_at"), sub.get("subtype", ""),
             sub.get("rating", ""), sub.get("thumbnail_url", ""),
             sub.get("media_url", ""),
@@ -96,12 +97,12 @@ def get_all_ws_submissions(conn: sqlite3.Connection, sort_by: str = "views", ord
 # Snapshot time-series for WS submissions. Same append-only pattern as IB
 # and FA -- one row per submission per poll cycle.
 
-def insert_ws_snapshot(conn: sqlite3.Connection, submission_id: int, views: int, favorites_count: int, comments_count: int, polled_at: str | None = None) -> None:
+def insert_ws_snapshot(conn: sqlite3.Connection, account_id: int, submission_id: int, views: int, favorites_count: int, comments_count: int, polled_at: str | None = None) -> None:
     # Append-only: each poll cycle adds a new row, never updates existing ones.
     ts = polled_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
-        "INSERT INTO ws_snapshots (submission_id, polled_at, views, favorites_count, comments_count) VALUES (?, ?, ?, ?, ?)",
-        (submission_id, ts, views, favorites_count, comments_count),
+        "INSERT INTO ws_snapshots (account_id, submission_id, polled_at, views, favorites_count, comments_count) VALUES (?, ?, ?, ?, ?, ?)",
+        (account_id, submission_id, ts, views, favorites_count, comments_count),
     )
 
 
@@ -164,8 +165,10 @@ def get_ws_comparison_snapshots(conn: sqlite3.Connection, submission_ids: list[i
 # snapshots_inserted. There are no new_faves_found or new_comments_found
 # fields because Weasyl does not expose individual fave users or comments.
 
-def start_ws_poll_log(conn: sqlite3.Connection) -> int:
-    cur = conn.execute("INSERT INTO ws_poll_log (started_at, status) VALUES (datetime('now'), 'running')")
+def start_ws_poll_log(conn: sqlite3.Connection, account_id: int = 0) -> int:
+    cur = conn.execute(
+        "INSERT INTO ws_poll_log (started_at, status, account_id) VALUES (datetime('now'), 'running', ?)",
+        (account_id,))
     conn.commit()
     return cur.lastrowid
 

@@ -376,10 +376,12 @@ async def import_from_inkbunny(submission_id: str) -> dict:
 
     async def _ib_fetch(client) -> dict:
         # Reuse the cached session ID (SID) the poller writes to the DB
-        # after each successful login.
+        # after each successful login. Imports use the default IB account.
         conn = get_connection()
         try:
-            cached = queries.get_cached_session(conn)
+            from database import accounts as _accts
+            _ib_acct = _accts.get_default_account_id(conn, "ib", create=True)
+            cached = queries.get_cached_session(conn, _ib_acct)
         finally:
             conn.close()
         cached_sid = cached["sid"] if cached else None

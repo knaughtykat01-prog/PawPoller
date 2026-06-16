@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import stat
 import sys
@@ -252,16 +253,16 @@ def save_settings(data: dict) -> None:
         current = _load_settings()
         current.update(data)  # Overlay new values on top of existing ones
 
-        # In local mode, split credentials into vault vs plaintext
+        # In local mode, split credentials into vault vs plaintext.
+        # is_credential_key() also catches account-namespaced secrets
+        # (acct_<id>_<field>), so extra accounts are encrypted like the default.
         if current.get("credential_mode") == "local":
-            # Collect credential fields for the vault
-            vault_creds = {k: current[k] for k in CREDENTIAL_FIELDS
-                           if k in current and current[k]}
+            vault_creds = {k: v for k, v in current.items()
+                           if is_credential_key(k) and v}
             if vault_creds:
                 _encrypt_vault(vault_creds)
-            # Remove credential fields from the plaintext dict
             plaintext = {k: v for k, v in current.items()
-                         if k not in CREDENTIAL_FIELDS}
+                         if not is_credential_key(k)}
         else:
             plaintext = current
 
@@ -301,12 +302,12 @@ def delete_settings_keys(keys: list[str]) -> None:
 
         # In local mode, re-split credentials into vault vs plaintext
         if current.get("credential_mode") == "local":
-            vault_creds = {k: current[k] for k in CREDENTIAL_FIELDS
-                           if k in current and current[k]}
+            vault_creds = {k: v for k, v in current.items()
+                           if is_credential_key(k) and v}
             if vault_creds:
                 _encrypt_vault(vault_creds)
             plaintext = {k: v for k, v in current.items()
-                         if k not in CREDENTIAL_FIELDS}
+                         if not is_credential_key(k)}
         else:
             plaintext = current
 
@@ -433,7 +434,9 @@ CREDENTIAL_FIELDS = frozenset({
     # AO3
     "ao3_username", "ao3_password", "ao3_session_cookie",
     # DeviantArt
-    "da_cookie",
+    "da_cookie", "da_client_secret", "da_refresh_token",
+    # Itaku
+    "ik_auth_token",
     # Bluesky
     "bsky_identifier", "bsky_app_password",
     # X/Twitter
@@ -464,6 +467,97 @@ SYNC_EXCLUDE = frozenset({
     # overwrite the other's mode, which is exactly what we don't want.
     "setup_mode",
 })
+
+
+# ── Multi-account credential resolution ───────────────────────
+# Each platform's *default* account keeps using the legacy flat settings keys
+# (``username``/``password``, ``fa_username``/``fa_cookie_a``…) so existing
+# installs need zero credential migration. Additional accounts store the SAME
+# canonical fields under an ``acct_<account_id>_<field>`` prefix. The resolver
+# below hands callers a creds dict keyed by the canonical field names regardless
+# of which account it is, so clients/posters don't care whether they're the
+# default account or the fifth one.
+#
+# PLATFORM_CREDENTIAL_FIELDS lists, per platform, the canonical settings keys
+# that make up an account's identity + secrets. Secret-ness (vault routing) is
+# still decided by membership in CREDENTIAL_FIELDS above — non-secret identity
+# fields like ``fa_username`` stay in plaintext exactly as they do today.
+PLATFORM_CREDENTIAL_FIELDS = {
+    "ib": ["username", "password"],
+    "fa": ["fa_username", "fa_cookie_a", "fa_cookie_b"],
+    "ws": ["ws_username", "ws_api_key"],
+    "sf": ["sf_username", "sf_password", "sf_session_cookies", "sf_display_name"],
+    "sqw": ["sqw_username", "sqw_password", "sqw_target_user",
+            "sqw_author_username", "sqw_author_password"],
+    "ao3": ["ao3_username", "ao3_password", "ao3_target_user", "ao3_session_cookie"],
+    "da": ["da_cookie", "da_target_user",
+           "da_client_id", "da_client_secret", "da_refresh_token"],
+    "wp": ["wp_target_user"],
+    "ik": ["ik_target_user", "ik_auth_token"],
+    "bsky": ["bsky_identifier", "bsky_app_password"],
+    "tw": ["tw_auth_token", "tw_ct0", "tw_target_user"],
+}
+
+# Matches an account-namespaced settings key: acct_<id>_<canonical_field>.
+_ACCT_KEY_RE = re.compile(r"^acct_(\d+)_(.+)$")
+
+
+def is_credential_key(key: str) -> bool:
+    """True if *key* names a secret that belongs in the encrypted vault.
+
+    Covers both the legacy flat keys (membership in CREDENTIAL_FIELDS) and the
+    account-namespaced form ``acct_<id>_<field>`` whose underlying canonical
+    field is itself a secret. This keeps extra-account secrets encrypted exactly
+    like the default account's, while leaving non-secret identity fields (and
+    their namespaced variants, e.g. ``acct_5_fa_username``) in plaintext.
+    """
+    if key in CREDENTIAL_FIELDS:
+        return True
+    m = _ACCT_KEY_RE.match(key)
+    return bool(m and m.group(2) in CREDENTIAL_FIELDS)
+
+
+def account_setting_key(account_id: int, field: str, is_default: bool) -> str:
+    """Return the settings key holding *field* for the given account.
+
+    The default account uses the bare canonical field; others are namespaced.
+    """
+    return field if is_default else f"acct_{account_id}_{field}"
+
+
+def resolve_account_credentials(platform: str, account_id: int,
+                                is_default: bool, settings: dict | None = None) -> dict:
+    """Return {canonical_field: value} for one account, no DB access.
+
+    Pollers/posters that already hold the account row should call this directly.
+    """
+    fields = PLATFORM_CREDENTIAL_FIELDS.get(platform, [])
+    if settings is None:
+        settings = get_settings()
+    return {f: settings.get(account_setting_key(account_id, f, is_default), "")
+            for f in fields}
+
+
+def get_account_credentials(account_id: int) -> dict:
+    """Return {canonical_field: value} for *account_id*, looking up its row.
+
+    Convenience wrapper around :func:`resolve_account_credentials` for callers
+    that have only an account_id. Returns {} for an unknown account.
+    """
+    try:
+        from database import db as _db, accounts as _accts
+        conn = _db.get_connection()
+        try:
+            acct = _accts.get_account(conn, account_id)
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("get_account_credentials(%s) lookup failed: %s", account_id, e)
+        return {}
+    if not acct:
+        return {}
+    return resolve_account_credentials(
+        acct["platform"], account_id, bool(acct["is_default"]))
 
 
 # ── Setup mode + polling ownership ────────────────────────────
@@ -540,7 +634,7 @@ def migrate_to_local_vault() -> int:
     """
     with _settings_lock:
         settings = _load_settings()
-        creds = {k: settings[k] for k in CREDENTIAL_FIELDS if k in settings and settings[k]}
+        creds = {k: v for k, v in settings.items() if is_credential_key(k) and v}
         if not creds:
             # Still switch mode even if no creds to migrate
             settings["credential_mode"] = "local"
@@ -618,7 +712,19 @@ def get_settings_for_sync() -> tuple[dict, float]:
     with _settings_lock:
         data = _load_settings()
     mtime = SETTINGS_PATH.stat().st_mtime if SETTINGS_PATH.exists() else 0
-    return {k: v for k, v in data.items() if k not in SYNC_EXCLUDE}, mtime
+    out = {k: v for k, v in data.items() if k not in SYNC_EXCLUDE}
+    # Carry the account registry (DB state, not a setting) so desktop↔server
+    # agree on which accounts exist. Guarded — never break sync over this.
+    try:
+        from database import db as _db, accounts as _accts
+        conn = _db.get_connection()
+        try:
+            out["_accounts_manifest"] = _accts.get_manifest(conn)
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.debug("accounts manifest export skipped: %s", e)
+    return out, mtime
 
 
 def merge_synced_settings(incoming: dict, client_timestamp: float | None = None) -> dict:
@@ -628,6 +734,20 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
     Returns the merged result.
     """
     filtered = {k: v for k, v in incoming.items() if k not in SYNC_EXCLUDE}
+    # The account registry rides the sync channel but is DB state, not a
+    # setting — apply it to the accounts table (additive, never deletes) and
+    # strip it so it isn't persisted into settings.json.
+    manifest = filtered.pop("_accounts_manifest", None)
+    if manifest is not None:
+        try:
+            from database import db as _db, accounts as _accts
+            conn = _db.get_connection()
+            try:
+                _accts.apply_manifest(conn, manifest)
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning("accounts manifest import skipped: %s", e)
     if not filtered:
         return get_settings()
     save_settings(filtered)
@@ -635,7 +755,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.26.3"
+APP_VERSION = "2.27.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

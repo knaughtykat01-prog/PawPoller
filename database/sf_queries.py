@@ -19,15 +19,16 @@ from typing import Any
 
 # -- SF Submissions ----------------------------------------------------
 
-def upsert_sf_submission(conn: sqlite3.Connection, sub: dict) -> None:
+def upsert_sf_submission(conn: sqlite3.Connection, sub: dict, account_id: int) -> None:
     """Insert or update a SoFurry submission's metadata and latest stats."""
     keywords_json = json.dumps(sub.get("keywords", []))
+    # account_id set on INSERT only; the ON CONFLICT UPDATE leaves it alone.
     conn.execute(
         """INSERT INTO sf_submissions
-           (submission_id, title, username, posted_at, content_type,
+           (submission_id, account_id, title, username, posted_at, content_type,
             rating, thumbnail_url, description, keywords, link,
             views, favorites_count, comments_count, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
            ON CONFLICT(submission_id) DO UPDATE SET
             title=excluded.title, username=excluded.username,
             content_type=excluded.content_type,
@@ -38,7 +39,7 @@ def upsert_sf_submission(conn: sqlite3.Connection, sub: dict) -> None:
             comments_count=excluded.comments_count, updated_at=datetime('now')
         """,
         (
-            sub["submission_id"], sub.get("title", ""), sub.get("username", ""),
+            sub["submission_id"], account_id, sub.get("title", ""), sub.get("username", ""),
             sub.get("posted_at"), sub.get("content_type", ""),
             sub.get("rating", ""), sub.get("thumbnail_url", ""),
             sub.get("description", ""), keywords_json, sub.get("link", ""),
@@ -73,12 +74,12 @@ def get_all_sf_submissions(conn: sqlite3.Connection, sort_by: str = "views", ord
 
 # -- SF Snapshots ------------------------------------------------------
 
-def insert_sf_snapshot(conn: sqlite3.Connection, submission_id: str, views: int,
+def insert_sf_snapshot(conn: sqlite3.Connection, account_id: int, submission_id: str, views: int,
                        favorites_count: int, comments_count: int, polled_at: str | None = None) -> None:
     ts = polled_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
-        "INSERT INTO sf_snapshots (submission_id, polled_at, views, favorites_count, comments_count) VALUES (?, ?, ?, ?, ?)",
-        (submission_id, ts, views, favorites_count, comments_count),
+        "INSERT INTO sf_snapshots (account_id, submission_id, polled_at, views, favorites_count, comments_count) VALUES (?, ?, ?, ?, ?, ?)",
+        (account_id, submission_id, ts, views, favorites_count, comments_count),
     )
 
 
@@ -137,8 +138,10 @@ def get_sf_comparison_snapshots(conn: sqlite3.Connection, submission_ids: list[s
 
 # -- SF Poll Log -------------------------------------------------------
 
-def start_sf_poll_log(conn: sqlite3.Connection) -> int:
-    cur = conn.execute("INSERT INTO sf_poll_log (started_at, status) VALUES (datetime('now'), 'running')")
+def start_sf_poll_log(conn: sqlite3.Connection, account_id: int = 0) -> int:
+    cur = conn.execute(
+        "INSERT INTO sf_poll_log (started_at, status, account_id) VALUES (datetime('now'), 'running', ?)",
+        (account_id,))
     conn.commit()
     return cur.lastrowid
 
@@ -168,23 +171,25 @@ def get_sf_poll_log(conn: sqlite3.Connection, limit: int = 50) -> list[dict]:
 
 # -- SF Watchers/Followers ---------------------------------------------
 
-def upsert_sf_watcher(conn: sqlite3.Connection, username: str) -> bool:
-    """Insert a watcher if not already known. Returns True if new."""
-    existing = conn.execute("SELECT id FROM sf_watchers WHERE username = ?", (username,)).fetchone()
+def upsert_sf_watcher(conn: sqlite3.Connection, account_id: int, username: str) -> bool:
+    """Insert a watcher for this account if not already known. Returns True if new."""
+    existing = conn.execute(
+        "SELECT id FROM sf_watchers WHERE account_id = ? AND username = ?",
+        (account_id, username)).fetchone()
     if existing:
         return False
-    conn.execute("INSERT INTO sf_watchers (username) VALUES (?)", (username,))
+    conn.execute("INSERT INTO sf_watchers (account_id, username) VALUES (?, ?)", (account_id, username))
     return True
 
 
-def remove_stale_sf_watchers(conn: sqlite3.Connection, current_usernames: list[str]) -> int:
-    """Remove followers no longer on the live list. Returns rows deleted."""
+def remove_stale_sf_watchers(conn: sqlite3.Connection, account_id: int, current_usernames: list[str]) -> int:
+    """Remove this account's followers no longer on the live list. Returns rows deleted."""
     if not current_usernames:
         return 0
     placeholders = ",".join("?" for _ in current_usernames)
     cur = conn.execute(
-        f"DELETE FROM sf_watchers WHERE username NOT IN ({placeholders})",
-        current_usernames,
+        f"DELETE FROM sf_watchers WHERE account_id = ? AND username NOT IN ({placeholders})",
+        [account_id, *current_usernames],
     )
     return cur.rowcount
 

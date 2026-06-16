@@ -48,19 +48,20 @@ poll_progress = {
     "message": "",
 }
 
-# Simple boolean guard that prevents a second poll cycle from starting
-# while one is already in progress.  Checked at the top of run_poll_cycle()
-# and unconditionally cleared in its `finally` block.  The boolean remains
-# as a readable status indicator; the Lock protects the check-and-set from
-# race conditions when two callers arrive near-simultaneously.
+# Concurrency guard. A single lock serialises ALL Inkbunny poll cycles —
+# multi-account polling runs a platform's accounts sequentially (the chosen
+# model) to respect IB's per-IP rate limits, so one IB poll at a time is exactly
+# what we want. Checked non-blocking at the top of run_poll_cycle() and released
+# in `finally`. poll_progress is likewise a single IB progress surface (only one
+# IB account polls at any moment).
 _poll_running = False
 _poll_lock = threading.Lock()
 
-# First-poll suppression: the very first poll after app startup is treated as
-# a silent baseline — data is collected and stored but no notifications are
-# sent.  This prevents a flood of "new" alerts for items that already existed
-# before the restart.  Set to True initially; cleared after the first cycle.
-_first_poll = True
+# First-poll suppression is now PER ACCOUNT: a freshly added account's first
+# poll is a silent baseline (collect data, send no notifications) so it doesn't
+# flood with "new" alerts for items that already existed. Tracks which accounts
+# have completed their first cycle.
+_first_poll_done: set[int] = set()
 
 
 def _update_progress(phase: str, current: int = 0, total: int = 0, message: str = ""):
@@ -179,8 +180,8 @@ async def _send_telegram(new_fave_details: list[dict], new_comment_details: list
     )
 
 
-async def run_poll_cycle(force_full: bool = False) -> dict:
-    """Execute one complete Inkbunny poll cycle.
+async def run_poll_cycle(account_id: int | None = None, force_full: bool = False) -> dict:
+    """Execute one complete Inkbunny poll cycle for a single account.
 
     The cycle has six logical steps:
       1. **Auth**        -- restore a cached SID or log in for a new one.
@@ -196,6 +197,10 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
     avoids unnecessary API calls and respects Inkbunny's rate limits.
 
     Args:
+        account_id: Which Inkbunny account to poll. When None, the platform's
+            default account is used (created on demand from the legacy flat
+            credentials), preserving single-account behaviour for callers that
+            don't yet pass an account.
         force_full: When True, re-fetch faving users and comments for
             *every* submission regardless of whether their counts changed.
             Useful for back-filling data after a schema migration or when
@@ -206,16 +211,28 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         new_faves_found, new_comments_found.  Returns an empty dict if
         a poll was already running and this call was skipped.
     """
-    global _poll_running, _first_poll
+    global _poll_running
+
+    # ── Resolve the account to poll ───────────────────────────
+    # account_id=None means "the default IB account" (back-compat). We resolve
+    # the account row up front for its is_default flag (credential routing).
+    from database import accounts as accounts_db
+    _ac = get_connection()
+    try:
+        if account_id is None:
+            account_id = accounts_db.get_default_account_id(_ac, "ib", create=True)
+        account_row = accounts_db.get_account(_ac, account_id)
+    finally:
+        _ac.close()
+    is_default = bool(account_row["is_default"]) if account_row else True
+    is_first = account_id not in _first_poll_done
 
     # ── Concurrency guard ──────────────────────────────────────
-    # Only one poll cycle may run at a time.  If a second call arrives
-    # (e.g. the user clicks "Poll Now" while an auto-poll is running)
-    # we return immediately with an empty dict rather than queuing.
-    # The Lock makes the check-and-set atomic so two near-simultaneous
-    # callers cannot both slip through.
+    # One IB poll cycle at a time (accounts poll sequentially). If a second
+    # call arrives (e.g. "Poll Now" during an auto-poll) we return immediately
+    # rather than queuing.
     if not _poll_lock.acquire(blocking=False):
-        logger.warning("Poll already running — skipping")
+        logger.warning("Poll already running — skipping (account %s)", account_id)
         return {}
     _poll_running = True
     _update_progress("starting", message="Initialising poll cycle...")
@@ -232,30 +249,32 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         "new_watchers_found": 0,
     }
 
-    # Read credentials at poll time (not from frozen module-level constants)
-    # so that env-seeded settings.json values are picked up.
+    # Resolve this account's credentials. The default account reads the legacy
+    # flat keys (with the .env fallback preserved); extra accounts read their
+    # namespaced keys.
     settings = config.get_settings()
-    ib_user = settings.get("username", "") or config.INKBUNNY_USERNAME
-    ib_pass = settings.get("password", "") or config.INKBUNNY_PASSWORD
+    creds = config.resolve_account_credentials("ib", account_id, is_default, settings)
+    ib_user = creds.get("username", "") or (config.INKBUNNY_USERNAME if is_default else "")
+    ib_pass = creds.get("password", "") or (config.INKBUNNY_PASSWORD if is_default else "")
     from polling.cf_proxy import proxy_kwargs
     client = InkbunnyClient(username=ib_user, password=ib_pass,
                             **proxy_kwargs(settings, "ib"))
 
     try:
         conn = get_connection()
-        log_id = queries.start_poll_log(conn)
+        log_id = queries.start_poll_log(conn, account_id)
         # ── Step 1: Authenticate ───────────────────────────────
-        # Try to reuse a cached session ID (SID) to avoid logging in on
-        # every cycle.  If the cached SID has expired the client will
+        # Try to reuse this account's cached session ID (SID) to avoid logging
+        # in on every cycle. If the cached SID has expired the client will
         # automatically fall back to a fresh login.
         _update_progress("logging_in", message="Authenticating with Inkbunny...")
-        cached = queries.get_cached_session(conn)
+        cached = queries.get_cached_session(conn, account_id)
         cached_sid = cached["sid"] if cached else None
         cached_uid = cached.get("user_id", 0) if cached else 0
         if cached_uid:
             client.user_id = cached_uid
         sid = await client.ensure_session(cached_sid)
-        queries.save_session(conn, sid, client.username, client.user_id)
+        queries.save_session(conn, account_id, sid, client.username, client.user_id)
 
         # ── Step 2: Search for all user submissions ────────────
         _update_progress("searching", message="Searching for submissions...")
@@ -307,8 +326,8 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
                 # Step 4: Upsert the submission row and record a snapshot.
                 # The snapshot captures a point-in-time record of views,
                 # faves, and comments for historical charting.
-                queries.upsert_submission(conn, db_dict)
-                queries.insert_snapshot(conn, sub_id, views, faves, comments, polled_at=poll_timestamp)
+                queries.upsert_submission(conn, db_dict, account_id)
+                queries.insert_snapshot(conn, account_id, sub_id, views, faves, comments, polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
                 # Commit before the conditional fetches below: holding the
                 # implicit write transaction across their awaits (rate-limit
@@ -339,7 +358,7 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
                     faving_users = await client.get_faving_users(sub_id)
                     # Batch insert: get existing user_ids first to identify new ones
                     existing_ids = {r["user_id"] for r in queries.get_faving_users(conn, sub_id)}
-                    new_count = queries.upsert_faving_users_batch(conn, sub_id, faving_users)
+                    new_count = queries.upsert_faving_users_batch(conn, account_id, sub_id, faving_users)
                     conn.commit()
                     stats["new_faves_found"] += new_count
                     for user in faving_users:
@@ -389,13 +408,13 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
             _update_progress("fetching_watchers", message="Scraping watcher list...")
             watchers = await client.scrape_watchers()
             for username in watchers:
-                is_new = queries.upsert_watcher(conn, username)
+                is_new = queries.upsert_watcher(conn, account_id, username)
                 if is_new:
                     stats["new_watchers_found"] += 1
                     new_watcher_details.append({"username": username})
             # Remove watchers no longer on the live list (banned/deleted/unwatched)
             if watchers:
-                removed = queries.remove_stale_watchers(conn, watchers)
+                removed = queries.remove_stale_watchers(conn, account_id, watchers)
                 if removed:
                     logger.info("Pruned %d stale watchers from DB", removed)
             conn.commit()
@@ -405,13 +424,13 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
         # ── Notifications ──────────────────────────────────────
         # Fire-and-forget: notification failures are logged but never
         # propagate -- the poll data is already safely committed.
-        # Skip notifications on the first poll after startup — this is a
-        # silent baseline collection to avoid flooding with old items.
-        # Note: _first_poll is cleared in the `finally` block so it gets
-        # reset even if this poll fails with an exception.
-        if _first_poll:
-            logger.info("First poll after startup — suppressing %d fave, %d comment, %d watcher notifications",
-                        len(new_fave_details), len(new_comment_details), len(new_watcher_details))
+        # Skip notifications on this account's first poll — a silent baseline
+        # collection to avoid flooding with old items. Note: the account is
+        # marked done in the `finally` block so a failed first attempt doesn't
+        # suppress notifications on the next successful poll.
+        if is_first:
+            logger.info("First poll for account %s — suppressing %d fave, %d comment, %d watcher notifications",
+                        account_id, len(new_fave_details), len(new_comment_details), len(new_watcher_details))
         else:
             try:
                 _send_notifications(new_fave_details, new_comment_details, new_watcher_details)
@@ -434,7 +453,7 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
 
         # ── Telegram summaries + milestones ───────────────────
         from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
-        if not _first_poll:
+        if not is_first:
             try:
                 await send_poll_summary("ib", stats, duration)
             except Exception as te:
@@ -469,10 +488,9 @@ async def run_poll_cycle(force_full: bool = False) -> dict:
     finally:
         # Always release the concurrency guard, close the HTTP client, and
         # return the DB connection -- even if the cycle raised an exception.
-        # Also clear _first_poll so that a failed first attempt doesn't
-        # suppress notifications on the next successful poll.
-        if _first_poll:
-            _first_poll = False
+        # Mark this account's first poll as done so a failed first attempt
+        # doesn't suppress notifications on the next successful poll.
+        _first_poll_done.add(account_id)
         _poll_running = False
         _poll_lock.release()
         await client.close()

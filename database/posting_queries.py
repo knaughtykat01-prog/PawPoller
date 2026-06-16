@@ -29,6 +29,7 @@ def upsert_publication(
     chapter_index: int,
     platform: str,
     *,
+    account_id: int | None = None,
     external_id: str = "",
     external_url: str = "",
     title_used: str = "",
@@ -40,15 +41,24 @@ def upsert_publication(
     word_count: int = 0,
     status: str = "posted",
 ) -> int:
-    """Insert or update a publication record. Returns pub_id."""
+    """Insert or update a publication record. Returns pub_id.
+
+    account_id selects which account the story was posted as; None resolves to
+    the platform's default account, so single-account callers are unaffected.
+    The publications UNIQUE key now includes account_id, so the same chapter can
+    be published to two accounts on the same platform.
+    """
+    if account_id is None:
+        from database import accounts as _accts
+        account_id = _accts.get_default_account_id(conn, platform, create=True)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     tags_json = json.dumps(tags_used or [])
 
-    # Check if exists
+    # Check if exists (scoped to the account).
     row = conn.execute(
         "SELECT pub_id, update_count FROM publications "
-        "WHERE story_name = ? AND chapter_index = ? AND platform = ?",
-        (story_name, chapter_index, platform),
+        "WHERE story_name = ? AND chapter_index = ? AND platform = ? AND account_id = ?",
+        (story_name, chapter_index, platform, account_id),
     ).fetchone()
 
     if row:
@@ -68,11 +78,11 @@ def upsert_publication(
     else:
         cursor = conn.execute(
             """INSERT INTO publications
-                (story_name, chapter_index, platform, external_id, external_url,
+                (story_name, chapter_index, platform, account_id, external_id, external_url,
                  title_used, description_used, tags_used, rating_used,
                  format_file, file_hash, word_count, status, first_posted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (story_name, chapter_index, platform, external_id, external_url,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (story_name, chapter_index, platform, account_id, external_id, external_url,
              title_used, description_used, tags_json, rating_used,
              format_file, file_hash, word_count, status, now),
         )
@@ -162,11 +172,20 @@ def get_publication_by_story(
     story_name: str,
     chapter_index: int,
     platform: str,
+    account_id: int | None = None,
 ) -> dict | None:
-    """Get a publication by its unique (story, chapter, platform) key."""
+    """Get a publication by its (story, chapter, platform[, account]) key.
+
+    account_id None resolves to the platform's default account so existing
+    single-account callers keep getting the default account's row.
+    """
+    if account_id is None:
+        from database import accounts as _accts
+        account_id = _accts.get_default_account_id(conn, platform, create=True)
     row = conn.execute(
-        "SELECT * FROM publications WHERE story_name = ? AND chapter_index = ? AND platform = ?",
-        (story_name, chapter_index, platform),
+        "SELECT * FROM publications WHERE story_name = ? AND chapter_index = ? "
+        "AND platform = ? AND account_id = ?",
+        (story_name, chapter_index, platform, account_id),
     ).fetchone()
     return dict(row) if row else None
 
@@ -180,6 +199,7 @@ def add_to_queue(
     platform: str,
     action: str = "post",
     *,
+    account_id: int | None = None,
     scheduled_at: str | None = None,
     title_override: str | None = None,
     description_override: str | None = None,
@@ -192,17 +212,23 @@ def add_to_queue(
     """Add an item to the posting queue. Returns queue_id.
 
     Args:
+        account_id: Which account to post as; None → the platform's default.
+            The scheduler posts queued items as this account (important for the
+            desktop FA auto-queue so the right account is used).
         requires: Runtime mode needed — 'any', 'desktop', or 'server'.
             Desktop-only platforms (FA) should be queued with 'desktop' so the
             server scheduler skips them and they're picked up when the desktop app opens.
     """
+    if account_id is None:
+        from database import accounts as _accts
+        account_id = _accts.get_default_account_id(conn, platform, create=True)
     cursor = conn.execute(
         """INSERT INTO posting_queue
-            (story_name, chapter_index, platform, action, scheduled_at,
+            (story_name, chapter_index, platform, account_id, action, scheduled_at,
              title_override, description_override, tags_override,
              rating_override, file_path_override, priority, requires)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (story_name, chapter_index, platform, action, scheduled_at,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (story_name, chapter_index, platform, account_id, action, scheduled_at,
          title_override, description_override, tags_override,
          rating_override, file_path_override, priority, requires),
     )
@@ -422,6 +448,7 @@ def log_posting_action(
     action: str,
     status: str,
     *,
+    account_id: int = 0,
     pub_id: int | None = None,
     queue_id: int | None = None,
     external_id: str | None = None,
@@ -432,10 +459,10 @@ def log_posting_action(
     """Append an entry to the posting log. Returns log_id."""
     cursor = conn.execute(
         """INSERT INTO posting_log
-            (pub_id, queue_id, platform, story_name, chapter_index,
+            (pub_id, queue_id, platform, story_name, chapter_index, account_id,
              action, status, external_id, external_url, error_message, duration_seconds)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (pub_id, queue_id, platform, story_name, chapter_index,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (pub_id, queue_id, platform, story_name, chapter_index, account_id,
          action, status, external_id, external_url, error_message, duration_seconds),
     )
     conn.commit()

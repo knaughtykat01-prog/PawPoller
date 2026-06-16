@@ -38,7 +38,7 @@ ao3_poll_progress = {
 
 _ao3_poll_running = False
 _ao3_poll_lock = threading.Lock()
-_ao3_first_poll = True
+_ao3_first_poll_done: set[int] = set()
 
 # Persistent client — reused across poll cycles
 _ao3_client: AO3Client | None = None
@@ -112,13 +112,10 @@ async def _send_ao3_kudos_telegram(new_kudos: list[dict]) -> None:
     )
 
 
-def _get_or_create_client(settings: dict) -> AO3Client:
-    """Return the persistent AO3Client, creating or updating as needed."""
+def _get_or_create_client(settings: dict, ao3_user: str, ao3_pass: str,
+                          ao3_target: str, ao3_cookie: str) -> AO3Client:
+    """Return the persistent AO3Client, re-pointed at the account's creds."""
     global _ao3_client
-    ao3_user = settings.get("ao3_username", "")
-    ao3_pass = settings.get("ao3_password", "")
-    ao3_target = settings.get("ao3_target_user", "")
-    ao3_cookie = settings.get("ao3_session_cookie", "")
 
     if _ao3_client is None:
         from polling.cf_proxy import proxy_kwargs
@@ -136,8 +133,8 @@ def _get_or_create_client(settings: dict) -> AO3Client:
     return _ao3_client
 
 
-async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
-    """Execute one complete AO3 poll cycle.
+async def run_ao3_poll_cycle(account_id: int | None = None, force_full: bool = False) -> dict:
+    """Execute one complete AO3 poll cycle for a single account.
 
     Steps:
       1. Login and validate session
@@ -146,7 +143,18 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
       4. Upsert works and record snapshots
       5. Track kudos users
     """
-    global _ao3_poll_running, _ao3_first_poll
+    global _ao3_poll_running
+
+    from database import accounts as accounts_db
+    _ac = get_connection()
+    try:
+        if account_id is None:
+            account_id = accounts_db.get_default_account_id(_ac, "ao3", create=True)
+        account_row = accounts_db.get_account(_ac, account_id)
+    finally:
+        _ac.close()
+    is_default = bool(account_row["is_default"]) if account_row else True
+    is_first = account_id not in _ao3_first_poll_done
 
     # Backoff-state gate (2.22.6): if a previous request hit a 429 with
     # a Retry-After window that's still active, AO3 will just 429 us
@@ -171,7 +179,7 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
             }
 
     if not _ao3_poll_lock.acquire(blocking=False):
-        logger.warning("AO3 poll already running -- skipping")
+        logger.warning("AO3 poll already running -- skipping (account %s)", account_id)
         return {}
     _ao3_poll_running = True
     _update_ao3_progress("starting", message="Initialising AO3 poll cycle...")
@@ -187,11 +195,14 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
     }
 
     settings = config.get_settings()
-    client = _get_or_create_client(settings)
+    creds = config.resolve_account_credentials("ao3", account_id, is_default, settings)
+    client = _get_or_create_client(settings, creds.get("ao3_username", ""),
+                                   creds.get("ao3_password", ""), creds.get("ao3_target_user", ""),
+                                   creds.get("ao3_session_cookie", ""))
 
     try:
         conn = get_connection()
-        log_id = ao3_queries.start_ao3_poll_log(conn)
+        log_id = ao3_queries.start_ao3_poll_log(conn, account_id)
         # Step 1: Authenticate
         # Use ensure_logged_in() not validate_session() — the latter does an
         # extra `/users/{name}` probe to confirm the cookie is alive, which
@@ -238,8 +249,8 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
                 comments = detail.get("comments_count", 0)
                 bookmarks = detail.get("bookmarks_count", 0)
 
-                ao3_queries.upsert_ao3_submission(conn, detail)
-                ao3_queries.insert_ao3_snapshot(conn, wid, views, faves, comments,
+                ao3_queries.upsert_ao3_submission(conn, detail, account_id)
+                ao3_queries.insert_ao3_snapshot(conn, account_id, wid, views, faves, comments,
                                                 bookmarks, polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
                 # Commit before the kudos fetch below: AO3 paces requests at
@@ -253,7 +264,7 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
                     kudos_users = await client.get_kudos_users(wid)
                     # Batch insert: get existing usernames first to identify new ones
                     existing_usernames = {r["username"] for r in ao3_queries.get_ao3_kudos_users(conn, wid)}
-                    new_count = ao3_queries.upsert_ao3_kudos_users_batch(conn, wid, kudos_users)
+                    new_count = ao3_queries.upsert_ao3_kudos_users_batch(conn, account_id, wid, kudos_users)
                     conn.commit()
                     stats["new_kudos_found"] += new_count
                     for ku in kudos_users:
@@ -272,9 +283,9 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
         conn.commit()
 
         # ── Notifications (kudos) ────────────────────────────
-        if _ao3_first_poll:
-            logger.info("First AO3 poll after startup -- suppressing %d kudos notifications",
-                        len(new_kudos_details))
+        if is_first:
+            logger.info("First AO3 poll for account %s -- suppressing %d kudos notifications",
+                        account_id, len(new_kudos_details))
         else:
             if new_kudos_details:
                 try:
@@ -298,7 +309,7 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
                      stats["new_kudos_found"])
 
         # ── Telegram notifications ────────────────────────────
-        if not _ao3_first_poll:
+        if not is_first:
             from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
             try:
                 await send_poll_summary("ao3", stats, duration)
@@ -331,8 +342,7 @@ async def run_ao3_poll_cycle(force_full: bool = False) -> dict:
             logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
-        if _ao3_first_poll:
-            _ao3_first_poll = False
+        _ao3_first_poll_done.add(account_id)
         _ao3_poll_running = False
         _ao3_poll_lock.release()
         if conn:

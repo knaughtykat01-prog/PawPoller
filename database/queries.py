@@ -20,48 +20,48 @@ from typing import Any
 
 
 # ── Session Cache ──────────────────────────────────────────────
-# The session_cache table uses a singleton pattern: there is only ever one row
-# with id=1. This stores the Inkbunny API session ID (SID) so the app can
-# resume authenticated sessions without re-logging in on every poll cycle.
+# Multi-account: session_cache holds one row PER ACCOUNT (PK account_id), so two
+# Inkbunny accounts can each keep their own cached API session (SID) and resume
+# without re-logging in. (Pre-multi-account this was a singleton row id=1.)
 
-def get_cached_session(conn: sqlite3.Connection) -> dict | None:
-    # Always fetches id=1 -- there is at most one cached session at any time.
-    # Try to read user_id; older DBs may not have the column yet.
+def get_cached_session(conn: sqlite3.Connection, account_id: int) -> dict | None:
     try:
-        row = conn.execute("SELECT sid, username, user_id, created_at FROM session_cache WHERE id = 1").fetchone()
+        row = conn.execute(
+            "SELECT sid, username, user_id, created_at FROM session_cache WHERE account_id = ?",
+            (account_id,)).fetchone()
     except Exception:
-        row = conn.execute("SELECT sid, username, created_at FROM session_cache WHERE id = 1").fetchone()
+        row = conn.execute(
+            "SELECT sid, username, created_at FROM session_cache WHERE account_id = ?",
+            (account_id,)).fetchone()
     return dict(row) if row else None
 
 
-def save_session(conn: sqlite3.Connection, sid: str, username: str, user_id: int = 0) -> None:
-    # Upsert pattern: INSERT with a hardcoded id=1 and ON CONFLICT UPDATE.
-    # If no session exists yet, a new row is inserted. If one already exists
-    # (id=1 triggers the UNIQUE conflict), the existing row is updated in place.
-    # This guarantees exactly one session row at all times -- a singleton cache.
-    # Migrate: add user_id column if missing (older DBs).
-    try:
-        conn.execute("ALTER TABLE session_cache ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0")
-        conn.commit()
-    except Exception:
-        pass  # Column already exists
+def save_session(conn: sqlite3.Connection, account_id: int, sid: str,
+                 username: str, user_id: int = 0) -> None:
+    # Upsert keyed on account_id (the PK) — one cached session per account.
     conn.execute(
-        "INSERT INTO session_cache (id, sid, username, user_id, created_at) VALUES (1, ?, ?, ?, datetime('now'))"
-        " ON CONFLICT(id) DO UPDATE SET sid=excluded.sid, username=excluded.username, user_id=excluded.user_id, created_at=excluded.created_at",
-        (sid, username, user_id),
+        "INSERT INTO session_cache (account_id, sid, username, user_id, created_at)"
+        " VALUES (?, ?, ?, ?, datetime('now'))"
+        " ON CONFLICT(account_id) DO UPDATE SET sid=excluded.sid, username=excluded.username,"
+        " user_id=excluded.user_id, created_at=excluded.created_at",
+        (account_id, sid, username, user_id),
     )
     conn.commit()
 
 
-def clear_session(conn: sqlite3.Connection) -> None:
-    # Wipes all session data. Called on explicit logout or session expiry.
-    conn.execute("DELETE FROM session_cache")
+def clear_session(conn: sqlite3.Connection, account_id: int | None = None) -> None:
+    # Wipes cached session data. With account_id, clears just that account;
+    # without it, clears every IB account's session (the "log out" button).
+    if account_id is None:
+        conn.execute("DELETE FROM session_cache")
+    else:
+        conn.execute("DELETE FROM session_cache WHERE account_id = ?", (account_id,))
     conn.commit()
 
 
 # ── Submissions ────────────────────────────────────────────────
 
-def upsert_submission(conn: sqlite3.Connection, sub: dict) -> None:
+def upsert_submission(conn: sqlite3.Connection, sub: dict, account_id: int) -> None:
     """Insert or update a submission's metadata and latest stats.
 
     Uses the SQLite upsert pattern (INSERT ... ON CONFLICT ... DO UPDATE):
@@ -78,13 +78,15 @@ def upsert_submission(conn: sqlite3.Connection, sub: dict) -> None:
     """
     # Serialize the keyword list to a JSON string for storage in a TEXT column.
     keywords_json = json.dumps(sub.get("keywords", []))
+    # account_id is set on INSERT only; the ON CONFLICT UPDATE deliberately does
+    # NOT touch it — an existing submission never changes which account owns it.
     conn.execute(
         """INSERT INTO submissions
-           (submission_id, title, username, user_id, create_datetime,
+           (submission_id, account_id, title, username, user_id, create_datetime,
             type_name, rating_id, rating_name, thumb_url, url,
             description, keywords, page_count,
             views, favorites_count, comments_count, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
            ON CONFLICT(submission_id) DO UPDATE SET
             title=excluded.title, username=excluded.username, user_id=excluded.user_id,
             type_name=excluded.type_name, rating_id=excluded.rating_id,
@@ -95,7 +97,7 @@ def upsert_submission(conn: sqlite3.Connection, sub: dict) -> None:
             comments_count=excluded.comments_count, updated_at=datetime('now')
         """,
         (
-            sub["submission_id"], sub.get("title", ""), sub.get("username", ""),
+            sub["submission_id"], account_id, sub.get("title", ""), sub.get("username", ""),
             sub.get("user_id"), sub.get("create_datetime"),
             sub.get("type_name", ""), sub.get("rating_id", 0),
             sub.get("rating_name", ""), sub.get("thumb_url", ""),
@@ -145,14 +147,14 @@ def get_all_submissions(conn: sqlite3.Connection, sort_by: str = "views", order:
 #   - Growth rate calculations by comparing current vs. past snapshots
 #   - 24-hour delta calculations for the dashboard
 
-def insert_snapshot(conn: sqlite3.Connection, submission_id: int, views: int, favorites_count: int, comments_count: int, polled_at: str | None = None) -> None:
+def insert_snapshot(conn: sqlite3.Connection, account_id: int, submission_id: int, views: int, favorites_count: int, comments_count: int, polled_at: str | None = None) -> None:
     # Each poll cycle appends a new snapshot row -- never updates existing ones.
     # The polled_at timestamp defaults to UTC now, but can be overridden for
     # historical imports or testing.
     ts = polled_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
-        "INSERT INTO snapshots (submission_id, polled_at, views, favorites_count, comments_count) VALUES (?, ?, ?, ?, ?)",
-        (submission_id, ts, views, favorites_count, comments_count),
+        "INSERT INTO snapshots (account_id, submission_id, polled_at, views, favorites_count, comments_count) VALUES (?, ?, ?, ?, ?, ?)",
+        (account_id, submission_id, ts, views, favorites_count, comments_count),
     )
 
 
@@ -249,14 +251,14 @@ def upsert_faving_user(conn: sqlite3.Connection, submission_id: int, user_id: in
         return False
 
 
-def upsert_faving_users_batch(conn: sqlite3.Connection, submission_id: int, users: list[dict]) -> int:
+def upsert_faving_users_batch(conn: sqlite3.Connection, account_id: int, submission_id: int, users: list[dict]) -> int:
     """Batch insert faving users. Returns count of new faves."""
     if not users:
         return 0
     before = conn.execute("SELECT COUNT(*) FROM faving_users WHERE submission_id = ?", (submission_id,)).fetchone()[0]
     conn.executemany(
-        "INSERT OR IGNORE INTO faving_users (submission_id, user_id, username, first_seen_at) VALUES (?, ?, ?, datetime('now'))",
-        [(submission_id, u["user_id"], u["username"]) for u in users],
+        "INSERT OR IGNORE INTO faving_users (account_id, submission_id, user_id, username, first_seen_at) VALUES (?, ?, ?, ?, datetime('now'))",
+        [(account_id, submission_id, u["user_id"], u["username"]) for u in users],
     )
     after = conn.execute("SELECT COUNT(*) FROM faving_users WHERE submission_id = ?", (submission_id,)).fetchone()[0]
     return after - before
@@ -359,10 +361,12 @@ def get_previous_comments_count(conn: sqlite3.Connection, submission_id: int) ->
 # Each cycle creates a row at start (status='running'), then updates it on
 # completion with final stats and timing info.
 
-def start_poll_log(conn: sqlite3.Connection) -> int:
+def start_poll_log(conn: sqlite3.Connection, account_id: int = 0) -> int:
     # Creates a new poll_log entry with status 'running'. Returns the row ID
     # so finish_poll_log can update the same row when the cycle completes.
-    cur = conn.execute("INSERT INTO poll_log (started_at, status) VALUES (datetime('now'), 'running')")
+    cur = conn.execute(
+        "INSERT INTO poll_log (started_at, status, account_id) VALUES (datetime('now'), 'running', ?)",
+        (account_id,))
     conn.commit()
     return cur.lastrowid
 
@@ -621,37 +625,38 @@ def get_submission_deltas(conn: sqlite3.Connection) -> dict[int, dict]:
 
 # ── Watcher Queries ───────────────────────────────────────────────
 
-def upsert_watcher(conn: sqlite3.Connection, username: str) -> bool:
-    """Insert a watcher if not already tracked. Returns True if new.
+def upsert_watcher(conn: sqlite3.Connection, account_id: int, username: str) -> bool:
+    """Insert a watcher if not already tracked for this account. Returns True if new.
 
-    Keyed on username because Inkbunny's usersviewall page does not
-    expose user_id values in its HTML.
+    Keyed on (account_id, username) because Inkbunny's usersviewall page does not
+    expose user_id values in its HTML, and two accounts can share a watcher.
     """
     row = conn.execute(
-        "SELECT 1 FROM watchers WHERE username = ?", (username,)
+        "SELECT 1 FROM watchers WHERE account_id = ? AND username = ?", (account_id, username)
     ).fetchone()
     if row:
         return False
     conn.execute(
-        "INSERT INTO watchers (user_id, username, first_seen_at) VALUES (0, ?, datetime('now'))",
-        (username,),
+        "INSERT INTO watchers (account_id, user_id, username, first_seen_at) VALUES (?, 0, ?, datetime('now'))",
+        (account_id, username),
     )
     return True
 
 
-def remove_stale_watchers(conn: sqlite3.Connection, current_usernames: list[str]) -> int:
-    """Remove watchers no longer on the live watcher list.
+def remove_stale_watchers(conn: sqlite3.Connection, account_id: int, current_usernames: list[str]) -> int:
+    """Remove this account's watchers no longer on the live watcher list.
 
     Inkbunny's watched_by page only shows active watchers — banned, deleted,
-    and unwatched accounts disappear. This prunes the DB to match reality.
+    and unwatched accounts disappear. This prunes the DB to match reality, scoped
+    to one account so it never touches another account's watchers.
     Returns the number of rows deleted.
     """
     if not current_usernames:
         return 0
     placeholders = ",".join("?" for _ in current_usernames)
     cur = conn.execute(
-        f"DELETE FROM watchers WHERE username NOT IN ({placeholders})",
-        current_usernames,
+        f"DELETE FROM watchers WHERE account_id = ? AND username NOT IN ({placeholders})",
+        [account_id, *current_usernames],
     )
     return cur.rowcount
 

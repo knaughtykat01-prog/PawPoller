@@ -39,7 +39,7 @@ tw_poll_progress = {
 
 _tw_poll_running = False
 _tw_poll_lock = threading.Lock()
-_tw_first_poll = True
+_tw_first_poll_done: set[int] = set()
 
 # Persistent client — reused across poll cycles
 _tw_client: TWClient | None = None
@@ -89,12 +89,9 @@ async def _send_tw_telegram(new_details: list[dict]) -> None:
     )
 
 
-def _get_or_create_client(settings: dict) -> TWClient:
-    """Return the persistent TWClient, creating or updating as needed."""
+def _get_or_create_client(settings: dict, tw_auth_token: str, tw_ct0: str, tw_target: str) -> TWClient:
+    """Return the persistent TWClient, re-pointed at the account's credentials."""
     global _tw_client
-    tw_auth_token = settings.get("tw_auth_token", "")
-    tw_ct0 = settings.get("tw_ct0", "")
-    tw_target = settings.get("tw_target_user", "")
 
     if _tw_client is None:
         from polling.cf_proxy import proxy_kwargs
@@ -110,8 +107,8 @@ def _get_or_create_client(settings: dict) -> TWClient:
     return _tw_client
 
 
-async def run_tw_poll_cycle(force_full: bool = False) -> dict:
-    """Execute one complete X/Twitter poll cycle.
+async def run_tw_poll_cycle(account_id: int | None = None, force_full: bool = False) -> dict:
+    """Execute one complete X/Twitter poll cycle for a single account.
 
     Steps:
       1. Validate cookies by resolving target user
@@ -119,10 +116,21 @@ async def run_tw_poll_cycle(force_full: bool = False) -> dict:
       3. Fetch details for each tweet
       4. Upsert tweets and record snapshots
     """
-    global _tw_poll_running, _tw_first_poll
+    global _tw_poll_running
+
+    from database import accounts as accounts_db
+    _ac = get_connection()
+    try:
+        if account_id is None:
+            account_id = accounts_db.get_default_account_id(_ac, "tw", create=True)
+        account_row = accounts_db.get_account(_ac, account_id)
+    finally:
+        _ac.close()
+    is_default = bool(account_row["is_default"]) if account_row else True
+    is_first = account_id not in _tw_first_poll_done
 
     if not _tw_poll_lock.acquire(blocking=False):
-        logger.warning("TW poll already running -- skipping")
+        logger.warning("TW poll already running -- skipping (account %s)", account_id)
         return {}
     _tw_poll_running = True
     _update_tw_progress("starting", message="Initialising TW poll cycle...")
@@ -137,11 +145,13 @@ async def run_tw_poll_cycle(force_full: bool = False) -> dict:
     }
 
     settings = config.get_settings()
-    client = _get_or_create_client(settings)
+    creds = config.resolve_account_credentials("tw", account_id, is_default, settings)
+    client = _get_or_create_client(settings, creds.get("tw_auth_token", ""),
+                                   creds.get("tw_ct0", ""), creds.get("tw_target_user", ""))
 
     try:
         conn = get_connection()
-        log_id = tw_queries.start_tw_poll_log(conn)
+        log_id = tw_queries.start_tw_poll_log(conn, account_id)
 
         # Step 1: Validate cookies
         _update_tw_progress("searching", message="Validating X/Twitter cookies...")
@@ -192,8 +202,8 @@ async def run_tw_poll_cycle(force_full: bool = False) -> dict:
                              or retweets > prev.get("retweets", 0)):
                     new_activity_details.append({"title": detail.get("title", "")})
 
-                tw_queries.upsert_tw_submission(conn, detail)
-                tw_queries.insert_tw_snapshot(conn, tweet_id, views, likes,
+                tw_queries.upsert_tw_submission(conn, detail, account_id)
+                tw_queries.insert_tw_snapshot(conn, account_id, tweet_id, views, likes,
                                               retweets, replies_count, quotes,
                                               bookmarks, polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
@@ -205,9 +215,9 @@ async def run_tw_poll_cycle(force_full: bool = False) -> dict:
         conn.commit()
 
         # ── Notifications ─────────────────────────────────────
-        if _tw_first_poll:
-            logger.info("First TW poll after startup -- suppressing %d activity notifications",
-                        len(new_activity_details))
+        if is_first:
+            logger.info("First TW poll for account %s -- suppressing %d activity notifications",
+                        account_id, len(new_activity_details))
         else:
             try:
                 _send_tw_notifications(new_activity_details)
@@ -228,7 +238,7 @@ async def run_tw_poll_cycle(force_full: bool = False) -> dict:
                      duration, stats["submissions_found"], stats["snapshots_inserted"])
 
         # -- Telegram notifications ----------------------------------------
-        if not _tw_first_poll:
+        if not is_first:
             from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
             try:
                 await send_poll_summary("tw", stats, duration)
@@ -261,8 +271,7 @@ async def run_tw_poll_cycle(force_full: bool = False) -> dict:
             logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
-        if _tw_first_poll:
-            _tw_first_poll = False
+        _tw_first_poll_done.add(account_id)
         _tw_poll_running = False
         _tw_poll_lock.release()
         if conn:

@@ -635,6 +635,9 @@ window.PublishCheck = (function () {
         html += '<div class="publish-action-options">';
         html += '<label><input type="checkbox" id="publish-opt-draft" checked> ' +
             'Save as draft (where supported)</label>';
+        // "Post as account" selector — populated async; only shown when the
+        // platform has more than one account. Absent/empty ⇒ default account.
+        html += '<span id="publish-account-row" class="publish-account-row"></span>';
         html += '</div>';
         html += '<div class="publish-action-live-banner" id="publish-live-banner" style="display:none">' +
             '<strong>&#9888; LIVE PUBLISH</strong> — This will be immediately visible to ' +
@@ -716,9 +719,29 @@ window.PublishCheck = (function () {
         return html;
     }
 
+    // Populate the "Post as" account dropdown for a platform. Only shows when
+    // the platform has 2+ enabled accounts; otherwise leaves the row empty so
+    // posting uses the platform's default account (unchanged behaviour). Any
+    // failure degrades silently to the default account.
+    async function _populateAccountSelector(platId) {
+        const row = document.getElementById('publish-account-row');
+        if (!row || !window.API || !API.getAccounts) return;
+        try {
+            const data = await API.getAccounts(platId);
+            const accts = (data.accounts || []).filter(a => a.enabled);
+            if (accts.length < 2) return;
+            const opts = accts.map(a =>
+                '<option value="' + a.account_id + '"' + (a.is_default ? ' selected' : '') + '>' +
+                _escape(a.label || a.handle || ('account ' + a.account_id)) + '</option>').join('');
+            row.innerHTML = ' &nbsp;<label>Post as <select id="publish-account-select">' +
+                opts + '</select></label>';
+        } catch (e) { /* default account on any failure */ }
+    }
+
     function _bindActionPanel(platId, platName, chIdx, chTitle, cell) {
         const detail = document.getElementById('publish-check-detail');
         if (!detail) return;
+        _populateAccountSelector(platId);
         detail.querySelectorAll('[data-publish-action]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const action = btn.dataset.publishAction;
@@ -1025,6 +1048,11 @@ window.PublishCheck = (function () {
                         action: action,
                         draft: draft,
                         confirm_live: action !== 'dry_run',
+                        // "Post as" account (null ⇒ platform default).
+                        account_id: (function () {
+                            const s = document.getElementById('publish-account-select');
+                            return s && s.value ? parseInt(s.value, 10) : null;
+                        })(),
                     }),
                 }
             );

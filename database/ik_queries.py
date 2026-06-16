@@ -20,16 +20,17 @@ from typing import Any
 
 # -- IK Submissions -------------------------------------------------------
 
-def upsert_ik_submission(conn: sqlite3.Connection, sub: dict) -> None:
+def upsert_ik_submission(conn: sqlite3.Connection, sub: dict, account_id: int) -> None:
     """Insert or update an Itaku content item's metadata and latest stats."""
     keywords_json = json.dumps(sub.get("keywords", []))
 
+    # account_id set on INSERT only; the ON CONFLICT UPDATE leaves it alone.
     conn.execute(
         """INSERT INTO ik_submissions
-           (submission_id, title, username, posted_at, content_type, rating,
+           (submission_id, account_id, title, username, posted_at, content_type, rating,
             description, keywords, link, thumbnail_url,
             likes, comments_count, reshares, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
            ON CONFLICT(submission_id) DO UPDATE SET
             title=excluded.title, username=excluded.username,
             content_type=excluded.content_type, rating=excluded.rating,
@@ -39,7 +40,7 @@ def upsert_ik_submission(conn: sqlite3.Connection, sub: dict) -> None:
             reshares=excluded.reshares, updated_at=datetime('now')
         """,
         (
-            sub["content_id"], sub.get("title", ""), sub.get("username", ""),
+            sub["content_id"], account_id, sub.get("title", ""), sub.get("username", ""),
             sub.get("posted_at"), sub.get("content_type", "image"),
             sub.get("rating", ""), sub.get("description", ""),
             keywords_json, sub.get("link", ""), sub.get("thumbnail_url", ""),
@@ -74,13 +75,13 @@ def get_all_ik_submissions(conn: sqlite3.Connection, sort_by: str = "likes", ord
 
 # -- IK Snapshots ---------------------------------------------------------
 
-def insert_ik_snapshot(conn: sqlite3.Connection, submission_id: int, likes: int,
+def insert_ik_snapshot(conn: sqlite3.Connection, account_id: int, submission_id: int, likes: int,
                        comments_count: int, reshares: int,
                        polled_at: str | None = None) -> None:
     ts = polled_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
-        "INSERT INTO ik_snapshots (submission_id, polled_at, likes, comments_count, reshares) VALUES (?, ?, ?, ?, ?)",
-        (submission_id, ts, likes, comments_count, reshares),
+        "INSERT INTO ik_snapshots (account_id, submission_id, polled_at, likes, comments_count, reshares) VALUES (?, ?, ?, ?, ?, ?)",
+        (account_id, submission_id, ts, likes, comments_count, reshares),
     )
 
 
@@ -140,8 +141,10 @@ def get_ik_comparison_snapshots(conn: sqlite3.Connection, submission_ids: list[i
 
 # -- IK Poll Log ----------------------------------------------------------
 
-def start_ik_poll_log(conn: sqlite3.Connection) -> int:
-    cur = conn.execute("INSERT INTO ik_poll_log (started_at, status) VALUES (datetime('now'), 'running')")
+def start_ik_poll_log(conn: sqlite3.Connection, account_id: int = 0) -> int:
+    cur = conn.execute(
+        "INSERT INTO ik_poll_log (started_at, status, account_id) VALUES (datetime('now'), 'running', ?)",
+        (account_id,))
     conn.commit()
     return cur.lastrowid
 

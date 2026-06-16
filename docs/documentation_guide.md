@@ -5062,3 +5062,127 @@ missing again.
 - Throttle banners for non-AO3 platforms — only AO3 and Bsky surface
   enough throttle metadata to be worth showing. Other platforms fall
   through to the generic error banner.
+
+---
+
+## 19. Multi-account model (multiple accounts per platform)
+
+> **Status:** in progress. Landed: Phase 0 foundation, the Inkbunny and
+> FurAffinity analytics verticals, and orchestrator account enumeration — so
+> multi-account **polling works end-to-end for IB + FA** on the server. Pending:
+> posting "post as account" selection, per-account dashboard, cross-cutting
+> concerns, and the other 9 platforms. See `docs/HANDOFF.md` for the live checklist.
+
+PawPoller historically assumed **one account per platform**: credentials lived
+under flat settings keys and no table carried an account discriminator. The
+multi-account work lets more than one account run per platform (e.g. two
+FurAffinity accounts), all active at once, for both polling and posting.
+
+### 19.1 The `accounts` registry
+
+`database/accounts.py` owns a single `accounts` table shared across all
+platforms:
+
+```
+account_id INTEGER PK AUTOINCREMENT   -- global surrogate; threads through every per-platform table
+platform   TEXT                       -- 'ib','fa',…
+label      TEXT                        -- user-facing name
+handle     TEXT                        -- denormalized username/identifier for display
+enabled    INTEGER                     -- polled/posted only when 1
+is_default INTEGER                     -- the legacy/first account per platform
+sort_order, created_at
+```
+
+A **partial unique index** (`WHERE is_default = 1`) guarantees at most one
+default account per platform. The default account is special: it owns the legacy
+flat credentials and the pre-multi-account data history.
+
+**Critical invariant:** `account_id` is AUTOINCREMENT and therefore *not*
+uniformly 1 per platform (Inkbunny might be 1, FurAffinity 2, …). Any backfill of
+existing rows must target *that platform's* default account_id — resolve via
+`accounts.get_default_account_id(conn, platform)`, never a literal 1.
+
+### 19.2 Credentials — namespaced flat keys
+
+The default account keeps the existing flat keys verbatim (`username`,
+`fa_cookie_a`…) so existing installs need **zero credential migration**.
+Additional accounts store the same canonical fields under `acct_<id>_<field>`.
+`config.py` provides:
+
+- `PLATFORM_CREDENTIAL_FIELDS` — canonical field list per platform.
+- `account_setting_key(account_id, field, is_default)` — bare key for the
+  default account, namespaced for the rest.
+- `resolve_account_credentials(platform, account_id, is_default, settings)` /
+  `get_account_credentials(account_id)` — return `{canonical_field: value}` so
+  clients/posters don't care which account they are.
+- `is_credential_key(key)` — used at the three vault-split sites; matches both
+  the legacy `CREDENTIAL_FIELDS` set and namespaced secrets
+  (`acct_<id>_<secret>`), so extra-account secrets are encrypted like the
+  default's while non-secret identity fields stay in plaintext.
+
+### 19.3 Schema migration (`database/db.py`)
+
+Two categories, both idempotent:
+
+1. **Additive** (`_run_migrations`, "Migration 0/0b") — `accounts` table is
+   created and seeded first; then `account_id` columns are added to the Inkbunny
+   analytics tables and `posting_queue`/`posting_log`, and existing rows are
+   backfilled to the platform default. `account_id = 0` is the "unset" sentinel
+   (real ids start at 1); after backfill no row is 0.
+2. **Constraint rebuilds** (`_run_table_rebuilds`) — run on a dedicated
+   **foreign-keys-off, autocommit** connection because SQLite can only toggle FK
+   enforcement outside a transaction, and dropping the FK-referenced
+   `publications` table with FK on would trigger an implicit DELETE that violates
+   `posting_queue`/`posting_log`. Rebuilds: `session_cache` singleton
+   (`CHECK id=1`) → `PK account_id`; `watchers` `UNIQUE(username)` →
+   `UNIQUE(account_id, username)`; `publications`
+   `UNIQUE(story_name, chapter_index, platform)` → `+ account_id`. Each guards on
+   the presence of the `account_id` column and cleans up any leftover `*_new`
+   table, so re-runs are safe.
+
+Fresh installs run the same path: the `.sql` schema files still create the
+old shape, then the migration immediately upgrades it (cheap on empty tables).
+
+### 19.4 Runtime
+
+- **Polling** — `polling/poller.py` `run_poll_cycle(account_id=None, …)`. When
+  `account_id` is None it resolves the platform's default account (back-compat).
+  Per-account credentials, per-account cached session, and per-account first-poll
+  suppression (`_first_poll_done` set). A single module lock still serialises IB
+  polls — accounts on one platform poll sequentially by design (rate limits).
+- **Posting** — `posting_queries.upsert_publication` / `get_publication_by_story`
+  take an optional `account_id` (None → platform default). The Inkbunny poster
+  holds an `account_id` and reads `session_cache WHERE account_id = ?` — the old
+  singleton `WHERE id = 1` read is gone (it would have shared one auth token
+  across accounts; this is the single most important posting fix).
+
+### 19.5 API + sync
+
+- `routes/settings_api.py` exposes `accounts_router` (`/api/accounts` CRUD).
+  Deleting a default account is refused; extra accounts' namespaced credentials
+  are removed on delete.
+- Settings sync (`config.get_settings_for_sync` / `merge_synced_settings`)
+  carries an `_accounts_manifest` (serialized `accounts` table) so desktop and
+  server agree on which accounts exist. `accounts.apply_manifest` is an additive
+  upsert (never deletes) keyed on `account_id` to keep the surrogate stable.
+
+### 19.6 Pending / known gaps
+
+- **Polling** is account-aware for **all 11 platforms** — the orchestrator
+  enumerates each platform's enabled accounts; there is no legacy single-account
+  path left.
+- **Posting** data layer is account-aware end to end (`/api/posting/post`
+  `account_ids`, `/api/posting/update` `account_id`; `manager._get_poster` keyed by
+  `(platform, account_id)`; scheduler + desktop auto-queue carry `account_id`).
+  Only the **IB and FA posters** authenticate per account in `_ensure_client`; the
+  other posters (ws, sf, sqw, ao3, da, bsky, ik) still read flat creds and post as
+  the default account. The frontend publish-check matrix also doesn't expose a
+  "post as account" selector yet.
+- The **Accounts page** shows per-account stat rollups (`accounts.account_stats`),
+  but the main per-submission dashboard charts/tables in `app.js` still aggregate
+  across accounts — a per-account picker there is pending, as is the frontend
+  "post as account" selector in the publish-check matrix.
+- Cross-cutting done: the consolidated Telegram summary labels accounts when a
+  platform has more than one; drift records (`posting/sync.py`) carry `account_id`.
+  Pending: the diagnostics tab per account; desktop `main.py` polls only default
+  accounts (polling is server-side, so low priority).

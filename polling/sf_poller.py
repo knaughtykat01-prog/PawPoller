@@ -38,7 +38,7 @@ sf_poll_progress = {
 
 _sf_poll_running = False
 _sf_poll_lock = threading.Lock()
-_sf_first_poll = True
+_sf_first_poll_done: set[int] = set()
 
 # Persistent client — reused across poll cycles to avoid re-logging in
 # every time.  Recreated only when credentials change in settings.
@@ -126,21 +126,21 @@ async def _send_sf_follower_telegram(new_follower_names: list[str]) -> None:
     )
 
 
-def _get_or_create_client(settings: dict) -> SoFurryClient:
-    """Return the persistent SoFurryClient, creating or updating as needed.
+def _get_or_create_client(settings: dict, account_id: int, is_default: bool) -> SoFurryClient:
+    """Return the persistent SoFurryClient, re-pointed at the account's creds.
 
-    If the credentials in settings have changed since the last poll, the
-    existing client is updated (which invalidates the cached session so
-    the next poll will re-login) and saved cookies are cleared.
-
-    On first creation, restores any saved session cookies from settings.json
-    so the app can skip re-login if the remember_web cookie is still valid.
+    SF accounts poll sequentially (single lock), so one persistent client whose
+    credentials are updated each cycle suffices. Session cookies are stored and
+    cleared under the account's own settings key.
     """
     global _sf_client
-    sf_user = settings.get("sf_username", "")
-    sf_pass = settings.get("sf_password", "")
-    sf_display = settings.get("sf_display_name", "")
+    creds = config.resolve_account_credentials("sf", account_id, is_default, settings)
+    sf_user = creds.get("sf_username", "")
+    sf_pass = creds.get("sf_password", "")
+    sf_display = creds.get("sf_display_name", "")
+    # TOTP is a transient login code, not a stored per-account credential.
     sf_totp = settings.get("sf_totp_code", "")
+    cookies_key = config.account_setting_key(account_id, "sf_session_cookies", is_default)
 
     from polling.cf_proxy import proxy_kwargs
     sf_proxy = proxy_kwargs(settings, "sf")
@@ -156,20 +156,20 @@ def _get_or_create_client(settings: dict) -> SoFurryClient:
         # Restore saved session cookies (if any) to skip login.
         # Only useful when NOT using the CF proxy (direct login).
         if not sf_proxy:
-            saved_cookies = settings.get("sf_session_cookies")
+            saved_cookies = creds.get("sf_session_cookies")
             if saved_cookies:
                 _sf_client.import_cookies(saved_cookies)
     else:
         changed = _sf_client.update_credentials(sf_user, sf_pass, sf_display, sf_totp)
         if changed:
-            config.delete_settings_keys(["sf_session_cookies"])
+            config.delete_settings_keys([cookies_key])
             logger.info("SF credentials changed -- cleared saved session cookies")
 
     return _sf_client
 
 
-async def run_sf_poll_cycle(force_full: bool = False) -> dict:
-    """Execute one complete SoFurry poll cycle.
+async def run_sf_poll_cycle(account_id: int | None = None, force_full: bool = False) -> dict:
+    """Execute one complete SoFurry poll cycle for a single account.
 
     Steps:
       1. Login and validate session
@@ -177,10 +177,21 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
       3. Fetch details for each submission
       4. Upsert submissions and record snapshots
     """
-    global _sf_poll_running, _sf_first_poll
+    global _sf_poll_running
+
+    from database import accounts as accounts_db
+    _ac = get_connection()
+    try:
+        if account_id is None:
+            account_id = accounts_db.get_default_account_id(_ac, "sf", create=True)
+        account_row = accounts_db.get_account(_ac, account_id)
+    finally:
+        _ac.close()
+    is_default = bool(account_row["is_default"]) if account_row else True
+    is_first = account_id not in _sf_first_poll_done
 
     if not _sf_poll_lock.acquire(blocking=False):
-        logger.warning("SF poll already running -- skipping")
+        logger.warning("SF poll already running -- skipping (account %s)", account_id)
         return {}
     _sf_poll_running = True
     _update_sf_progress("starting", message="Initialising SoFurry poll cycle...")
@@ -196,11 +207,11 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
     }
 
     settings = config.get_settings()
-    client = _get_or_create_client(settings)
+    client = _get_or_create_client(settings, account_id, is_default)
 
     try:
         conn = get_connection()
-        log_id = sf_queries.start_sf_poll_log(conn)
+        log_id = sf_queries.start_sf_poll_log(conn, account_id)
         # Step 1+2: Login and fetch gallery.
         # When using the CF Worker proxy, login + gallery happen in one
         # Worker invocation (x-proxy-login) to avoid IP rotation breaking
@@ -218,8 +229,10 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
         if not settings.get("cf_worker_url"):
             cookie_data = client.export_cookies()
             if cookie_data:
-                config.save_settings({"sf_session_cookies": cookie_data})
-                logger.info("SF: Saved session cookies to settings.json")
+                config.save_settings({
+                    config.account_setting_key(account_id, "sf_session_cookies", is_default): cookie_data
+                })
+                logger.info("SF: Saved session cookies for account %s", account_id)
 
         if not submission_ids:
             _update_sf_progress("complete", message="No SoFurry submissions found.")
@@ -245,8 +258,8 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
                 faves = detail.get("favorites_count", 0)
                 comments = detail.get("comments_count", 0)
 
-                sf_queries.upsert_sf_submission(conn, detail)
-                sf_queries.insert_sf_snapshot(conn, sub_id, views, faves, comments,
+                sf_queries.upsert_sf_submission(conn, detail, account_id)
+                sf_queries.insert_sf_snapshot(conn, account_id, sub_id, views, faves, comments,
                                               polled_at=poll_timestamp)
                 stats["snapshots_inserted"] += 1
 
@@ -262,13 +275,13 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
             _update_sf_progress("fetching_watchers", message="Scraping follower list...")
             followers = await client.scrape_followers()
             for username in followers:
-                is_new = sf_queries.upsert_sf_watcher(conn, username)
+                is_new = sf_queries.upsert_sf_watcher(conn, account_id, username)
                 if is_new:
                     stats["new_watchers_found"] += 1
                     new_follower_names.append(username)
             # Prune followers no longer on the live list
             if followers:
-                removed = sf_queries.remove_stale_sf_watchers(conn, followers)
+                removed = sf_queries.remove_stale_sf_watchers(conn, account_id, followers)
                 if removed:
                     logger.info("SF: pruned %d stale followers from DB", removed)
             conn.commit()
@@ -276,9 +289,9 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
             logger.warning("Failed to scrape SF followers: %s", we, exc_info=True)
 
         # ── Notifications (followers) ────────────────────────────
-        if _sf_first_poll:
-            logger.info("First SF poll after startup -- suppressing %d follower notifications",
-                        len(new_follower_names))
+        if is_first:
+            logger.info("First SF poll for account %s -- suppressing %d follower notifications",
+                        account_id, len(new_follower_names))
         else:
             if new_follower_names:
                 try:
@@ -301,7 +314,7 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
                      stats["new_watchers_found"])
 
         # ── Telegram notifications ────────────────────────────
-        if not _sf_first_poll:
+        if not is_first:
             from polling.telegram import send_poll_summary, check_milestones_batch, check_goals
             try:
                 await send_poll_summary("sf", stats, duration)
@@ -335,8 +348,7 @@ async def run_sf_poll_cycle(force_full: bool = False) -> dict:
             logger.debug("Error alert send failed", exc_info=True)
         raise
     finally:
-        if _sf_first_poll:
-            _sf_first_poll = False
+        _sf_first_poll_done.add(account_id)
         _sf_poll_running = False
         _sf_poll_lock.release()
         # NOTE: client is NOT closed here — it persists across poll cycles

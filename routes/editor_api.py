@@ -1636,6 +1636,7 @@ class PublishRequest(BaseModel):
     action: str = "post"          # 'post' | 'update' | 'update_metadata' | 'dry_run' | 'publish_draft'
     draft: bool = True            # SF/SQW/AO3 etc. — post as draft if supported
     confirm_live: bool = False    # Must be True for non-dry-run actions
+    account_id: int | None = None  # which account to post AS (None = platform default)
 
 
 @editor_router.post("/stories/{story_name:path}/publish")
@@ -1751,6 +1752,7 @@ async def publish(story_name: str, req: PublishRequest):
             platforms=[req.platform],
             chapters=[req.chapter],
             extras=extras,
+            account_ids={req.platform: req.account_id} if req.account_id else None,
         )
     else:  # update / update_metadata — both route through update_story
         results = await manager.update_story(
@@ -1758,6 +1760,7 @@ async def publish(story_name: str, req: PublishRequest):
             platforms=[req.platform],
             chapters=[req.chapter],
             extras=extras,
+            account_filter=req.account_id,
         )
 
     return {

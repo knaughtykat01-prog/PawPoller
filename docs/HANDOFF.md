@@ -1,11 +1,131 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-06-10
-**Current version:** 2.26.3 — pollers no longer hold the SQLite write lock across network
-awaits (IB/FA/SqW/AO3 now commit before any fetch that follows a write; was causing
-intermittent `database is locked` failures across all platforms), and timeout-family
-exceptions no longer produce blank "Poll ib failed: " messages (`describe_error()` in
-`polling/notifications.py`, applied at all 11 pollers + orchestrator + Telegram).
+**Last updated:** 2026-06-16
+**Current version:** 2.27.0 — **multiple accounts per platform** (all 11 platforms,
+polling + posting) + a **direct-FA-cookie polling fallback** for the FAExport outage.
+`APP_VERSION` is bumped and the CHANGELOG/HANDOFF/docs are finalized — **ready to release**
+(`/pp-release 2.27.0 "multi-account + FA direct fallback"` then `/pp-deploy`), NOT yet
+committed/tagged/deployed. **Heads-up before deploying:** the migration runs on the live
+server's real data (idempotent + backward-compatible, tested), and FA direct polling must
+run from the **desktop** instance (datacenter IP is Cloudflare-blocked). Deployed prod is
+still 2.26.3. See "Multi-account model" below before touching accounts / credentials /
+pollers / posting.
+
+---
+
+## Multi-account (in progress) — multiple accounts per platform
+
+**Goal:** run more than one account per platform (e.g. two FurAffinity accounts), all active
+at once, for both polling and posting. Plan file:
+`~/.claude/plans/stateless-nibbling-newell.md`. Pilot = Inkbunny + FurAffinity first, then
+roll out the other 9. Same-platform accounts poll **sequentially** (per-IP rate limits).
+
+**End-to-end status:** multi-account **polling works for ALL 11 platforms** on the server —
+the orchestrator enumerates each platform's enabled accounts (sequential within a platform,
+concurrent across platforms). Add a 2nd account on the Accounts page and it gets polled on
+the next cycle with its own credentials, session, and segregated data. **Posting** "post as
+account" is fully wired for IB + FA; the other posters still need the per-account
+`_ensure_client` treatment (see remaining list).
+
+**Landed so far (Phase 0 + IB + FA + WS verticals + orchestrator + posting + cross-cutting):**
+- **`accounts` table** (`database/accounts.py`) — global surrogate `account_id`, one
+  `is_default` account per platform (partial unique index). Seeded in `database/db.py`
+  `_run_migrations` (Migration 0) for every platform that has credentials.
+- **Credential model** (`config.py`): default account keeps the legacy flat keys
+  (`username`, `fa_cookie_a`…); extra accounts use `acct_<id>_<field>` keys. Resolver
+  `get_account_credentials` / `resolve_account_credentials`; vault routing via
+  `is_credential_key` (catches namespaced secrets). **Zero credential migration** for
+  existing installs.
+- **Schema migrations** (`database/db.py`): additive `account_id` on IB
+  submissions/snapshots/comments/poll_log/faving_users + posting_queue/posting_log
+  (backfilled to the platform's default account — NOT literally id 1); constraint rebuilds
+  in `_run_table_rebuilds()` on an FK-off connection: `session_cache` singleton →
+  PK `account_id`, `watchers` → `UNIQUE(account_id, username)`, `publications` →
+  `UNIQUE(story_name, chapter_index, platform, account_id)`.
+- **IB queries** (`database/queries.py`): session/snapshot/submission/faving/watcher/
+  poll_log writes all take `account_id`.
+- **IB poller** (`polling/poller.py`): `run_poll_cycle(account_id=None, …)` — per-account
+  creds + session; first-poll suppression is per-account; `account_id=None` ⇒ default account.
+- **IB posting**: `posting_queries.upsert_publication` / `get_publication_by_story` are
+  account-aware (default → platform default); IB poster `_ensure_client` reads
+  `session_cache WHERE account_id = ?` (the old `id=1` shared-token read is GONE).
+- **FurAffinity vertical** — additive `account_id` on `fa_submissions`/`fa_snapshots`/
+  `fa_comments`/`fa_poll_log`/`fa_profile_stats`; `fa_watchers` rebuilt to
+  `UNIQUE(account_id, username)` preserving spam columns; `fa_queries.py` (incl. the
+  watcher spam-confirmation flow) and `fa_poller.py` are account-scoped;
+  `send_fa_watcher_digest` iterates accounts.
+- **Orchestrator** (`server.py` `_poll_all`) — enumerates enabled accounts for
+  account-aware platforms (`ib`, `fa`), polling a platform's accounts sequentially and
+  platforms concurrently; per-account creds gate via `accounts.DEFAULT_CRED_CHECKS`.
+- **Account CRUD API** (`routes/accounts` in `routes/settings_api.py`) + Accounts page
+  (`frontend/js/accounts.js`, nav + `#/accounts` route). Sync carries an `_accounts_manifest`.
+- **Tests**: `tests/test_accounts.py`, `tests/test_migration_multiaccount.py` (legacy→multi
+  upgrade for IB **and** FA, all green — 121 passed).
+
+- **Posting "post as account"** — account-aware end to end (HTTP →
+  manager → posters → scheduler → queue → DB). `POST /api/posting/post` takes
+  `account_ids: {platform: id}`, `/api/posting/update` takes `account_id`;
+  `manager._get_poster` is keyed `(platform, account_id)`; IB+FA posters
+  authenticate per account; `update_story` updates each pub as its own account;
+  the scheduler/desktop-auto-queue carry `account_id`.
+
+- **Per-account stats** on the Accounts page (each account's subs/views/faves/
+  comments side by side, via `accounts.account_stats` + `GET /api/accounts`).
+- **Telegram** consolidated summary labels accounts when a platform has >1.
+- **Drift** (`posting/sync.py`) change records carry `account_id`.
+
+**Remaining:**
+1. **Posting "post as account" for the other posters** — IB + FA posters
+   authenticate per account in `_ensure_client`; the rest (`ws`, `sf`, `sqw`,
+   `ao3`, `da`, `bsky`, `ik` posters) still read flat creds, so they post as the
+   default account regardless of the selected account. Give each the same
+   treatment the IB/FA posters got (read `config.resolve_account_credentials`
+   + per-account session/cookies). The posting *data layer*
+   (`posting_queries`/manager/scheduler) is already account-aware.
+2. **Frontend "post as" selector** — the publish-check matrix
+   (`frontend/js/publish_check.js`) should let you pick which account to post as
+   and pass `account_ids` to `/api/posting/post`. Backend is ready.
+3. **Deeper dashboard integration** — an account picker on the main per-submission
+   charts/tables in `app.js` (the Accounts page already shows per-account rollups;
+   the big dashboard still aggregates across accounts).
+4. **Diagnostics per account**; desktop `main.py` account enumeration (polling is
+   server-side, so lower priority).
+5. **Version bump + CHANGELOG version entry + deploy** once the pilot is end-to-end.
+
+**FurAffinity polling — FAExport upstream (resolved diagnosis, 2026-06-16):**
+The owner (Deer-Spangle) replied on
+[faexport#129](https://github.com/Deer-Spangle/faexport/issues/129): the public
+`faexport.spangle.org.uk` instance is hitting a **persistent Cloudflare challenge
+page** (now the standard managed-challenge interstitial, not a text error). He
+**tried changing his VPS IP and still gets blocked**, and switched his own
+services to a **locally-hosted FAExport** (which works); the public site is
+best-effort and has been blocked unusually long. A community commenter
+(bshahin101) mapped the Cloudflare codes: 1006/1007/1008 = IP-banned, 1015 =
+rate-limited, managed challenge = needs a real browser/token — and noted a
+managed challenge (which is what FA now serves) is **not** solvable by IP
+rotation. **Implication for PawPoller:** the CF Worker proxy (IP rotation) will
+NOT fix FA polling — it's a challenge, not just an IP block. The only viable
+fixes are (a) **self-host FAExport** (the owner's own solution), or (b) the
+**direct-FA-cookie polling** fallback (the posting path already talks to FA
+directly via cookies). Owner may file an FA trouble ticket; no public-API ETA.
+
+**Fallback (b) is now implemented.** `clients/fa/client.py` gained
+`get_all_gallery_ids_direct` / `get_submission_details_batch_direct` /
+`_parse_submission_html` — they scrape FA's gallery + submission pages directly
+via the session cookies and return the same dict shape as the FAExport path. The
+FA poller tries FAExport first and **auto-falls-back to direct on failure**; set
+`fa_direct_polling=true` to skip FAExport entirely (recommended while it's
+blocked). Comment/watcher/profile data is FAExport-only and skipped in direct
+mode; the core views/faves/comments snapshot still works. **Run it from the
+desktop instance** — FA's Cloudflare blocks the datacenter server IP. Parser
+verified by `tests/test_fa_direct.py`. If FA HTML drifts, the regexes in
+`_parse_submission_html` (stats/title/rating/tags) are the things to update.
+
+**Riskiest watch-items:** any poster still reading `session_cache WHERE id=1` (silent
+shared token); reintroducing the write-lock-across-await bug in pollers; account-manifest
+sync surrogate stability; backfill landing on the right per-platform default account.
+
+---
 
 **Per-version history lives in `../CHANGELOG.md`** — every release has a full prose entry
 there. Grep it by version (`## [2.26.1]`) instead of reading it whole. This file carries

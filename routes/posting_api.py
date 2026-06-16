@@ -474,7 +474,8 @@ async def post_story(body: dict):
     Body: {
         "story_name": "Extra_Credit",
         "platforms": ["ib", "bsky"],
-        "chapters": [1, 2, 3]   // optional, null = all
+        "chapters": [1, 2, 3],         // optional, null = all
+        "account_ids": {"ib": 5}       // optional, {platform: account_id}; absent → default account
     }
     """
     from posting import manager
@@ -482,6 +483,7 @@ async def post_story(body: dict):
     story_name = body.get("story_name")
     platforms = body.get("platforms", [])
     chapters = body.get("chapters")
+    account_ids = body.get("account_ids")
 
     if not story_name:
         raise HTTPException(400, detail="story_name is required")
@@ -489,7 +491,8 @@ async def post_story(body: dict):
         raise HTTPException(400, detail="platforms list is required")
 
     try:
-        results = await manager.post_story(story_name, platforms, chapters)
+        results = await manager.post_story(story_name, platforms, chapters,
+                                           account_ids=account_ids)
         successes = sum(1 for r in results if r.get("success"))
         return {
             "status": "completed",
@@ -512,7 +515,8 @@ async def update_story(body: dict):
     Body: {
         "story_name": "Extra_Credit",
         "platforms": ["ib"],        // optional, null = all
-        "chapters": [3]            // optional, null = all
+        "chapters": [3],            // optional, null = all
+        "account_id": 5             // optional — only update this account's pubs
     }
     """
     from posting import manager
@@ -520,12 +524,14 @@ async def update_story(body: dict):
     story_name = body.get("story_name")
     platforms = body.get("platforms")
     chapters = body.get("chapters")
+    account_filter = body.get("account_id")
 
     if not story_name:
         raise HTTPException(400, detail="story_name is required")
 
     try:
-        results = await manager.update_story(story_name, platforms, chapters)
+        results = await manager.update_story(story_name, platforms, chapters,
+                                             account_filter=account_filter)
         successes = sum(1 for r in results if r.get("success"))
         return {
             "status": "completed",

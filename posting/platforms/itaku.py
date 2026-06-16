@@ -44,8 +44,9 @@ class ItakuPoster(PlatformPoster):
     async def _ensure_client(self) -> tuple[IKClient, str]:
         """Get client and auth token."""
         settings = config.get_settings()
-        target_user = settings.get("ik_target_user", "")
-        token = settings.get("ik_auth_token", "")
+        creds = self._resolve_creds("ik", settings)
+        target_user = creds.get("ik_target_user", "")
+        token = creds.get("ik_auth_token", "")
         if not token:
             raise RuntimeError("Itaku auth token not configured (ik_auth_token)")
 

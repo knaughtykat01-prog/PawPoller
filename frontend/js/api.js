@@ -71,6 +71,40 @@ const API = {
         return resp.json();
     },
 
+    /* ── Core transport: PATCH / DELETE ─────────────────────────
+     * Same JSON + error-handling contract as post(). Used by REST-style
+     * resources such as the accounts registry (/api/accounts/{id}).
+     */
+    async patch(path, body = {}) {
+        if (_API_DEBUG) console.log('[API] PATCH', path, body);
+        const resp = await fetch(path, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!resp.ok) {
+            const text = await resp.text();
+            throw new Error(`API ${resp.status}: ${text}`);
+        }
+        return resp.json();
+    },
+
+    async del(path) {
+        if (_API_DEBUG) console.log('[API] DELETE', path);
+        const resp = await fetch(path, { method: 'DELETE' });
+        if (!resp.ok) {
+            const text = await resp.text();
+            throw new Error(`API ${resp.status}: ${text}`);
+        }
+        return resp.json();
+    },
+
+    /* ── Accounts registry (multi-account) ─────────────────────── */
+    getAccounts(platform) { return this.get('/api/accounts', platform ? { platform } : {}); },
+    createAccount(body) { return this.post('/api/accounts', body); },
+    updateAccount(id, body) { return this.patch(`/api/accounts/${id}`, body); },
+    deleteAccount(id) { return this.del(`/api/accounts/${id}`); },
+
     /* ── IB (Inkbunny) convenience methods ─────────────────────
      * General status, submission CRUD, snapshot history, aggregation,
      * comparison, polling control, session management, authentication,

@@ -92,10 +92,11 @@ class AO3Poster(PlatformPoster):
             return self._client
 
         settings = config.get_settings()
-        username = settings.get("ao3_username", "")
-        password = settings.get("ao3_password", "")
-        target_user = settings.get("ao3_target_user", "") or username
-        session_cookie = settings.get("ao3_session_cookie", "")
+        creds = self._resolve_creds("ao3", settings)
+        username = creds.get("ao3_username", "")
+        password = creds.get("ao3_password", "")
+        target_user = creds.get("ao3_target_user", "") or username
+        session_cookie = creds.get("ao3_session_cookie", "")
         if not session_cookie and (not username or not password):
             raise RuntimeError("AO3 credentials not configured")
 

@@ -40,30 +40,38 @@ class InkbunnyPoster(PlatformPoster):
     max_file_size = 200 * 1024 * 1024  # 200 MB
     accepted_file_types = ["txt", "doc", "rtf", "pdf", "png", "jpg", "gif", "mp3", "mp4"]
 
-    def __init__(self):
+    def __init__(self, account_id: int | None = None):
         self._client: InkbunnyClient | None = None
+        # Which Inkbunny account to post as. None → the default account.
+        self.account_id = account_id
 
     async def _ensure_client(self) -> InkbunnyClient:
-        """Get or create an authenticated Inkbunny client."""
+        """Get or create an authenticated Inkbunny client for this account."""
         if self._client and self._client.sid:
             return self._client
 
-        settings = config.get_settings()
-        username = settings.get("username", "")
-        password = settings.get("password", "")
-        if not username or not password:
-            raise RuntimeError("Inkbunny credentials not configured")
-
-        self._client = InkbunnyClient(username=username, password=password)
-
-        # Try to reuse cached SID
         conn = get_connection()
         try:
-            row = conn.execute("SELECT sid FROM session_cache WHERE id = 1").fetchone()
+            from database import accounts as _accts
+            acct_id = self.account_id
+            if acct_id is None:
+                acct_id = _accts.get_default_account_id(conn, "ib", create=True)
+                self.account_id = acct_id
+            acct = _accts.get_account(conn, acct_id)
+            is_default = bool(acct["is_default"]) if acct else True
+            creds = config.resolve_account_credentials("ib", acct_id, is_default)
+            username = creds.get("username", "")
+            password = creds.get("password", "")
+            if not username or not password:
+                raise RuntimeError("Inkbunny credentials not configured")
+            # Reuse this account's cached SID (no longer the singleton id=1).
+            row = conn.execute(
+                "SELECT sid FROM session_cache WHERE account_id = ?", (acct_id,)).fetchone()
             cached_sid = row["sid"] if row else None
         finally:
             conn.close()
 
+        self._client = InkbunnyClient(username=username, password=password)
         await self._client.ensure_session(cached_sid)
         return self._client
 

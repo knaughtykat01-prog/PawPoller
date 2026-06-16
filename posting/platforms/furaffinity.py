@@ -46,17 +46,31 @@ class FurAffinityPoster(PlatformPoster):
     max_file_size = 10 * 1024 * 1024  # 10 MB
     accepted_file_types = ["pdf", "doc", "docx", "rtf", "txt", "odt", "jpg", "png", "gif"]
 
-    def __init__(self):
+    def __init__(self, account_id: int | None = None):
         self._client: FAClient | None = None
+        # Which FA account to post as. None → the default account.
+        self.account_id = account_id
 
     async def _ensure_client(self) -> FAClient:
         if self._client:
             return self._client
 
-        settings = config.get_settings()
-        username = settings.get("fa_username", "")
-        cookie_a = settings.get("fa_cookie_a", "")
-        cookie_b = settings.get("fa_cookie_b", "")
+        from database.db import get_connection
+        from database import accounts as _accts
+        conn = get_connection()
+        try:
+            acct_id = self.account_id
+            if acct_id is None:
+                acct_id = _accts.get_default_account_id(conn, "fa", create=True)
+                self.account_id = acct_id
+            acct = _accts.get_account(conn, acct_id)
+            is_default = bool(acct["is_default"]) if acct else True
+        finally:
+            conn.close()
+        creds = config.resolve_account_credentials("fa", acct_id, is_default)
+        username = creds.get("fa_username", "")
+        cookie_a = creds.get("fa_cookie_a", "")
+        cookie_b = creds.get("fa_cookie_b", "")
         if not cookie_a or not cookie_b:
             raise RuntimeError("FurAffinity cookies not configured")
 

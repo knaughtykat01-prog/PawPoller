@@ -108,6 +108,286 @@ def init_db() -> None:
     finally:
         conn.close()
 
+    # Constraint-changing table rebuilds for multi-account (session_cache PK,
+    # watchers/publications UNIQUE). These run on a dedicated FK-off connection
+    # because SQLite can only toggle foreign-key enforcement outside a
+    # transaction, and dropping the FK-referenced publications table with FK on
+    # would trigger an implicit DELETE that violates posting_queue/posting_log.
+    _run_table_rebuilds()
+
+
+def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+    ).fetchone() is not None
+
+
+def _add_account_id_and_backfill(conn: sqlite3.Connection, _accounts, platform: str,
+                                 tables: list[str], data_check_table: str | None = None) -> None:
+    """Additive account_id column + backfill to the platform's default account.
+
+    Generic version of the inline IB/FA blocks, used to roll the analytics
+    account_id columns out to additional platforms. account_id=0 is the "unset"
+    sentinel; after backfill no row is 0. Idempotent.
+    """
+    existing = [t for t in tables if _table_exists(conn, t)]
+    for t in existing:
+        try:
+            conn.execute(f"ALTER TABLE {t} ADD COLUMN account_id INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+    default_id = _accounts.get_default_account_id(conn, platform)
+    if default_id is None and data_check_table and data_check_table in existing:
+        if conn.execute(f"SELECT 1 FROM {data_check_table} LIMIT 1").fetchone():
+            default_id = _accounts.get_default_account_id(conn, platform, create=True)
+    if default_id is not None:
+        for t in existing:
+            conn.execute(
+                f"UPDATE {t} SET account_id = ? WHERE account_id = 0 OR account_id IS NULL",
+                (default_id,))
+
+
+def _run_table_rebuilds() -> None:
+    """Constraint-changing table rebuilds for multi-account support.
+
+    Runs on a dedicated autocommit connection with foreign keys OFF. Each
+    rebuild is idempotent (guarded on the presence of the account_id column) and
+    cleans up any leftover ``*_new`` table from an interrupted prior run.
+    """
+    conn = sqlite3.connect(str(config.DB_PATH), timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.isolation_level = None  # autocommit so PRAGMA foreign_keys toggling applies
+    try:
+        from database import accounts as _accounts
+        _accounts.ensure_accounts_table(conn)
+        conn.execute("PRAGMA foreign_keys=OFF")
+        _rebuild_session_cache(conn, _accounts)
+        _rebuild_watchers(conn, _accounts)
+        _rebuild_fa_watchers(conn, _accounts)
+        _rebuild_sf_watchers(conn, _accounts)
+        _rebuild_publications(conn, _accounts)
+    finally:
+        try:
+            conn.execute("PRAGMA foreign_keys=ON")
+        except sqlite3.Error:
+            pass
+        conn.close()
+
+
+def _rebuild_session_cache(conn: sqlite3.Connection, _accounts) -> None:
+    """session_cache singleton (CHECK id=1) → one row per account (PK account_id)."""
+    if not _table_exists(conn, "session_cache"):
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(session_cache)").fetchall()}
+    if "account_id" in cols:
+        return  # already migrated
+    user_id_expr = "user_id" if "user_id" in cols else "0"
+    old = conn.execute(
+        f"SELECT sid, username, {user_id_expr} AS user_id, created_at "
+        f"FROM session_cache WHERE id = 1"
+    ).fetchone()
+    target = _accounts.get_default_account_id(conn, "ib")
+    if old is not None and target is None:
+        target = _accounts.get_default_account_id(conn, "ib", create=True)
+    conn.execute("DROP TABLE IF EXISTS session_cache_new")
+    conn.execute(
+        """CREATE TABLE session_cache_new (
+            account_id INTEGER PRIMARY KEY,
+            sid        TEXT NOT NULL,
+            username   TEXT NOT NULL,
+            user_id    INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )"""
+    )
+    if old is not None and target is not None:
+        conn.execute(
+            "INSERT INTO session_cache_new (account_id, sid, username, user_id, created_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (target, old["sid"], old["username"], old["user_id"], old["created_at"]),
+        )
+    conn.execute("DROP TABLE session_cache")
+    conn.execute("ALTER TABLE session_cache_new RENAME TO session_cache")
+    logger.info("Rebuilt session_cache for multi-account (PK account_id)")
+
+
+def _rebuild_watchers(conn: sqlite3.Connection, _accounts) -> None:
+    """watchers UNIQUE(username) → UNIQUE(account_id, username)."""
+    if not _table_exists(conn, "watchers"):
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(watchers)").fetchall()}
+    if "account_id" in cols:
+        return
+    target = _accounts.get_default_account_id(conn, "ib")
+    has_rows = conn.execute("SELECT 1 FROM watchers LIMIT 1").fetchone() is not None
+    if target is None and has_rows:
+        target = _accounts.get_default_account_id(conn, "ib", create=True)
+    conn.execute("DROP TABLE IF EXISTS watchers_new")
+    conn.execute(
+        """CREATE TABLE watchers_new (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id    INTEGER NOT NULL DEFAULT 0,
+            user_id       INTEGER NOT NULL DEFAULT 0,
+            username      TEXT NOT NULL,
+            first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(account_id, username)
+        )"""
+    )
+    if target is not None:
+        conn.execute(
+            "INSERT OR IGNORE INTO watchers_new (account_id, user_id, username, first_seen_at)"
+            " SELECT ?, user_id, username, first_seen_at FROM watchers WHERE username != ''",
+            (target,),
+        )
+    conn.execute("DROP TABLE watchers")
+    conn.execute("ALTER TABLE watchers_new RENAME TO watchers")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_watchers_seen ON watchers(first_seen_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_watchers_acct ON watchers(account_id)")
+    logger.info("Rebuilt watchers for multi-account (UNIQUE(account_id, username))")
+
+
+def _rebuild_fa_watchers(conn: sqlite3.Connection, _accounts) -> None:
+    """fa_watchers UNIQUE(username) → UNIQUE(account_id, username), preserving
+    the spam-protection columns (confirmed/last_seen_at/is_spam/notified)."""
+    if not _table_exists(conn, "fa_watchers"):
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(fa_watchers)").fetchall()}
+    if "account_id" in cols:
+        return
+    target = _accounts.get_default_account_id(conn, "fa")
+    has_rows = conn.execute("SELECT 1 FROM fa_watchers LIMIT 1").fetchone() is not None
+    if target is None and has_rows:
+        target = _accounts.get_default_account_id(conn, "fa", create=True)
+    conn.execute("DROP TABLE IF EXISTS fa_watchers_new")
+    conn.execute(
+        """CREATE TABLE fa_watchers_new (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id    INTEGER NOT NULL DEFAULT 0,
+            username      TEXT NOT NULL,
+            first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+            confirmed     INTEGER NOT NULL DEFAULT 0,
+            last_seen_at  TEXT DEFAULT (datetime('now')),
+            is_spam       INTEGER NOT NULL DEFAULT 0,
+            notified      INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(account_id, username)
+        )"""
+    )
+    if target is not None:
+        conn.execute(
+            "INSERT OR IGNORE INTO fa_watchers_new "
+            "(account_id, username, first_seen_at, confirmed, last_seen_at, is_spam, notified) "
+            "SELECT ?, username, first_seen_at, confirmed, last_seen_at, is_spam, notified "
+            "FROM fa_watchers WHERE username != ''",
+            (target,),
+        )
+    conn.execute("DROP TABLE fa_watchers")
+    conn.execute("ALTER TABLE fa_watchers_new RENAME TO fa_watchers")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fa_watchers_seen ON fa_watchers(first_seen_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fa_watchers_pending ON fa_watchers(confirmed, notified)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fa_watchers_acct ON fa_watchers(account_id)")
+    logger.info("Rebuilt fa_watchers for multi-account (UNIQUE(account_id, username))")
+
+
+def _rebuild_sf_watchers(conn: sqlite3.Connection, _accounts) -> None:
+    """sf_watchers UNIQUE(username) → UNIQUE(account_id, username)."""
+    if not _table_exists(conn, "sf_watchers"):
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(sf_watchers)").fetchall()}
+    if "account_id" in cols:
+        return
+    target = _accounts.get_default_account_id(conn, "sf")
+    has_rows = conn.execute("SELECT 1 FROM sf_watchers LIMIT 1").fetchone() is not None
+    if target is None and has_rows:
+        target = _accounts.get_default_account_id(conn, "sf", create=True)
+    conn.execute("DROP TABLE IF EXISTS sf_watchers_new")
+    conn.execute(
+        """CREATE TABLE sf_watchers_new (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id    INTEGER NOT NULL DEFAULT 0,
+            username      TEXT NOT NULL,
+            first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(account_id, username)
+        )"""
+    )
+    if target is not None:
+        conn.execute(
+            "INSERT OR IGNORE INTO sf_watchers_new (account_id, username, first_seen_at)"
+            " SELECT ?, username, first_seen_at FROM sf_watchers WHERE username != ''",
+            (target,),
+        )
+    conn.execute("DROP TABLE sf_watchers")
+    conn.execute("ALTER TABLE sf_watchers_new RENAME TO sf_watchers")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sf_watchers_acct ON sf_watchers(account_id)")
+    logger.info("Rebuilt sf_watchers for multi-account (UNIQUE(account_id, username))")
+
+
+def _rebuild_publications(conn: sqlite3.Connection, _accounts) -> None:
+    """publications UNIQUE(story,chapter,platform) → +account_id, per-row backfill."""
+    if not _table_exists(conn, "publications"):
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(publications)").fetchall()}
+    if "account_id" in cols:
+        return
+    conn.execute("DROP TABLE IF EXISTS publications_new")
+    conn.execute(
+        """CREATE TABLE publications_new (
+            pub_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            story_name       TEXT NOT NULL,
+            chapter_index    INTEGER DEFAULT 0,
+            chapter_title    TEXT DEFAULT '',
+            platform         TEXT NOT NULL,
+            account_id       INTEGER NOT NULL DEFAULT 0,
+            external_id      TEXT NOT NULL DEFAULT '',
+            external_url     TEXT DEFAULT '',
+            format_file      TEXT DEFAULT '',
+            file_hash        TEXT DEFAULT '',
+            tags_used        TEXT DEFAULT '[]',
+            title_used       TEXT DEFAULT '',
+            description_used TEXT DEFAULT '',
+            rating_used      TEXT DEFAULT '',
+            status           TEXT NOT NULL DEFAULT 'draft',
+            first_posted_at  TEXT,
+            last_updated_at  TEXT,
+            update_count     INTEGER DEFAULT 0,
+            last_error       TEXT,
+            created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+            word_count       INTEGER DEFAULT 0,
+            UNIQUE(story_name, chapter_index, platform, account_id)
+        )"""
+    )
+    # Preserve pub_id so posting_queue/posting_log FK references stay valid.
+    conn.execute(
+        """INSERT INTO publications_new
+            (pub_id, story_name, chapter_index, chapter_title, platform, external_id,
+             external_url, format_file, file_hash, tags_used, title_used,
+             description_used, rating_used, status, first_posted_at, last_updated_at,
+             update_count, last_error, created_at, word_count)
+        SELECT pub_id, story_name, chapter_index, chapter_title, platform, external_id,
+             external_url, format_file, COALESCE(file_hash, ''), tags_used, title_used,
+             description_used, rating_used, status, first_posted_at, last_updated_at,
+             update_count, last_error, COALESCE(created_at, datetime('now')), word_count
+        FROM publications"""
+    )
+    # Backfill each row to ITS platform's default account (publications spans
+    # platforms — so the target is not a single account).
+    platforms = [r["platform"] for r in
+                 conn.execute("SELECT DISTINCT platform FROM publications_new").fetchall()]
+    for plat in platforms:
+        aid = _accounts.get_default_account_id(conn, plat) \
+            or _accounts.get_default_account_id(conn, plat, create=True)
+        conn.execute(
+            "UPDATE publications_new SET account_id = ? "
+            "WHERE platform = ? AND (account_id = 0 OR account_id IS NULL)",
+            (aid, plat),
+        )
+    conn.execute("DROP TABLE publications")
+    conn.execute("ALTER TABLE publications_new RENAME TO publications")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_publications_story ON publications(story_name)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_publications_platform ON publications(platform)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_publications_status ON publications(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_publications_account ON publications(account_id)")
+    logger.info("Rebuilt publications for multi-account (UNIQUE incl account_id)")
+
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
     """Apply schema migrations for existing databases.
@@ -122,6 +402,126 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     """
     # Get the set of all table names currently in the database.
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+
+    # Migration 0: Multi-account registry.
+    # The `accounts` table is the cross-platform identity layer that lets more
+    # than one account run per platform. It MUST be created and seeded before any
+    # per-platform account_id backfill below, because those backfills target the
+    # platform's *default* account_id (which is created here). Seeding gives every
+    # platform that already has credentials a default account whose data is the
+    # pre-multi-account single-account history.
+    from database import accounts as _accounts
+    _accounts.ensure_accounts_table(conn)
+    try:
+        _accounts.seed_default_accounts(conn, config.get_settings())
+    except Exception as e:  # never let seeding block startup migrations
+        logger.warning("Default-account seeding skipped: %s", e)
+
+    # Migration 0b: Inkbunny account_id discriminator (additive columns).
+    # Adds account_id to the IB analytics tables and backfills all existing rows
+    # to the IB default account (the pre-multi-account history belongs to it).
+    # The constraint-changing rebuilds (session_cache PK, watchers UNIQUE,
+    # publications UNIQUE) happen separately in _run_table_rebuilds() because
+    # they need FK enforcement toggled off, which is impossible inside this
+    # transaction. account_id is NEVER 0 after backfill — 0 is the "unset"
+    # sentinel (real account_ids start at 1, AUTOINCREMENT).
+    _ib_acct_tables = ["submissions", "snapshots", "comments", "poll_log", "faving_users"]
+    for _t in _ib_acct_tables:
+        if _t in tables:
+            try:
+                conn.execute(f"ALTER TABLE {_t} ADD COLUMN account_id INTEGER NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
+    _ib_default = _accounts.get_default_account_id(conn, "ib")
+    if _ib_default is None and "submissions" in tables:
+        # Existing IB data but no seeded default (e.g. creds cleared) — make one.
+        if conn.execute("SELECT 1 FROM submissions LIMIT 1").fetchone():
+            _ib_default = _accounts.get_default_account_id(conn, "ib", create=True)
+    if _ib_default is not None:
+        for _t in _ib_acct_tables:
+            if _t in tables:
+                conn.execute(
+                    f"UPDATE {_t} SET account_id = ? WHERE account_id = 0 OR account_id IS NULL",
+                    (_ib_default,))
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_acct ON snapshots(account_id, submission_id, polled_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_submissions_acct ON submissions(account_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_acct ON comments(account_id, first_seen_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_faving_users_acct ON faving_users(account_id, submission_id, user_id)")
+
+    # Posting tables: additive account_id. posting_queue/posting_log carry no
+    # UNIQUE on the (story, chapter, platform) tuple, so a plain column add is
+    # enough; the publications UNIQUE rebuild is in _run_table_rebuilds().
+    for _t in ("posting_queue", "posting_log"):
+        if _t in tables:
+            try:
+                conn.execute(f"ALTER TABLE {_t} ADD COLUMN account_id INTEGER NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
+
+    # Migration 0c: FurAffinity account_id discriminator (additive columns).
+    # Mirrors the IB block. FA has no session_cache (cookie auth) but adds
+    # fa_profile_stats (per-account pageviews). fa_watchers UNIQUE rebuild is in
+    # _run_table_rebuilds(). Backfill to the FA default account.
+    _fa_acct_tables = ["fa_submissions", "fa_snapshots", "fa_comments",
+                       "fa_poll_log", "fa_profile_stats"]
+    for _t in _fa_acct_tables:
+        if _t in tables:
+            try:
+                conn.execute(f"ALTER TABLE {_t} ADD COLUMN account_id INTEGER NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
+    _fa_default = _accounts.get_default_account_id(conn, "fa")
+    if _fa_default is None and "fa_submissions" in tables:
+        if conn.execute("SELECT 1 FROM fa_submissions LIMIT 1").fetchone():
+            _fa_default = _accounts.get_default_account_id(conn, "fa", create=True)
+    if _fa_default is not None:
+        for _t in _fa_acct_tables:
+            if _t in tables:
+                conn.execute(
+                    f"UPDATE {_t} SET account_id = ? WHERE account_id = 0 OR account_id IS NULL",
+                    (_fa_default,))
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fa_snapshots_acct ON fa_snapshots(account_id, submission_id, polled_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fa_submissions_acct ON fa_submissions(account_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fa_comments_acct ON fa_comments(account_id, first_seen_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fa_profile_stats_acct ON fa_profile_stats(account_id, polled_at)")
+
+    # Migration 0d: account_id rollout for the simple platforms (no watcher/
+    # kudos/session tables — just submissions/snapshots/poll_log). Each is the
+    # Weasyl template via the shared helper.
+    for _p in ("ws", "da", "wp", "ik", "bsky", "tw"):
+        _add_account_id_and_backfill(
+            conn, _accounts, _p,
+            [f"{_p}_submissions", f"{_p}_snapshots", f"{_p}_poll_log"],
+            data_check_table=f"{_p}_submissions")
+        if _table_exists(conn, f"{_p}_snapshots"):
+            conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{_p}_snapshots_acct ON {_p}_snapshots(account_id, submission_id, polled_at)")
+        if _table_exists(conn, f"{_p}_submissions"):
+            conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{_p}_submissions_acct ON {_p}_submissions(account_id)")
+
+    # Migration 0e: sf/sqw/ao3 (have a watcher or kudos table). sf_watchers
+    # UNIQUE(username) is rebuilt in _run_table_rebuilds; the kudos tables keep
+    # their UNIQUE(submission_id, username) (submission_id is unique per account)
+    # and just gain an additive account_id column.
+    _add_account_id_and_backfill(conn, _accounts, "sf",
+        ["sf_submissions", "sf_snapshots", "sf_poll_log"],
+        data_check_table="sf_submissions")
+    _add_account_id_and_backfill(conn, _accounts, "sqw",
+        ["sqw_submissions", "sqw_snapshots", "sqw_poll_log", "sqw_kudos_users"],
+        data_check_table="sqw_submissions")
+    _add_account_id_and_backfill(conn, _accounts, "ao3",
+        ["ao3_submissions", "ao3_snapshots", "ao3_poll_log", "ao3_kudos_users"],
+        data_check_table="ao3_submissions")
+    for _p in ("sf", "sqw", "ao3"):
+        if _table_exists(conn, f"{_p}_snapshots"):
+            conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{_p}_snapshots_acct ON {_p}_snapshots(account_id, submission_id, polled_at)")
+        if _table_exists(conn, f"{_p}_submissions"):
+            conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{_p}_submissions_acct ON {_p}_submissions(account_id)")
+    for _kt in ("sqw_kudos_users", "ao3_kudos_users"):
+        if _table_exists(conn, _kt):
+            conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{_kt}_acct ON {_kt}(account_id, submission_id)")
 
     # Migration 1: Inkbunny comments table.
     # Added to track individual comments on Inkbunny submissions (username,
