@@ -128,10 +128,25 @@ class FAClient:
         validation, so we avoid the overhead of creating it unless actually needed.
         """
         if self._fa_http is None:
-            fa_transport = httpx.AsyncHTTPTransport(retries=2)
+            if self._proxy_url and self._proxy_key:
+                # Server path: FA blocks datacenter IPs, so route the direct
+                # cookie scrape through the CF Worker (whose egress FA allows).
+                # The proxy transport manages cookies itself (raw string) and
+                # bypasses httpx's jar — so we must NOT also pass cookies= to the
+                # client, or the jar and transport both accumulate Set-Cookie and
+                # corrupt the session on the second request (FA then serves a
+                # degraded, stats-less page).
+                from polling.cf_proxy import CloudflareProxyTransport
+                fa_transport = CloudflareProxyTransport(self._proxy_url, self._proxy_key)
+                fa_transport.set_cookies(f"a={self.cookie_a}; b={self.cookie_b}")
+                jar_cookies = None
+                logger.info("FA direct client using CF proxy: %s", self._proxy_url)
+            else:
+                fa_transport = httpx.AsyncHTTPTransport(retries=2)
+                jar_cookies = self._fa_cookies()
             self._fa_http = httpx.AsyncClient(
                 timeout=30.0,
-                cookies=self._fa_cookies(),
+                cookies=jar_cookies,
                 follow_redirects=True,
                 # Custom UA to identify our traffic to FA's servers
                 headers={"User-Agent": "PawPoller/1.0"},
@@ -456,26 +471,42 @@ class FAClient:
         Fields FA doesn't surface cheaply (category/species/gender/description)
         are left blank; the poller only requires the id + stats.
         """
-        def _stat(css_class: str) -> int:
-            # e.g. <div class="views"><span class="font-large">1,234</span> Views</div>
-            m = re.search(rf'class="{css_class}"[^>]*>\s*(?:<[^>]+>\s*)?([\d,]+)', html)
+        # FA's current stats live in <div class="submission-page-stats"> as
+        #   <div title="Views"><div>72</div>...  (Comments likewise)
+        # and the Favorites count is wrapped in a /favslist link:
+        #   <div title="Favorites"><div><a href="/favslist/{id}/">1</a></div>
+        def _stat(title: str) -> int:
+            # Whitespace runs are bounded ({0,30}) rather than \s* so a degraded
+            # page with a long blank gap after the stats div can't trigger
+            # quadratic backtracking across the two optional-group-straddling runs.
+            m = re.search(
+                rf'<div title="{title}">\s{{0,30}}<div>\s{{0,30}}(?:<a[^>]*>)?\s{{0,30}}([\d,]+)',
+                html,
+            )
             return _safe_int(m.group(1)) if m else 0
 
-        views = _stat("views")
-        favorites = _stat("favorites")
-        comments = _stat("comments")
+        views = _stat("Views")
+        favorites = _stat("Favorites")
+        comments = _stat("Comments")
 
-        # Title: prefer the submission-title block, fall back to <title>.
-        tm = re.search(r'class="submission-title"[^>]*>.*?<p>(.*?)</p>', html, re.S) \
-            or re.search(r'<title>(.*?)\s+by\s+.*?Fur Affinity', html, re.S)
+        # Title: <div class="submission-title"><h2>Title</h2>...  (fall back to <title>).
+        tm = re.search(
+            r'class="submission-title"[^>]*>\s*<h2>\s*(?:<p>\s*)?(.*?)\s*(?:</p>)?\s*</h2>',
+            html, re.S,
+        ) or re.search(r'<title>(.*?)\s+by\s+.*?Fur Affinity', html, re.S)
         title = _strip_tags(tm.group(1)).strip() if tm else ""
 
-        # Rating: <span class="rating-box general">General</span>
-        rm = re.search(r'class="rating-box[^"]*"[^>]*>\s*([A-Za-z]+)', html)
+        # Rating: cheap via the twitter:label2/data2 meta pair, else the
+        # "<X> rating" title attribute on the rating control.
+        rm = re.search(
+            r'name="twitter:label2"\s+content="Rating"\s*/?>\s*'
+            r'<meta\s+name="twitter:data2"\s+content="([^"]+)"',
+            html,
+        ) or re.search(r'\btitle="([A-Za-z]+) rating"', html)
         rating = rm.group(1).strip() if rm else ""
 
-        # Posted date: <span class="popup_date" title="Mon DD, YYYY HH:MM AM">
-        pm = re.search(r'class="popup_date"[^>]*title="([^"]+)"', html)
+        # Posted date: the popup_date span's human-readable title attribute.
+        pm = re.search(r'class="popup_date"[^>]*\btitle="([^"]+)"', html)
         posted_at = pm.group(1).strip() if pm else ""
 
         # Thumbnail / main image.
@@ -485,12 +516,8 @@ class FAClient:
         if thumb.startswith("//"):
             thumb = "https:" + thumb
 
-        # Tags: within the tags-row section, each tag is an <a> link.
-        tags: list[str] = []
-        tr = re.search(r'class="tags-row".*?</section>', html, re.S)
-        if tr:
-            tags = [_strip_tags(t).strip() for t in re.findall(r'<a[^>]*>([^<]+)</a>', tr.group(0))]
-            tags = [t for t in tags if t]
+        # Tags: FA renders each tag as a data-tag-name="..." attribute.
+        tags = [t for t in re.findall(r'data-tag-name="([^"]+)"', html) if t]
 
         return {
             "submission_id": submission_id,

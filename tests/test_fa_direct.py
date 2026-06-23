@@ -18,22 +18,25 @@ GALLERY_HTML = """
 </section>
 """
 
+# Mirrors the CURRENT FurAffinity (Beta) submission-page markup (2026-06): stats
+# live in <div class="submission-page-stats"> with <div title="X"><div>N</div>,
+# the Favorites count is wrapped in a /favslist link, rating comes from the
+# twitter meta pair, and tags are data-tag-name attributes.
 SUBMISSION_HTML = """
-<html><head><title>My Great Art by tester -- Fur Affinity [dot] net</title></head>
+<html><head><title>My Great Art by tester -- Fur Affinity [dot] net</title>
+<meta name="twitter:label2" content="Rating" /><meta name="twitter:data2" content="General" />
+</head>
 <body>
-<div class="submission-title"><h2><p>My Great Art</p></h2></div>
-<div class="stats-container">
-  <div class="views"><span class="font-large">1,234</span> Views</div>
-  <div class="favorites"><span class="font-large">56</span> Favorites</div>
-  <div class="comments"><span class="font-large">7</span> Comments</div>
-  <div class="rating"><span class="rating-box general">General</span></div>
+<div class="submission-title"><h2>My Great Art</h2></div>
+<div class="submission-page-stats">
+  <div title="Views"><div>1,234</div><div class="highlight">Views</div></div>
+  <div title="Comments"><div>7</div><div class="highlight">Comments</div></div>
+  <div title="Favorites"><div><a href="/favslist/12345/" target="_blank">56</a></div></div>
 </div>
-<span class="popup_date" title="Jun 1, 2026 03:14 PM">a month ago</span>
+<span class="popup_date" data-time="1700000000" title="Jun 1, 2026 03:14 PM">a month ago</span>
 <img id="submissionImg" src="//d.furaffinity.net/art/tester/1700000000/full.jpg">
-<section class="tags-row">
-  <span class="tags"><a href="/search/?q=fox">fox</a></span>
-  <span class="tags"><a href="/search/?q=anthro">anthro</a></span>
-</section>
+<span class="tags"><a href="javascript:void(0);" data-tag-name="fox">fox</a></span>
+<span class="tags"><a href="javascript:void(0);" data-tag-name="anthro">anthro</a></span>
 </body></html>
 """
 

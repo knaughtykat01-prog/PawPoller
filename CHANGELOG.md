@@ -4,6 +4,43 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.28.2] - 2026-06-23 - Refresh FurAffinity direct scraper + enable it server-side
+
+**Why:** PawPoller's FA polling depends on the flaky third-party FAExport; the
+2.27.x "direct-FA" fallback was the escape hatch, but (a) its submission parser had
+gone stale against FA's current HTML and silently scraped **0 stats**, and (b) the
+direct client never used the CF proxy, so it couldn't run on the server (FA blocks
+datacenter IPs).
+
+**Parser refresh** (`clients/fa/client.py` `_parse_submission_html`): FA moved stats
+into `<div class="submission-page-stats"><div title="Views"><div>N</div>` (the
+Favorites count wrapped in a `/favslist` link), the title into `submission-title><h2`,
+the rating into the `twitter:label2/data2` meta pair, and tags into `data-tag-name`
+attributes. All selectors updated and verified live (views/faves/comments/title/
+rating/tags/date all parse). Test fixture (`tests/test_fa_direct.py`) updated to the
+current markup.
+
+**Server-side direct scraping** (`_get_fa_http`): the direct FA client now routes
+through the CF Worker proxy when configured (`fa_use_cf_proxy`). Confirmed live:
+Cloudflare's egress is **not** FA-datacenter-blocked, and FA session cookies
+authenticate through it (logged-in adult gallery + real stats: `views=72`). Cookies
+are managed at the transport level only — **not** also via httpx's jar — because the
+jar and transport each accumulate `Set-Cookie` and corrupt the session on the second
+request, making FA serve a stats-less page.
+
+**Security hardening (from the release review):** bounded the new stats regex's
+whitespace runs (`\s{0,30}` not `\s*`) so a degraded FA page with a long blank gap
+can't trigger quadratic regex backtracking; and redacted the CF-proxy DEBUG logs to
+cookie *names* only (FA's high-value `a`/`b` session cookies now traverse that
+transport server-side).
+
+**To enable server-side FA without FAExport:** add the FA `a`/`b` cookies to the
+server settings and set `fa_direct_polling=true` (`fa_use_cf_proxy` is already on).
+The official read-only FA API (closed beta) remains the cleaner long-term server
+source — apply via the beta form.
+
+---
+
 ## [2.28.1] - 2026-06-23 - Fix + harden SoFurry new-work discovery
 
 **Bug:** the first full SF poll after 2.28.0 created a junk submission row, and

@@ -633,9 +633,11 @@ Rating unlock calls `/api_userrating.php` with `tag[2]=yes&tag[3]=yes&tag[4]=yes
 
 **Dual HTTP transport pattern**:
 - `_http` — Unauthenticated FAExport client (`https://faexport.spangle.org.uk`) for JSON data
-- `_fa_http` — Direct FA client with session cookies for validation; lazy-initialized only when needed
+- `_fa_http` — Direct FA client with session cookies; lazy-initialized. Used for cookie validation AND the direct-scrape polling fallback (`fa_direct_polling`).
 
-**Cookie authentication**: FA uses two cookies (`a` and `b`) extracted from the user's browser. These are set on the `_fa_http` client's cookie jar. Validation is done by loading the user's gallery page and checking for `<figure>` HTML elements (present only when authenticated).
+**Direct-scrape fallback (refreshed 2.28.2):** `get_all_gallery_ids_direct` (`/gallery/{user}/{page}/`) + `get_submission_detail_direct` (`/view/{id}/` → `_parse_submission_html`) replace FAExport when `fa_direct_polling=true`. FA's current submission HTML: stats in `<div class="submission-page-stats"><div title="Views"><div>N</div>` (Favorites count wrapped in a `/favslist` link), title `submission-title><h2`, rating from the `twitter:label2/data2` meta, tags as `data-tag-name`. **Server-side:** when `fa_use_cf_proxy` is set, `_get_fa_http` routes the direct scrape through the CF Worker (FA blocks datacenter IPs but allows Cloudflare's egress; FA cookies authenticate through it). On the proxy path, cookies are managed at the transport level only — NOT also via the httpx jar (both accumulating Set-Cookie corrupts the session on the 2nd request).
+
+**Cookie authentication**: FA uses two cookies (`a` and `b`) extracted from the user's browser. Validation loads the user's gallery page and checks for `<figure>` HTML elements (present only when authenticated).
 
 **FAExport API endpoints used**:
 | Endpoint | Purpose | Rate Limited |
