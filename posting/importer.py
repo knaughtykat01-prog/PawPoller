@@ -524,19 +524,23 @@ async def import_from_sofurry(submission_id: str) -> dict:
         if not logged_in:
             raise RuntimeError("Could not log in to SoFurry")
 
-        # Fetch metadata from JSON API
+        # Fetch metadata from the beta read API (nests fields under "submission").
         resp = await client._http.get(
-            f"{SOFURRY_BASE}/ui/submission/{submission_id}",
+            f"{SOFURRY_BASE}/api/submission/{submission_id}",
             headers={"Accept": "application/json"},
         )
         if resp.status_code != 200:
             raise RuntimeError(f"SF API returned {resp.status_code} for submission {submission_id}")
 
-        data = resp.json()
+        data = (resp.json() or {}).get("submission", {})
         title = data.get("title", f"SF_{submission_id}")
-        author = data.get("author", sf_display or "")
+        author_val = data.get("author")
+        if isinstance(author_val, dict):
+            author = author_val.get("handle") or author_val.get("username") or (sf_display or "")
+        else:
+            author = author_val or sf_display or ""
         description = data.get("description", "")
-        tags = data.get("artistTags", []) or []
+        tags = data.get("tags", []) or []
         sf_rating = data.get("rating", 0)
         if sf_rating >= 20:
             rating = "explicit"

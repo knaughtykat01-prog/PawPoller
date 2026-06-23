@@ -745,13 +745,33 @@ detail["media_url"] = data.get("media", {}).get("submission", [{}])[0].get("url"
 }
 ```
 
-**Data collection** (hybrid approach):
-- Gallery listing: scrape `/u/{display_name}/gallery` HTML for submission IDs (regex: `href="/s/{id}?ref=glr"`)
-- Submission metadata: GET `/ui/submission/{id}` (undocumented JSON API) for title, author, rating, publishedAt, thumbnail, description
-- Submission stats: scrape `/s/{id}` HTML for views/likes/comments (regex: `(\d[\d,]*)\s*[Vv]iews?`, etc.)
-- Category codes: 20=story, 30=art, 40=music, 50=photo
+**SoFurry "beta" (2026-06 React-Router rewrite).** SF is now a hybrid: Laravel
+serves auth (`/login`); a Remix front-end serves browse + a new `/api/*`. Full
+reverse-engineered map: `docs/reference/sofurry_beta_api_map.md`.
 
-**Follower scraping**: Paginates `/u/{display_name}/followers`, extracting usernames from `user-card` div blocks. Public page (no login required).
+**Polling** (login-free for published works): stats come from React-Router loader
+data at `GET /s/{id}.data` (turbo-stream; `views`/`likes`/comment count parsed by
+`_rr_int`/`_rr_str`). Discovery reads `/u/{handle}/gallery.data` (SFW-filtered when
+logged out, so new-work auto-discovery needs an authed session).
+
+**Posting** (authenticated, 2.28.0): Laravel `/login` then the **`/fe/auth/sofurry`
+OAuth2-PKCE bridge** mints an authed Remix session (`_ensure_api_session()`). Writes
+send `X-CSRF-Token` (from `<meta name="csrf-token">`):
+- `POST /api/upload-create` → mint an empty submission (`{id}`)
+- `POST /api/upload-content` (multipart `submissionId`+`file`, HTML ≥ 1 KB) → add a content item
+- `POST /api/submission-editor` (a `_endpoint`/`_method` dispatcher) → set metadata, chapter titles (`submission/{id}/content/{cid}`), order (`contentOrder[]`), delete content (`upload/{id}/content/{cid}` + `_method=DELETE`), thumbnail (`submission/{id}/thumbnail` + multipart `file`, png/jpeg/webp 1 KB–1 MB; `_method=DELETE` regenerates)
+- `GET /api/submission/{id}` → read (fields nested under `submission`; category/type echo display strings)
+- `DELETE /api/submission/{id}` → delete
+Category/type are INT codes on write (20=Writing, 21=Short Story, 29=Book). The old
+`/ui/submission*` API is gone (Remix 404s `/ui/*`).
+
+**Followers:** count from login-free `GET /api/profile?handle=` (`user.followerCount`);
+the username list from login-free `GET /api/followers?handle=&mode=followers&page=`
+(20/page, `hasNextPage`) → `users[].handle`, so new-follower notifications work.
+**Discovery:** `get_all_gallery_ids()` parses both turbo-stream id
+encodings off `gallery.data`; the poller runs the auth bridge best-effort first so the
+authed gallery (incl. adult works) is used. New works serialise inline and are caught;
+older dedup'd ones are already DB-known.
 
 ### SquidgeWorld (`clients/sqw/client.py`) — `SqWClient`
 

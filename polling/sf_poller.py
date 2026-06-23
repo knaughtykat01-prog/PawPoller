@@ -217,14 +217,19 @@ async def run_sf_poll_cycle(account_id: int | None = None, force_full: bool = Fa
         # Worker invocation (x-proxy-login) to avoid IP rotation breaking
         # SoFurry's IP-pinned sessions.
         _update_sf_progress("searching", message="Discovering + fetching gallery...")
-        # Discovery (new works) needs an authenticated session, which the SoFurry
-        # "beta" rewrite (React Router SPA) broke for the CF-Worker login path —
-        # an unauthenticated gallery is SFW-filtered and returns nothing. But
-        # per-submission stats are now fetched login-free from /s/{id}.data, so
-        # we always poll the submission IDs we already know from the DB, merged
-        # with anything discovery did surface. This restores polling for known
-        # works without depending on the (currently broken) login. New-work
-        # auto-discovery resumes once the authenticated session is rebuilt.
+        # Per-submission stats are fetched login-free from /s/{id}.data, so we
+        # always poll the submission IDs already in the DB. Discovery of NEW works
+        # needs an authenticated gallery (the unauthenticated one is SFW-filtered).
+        # Attempt the OAuth auth bridge best-effort — it needs creds + a
+        # non-blocked IP; on failure we fall back to the SFW gallery, and DB-known
+        # ids still poll, so the cycle never fails on this.
+        try:
+            await client._ensure_api_session()
+        except Exception as auth_err:
+            logger.info(
+                "SF: discovery auth unavailable (%s) — using SFW gallery + DB-known ids",
+                auth_err,
+            )
         gallery = await client.get_all_gallery_ids()
         discovered = [s["submission_id"] for s in gallery]
         known = [r["submission_id"] for r in sf_queries.get_all_sf_submissions(conn)]

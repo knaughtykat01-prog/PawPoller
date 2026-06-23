@@ -4,6 +4,72 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.28.0] - 2026-06-23 - Rebuild SoFurry posting for the "SoFurry beta" rewrite
+
+**Context:** 2.27.2 fixed SoFurry *polling* after SF's React-Router ("beta")
+rewrite. *Posting* was still broken — the old `/ui/submission*` REST API it used
+returns 404 (Remix intercepts `/ui/*`). This rebuilds posting against the new API,
+reverse-engineered and live-verified end-to-end (full map:
+`docs/reference/sofurry_beta_api_map.md`).
+
+**Auth — the missing piece.** SF is now a hybrid: Laravel still serves `/login`,
+but the new `/api/*` endpoints are Remix and need a separate Remix session. After
+the Laravel login, run the **`/fe/auth/sofurry` OAuth2-PKCE bridge** (it auto-approves
+off the live Laravel session → `/oauth/authorize` → `/fe/auth/callback`) to mint an
+authed Remix `_session`. `clients/sf/client.py` `_ensure_api_session()` does
+login → bridge → verify (`GET /api/upload-quota`), retrying once with a fresh login
+if a restored session is stale.
+
+**New posting flow** (`clients/sf/client.py`), all `X-CSRF-Token`-authed (token
+from `<meta name="csrf-token">`):
+- `create_submission`: `POST /api/upload-create` (mint id) → `POST /api/upload-content`
+  (multipart `submissionId`+`file`, HTML ≥ 1 KB) → `POST /api/submission-editor`
+  (metadata; tags as repeated `artistTags[]`; category/type as INT codes 20/21).
+- `upload_content` / `set_content_title` / `delete_content` / `get_content_ids`:
+  multi-chapter content ops, via the `submission-editor` `_endpoint`/`_method` dispatcher.
+- `edit_submission`: reads `GET /api/submission/{id}` (fields nested under `submission`,
+  category/type as display strings → mapped back to ints) and writes via
+  `submission-editor`, preserving every unspecified field (incl. privacy).
+- `delete_submission`: `DELETE /api/submission/{id}`.
+
+**Poster** (`posting/platforms/sofurry.py`): repointed every dead `/ui/` call
+(multi-chapter append, chapter titles, privacy post-flight check, `edit`,
+`replace_file`, `probe_exists`, `probe_draft_state`) onto the new client methods.
+`posting/importer.py` (SF work import) now reads `/api/submission/{id}` (new `tags`
+field, author-object).
+
+**Content format — TipTap.** The beta editor is TipTap/ProseMirror.
+`editor/converter.py` `_convert_body_sofurry` (+ front matter + heuristic fallback)
+now emits real `<h1>/<h2>` headings and inline `style="text-align: center;"` instead
+of `class="text-center"` + `<p><strong>` pseudo-headings, matching SF's stored format
+(`docs/reference/sofurry_beta_tiptap_sample.html`). HTML is stored verbatim, so
+existing stories must be **re-generated** to pick up the new markup before re-upload.
+
+**Verified:** end-to-end live test — login + bridge → create a private 2-chapter
+writing submission from real converter output → multi-chapter upload + titles +
+metadata (category=writing, privacy=1, tags) → delete. All 200s; nothing left on the
+account. Full pytest suite green (133 passed, 1 skipped).
+
+**Polling ports (same release):** `get_follower_count` now reads the login-free
+`GET /api/profile?handle=` (`user.followerCount`). `scrape_followers` is fully restored
+via the login-free paginated `GET /api/followers?handle=&mode=followers&page=` (20/page,
+`hasNextPage`) — so per-follower new-follower notifications work again (verified: 35
+handles). New-work discovery (`get_all_gallery_ids` + `polling/sf_poller.py`) attempts
+the auth bridge best-effort so the authed gallery (which includes adult works) is used,
+then parses both turbo-stream id encodings (`"<id>","title"` and `"id","<id>","name"`);
+brand-new works serialise inline and are caught, older works are de-duplicated by the
+turbo-stream but already DB-known, so the cycle never depends on discovery.
+
+**Thumbnail upload IS ported:** `set_thumbnail` posts the image via the editor
+dispatcher (`_endpoint=submission/{id}/thumbnail`, multipart `file`, png/jpeg/webp,
+1 KB–1 MB), wired into `create_submission` and verified live (`thumbUrl` populated).
+Regenerate is the same endpoint with `_method=DELETE`.
+
+**Known / not yet ported:** only the 2FA login path (Laravel `/login` is unchanged, so
+the existing `_submit_2fa` should still apply, but it's untested on the beta).
+
+---
+
 ## [2.27.2] - 2026-06-22 - Fix SoFurry polling for the "SoFurry beta" rewrite
 
 **Bug:** SoFurry polling died on 2026-06-13 — every cycle errored with

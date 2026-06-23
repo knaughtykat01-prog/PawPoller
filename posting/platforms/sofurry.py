@@ -1,15 +1,15 @@
 """SoFurry platform poster.
 
-Uses the existing SoFurryClient (clients/sf/client.py) with session cookie +
-CSRF token auth. Supports post + edit + file replace.
+Uses SoFurryClient (clients/sf/client.py) against SoFurry's "beta" React-Router
+API (Laravel /login then the /fe/auth/sofurry OAuth bridge). Post + edit + replace.
 
-Post flow (3-step REST):
-  1. PUT /ui/submission → create empty submission
-  2. POST /ui/submission/{id}/content → upload file
-  3. POST /ui/submission/{id} → set metadata + privacy
+Post flow (beta /api):
+  1. POST /api/upload-create        → mint an empty submission
+  2. POST /api/upload-content       → upload each chapter's HTML (>= 1 KB)
+  3. POST /api/submission-editor    → set metadata + privacy (+ chapter titles)
 
 Edit flow:
-  POST /ui/submission/{id} → update metadata
+  POST /api/submission-editor       → update metadata (+ content refresh)
 
 Rating mapping:
   General → 0 (Clean), Mature → 10, Adult → 20
@@ -132,50 +132,26 @@ class SoFurryPoster(PlatformPoster):
     ) -> None:
         """Set chapter titles on all content items of a submission.
 
-        SF creates content items with "Untitled Chapter" by default.
-        This fetches the submission JSON to get each contentId, then
-        POSTs the title from story.chapters in order.
+        SF creates content items untitled by default. This reads each
+        contentId (in stored order) via the API, then sets the title from
+        story.chapters in order.
         """
-        csrf = await client._get_csrf_meta()
-        if not csrf:
-            logger.warning("SF: Could not get CSRF for chapter title setting")
+        csrf = await client._ensure_api_session()
+        content_ids = await client.get_content_ids(submission_id)
+        if not content_ids:
+            logger.warning(
+                "SF: no content items found for %s — skipping chapter titles",
+                submission_id,
+            )
             return
 
-        headers = {
-            "X-CSRF-TOKEN": csrf,
-            "Origin": "https://sofurry.com",
-            "Referer": "https://sofurry.com/",
-            "Accept": "application/json",
-        }
-
-        resp = await client._http.get(
-            f"https://sofurry.com/ui/submission/{submission_id}",
-            headers={"Accept": "application/json"},
-        )
-        if resp.status_code != 200:
-            logger.warning("SF: Could not fetch submission %s for title setting", submission_id)
-            return
-
-        content_items = resp.json().get("content", [])
         local_chapters = sorted(story.chapters, key=lambda c: c.index)
-
-        for content_item, local_ch in zip(content_items, local_chapters):
-            cid = content_item.get("contentId")
-            if not cid:
-                continue
+        for cid, local_ch in zip(content_ids, local_chapters):
             title = _strip_chapter_prefix(local_ch.title)
             if not title:
                 continue
-            current_title = content_item.get("title", "")
-            if current_title == title:
-                continue
             try:
-                await client._http.post(
-                    f"https://sofurry.com/ui/submission/{submission_id}/content/{cid}",
-                    headers=headers,
-                    json={"title": title},
-                    timeout=15.0,
-                )
+                await client.set_content_title(submission_id, cid, title, csrf=csrf)
                 logger.info("SF: Set chapter title '%s' on content %s", title, cid)
             except Exception as e:
                 logger.warning("SF: Failed to set title on content %s: %s", cid, e)
@@ -207,14 +183,20 @@ class SoFurryPoster(PlatformPoster):
         for f in sorted(html_dir.glob("*_SoFurry.html")):
             try:
                 content = f.read_text(encoding="utf-8")
-                # Find the first <h3 (chapter heading) and take everything before it
+                # New (TipTap) format: the first chapter heading is an <h2>;
+                # front matter is everything before it.
+                idx = content.find("<h2")
+                if idx > 0:
+                    return content[:idx]
+                # Legacy formats: take everything up to and including the first
+                # horizontal rule after the disclaimer (<hr /> or <hr>), or an <h3>.
                 idx = content.find("<h3")
                 if idx > 0:
                     return content[:idx]
-                # Fallback: find <hr /> before chapter content
-                idx = content.find("<hr />")
-                if idx > 0:
-                    return content[:idx + len("<hr />")]
+                for hr in ("<hr />", "<hr>"):
+                    idx = content.find(hr)
+                    if idx > 0:
+                        return content[:idx + len(hr)]
             except Exception:
                 pass
         return ""
@@ -320,10 +302,10 @@ class SoFurryPoster(PlatformPoster):
             submission_id = result.get("submission_id", "")
             url = result.get("url", "")
 
-            # Add remaining chapters (2..N) by POSTing each file to
-            # /ui/submission/{id}/content — SF appends chapters on POST.
+            # Add remaining chapters (2..N): each upload_content() appends another
+            # content item to the submission's content[] array (in order).
             if has_chapters and submission_id:
-                csrf = await client._get_csrf_meta()
+                csrf = await client._ensure_api_session()
                 remaining = [c for c in story.chapters if c.index > 1]
                 for ch in sorted(remaining, key=lambda c: c.index):
                     ch_path = self._read_sf_chapter_content(story, ch.index)
@@ -333,28 +315,16 @@ class SoFurryPoster(PlatformPoster):
                             ch.index, story.name,
                         )
                         continue
-                    import os
-                    with open(ch_path, "rb") as f:
-                        file_data = f.read()
-                    ch_resp = await client._http.post(
-                        f"https://sofurry.com/ui/submission/{submission_id}/content",
-                        headers={
-                            "X-CSRF-TOKEN": csrf,
-                            "Origin": "https://sofurry.com",
-                            "Referer": "https://sofurry.com/",
-                        },
-                        files={"file": (os.path.basename(ch_path), file_data)},
-                        timeout=60.0,
-                    )
-                    if ch_resp.status_code in (200, 201):
+                    try:
+                        await client.upload_content(submission_id, ch_path, csrf=csrf)
                         logger.info(
                             "SF: Added chapter %d to submission %s",
                             ch.index, submission_id,
                         )
-                    else:
+                    except Exception as ch_err:
                         logger.warning(
-                            "SF: Chapter %d upload returned %d for %s",
-                            ch.index, ch_resp.status_code, submission_id,
+                            "SF: Chapter %d upload failed for %s: %s",
+                            ch.index, submission_id, ch_err,
                         )
 
             # Set chapter titles on all content items. SF creates them as
@@ -373,11 +343,11 @@ class SoFurryPoster(PlatformPoster):
             if privacy == _PRIVACY_PRIVATE and submission_id:
                 try:
                     raw_resp = await client._http.get(
-                        f"https://sofurry.com/ui/submission/{submission_id}",
+                        f"https://sofurry.com/api/submission/{submission_id}",
                         headers={"Accept": "application/json"},
                     )
                     if raw_resp.status_code == 200:
-                        raw = raw_resp.json()
+                        raw = (raw_resp.json() or {}).get("submission", {})
                         server_privacy = raw.get("privacy")
                         if server_privacy is not None and int(server_privacy) != _PRIVACY_PRIVATE:
                             logger.warning(
@@ -467,51 +437,29 @@ class SoFurryPoster(PlatformPoster):
             has_chapters = bool(story.chapters) and story.total_chapters > 1
 
             if not skip_content and has_chapters:
-                # Chapter-aware content refresh: delete all old, upload each fresh
+                # Chapter-aware content refresh: upload all fresh chapters first
+                # (SF won't delete the last remaining content item), then delete
+                # the old ones.
                 try:
-                    csrf = await client._get_csrf_meta()
-                    resp = await client._http.get(
-                        f"https://sofurry.com/ui/submission/{external_id}",
-                        headers={"Accept": "application/json"},
-                    )
-                    old_ids = [c["contentId"] for c in resp.json().get("content", []) if c.get("contentId")]
+                    csrf = await client._ensure_api_session()
+                    old_ids = await client.get_content_ids(external_id)
 
-                    # Upload all chapters first (SF won't delete the last item)
-                    import os
                     for ch in sorted(story.chapters, key=lambda c: c.index):
                         ch_path = self._read_sf_chapter_content(story, ch.index)
                         if not ch_path:
                             continue
-                        with open(ch_path, "rb") as f:
-                            file_data = f.read()
-                        ch_resp = await client._http.post(
-                            f"https://sofurry.com/ui/submission/{external_id}/content",
-                            headers={
-                                "X-CSRF-TOKEN": csrf,
-                                "Origin": "https://sofurry.com",
-                                "Referer": "https://sofurry.com/",
-                            },
-                            files={"file": (os.path.basename(ch_path), file_data)},
-                            timeout=60.0,
-                        )
-                        if ch_resp.status_code in (200, 201):
+                        try:
+                            await client.upload_content(external_id, ch_path, csrf=csrf)
                             logger.info("SF: Uploaded chapter %d for %s", ch.index, external_id)
-                        else:
-                            logger.warning("SF: Chapter %d upload returned %d", ch.index, ch_resp.status_code)
+                        except Exception as up_err:
+                            logger.warning("SF: Chapter %d upload failed: %s", ch.index, up_err)
 
-                    # Delete old content items
-                    del_headers = {
-                        "X-CSRF-TOKEN": csrf,
-                        "Origin": "https://sofurry.com",
-                        "Referer": "https://sofurry.com/",
-                    }
                     for cid in old_ids:
-                        await client._http.delete(
-                            f"https://sofurry.com/ui/submission/{external_id}/content/{cid}",
-                            headers=del_headers,
-                            timeout=15.0,
-                        )
-                        logger.info("SF: Deleted old content %s", cid)
+                        try:
+                            await client.delete_content(external_id, cid, csrf=csrf)
+                            logger.info("SF: Deleted old content %s", cid)
+                        except Exception as del_err:
+                            logger.warning("SF: Failed to delete old content %s: %s", cid, del_err)
                 except Exception as ch_err:
                     logger.warning("SF: Chaptered content refresh failed: %s", ch_err)
 
@@ -565,19 +513,17 @@ class SoFurryPoster(PlatformPoster):
                 if not await client.ensure_logged_in():
                     return None
             resp = await client._http.get(
-                f"https://sofurry.com/ui/submission/{external_id}",
+                f"https://sofurry.com/api/submission/{external_id}",
                 headers={"Accept": "application/json"},
             )
             if resp.status_code == 404:
                 return False
             if resp.status_code == 200:
-                # Some platforms return a generic 200 with an error body when
-                # the submission is gone. SF returns a JSON payload with
-                # submission fields when it exists. If we get JSON with no
-                # submissionId/title, treat it as missing.
+                # The read API nests fields under "submission"; a live work has
+                # an id/title. Anything else we treat as missing.
                 try:
-                    data = resp.json()
-                    if isinstance(data, dict) and not (data.get("id") or data.get("title")):
+                    sub = (resp.json() or {}).get("submission", {})
+                    if isinstance(sub, dict) and not (sub.get("id") or sub.get("title")):
                         return False
                 except Exception:
                     pass
@@ -601,12 +547,12 @@ class SoFurryPoster(PlatformPoster):
                 if not await client.ensure_logged_in():
                     return None
             resp = await client._http.get(
-                f"https://sofurry.com/ui/submission/{external_id}",
+                f"https://sofurry.com/api/submission/{external_id}",
                 headers={"Accept": "application/json"},
             )
             if resp.status_code != 200:
                 return None
-            data = resp.json()
+            data = (resp.json() or {}).get("submission", {})
             if not isinstance(data, dict):
                 return None
             published = (data.get("publishedAt") or "").strip()
@@ -631,110 +577,63 @@ class SoFurryPoster(PlatformPoster):
     async def replace_file(self, external_id: str, file_path: str) -> PostResult:
         """Replace content on an existing SF submission.
 
-        SF's POST /ui/submission/{id}/content APPENDS a new chapter —
-        it does not replace. To update content we must:
-          1. Fetch the submission to get existing content item IDs
-          2. DELETE all existing content items
-          3. POST the new content as a fresh upload
+        SF's /api/upload-content APPENDS a new content item — it does not
+        replace. To update content we:
+          1. Read existing content item IDs (for later deletion)
+          2. Upload the new content FIRST (SF refuses to delete the last item)
+          3. Delete the old content items
+          4. Re-apply the chapter title to the new item
 
-        This ensures the submission always has exactly one content item
-        with the latest file.
+        This leaves the submission with exactly one content item (the latest).
         """
         _t = self._start_timer()
         try:
             client = await self._ensure_client()
-            csrf = await client._get_csrf_meta()
-            if not csrf:
-                return PostResult(success=False, error="Could not get CSRF token", duration_seconds=self._elapsed(_t))
+            csrf = await client._ensure_api_session()
 
-            api_headers = {
-                "X-CSRF-TOKEN": csrf,
-                "Origin": "https://sofurry.com",
-                "Referer": "https://sofurry.com/",
-                "Accept": "application/json",
-            }
+            # Step 1: existing content item IDs + current title.
+            old_content_ids = await client.get_content_ids(external_id)
+            title = ""
+            try:
+                meta = await client._http.get(
+                    f"https://sofurry.com/api/submission/{external_id}",
+                    headers={"Accept": "application/json"},
+                )
+                if meta.status_code == 200:
+                    title = (meta.json() or {}).get("submission", {}).get("title", "")
+            except Exception:
+                pass
 
-            # Step 1: Fetch current content items (to get old IDs for deletion)
-            resp = await client._http.get(
-                f"https://sofurry.com/ui/submission/{external_id}",
-                headers={"Accept": "application/json"},
-            )
-            if resp.status_code != 200:
-                return PostResult(success=False, error=f"Could not fetch submission (status {resp.status_code})", duration_seconds=self._elapsed(_t))
-
-            data = resp.json()
-            old_content_ids = [c["contentId"] for c in data.get("content", []) if c.get("contentId")]
-            title = data.get("title", "")
-
-            # Step 2: Upload NEW content FIRST
-            # SF won't allow deleting the last content item (returns 400).
-            # By uploading first, we ensure there's always at least 1 item
-            # remaining when we delete the old ones.
-            import os
-            with open(file_path, "rb") as f:
-                file_data = f.read()
-
-            upload_resp = await client._http.post(
-                f"https://sofurry.com/ui/submission/{external_id}/content",
-                headers={
-                    "X-CSRF-TOKEN": csrf,
-                    "Origin": "https://sofurry.com",
-                    "Referer": "https://sofurry.com/",
-                },
-                files={"file": (os.path.basename(file_path), file_data)},
-                timeout=60.0,
-            )
-
-            if upload_resp.status_code not in (200, 201):
+            # Step 2: upload the NEW content first (keep >= 1 item at all times).
+            try:
+                new_cid = await client.upload_content(external_id, file_path, csrf=csrf)
+            except Exception as up_err:
                 return PostResult(
                     success=False,
-                    error=f"Content upload returned status {upload_resp.status_code}",
+                    error=f"Content upload failed: {up_err}",
                     duration_seconds=self._elapsed(_t),
                 )
 
-            # Step 3: Delete OLD content items (the new one is safe)
-            # Re-fetch CSRF in case the upload consumed it
-            csrf2 = await client._get_csrf_meta()
-            del_headers = {
-                "X-CSRF-TOKEN": csrf2 or csrf,
-                "Origin": "https://sofurry.com",
-                "Referer": "https://sofurry.com/",
-                "Accept": "application/json",
-            }
+            # Step 3: delete the OLD content items (the new one stays).
             deleted = 0
             for cid in old_content_ids:
-                del_resp = await client._http.request(
-                    "DELETE",
-                    f"https://sofurry.com/ui/submission/{external_id}/content/{cid}",
-                    headers=del_headers,
-                )
-                if del_resp.status_code == 204:
+                try:
+                    await client.delete_content(external_id, cid, csrf=csrf)
                     deleted += 1
                     logger.info("SF: Deleted old content %s from %s", cid, external_id)
-                else:
-                    logger.warning("SF: Failed to delete old content %s (status %d)", cid, del_resp.status_code)
+                except Exception as del_err:
+                    logger.warning("SF: Failed to delete old content %s: %s", cid, del_err)
 
-            # Step 4: Set chapter title on the new content item
-            try:
-                resp2 = await client._http.get(
-                    f"https://sofurry.com/ui/submission/{external_id}",
-                    headers={"Accept": "application/json"},
-                )
-                new_content = resp2.json().get("content", [])
-                if new_content:
-                    new_cid = new_content[-1]["contentId"]  # newest = last
-                    if not new_content[-1].get("title") or new_content[-1].get("title") != title:
-                        await client._http.post(
-                            f"https://sofurry.com/ui/submission/{external_id}/content/{new_cid}",
-                            headers=del_headers,
-                            json={"title": title},
-                            timeout=15.0,
-                        )
-                        logger.info("SF: Set chapter title '%s' on new content %s", title, new_cid)
-            except Exception as title_err:
-                logger.warning("SF: Could not set chapter title: %s", title_err)
+            # Step 4: re-apply the chapter title to the new content item.
+            if new_cid and title:
+                try:
+                    await client.set_content_title(external_id, new_cid, title, csrf=csrf)
+                    logger.info("SF: Set title '%s' on new content %s", title, new_cid)
+                except Exception as title_err:
+                    logger.warning("SF: Could not set chapter title: %s", title_err)
 
-            logger.info("SF: Replaced content on submission %s (uploaded new, deleted %d old)", external_id, deleted)
+            logger.info("SF: Replaced content on submission %s (uploaded new, deleted %d old)",
+                        external_id, deleted)
             return PostResult(
                 success=True,
                 external_id=external_id,

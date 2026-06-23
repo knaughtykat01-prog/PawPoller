@@ -1,16 +1,23 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-06-22
-**Current version:** 2.27.2 — **multiple accounts per platform** (all 11 platforms,
-polling + posting) + a **direct-FA-cookie polling fallback** for the FAExport outage,
-a **fix for AO3/SqW zero-view snapshots** that were inflating digest/milestone view
-deltas (CHANGELOG [2.27.1]), and a **fix for SoFurry polling** after SF's "beta"
-React-Router rewrite broke the scraper (now polls the SPA's login-free `/s/{id}.data`
-loader data — CHANGELOG [2.27.2]; SF *posting* still needs a rebuild, see below).
-**Released + deployed 2026-06-23** (commit `750f90d`, tag `v2.27.2`; live `/api/health`
-reports `2.27.2`, all pollers ticking clean). **Note:** FA direct polling must run from
-the **desktop** instance (datacenter IP is Cloudflare-blocked). See "Multi-account model"
-below before touching accounts / credentials / pollers / posting.
+**Last updated:** 2026-06-23
+**Current version:** 2.28.0 — **SoFurry posting rebuilt** for SF's React-Router
+("beta") rewrite. The old `/ui/submission*` API is gone (Remix 404s `/ui/*`), so
+posting now runs against the new Remix `/api/*`: Laravel `/login` + the
+**`/fe/auth/sofurry` OAuth2-PKCE bridge** → `upload-create` / `upload-content` /
+`submission-editor` / `DELETE`, and the SF converter emits TipTap HTML (real
+`<h1>/<h2>`, inline `style="text-align"`). Reverse-engineered + **live-verified
+end-to-end** (login+bridge → private 2-chapter create → multi-chapter upload+titles
+→ delete, all 200s). Full map: `docs/reference/sofurry_beta_api_map.md`; CHANGELOG
+[2.28.0]. **Staged, NOT yet released/deployed** — cut with `/pp-release 2.28.0` then
+`/pp-deploy`. (Prior **2.27.2** — SoFurry polling fix + AO3/SqW/FA zero-snapshot fix —
+is live on prod; `/api/health` reports `2.27.2`.)
+
+**Heads-up:** existing stories' `*_SoFurry.html` use the OLD class-based markup —
+**re-generate** them so the SF converter emits the new TipTap HTML before re-uploading,
+or the new render won't apply. FA direct polling must run from the **desktop** instance
+(datacenter IP is Cloudflare-blocked). See "Multi-account model" below before touching
+accounts / credentials / pollers / posting.
 
 **Historical zero-snapshot cleanup — DONE 2026-06-23.** After deploying 2.27.2, the
 one-off cleanup ran against prod: **746 corrupt `views=0` rows deleted** (ao3 25, sqw 270,

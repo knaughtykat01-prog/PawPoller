@@ -340,9 +340,9 @@ def render_front_matter_clean_html(fm: FrontMatter) -> list[str]:
 def render_front_matter_sofurry(fm: FrontMatter) -> list[str]:
     """Render FrontMatter as SoFurry HTML using SF's tag system."""
     parts: list[str] = []
-    tc = lambda inner: f'<p class="text-center">{inner}</p>'
+    tc = lambda inner: f'<p style="text-align: center;">{inner}</p>'
 
-    parts.append(f'<p class="text-center"><strong>{_escape_html(fm.title)}</strong></p>')
+    parts.append(f'<h1 style="text-align: center;">{_escape_html(fm.title)}</h1>')
     if fm.subtitle:
         parts.append(tc(f"<em>{_escape_html(fm.subtitle)}</em>"))
     if fm.byline:
@@ -746,7 +746,7 @@ def _convert_body_sofurry(lines: list[str], start: int = 0) -> tuple[list[str], 
         "chapters": [], "section_breaks": 0, "paragraphs": 0,
         "pov_markers": [], "text_messages": 0, "end_marker": False,
     }
-    tc = lambda inner: f'<p class="text-center">{inner}</p>'
+    tc = lambda inner: f'<p style="text-align: center;">{inner}</p>'  # TipTap centered block
     i = start
     current_paragraph: list[str] = []
 
@@ -775,7 +775,7 @@ def _convert_body_sofurry(lines: list[str], start: int = 0) -> tuple[list[str], 
             while j < len(lines) and lines[j].strip() == "":
                 j += 1
             if j < len(lines) and lines[j].strip().startswith("# "):
-                body_parts.append("<hr />")
+                body_parts.append("<hr>")
             else:
                 body_parts.append(tc("* * *"))
                 stats["section_breaks"] += 1
@@ -785,7 +785,7 @@ def _convert_body_sofurry(lines: list[str], start: int = 0) -> tuple[list[str], 
             flush()
             pending_semantic = None
             heading = _escape_html(stripped[2:].strip())
-            body_parts.append(f'<p class="text-center"><strong>{heading}</strong></p>')
+            body_parts.append(f'<h2 style="text-align: center;">{heading}</h2>')
             stats["chapters"].append(heading)
             i += 1
             continue
@@ -816,13 +816,13 @@ def _convert_body_sofurry(lines: list[str], start: int = 0) -> tuple[list[str], 
         # Semantic anchor: text messages
         if pending_semantic in ("text-sent", "text-received"):
             flush()
-            align = "text-right" if pending_semantic == "text-sent" else "text-left"
+            align = "right" if pending_semantic == "text-sent" else "left"
             msg_m = is_text_message(stripped)
             if msg_m:
                 sender, message = msg_m.group(1).strip(), msg_m.group(2).strip()
-                body_parts.append(f'<p class="{align}"><strong>{_escape_html(sender)}:</strong> {format_paragraph_html(message)}</p>')
+                body_parts.append(f'<p style="text-align: {align};"><strong>{_escape_html(sender)}:</strong> {format_paragraph_html(message)}</p>')
             else:
-                body_parts.append(f'<p class="{align}">{format_paragraph_html(stripped)}</p>')
+                body_parts.append(f'<p style="text-align: {align};">{format_paragraph_html(stripped)}</p>')
             stats["text_messages"] += 1
             pending_semantic = None
             i += 1
@@ -986,7 +986,7 @@ def convert_to_sofurry_html(markdown_text: str) -> ConversionResult:
     in_warning_block = False
     i = 0
     current_paragraph: list[str] = []
-    tc = lambda inner: f'<p class="text-center">{inner}</p>'
+    tc = lambda inner: f'<p style="text-align: center;">{inner}</p>'
 
     def flush():
         if current_paragraph:
@@ -1002,15 +1002,15 @@ def convert_to_sofurry_html(markdown_text: str) -> ConversionResult:
             flush(); in_warning_block = False
             j = i + 1
             while j < len(lines) and lines[j].strip() == "": j += 1
-            body_parts.append("<hr />" if j < len(lines) and lines[j].strip().startswith("# ") else tc("* * *"))
+            body_parts.append("<hr>" if j < len(lines) and lines[j].strip().startswith("# ") else tc("* * *"))
             if not (j < len(lines) and lines[j].strip().startswith("# ")): stats["section_breaks"] += 1
             i += 1; continue
         if stripped.startswith("# "):
             flush(); in_warning_block = False; heading = _escape_html(stripped[2:].strip())
             if not title_seen:
-                body_parts.append(f'<p class="text-center"><strong>{heading}</strong></p>'); title_seen = True; stats["title"] = heading
+                body_parts.append(f'<h1 style="text-align: center;">{heading}</h1>'); title_seen = True; stats["title"] = heading
             else:
-                body_parts.append(f'<p class="text-center"><strong>{heading}</strong></p>'); stats["chapters"].append(heading); subtitle_done = True
+                body_parts.append(f'<h2 style="text-align: center;">{heading}</h2>'); stats["chapters"].append(heading); subtitle_done = True
             i += 1; continue
         if title_seen and not subtitle_done:
             if stripped == "": flush(); i += 1; continue
@@ -1031,8 +1031,8 @@ def convert_to_sofurry_html(markdown_text: str) -> ConversionResult:
         msg_m = is_text_message(stripped)
         if msg_m:
             flush(); s, m = msg_m.group(1).strip(), msg_m.group(2).strip()
-            align = "text-right" if "MAYA" in s.upper() else "text-left"
-            body_parts.append(f'<p class="{align}"><strong>{_escape_html(s)}:</strong> {_escape_html(m)}</p>'); stats["text_messages"] += 1; i += 1; continue
+            align = "right" if "MAYA" in s.upper() else "left"
+            body_parts.append(f'<p style="text-align: {align};"><strong>{_escape_html(s)}:</strong> {_escape_html(m)}</p>'); stats["text_messages"] += 1; i += 1; continue
         if stripped == "": flush(); i += 1; continue
         current_paragraph.append(stripped); i += 1
     flush()
