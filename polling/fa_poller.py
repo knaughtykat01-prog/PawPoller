@@ -359,6 +359,25 @@ async def run_fa_poll_cycle(account_id: int | None = None, force_full: bool = Fa
                 faves = detail.get("favorites_count", 0)
                 comments = detail.get("comments_count", 0)
 
+                # Defence against a transient scrape failure writing a 0-view
+                # snapshot. FA views are cumulative and never drop, so a scraped
+                # 0 when the DB already holds a non-zero count means the fetch
+                # failed — most often a Cloudflare challenge page that returns
+                # HTTP 200 and parses to all-zero stats (now an expected event
+                # under FA's third-party policy / DDoS-mitigation guidance).
+                # Persisting it corrupts the baseline and inflates the next
+                # digest/milestone delta (same class as the AO3 bug, [2.27.1]).
+                # Skip the work this cycle; the next one re-reads the truth.
+                if views == 0:
+                    existing = fa_queries.get_fa_submission(conn, sub_id)
+                    if existing and (existing.get("views") or 0) > 0:
+                        logger.warning(
+                            "FA: skipping submission %s — scraped 0 views but DB "
+                            "has %d (transient fetch/challenge failure, not a reset)",
+                            sub_id, existing["views"],
+                        )
+                        continue
+
                 # Grab the previous comment count *before* the snapshot
                 # overwrites it -- needed for the delta check below.
                 prev_comments = fa_queries.get_fa_previous_comments_count(conn, sub_id)

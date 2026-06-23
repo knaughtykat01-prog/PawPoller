@@ -511,9 +511,13 @@ class SquidgeWorldClient:
 
         html = await self._get_page(url)
         if not html:
-            logger.error("SqW: Failed to fetch work %d", work_id)
-            return {"work_id": work_id, "title": "", "hits": 0, "kudos_count": 0,
-                    "comments_count": 0, "bookmarks_count": 0}
+            # Don't fabricate a zero-stat record — _get_page returns None on
+            # timeouts / Anubis challenge / rate limits, and a zero dict would
+            # flow into upsert + snapshot, clobbering the work's real cumulative
+            # hit count with 0 and making the next good poll look like a huge
+            # view spike in digests/milestones. Raise so get_work_details_batch
+            # drops this work for the cycle; the next cycle re-reads the truth.
+            raise RuntimeError(f"SqW: failed to fetch work {work_id} (no page returned)")
 
         detail: dict = {"work_id": work_id}
 
@@ -573,6 +577,18 @@ class SquidgeWorldClient:
         detail["kudos_count"] = _extract_stat("kudos")
         detail["comments_count"] = _extract_stat("comments")
         detail["bookmarks_count"] = _extract_stat("bookmarks")
+
+        # A real work page always renders a <dl class="stats"> block and a
+        # title. A 200 response that parses to a title-less, all-zero record is
+        # almost always an Anubis/challenge/redirect page rather than the work —
+        # treat it as a fetch failure so we don't persist bogus zeros.
+        if (detail["hits"] == 0 and detail["kudos_count"] == 0
+                and detail["comments_count"] == 0 and detail["bookmarks_count"] == 0
+                and not detail["title"]):
+            raise RuntimeError(
+                f"SqW: work {work_id} parsed to all-zero stats with no title — "
+                f"likely a challenge/redirect page, not the work"
+            )
 
         # Word count and chapters
         detail["word_count"] = _extract_stat("words")

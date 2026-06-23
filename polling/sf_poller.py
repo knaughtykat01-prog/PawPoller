@@ -216,13 +216,22 @@ async def run_sf_poll_cycle(account_id: int | None = None, force_full: bool = Fa
         # When using the CF Worker proxy, login + gallery happen in one
         # Worker invocation (x-proxy-login) to avoid IP rotation breaking
         # SoFurry's IP-pinned sessions.
-        _update_sf_progress("searching", message="Authenticating + fetching gallery...")
+        _update_sf_progress("searching", message="Discovering + fetching gallery...")
+        # Discovery (new works) needs an authenticated session, which the SoFurry
+        # "beta" rewrite (React Router SPA) broke for the CF-Worker login path —
+        # an unauthenticated gallery is SFW-filtered and returns nothing. But
+        # per-submission stats are now fetched login-free from /s/{id}.data, so
+        # we always poll the submission IDs we already know from the DB, merged
+        # with anything discovery did surface. This restores polling for known
+        # works without depending on the (currently broken) login. New-work
+        # auto-discovery resumes once the authenticated session is rebuilt.
         gallery = await client.get_all_gallery_ids()
-        if not gallery and not client._logged_in:
-            raise ValueError("SoFurry login failed -- check credentials (is SF_USERNAME an email?)")
-        submission_ids = [s["submission_id"] for s in gallery]
+        discovered = [s["submission_id"] for s in gallery]
+        known = [r["submission_id"] for r in sf_queries.get_all_sf_submissions(conn)]
+        submission_ids = list(dict.fromkeys(discovered + known))  # de-dup, keep order
         stats["submissions_found"] = len(submission_ids)
-        logger.info("SF: Found %d submissions", len(submission_ids))
+        logger.info("SF: %d submissions to poll (%d discovered, %d known)",
+                    len(submission_ids), len(discovered), len(known))
 
         # Persist session cookies after a successful authenticated gallery fetch.
         # Only useful for direct login (not CF proxy, which rotates IPs).
@@ -257,6 +266,21 @@ async def run_sf_poll_cycle(account_id: int | None = None, force_full: bool = Fa
                 views = detail.get("views", 0)
                 faves = detail.get("favorites_count", 0)
                 comments = detail.get("comments_count", 0)
+
+                # Skip transient scrape failures: SF views are cumulative and
+                # never drop, so a scraped 0 when the DB already holds a non-zero
+                # count means the /s/{id}.data fetch failed, not a real reset.
+                # Persisting it would corrupt the baseline and inflate the next
+                # digest/milestone delta (the AO3/FA zero-snapshot class of bug).
+                if views == 0:
+                    existing = sf_queries.get_sf_submission(conn, sub_id)
+                    if existing and (existing.get("views") or 0) > 0:
+                        logger.warning(
+                            "SF: skipping %s — scraped 0 views but DB has %d "
+                            "(transient fetch failure, not a reset)",
+                            sub_id, existing["views"],
+                        )
+                        continue
 
                 sf_queries.upsert_sf_submission(conn, detail, account_id)
                 sf_queries.insert_sf_snapshot(conn, account_id, sub_id, views, faves, comments,

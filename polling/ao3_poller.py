@@ -249,6 +249,26 @@ async def run_ao3_poll_cycle(account_id: int | None = None, force_full: bool = F
                 comments = detail.get("comments_count", 0)
                 bookmarks = detail.get("bookmarks_count", 0)
 
+                # Defence in depth against transient scrape failures writing a
+                # 0-view snapshot. AO3 "hits" are cumulative and never drop, so
+                # a freshly-scraped 0 when the DB already holds a non-zero count
+                # means the fetch/parse failed (challenge page, partial HTML),
+                # not that the work reset. Persisting it corrupts the baseline
+                # and makes the next good poll look like a +N,000 spike in the
+                # digest/milestone deltas. Skip the work this cycle; the next
+                # one re-reads the real value. (The client now raises on hard
+                # fetch failures, but a 200-with-garbage page could still slip a
+                # partial 0 through to here.)
+                if views == 0:
+                    existing = ao3_queries.get_ao3_submission(conn, wid)
+                    if existing and (existing.get("views") or 0) > 0:
+                        logger.warning(
+                            "AO3: skipping work %s — scraped 0 views but DB has "
+                            "%d (transient fetch/parse failure, not a reset)",
+                            wid, existing["views"],
+                        )
+                        continue
+
                 ao3_queries.upsert_ao3_submission(conn, detail, account_id)
                 ao3_queries.insert_ao3_snapshot(conn, account_id, wid, views, faves, comments,
                                                 bookmarks, polled_at=poll_timestamp)

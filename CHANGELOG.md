@@ -4,6 +4,104 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.27.2] - 2026-06-22 - Fix SoFurry polling for the "SoFurry beta" rewrite
+
+**Bug:** SoFurry polling died on 2026-06-13 — every cycle errored with
+`SoFurry login failed -- check credentials`. SoFurry shipped a "beta" rewrite of
+the whole site, which broke the scraper.
+
+**Root cause:** the new SoFurry is a **React Router (Remix-style) SPA**. Three
+things the poller relied on changed at once: (1) the server-rendered gallery
+(`<div id={sid}>` blocks + `/s/{sid}?ref=glr` links) is now a JS-rendered shell
+with no submission links; (2) the `/ui/submission/{id}` JSON API returns **404**
+(the whole `/ui/` API is legacy); (3) the `/s/{id}` page no longer contains
+`"N Views"` text. With the gallery scrape finding nothing, the poller reported it
+as a login failure even though auth wasn't the real problem.
+
+**Fix — repoint polling at the SPA's loader data (and make it login-free):**
+- The new app exposes React Router loader data at `…​.data` URLs as turbo-stream
+  payloads. `/s/{id}.data` carries `title`/`views`/`likes`/comment count inline
+  **and is served without login** for published works (verified live against 5
+  works). `clients/sf/client.py` `get_submission_detail` now fetches `/s/{id}.data`
+  and parses the stats from the turbo-stream (new `_rr_int`/`_rr_str` helpers).
+- `get_all_gallery_ids` now reads `/u/{handle}/gallery.data`. **Caveat:** an
+  unauthenticated gallery is SFW-filtered, so a user with Adult works sees no
+  submissions there — auto-discovery of *new* works needs an authenticated
+  session, which the beta also broke (see below).
+- `polling/sf_poller.py` no longer hard-fails on an empty gallery. Because stats
+  are login-free per `/s/{id}.data`, it polls the union of discovered IDs and the
+  **submission IDs already in the DB** — restoring the views/likes/comments
+  time-series for all known works immediately, without a working login. It also
+  gained the same zero-view guard as AO3/FA/SqW ([2.27.1]).
+
+**Still broken (SoFurry posting — separate rebuild, not in this release):** the
+beta also changed (a) login (the CF-Worker `x-proxy-login` flow is stale against
+the new site), (b) the create/edit API (the `/ui/` endpoints `create_submission`/
+`edit_submission` use are gone — 404), and (c) the **content format** — the editor
+is now TipTap/ProseMirror, expecting inline `style="text-align:…"`, real
+`<h1>/<h2>/<h3>`, `<strong>/<em>/<u>/<s>`, `<li><p>…</p></li>`, `<blockquote>`,
+`<pre><code>`, `<hr>`, and ProseMirror tables (reference sample saved at
+`docs/reference/sofurry_beta_tiptap_sample.html`). The SF converter
+(`editor/converter.py`) currently emits `class="text-center"`-style alignment and
+`<p><strong>` pseudo-headings, which the new renderer won't honour. Posting needs
+a dedicated effort once login is rebuilt (you can't verify a render without it).
+
+---
+
+## [2.27.1] - 2026-06-22 - Fix AO3/SqW zero-view snapshots inflating digest deltas
+
+**Bug:** AO3 digest/milestone reports intermittently showed huge phantom view
+gains (e.g. "+2,400 views" for a work that actually gains ~30/day) — the symptom
+the user described as AO3 "consistently adding 2k+ views, like it isn't retaining
+from previous counts."
+
+**Root cause:** when an AO3 (or SqW — same OTW scraper code) work-page fetch
+failed transiently — `_get_page` returning `None` on an exhausted ReadTimeout,
+a 403 "Shields are up", a 429 throttle, a 525, or a 200 response that parsed to
+an empty stats block (Cloudflare/adult-content interstitial) — `get_work_detail`
+returned a fabricated all-zero stat dict. The poller wrote that straight through
+`upsert_*_submission` (clobbering the work's real, non-zero cumulative hit count
+with 0) **and** `insert_*_snapshot` (a `views=0` row). The next good poll
+recovered to the true value, so any digest or milestone whose baseline snapshot
+landed on one of those zero rows reported the entire view total as a single-period
+gain. Production data showed one AO3 work with **12 zero-snapshots out of 215**
+and 20 drop-to-zero events across five works — OTW "hits" are cumulative and never
+decrease, so every one of those zeros was bad data, not a real reset.
+
+**Fix (two layers):**
+- **Clients** (`clients/ao3/client.py`, `clients/sqw/client.py`) —
+  `get_work_detail` now **raises** instead of returning a zero dict when the page
+  fetch fails, and also raises when a 200 response parses to all-zero stats *and*
+  an empty title (the challenge/redirect-page signature). `get_work_details_batch`
+  already catches per-work exceptions, so a failed work is simply dropped from the
+  cycle rather than persisted as zeros. A genuinely brand-new work still has a
+  title, so real works are never dropped.
+- **Pollers** (`polling/ao3_poller.py`, `polling/sqw_poller.py`,
+  `polling/fa_poller.py`) — defence in depth: before upsert/snapshot, if the
+  scraped `views == 0` while the DB already holds a non-zero count for that work,
+  skip the work for this cycle (it's a transient scrape failure, not a reset). The
+  next cycle re-reads the real value. The FA direct-scrape path is especially
+  exposed: a Cloudflare challenge page returns HTTP 200 and parses to all-zero
+  stats, and under FA's new third-party policy (2026-06) challenge/DDoS-mitigation
+  responses are an expected, recurring event — so the same guard now covers FA.
+
+**Note:** this fixes new data going forward. The historical `views=0` snapshots
+already in the DB are still there — they can be deleted in a one-off cleanup so
+past charts and the 7-day weekly digest baseline are clean
+(`DELETE FROM ao3_snapshots WHERE views=0;` likewise for `sqw_snapshots` /
+`fa_snapshots`).
+
+**Not yet addressed (FA direct path, follow-up):** FA's 2026-06 third-party policy
+also requires *exponential backoff* and asks bots to stand down during Cloudflare
+DDoS mitigation. The direct-scrape path (`clients/fa/client.py`) currently paces at
+`FA_REQUEST_DELAY_SECONDS=1.5s` (satisfies the 1-req/sec rule) but has no backoff
+and no challenge detection — a separate change should add exponential backoff +
+explicit Cloudflare-challenge detection (so a challenge aborts/backs off instead of
+silently parsing to zeros). Longer term, FA's forthcoming official read-only API is
+the proper replacement for both FAExport and direct scraping.
+
+---
+
 ## [2.27.0] - 2026-06-16 - Multiple accounts per platform
 
 Support for **multiple accounts per platform** (e.g. two FurAffinity accounts),

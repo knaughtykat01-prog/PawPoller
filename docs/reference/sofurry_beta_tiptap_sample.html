@@ -1,0 +1,23 @@
+<!--
+SoFurry "beta" (2026-06) content format reference.
+
+The new SoFurry submission editor is a TipTap / ProseMirror rich-text editor.
+This is the exact HTML it produces/accepts for a document exercising every
+supported feature (captured from the live editor's "HTML" source view).
+
+Use this as the target structure when updating the SF content converter
+(editor/converter.py SF path) so uploaded story HTML renders correctly on the
+new site. Key shape notes:
+  - Block text is <p>...</p>; headings <h1>/<h2>/<h3> only.
+  - Inline marks: <strong>, <em>, <u>, <s>; nested as
+    <strong><em><s><u>...</u></s></em></strong> (order as shown).
+  - Alignment via inline style on the block: style="text-align: left|center|right|justify;"
+    (also valid on headings, e.g. <h1 style="text-align: center;">).
+  - Lists wrap each item's text in <p>: <ul><li><p>..</p></li></ul>, <ol> likewise.
+  - <blockquote><p>..</p></blockquote>; code as <pre><code>..</code></pre>.
+  - <hr> for horizontal rule.
+  - Tables are ProseMirror-style: <table><colgroup><col style="min-width:..">..</colgroup>
+    <tbody><tr><th colspan="1" rowspan="1"><p>..</p></th>..</tr>
+    <tr><td colspan="1" rowspan="1"><p>..</p></td>..</tr></tbody></table>
+-->
+<p>This is plain text.</p><h1>This is H1 text.</h1><h2>This is H2 text.</h2><h3>This is H3 Text.</h3><p><strong>This text is bold.</strong></p><p><em>This text is italic.</em></p><p><u>This text is underline.</u></p><p><s>This text is strikethough.</s></p><p style="text-align: left;">This text is align left.</p><p style="text-align: center;">This text is align centre.</p><p style="text-align: right;">This text is aligh right.</p><p style="text-align: justify;">This text is justified.</p><ul><li><p>This is a bullet list.</p></li></ul><ol><li><p>This is a numbered list.</p></li></ol><blockquote><p>This is a quoted text.</p></blockquote><pre><code>This is a code block.</code></pre><h1 style="text-align: center;"><strong><em><s><u>This text has mutliple properties applied to it.</u></s></em></strong></h1><h2 style="text-align: right;"><strong><em><s><u>This text has mutliple properties applied to it.</u></s></em></strong></h2><h3 style="text-align: left;"><strong><em><s><u>This text has mutliple properties applied to it.</u></s></em></strong></h3><p>Below is a horizontal rule</p><p></p><hr><table style="min-width: 75px;"><colgroup><col style="min-width: 25px;"><col style="min-width: 25px;"><col style="min-width: 25px;"></colgroup><tbody><tr><th colspan="1" rowspan="1"><p>This</p></th><th colspan="1" rowspan="1"><p>Is</p></th><th colspan="1" rowspan="1"><p>a</p></th></tr><tr><td colspan="1" rowspan="1"><p>Table</p></td><td colspan="1" rowspan="1"><p>with</p></td><td colspan="1" rowspan="1"><p>9</p></td></tr><tr><td colspan="1" rowspan="1"><p>seperate</p></td><td colspan="1" rowspan="1"><p>individual</p></td><td colspan="1" rowspan="1"><p>boxes</p></td></tr></tbody></table><p></p><p></p>

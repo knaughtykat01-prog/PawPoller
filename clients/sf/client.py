@@ -24,6 +24,7 @@ Do NOT call GET /sfw — that toggles SFW mode ON, hiding Adult submissions.
 
 from __future__ import annotations
 import asyncio
+import json
 import logging
 import os
 import re
@@ -416,136 +417,68 @@ class SoFurryClient:
     # -- Gallery Listing -----------------------------------------------
 
     async def get_all_gallery_ids(self) -> list[dict]:
-        """Scrape all gallery submissions from the server-rendered gallery HTML.
+        """Best-effort discovery of gallery submission IDs on the SoFurry beta.
 
-        SoFurry's gallery pages are server-side rendered.  Each submission
-        appears as a ``<div class="submission ..." id="{sid}">`` block with
-        an ``<a href="/s/{sid}?ref=glr">`` link and a ``<div class="title">``
-        inside it.  We extract IDs and titles directly from the HTML.
+        The 2026-06 "SoFurry beta" rewrite replaced the server-rendered gallery
+        (``<div id={sid}>`` blocks + ``/s/{sid}?ref=glr`` links) with a React
+        Router SPA whose gallery loader data lives at
+        ``/u/{handle}/gallery.data`` (a turbo-stream payload). Crucially, an
+        UNAUTHENTICATED request to that endpoint is SFW-filtered, so a user
+        whose works are Adult sees NO submissions — auto-discovery of new works
+        therefore needs a working authenticated session, which the CF-Worker
+        login path no longer provides on the new site.
 
-        When using the CF Worker proxy, the first page is fetched via
-        ``login_and_fetch_gallery`` which does GET /login → POST /login →
-        GET gallery all in one Worker invocation (same egress IP).  This
-        is required because SoFurry pins sessions to IPs.
+        The poll cycle does not depend on this: per-submission stats are now
+        fetched login-free from ``/s/{id}.data`` (see get_submission_detail),
+        and the poller polls the submission IDs it already knows from the DB.
+        This method returns whatever the gallery loader exposes (work IDs that
+        appear immediately before a ``"title"`` key in the turbo-stream) so that
+        once an authenticated session is restored, discovery resumes with no
+        further changes. Returns [] when nothing is visible.
         """
-        transport = self._http._transport
-        uses_proxy = hasattr(transport, 'login_and_fetch')
-
-        # Why proxy mode always does a fresh login rather than reusing sessions:
-        # CF Workers rotate egress IPs between invocations, and SoFurry pins
-        # sessions to the IP that performed login.  A session cookie obtained
-        # in one Worker invocation becomes invalid in the next (different IP),
-        # so session caching is useless through the proxy — we must re-login
-        # every poll cycle.
-        proxy_gallery_html: str | None = None
-        if uses_proxy:
-            proxy_gallery_html = await self.login_and_fetch_gallery()
-            if not proxy_gallery_html:
-                logger.warning("SF: login_and_fetch_gallery failed")
+        try:
+            resp = await self._http.get(
+                f"{SOFURRY_BASE}/u/{self.display_name}/gallery.data",
+                headers={"Accept": "*/*"},
+            )
+            if resp.status_code != 200:
+                logger.warning("SF: gallery.data returned HTTP %d", resp.status_code)
                 return []
-        elif not self._logged_in:
-            await self.login()
-
-        all_subs: list[dict] = []
-        seen: set[str] = set()
-        page = 1
-
-        for _page_safety in range(100):
-            try:
-                # Use proxy gallery HTML for page 1 if available
-                if page == 1 and proxy_gallery_html:
-                    html = proxy_gallery_html
-                    logger.info("SF gallery: using login_and_fetch HTML (%d chars)", len(html))
-                else:
-                    resp = await self._http.get(
-                        f"{SOFURRY_BASE}/u/{self.display_name}/gallery",
-                        params={"page": str(page)} if page > 1 else {},
-                    )
-                    resp.raise_for_status()
-                    html = resp.text
-
-                # Extract submission IDs from href="/s/{id}?ref=glr" links
-                ids_on_page = re.findall(
-                    r'href="(?:https://sofurry\.com)?/s/([A-Za-z0-9]+)\?ref=glr"',
-                    html,
+            # In the turbo-stream serialisation each work appears as
+            # ``"<id>","title","<Title>"``; the profile's own id is followed by
+            # "handle", not "title", so this pattern won't pick it up.
+            ids = list(dict.fromkeys(re.findall(r'"([A-Za-z0-9]{8})","title"', resp.text)))
+            if not ids:
+                logger.warning(
+                    "SF: gallery.data exposed no submissions for %s — the beta "
+                    "hides adult galleries from unauthenticated requests, so "
+                    "new-work discovery needs a rebuilt authenticated session. "
+                    "Known works are still polled login-free from /s/{id}.data.",
+                    self.display_name,
                 )
-
-                if not ids_on_page:
-                    # Broader fallback: any /s/{id} link
-                    ids_on_page = re.findall(
-                        r'href="(?:https://sofurry\.com)?/s/([A-Za-z0-9]+)',
-                        html,
-                    )
-
-                if not ids_on_page:
-                    if page == 1:
-                        # Check for authentication indicators
-                        has_logout = 'logout' in html.lower()
-                        has_username = self.display_name.lower() in html.lower()
-                        has_login_link = 'href="/login"' in html or "href='/login'" in html
-                        # Search for SFW/NSFW toggle
-                        sfw_match = re.search(r'(?i)(sfw|nsfw)[^<]{0,100}', html)
-                        sfw_context = sfw_match.group(0)[:80] if sfw_match else "not found"
-
-                        logger.warning(
-                            "SF gallery page has no /s/ links (%d chars). "
-                            "Auth indicators: logout=%s, username=%s, login_link=%s, sfw_context=%s",
-                            len(html), has_logout, has_username, has_login_link, sfw_context,
-                        )
-                        # Log more of the page — look for nav bar / header area
-                        logger.warning("SF gallery first 1500 chars: %s", html[:1500])
-                    break
-
-                # Build a map of ID → title from the HTML.
-                # Each submission block: <div ... id={sid}> ... <div class="title">Title</div>
-                title_map: dict[str, str] = {}
-                for match in re.finditer(
-                    r'id=([A-Za-z0-9]+)>.*?<div\s+class="title">([^<]+)</div>',
-                    html,
-                    re.DOTALL,
-                ):
-                    title_map[match.group(1)] = match.group(2).strip()
-
-                new_this_page = 0
-                for sid in ids_on_page:
-                    if sid not in seen:
-                        seen.add(sid)
-                        all_subs.append({
-                            "submission_id": sid,
-                            "title": title_map.get(sid, ""),
-                            "thumbnail_url": "",
-                        })
-                        new_this_page += 1
-
-                if new_this_page == 0:
-                    break
-
-                # Check for next page link
-                has_next = re.search(
-                    rf'/gallery\?page={page + 1}',
-                    html,
-                )
-                if not has_next:
-                    break
-
-                page += 1
-                await asyncio.sleep(config.SF_REQUEST_DELAY_SECONDS)
-
-            except Exception as e:
-                logger.warning("Failed to fetch SF gallery page %d: %s", page, e)
-                break
-
-        logger.info("SF: Found %d submissions from gallery HTML", len(all_subs))
-        return all_subs
+            else:
+                logger.info("SF: discovered %d submissions from gallery.data", len(ids))
+            return [{"submission_id": sid, "title": "", "thumbnail_url": ""} for sid in ids]
+        except Exception as e:
+            logger.warning("SF: gallery.data discovery failed: %s", e)
+            return []
 
     # -- Submission Detail ---------------------------------------------
 
     async def get_submission_detail(self, submission_id: str) -> dict:
-        """Fetch submission details using both the JSON API and web page.
+        """Fetch submission stats from the SoFurry beta (React Router) site.
 
-        Uses /ui/submission/{id} for metadata (title, author, rating,
-        publishedAt, thumbnail, description) and /s/{id} web page for
-        stats (views, likes, comments) which aren't in the API response.
+        The 2026-06 "SoFurry beta" rewrite retired the server-rendered pages and
+        the old ``/ui/submission/{id}`` JSON API (now 404). The per-submission
+        loader data is exposed at ``/s/{id}.data`` as a turbo-stream payload that
+        carries title/views/likes/comments inline — and it is served WITHOUT
+        login for published works, so polling no longer needs an authenticated
+        session. We parse the stats out of that payload.
+
+        On any fetch/parse failure the stat fields stay 0; the poller's
+        zero-view guard then skips the work for the cycle rather than persisting
+        a bogus 0 snapshot (which would corrupt the baseline — see the AO3/SqW/FA
+        zero-snapshot fix).
         """
         detail = {
             "submission_id": submission_id,
@@ -563,73 +496,28 @@ class SoFurryClient:
             "comments_count": 0,
         }
 
-        # Step 1: Get metadata from JSON API
         try:
             resp = await self._http.get(
-                f"{SOFURRY_BASE}/ui/submission/{submission_id}",
-                headers={"Accept": "application/json"},
+                f"{SOFURRY_BASE}/s/{submission_id}.data",
+                headers={"Accept": "*/*"},
             )
-            if resp.status_code == 200:
-                data = resp.json()
-                detail["title"] = data.get("title", "")
-                detail["username"] = data.get("author", self.display_name)
-                detail["description"] = data.get("description", "")
-                detail["thumbnail_url"] = data.get("thumbUrl", "") or data.get("coverUrl", "")
-                detail["rating"] = _RATING_MAP.get(data.get("rating", 0), "Clean")
-                detail["posted_at"] = data.get("publishedAt", "")
-                detail["keywords"] = data.get("artistTags", []) or []
-                # Content type based on category
-                cat = data.get("category", 0)
-                if cat == 20:
-                    detail["content_type"] = "story"
-                elif cat == 30:
-                    detail["content_type"] = "art"
-                elif cat == 40:
-                    detail["content_type"] = "music"
-                elif cat == 50:
-                    detail["content_type"] = "photo"
+            if resp.status_code != 200:
+                logger.warning("SF: /s/%s.data returned HTTP %d", submission_id, resp.status_code)
+                return detail
+            text = resp.text
+            detail["title"] = _rr_str(text, "title")
+            detail["description"] = _rr_str(text, "description")
+            detail["posted_at"] = _rr_str(text, "publishedAt")
+            detail["content_type"] = _rr_str(text, "category")
+            detail["views"] = _rr_int(text, "views")
+            detail["favorites_count"] = _rr_int(text, "likes")
+            # commentsMeta carries the real comment count:
+            #   ...,"perPage",20,"total",N,"hasMore",false,...
+            cm = re.search(r'"total",(\d+),"hasMore"', text)
+            if cm:
+                detail["comments_count"] = int(cm.group(1))
         except Exception as e:
-            logger.debug("Failed to fetch SF API metadata for %s: %s", submission_id, e)
-
-        # Step 2: Get stats from the web page
-        try:
-            await asyncio.sleep(0.5)  # Small delay between API and web requests
-            resp = await self._http.get(f"{SOFURRY_BASE}/s/{submission_id}")
-            if resp.status_code == 200:
-                html = resp.text
-                # Extract title from page if not from API
-                if not detail["title"]:
-                    title_match = re.search(r'<title>([^<]+)</title>', html)
-                    if title_match:
-                        title = title_match.group(1).strip()
-                        detail["title"] = re.sub(r'\s*[-|]\s*SoFurry.*$', '', title).strip()
-                        # Also strip "by Author" suffix
-                        detail["title"] = re.sub(r'\s+by\s+\S+$', '', detail["title"]).strip()
-
-                # Views: "X Views" or "X views"
-                views_match = re.search(r'(\d[\d,]*)\s*[Vv]iews?\b', html)
-                if views_match:
-                    detail["views"] = _safe_int(views_match.group(1))
-
-                # Likes/Favorites: "X Likes"
-                likes_match = re.search(r'(\d[\d,]*)\s*[Ll]ikes?\b', html)
-                if likes_match:
-                    detail["favorites_count"] = _safe_int(likes_match.group(1))
-
-                # Comments: "X Comments"
-                comments_match = re.search(r'(\d[\d,]*)\s*[Cc]omments?\b', html)
-                if comments_match:
-                    detail["comments_count"] = _safe_int(comments_match.group(1))
-
-                # Thumbnail fallback: og:image
-                if not detail["thumbnail_url"]:
-                    og_match = re.search(
-                        r'<meta[^>]+property="og:image"[^>]+content="([^"]+)"', html
-                    )
-                    if og_match:
-                        detail["thumbnail_url"] = og_match.group(1)
-        except Exception as e:
-            logger.debug("Failed to fetch SF web page for %s: %s", submission_id, e)
+            logger.warning("Failed to fetch SF submission %s via .data: %s", submission_id, e)
 
         return detail
 
@@ -1002,3 +890,26 @@ def _safe_int(val: Any) -> int:
         return int(val)
     except (ValueError, TypeError):
         return 0
+
+
+# ── React Router turbo-stream helpers (SoFurry beta /…​.data payloads) ──
+# React Router serialises loader data as a flat array where object entries are
+# laid out as ``"key",value`` pairs, so the value we want sits immediately after
+# its key name (e.g. ``"views",1485`` or ``"title","Hypnotic Claim"``). These
+# pull a single scalar by key — robust enough for stats without a full decoder.
+
+def _rr_int(text: str, key: str) -> int:
+    """Pull an int value that immediately follows a turbo-stream key."""
+    m = re.search(rf'"{re.escape(key)}",(\d+)', text)
+    return int(m.group(1)) if m else 0
+
+
+def _rr_str(text: str, key: str) -> str:
+    """Pull a JSON string value that immediately follows a turbo-stream key."""
+    m = re.search(rf'"{re.escape(key)}",("(?:[^"\\]|\\.)*")', text)
+    if not m:
+        return ""
+    try:
+        return json.loads(m.group(1))
+    except Exception:
+        return ""

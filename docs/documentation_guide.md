@@ -1111,6 +1111,16 @@ for detail in details:
     queries.insert_snapshot(conn, sub_id, views, faves, comments, polled_at=timestamp)
 ```
 
+> **Invariant: never snapshot a failed scrape as zeros.** View/hit counts are
+> cumulative and never legitimately decrease. A client whose page fetch fails
+> must NOT return a fabricated all-zero stat dict — that zero flows straight into
+> `upsert_submission` (clobbering the real count) and `insert_snapshot` (a bogus
+> `views=0` row), and the next good poll then reads like a multi-thousand view
+> spike in the digest/milestone deltas (the AO3 zero-snapshot bug, [2.27.1]). The
+> OTW clients (`ao3`, `sqw`) raise on a `None` fetch or an all-zero/title-less
+> parse so the work is dropped from the cycle; the pollers also skip any work that
+> scrapes `views=0` while the DB already holds a non-zero count, as belt-and-braces.
+
 **Step 5a: Conditional Fave Fetching**
 ```python
 should_fetch = (force_full and faves > 0) or \

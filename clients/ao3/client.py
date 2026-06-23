@@ -673,9 +673,14 @@ class AO3Client:
 
         html = await self._get_page(url)
         if not html:
-            logger.error("AO3: Failed to fetch work %d", work_id)
-            return {"work_id": work_id, "title": "", "hits": 0, "kudos_count": 0,
-                    "comments_count": 0, "bookmarks_count": 0}
+            # Do NOT fabricate a zero-stat record here. _get_page returns None
+            # on exhausted timeouts / 403 "Shields are up" / 429 throttle / 525,
+            # and the old zero dict flowed straight into upsert + snapshot,
+            # clobbering the work's real (cumulative, never-decreasing) hit count
+            # with 0. The next good poll then looked like a +N,000 view spike in
+            # digests and milestones. Raise instead so get_work_details_batch
+            # drops this work for the cycle; the next cycle re-reads the truth.
+            raise RuntimeError(f"AO3: failed to fetch work {work_id} (no page returned)")
 
         detail: dict = {"work_id": work_id}
 
@@ -730,6 +735,21 @@ class AO3Client:
         detail["kudos_count"] = _extract_stat("kudos")
         detail["comments_count"] = _extract_stat("comments")
         detail["bookmarks_count"] = _extract_stat("bookmarks")
+
+        # A real work page always renders a <dl class="stats"> block and a
+        # title. A 200 response that parses to a title-less, all-zero record is
+        # almost always a Cloudflare interstitial / adult-content gate / login
+        # redirect rather than the work itself — treat it as a fetch failure so
+        # we don't persist bogus zeros (same rationale as the _get_page None
+        # branch above). A genuinely brand-new work still has a title, so this
+        # won't drop real works.
+        if (detail["hits"] == 0 and detail["kudos_count"] == 0
+                and detail["comments_count"] == 0 and detail["bookmarks_count"] == 0
+                and not detail["title"]):
+            raise RuntimeError(
+                f"AO3: work {work_id} parsed to all-zero stats with no title — "
+                f"likely a challenge/redirect page, not the work"
+            )
 
         # Word count and chapters
         detail["word_count"] = _extract_stat("words")

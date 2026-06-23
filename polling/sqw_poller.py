@@ -220,6 +220,22 @@ async def run_sqw_poll_cycle(account_id: int | None = None, force_full: bool = F
                 comments = detail.get("comments_count", 0)
                 bookmarks = detail.get("bookmarks_count", 0)
 
+                # Defence in depth against a transient scrape failure writing a
+                # 0-view snapshot: OTW "hits" are cumulative and never drop, so
+                # a scraped 0 when the DB already holds a non-zero count means
+                # the fetch/parse failed, not that the work reset. Persisting it
+                # corrupts the baseline and inflates the next digest/milestone
+                # delta. Skip the work this cycle; the next one re-reads it.
+                if views == 0:
+                    existing = sqw_queries.get_sqw_submission(conn, wid)
+                    if existing and (existing.get("views") or 0) > 0:
+                        logger.warning(
+                            "SqW: skipping work %s — scraped 0 views but DB has "
+                            "%d (transient fetch/parse failure, not a reset)",
+                            wid, existing["views"],
+                        )
+                        continue
+
                 sqw_queries.upsert_sqw_submission(conn, detail, account_id)
                 sqw_queries.insert_sqw_snapshot(conn, account_id, wid, views, faves, comments,
                                                 bookmarks, polled_at=poll_timestamp)

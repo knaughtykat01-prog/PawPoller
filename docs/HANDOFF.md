@@ -1,15 +1,24 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-06-16
-**Current version:** 2.27.0 — **multiple accounts per platform** (all 11 platforms,
-polling + posting) + a **direct-FA-cookie polling fallback** for the FAExport outage.
-`APP_VERSION` is bumped and the CHANGELOG/HANDOFF/docs are finalized — **ready to release**
-(`/pp-release 2.27.0 "multi-account + FA direct fallback"` then `/pp-deploy`), NOT yet
-committed/tagged/deployed. **Heads-up before deploying:** the migration runs on the live
-server's real data (idempotent + backward-compatible, tested), and FA direct polling must
-run from the **desktop** instance (datacenter IP is Cloudflare-blocked). Deployed prod is
-still 2.26.3. See "Multi-account model" below before touching accounts / credentials /
-pollers / posting.
+**Last updated:** 2026-06-22
+**Current version:** 2.27.2 — **multiple accounts per platform** (all 11 platforms,
+polling + posting) + a **direct-FA-cookie polling fallback** for the FAExport outage,
+a **fix for AO3/SqW zero-view snapshots** that were inflating digest/milestone view
+deltas (CHANGELOG [2.27.1]), and a **fix for SoFurry polling** after SF's "beta"
+React-Router rewrite broke the scraper (now polls the SPA's login-free `/s/{id}.data`
+loader data — CHANGELOG [2.27.2]; SF *posting* still needs a rebuild, see below). `APP_VERSION` is bumped and the CHANGELOG/HANDOFF/docs are finalized —
+**ready to release** (`/pp-release 2.27.2 "multi-account + FA direct fallback + AO3 zero-snapshot fix + SoFurry beta polling"`
+then `/pp-deploy`), NOT yet committed/tagged/deployed. **Heads-up before deploying:**
+the migration runs on the live server's real data (idempotent + backward-compatible,
+tested), and FA direct polling must run from the **desktop** instance (datacenter IP is
+Cloudflare-blocked). Deployed prod is still 2.26.3. See "Multi-account model" below before
+touching accounts / credentials / pollers / posting.
+
+**Open follow-up for 2.27.1:** the fix only stops *new* bad rows. The historical
+`views=0` AO3/SqW/FA snapshots are still in prod (one AO3 work had 12/215). A one-off
+`DELETE FROM ao3_snapshots WHERE views=0;` (and `sqw_snapshots` / `fa_snapshots`) cleans
+past charts and the 7-day weekly-digest baseline — run after deploy, with a DB backup
+first.
 
 ---
 
@@ -120,6 +129,57 @@ mode; the core views/faves/comments snapshot still works. **Run it from the
 desktop instance** — FA's Cloudflare blocks the datacenter server IP. Parser
 verified by `tests/test_fa_direct.py`. If FA HTML drifts, the regexes in
 `_parse_submission_html` (stats/title/rating/tags) are the things to update.
+
+**FA official policy + upcoming API (announced ~2026-06-22) — changes the plan.**
+FA published a formal third-party / bot policy and announced an **official
+read-only API** (invite-only closed beta; application form
+https://forms.gle/8XNUo61fK4VyQdHA6 ; FA+ members can join via Discord). Net
+effect for PawPoller:
+- **The official read-only API is the proper long-term replacement** for BOTH
+  FAExport and the direct-cookie scrape. Apply to the closed beta. Read-only is
+  exactly what polling needs (views/faves/comments); writes (posting) come later.
+- **Legitimise the current scraping NOW:** FA asks M2M scraping/verification
+  services to file a **Trouble Ticket → Tech → "Access Requests"** so they can
+  identify the traffic pattern and *retain* access; they also said they'll reach
+  out to people whose scripts broke on CF blocks who filed tickets. File one for
+  the desktop direct-polling traffic.
+- **Stated technical rules:** ≤1 request/second (we're at 1.5s ✅), proper
+  **exponential backoff** (direct path has NONE ⚠️), stand down during CF DDoS
+  mitigation, and keep activity to periods with <15k users online. The direct
+  path needs exponential backoff + explicit Cloudflare-challenge detection (a
+  challenge page is HTTP 200 and silently parses to all-zero stats — the
+  2.27.1 zero-snapshot guard now stops it corrupting data, but a real backoff is
+  still the policy-compliant fix). Postybirb/FABUI are explicitly permitted; an
+  app like PawPoller is the "third-party software" the access-request path covers.
+
+**SoFurry "beta" rewrite (broke ~2026-06-13) — React Router SPA.**
+SoFurry replaced the whole site with a React Router (Remix-style) SPA. What this
+broke and where it stands:
+- **Polling — FIXED ([2.27.2]).** Old gallery scrape + `/ui/submission/{id}` JSON
+  API (now 404) + `/s/{id}` "N Views" text are all gone. New source: React Router
+  loader data at `…​.data` URLs (turbo-stream). `/s/{id}.data` carries
+  views/likes/comments/title **login-free** for published works. The poller now
+  polls DB-known IDs (∪ discovery) via `/s/{id}.data`, so the time-series resumed
+  without a working login. Parser = `_rr_int`/`_rr_str` in `clients/sf/client.py`,
+  verified live against 5 works.
+- **New-work discovery — degraded.** `/u/{handle}/gallery.data` is SFW-filtered
+  when unauthenticated, so adult galleries return no items. Auto-discovery of NEW
+  works needs a rebuilt authenticated session. Existing works keep polling fine.
+- **Posting — STILL BROKEN, needs a dedicated rebuild.** Three things to redo:
+  (1) **login** — the CF-Worker `x-proxy-login` flow is stale vs the new site (new
+  login page still has a Laravel `_token` + `<meta csrf-token>`, so direct login
+  may still work from a residential IP; the Worker's hardcoded login logic likely
+  needs updating — Worker source is deployed on Cloudflare, not in this repo);
+  (2) **create/edit API** — `create_submission`/`edit_submission` POST to the
+  `/ui/submission` endpoints, which now 404. Reverse-engineer the new React Router
+  action routes (likely `.data` POSTs with the `csrfToken` from the loader data);
+  (3) **content format** — the editor is now TipTap/ProseMirror. Target HTML
+  reference: `docs/reference/sofurry_beta_tiptap_sample.html`. The SF converter
+  (`editor/converter.py` `_convert_body_sofurry`) currently emits
+  `class="text-center"`/`"text-right"` alignment + `<p><strong>` pseudo-headings;
+  the new renderer wants inline `style="text-align:…"` and real `<h1>/<h2>/<h3>`.
+  Can't verify a render until login+create are working, so sequence: login →
+  create/edit endpoints → converter, then post a test work and eyeball it.
 
 **Riskiest watch-items:** any poster still reading `session_cache WHERE id=1` (silent
 shared token); reintroducing the write-lock-across-await bug in pollers; account-manifest
