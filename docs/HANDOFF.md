@@ -6,19 +6,18 @@ polling + posting) + a **direct-FA-cookie polling fallback** for the FAExport ou
 a **fix for AO3/SqW zero-view snapshots** that were inflating digest/milestone view
 deltas (CHANGELOG [2.27.1]), and a **fix for SoFurry polling** after SF's "beta"
 React-Router rewrite broke the scraper (now polls the SPA's login-free `/s/{id}.data`
-loader data — CHANGELOG [2.27.2]; SF *posting* still needs a rebuild, see below). `APP_VERSION` is bumped and the CHANGELOG/HANDOFF/docs are finalized —
-**ready to release** (`/pp-release 2.27.2 "multi-account + FA direct fallback + AO3 zero-snapshot fix + SoFurry beta polling"`
-then `/pp-deploy`), NOT yet committed/tagged/deployed. **Heads-up before deploying:**
-the migration runs on the live server's real data (idempotent + backward-compatible,
-tested), and FA direct polling must run from the **desktop** instance (datacenter IP is
-Cloudflare-blocked). Deployed prod is still 2.26.3. See "Multi-account model" below before
-touching accounts / credentials / pollers / posting.
+loader data — CHANGELOG [2.27.2]; SF *posting* still needs a rebuild, see below).
+**Released + deployed 2026-06-23** (commit `750f90d`, tag `v2.27.2`; live `/api/health`
+reports `2.27.2`, all pollers ticking clean). **Note:** FA direct polling must run from
+the **desktop** instance (datacenter IP is Cloudflare-blocked). See "Multi-account model"
+below before touching accounts / credentials / pollers / posting.
 
-**Open follow-up for 2.27.1:** the fix only stops *new* bad rows. The historical
-`views=0` AO3/SqW/FA snapshots are still in prod (one AO3 work had 12/215). A one-off
-`DELETE FROM ao3_snapshots WHERE views=0;` (and `sqw_snapshots` / `fa_snapshots`) cleans
-past charts and the 7-day weekly-digest baseline — run after deploy, with a DB backup
-first.
+**Historical zero-snapshot cleanup — DONE 2026-06-23.** After deploying 2.27.2, the
+one-off cleanup ran against prod: **746 corrupt `views=0` rows deleted** (ao3 25, sqw 270,
+fa 451), each one provably bad (every zero belonged to a work that also had a non-zero
+snapshot; cumulative counts never decrease). 0 remain. DB backed up first to
+`/app/data/pawpoller.db.bak.1782177890`. Past charts and the 7-day weekly-digest baseline
+are now clean; the 2.27.1 guards stop new ones forming.
 
 ---
 
