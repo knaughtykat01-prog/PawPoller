@@ -1,21 +1,24 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-06-23
-**Current version:** 2.28.2 — FurAffinity direct-scraper refresh + server enablement.
-The 2.28.x line first completed the **SoFurry "beta" migration**: 2.28.0 rebuilt SF
-posting onto the new Remix `/api/*` (Laravel `/login` + the **`/fe/auth/sofurry`
-OAuth2-PKCE bridge** → `upload-create`/`upload-content`/`submission-editor`/`DELETE`) +
-TipTap converter + follower/thumbnail/discovery; 2.28.1 fixed SF discovery (folder-id
-false-positives + reliable enumeration). **2.28.0 and 2.28.1 are both released +
-deployed** (`/api/health` reports `2.28.1`). **2.28.2** (this change) refreshes the
-stale FA direct-scrape parser (FA's submission HTML moved to `submission-page-stats` /
-`data-tag-name` / twitter-meta rating — it was silently scraping 0 stats) and wires the
-direct FA client through the CF Worker proxy so it can run on the **server** (confirmed
-live: Cloudflare egress is NOT FA-datacenter-blocked, FA cookies authenticate through
-it, real stats parse — `views=72`). CHANGELOG [2.28.2]. **Staged, NOT yet
-released/deployed** — `/pp-release 2.28.2` then `/pp-deploy`. To enable server-side FA
-without FAExport: add FA `a`/`b` cookies to the server settings + set
-`fa_direct_polling=true` (`fa_use_cf_proxy` already on). Full SF API map:
+**Last updated:** 2026-06-24
+**Current version:** 2.28.3 — FA stats-regex fix. The 2.28.x line completed the
+**SoFurry "beta" migration** (2.28.0 posting rebuild + 2.28.1 discovery fix) and the
+**FurAffinity direct-scraper** work: 2.28.2 refreshed the stale FA submission parser
+(FA's HTML moved to `submission-page-stats` / `data-tag-name` / twitter-meta rating) and
+wired the direct FA client through the CF Worker proxy so it can run on the **server**
+(confirmed live: Cloudflare egress is NOT FA-datacenter-blocked, FA cookies authenticate
+through it). **2.28.0–2.28.2 are all released + deployed** (`/api/health` reports
+`2.28.2`). **2.28.3** fixes a bug 2.28.2 introduced: its ReDoS mitigation bounded the
+stats regex whitespace too tightly (`\s{0,30}`) and matched nothing on FA's deep
+indentation, so the post-deploy verification poll scraped 0 stats; the correct fix
+de-overlaps the quantifiers instead. CHANGELOG [2.28.3]. **Staged, NOT yet
+released/deployed** — `/pp-release 2.28.3` then `/pp-deploy`.
+
+**Server FA state:** the FA `a`/`b` cookies are staged in the encrypted vault;
+`fa_use_cf_proxy=true`; `fa_direct_polling` was **reverted to false** (FAExport primary)
+pending 2.28.3. After deploying 2.28.3: re-flip `fa_direct_polling=true`, verify a manual
+poll pulls real stats, then clean the ~11 zero-snapshots the broken 2.28.2 verification
+poll inserted. Full SF API map:
 `docs/reference/sofurry_beta_api_map.md`.
 
 **Heads-up:** existing stories' `*_SoFurry.html` use the OLD class-based markup —

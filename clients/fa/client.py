@@ -476,12 +476,14 @@ class FAClient:
         # and the Favorites count is wrapped in a /favslist link:
         #   <div title="Favorites"><div><a href="/favslist/{id}/">1</a></div>
         def _stat(title: str) -> int:
-            # Whitespace runs are bounded ({0,30}) rather than \s* so a degraded
-            # page with a long blank gap after the stats div can't trigger
-            # quadratic backtracking across the two optional-group-straddling runs.
+            # ReDoS-safe WITHOUT bounding the whitespace (FA indents deeply — the
+            # gap between the outer and inner <div> exceeds 30 chars, so a {0,30}
+            # bound matched nothing). The original blowup came from two \s* runs
+            # straddling the optional <a> group; moving the second \s* INSIDE that
+            # group leaves each remaining \s* separated by a literal, so there is
+            # no overlapping-quantifier ambiguity to backtrack over.
             m = re.search(
-                rf'<div title="{title}">\s{{0,30}}<div>\s{{0,30}}(?:<a[^>]*>)?\s{{0,30}}([\d,]+)',
-                html,
+                rf'<div title="{title}">\s*<div>\s*(?:<a[^>]*>\s*)?([\d,]+)', html
             )
             return _safe_int(m.group(1)) if m else 0
 

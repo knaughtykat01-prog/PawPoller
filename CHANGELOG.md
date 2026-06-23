@@ -4,6 +4,26 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.28.3] - 2026-06-24 - Fix the FA stats regex (2.28.2's ReDoS bound was too tight)
+
+**Bug:** 2.28.2's ReDoS mitigation bounded the stats regex whitespace to `\s{0,30}`,
+but FA indents its submission-page-stats markup more deeply than that (the gap between
+the outer `<div title="Views">` and the inner `<div>` exceeds 30 chars), so the bounded
+regex matched **nothing** and direct-FA scraping returned 0 views/faves/comments. Caught
+by the post-deploy verification poll before it persisted bad data (the zero-view guard
+skipped any work that already had real stats; `fa_direct_polling` was reverted to false
+pending this fix).
+
+**Fix** (`clients/fa/client.py` `_stat`): the correct ReDoS fix isn't a tight bound —
+it's removing the overlapping quantifiers. The blowup came from two `\s*` runs
+straddling the optional `<a>` group; moving the second `\s*` **inside** that group
+(`\s*(?:<a[^>]*>\s*)?` instead of `\s*(?:<a[^>]*>)?\s*`) leaves each `\s*` separated by a
+literal, so there's no overlapping-quantifier ambiguity to backtrack over — ReDoS-safe
+(100 KB whitespace = 4.8 ms, was 73 s) **and** matches any amount of real indentation.
+Verified live: `views=72/127/95`.
+
+---
+
 ## [2.28.2] - 2026-06-23 - Refresh FurAffinity direct scraper + enable it server-side
 
 **Why:** PawPoller's FA polling depends on the flaky third-party FAExport; the
