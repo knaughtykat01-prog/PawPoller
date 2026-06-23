@@ -4,6 +4,33 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.28.1] - 2026-06-23 - Fix + harden SoFurry new-work discovery
+
+**Bug:** the first full SF poll after 2.28.0 created a junk submission row, and
+discovery wasn't actually finding most works. 2.28.0's `get_all_gallery_ids` parsed the
+gallery turbo-stream with narrow regexes (`"<id>","title"` / `"id","<id>","name"`) that
+(a) matched only the one submission whose keys are serialised inline plus **folders**
+(which share the `"id","<id>","name"` shape), and (b) missed every de-duplicated work.
+The "Extra Credit" folder id `rm8DrQym` was thus stored as a submission — it 404s on
+`/s/{id}.data`, persisting as a `title=""`, `views=0` row (the AO3/FA zero-snapshot class
+of bug from 2.27.1).
+
+**Fix — two layers:**
+- **Poller guard** (`polling/sf_poller.py`): before upserting, skip any
+  **newly-discovered** id (not already in the DB) whose detail came back with no title —
+  a real submission always has one; a folder / non-submission 404s to an empty title.
+  Known works keep their row (their transient-failure guard already covers them).
+- **Reliable enumeration** (`clients/sf/client.py` `get_all_gallery_ids`): take every
+  id-shaped token from the authed gallery turbo-stream (8 alnum chars with ≥1
+  digit/uppercase — drops lowercase tag values), then subtract the profile's own user id
+  (`GET /api/profile`, which redirects to a titled page and would otherwise slip the
+  guard) and the folder ids (`GET /api/folders`). Verified live: now surfaces all 10
+  works (was 1–2); the ~6 residual field-name tokens 404 and are dropped by the guard.
+
+The one junk `rm8DrQym` row the 2.28.0 poll created is removed in a one-off prod cleanup.
+
+---
+
 ## [2.28.0] - 2026-06-23 - Rebuild SoFurry posting for the "SoFurry beta" rewrite
 
 **Context:** 2.27.2 fixed SoFurry *polling* after SF's React-Router ("beta")

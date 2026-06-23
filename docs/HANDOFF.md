@@ -1,17 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-23
-**Current version:** 2.28.0 — **SoFurry posting rebuilt** for SF's React-Router
-("beta") rewrite. The old `/ui/submission*` API is gone (Remix 404s `/ui/*`), so
-posting now runs against the new Remix `/api/*`: Laravel `/login` + the
+**Current version:** 2.28.1 — **SoFurry "beta" migration** (posting + polling). 2.28.0
+rebuilt SF posting onto the new Remix `/api/*` (Laravel `/login` + the
 **`/fe/auth/sofurry` OAuth2-PKCE bridge** → `upload-create` / `upload-content` /
-`submission-editor` / `DELETE`, and the SF converter emits TipTap HTML (real
-`<h1>/<h2>`, inline `style="text-align"`). Reverse-engineered + **live-verified
-end-to-end** (login+bridge → private 2-chapter create → multi-chapter upload+titles
-→ delete, all 200s). Full map: `docs/reference/sofurry_beta_api_map.md`; CHANGELOG
-[2.28.0]. **Staged, NOT yet released/deployed** — cut with `/pp-release 2.28.0` then
-`/pp-deploy`. (Prior **2.27.2** — SoFurry polling fix + AO3/SqW/FA zero-snapshot fix —
-is live on prod; `/api/health` reports `2.27.2`.)
+`submission-editor` / `DELETE`), made the converter emit TipTap HTML (real `<h1>/<h2>`,
+inline `style="text-align"`), and ported follower count/list + thumbnail + best-effort
+discovery. **2.28.0 was released + deployed 2026-06-23** (`/api/health` reported
+`2.28.0`). 2.28.1 is a **patch**: the first full SF poll showed discovery picking up a
+gallery *folder* id (`rm8DrQym`) as a submission (404 → junk 0-view row); fixed with a
+poller guard that skips newly-discovered ids with no title (CHANGELOG [2.28.1]).
+**Staged, NOT yet released/deployed** — cut with `/pp-release 2.28.1` then `/pp-deploy`.
+Full SF API map: `docs/reference/sofurry_beta_api_map.md`.
 
 **Heads-up:** existing stories' `*_SoFurry.html` use the OLD class-based markup —
 **re-generate** them so the SF converter emits the new TipTap HTML before re-uploading,

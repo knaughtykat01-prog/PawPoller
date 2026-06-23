@@ -442,13 +442,11 @@ class SoFurryClient:
         therefore needs a working authenticated session, which the CF-Worker
         login path no longer provides on the new site.
 
-        The poll cycle does not depend on this: per-submission stats are now
-        fetched login-free from ``/s/{id}.data`` (see get_submission_detail),
-        and the poller polls the submission IDs it already knows from the DB.
-        This method returns whatever the gallery loader exposes (work IDs that
-        appear immediately before a ``"title"`` key in the turbo-stream) so that
-        once an authenticated session is restored, discovery resumes with no
-        further changes. Returns [] when nothing is visible.
+        The poll cycle does not depend on this: per-submission stats are fetched
+        login-free from ``/s/{id}.data`` (see get_submission_detail) and the poller
+        always polls the submission IDs it already knows from the DB. This method
+        returns *candidate* ids (see the extraction note below) that the poller
+        validates before persisting. Returns [] when nothing is visible.
         """
         try:
             resp = await self._http.get(
@@ -458,30 +456,59 @@ class SoFurryClient:
             if resp.status_code != 200:
                 logger.warning("SF: gallery.data returned HTTP %d", resp.status_code)
                 return []
-            # In the turbo-stream serialisation each work appears as
-            # ``"<id>","title","<Title>"``; the profile's own id is followed by
-            # "handle", not "title", so this pattern won't pick it up.
-            # Submission ids appear two ways in the turbo-stream depending on
-            # serialisation: `"<id>","title"` (recommended/inline works) and
-            # `"id","<id>","name"` (gallery list items). NOTE: React-Router
-            # turbo-stream de-duplicates repeated strings, so a long gallery may
-            # only surface a subset here — the poller also always polls DB-known
-            # ids, and works posted via PawPoller are recorded at post time, so
-            # discovery is a best-effort top-up, not the source of truth.
-            ids = list(dict.fromkeys(
-                re.findall(r'"([A-Za-z0-9]{8})","title"', resp.text)
-                + re.findall(r'"id","([A-Za-z0-9]{8})","name"', resp.text)
-            ))
-            if not ids:
-                logger.warning(
-                    "SF: gallery.data exposed no submissions for %s — the beta "
-                    "hides adult galleries from unauthenticated requests, so "
-                    "new-work discovery needs a rebuilt authenticated session. "
-                    "Known works are still polled login-free from /s/{id}.data.",
-                    self.display_name,
+            text = resp.text
+
+            # The gallery turbo-stream lists folders AND submissions, both with
+            # 8-char alnum ids, and de-duplicates strings — so a "submission"-only
+            # regex misses most works. Instead take every id-shaped token (8 alnum
+            # chars with >=1 digit/uppercase → drops lowercase tag/keyword values)
+            # and subtract the things we KNOW aren't submissions: the profile's own
+            # user id (which redirects to a titled page, so it would slip past the
+            # poller's title guard) and the folder ids. Remaining tokens are
+            # candidates; the poller validates each via /s/{id}.data (folders /
+            # field-name tokens 404 → no title) before persisting, so a stray
+            # candidate is dropped, never stored as junk.
+            exclude: set[str] = set()
+            try:
+                pr = await self._http.get(
+                    f"{SOFURRY_API}/profile",
+                    params={"handle": self.display_name},
+                    headers={"Accept": "application/json"},
                 )
+                if pr.status_code == 200:
+                    uid = ((pr.json() or {}).get("user") or {}).get("id")
+                    if uid:
+                        exclude.add(str(uid))
+            except Exception:
+                pass
+            try:
+                fr = await self._http.get(
+                    f"{SOFURRY_API}/folders", headers={"Accept": "application/json"}
+                )
+                if fr.status_code == 200:
+                    for f in (fr.json() or []):
+                        if f.get("id"):
+                            exclude.add(str(f["id"]))
+            except Exception:
+                pass
+
+            ids: list[str] = []
+            for tok in re.findall(r'"([A-Za-z0-9]{8})"', text):
+                if tok in exclude:
+                    continue
+                if not any(ch.isdigit() or ch.isupper() for ch in tok):
+                    continue  # all-lowercase → a tag/keyword value, never an id
+                ids.append(tok)
+            ids = list(dict.fromkeys(ids))
+
+            if ids:
+                logger.info("SF: %d candidate submission ids from gallery.data", len(ids))
             else:
-                logger.info("SF: discovered %d submissions from gallery.data", len(ids))
+                logger.warning(
+                    "SF: gallery.data exposed no submissions for %s — the beta hides "
+                    "adult galleries from unauthenticated requests; the poller polls "
+                    "DB-known ids regardless.", self.display_name,
+                )
             return [{"submission_id": sid, "title": "", "thumbnail_url": ""} for sid in ids]
         except Exception as e:
             logger.warning("SF: gallery.data discovery failed: %s", e)

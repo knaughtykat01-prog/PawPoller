@@ -768,10 +768,13 @@ Category/type are INT codes on write (20=Writing, 21=Short Story, 29=Book). The 
 **Followers:** count from login-free `GET /api/profile?handle=` (`user.followerCount`);
 the username list from login-free `GET /api/followers?handle=&mode=followers&page=`
 (20/page, `hasNextPage`) → `users[].handle`, so new-follower notifications work.
-**Discovery:** `get_all_gallery_ids()` parses both turbo-stream id
-encodings off `gallery.data`; the poller runs the auth bridge best-effort first so the
-authed gallery (incl. adult works) is used. New works serialise inline and are caught;
-older dedup'd ones are already DB-known.
+**Discovery:** `get_all_gallery_ids()` (2.28.1) extracts every id-shaped token from the
+authed `gallery.data` turbo-stream (8 alnum chars with ≥1 digit/uppercase — drops
+lowercase tag values), minus the profile's own user id (`/api/profile`) and folder ids
+(`/api/folders`); the poller runs the auth bridge best-effort first so the gallery
+includes adult works. Candidates are validated by the poller — a newly-discovered id
+whose `/s/{id}.data` has no title (a folder or field-name token) is skipped, not stored
+as a junk 0-view row.
 
 ### SquidgeWorld (`clients/sqw/client.py`) — `SqWClient`
 

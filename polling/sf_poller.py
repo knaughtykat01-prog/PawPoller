@@ -272,6 +272,20 @@ async def run_sf_poll_cycle(account_id: int | None = None, force_full: bool = Fa
                 faves = detail.get("favorites_count", 0)
                 comments = detail.get("comments_count", 0)
 
+                # Reject discovery false-positives: a newly-discovered id that
+                # doesn't resolve to a titled submission (e.g. a gallery FOLDER id,
+                # which 404s on /s/{id}.data → empty title) must not be persisted as
+                # a junk 0-view row. Known works keep their row (the views==0 guard
+                # below handles their transient failures).
+                if not (detail.get("title") or "").strip():
+                    if not sf_queries.get_sf_submission(conn, sub_id):
+                        logger.warning(
+                            "SF: skipping newly-discovered id %s with no title "
+                            "(not a real submission — likely a gallery folder id)",
+                            sub_id,
+                        )
+                        continue
+
                 # Skip transient scrape failures: SF views are cumulative and
                 # never drop, so a scraped 0 when the DB already holds a non-zero
                 # count means the /s/{id}.data fetch failed, not a real reset.
