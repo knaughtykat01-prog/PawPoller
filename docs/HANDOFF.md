@@ -14,11 +14,13 @@ indentation, so the post-deploy verification poll scraped 0 stats; the correct f
 de-overlaps the quantifiers instead. CHANGELOG [2.28.3]. **Staged, NOT yet
 released/deployed** — `/pp-release 2.28.3` then `/pp-deploy`.
 
-**Server FA state:** the FA `a`/`b` cookies are staged in the encrypted vault;
-`fa_use_cf_proxy=true`; `fa_direct_polling` was **reverted to false** (FAExport primary)
-pending 2.28.3. After deploying 2.28.3: re-flip `fa_direct_polling=true`, verify a manual
-poll pulls real stats, then clean the ~11 zero-snapshots the broken 2.28.2 verification
-poll inserted. Full SF API map:
+**Server FA state — DONE 2026-06-24:** 2.28.3 deployed; FA `a`/`b` cookies in the
+encrypted vault; `fa_use_cf_proxy=true` + `fa_direct_polling=true` — the server now
+**direct-scrapes FA stats through the CF proxy** (verified live: views 324/364/203…),
+off the flaky FAExport. 77 corrupt zero-snapshots cleaned. **Caveat:** under
+`fa_direct_polling` the watcher/comment paths still go via FAExport (so they're paused
+while it's down) — porting direct watchers (`/watchlist/by/{user}/` scrapes fine) +
+comments off the `/view/` page is the remaining follow-up. Full SF API map:
 `docs/reference/sofurry_beta_api_map.md`.
 
 **Heads-up:** existing stories' `*_SoFurry.html` use the OLD class-based markup —
