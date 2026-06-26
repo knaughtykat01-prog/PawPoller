@@ -1,9 +1,12 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-26
-**Current version:** 2.29.0 — **Bold dashboard redesign** (shell + nav + Home). Built + locally
-verified, **NOT yet released/deployed** — run `/pp-release 2.29.0` then `/pp-deploy`. The
-deployed prod version is still 2.28.3 until then.
+**Current version:** 2.29.0 — **Bold dashboard redesign** (shell + nav + Home). **Released +
+deployed** to the GCP VM on 2026-06-26 (commit `8725f9e`; prod `/api/health` reports `2.29.0`;
+clean startup, both UI shells serve). Ships behind the **Legacy⇄Beta toggle** (default `beta`,
+one-click fallback via the top-right switch or `_DEFAULT_UI` in `dashboard.py`).
+**Follow-up:** the desktop `.exe` was NOT rebuilt — desktop users get the redesign on the next
+`build.bat` (PyInstaller) build; the server/web dashboard is live now.
 
 **2.29.0 redesign (this session)** — a ground-up redesign of the dashboard **shell + navigation +
 Home**, on the shared frontend (desktop + server), reusing the ~50 existing page-render functions
