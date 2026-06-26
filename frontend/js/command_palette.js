@@ -15,19 +15,9 @@
  */
 
 (function () {
-    const PLATFORMS = [
-        { code: 'ib',   label: 'Inkbunny' },
-        { code: 'fa',   label: 'FurAffinity' },
-        { code: 'ws',   label: 'Weasyl' },
-        { code: 'sf',   label: 'SoFurry' },
-        { code: 'sqw',  label: 'SquidgeWorld' },
-        { code: 'ao3',  label: 'AO3' },
-        { code: 'da',   label: 'DeviantArt' },
-        { code: 'wp',   label: 'Wattpad' },
-        { code: 'ik',   label: 'Itaku' },
-        { code: 'bsky', label: 'Bluesky' },
-        { code: 'tw',   label: 'X / Twitter' },
-    ];
+    // Canonical 11-platform list now lives in platforms.js (window.PLATFORMS),
+    // loaded before this script. Map to the {code,label} shape the palette uses.
+    const PLATFORMS = (window.PLATFORMS || []).map(p => ({ code: p.code, label: p.label }));
 
     const COMMANDS = [
         // Top-level pages

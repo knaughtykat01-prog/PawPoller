@@ -102,21 +102,23 @@ const App = {
          * it's always present, and we don't want the listeners skipped
          * when the user is briefly on the login or setup screen first.
          * (BUG-008 in 2.14.6, regression caught in 2.14.7 QA.) */
-        /* Sidebar collapse/pin — explicit toggle (replaces the old
-         * hover-to-expand rail). State persists in localStorage and is
-         * applied as `.collapsed` on the sidebar + `sidebar-collapsed` on
-         * <body> (the latter drives the main column's left margin). */
         const _sidebarEl = document.querySelector('.sidebar');
-        const _applyCollapsed = (on) => {
-            _sidebarEl?.classList.toggle('collapsed', on);
-            document.body.classList.toggle('sidebar-collapsed', on);
-        };
-        try { _applyCollapsed(localStorage.getItem('pawpoller-sidebar-collapsed') === '1'); } catch (e) { /* ignore */ }
-        document.getElementById('sidebar-collapse')?.addEventListener('click', () => {
-            const on = !_sidebarEl?.classList.contains('collapsed');
-            _applyCollapsed(on);
-            try { localStorage.setItem('pawpoller-sidebar-collapsed', on ? '1' : '0'); } catch (e) { /* ignore */ }
-        });
+        if (_sidebarEl) {
+            _sidebarEl.addEventListener('mouseenter', () => {
+                document.body.classList.add('sidebar-expanded');
+            });
+            _sidebarEl.addEventListener('mouseleave', () => {
+                document.body.classList.remove('sidebar-expanded');
+            });
+            _sidebarEl.addEventListener('focusin', () => {
+                document.body.classList.add('sidebar-expanded');
+            });
+            _sidebarEl.addEventListener('focusout', (e) => {
+                if (!_sidebarEl.contains(e.relatedTarget)) {
+                    document.body.classList.remove('sidebar-expanded');
+                }
+            });
+        }
 
         /* Dashboard auth gate — check if dashboard login is required BEFORE
          * the Inkbunny auth check.  This is the outer auth layer. */
@@ -223,16 +225,24 @@ const App = {
             link.addEventListener('click', closeSidebar);
         });
 
-        /* Surfaced search → command palette (sidebar box, plus ⌘/Ctrl+K
-         * which command_palette.js binds globally). */
-        document.getElementById('sidebar-search')?.addEventListener('click', () => {
-            window.CommandPalette?.open();
-        });
+        /* Platform grid popover — opens from both nav button and bottom nav */
+        const platformOverlay = document.getElementById('platform-grid-overlay');
+        const openPlatformGrid = () => platformOverlay?.classList.add('open');
+        const closePlatformGrid = () => platformOverlay?.classList.remove('open');
 
-        /* Mobile bottom-nav "More" opens the full nav drawer (the same
-         * sidebar, slid in). Platforms now has its own hub page (#/platforms)
-         * so the old popover is gone. */
-        document.getElementById('bottom-nav-more')?.addEventListener('click', openSidebar);
+        document.getElementById('nav-platform-btn')?.addEventListener('click', openPlatformGrid);
+        document.getElementById('bottom-nav-menu')?.addEventListener('click', () => {
+            /* On mobile, open the platform grid popover instead of the sidebar */
+            openPlatformGrid();
+        });
+        document.getElementById('platform-grid-close')?.addEventListener('click', closePlatformGrid);
+        platformOverlay?.addEventListener('click', (e) => {
+            if (e.target === platformOverlay) closePlatformGrid();
+        });
+        // Close platform grid when any platform item is clicked (event delegation)
+        document.getElementById('platform-grid')?.addEventListener('click', (e) => {
+            if (e.target.closest('.platform-grid-item')) closePlatformGrid();
+        });
 
         /* Chart expand modal — click any chart to view full-size */
         Charts.bindExpandHandlers();
@@ -552,67 +562,38 @@ const App = {
         const hash = window.location.hash.slice(1) || '/';
         const parts = hash.split('/').filter(Boolean);
 
-        /* Full-screen pages hide the sidebar, context bar, bottom nav, and
-           remove the main column's left margin. */
+        /* Full-screen pages hide the sidebar, bottom nav, and remove left margin */
         const isFullScreen = parts[0] === 'login' || parts[0] === 'loading'
             || parts[0] === 'dashboard-login' || parts[0] === 'dashboard-setup'
             || parts[0] === 'setup';
         const sidebar = document.querySelector('.sidebar');
-        const mainCol = document.getElementById('main-col');
+        const main = document.getElementById('app');
         const bottomNav = document.getElementById('bottom-nav');
         if (sidebar) sidebar.style.display = isFullScreen ? 'none' : '';
-        if (mainCol) mainCol.style.marginLeft = isFullScreen ? '0' : '';
+        if (main) main.style.marginLeft = isFullScreen ? '0' : '';
         if (bottomNav) bottomNav.style.display = isFullScreen ? 'none' : '';
 
-        /* A "platform route" is the hub, any platform code, or Inkbunny's
-           legacy un-prefixed sub-views (#/submissions, #/compare,
-           #/submission/{id}). On any of these the "Platforms" nav item is
-           the active one. */
-        const platformCodes = (window.PLATFORMS || []).map(p => p.code);
-        const isPlatformRoute = parts[0] === 'platforms'
-            || platformCodes.includes(parts[0])
-            || ['submissions', 'submission', 'compare'].includes(parts[0]);
-
-        /* Tint the platform detail page-header with that platform's brand
-           colour (light bold-pass). #main-col survives #app re-renders, so
-           setting the attribute + var here lets redesign.css style the
-           eventually-rendered .page-header without touching the 11 per-platform
-           render functions. The hub (#/platforms) is not a single platform. */
-        const _pcode = platformCodes.includes(parts[0]) ? parts[0]
-            : ['submissions', 'submission', 'compare'].includes(parts[0]) ? 'ib' : null;
-        if (mainCol) {
-            if (_pcode) {
-                mainCol.dataset.platform = _pcode;
-                mainCol.style.setProperty('--page-accent', `var(--platform-${_pcode})`);
-            } else {
-                delete mainCol.dataset.platform;
-                mainCol.style.removeProperty('--page-accent');
-            }
-        }
-
-        /* Highlight the active sidebar nav link */
+        /* Highlight the active nav link in the sidebar */
         document.querySelectorAll('.nav-link').forEach(link => {
-            const href = link.getAttribute('href');
-            let active = href === '#' + hash || (hash === '/' && href === '#/');
-            if (isPlatformRoute && href === '#/platforms') active = true;
-            /* Story sub-routes (e.g. #/posting/story/...) keep "Stories" lit. */
-            if (!active && parts[0] === 'posting' && parts[1] !== 'queue'
-                && parts[1] !== 'log' && href === '#/posting') active = true;
-            link.classList.toggle('active', active);
+            link.classList.toggle('active', link.getAttribute('href') === '#' + hash ||
+                (hash === '/' && link.getAttribute('href') === '#/'));
         });
 
-        /* Render the breadcrumb / platform-switcher / sub-tab context bar */
-        this._renderContextBar(parts, isFullScreen);
+        /* Auto-expand the nav-group containing the active link, collapse others */
+        document.querySelectorAll('.nav-group').forEach(group => {
+            const hasActive = group.querySelector('.nav-link.active');
+            group.classList.toggle('expanded', !!hasActive);
+        });
+
+        /* 2.16.10 had a master-auto-expand step here for the platforms
+           collapse; removed in 2.16.12 along with the wrapper itself. */
 
         /* Update bottom nav active state */
         if (bottomNav) {
             bottomNav.querySelectorAll('.bottom-nav-item[data-page]').forEach(item => {
                 const page = item.dataset.page;
-                let on;
-                if (page === 'overview') on = (hash === '/' || parts[0] === '' || parts[0] === 'overview');
-                else if (page === 'platforms') on = isPlatformRoute;
-                else on = parts[0] === page;
-                item.classList.toggle('active', on);
+                item.classList.toggle('active', page === parts[0] ||
+                    (page === 'overview' && parts[0] === 'overview'));
             });
         }
 
@@ -636,8 +617,6 @@ const App = {
             this.renderLoading();
         } else if (hash === '/' || hash === '' || parts[0] === 'overview') {
             this.renderOverview();
-        } else if (parts[0] === 'platforms') {
-            this.renderPlatformsHub();
         } else if (parts[0] === 'ib' && !parts[1]) {
             this.renderDashboard();
         } else if (parts[0] === 'submissions' && !parts[1]) {
@@ -757,104 +736,6 @@ const App = {
         } else {
             this._setContent('<div class="empty-state"><h3>Page not found</h3></div>');
         }
-    },
-
-    /* _renderContextBar() — fills #context-bar with a breadcrumb and, when
-     * inside a platform, a platform switcher + Dashboard/Submissions/Compare
-     * sub-tabs. Driven entirely by the parsed route at the shell level, so
-     * none of the per-page render functions need to know about it. Left
-     * empty on full-screen routes (CSS hides an empty bar). */
-    _renderContextBar(parts, isFullScreen) {
-        const bar = document.getElementById('context-bar');
-        if (!bar) return;
-        if (isFullScreen) { bar.innerHTML = ''; return; }
-
-        const p0 = parts[0] || '';
-        const codes = (window.PLATFORMS || []).map(p => p.code);
-
-        /* Resolve platform + sub-view. Inkbunny is special: its dashboard is
-           #/ib but its sub-views are un-prefixed (#/submissions, #/compare,
-           #/submission/{id}). */
-        let platform = null, sub = 'dash';
-        if (codes.includes(p0)) {
-            platform = p0;
-            if (parts[1] === 'submissions') sub = 'subs';
-            else if (parts[1] === 'compare') sub = 'compare';
-            else if (parts[1] === 'submission') sub = 'detail';
-        } else if (p0 === 'submissions' || p0 === 'submission') {
-            platform = 'ib'; sub = (p0 === 'submission') ? 'detail' : 'subs';
-        } else if (p0 === 'compare') {
-            platform = 'ib'; sub = 'compare';
-        }
-
-        if (platform) {
-            bar.innerHTML = this._platformContextBar(platform, sub);
-            const sel = document.getElementById('ctx-platform-switch');
-            sel?.addEventListener('change', () => {
-                const route = window.platformRoute || ((c) => '#/' + c);
-                window.location.hash = route(sel.value);
-            });
-            return;
-        }
-
-        /* On mobile, skip the context bar for non-platform pages — it would
-           only repeat the page <h2> and sit under the fixed hamburger. */
-        if (document.documentElement.dataset.mobile === '1') { bar.innerHTML = ''; return; }
-
-        /* Non-platform pages: a simple breadcrumb for orientation. */
-        const labels = {
-            '': 'Overview', overview: 'Overview', platforms: 'Platforms',
-            posting: 'Stories', editor: 'Story Editor', analytics: 'Analytics',
-            groups: 'Groups', 'cross-platform': 'Cross-Platform',
-            accounts: 'Accounts', settings: 'Settings',
-        };
-        let crumb;
-        if (p0 === 'posting' && parts[1] === 'queue') {
-            crumb = '<a href="#/posting">Stories</a> <span class="sep">›</span> <span class="here">Queue</span>';
-        } else if (p0 === 'posting' && parts[1] === 'log') {
-            crumb = '<a href="#/posting">Stories</a> <span class="sep">›</span> <span class="here">History</span>';
-        } else if (p0 === 'posting' && parts[1] === 'story') {
-            crumb = '<a href="#/posting">Stories</a> <span class="sep">›</span> <span class="here">Story</span>';
-        } else if (p0 === 'editor' && parts[1]) {
-            crumb = '<a href="#/editor">Story Editor</a> <span class="sep">›</span> <span class="here">Editing</span>';
-        } else if (p0 === 'group' && parts[1]) {
-            crumb = '<a href="#/groups">Groups</a> <span class="sep">›</span> <span class="here">Group</span>';
-        } else {
-            crumb = '<span class="here">' + (labels[p0] || 'Overview') + '</span>';
-        }
-        bar.innerHTML = '<div class="ctx-crumbs">' + crumb + '</div>';
-    },
-
-    /* Build the breadcrumb + sub-tabs + switcher HTML for a platform route. */
-    _platformContextBar(code, sub) {
-        const plat = window.platformByCode ? window.platformByCode(code) : null;
-        const label = plat ? plat.label : code.toUpperCase();
-        const emoji = plat ? plat.emoji : '';
-        const color = plat ? plat.color : 'var(--accent)';
-        const route = window.platformRoute || ((c, s) => s ? '#/' + c + '/' + s : '#/' + c);
-        const subName = sub === 'subs' ? 'Submissions'
-            : sub === 'compare' ? 'Compare'
-            : sub === 'detail' ? 'Submission' : 'Dashboard';
-
-        const crumb = '<a href="#/platforms">Platforms</a> <span class="sep">›</span> '
-            + '<a href="' + route(code) + '">' + label + '</a> '
-            + '<span class="sep">›</span> <span class="here">' + subName + '</span>';
-
-        const tab = (key, name, sname) =>
-            '<a href="' + route(code, sname) + '" class="' + (sub === key ? 'active' : '') + '">' + name + '</a>';
-        const subtabs = '<div class="ctx-subtabs">'
-            + tab('dash', 'Dashboard', '')
-            + tab('subs', 'Submissions', 'submissions')
-            + tab('compare', 'Compare', 'compare')
-            + '</div>';
-
-        const options = (window.PLATFORMS || []).map(p =>
-            '<option value="' + p.code + '"' + (p.code === code ? ' selected' : '') + '>' + p.label + '</option>'
-        ).join('');
-        const switcher = '<div class="ctx-switch"><span class="pe" style="color:' + color + '">' + emoji + '</span>'
-            + '<select id="ctx-platform-switch" aria-label="Switch platform">' + options + '</select></div>';
-
-        return '<div class="ctx-crumbs">' + crumb + '</div>' + subtabs + switcher;
     },
 
     /* _setContent() — DOM helper: replaces the #app main content area with the given HTML string. */
@@ -1929,60 +1810,6 @@ const App = {
      * top viewed/faved lists, recent activity feed, and top fans table.
      * Binds date range bar and starts auto-refresh. */
 
-    /* renderPlatformsHub() — the Platforms hub (#/platforms): a bold
-     * colour-tile grid of all 11 platforms with headline stats and a live
-     * status dot (populated by platform_health via #pg-status-{code}).
-     * Replaces the old modal popover; driven by window.PLATFORMS. */
-    async renderPlatformsHub() {
-        this._loading();
-        const plats = window.PLATFORMS || [];
-        const fetchers = {
-            ib: () => API.getSummary(), fa: () => API.getFASummary(), ws: () => API.getWSSummary(),
-            sf: () => API.getSFSummary(), sqw: () => API.getSQWSummary(), ao3: () => API.getAO3Summary(),
-            da: () => API.getDASummary(), wp: () => API.getWPSummary(), ik: () => API.getIKSummary(),
-            bsky: () => API.getBSKYSummary(), tw: () => API.getTWSummary(),
-        };
-        const results = await Promise.all(plats.map(p =>
-            (fetchers[p.code] ? fetchers[p.code]() : Promise.resolve(null)).catch(() => null)
-        ));
-
-        const fmt = (n) => Utils.formatCompact(n || 0);
-        const tiles = plats.map((p, i) => {
-            const d = results[i] || {};
-            const views = d.total_views || d.total_reads || 0;
-            const faves = d.total_favorites || d.total_votes || d.total_likes || 0;
-            const subs = d.total_submissions || 0;
-            const primary = views > 0 ? views : faves;
-            const primaryLabel = views > 0 ? 'views' : 'faves';
-            const route = window.platformRoute ? window.platformRoute(p.code) : '#/' + p.code;
-            return `
-                <a href="${route}" class="hub-tile" data-platform="${p.code}" style="--pc:${p.color}">
-                    <span class="hub-tile-wm">${p.emoji}</span>
-                    ${p.pollOnly ? '<span class="hub-tile-pill">poll only</span>' : ''}
-                    <div class="hub-tile-top">
-                        <span class="hub-tile-emoji">${p.emoji}</span>
-                        <span class="platform-grid-status pp-health-dot" id="pg-status-${p.code}" data-tooltip=""></span>
-                    </div>
-                    <div class="hub-tile-name">${p.label}</div>
-                    <div class="hub-tile-num">${fmt(primary)}</div>
-                    <div class="hub-tile-sub">${primaryLabel} · ${subs} works</div>
-                </a>`;
-        }).join('');
-
-        this._setContent(`
-            <div class="page-header">
-                <h2>Platforms</h2>
-            </div>
-            <div class="hub-grid" id="platform-grid">${tiles}</div>
-        `);
-
-        /* Populate live status dots immediately (platform_health re-fetches
-           then renders into #pg-status-{code}). */
-        if (window.PlatformHealth && window.PlatformHealth.fetchOnce) {
-            window.PlatformHealth.fetchOnce();
-        }
-    },
-
     async renderOverview() {
         this._loading();
         try {
@@ -2102,248 +1929,202 @@ const App = {
                     </div>
                 </a>`;
 
-            const prefs = await API.getPreferences().catch(() => ({}));
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Overview</h2>
+                </div>
 
-            /* Per-platform stat cards (the classic overview grid) collapsed to
-               a string for the "Platform breakdown" widget. */
-            const platformsHtml = [
-                platformCard('<span class="platform-badge ib">IB</span>', 'Inkbunny', ib, 'ib'),
-                platformCard('<span class="platform-badge fa">FA</span>', 'FurAffinity', fa, 'fa'),
-                platformCard('<span class="platform-badge ws">WS</span>', 'Weasyl', ws, 'ws'),
-                platformCard('<span class="platform-badge sf">SF</span>', 'SoFurry', sf, 'sf'),
-                platformCard('<span class="platform-badge sqw">SqW</span>', 'SquidgeWorld', sqw, 'sqw'),
-                platformCard('<span class="platform-badge ao3">AO3</span>', 'AO3', ao3, 'ao3'),
-                platformCard('<span class="platform-badge da">\u{1F3A8} DA</span>', 'DeviantArt', da, 'da'),
-                platformCard('<span class="platform-badge wp">\u{1F4D9} WP</span>', 'Wattpad', { total_views: wp.total_reads || wp.total_views || 0, total_favorites: wp.total_votes || wp.total_favorites || 0, total_submissions: wp.total_submissions || 0 }, 'wp'),
-                platformCard('<span class="platform-badge ik">\u{1F3AF} IK</span>', 'Itaku', { total_views: 0, total_favorites: ik.total_likes || 0, total_submissions: ik.total_submissions || 0 }, 'ik'),
-                platformCard('<span class="platform-badge bsky">\u{1F98B} BSKY</span>', 'Bluesky', { total_views: 0, total_favorites: bsky.total_likes || 0, total_submissions: bsky.total_submissions || 0 }, 'bsky'),
-                platformCard('<span class="platform-badge tw">\u{1F426} TW</span>', 'X/Twitter', { total_views: tw.total_views || 0, total_favorites: tw.total_likes || 0, total_submissions: tw.total_submissions || 0 }, 'tw'),
-            ].join('');
+                <div class="stats-grid">
+                    ${Components.statCard('Total Submissions', totalSubs)}
+                    ${Components.statCard('Total Views', totalViews)}
+                    ${Components.statCard('Total Favorites', totalFaves)}
+                    ${Components.statCard('Total Comments', totalComments)}
+                    ${totalDownloads > 0 ? Components.statCard('Total Downloads', totalDownloads) : ''}
+                </div>
 
-            /* Per-platform aggregate view charts — only those with history. */
-            const chartSpecs = [
-                { id: 'chart-ib-views', title: 'Inkbunny Views', snapshots: ibAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-fa-views', title: 'FurAffinity Views', snapshots: faAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-ws-views', title: 'Weasyl Views', snapshots: wsAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-sf-views', title: 'SoFurry Views', snapshots: sfAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-sqw-views', title: 'SquidgeWorld Views', snapshots: sqwAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-ao3-views', title: 'AO3 Views', snapshots: ao3Agg?.snapshots, keys: ['views'] },
-                { id: 'chart-da-views', title: 'DeviantArt Views', snapshots: daAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-wp-reads', title: 'Wattpad Reads', snapshots: wpAgg?.snapshots, keys: ['reads'] },
-                { id: 'chart-ik-likes', title: 'Itaku Likes', snapshots: ikAgg?.snapshots, keys: ['likes'] },
-                { id: 'chart-bsky-likes', title: 'Bluesky Likes', snapshots: bskyAgg?.snapshots, keys: ['likes'] },
-                { id: 'chart-tw-views', title: 'X/Twitter Views', snapshots: twAgg?.snapshots, keys: ['views'] },
-            ].filter(c => c.snapshots && c.snapshots.length > 0);
-            const chartsHtml = chartSpecs.length
-                ? chartSpecs.map(c => `<div class="chart-container"><h3>${c.title}</h3><div class="chart-wrap"><canvas id="${c.id}"></canvas></div></div>`).join('')
-                : '<div class="dash-empty">No view history yet — charts appear after a poll or two.</div>';
+                <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-top:0">
+                    ${platformCard('<span class="platform-badge ib">IB</span>', 'Inkbunny', ib, 'ib')}
+                    ${platformCard('<span class="platform-badge fa">FA</span>', 'FurAffinity', fa, 'fa')}
+                    ${platformCard('<span class="platform-badge ws">WS</span>', 'Weasyl', ws, 'ws')}
+                    ${platformCard('<span class="platform-badge sf">SF</span>', 'SoFurry', sf, 'sf')}
+                    ${platformCard('<span class="platform-badge sqw">SqW</span>', 'SquidgeWorld', sqw, 'sqw')}
+                    ${platformCard('<span class="platform-badge ao3">AO3</span>', 'AO3', ao3, 'ao3')}
+                    ${platformCard('<span class="platform-badge da">\u{1F3A8} DA</span>', 'DeviantArt', da, 'da')}
+                    ${platformCard('<span class="platform-badge wp">\u{1F4D9} WP</span>', 'Wattpad', { total_views: wp.total_reads || wp.total_views || 0, total_favorites: wp.total_votes || wp.total_favorites || 0, total_submissions: wp.total_submissions || 0 }, 'wp')}
+                    ${ ik.total_submissions ? `
+                    <a href="#/ik" class="stat-card" style="text-decoration:none;color:inherit;cursor:pointer;transition:box-shadow 0.2s">
+                        <div class="label"><span class="platform-badge ik">\u{1F3AF} IK</span> Itaku</div>
+                        <div style="display:flex;gap:16px;margin-top:6px">
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(ik.total_likes || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">likes</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(ik.total_comments || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">comments</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(ik.total_reshares || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">reshares</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(ik.total_submissions || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">subs</span></div>
+                        </div>
+                    </a>` : platformCard('<span class="platform-badge ik">\u{1F3AF} IK</span>', 'Itaku', ik, 'ik') }
+                    ${ bsky.total_submissions ? `
+                    <a href="#/bsky" class="stat-card" style="text-decoration:none;color:inherit;cursor:pointer;transition:box-shadow 0.2s">
+                        <div class="label"><span class="platform-badge bsky">\u{1F98B} BSKY</span> Bluesky</div>
+                        <div style="display:flex;gap:16px;margin-top:6px">
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(bsky.total_likes || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">likes</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(bsky.total_comments || bsky.total_replies || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">replies</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(bsky.total_reposts || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">reposts</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(bsky.total_submissions || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">posts</span></div>
+                        </div>
+                    </a>` : platformCard('<span class="platform-badge bsky">\u{1F98B} BSKY</span>', 'Bluesky', bsky, 'bsky') }
+                    ${ tw.total_submissions ? `
+                    <a href="#/tw" class="stat-card" style="text-decoration:none;color:inherit;cursor:pointer;transition:box-shadow 0.2s">
+                        <div class="label"><span class="platform-badge tw">\u{1F426} TW</span> X/Twitter</div>
+                        <div style="display:flex;gap:16px;margin-top:6px">
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(tw.total_views || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">views</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(tw.total_likes || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">likes</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(tw.total_comments || tw.total_replies || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">replies</span></div>
+                            <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(tw.total_submissions || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">tweets</span></div>
+                        </div>
+                    </a>` : platformCard('<span class="platform-badge tw">\u{1F426} TW</span>', 'X/Twitter', tw, 'tw') }
+                </div>
 
-            /* Resolve the server-saved widget layout (cross-device); validate
-               ids/spans against the catalog and fall back to the default. */
-            const validIds = new Set(this._dashWidgetMeta().map(m => m.id));
-            const saved = Array.isArray(prefs.dashboard_layout) ? prefs.dashboard_layout : null;
-            let layout = (saved && saved.length ? saved : this._dashDefaultLayout())
-                .filter(w => w && validIds.has(w.id))
-                .map(w => ({ id: w.id, span: [1, 2, 4].includes(w.span) ? w.span : 1 }));
-            if (!layout.length) layout = this._dashDefaultLayout();
-            this._dashboardLayout = layout;
-            if (this._dashEdit === undefined) this._dashEdit = false;
+                ${(trending.trending || []).length > 0 ? `
+                <div class="chart-container">
+                    <h3>Trending Now</h3>
+                    <div class="stats-grid" style="margin-bottom:0">${Components.trendingCards(trending.trending)}</div>
+                </div>` : ''}
 
-            /* Cache everything the widgets need so customise-mode edits
-               re-render instantly without re-fetching. */
-            this._dashCtx = {
-                totals: { subs: totalSubs, views: totalViews, faves: totalFaves, comments: totalComments, downloads: totalDownloads },
-                platformsHtml, chartsHtml, charts: chartSpecs,
-                topViewed, topFaved,
-                recentActivity: recentActivity.slice(0, 15),
-                topFans: (topFans.fans || []).slice(0, 10),
-                trending: (trending.trending || []),
-                systemActivity: (systemActivity.events || []).slice(0, 20),
-            };
+                ${Components.dateRangeBar(this._dateRange)}
 
-            this._renderDashboard();
-            this._startAutoRefresh(() => { if (!this._dashEdit) this.renderOverview(); });
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Inkbunny Views</h3>
+                        <div class="chart-wrap"><canvas id="chart-ib-views"></canvas></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>FurAffinity Views</h3>
+                        <div class="chart-wrap"><canvas id="chart-fa-views"></canvas></div>
+                    </div>
+                </div>
+
+                ${wsAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>Weasyl Views</h3>
+                    <div class="chart-wrap"><canvas id="chart-ws-views"></canvas></div>
+                </div>` : ''}
+
+                ${sfAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>SoFurry Views</h3>
+                    <div class="chart-wrap"><canvas id="chart-sf-views"></canvas></div>
+                </div>` : ''}
+
+                ${sqwAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>SquidgeWorld Views</h3>
+                    <div class="chart-wrap"><canvas id="chart-sqw-views"></canvas></div>
+                </div>` : ''}
+
+                ${ao3Agg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>AO3 Views</h3>
+                    <div class="chart-wrap"><canvas id="chart-ao3-views"></canvas></div>
+                </div>` : ''}
+
+                ${daAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>DeviantArt Views</h3>
+                    <div class="chart-wrap"><canvas id="chart-da-views"></canvas></div>
+                </div>` : ''}
+
+                ${wpAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>Wattpad Reads</h3>
+                    <div class="chart-wrap"><canvas id="chart-wp-reads"></canvas></div>
+                </div>` : ''}
+
+                ${ikAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>Itaku Likes</h3>
+                    <div class="chart-wrap"><canvas id="chart-ik-likes"></canvas></div>
+                </div>` : ''}
+
+                ${bskyAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>Bluesky Likes</h3>
+                    <div class="chart-wrap"><canvas id="chart-bsky-likes"></canvas></div>
+                </div>` : ''}
+
+                ${twAgg?.snapshots?.length > 0 ? `
+                <div class="chart-container">
+                    <h3>X/Twitter Views</h3>
+                    <div class="chart-wrap"><canvas id="chart-tw-views"></canvas></div>
+                </div>` : ''}
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Viewed</h3>
+                        ${Components.overviewTopList(topViewed, 'views')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Top Faved</h3>
+                        ${Components.overviewTopList(topFaved, 'favorites_count')}
+                    </div>
+                </div>
+
+                ${Components.systemEventsFeed((systemActivity.events || []).slice(0, 20))}
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Recent Activity</h3>
+                        ${Components.overviewRecentActivity(recentActivity.slice(0, 15))}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Top Fans</h3>
+                        ${Components.topFansTable((topFans.fans || []).slice(0, 10))}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            /* Render per-platform aggregate line charts (only if snapshots exist) */
+            if (ibAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-ib-views', ibAgg.snapshots, ['views']);
+            }
+            if (faAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-fa-views', faAgg.snapshots, ['views']);
+            }
+            if (wsAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-ws-views', wsAgg.snapshots, ['views']);
+            }
+            if (sfAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-sf-views', sfAgg.snapshots, ['views']);
+            }
+            if (sqwAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-sqw-views', sqwAgg.snapshots, ['views']);
+            }
+            if (ao3Agg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-ao3-views', ao3Agg.snapshots, ['views']);
+            }
+            if (daAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-da-views', daAgg.snapshots, ['views']);
+            }
+            if (wpAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-wp-reads', wpAgg.snapshots, ['reads']);
+            }
+            if (ikAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-ik-likes', ikAgg.snapshots, ['likes']);
+            }
+            if (bskyAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-bsky-likes', bskyAgg.snapshots, ['likes']);
+            }
+            if (twAgg?.snapshots?.length > 0) {
+                Charts.aggregateLine('chart-tw-views', twAgg.snapshots, ['views']);
+            }
+
+            /* Wire date range buttons to full re-render; start 60s auto-refresh */
+            this._bindDateRange(() => this.renderOverview());
+            this._startAutoRefresh(() => this.renderOverview());
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error loading overview</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
         }
-    },
-
-    /* ═══ Configurable Home dashboard ═══════════════════════════
-     * The Home/Overview is a widget grid the user can customise. Layout
-     * (a list of {id, span}) is server-saved via the dashboard_layout
-     * preference so it follows them across desktop + phone. renderOverview()
-     * fetches + caches the data (this._dashCtx); these helpers render the
-     * grid and handle customise-mode (add/remove/resize/drag) cheaply from
-     * the cache without re-fetching. */
-
-    _dashDefaultLayout() {
-        return [
-            { id: 'stat-subs', span: 1 }, { id: 'stat-views', span: 1 },
-            { id: 'stat-faves', span: 1 }, { id: 'stat-comments', span: 1 },
-            { id: 'charts', span: 4 }, { id: 'platforms', span: 4 },
-            { id: 'topviewed', span: 2 }, { id: 'topfaved', span: 2 },
-            { id: 'activity', span: 2 }, { id: 'topfans', span: 2 },
-        ];
-    },
-
-    _dashWidgetMeta() {
-        return [
-            { id: 'stat-subs', title: 'Submissions', icon: '\u{1F4E6}', desc: 'Total works tracked', spans: [1, 2] },
-            { id: 'stat-views', title: 'Total views', icon: '\u{1F441}', desc: 'Aggregate views', spans: [1, 2] },
-            { id: 'stat-faves', title: 'Favourites', icon: '★', desc: 'Aggregate favourites', spans: [1, 2] },
-            { id: 'stat-comments', title: 'Comments', icon: '\u{1F4AC}', desc: 'Aggregate comments', spans: [1, 2] },
-            { id: 'stat-downloads', title: 'Downloads', icon: '⬇', desc: 'Aggregate downloads', spans: [1, 2] },
-            { id: 'charts', title: 'Views over time', icon: '\u{1F4C8}', desc: 'Per-platform trend charts', spans: [2, 4] },
-            { id: 'platforms', title: 'Platform breakdown', icon: '\u{1F43E}', desc: 'Per-platform stat cards', spans: [2, 4] },
-            { id: 'trending', title: 'Trending now', icon: '\u{1F525}', desc: 'Fast-rising works', spans: [2, 4] },
-            { id: 'topviewed', title: 'Top viewed', icon: '\u{1F3C6}', desc: 'Most-viewed works', spans: [2, 4] },
-            { id: 'topfaved', title: 'Top faved', icon: '❤', desc: 'Most-favourited works', spans: [2, 4] },
-            { id: 'activity', title: 'Recent activity', icon: '\u{1F4AC}', desc: 'Latest faves & comments', spans: [2, 4] },
-            { id: 'topfans', title: 'Top fans', icon: '\u{1F451}', desc: 'Most engaged readers', spans: [2, 4] },
-            { id: 'events', title: 'System events', icon: '\u{1F6CE}', desc: 'Polls, posts and alerts', spans: [2, 4] },
-        ];
-    },
-
-    _dashWidgetHtml(id, ctx) {
-        const stat = (label, value) => `<div class="wtitle">${label}</div><div class="w-num">${Utils.formatCompact(value || 0)}</div>`;
-        switch (id) {
-            case 'stat-subs': return stat('Submissions', ctx.totals.subs);
-            case 'stat-views': return stat('Total views', ctx.totals.views);
-            case 'stat-faves': return stat('Favourites', ctx.totals.faves);
-            case 'stat-comments': return stat('Comments', ctx.totals.comments);
-            case 'stat-downloads': return stat('Downloads', ctx.totals.downloads);
-            case 'platforms': return `<div class="wtitle">Platform breakdown</div><div class="dash-platgrid">${ctx.platformsHtml}</div>`;
-            case 'charts': return `<div class="wtitle">Views over time</div>${ctx.chartsHtml}`;
-            case 'trending': return `<div class="wtitle">Trending now</div>${ctx.trending.length ? `<div class="stats-grid" style="margin:0">${Components.trendingCards(ctx.trending)}</div>` : '<div class="dash-empty">Nothing trending right now.</div>'}`;
-            case 'topviewed': return `<div class="wtitle">Top viewed</div>${Components.overviewTopList(ctx.topViewed, 'views')}`;
-            case 'topfaved': return `<div class="wtitle">Top faved</div>${Components.overviewTopList(ctx.topFaved, 'favorites_count')}`;
-            case 'activity': return `<div class="wtitle">Recent activity</div>${Components.overviewRecentActivity(ctx.recentActivity)}`;
-            case 'topfans': return `<div class="wtitle">Top fans</div>${Components.topFansTable(ctx.topFans)}`;
-            case 'events': return `<div class="wtitle">System events</div>${Components.systemEventsFeed(ctx.systemActivity)}`;
-            default: return '<div class="wtitle">Widget</div>';
-        }
-    },
-
-    _dashWidgetMount(id, ctx) {
-        if (id === 'charts') {
-            ctx.charts.forEach(c => {
-                try { Charts.aggregateLine(c.id, c.snapshots, c.keys); } catch (e) { /* canvas may be absent */ }
-            });
-        }
-    },
-
-    /* _renderDashboard() — (re)build the Home widget grid from this._dashCtx +
-     * this._dashboardLayout. Called on initial load and on every customise
-     * edit (cheap; no re-fetch). */
-    _renderDashboard() {
-        const ctx = this._dashCtx;
-        if (!ctx) return;
-        const edit = this._dashEdit;
-        const layout = this._dashboardLayout || this._dashDefaultLayout();
-        const metaById = {};
-        this._dashWidgetMeta().forEach(m => { metaById[m.id] = m; });
-
-        const tools = `<div class="dash-tools">${Components.dateRangeBar(this._dateRange)}`
-            + `<button class="btn ${edit ? 'btn-primary' : 'btn-secondary'}" id="dash-customize">${edit ? '✓ Done' : '⚙ Customize'}</button></div>`;
-        const hint = edit ? '<div class="dash-edit-hint">Drag to reorder · ⤢ resize · × remove · or add a widget below.</div>' : '';
-
-        const cells = layout.map(w => {
-            const ctl = edit
-                ? `<div class="dash-wctl"><button class="dash-wsize" data-wsz="${w.id}" title="Resize">⤢</button><button class="dash-wrm" data-wrm="${w.id}" title="Remove">×</button></div>`
-                : '';
-            return `<div class="dash-w" data-span="${w.span}" data-wid="${w.id}"${edit ? ' draggable="true"' : ''}>${ctl}${this._dashWidgetHtml(w.id, ctx)}</div>`;
-        }).join('');
-        const addTile = edit ? '<button class="dash-addw" id="dash-addw"><span class="dash-addw-plus">+</span>Add widget</button>' : '';
-
-        const html = `${this._refreshIndicatorHtml()}`
-            + `<div class="page-header"><h2>Overview</h2>${tools}</div>${hint}`
-            + `<div class="dash-grid${edit ? ' editing' : ''}" id="dash-grid">${cells}${addTile}</div>`;
-
-        Charts.destroyAll();
-        this._setContent(html);
-
-        layout.forEach(w => this._dashWidgetMount(w.id, ctx));
-
-        document.getElementById('dash-customize')?.addEventListener('click', () => {
-            this._dashEdit = !this._dashEdit;
-            this._renderDashboard();
-        });
-        document.getElementById('dash-addw')?.addEventListener('click', () => this._openDashCatalog());
-        document.querySelectorAll('[data-wrm]').forEach(b => b.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this._dashboardLayout = this._dashboardLayout.filter(w => w.id !== b.getAttribute('data-wrm'));
-            this._saveDashLayout();
-            this._renderDashboard();
-        }));
-        document.querySelectorAll('[data-wsz]').forEach(b => b.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const id = b.getAttribute('data-wsz');
-            const w = this._dashboardLayout.find(x => x.id === id);
-            const m = metaById[id];
-            if (w && m) { w.span = m.spans[(m.spans.indexOf(w.span) + 1) % m.spans.length]; this._saveDashLayout(); this._renderDashboard(); }
-        }));
-        this._wireDashDrag();
-        this._bindDateRange(() => this.renderOverview());
-    },
-
-    _wireDashDrag() {
-        const grid = document.getElementById('dash-grid');
-        if (!grid) return;
-        let dragId = null;
-        grid.querySelectorAll('.dash-w[draggable]').forEach(el => {
-            el.addEventListener('dragstart', () => { dragId = el.getAttribute('data-wid'); el.classList.add('dragging'); });
-            el.addEventListener('dragend', () => { el.classList.remove('dragging'); grid.querySelectorAll('.dragover').forEach(x => x.classList.remove('dragover')); });
-            el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('dragover'); });
-            el.addEventListener('dragleave', () => el.classList.remove('dragover'));
-            el.addEventListener('drop', (e) => {
-                e.preventDefault();
-                el.classList.remove('dragover');
-                const target = el.getAttribute('data-wid');
-                if (!dragId || dragId === target) return;
-                const L = this._dashboardLayout;
-                const from = L.findIndex(w => w.id === dragId);
-                const to = L.findIndex(w => w.id === target);
-                if (from < 0 || to < 0) return;
-                const [moved] = L.splice(from, 1);
-                L.splice(to, 0, moved);
-                this._saveDashLayout();
-                this._renderDashboard();
-            });
-        });
-    },
-
-    _saveDashLayout() {
-        API.savePreferences({ dashboard_layout: this._dashboardLayout }).catch(() => { /* best-effort */ });
-    },
-
-    _openDashCatalog() {
-        const meta = this._dashWidgetMeta();
-        const have = new Set((this._dashboardLayout || []).map(w => w.id));
-        const cards = meta.map(m => `
-            <button class="dash-catcard${have.has(m.id) ? ' in' : ''}" data-cat="${m.id}"${have.has(m.id) ? ' disabled' : ''}>
-                <span class="dash-catico">${m.icon}</span>
-                <span class="dash-catmeta"><b>${m.title}</b><span>${m.desc}</span></span>
-                ${have.has(m.id) ? '<span class="dash-cattick">✓</span>' : ''}
-            </button>`).join('');
-        let ov = document.getElementById('dash-catalog');
-        if (!ov) {
-            ov = document.createElement('div');
-            ov.id = 'dash-catalog';
-            ov.className = 'dash-catalog-ov';
-            document.body.appendChild(ov);
-        }
-        ov.innerHTML = `<div class="dash-catalog"><h3>Add a widget</h3><p>Pick something to add to your dashboard.</p><div class="dash-cat">${cards}</div></div>`;
-        ov.classList.add('open');
-        ov.onclick = (e) => { if (e.target === ov) ov.classList.remove('open'); };
-        ov.querySelectorAll('[data-cat]').forEach(b => b.addEventListener('click', () => {
-            const id = b.getAttribute('data-cat');
-            if (this._dashboardLayout.some(w => w.id === id)) return;
-            const m = meta.find(x => x.id === id);
-            this._dashboardLayout.push({ id, span: m.spans[0] });
-            this._saveDashLayout();
-            ov.classList.remove('open');
-            this._renderDashboard();
-        }));
     },
 
     /* ── Dashboard Overview ────────────────────────────────────

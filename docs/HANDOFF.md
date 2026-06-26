@@ -1,18 +1,50 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-06-24
-**Current version:** 2.28.3 — FA stats-regex fix. The 2.28.x line completed the
-**SoFurry "beta" migration** (2.28.0 posting rebuild + 2.28.1 discovery fix) and the
-**FurAffinity direct-scraper** work: 2.28.2 refreshed the stale FA submission parser
-(FA's HTML moved to `submission-page-stats` / `data-tag-name` / twitter-meta rating) and
-wired the direct FA client through the CF Worker proxy so it can run on the **server**
-(confirmed live: Cloudflare egress is NOT FA-datacenter-blocked, FA cookies authenticate
-through it). **2.28.0–2.28.2 are all released + deployed** (`/api/health` reports
-`2.28.2`). **2.28.3** fixes a bug 2.28.2 introduced: its ReDoS mitigation bounded the
-stats regex whitespace too tightly (`\s{0,30}`) and matched nothing on FA's deep
-indentation, so the post-deploy verification poll scraped 0 stats; the correct fix
-de-overlaps the quantifiers instead. CHANGELOG [2.28.3]. **Staged, NOT yet
-released/deployed** — `/pp-release 2.28.3` then `/pp-deploy`.
+**Last updated:** 2026-06-26
+**Current version:** 2.29.0 — **Bold dashboard redesign** (shell + nav + Home). Built + locally
+verified, **NOT yet released/deployed** — run `/pp-release 2.29.0` then `/pp-deploy`. The
+deployed prod version is still 2.28.3 until then.
+
+**2.29.0 redesign (this session)** — a ground-up redesign of the dashboard **shell + navigation +
+Home**, on the shared frontend (desktop + server), reusing the ~50 existing page-render functions
+(only the chrome and the Overview changed). CHANGELOG [2.29.0].
+- **Shell** (`index.html`, `css/layout.css`, `app.js` `init()`+`route()`): persistent **labeled
+  sidebar** (collapse/pin, persisted to `localStorage`) + a **context bar** (clickable breadcrumb +
+  platform switcher + Dashboard/Submissions/Compare sub-tabs, IB's un-prefixed routes special-cased)
+  + surfaced ⌘K search + a responsive drawer / floating bottom tab bar on mobile. New type
+  (**Bricolage Grotesque** + **Hanken Grotesk**) and vivid per-platform **colour tiles**; all 8
+  token themes intact.
+- **Platforms hub** (`#/platforms`, `renderPlatformsHub()`) replaces the modal popover — colour
+  tiles + live status dots (reuses `platform_health` via `#pg-status-{code}`).
+- **Configurable Home dashboard**: `renderOverview()` rewritten to a **widget grid** with a
+  **customize mode** (add/remove/resize/drag); layout **server-saved** via the new additive
+  `dashboard_layout` preference (`routes/api.py` get+save → `settings.json`).
+- New files: `frontend/js/platforms.js` (canonical 11-platform registry + route helpers, replaces a
+  5-way duplicated list) and `frontend/css/redesign.css` (hub tiles + dashboard widgets + header
+  accent). Platform-detail headers pick up the brand colour via `route()` + CSS (no per-platform edits).
+- **Legacy ⇄ Beta switch**: `dashboard.py` `serve_index` serves the new (`beta`) or the frozen
+  pre-redesign (`legacy`) shell per `?ui=` (cookie-persisted `pp_ui`); a small fixed switch is
+  injected into both. Legacy = `index_legacy.html` + `tokens_legacy.css`/`layout_legacy.css`/
+  `app_legacy.js` (git-HEAD snapshots). Default `beta` (`_DEFAULT_UI`); flip to `legacy` for a
+  zero-surprise rollout + one-click fallback.
+- **Verified live** via Chrome DevTools on a local `uvicorn dashboard:app`: no JS console errors;
+  desktop + mobile shell, the hub, and the configurable dashboard (incl. the **server-save
+  round-trip**) all render. `node --check` on touched JS + `py_compile` on `routes/api.py` pass.
+- **Staged follow-up**: editor / settings / posting / platform-detail tables keep working and get
+  the full bold restyle later. Before deploy, regenerate any cached `*_SoFurry.html` per the note
+  below if stories were touched.
+
+---
+
+### 2.28.x (deployed) — SoFurry beta migration + FurAffinity direct-scraper
+The 2.28.x line completed the **SoFurry "beta" migration** (2.28.0 posting rebuild + 2.28.1
+discovery fix) and the **FurAffinity direct-scraper** work: 2.28.2 refreshed the stale FA
+submission parser (FA's HTML moved to `submission-page-stats` / `data-tag-name` / twitter-meta
+rating) and wired the direct FA client through the CF Worker proxy so it can run on the **server**.
+**2.28.0–2.28.3 are released + deployed** (`/api/health` reports `2.28.3`). **2.28.3** fixed a bug
+2.28.2 introduced: its ReDoS mitigation bounded the stats regex whitespace too tightly (`\s{0,30}`)
+and matched nothing on FA's deep indentation; the correct fix de-overlaps the quantifiers instead.
+CHANGELOG [2.28.3].
 
 **Server FA state — DONE 2026-06-24:** 2.28.3 deployed; FA `a`/`b` cookies in the
 encrypted vault; `fa_use_cf_proxy=true` + `fa_direct_polling=true` — the server now

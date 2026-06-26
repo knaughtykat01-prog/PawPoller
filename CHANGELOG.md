@@ -4,6 +4,65 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.29.0] - 2026-06-26 - Bold dashboard redesign: new shell, Platforms hub, configurable Home
+
+**Why:** the server dashboard felt clunky and hard to get around — a 60px hover-to-expand icon
+rail (labels hidden until you hover), all 11 platforms buried in a modal popover, and
+Submissions/Compare pages with no in-page link to reach them. This is a ground-up redesign of the
+**shell + navigation + Home**, applied to both the desktop app and the headless server (one
+shared frontend). Existing page logic is reused — only the chrome and the Overview changed.
+
+**New visual language**
+- Type: **Bricolage Grotesque** (display) + **Hanken Grotesk** (body) replace Inter
+  (`--font-display` / `--font-sans` in `tokens.css`); Crimson Pro + JetBrains Mono retained.
+- Vivid per-platform **colour tiles**, rounded components, brand-tinted shadows, grain, staggered
+  motion. All 8 token themes still drive the neutrals; brand tiles use the `--platform-*` colours.
+
+**Navigation / shell** (`frontend/index.html`, `frontend/css/layout.css`, `app.js` `init()` + `route()`)
+- Persistent **labeled sidebar** (grouped nav, active gradient pill) with an explicit
+  **collapse/pin** toggle (persisted to `localStorage`) — replaces the hover-to-expand rail.
+- New **context bar**: a clickable breadcrumb + a **platform switcher** + Dashboard / Submissions /
+  Compare **sub-tabs** whenever you're inside a platform (Inkbunny's legacy un-prefixed routes are
+  special-cased). Surfaces the previously orphaned Submissions/Compare views.
+- Surfaced **⌘/Ctrl+K** command palette (visible search box in the sidebar).
+- One responsive shell: the sidebar becomes a slide-in drawer + a floating bottom tab bar
+  (Overview · Platforms · Stories · Analytics · More) on mobile.
+
+**Platforms hub** (`#/platforms`, `renderPlatformsHub()`)
+- A real page of all 11 platforms as colour tiles with live status dots (reuses the
+  `platform_health` engine via `#pg-status-{code}`), replacing the modal popover.
+
+**Configurable Home dashboard** (`renderOverview()` rewrite)
+- The Home is now a **widget grid** you can customise: aggregate stat widgets (views, faves,
+  comments, subs, downloads), per-platform views charts, platform breakdown, trending, top
+  viewed/faved, recent activity, top fans, and system events.
+- **Customize mode**: add / remove / resize (1 · 2 · full width) / drag-reorder.
+- Layout is **server-saved** via a new additive `dashboard_layout` preference (`routes/api.py`
+  get + save), so it follows you across desktop and phone. All existing Overview data fetches and
+  `Components`/`Charts` helpers are reused.
+
+**Other**
+- New `frontend/js/platforms.js` — one canonical 11-platform registry (`window.PLATFORMS`) + route
+  helpers, replacing a 5-way hand-duplicated list; `command_palette.js` repointed at it.
+- New `frontend/css/redesign.css` for the bold page components (hub tiles, dashboard widgets,
+  add-widget catalog, platform-header accent).
+- Platform detail headers pick up the platform's **brand colour** (light bold-pass via `route()`
+  setting `data-platform` + `--page-accent` on `#main-col` + CSS — the 11 per-platform dashboard
+  render functions are untouched).
+- **Legacy ⇄ Beta UI switch**: the whole redesign ships behind a runtime toggle. `dashboard.py`
+  `serve_index` serves either the new (`beta`) or the pre-redesign (`legacy`) shell based on a
+  `?ui=` query param (persisted in a `pp_ui` cookie), and a small fixed switch is injected into
+  both. Legacy is frozen as `index_legacy.html` + `*_legacy.{css,js}` (snapshots of the pre-2.29.0
+  frontend). Default is `beta` (`_DEFAULT_UI` in `dashboard.py`) — set it to `legacy` for a
+  zero-surprise rollout where users opt in. Also a one-click instant fallback if anything's off.
+
+**Scope:** shell + navigation + Platforms hub + Home dashboard. The other ~50 page-render
+functions, the editor, posting, and the rest of the backend are unchanged (the only backend
+change is the additive `dashboard_layout` preference key). Staged: editor/settings/posting and the
+platform-detail tables keep working and get the full bold treatment in a follow-up.
+
+---
+
 ## [2.28.3] - 2026-06-24 - Fix the FA stats regex (2.28.2's ReDoS bound was too tight)
 
 **Bug:** 2.28.2's ReDoS mitigation bounded the stats regex whitespace to `\s{0,30}`,

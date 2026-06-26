@@ -858,6 +858,10 @@ def get_preferences():
         "mobile_mode": settings.get("mobile_mode", "auto"),
         "auto_sync_enabled": settings.get("auto_sync_enabled", True),
         "fa_direct_polling": settings.get("fa_direct_polling", False),
+        # ── Configurable Home dashboard widget layout (redesign) ───
+        # Free-form list of {id, span} objects; null until the user
+        # customises (the frontend falls back to its default layout).
+        "dashboard_layout": settings.get("dashboard_layout", None),
         # ── Per-platform notification master toggles ───────────────
         "notifications_enabled": settings.get("notifications_enabled", True),
         "fa_notifications_enabled": settings.get("fa_notifications_enabled", True),
@@ -1053,6 +1057,13 @@ def save_preferences(body: dict):
     ):
         if key in body:
             update[key] = bool(body[key])
+
+    # ── Configurable Home dashboard layout (redesign) ──────────
+    # Free-form JSON list of {id, span} widget descriptors. Stored
+    # verbatim so the Home dashboard layout follows the user across
+    # devices (desktop + phone share one settings store).
+    if "dashboard_layout" in body:
+        update["dashboard_layout"] = body["dashboard_layout"]
 
     # ── Windows startup registry ───────────────────────────────
     # Handled separately because it modifies the system registry

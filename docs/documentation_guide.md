@@ -1548,6 +1548,42 @@ app.include_router(ws_router)    # /api/ws/*
 
 The frontend is a Single Page Application with hash-based routing:
 
+> **2.29.0 bold redesign — shell, navigation & Home.** The shell, navigation and Overview were
+> redesigned in 2.29.0 (CHANGELOG [2.29.0]); the per-platform render functions, editor, posting
+> and the rest of the backend are unchanged. Key changes:
+> - **Type/theme** (`css/tokens.css`): adds `--font-display` (Bricolage Grotesque) and switches
+>   `--font-sans` to Hanken Grotesk. The 8 `[data-theme]` blocks are unchanged.
+> - **Canonical platform list** (`frontend/js/platforms.js`, loaded first): exports
+>   `window.PLATFORMS` + `platformByCode()` + `platformRoute()` — the single place the 11-platform
+>   list and Inkbunny's un-prefixed-route quirk live (`#/ib` dashboard but `#/submissions` /
+>   `#/compare` / `#/submission/{id}`). `command_palette.js` consumes it.
+> - **Shell** (`index.html`, `css/layout.css`): a persistent **labeled sidebar** (collapse via
+>   `#sidebar-collapse` → `.collapsed` + `body.sidebar-collapsed`, persisted to
+>   `localStorage['pawpoller-sidebar-collapsed']`) replaces the hover-to-expand rail. `#main-col`
+>   wraps `#context-bar` + `#app` and carries the sidebar-clearing left margin. Mobile keeps the
+>   drawer (`.sidebar.open` + `#sidebar-overlay` + `#hamburger-btn`) and a floating `.bottom-nav`
+>   (Overview · Platforms · Stories · Analytics · More; `#bottom-nav-more` opens the drawer).
+> - **Context bar**: `App._renderContextBar(parts, isFullScreen)` fills `#context-bar` from the
+>   parsed route — a breadcrumb always, plus a platform switcher (`#ctx-platform-switch`) and
+>   Dashboard/Submissions/Compare sub-tabs when inside a platform. Empty (hidden) on full-screen
+>   routes and on mobile for non-platform pages.
+> - **Platforms hub**: `App.renderPlatformsHub()` at `#/platforms` (a real page, not the old
+>   popover) renders `.hub-tile` colour tiles; each holds a `#pg-status-{code}` dot that
+>   `platform_health.js` fills (`PlatformHealth.fetchOnce()` is fired on render).
+> - **Configurable Home**: `App.renderOverview()` fetches + caches data in `this._dashCtx`, then
+>   `App._renderDashboard()` builds a widget grid from `this._dashboardLayout` (a list of
+>   `{id, span}`). Customize mode (`this._dashEdit`) adds drag-reorder / resize / remove / an
+>   add-widget catalog. Layout is **server-saved** via the `dashboard_layout` preference
+>   (`GET`/`POST /api/settings/preferences`). Catalog + default in `_dashWidgetMeta()` /
+>   `_dashDefaultLayout()`; per-widget HTML in `_dashWidgetHtml()`.
+> - **Platform-header accent**: `route()` sets `data-platform` + `--page-accent` on `#main-col`;
+>   `redesign.css` tints the `.page-header` with the brand colour (no per-platform edits).
+> - New stylesheet `frontend/css/redesign.css` holds the bold page components (hub tiles, dashboard
+>   widgets, add-widget catalog, header accent), loaded after `layout.css`.
+>
+> The collapsible-nav-group / Platforms-popover prose further down predates this and is retained
+> only as history.
+
 **`frontend/js/app.js`** — Client-side router:
 - Hash-change listener dispatches to page renderer functions
 - Session-persisted state: `currentPage`, `_sortState` (field + order), `_dateRange` ('all', '7d', '30d', '90d', 'year'), `_compareIds` (Set, max 5), `_autoRefreshTimer` (60s interval)

@@ -50,14 +50,9 @@
     --info:          #70a0ff;
 
     /* ── Layout ──────────────────────────────────────────── */
-    /* Bold redesign: the sidebar is persistent + labeled by default
-       (--sidebar-w) and shrinks to an icon rail only when explicitly
-       collapsed (--sidebar-w-collapsed). --sidebar-w-expanded kept as a
-       legacy alias equal to the default width. */
-    --sidebar-w:           248px;
-    --sidebar-w-collapsed: 76px;
-    --sidebar-w-expanded:  248px;
-    --bottom-nav-h:  60px;
+    --sidebar-w:     60px;
+    --sidebar-w-expanded: 220px;
+    --bottom-nav-h:  56px;
 
     /* ── Radii ───────────────────────────────────────────── */
     --radius:        12px;
@@ -79,11 +74,7 @@
 
     /* ── Typography ──────────────────────────────────────── */
     --font-serif:    'Crimson Pro', Georgia, 'Times New Roman', serif;
-    /* Bold redesign type system: Bricolage Grotesque for display (big numbers,
-       headings, brand) and Hanken Grotesk for body. Crimson Pro stays for any
-       literary/serif use; JetBrains Mono for code. */
-    --font-display:  'Bricolage Grotesque', 'Hanken Grotesk', -apple-system, 'Segoe UI', system-ui, sans-serif;
-    --font-sans:     'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --font-sans:     'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     --font-mono:     'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
 
     /* ── Background glows (subtle radial wash on body) ───── */

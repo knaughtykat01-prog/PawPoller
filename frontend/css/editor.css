@@ -4588,8 +4588,7 @@ html[data-mobile="1"] .mobile-mode-card .mobile-mode-desc {
 
 /* Sidebar (when slid open on mobile) — bigger touch rows so
  * navigating to a platform dashboard isn't fiddly. */
-html[data-mobile="1"] .sidebar.open .nav-link,
-html[data-mobile="1"] .sidebar.open .nav-platform-btn {
+html[data-mobile="1"] .sidebar.open .nav-link {
     padding: 14px 16px;
     font-size: 15px;
     min-height: 48px;
@@ -4600,15 +4599,12 @@ html[data-mobile="1"] .sidebar.open .nav-icon {
     width: 28px;
 }
 
-html[data-mobile="1"] .sidebar.open .nav-section {
+html[data-mobile="1"] .sidebar.open .nav-group-label {
     font-size: 11px;
     padding: 18px 14px 6px;
 }
-
-/* Sidebar overall a touch wider on mobile to fit bigger rows */
-html[data-mobile="1"] .sidebar {
-    width: min(320px, 88vw);
-}
+/* Drawer width is owned by layout.css (min(290px, 86vw)); the old 320px
+   override here was removed so the slide-out hamburger offset stays aligned. */
 
 /* ── Drift preview panel (Publish Check cell drawer) ────────
  * Inline expansion shown when the user clicks "Preview file"
