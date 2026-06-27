@@ -175,10 +175,10 @@ def get_ao3_status():
 
 
 @ao3_router.get("/summary")
-def get_ao3_summary():
+def get_ao3_summary(account_id: int | None = Query(None)):
     conn = get_connection()
     try:
-        summary = ao3_queries.get_ao3_summary(conn)
+        summary = ao3_queries.get_ao3_summary(conn, account_id=account_id)
         summary["growth_rates"] = ao3_queries.get_ao3_growth_rates(conn)
         return summary
     except Exception as e:
@@ -194,10 +194,11 @@ def get_ao3_submissions(
     order: str = Query("desc", description="Sort order"),
     search: str = Query("", description="Search title/keywords"),
     rating: str = Query("", description="Filter by rating"),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        subs = ao3_queries.get_all_ao3_submissions(conn, sort_by=sort_by, order=order)
+        subs = ao3_queries.get_all_ao3_submissions(conn, sort_by=sort_by, order=order, account_id=account_id)
         deltas = ao3_queries.get_ao3_submission_deltas(conn)
 
         if search:
@@ -275,10 +276,11 @@ def get_ao3_submission_snapshots(
 def get_ao3_aggregate(
     start: Optional[str] = Query(None),
     end: Optional[str] = Query(None),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        return {"snapshots": ao3_queries.get_ao3_aggregate_snapshots(conn, start, end)}
+        return {"snapshots": ao3_queries.get_ao3_aggregate_snapshots(conn, start, end, account_id=account_id)}
     except Exception as e:
         logger.error("Error in /api/ao3/aggregate: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

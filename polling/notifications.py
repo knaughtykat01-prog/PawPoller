@@ -23,10 +23,20 @@ Three layers, smallest first:
 """
 from __future__ import annotations
 
+import contextvars
 import logging
 import subprocess
 import sys
 from typing import Any
+
+# Per-poll-cycle account context for instant-alert labelling. The orchestrator
+# (server.py) sets this to ``(platform, account_id)`` before each account's poll
+# so maybe_send_telegram_summary can prefix the header with the persona/account —
+# but ONLY when that account needs disambiguating. ContextVars are async-safe:
+# each gathered platform task gets its own isolated copy, so concurrent polls
+# never cross-contaminate. Defaults to no context (no prefix).
+current_alert_account: contextvars.ContextVar = contextvars.ContextVar(
+    "pp_alert_account", default=(None, None))
 
 import httpx
 
@@ -231,5 +241,16 @@ async def maybe_send_telegram_summary(
     chat_id = settings.get("telegram_chat_id")
     if not token or not chat_id:
         return
+    # Prefix the header with the persona/account when the active poll cycle set a
+    # multi-account context. No-op on single-account installs (prefix == "").
+    platform, account_id = current_alert_account.get()
+    if account_id is not None and header_html.startswith("<b>"):
+        try:
+            from polling.telegram import account_alert_prefix
+            prefix = account_alert_prefix(platform, account_id)
+            if prefix:
+                header_html = "<b>" + prefix + header_html[3:]
+        except Exception:
+            pass
     text = format_telegram_summary(header_html, items, max_visible)
     await send_telegram(token, chat_id, text, log_label=log_label)

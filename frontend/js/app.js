@@ -595,6 +595,8 @@ const App = {
             const href = link.getAttribute('href');
             let active = href === '#' + hash || (hash === '/' && href === '#/');
             if (isPlatformRoute && href === '#/platforms') active = true;
+            /* Persona overview pages live under Accounts — keep it lit. */
+            if (parts[0] === 'persona' && href === '#/accounts') active = true;
             /* Story sub-routes (e.g. #/posting/story/...) keep "Stories" lit. */
             if (!active && parts[0] === 'posting' && parts[1] !== 'queue'
                 && parts[1] !== 'log' && href === '#/posting') active = true;
@@ -736,6 +738,8 @@ const App = {
             this.renderAnalytics();
         } else if (parts[0] === 'accounts') {
             if (window.Accounts) window.Accounts.render();
+        } else if (parts[0] === 'persona' && parts[1]) {
+            if (window.Accounts) window.Accounts.renderPersonaDetail(parseInt(parts[1]));
         } else if (parts[0] === 'settings') {
             this.renderSettings();
         } else if (parts[0] === 'posting' && !parts[1]) {
@@ -794,6 +798,7 @@ const App = {
                 const route = window.platformRoute || ((c) => '#/' + c);
                 window.location.hash = route(sel.value);
             });
+            this._populateAccountSwitch(platform);
             return;
         }
 
@@ -854,7 +859,45 @@ const App = {
         const switcher = '<div class="ctx-switch"><span class="pe" style="color:' + color + '">' + emoji + '</span>'
             + '<select id="ctx-platform-switch" aria-label="Switch platform">' + options + '</select></div>';
 
-        return '<div class="ctx-crumbs">' + crumb + '</div>' + subtabs + switcher;
+        // Account-filter slot — populated async by _populateAccountSwitch (only
+        // shows a <select> when the platform has 2+ enabled accounts).
+        const acctSlot = '<span id="ctx-account-slot" class="ctx-account"></span>';
+
+        return '<div class="ctx-crumbs">' + crumb + '</div>' + subtabs + acctSlot + switcher;
+    },
+
+    /* Current account filter for a platform code (null = All accounts). */
+    _acctId(code) { return (this._accountFilter && this._accountFilter[code]) || null; },
+
+    /* _populateAccountSwitch() — async-fills the context bar's account slot with
+     * an "All accounts" + per-account <select>, but only when the platform has
+     * 2+ enabled accounts. Changing it sets this._accountFilter[code] and
+     * re-renders the current platform view (scoped). */
+    async _populateAccountSwitch(code) {
+        this._accountFilter = this._accountFilter || {};
+        const slot = document.getElementById('ctx-account-slot');
+        if (!slot) return;
+        let accts;
+        try {
+            const data = await API.getAccounts(code);
+            accts = (data.accounts || []).filter(a => a.enabled);
+        } catch (e) { return; }
+        if (!accts || accts.length < 2) return;       // single account → no selector
+        if (!document.body.contains(slot)) return;     // a newer render replaced it
+        const cur = this._accountFilter[code];
+        const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+            { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const opts = ['<option value="">All accounts</option>'].concat(
+            accts.map(a => '<option value="' + a.account_id + '"'
+                + (String(cur) === String(a.account_id) ? ' selected' : '') + '>'
+                + esc(a.label || a.handle || ('Account ' + a.account_id)) + '</option>')
+        ).join('');
+        slot.innerHTML = '<select id="ctx-account-switch" aria-label="Filter by account" title="Account">' + opts + '</select>';
+        document.getElementById('ctx-account-switch').addEventListener('change', (e) => {
+            const v = e.target.value;
+            this._accountFilter[code] = v === '' ? null : Number(v);
+            this.route();   // re-dispatch to the platform render, now scoped
+        });
     },
 
     /* _setContent() — DOM helper: replaces the #app main content area with the given HTML string. */
@@ -2359,10 +2402,13 @@ const App = {
     async renderDashboard() {
         this._loading();
         try {
-            /* Fetch IB summary stats, aggregate snapshots, pins, and goals in parallel */
+            /* Fetch IB summary stats, aggregate snapshots, pins, and goals in parallel.
+               account_id (null = All accounts) scopes summary + aggregate to the
+               account picked in the context bar; pins/goals stay platform-wide. */
+            const acc = this._acctId('ib');
             const [summary, agg, pins, goals] = await Promise.all([
-                API.getSummary(),
-                API.getAggregate(Utils.getDateRange(this._dateRange)),
+                API.getSummary({ account_id: acc }),
+                API.getAggregate({ ...Utils.getDateRange(this._dateRange), account_id: acc }),
                 API.getPins().catch(() => ({ pins: [] })),
                 API.getGoals().catch(() => ({ goals: [] })),
             ]);
@@ -2480,6 +2526,7 @@ const App = {
             const data = await API.getSubmissions({
                 sort_by: this._sortState.field,
                 order: this._sortState.order,
+                account_id: this._acctId('ib'),
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
@@ -2621,7 +2668,7 @@ const App = {
     async renderCompare() {
         this._loading();
         try {
-            const data = await API.getSubmissions({ sort_by: 'views', order: 'desc' });
+            const data = await API.getSubmissions({ sort_by: 'views', order: 'desc', account_id: this._acctId('ib') });
             const subs = data.submissions;
 
             /* Build chip labels for every submission; pre-check selected state from _compareIds */
@@ -2722,8 +2769,8 @@ const App = {
         this._loading();
         try {
             const [summary, agg, pins, goals] = await Promise.all([
-                API.getFASummary(),
-                API.getFAAggregate(Utils.getDateRange(this._dateRange)),
+                API.getFASummary({ account_id: this._acctId('fa') }),
+                API.getFAAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('fa') }),
                 API.getPins().catch(() => ({ pins: [] })),
                 API.getGoals().catch(() => ({ goals: [] })),
             ]);
@@ -2836,6 +2883,7 @@ const App = {
             const data = await API.getFASubmissions({
                 sort_by: this._faSortState.field,
                 order: this._faSortState.order,
+                account_id: this._acctId('fa'),
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
@@ -2983,7 +3031,7 @@ const App = {
         this._loading();
         try {
             // Fetch all FA submissions sorted by views to populate the chip selector
-            const data = await API.getFASubmissions({ sort_by: 'views', order: 'desc' });
+            const data = await API.getFASubmissions({ sort_by: 'views', order: 'desc', account_id: this._acctId('fa') });
             const subs = data.submissions;
 
             // Build selectable chips for each submission; pre-check any already selected
@@ -3085,8 +3133,8 @@ const App = {
         this._loading();
         try {
             const [summary, agg, pins, goals] = await Promise.all([
-                API.getWSSummary(),
-                API.getWSAggregate(Utils.getDateRange(this._dateRange)),
+                API.getWSSummary({ account_id: this._acctId('ws') }),
+                API.getWSAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('ws') }),
                 API.getPins().catch(() => ({ pins: [] })),
                 API.getGoals().catch(() => ({ goals: [] })),
             ]);
@@ -3188,6 +3236,7 @@ const App = {
             const data = await API.getWSSubmissions({
                 sort_by: this._wsSortState.field,
                 order: this._wsSortState.order,
+                account_id: this._acctId('ws'),
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
@@ -3315,7 +3364,7 @@ const App = {
         this._loading();
         try {
             // Fetch all WS submissions sorted by views for chip population
-            const data = await API.getWSSubmissions({ sort_by: 'views', order: 'desc' });
+            const data = await API.getWSSubmissions({ sort_by: 'views', order: 'desc', account_id: this._acctId('ws') });
             const subs = data.submissions;
 
             // Build toggle chips for each submission with pre-selected state
@@ -3411,8 +3460,8 @@ const App = {
         this._loading();
         try {
             const [summary, agg, pins, goals] = await Promise.all([
-                API.getSFSummary(),
-                API.getSFAggregate(Utils.getDateRange(this._dateRange)),
+                API.getSFSummary({ account_id: this._acctId('sf') }),
+                API.getSFAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('sf') }),
                 API.getPins().catch(() => ({ pins: [] })),
                 API.getGoals().catch(() => ({ goals: [] })),
             ]);
@@ -3519,6 +3568,7 @@ const App = {
             const data = await API.getSFSubmissions({
                 sort_by: this._sfSortState.field,
                 order: this._sfSortState.order,
+                account_id: this._acctId('sf'),
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
@@ -3636,7 +3686,7 @@ const App = {
     async renderSFCompare() {
         this._loading();
         try {
-            const data = await API.getSFSubmissions({ sort_by: 'views', order: 'desc' });
+            const data = await API.getSFSubmissions({ sort_by: 'views', order: 'desc', account_id: this._acctId('sf') });
             const subs = data.submissions;
 
             const chips = subs.map(s => `
@@ -3724,8 +3774,8 @@ const App = {
         this._loading();
         try {
             const [summary, agg, pins, goals] = await Promise.all([
-                API.getSQWSummary(),
-                API.getSQWAggregate(Utils.getDateRange(this._dateRange)),
+                API.getSQWSummary({ account_id: this._acctId('sqw') }),
+                API.getSQWAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('sqw') }),
                 API.getPins().catch(() => ({ pins: [] })),
                 API.getGoals().catch(() => ({ goals: [] })),
             ]);
@@ -3821,6 +3871,7 @@ const App = {
             const data = await API.getSQWSubmissions({
                 sort_by: this._sqwSortState.field,
                 order: this._sqwSortState.order,
+                account_id: this._acctId('sqw'),
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
@@ -3939,7 +3990,7 @@ const App = {
     async renderSQWCompare() {
         this._loading();
         try {
-            const data = await API.getSQWSubmissions({ sort_by: 'views', order: 'desc' });
+            const data = await API.getSQWSubmissions({ sort_by: 'views', order: 'desc', account_id: this._acctId('sqw') });
             const subs = data.submissions;
 
             const chips = subs.map(s => `
@@ -4027,8 +4078,8 @@ const App = {
         this._loading();
         try {
             const [summary, agg, pins, goals] = await Promise.all([
-                API.getAO3Summary(),
-                API.getAO3Aggregate(Utils.getDateRange(this._dateRange)),
+                API.getAO3Summary({ account_id: this._acctId('ao3') }),
+                API.getAO3Aggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('ao3') }),
                 API.getPins().catch(() => ({ pins: [] })),
                 API.getGoals().catch(() => ({ goals: [] })),
             ]);
@@ -4124,6 +4175,7 @@ const App = {
             const data = await API.getAO3Submissions({
                 sort_by: this._ao3SortState.field,
                 order: this._ao3SortState.order,
+                account_id: this._acctId('ao3'),
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
@@ -4242,7 +4294,7 @@ const App = {
     async renderAO3Compare() {
         this._loading();
         try {
-            const data = await API.getAO3Submissions({ sort_by: 'views', order: 'desc' });
+            const data = await API.getAO3Submissions({ sort_by: 'views', order: 'desc', account_id: this._acctId('ao3') });
             const subs = data.submissions;
 
             const chips = subs.map(s => `
@@ -4332,8 +4384,8 @@ const App = {
         this._loading();
         try {
             const [summary, agg, pins, goals] = await Promise.all([
-                API.getDASummary(),
-                API.getDAAggregate(Utils.getDateRange(this._dateRange)),
+                API.getDASummary({ account_id: this._acctId('da') }),
+                API.getDAAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('da') }),
                 API.getPins().catch(() => ({ pins: [] })),
                 API.getGoals().catch(() => ({ goals: [] })),
             ]);
@@ -4439,6 +4491,7 @@ const App = {
             const data = await API.getDASubmissions({
                 sort_by: this._daSortState.field,
                 order: this._daSortState.order,
+                account_id: this._acctId('da'),
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
@@ -4557,7 +4610,7 @@ const App = {
     async renderDACompare() {
         this._loading();
         try {
-            const data = await API.getDASubmissions({ sort_by: 'views', order: 'desc' });
+            const data = await API.getDASubmissions({ sort_by: 'views', order: 'desc', account_id: this._acctId('da') });
             const subs = data.submissions;
 
             const chips = subs.map(s => `
@@ -4648,8 +4701,8 @@ const App = {
         this._loading();
         try {
             const [summary, agg, pins, goals] = await Promise.all([
-                API.getWPSummary(),
-                API.getWPAggregate(Utils.getDateRange(this._dateRange)),
+                API.getWPSummary({ account_id: this._acctId('wp') }),
+                API.getWPAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('wp') }),
                 API.getPins().catch(() => ({ pins: [] })),
                 API.getGoals().catch(() => ({ goals: [] })),
             ]);
@@ -4759,6 +4812,7 @@ const App = {
             const data = await API.getWPSubmissions({
                 sort_by: this._wpSortState.field,
                 order: this._wpSortState.order,
+                account_id: this._acctId('wp'),
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
@@ -4872,7 +4926,7 @@ const App = {
     async renderWPCompare() {
         this._loading();
         try {
-            const data = await API.getWPSubmissions({ sort_by: 'reads', order: 'desc' });
+            const data = await API.getWPSubmissions({ sort_by: 'reads', order: 'desc', account_id: this._acctId('wp') });
             const subs = data.submissions;
 
             const chips = subs.map(s => `
@@ -4962,8 +5016,8 @@ const App = {
         this._loading();
         try {
             const [summary, agg, pins, goals] = await Promise.all([
-                API.getIKSummary(),
-                API.getIKAggregate(Utils.getDateRange(this._dateRange)),
+                API.getIKSummary({ account_id: this._acctId('ik') }),
+                API.getIKAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('ik') }),
                 API.getPins().catch(() => ({ pins: [] })),
                 API.getGoals().catch(() => ({ goals: [] })),
             ]);
@@ -5067,6 +5121,7 @@ const App = {
             const data = await API.getIKSubmissions({
                 sort_by: this._ikSortState.field,
                 order: this._ikSortState.order,
+                account_id: this._acctId('ik'),
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
@@ -5179,7 +5234,7 @@ const App = {
     async renderIKCompare() {
         this._loading();
         try {
-            const data = await API.getIKSubmissions({ sort_by: 'likes', order: 'desc' });
+            const data = await API.getIKSubmissions({ sort_by: 'likes', order: 'desc', account_id: this._acctId('ik') });
             const subs = data.submissions;
 
             const chips = subs.map(s => `
@@ -5268,8 +5323,8 @@ const App = {
         this._loading();
         try {
             const [summary, agg, pins, goals] = await Promise.all([
-                API.getBSKYSummary(),
-                API.getBSKYAggregate(Utils.getDateRange(this._dateRange)),
+                API.getBSKYSummary({ account_id: this._acctId('bsky') }),
+                API.getBSKYAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('bsky') }),
                 API.getPins().catch(() => ({ pins: [] })),
                 API.getGoals().catch(() => ({ goals: [] })),
             ]);
@@ -5373,6 +5428,7 @@ const App = {
             const data = await API.getBSKYSubmissions({
                 sort_by: this._bskySortState.field,
                 order: this._bskySortState.order,
+                account_id: this._acctId('bsky'),
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
@@ -5489,7 +5545,7 @@ const App = {
     async renderBSKYCompare() {
         this._loading();
         try {
-            const data = await API.getBSKYSubmissions({ sort_by: 'likes', order: 'desc' });
+            const data = await API.getBSKYSubmissions({ sort_by: 'likes', order: 'desc', account_id: this._acctId('bsky') });
             const subs = data.submissions;
 
             const chips = subs.map(s => {
@@ -5582,8 +5638,8 @@ const App = {
         this._loading();
         try {
             const [summary, agg, pins, goals] = await Promise.all([
-                API.getTWSummary(),
-                API.getTWAggregate(Utils.getDateRange(this._dateRange)),
+                API.getTWSummary({ account_id: this._acctId('tw') }),
+                API.getTWAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('tw') }),
                 API.getPins().catch(() => ({ pins: [] })),
                 API.getGoals().catch(() => ({ goals: [] })),
             ]);
@@ -5693,6 +5749,7 @@ const App = {
             const data = await API.getTWSubmissions({
                 sort_by: this._twSortState.field,
                 order: this._twSortState.order,
+                account_id: this._acctId('tw'),
             });
 
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
@@ -5806,7 +5863,7 @@ const App = {
     async renderTWCompare() {
         this._loading();
         try {
-            const data = await API.getTWSubmissions({ sort_by: 'views', order: 'desc' });
+            const data = await API.getTWSubmissions({ sort_by: 'views', order: 'desc', account_id: this._acctId('tw') });
             const subs = data.submissions;
 
             const chips = subs.map(s => `

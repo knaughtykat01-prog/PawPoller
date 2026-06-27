@@ -744,3 +744,20 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError as e:
             if "duplicate column" not in str(e).lower():
                 raise
+
+    # Migration: Personas (cross-platform account grouping). A persona bundles
+    # accounts across platforms into one logical identity for scoped views +
+    # per-persona digests. accounts.persona_id is a SOFT reference (no SQL FK):
+    # delete_persona nulls its accounts' persona_id in the CRUD layer. This is a
+    # plain additive column, so it does NOT need the _run_table_rebuilds path —
+    # and _run_table_rebuilds never rebuilds the accounts table, so the column
+    # survives. The accounts table already exists (Migration 0 above).
+    from database import personas as _personas
+    _personas.ensure_personas_table(conn)
+    try:
+        conn.execute("ALTER TABLE accounts ADD COLUMN persona_id INTEGER")
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_accounts_persona ON accounts(persona_id)")
+    conn.commit()

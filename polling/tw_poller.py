@@ -245,7 +245,7 @@ async def run_tw_poll_cycle(account_id: int | None = None, force_full: bool = Fa
             except Exception as te:
                 logger.warning("Failed to send TW Telegram summary: %s", te, exc_info=True)
             try:
-                await check_milestones_batch("tw", "tw_snapshots", "tw_submissions")
+                await check_milestones_batch("tw", "tw_snapshots", "tw_submissions", account_id)
             except Exception as me:
                 logger.warning("Failed to check TW milestones: %s", me, exc_info=True)
             try:

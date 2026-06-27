@@ -145,10 +145,10 @@ def get_ik_status():
 
 
 @ik_router.get("/summary")
-def get_ik_summary():
+def get_ik_summary(account_id: int | None = Query(None)):
     conn = get_connection()
     try:
-        summary = ik_queries.get_ik_summary(conn)
+        summary = ik_queries.get_ik_summary(conn, account_id=account_id)
         summary["growth_rates"] = ik_queries.get_ik_growth_rates(conn)
         return summary
     except Exception as e:
@@ -165,10 +165,11 @@ def get_ik_submissions(
     search: str = Query("", description="Search title/keywords"),
     rating: str = Query("", description="Filter by rating"),
     content_type: str = Query("", description="Filter by content type (image/post)"),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        subs = ik_queries.get_all_ik_submissions(conn, sort_by=sort_by, order=order)
+        subs = ik_queries.get_all_ik_submissions(conn, sort_by=sort_by, order=order, account_id=account_id)
         deltas = ik_queries.get_ik_submission_deltas(conn)
 
         if search:
@@ -245,10 +246,11 @@ def get_ik_submission_snapshots(
 def get_ik_aggregate(
     start: Optional[str] = Query(None),
     end: Optional[str] = Query(None),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        return {"snapshots": ik_queries.get_ik_aggregate_snapshots(conn, start, end)}
+        return {"snapshots": ik_queries.get_ik_aggregate_snapshots(conn, start, end, account_id=account_id)}
     except Exception as e:
         logger.error("Error in /api/ik/aggregate: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

@@ -13,6 +13,7 @@ Key differences from other platforms:
 
 from __future__ import annotations
 import json
+from database.scope import account_clause  # optional `account_id = ?` WHERE-injection
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
@@ -58,13 +59,16 @@ def get_tw_submission(conn: sqlite3.Connection, submission_id: str) -> dict | No
     return dict(row) if row else None
 
 
-def get_all_tw_submissions(conn: sqlite3.Connection, sort_by: str = "views", order: str = "desc") -> list[dict]:
+def get_all_tw_submissions(conn: sqlite3.Connection, sort_by: str = "views", order: str = "desc", account_id: int | None = None) -> list[dict]:
     allowed_sorts = {"views", "likes", "retweets", "replies", "quotes", "bookmarks",
                      "title", "posted_at", "updated_at", "content_type"}
     if sort_by not in allowed_sorts:
         sort_by = "views"
     order_dir = "DESC" if order.lower() == "desc" else "ASC"
-    rows = conn.execute(f"SELECT * FROM tw_submissions ORDER BY {sort_by} {order_dir}").fetchall()
+    where, params = account_clause(account_id)
+    sql = "SELECT * FROM tw_submissions" + (f" WHERE {where}" if where else "")
+    sql += f" ORDER BY {sort_by} {order_dir}"
+    rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -96,7 +100,7 @@ def get_tw_snapshots(conn: sqlite3.Connection, submission_id: str,
 
 
 def get_tw_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = None,
-                                end: str | None = None) -> list[dict]:
+                                end: str | None = None, account_id: int | None = None) -> list[dict]:
     sql = ("SELECT polled_at, SUM(views) as views, SUM(likes) as likes, "
            "SUM(retweets) as retweets, SUM(replies) as replies, "
            "SUM(quotes) as quotes, SUM(bookmarks) as bookmarks "
@@ -109,6 +113,10 @@ def get_tw_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = Non
     if end:
         conditions.append("polled_at <= ?")
         params.append(end)
+    acc_sql, acc_params = account_clause(account_id)
+    if acc_sql:
+        conditions.append(acc_sql)
+        params.extend(acc_params)
     if conditions:
         sql += " WHERE " + " AND ".join(conditions)
     sql += " GROUP BY polled_at ORDER BY polled_at ASC"
@@ -171,7 +179,15 @@ def get_tw_poll_log(conn: sqlite3.Connection, limit: int = 50) -> list[dict]:
 
 # -- TW Summary --------------------------------------------------------------
 
-def get_tw_summary(conn: sqlite3.Connection) -> dict:
+def get_tw_summary(conn: sqlite3.Connection, account_id: int | None = None) -> dict:
+    """Main dashboard data source for the X/Twitter platform.
+
+    With *account_id* set, every total / top-list is scoped to that account; the
+    "All accounts" default (account_id=None) keeps the aggregate behaviour. TW has
+    no stat offsets, so there is nothing to guard on the account_id is None branch.
+    """
+    where, wp = account_clause(account_id)
+    w = f" WHERE {where}" if where else ""
     totals = conn.execute(
         "SELECT COUNT(*) as total_submissions, COALESCE(SUM(views),0) as total_views, "
         "COALESCE(SUM(likes),0) as total_likes, "
@@ -179,22 +195,29 @@ def get_tw_summary(conn: sqlite3.Connection) -> dict:
         "COALESCE(SUM(replies),0) as total_replies, "
         "COALESCE(SUM(quotes),0) as total_quotes, "
         "COALESCE(SUM(bookmarks),0) as total_bookmarks "
-        "FROM tw_submissions"
+        "FROM tw_submissions" + w,
+        wp,
     ).fetchone()
     totals = dict(totals)
 
     top_viewed = conn.execute(
-        "SELECT submission_id, title, views, thumbnail_url as thumb_url FROM tw_submissions ORDER BY views DESC LIMIT 5"
+        "SELECT submission_id, title, views, thumbnail_url as thumb_url FROM tw_submissions" + w + " ORDER BY views DESC LIMIT 5",
+        wp,
     ).fetchall()
 
     top_liked = conn.execute(
-        "SELECT submission_id, title, likes, thumbnail_url as thumb_url FROM tw_submissions ORDER BY likes DESC LIMIT 5"
+        "SELECT submission_id, title, likes, thumbnail_url as thumb_url FROM tw_submissions" + w + " ORDER BY likes DESC LIMIT 5",
+        wp,
     ).fetchall()
 
     top_retweeted = conn.execute(
-        "SELECT submission_id, title, retweets, thumbnail_url as thumb_url FROM tw_submissions ORDER BY retweets DESC LIMIT 5"
+        "SELECT submission_id, title, retweets, thumbnail_url as thumb_url FROM tw_submissions" + w + " ORDER BY retweets DESC LIMIT 5",
+        wp,
     ).fetchall()
 
+    # Fastest-growing: only the outer `s` needs account scoping — submission_ids
+    # are unique to their account, so the snapshot subquery is implicitly correct.
+    sw, sp = account_clause(account_id, "s")
     fastest_growing = conn.execute(
         """SELECT s.submission_id, s.title, s.thumbnail_url as thumb_url,
                   COALESCE(s.views - oldest.views, 0) as views_gained,
@@ -210,8 +233,9 @@ def get_tw_summary(conn: sqlite3.Connection) -> dict:
                    GROUP BY submission_id
                ) s2 ON s1.submission_id = s2.submission_id AND s1.polled_at = s2.max_polled
            ) oldest ON s.submission_id = oldest.submission_id
-           WHERE COALESCE(s.views - oldest.views, 0) > 0
-           ORDER BY views_gained DESC LIMIT 5"""
+           WHERE """ + (sw + " AND " if sw else "") + """COALESCE(s.views - oldest.views, 0) > 0
+           ORDER BY views_gained DESC LIMIT 5""",
+        sp,
     ).fetchall()
 
     return {

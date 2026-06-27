@@ -171,10 +171,11 @@ def get_sf_status():
 
 
 @sf_router.get("/summary")
-def get_sf_summary():
+def get_sf_summary(account_id: int | None = Query(None)):
     conn = get_connection()
     try:
-        summary = sf_queries.get_sf_summary(conn)
+        summary = sf_queries.get_sf_summary(conn, account_id=account_id)
+        # growth_rates + watcher counts stay aggregate (not account-scoped), mirroring IB.
         summary["growth_rates"] = sf_queries.get_sf_growth_rates(conn)
         summary["total_watchers"] = sf_queries.get_sf_watchers_count(conn)
         summary["recent_watchers"] = sf_queries.get_sf_recent_watchers(conn, limit=10)
@@ -204,10 +205,11 @@ def get_sf_submissions(
     order: str = Query("desc", description="Sort order"),
     search: str = Query("", description="Search title/keywords"),
     rating: str = Query("", description="Filter by rating"),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        subs = sf_queries.get_all_sf_submissions(conn, sort_by=sort_by, order=order)
+        subs = sf_queries.get_all_sf_submissions(conn, sort_by=sort_by, order=order, account_id=account_id)
         deltas = sf_queries.get_sf_submission_deltas(conn)
 
         if search:
@@ -278,10 +280,11 @@ def get_sf_submission_snapshots(
 def get_sf_aggregate(
     start: Optional[str] = Query(None),
     end: Optional[str] = Query(None),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        return {"snapshots": sf_queries.get_sf_aggregate_snapshots(conn, start, end)}
+        return {"snapshots": sf_queries.get_sf_aggregate_snapshots(conn, start, end, account_id=account_id)}
     except Exception as e:
         logger.error("Error in /api/sf/aggregate: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

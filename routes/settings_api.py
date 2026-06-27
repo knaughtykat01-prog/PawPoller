@@ -577,3 +577,123 @@ async def delete_account_endpoint(account_id: int):
         config.delete_settings_keys(keys)
     logger.info("Deleted %s account #%s", account["platform"], account_id)
     return {"ok": True}
+
+
+class PersonaAssign(BaseModel):
+    persona_id: int | None = None
+
+
+@accounts_router.post("/{account_id}/persona")
+async def assign_account_persona_endpoint(account_id: int, req: PersonaAssign):
+    """Assign an account to a persona (or clear it with persona_id=null)."""
+    from database import accounts as adb, personas as pdb
+    conn = _accounts_conn()
+    try:
+        if not adb.get_account(conn, account_id):
+            raise HTTPException(status_code=404, detail="Account not found")
+        if req.persona_id is not None and not pdb.get_persona(conn, req.persona_id):
+            raise HTTPException(status_code=404, detail="Persona not found")
+        pdb.assign_account_persona(conn, account_id, req.persona_id)
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+# ── Personas CRUD (cross-platform account grouping) ───────────────────
+# A persona bundles accounts across platforms into one logical identity. The
+# account→persona link lives on accounts.persona_id (the assign endpoint above);
+# this router manages the persona rows + per-persona combined stats.
+
+personas_router = APIRouter(prefix="/api/personas", tags=["personas"])
+
+
+class PersonaCreate(BaseModel):
+    name: str
+    color: str = "#6c8cff"
+
+
+class PersonaUpdate(BaseModel):
+    name: str | None = None
+    color: str | None = None
+    sort_order: int | None = None
+
+
+@personas_router.get("")
+async def list_personas_endpoint():
+    """All personas (each with combined stats + its accounts) + the Unassigned bucket."""
+    from database import accounts as adb, personas as pdb
+    conn = _accounts_conn()
+    try:
+        groups = pdb.list_accounts_by_persona(conn)
+        out = []
+        for p in pdb.list_personas(conn):
+            pid = p["persona_id"]
+            p["accounts"] = groups.get(pid, [])
+            p["stats"] = pdb.persona_stats(conn, pid)
+            out.append(p)
+        unassigned = groups.get(None, [])
+    finally:
+        conn.close()
+    return {"personas": out, "unassigned": unassigned, "platform_names": adb.PLATFORM_NAMES}
+
+
+@personas_router.get("/{persona_id}")
+async def get_persona_endpoint(persona_id: int):
+    """One persona + its accounts (each with per-account stats) + combined stats."""
+    from database import accounts as adb, personas as pdb
+    conn = _accounts_conn()
+    try:
+        p = pdb.get_persona(conn, persona_id)
+        if not p:
+            raise HTTPException(status_code=404, detail="Persona not found")
+        accts = [a for a in adb.list_accounts(conn) if a.get("persona_id") == persona_id]
+        for a in accts:
+            a["stats"] = adb.account_stats(conn, a["account_id"], a["platform"])
+        p["accounts"] = accts
+        p["stats"] = pdb.persona_stats(conn, persona_id)
+    finally:
+        conn.close()
+    return {"persona": p, "platform_names": adb.PLATFORM_NAMES}
+
+
+@personas_router.post("")
+async def create_persona_endpoint(req: PersonaCreate):
+    from database import personas as pdb
+    conn = _accounts_conn()
+    try:
+        pid = pdb.create_persona(conn, req.name, color=req.color)
+        persona = pdb.get_persona(conn, pid)
+    finally:
+        conn.close()
+    logger.info("Created persona #%s (%s)", pid, req.name)
+    return {"ok": True, "persona": persona}
+
+
+@personas_router.patch("/{persona_id}")
+async def update_persona_endpoint(persona_id: int, req: PersonaUpdate):
+    from database import personas as pdb
+    conn = _accounts_conn()
+    try:
+        if not pdb.get_persona(conn, persona_id):
+            raise HTTPException(status_code=404, detail="Persona not found")
+        pdb.update_persona(conn, persona_id, name=req.name, color=req.color,
+                           sort_order=req.sort_order)
+        persona = pdb.get_persona(conn, persona_id)
+    finally:
+        conn.close()
+    return {"ok": True, "persona": persona}
+
+
+@personas_router.delete("/{persona_id}")
+async def delete_persona_endpoint(persona_id: int):
+    """Delete a persona; its accounts fall back to Unassigned (persona_id NULL)."""
+    from database import personas as pdb
+    conn = _accounts_conn()
+    try:
+        if not pdb.get_persona(conn, persona_id):
+            raise HTTPException(status_code=404, detail="Persona not found")
+        pdb.delete_persona(conn, persona_id)
+    finally:
+        conn.close()
+    logger.info("Deleted persona #%s", persona_id)
+    return {"ok": True}

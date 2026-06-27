@@ -224,11 +224,16 @@ def get_fa_status():
 
 
 @fa_router.get("/summary")
-def get_fa_summary():
-    """Dashboard summary for FA -- mirrors IB's /api/summary."""
+def get_fa_summary(account_id: int | None = Query(None)):
+    """Dashboard summary for FA -- mirrors IB's /api/summary.
+
+    With *account_id* set, the totals / top-lists / recent activity are scoped to
+    that account ("All accounts" by default). growth_rates + watcher counts +
+    profile pageviews stay aggregate for now (a Phase 2 follow-up).
+    """
     conn = get_connection()
     try:
-        summary = fa_queries.get_fa_summary(conn)
+        summary = fa_queries.get_fa_summary(conn, account_id=account_id)
         summary["growth_rates"] = fa_queries.get_fa_growth_rates(conn)
         summary["total_watchers"] = fa_queries.get_fa_watchers_count(conn)
         summary["recent_watchers"] = fa_queries.get_fa_recent_watchers(conn, limit=10)
@@ -249,16 +254,17 @@ def get_fa_submissions(
     order: str = Query("desc", description="Sort order"),
     search: str = Query("", description="Search title/keywords"),
     rating: str = Query("", description="Filter by rating"),
+    account_id: int | None = Query(None),
 ):
     """All FA submissions with latest stats, sortable/filterable.
 
     Mirrors IB's /api/submissions. Note: FA does not have a type_name filter
     (unlike IB which distinguishes picture/writing/etc.) since FA categorises
-    content differently.
+    content differently. With *account_id* set, results are scoped to that account.
     """
     conn = get_connection()
     try:
-        subs = fa_queries.get_all_fa_submissions(conn, sort_by=sort_by, order=order)
+        subs = fa_queries.get_all_fa_submissions(conn, sort_by=sort_by, order=order, account_id=account_id)
         # Get per-submission deltas (change since last poll)
         deltas = fa_queries.get_fa_submission_deltas(conn)
 
@@ -340,11 +346,13 @@ def get_fa_submission_snapshots(
 def get_fa_aggregate(
     start: Optional[str] = Query(None),
     end: Optional[str] = Query(None),
+    account_id: int | None = Query(None),
 ):
-    """Aggregate time-series across all FA submissions -- mirrors IB's /api/aggregate."""
+    """Aggregate time-series across all FA submissions -- mirrors IB's /api/aggregate.
+    With *account_id* set, the totals are scoped to that account."""
     conn = get_connection()
     try:
-        return {"snapshots": fa_queries.get_fa_aggregate_snapshots(conn, start, end)}
+        return {"snapshots": fa_queries.get_fa_aggregate_snapshots(conn, start, end, account_id=account_id)}
     except Exception as e:
         logger.error("Error in /api/fa/aggregate: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

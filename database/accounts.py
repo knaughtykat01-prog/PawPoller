@@ -293,7 +293,7 @@ def count_accounts(conn: sqlite3.Connection, platform: str) -> int:
 def get_manifest(conn: sqlite3.Connection) -> list[dict]:
     return [
         {k: r[k] for k in ("account_id", "platform", "label", "handle",
-                           "enabled", "is_default", "sort_order")}
+                           "enabled", "is_default", "sort_order", "persona_id")}
         for r in conn.execute("SELECT * FROM accounts ORDER BY account_id").fetchall()
     ]
 
@@ -336,6 +336,12 @@ def apply_manifest(conn: sqlite3.Connection, manifest) -> int:
             (aid, platform, acct.get("label", ""), acct.get("handle", ""),
              int(acct.get("enabled", 1)), is_default, int(acct.get("sort_order", 0))),
         )
+        # Persona assignment: only touch persona_id when the manifest actually
+        # carries the key (present-but-null = explicit unassign; absent = an old
+        # client, so leave the local assignment alone rather than clobber it).
+        if "persona_id" in acct:
+            conn.execute("UPDATE accounts SET persona_id = ? WHERE account_id = ?",
+                         (acct.get("persona_id"), aid))
         n += 1
     conn.commit()
     return n

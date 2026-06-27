@@ -336,7 +336,7 @@ async def run_ao3_poll_cycle(account_id: int | None = None, force_full: bool = F
             except Exception as te:
                 logger.warning("Failed to send AO3 Telegram summary: %s", te, exc_info=True)
             try:
-                await check_milestones_batch("ao3", "ao3_snapshots", "ao3_submissions")
+                await check_milestones_batch("ao3", "ao3_snapshots", "ao3_submissions", account_id)
             except Exception as me:
                 logger.warning("Failed to check AO3 milestones: %s", me, exc_info=True)
             try:

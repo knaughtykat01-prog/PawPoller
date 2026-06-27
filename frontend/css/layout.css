@@ -299,7 +299,23 @@
 }
 .ctx-subtabs a:hover { color: var(--text-primary); }
 .ctx-subtabs a.active { background: var(--accent); color: #fff; }
-.ctx-switch { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+/* The account-filter slot carries the right-cluster's auto margin so both it
+   and the platform switcher hug the right edge (the slot is empty — zero width
+   — on single-account platforms, so the switcher still sits flush right). */
+.ctx-account { margin-left: auto; display: flex; align-items: center; }
+.ctx-account select {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    font-size: 13.5px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    padding: 8px 14px;
+    cursor: pointer;
+}
+.ctx-account select:hover { border-color: var(--accent); }
+.ctx-switch { margin-left: 8px; display: flex; align-items: center; gap: 8px; }
 .ctx-switch .pe { font-size: 17px; }
 .ctx-switch select {
     font-family: var(--font-sans);

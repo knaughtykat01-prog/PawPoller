@@ -144,10 +144,10 @@ def get_wp_status():
 
 
 @wp_router.get("/summary")
-def get_wp_summary():
+def get_wp_summary(account_id: int | None = Query(None)):
     conn = get_connection()
     try:
-        summary = wp_queries.get_wp_summary(conn)
+        summary = wp_queries.get_wp_summary(conn, account_id=account_id)
         summary["growth_rates"] = wp_queries.get_wp_growth_rates(conn)
         return summary
     except Exception as e:
@@ -163,10 +163,11 @@ def get_wp_submissions(
     order: str = Query("desc", description="Sort order"),
     search: str = Query("", description="Search title/keywords"),
     rating: str = Query("", description="Filter by rating"),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        subs = wp_queries.get_all_wp_submissions(conn, sort_by=sort_by, order=order)
+        subs = wp_queries.get_all_wp_submissions(conn, sort_by=sort_by, order=order, account_id=account_id)
         deltas = wp_queries.get_wp_submission_deltas(conn)
 
         if search:
@@ -242,10 +243,11 @@ def get_wp_submission_snapshots(
 def get_wp_aggregate(
     start: Optional[str] = Query(None),
     end: Optional[str] = Query(None),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        return {"snapshots": wp_queries.get_wp_aggregate_snapshots(conn, start, end)}
+        return {"snapshots": wp_queries.get_wp_aggregate_snapshots(conn, start, end, account_id=account_id)}
     except Exception as e:
         logger.error("Error in /api/wp/aggregate: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

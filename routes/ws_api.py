@@ -206,11 +206,15 @@ def get_ws_status():
 
 
 @ws_router.get("/summary")
-def get_ws_summary():
-    """Dashboard summary for Weasyl -- mirrors IB's /api/summary."""
+def get_ws_summary(account_id: int | None = Query(None)):
+    """Dashboard summary for Weasyl -- mirrors IB's /api/summary.
+
+    With *account_id* set, the totals / top-lists are scoped to that account
+    ("All accounts" by default). growth_rates stays aggregate for now (mirrors IB).
+    """
     conn = get_connection()
     try:
-        summary = ws_queries.get_ws_summary(conn)
+        summary = ws_queries.get_ws_summary(conn, account_id=account_id)
         summary["growth_rates"] = ws_queries.get_ws_growth_rates(conn)
         return summary
     except Exception as e:
@@ -226,15 +230,17 @@ def get_ws_submissions(
     order: str = Query("desc", description="Sort order"),
     search: str = Query("", description="Search title/keywords"),
     rating: str = Query("", description="Filter by rating"),
+    account_id: int | None = Query(None),
 ):
     """All Weasyl submissions with latest stats, sortable/filterable.
 
     Mirrors IB's /api/submissions and FA's /api/fa/submissions.
     Like FA, no type_name filter since Weasyl categorises content differently.
+    With *account_id* set, the list is scoped to that account.
     """
     conn = get_connection()
     try:
-        subs = ws_queries.get_all_ws_submissions(conn, sort_by=sort_by, order=order)
+        subs = ws_queries.get_all_ws_submissions(conn, sort_by=sort_by, order=order, account_id=account_id)
         # Get per-submission deltas (change since last poll)
         deltas = ws_queries.get_ws_submission_deltas(conn)
 
@@ -318,11 +324,15 @@ def get_ws_submission_snapshots(
 def get_ws_aggregate(
     start: Optional[str] = Query(None),
     end: Optional[str] = Query(None),
+    account_id: int | None = Query(None),
 ):
-    """Aggregate time-series across all Weasyl submissions -- mirrors IB's /api/aggregate."""
+    """Aggregate time-series across all Weasyl submissions -- mirrors IB's /api/aggregate.
+
+    With *account_id* set, the totals are scoped to that account.
+    """
     conn = get_connection()
     try:
-        return {"snapshots": ws_queries.get_ws_aggregate_snapshots(conn, start, end)}
+        return {"snapshots": ws_queries.get_ws_aggregate_snapshots(conn, start, end, account_id=account_id)}
     except Exception as e:
         logger.error("Error in /api/ws/aggregate: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

@@ -364,7 +364,7 @@ async def run_sf_poll_cycle(account_id: int | None = None, force_full: bool = Fa
             except Exception as te:
                 logger.warning("Failed to send SF Telegram summary: %s", te, exc_info=True)
             try:
-                await check_milestones_batch("sf", "sf_snapshots", "sf_submissions")
+                await check_milestones_batch("sf", "sf_snapshots", "sf_submissions", account_id)
             except Exception as me:
                 logger.warning("Failed to check SF milestones: %s", me, exc_info=True)
             try:

@@ -14,6 +14,7 @@ This module is the primary query layer for the Inkbunny platform. It covers:
 
 from __future__ import annotations
 import json
+from database.scope import account_clause  # optional `account_id = ?` WHERE-injection
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
@@ -127,14 +128,17 @@ def get_previous_favorites_count(conn: sqlite3.Connection, submission_id: int) -
     return row["favorites_count"] if row else None
 
 
-def get_all_submissions(conn: sqlite3.Connection, sort_by: str = "views", order: str = "desc") -> list[dict]:
+def get_all_submissions(conn: sqlite3.Connection, sort_by: str = "views", order: str = "desc", account_id: int | None = None) -> list[dict]:
     # Whitelist of allowed sort columns prevents SQL injection when
     # interpolating the column name into the ORDER BY clause.
     allowed_sorts = {"views", "favorites_count", "comments_count", "title", "create_datetime", "updated_at"}
     if sort_by not in allowed_sorts:
         sort_by = "views"
     order_dir = "DESC" if order.lower() == "desc" else "ASC"
-    rows = conn.execute(f"SELECT * FROM submissions ORDER BY {sort_by} {order_dir}").fetchall()
+    where, params = account_clause(account_id)
+    sql = "SELECT * FROM submissions" + (f" WHERE {where}" if where else "")
+    sql += f" ORDER BY {sort_by} {order_dir}"
+    rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -177,12 +181,13 @@ def get_snapshots(conn: sqlite3.Connection, submission_id: int, start: str | Non
     return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
-def get_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = None, end: str | None = None) -> list[dict]:
+def get_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = None, end: str | None = None, account_id: int | None = None) -> list[dict]:
     """Aggregate time-series: sum of views/faves/comments across ALL submissions per poll timestamp.
 
     Because all submissions are polled at the same time, GROUP BY polled_at
     produces one row per poll cycle with portfolio-wide totals. This powers
-    the "all submissions" aggregate chart on the dashboard.
+    the "all submissions" aggregate chart on the dashboard. With *account_id*
+    set, the totals are scoped to that account.
     """
     sql = "SELECT polled_at, SUM(views) as views, SUM(favorites_count) as favorites_count, SUM(comments_count) as comments_count FROM snapshots"
     params: list[Any] = []
@@ -193,6 +198,10 @@ def get_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = None, 
     if end:
         conditions.append("polled_at <= ?")
         params.append(end)
+    acc_sql, acc_params = account_clause(account_id)
+    if acc_sql:
+        conditions.append(acc_sql)
+        params.extend(acc_params)
     if conditions:
         sql += " WHERE " + " AND ".join(conditions)
     sql += " GROUP BY polled_at ORDER BY polled_at ASC"
@@ -273,19 +282,21 @@ def get_faving_users(conn: sqlite3.Connection, submission_id: int) -> list[dict]
     return [dict(r) for r in rows]
 
 
-def get_recent_faves(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
+def get_recent_faves(conn: sqlite3.Connection, limit: int = 20, account_id: int | None = None) -> list[dict]:
     """Most recently detected faves across all submissions.
 
     Joins to submissions to include the submission title for display in the
     dashboard's "recent activity" feed.
     """
-    rows = conn.execute(
-        """SELECT f.*, s.title as submission_title
-           FROM faving_users f
-           JOIN submissions s ON f.submission_id = s.submission_id
-           ORDER BY f.first_seen_at DESC LIMIT ?""",
-        (limit,),
-    ).fetchall()
+    where, params = account_clause(account_id, "f")
+    sql = ("SELECT f.*, s.title as submission_title"
+           " FROM faving_users f"
+           " JOIN submissions s ON f.submission_id = s.submission_id")
+    if where:
+        sql += " WHERE " + where
+    sql += " ORDER BY f.first_seen_at DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -325,7 +336,7 @@ def get_comments(conn: sqlite3.Connection, submission_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_recent_comments(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
+def get_recent_comments(conn: sqlite3.Connection, limit: int = 20, account_id: int | None = None) -> list[dict]:
     """Most recently detected comments across all submissions.
 
     Joins to submissions for display context in the dashboard activity feed.
@@ -333,13 +344,15 @@ def get_recent_comments(conn: sqlite3.Connection, limit: int = 20) -> list[dict]
     commented_at (when the user actually posted it), because first_seen_at
     reflects the user's real-time notification experience.
     """
-    rows = conn.execute(
-        """SELECT c.*, s.title as submission_title
-           FROM comments c
-           JOIN submissions s ON c.submission_id = s.submission_id
-           ORDER BY c.first_seen_at DESC LIMIT ?""",
-        (limit,),
-    ).fetchall()
+    where, params = account_clause(account_id, "c")
+    sql = ("SELECT c.*, s.title as submission_title"
+           " FROM comments c"
+           " JOIN submissions s ON c.submission_id = s.submission_id")
+    if where:
+        sql += " WHERE " + where
+    sql += " ORDER BY c.first_seen_at DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -402,7 +415,7 @@ def get_poll_log(conn: sqlite3.Connection, limit: int = 50) -> list[dict]:
 
 # ── Summary Stats ─────────────────────────────────────────────
 
-def get_summary(conn: sqlite3.Connection) -> dict:
+def get_summary(conn: sqlite3.Connection, account_id: int | None = None) -> dict:
     """Main dashboard data source -- assembles all the summary stats for the IB dashboard.
 
     This is the single entry point that the dashboard route calls to populate
@@ -413,40 +426,46 @@ def get_summary(conn: sqlite3.Connection) -> dict:
     - Top 5 fastest-growing submissions (by 24h view increase)
     - 10 most recent fave events
     - 10 most recent comment events
+
+    With *account_id* set, every total/top-list is scoped to that account; the
+    "All accounts" default (account_id=None) keeps the aggregate behaviour.
     """
     import config
+    where, wp = account_clause(account_id)
+    w = f" WHERE {where}" if where else ""
     totals = conn.execute(
         "SELECT COUNT(*) as total_submissions, COALESCE(SUM(views),0) as total_views, "
         "COALESCE(SUM(favorites_count),0) as total_favorites, COALESCE(SUM(comments_count),0) as total_comments "
-        "FROM submissions"
+        "FROM submissions" + w,
+        wp,
     ).fetchone()
 
     # Apply offset constants from config to account for stats from submissions
     # that have been deleted or made private and are no longer visible via the
-    # Inkbunny API. Without these offsets, the dashboard totals would appear to
-    # drop when a submission is removed. The offsets are manually set in config
-    # to represent the cumulative views/faves/comments from those missing posts.
+    # Inkbunny API. These offsets are a property of the default account's
+    # historical aggregate, so only apply them to the "All accounts" view.
     totals = dict(totals)
-    totals["total_views"] += config.VIEWS_OFFSET
-    totals["total_favorites"] += config.FAVORITES_OFFSET
-    totals["total_comments"] += config.COMMENTS_OFFSET
+    if account_id is None:
+        totals["total_views"] += config.VIEWS_OFFSET
+        totals["total_favorites"] += config.FAVORITES_OFFSET
+        totals["total_comments"] += config.COMMENTS_OFFSET
 
     top_viewed = conn.execute(
-        "SELECT submission_id, title, views, thumb_url FROM submissions ORDER BY views DESC LIMIT 5"
+        "SELECT submission_id, title, views, thumb_url FROM submissions" + w + " ORDER BY views DESC LIMIT 5",
+        wp,
     ).fetchall()
 
     top_faved = conn.execute(
-        "SELECT submission_id, title, favorites_count, thumb_url FROM submissions ORDER BY favorites_count DESC LIMIT 5"
+        "SELECT submission_id, title, favorites_count, thumb_url FROM submissions" + w + " ORDER BY favorites_count DESC LIMIT 5",
+        wp,
     ).fetchall()
 
     # Fastest-growing: finds submissions with the biggest view increase in the
     # last 24 hours. The subquery (aliased "oldest") finds the nearest snapshot
-    # that is at least 24 hours old for each submission using a GROUP BY +
-    # HAVING MAX(polled_at) trick: it groups by submission_id among snapshots
-    # older than 24h, then picks the one with the latest polled_at (i.e. the
-    # snapshot closest to the 24h boundary). LEFT JOIN ensures submissions with
-    # no 24h-old snapshot still appear (with COALESCE defaulting gains to 0).
-    # Only submissions with positive view gains are included.
+    # that is at least 24 hours old for each submission. Only the outer `s` needs
+    # account scoping — submission_ids are unique to their account, so the
+    # snapshot join is implicitly account-correct.
+    sw, sp = account_clause(account_id, "s")
     fastest_growing = conn.execute(
         """SELECT s.submission_id, s.title, s.thumb_url,
                   COALESCE(s.views - oldest.views, 0) as views_gained,
@@ -462,12 +481,13 @@ def get_summary(conn: sqlite3.Connection) -> dict:
                    GROUP BY submission_id
                ) s2 ON s1.submission_id = s2.submission_id AND s1.polled_at = s2.max_polled
            ) oldest ON s.submission_id = oldest.submission_id
-           WHERE COALESCE(s.views - oldest.views, 0) > 0
-           ORDER BY views_gained DESC LIMIT 5"""
+           WHERE """ + (sw + " AND " if sw else "") + """COALESCE(s.views - oldest.views, 0) > 0
+           ORDER BY views_gained DESC LIMIT 5""",
+        sp,
     ).fetchall()
 
-    recent_faves = get_recent_faves(conn, limit=10)
-    recent_comments = get_recent_comments(conn, limit=10)
+    recent_faves = get_recent_faves(conn, limit=10, account_id=account_id)
+    recent_comments = get_recent_comments(conn, limit=10, account_id=account_id)
 
     return {
         "total_submissions": totals["total_submissions"],

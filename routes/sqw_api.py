@@ -153,10 +153,10 @@ def get_sqw_status():
 
 
 @sqw_router.get("/summary")
-def get_sqw_summary():
+def get_sqw_summary(account_id: int | None = Query(None)):
     conn = get_connection()
     try:
-        summary = sqw_queries.get_sqw_summary(conn)
+        summary = sqw_queries.get_sqw_summary(conn, account_id=account_id)
         summary["growth_rates"] = sqw_queries.get_sqw_growth_rates(conn)
         return summary
     except Exception as e:
@@ -172,10 +172,11 @@ def get_sqw_submissions(
     order: str = Query("desc", description="Sort order"),
     search: str = Query("", description="Search title/keywords"),
     rating: str = Query("", description="Filter by rating"),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        subs = sqw_queries.get_all_sqw_submissions(conn, sort_by=sort_by, order=order)
+        subs = sqw_queries.get_all_sqw_submissions(conn, sort_by=sort_by, order=order, account_id=account_id)
         deltas = sqw_queries.get_sqw_submission_deltas(conn)
 
         if search:
@@ -253,10 +254,11 @@ def get_sqw_submission_snapshots(
 def get_sqw_aggregate(
     start: Optional[str] = Query(None),
     end: Optional[str] = Query(None),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        return {"snapshots": sqw_queries.get_sqw_aggregate_snapshots(conn, start, end)}
+        return {"snapshots": sqw_queries.get_sqw_aggregate_snapshots(conn, start, end, account_id=account_id)}
     except Exception as e:
         logger.error("Error in /api/sqw/aggregate: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

@@ -1,14 +1,35 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-06-26
-**Current version:** 2.29.0 — **Bold dashboard redesign** (shell + nav + Home). **Released +
-deployed** to the GCP VM on 2026-06-26 (commit `8725f9e`; prod `/api/health` reports `2.29.0`;
-clean startup, both UI shells serve). Ships behind the **Legacy⇄Beta toggle** (default `beta`,
-one-click fallback via the top-right switch or `_DEFAULT_UI` in `dashboard.py`).
-**Follow-up:** the desktop `.exe` was NOT rebuilt — desktop users get the redesign on the next
-`build.bat` (PyInstaller) build; the server/web dashboard is live now.
+**Last updated:** 2026-06-27
+**Current version:** 2.30.0 — **Personas** (per-account views + per-persona digests across all 11
+platforms). **Built + tested, NOT yet released/deployed** — ship as one release via `/pp-release
+2.30.0` → `/pp-deploy`. Full suite green (158 passed). Builds on the 2.29.0 redesign shell.
 
-**2.29.0 redesign (this session)** — a ground-up redesign of the dashboard **shell + navigation +
+**2.30.0 personas (this session)** — the identity layer on top of the existing multi-account data
+model. Four parts, all account-aware via the new `database/scope.py` `account_clause`. CHANGELOG [2.30.0].
+- **Personas** (`database/personas.py` NEW): `personas` table + nullable `accounts.persona_id`
+  (NULL = Unassigned; soft ref, no FK). CRUD + `assign_account_persona` + `list_accounts_by_persona`
+  + `persona_stats` (sums `account_stats`). Synced via `_personas_manifest` (applied before accounts).
+  API under `/api/personas` + `POST /api/accounts/{id}/persona`. Accounts page: Personas card +
+  per-row persona `<select>`.
+- **Per-account scoping** (`scope.py` + 11 `*_queries.py`/`*_api.py`): `get_*_summary` /
+  `_submissions` / `_aggregate_snapshots` take optional `account_id` (None ⇒ All accounts, identical
+  to before); endpoints gain `account_id` Query param. Context-bar **account selector** (`app.js`
+  `_populateAccountSwitch`) appears when a platform has 2+ enabled accounts; threads `_acctId(code)`
+  into dashboard/submissions/compare. Growth-rates + watcher counts stay aggregate (follow-up).
+- **Per-persona notifications** (`polling/telegram.py`): digests (regular + weekly) emit **one
+  message per persona** + Unassigned (per-account breakdown + combined totals); no-personas installs
+  get the original single digest. Consolidated poll summary groups by persona. `check_milestones_batch`
+  scoped by `account_id` (labels + fixes a multi-account double-fire). Instant alerts lead with a
+  persona/account line (IB/FA explicit; 9 others via a `current_alert_account` ContextVar set in
+  `server.py`). All labelling suppressed on single-unassigned-account installs.
+- **Persona overview** (`accounts.js`, `app.js`): `#/persona/:id` — combined stat cards +
+  per-platform breakdown + member accounts (each "View →" deep-links to the platform dashboard
+  pre-scoped to the account).
+- **Follow-ups:** desktop `.exe` not rebuilt (same as 2.29.0); growth-rate/watcher-count scoping +
+  a per-persona Telegram chat override + a cross-platform combined time-series are deferred.
+
+**2.29.0 redesign (prior session)** — a ground-up redesign of the dashboard **shell + navigation +
 Home**, on the shared frontend (desktop + server), reusing the ~50 existing page-render functions
 (only the chrome and the Overview changed). CHANGELOG [2.29.0].
 - **Shell** (`index.html`, `css/layout.css`, `app.js` `init()`+`route()`): persistent **labeled

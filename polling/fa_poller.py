@@ -185,11 +185,13 @@ def _send_fa_notifications(new_comment_details: list[dict],
 
 
 async def _send_fa_telegram(new_comment_details: list[dict],
-                            new_watcher_names: list[str] | None = None) -> None:
+                            new_watcher_names: list[str] | None = None,
+                            account_id: int | None = None) -> None:
     """Send Telegram notification for new FA comments and watchers.
 
     Combined into one message (with a blank-line separator) when both
     sections present, so the chat doesn't get two pings for one cycle.
+    With multiple FA accounts, the message leads with a persona/account line.
     """
     if new_watcher_names is None:
         new_watcher_names = []
@@ -220,8 +222,13 @@ async def _send_fa_telegram(new_comment_details: list[dict],
         ))
     if not sections:
         return
+    body = "\n\n".join(sections)
+    from polling.telegram import account_alert_prefix
+    prefix = account_alert_prefix("fa", account_id)
+    if prefix:
+        body = f"🦊 <b>{prefix[:-3]}</b>\n\n{body}"   # strip the trailing " — "
     await notifications.send_telegram(
-        token, chat_id, "\n\n".join(sections), log_label="FA",
+        token, chat_id, body, log_label="FA",
     )
 
 
@@ -543,7 +550,7 @@ async def run_fa_poll_cycle(account_id: int | None = None, force_full: bool = Fa
                 logger.warning("Failed to send FA notifications: %s", ne, exc_info=True)
 
             try:
-                await _send_fa_telegram(new_comment_details, notify_watchers)
+                await _send_fa_telegram(new_comment_details, notify_watchers, account_id)
             except Exception as te:
                 logger.warning("Failed to send FA Telegram notification: %s", te, exc_info=True)
 
@@ -569,7 +576,7 @@ async def run_fa_poll_cycle(account_id: int | None = None, force_full: bool = Fa
             except Exception as te:
                 logger.warning("Failed to send FA Telegram summary: %s", te, exc_info=True)
             try:
-                await check_milestones_batch("fa", "fa_snapshots", "fa_submissions")
+                await check_milestones_batch("fa", "fa_snapshots", "fa_submissions", account_id)
             except Exception as me:
                 logger.warning("Failed to check FA milestones: %s", me, exc_info=True)
             try:

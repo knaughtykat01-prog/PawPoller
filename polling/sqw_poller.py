@@ -302,7 +302,7 @@ async def run_sqw_poll_cycle(account_id: int | None = None, force_full: bool = F
             except Exception as te:
                 logger.warning("Failed to send SqW Telegram summary: %s", te, exc_info=True)
             try:
-                await check_milestones_batch("sqw", "sqw_snapshots", "sqw_submissions")
+                await check_milestones_batch("sqw", "sqw_snapshots", "sqw_submissions", account_id)
             except Exception as me:
                 logger.warning("Failed to check SqW milestones: %s", me, exc_info=True)
             try:

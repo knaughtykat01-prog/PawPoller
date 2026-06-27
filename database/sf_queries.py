@@ -16,6 +16,8 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
+from database.scope import account_clause  # optional `account_id = ?` WHERE-injection
+
 
 # -- SF Submissions ----------------------------------------------------
 
@@ -63,12 +65,15 @@ def get_sf_previous_comments_count(conn: sqlite3.Connection, submission_id: str)
     return row["comments_count"] if row else None
 
 
-def get_all_sf_submissions(conn: sqlite3.Connection, sort_by: str = "views", order: str = "desc") -> list[dict]:
+def get_all_sf_submissions(conn: sqlite3.Connection, sort_by: str = "views", order: str = "desc", account_id: int | None = None) -> list[dict]:
     allowed_sorts = {"views", "favorites_count", "comments_count", "title", "posted_at", "updated_at"}
     if sort_by not in allowed_sorts:
         sort_by = "views"
     order_dir = "DESC" if order.lower() == "desc" else "ASC"
-    rows = conn.execute(f"SELECT * FROM sf_submissions ORDER BY {sort_by} {order_dir}").fetchall()
+    where, params = account_clause(account_id)
+    sql = "SELECT * FROM sf_submissions" + (f" WHERE {where}" if where else "")
+    sql += f" ORDER BY {sort_by} {order_dir}"
+    rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -98,7 +103,7 @@ def get_sf_snapshots(conn: sqlite3.Connection, submission_id: str,
 
 
 def get_sf_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = None,
-                               end: str | None = None) -> list[dict]:
+                               end: str | None = None, account_id: int | None = None) -> list[dict]:
     sql = ("SELECT polled_at, SUM(views) as views, SUM(favorites_count) as favorites_count, "
            "SUM(comments_count) as comments_count FROM sf_snapshots")
     params: list[Any] = []
@@ -109,6 +114,10 @@ def get_sf_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = Non
     if end:
         conditions.append("polled_at <= ?")
         params.append(end)
+    acc_sql, acc_params = account_clause(account_id)
+    if acc_sql:
+        conditions.append(acc_sql)
+        params.extend(acc_params)
     if conditions:
         sql += " WHERE " + " AND ".join(conditions)
     sql += " GROUP BY polled_at ORDER BY polled_at ASC"
@@ -216,23 +225,35 @@ def get_sf_recent_watchers(conn: sqlite3.Connection, limit: int = 20) -> list[di
 
 # -- SF Summary --------------------------------------------------------
 
-def get_sf_summary(conn: sqlite3.Connection) -> dict:
-    """Dashboard summary for SoFurry — mirrors ws_queries.get_ws_summary."""
+def get_sf_summary(conn: sqlite3.Connection, account_id: int | None = None) -> dict:
+    """Dashboard summary for SoFurry — mirrors ws_queries.get_ws_summary.
+
+    With *account_id* set, every total/top-list is scoped to that account; the
+    "All accounts" default (account_id=None) keeps the aggregate behaviour.
+    """
+    where, wp = account_clause(account_id)
+    w = f" WHERE {where}" if where else ""
     totals = conn.execute(
         "SELECT COUNT(*) as total_submissions, COALESCE(SUM(views),0) as total_views, "
         "COALESCE(SUM(favorites_count),0) as total_favorites, COALESCE(SUM(comments_count),0) as total_comments "
-        "FROM sf_submissions"
+        "FROM sf_submissions" + w,
+        wp,
     ).fetchone()
     totals = dict(totals)
 
     top_viewed = conn.execute(
-        "SELECT submission_id, title, views, thumbnail_url as thumb_url FROM sf_submissions ORDER BY views DESC LIMIT 5"
+        "SELECT submission_id, title, views, thumbnail_url as thumb_url FROM sf_submissions" + w + " ORDER BY views DESC LIMIT 5",
+        wp,
     ).fetchall()
 
     top_faved = conn.execute(
-        "SELECT submission_id, title, favorites_count, thumbnail_url as thumb_url FROM sf_submissions ORDER BY favorites_count DESC LIMIT 5"
+        "SELECT submission_id, title, favorites_count, thumbnail_url as thumb_url FROM sf_submissions" + w + " ORDER BY favorites_count DESC LIMIT 5",
+        wp,
     ).fetchall()
 
+    # Fastest-growing: only the outer `s` (sf_submissions) needs account scoping —
+    # submission_ids are account-unique, so the snapshot subquery is implicitly correct.
+    sw, sp = account_clause(account_id, "s")
     fastest_growing = conn.execute(
         """SELECT s.submission_id, s.title, s.thumbnail_url as thumb_url,
                   COALESCE(s.views - oldest.views, 0) as views_gained,
@@ -248,8 +269,9 @@ def get_sf_summary(conn: sqlite3.Connection) -> dict:
                    GROUP BY submission_id
                ) s2 ON s1.submission_id = s2.submission_id AND s1.polled_at = s2.max_polled
            ) oldest ON s.submission_id = oldest.submission_id
-           WHERE COALESCE(s.views - oldest.views, 0) > 0
-           ORDER BY views_gained DESC LIMIT 5"""
+           WHERE """ + (sw + " AND " if sw else "") + """COALESCE(s.views - oldest.views, 0) > 0
+           ORDER BY views_gained DESC LIMIT 5""",
+        sp,
     ).fetchall()
 
     return {

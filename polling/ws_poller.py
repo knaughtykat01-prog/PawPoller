@@ -258,7 +258,7 @@ async def run_ws_poll_cycle(account_id: int | None = None, force_full: bool = Fa
             except Exception as te:
                 logger.warning("Failed to send WS Telegram summary: %s", te, exc_info=True)
             try:
-                await check_milestones_batch("ws", "ws_snapshots", "ws_submissions")
+                await check_milestones_batch("ws", "ws_snapshots", "ws_submissions", account_id)
             except Exception as me:
                 logger.warning("Failed to check WS milestones: %s", me, exc_info=True)
             try:

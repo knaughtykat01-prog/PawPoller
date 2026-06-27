@@ -153,10 +153,15 @@ def get_bsky_status():
 
 
 @bsky_router.get("/summary")
-def get_bsky_summary():
+def get_bsky_summary(account_id: int | None = Query(None)):
+    """Dashboard summary: totals, top liked/reposted, fastest growing, growth rates.
+
+    With *account_id* set, totals + top-lists scope to that account ("All
+    accounts" by default). growth_rates stays aggregate for now (mirrors IB).
+    """
     conn = get_connection()
     try:
-        summary = bsky_queries.get_bsky_summary(conn)
+        summary = bsky_queries.get_bsky_summary(conn, account_id=account_id)
         summary["growth_rates"] = bsky_queries.get_bsky_growth_rates(conn)
         return summary
     except Exception as e:
@@ -171,10 +176,11 @@ def get_bsky_submissions(
     sort_by: str = Query("likes", description="Sort field"),
     order: str = Query("desc", description="Sort order"),
     search: str = Query("", description="Search title/keywords"),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        subs = bsky_queries.get_all_bsky_submissions(conn, sort_by=sort_by, order=order)
+        subs = bsky_queries.get_all_bsky_submissions(conn, sort_by=sort_by, order=order, account_id=account_id)
         deltas = bsky_queries.get_bsky_submission_deltas(conn)
 
         if search:
@@ -258,10 +264,11 @@ def get_bsky_submission_snapshots(
 def get_bsky_aggregate(
     start: Optional[str] = Query(None),
     end: Optional[str] = Query(None),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        return {"snapshots": bsky_queries.get_bsky_aggregate_snapshots(conn, start, end)}
+        return {"snapshots": bsky_queries.get_bsky_aggregate_snapshots(conn, start, end, account_id=account_id)}
     except Exception as e:
         logger.error("Error in /api/bsky/aggregate: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

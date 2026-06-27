@@ -17,6 +17,7 @@ ws_-prefixed tables. Key differences from both IB and FA:
 
 from __future__ import annotations
 import json
+from database.scope import account_clause  # optional `account_id = ?` WHERE-injection
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
@@ -83,13 +84,16 @@ def get_ws_previous_favorites_count(conn: sqlite3.Connection, submission_id: int
     return row["favorites_count"] if row else None
 
 
-def get_all_ws_submissions(conn: sqlite3.Connection, sort_by: str = "views", order: str = "desc") -> list[dict]:
+def get_all_ws_submissions(conn: sqlite3.Connection, sort_by: str = "views", order: str = "desc", account_id: int | None = None) -> list[dict]:
     # Whitelist-based sort column validation, same pattern as IB and FA.
     allowed_sorts = {"views", "favorites_count", "comments_count", "title", "posted_at", "updated_at"}
     if sort_by not in allowed_sorts:
         sort_by = "views"
     order_dir = "DESC" if order.lower() == "desc" else "ASC"
-    rows = conn.execute(f"SELECT * FROM ws_submissions ORDER BY {sort_by} {order_dir}").fetchall()
+    where, params = account_clause(account_id)
+    sql = "SELECT * FROM ws_submissions" + (f" WHERE {where}" if where else "")
+    sql += f" ORDER BY {sort_by} {order_dir}"
+    rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -121,9 +125,10 @@ def get_ws_snapshots(conn: sqlite3.Connection, submission_id: int, start: str | 
     return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
-def get_ws_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = None, end: str | None = None) -> list[dict]:
+def get_ws_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = None, end: str | None = None, account_id: int | None = None) -> list[dict]:
     """Aggregate time-series across all WS submissions per poll timestamp.
-    Mirrors queries.get_aggregate_snapshots for the ws_snapshots table."""
+    Mirrors queries.get_aggregate_snapshots for the ws_snapshots table. With
+    *account_id* set, the totals are scoped to that account."""
     sql = "SELECT polled_at, SUM(views) as views, SUM(favorites_count) as favorites_count, SUM(comments_count) as comments_count FROM ws_snapshots"
     params: list[Any] = []
     conditions = []
@@ -133,6 +138,10 @@ def get_ws_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = Non
     if end:
         conditions.append("polled_at <= ?")
         params.append(end)
+    acc_sql, acc_params = account_clause(account_id)
+    if acc_sql:
+        conditions.append(acc_sql)
+        params.extend(acc_params)
     if conditions:
         sql += " WHERE " + " AND ".join(conditions)
     sql += " GROUP BY polled_at ORDER BY polled_at ASC"
@@ -199,7 +208,7 @@ def get_ws_poll_log(conn: sqlite3.Connection, limit: int = 50) -> list[dict]:
 
 # ── WS Summary Stats ──────────────────────────────────────────
 
-def get_ws_summary(conn: sqlite3.Connection) -> dict:
+def get_ws_summary(conn: sqlite3.Connection, account_id: int | None = None) -> dict:
     """Main dashboard data source for WS -- mirrors queries.get_summary.
 
     The simplest summary of the three platforms:
@@ -207,24 +216,35 @@ def get_ws_summary(conn: sqlite3.Connection) -> dict:
     - NO recent_faves (WS lacks individual fave user tracking)
     - NO recent_comments (WS lacks individual comment tracking entirely)
     - Only returns totals, leaderboards, and fastest-growing submissions
+
+    With *account_id* set, every total/top-list is scoped to that account; the
+    "All accounts" default (account_id=None) keeps the aggregate behaviour.
     """
+    where, wp = account_clause(account_id)
+    w = f" WHERE {where}" if where else ""
     totals = conn.execute(
         "SELECT COUNT(*) as total_submissions, COALESCE(SUM(views),0) as total_views, "
         "COALESCE(SUM(favorites_count),0) as total_favorites, COALESCE(SUM(comments_count),0) as total_comments "
-        "FROM ws_submissions"
+        "FROM ws_submissions" + w,
+        wp,
     ).fetchone()
     # No offsets applied -- WS totals are used as-is.
     totals = dict(totals)
 
     top_viewed = conn.execute(
-        "SELECT submission_id, title, views, thumbnail_url as thumb_url FROM ws_submissions ORDER BY views DESC LIMIT 5"
+        "SELECT submission_id, title, views, thumbnail_url as thumb_url FROM ws_submissions" + w + " ORDER BY views DESC LIMIT 5",
+        wp,
     ).fetchall()
 
     top_faved = conn.execute(
-        "SELECT submission_id, title, favorites_count, thumbnail_url as thumb_url FROM ws_submissions ORDER BY favorites_count DESC LIMIT 5"
+        "SELECT submission_id, title, favorites_count, thumbnail_url as thumb_url FROM ws_submissions" + w + " ORDER BY favorites_count DESC LIMIT 5",
+        wp,
     ).fetchall()
 
-    # Fastest-growing: same LEFT JOIN subquery pattern as IB and FA.
+    # Fastest-growing: same LEFT JOIN subquery pattern as IB and FA. Only the
+    # outer `s` needs account scoping — submission_ids are unique to their
+    # account, so the snapshot join is implicitly account-correct.
+    sw, sp = account_clause(account_id, "s")
     fastest_growing = conn.execute(
         """SELECT s.submission_id, s.title, s.thumbnail_url as thumb_url,
                   COALESCE(s.views - oldest.views, 0) as views_gained,
@@ -240,8 +260,9 @@ def get_ws_summary(conn: sqlite3.Connection) -> dict:
                    GROUP BY submission_id
                ) s2 ON s1.submission_id = s2.submission_id AND s1.polled_at = s2.max_polled
            ) oldest ON s.submission_id = oldest.submission_id
-           WHERE COALESCE(s.views - oldest.views, 0) > 0
-           ORDER BY views_gained DESC LIMIT 5"""
+           WHERE """ + (sw + " AND " if sw else "") + """COALESCE(s.views - oldest.views, 0) > 0
+           ORDER BY views_gained DESC LIMIT 5""",
+        sp,
     ).fetchall()
 
     # No recent_faves or recent_comments -- WS does not track either.

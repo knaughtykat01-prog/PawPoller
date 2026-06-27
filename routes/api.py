@@ -492,15 +492,16 @@ def get_status():
 
 
 @router.get("/summary")
-def get_summary():
+def get_summary(account_id: int | None = Query(None)):
     """Dashboard summary: totals, top 5, fastest growing, recent faves, growth rates.
 
-    Returns an aggregate dashboard payload including growth_rates (views/faves/comments
-    deltas over recent poll windows) merged into the summary dict.
+    With *account_id* set, the totals / top-lists / recent activity are scoped to
+    that account ("All accounts" by default). growth_rates + watcher counts stay
+    aggregate for now (a Phase 2 follow-up).
     """
     conn = get_connection()
     try:
-        summary = queries.get_summary(conn)
+        summary = queries.get_summary(conn, account_id=account_id)
         summary["growth_rates"] = queries.get_growth_rates(conn)
         summary["total_watchers"] = queries.get_watchers_count(conn)
         summary["recent_watchers"] = queries.get_recent_watchers(conn, limit=10)
@@ -521,6 +522,7 @@ def get_submissions(
     search: str = Query("", description="Search title/keywords"),
     rating: str = Query("", description="Filter by rating"),
     type_name: str = Query("", description="Filter by type"),
+    account_id: int | None = Query(None),
 ):
     """All submissions with latest stats, sortable/filterable.
 
@@ -530,7 +532,7 @@ def get_submissions(
     """
     conn = get_connection()
     try:
-        subs = queries.get_all_submissions(conn, sort_by=sort_by, order=order)
+        subs = queries.get_all_submissions(conn, sort_by=sort_by, order=order, account_id=account_id)
         # Get per-submission deltas (views/faves/comments change since last poll)
         deltas = queries.get_submission_deltas(conn)
 
@@ -610,15 +612,17 @@ def get_submission_snapshots(
 def get_aggregate(
     start: Optional[str] = Query(None),
     end: Optional[str] = Query(None),
+    account_id: int | None = Query(None),
 ):
     """Aggregate time-series across all submissions.
 
     Sums views/faves/comments across every submission at each poll timestamp,
     providing a single combined time-series for the "all submissions" chart.
+    With *account_id* set, the totals are scoped to that account.
     """
     conn = get_connection()
     try:
-        return {"snapshots": queries.get_aggregate_snapshots(conn, start, end)}
+        return {"snapshots": queries.get_aggregate_snapshots(conn, start, end, account_id=account_id)}
     except Exception as e:
         logger.error("Error in /api/aggregate: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

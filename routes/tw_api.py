@@ -160,10 +160,10 @@ def get_tw_status():
 
 
 @tw_router.get("/summary")
-def get_tw_summary():
+def get_tw_summary(account_id: int | None = Query(None)):
     conn = get_connection()
     try:
-        summary = tw_queries.get_tw_summary(conn)
+        summary = tw_queries.get_tw_summary(conn, account_id=account_id)
         summary["growth_rates"] = tw_queries.get_tw_growth_rates(conn)
         return summary
     except Exception as e:
@@ -179,10 +179,11 @@ def get_tw_submissions(
     order: str = Query("desc", description="Sort order"),
     search: str = Query("", description="Search title/keywords"),
     content_type: str = Query("", description="Filter by content type (tweet/reply/quote)"),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        subs = tw_queries.get_all_tw_submissions(conn, sort_by=sort_by, order=order)
+        subs = tw_queries.get_all_tw_submissions(conn, sort_by=sort_by, order=order, account_id=account_id)
         deltas = tw_queries.get_tw_submission_deltas(conn)
 
         if search:
@@ -260,10 +261,11 @@ def get_tw_submission_snapshots(
 def get_tw_aggregate(
     start: Optional[str] = Query(None),
     end: Optional[str] = Query(None),
+    account_id: int | None = Query(None),
 ):
     conn = get_connection()
     try:
-        return {"snapshots": tw_queries.get_tw_aggregate_snapshots(conn, start, end)}
+        return {"snapshots": tw_queries.get_tw_aggregate_snapshots(conn, start, end, account_id=account_id)}
     except Exception as e:
         logger.error("Error in /api/tw/aggregate: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

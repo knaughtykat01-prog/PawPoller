@@ -716,14 +716,15 @@ def get_settings_for_sync() -> tuple[dict, float]:
     # Carry the account registry (DB state, not a setting) so desktop↔server
     # agree on which accounts exist. Guarded — never break sync over this.
     try:
-        from database import db as _db, accounts as _accts
+        from database import db as _db, accounts as _accts, personas as _personas
         conn = _db.get_connection()
         try:
             out["_accounts_manifest"] = _accts.get_manifest(conn)
+            out["_personas_manifest"] = _personas.get_manifest(conn)
         finally:
             conn.close()
     except Exception as e:
-        logger.debug("accounts manifest export skipped: %s", e)
+        logger.debug("accounts/personas manifest export skipped: %s", e)
     return out, mtime
 
 
@@ -737,17 +738,23 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
     # The account registry rides the sync channel but is DB state, not a
     # setting — apply it to the accounts table (additive, never deletes) and
     # strip it so it isn't persisted into settings.json.
-    manifest = filtered.pop("_accounts_manifest", None)
-    if manifest is not None:
+    personas_manifest = filtered.pop("_personas_manifest", None)
+    accounts_manifest = filtered.pop("_accounts_manifest", None)
+    if personas_manifest is not None or accounts_manifest is not None:
         try:
-            from database import db as _db, accounts as _accts
+            from database import db as _db, accounts as _accts, personas as _personas
             conn = _db.get_connection()
             try:
-                _accts.apply_manifest(conn, manifest)
+                # Personas BEFORE accounts so account→persona references land
+                # after the persona rows exist. Both additive, never delete.
+                if personas_manifest is not None:
+                    _personas.apply_manifest(conn, personas_manifest)
+                if accounts_manifest is not None:
+                    _accts.apply_manifest(conn, accounts_manifest)
             finally:
                 conn.close()
         except Exception as e:
-            logger.warning("accounts manifest import skipped: %s", e)
+            logger.warning("accounts/personas manifest import skipped: %s", e)
     if not filtered:
         return get_settings()
     save_settings(filtered)
@@ -755,7 +762,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.29.0"
+APP_VERSION = "2.30.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

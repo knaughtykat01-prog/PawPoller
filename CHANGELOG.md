@@ -4,6 +4,74 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.30.0] - 2026-06-27 - Personas: per-account views + per-persona digests across all 11 platforms
+
+**Why:** running several accounts was only half-supported — the data layer was account-aware, but
+nothing surfaced it. Every platform page summed all accounts together, and Telegram digests lumped
+every account into one report. This release adds the identity layer on top: pick a specific account
+(or "All accounts") on any platform page, group accounts across platforms into a **persona**, and
+get **one digest/summary per persona** instead of one giant blob.
+
+**Personas — the identity layer** (`database/personas.py` NEW, `database/db.py`, `routes/settings_api.py`,
+`config.py`, `frontend/js/accounts.js`)
+- New `personas` table (`persona_id`, `name`, `color`, `sort_order`) + a nullable
+  `accounts.persona_id` (NULL = Unassigned). Migration is an idempotent `ADD COLUMN` + index at the
+  end of `_run_migrations` (a soft reference — no SQL FK; `delete_persona` nulls assignments first).
+- `personas.py` mirrors `accounts.py`: CRUD, `assign_account_persona` (dedicated — `update_account`
+  can't clear to NULL), `list_accounts_by_persona` (None bucket = Unassigned), `persona_stats`
+  (sums `account_stats` across the persona's accounts + per-platform breakdown — reuses, no new SQL),
+  and `get_manifest`/`apply_manifest`.
+- Sync: `_personas_manifest` rides the settings sync channel (applied **before** accounts so
+  account→persona refs land after the persona rows); the accounts manifest gained a `persona_id`
+  field (additive, old-client-safe — absence never clobbers a local assignment).
+- API: `/api/personas` (GET list+stats / POST / PATCH / DELETE) + `GET /api/personas/{id}` (detail
+  with per-account stats) + `POST /api/accounts/{id}/persona` to assign.
+- Accounts page: a **Personas** card (create / recolour / rename / delete) + a persona `<select>` on
+  every account row.
+
+**Per-account scoping on platform pages** (`database/scope.py` NEW + the 11 `*_queries.py` / `*_api.py`)
+- `scope.account_clause(account_id, alias="")` — the single optional `account_id = ?` predicate,
+  reused by reads **and** the notification digests. `account_id=None` ⇒ no filter ⇒ byte-identical
+  to before ("All accounts").
+- Every platform's `get_*_summary` / `get_all_*_submissions` / `get_*_aggregate_snapshots` (+ recent
+  faves/comments where they exist) take an optional `account_id`; the `/summary`, `/submissions`,
+  `/aggregate` endpoints gained `account_id: int | None = Query(None)`. Growth-rate + watcher-count
+  helpers stay aggregate (a deliberate follow-up). All 11 platforms (ib, fa, ws, sf, sqw, ao3, da,
+  wp, ik, bsky, tw).
+- Frontend: an **account selector** in the context bar (`app.js` `_platformContextBar` +
+  `_populateAccountSwitch`), shown only when a platform has 2+ enabled accounts — "All accounts" +
+  each account. Threads `account_id` into each platform's dashboard / submissions / compare fetches
+  (`this._acctId(code)`); the cross-platform Overview + Platforms hub stay aggregate.
+
+**Per-persona notification re-segmentation** (`polling/telegram.py`, `polling/notifications.py`,
+`server.py`, the 11 pollers)
+- `send_digest_report` + `send_weekly_digest_report` now emit **one message per persona** (+ an
+  "Unassigned" digest), each with a per-account breakdown, persona-combined totals, and top gainers.
+  Installs with no personas defined still get a single combined digest (unchanged). The digest
+  helpers (`_get_platform_totals`, `_get_digest_deltas`, `_get_watcher_stats`) became account-aware;
+  the duplicated per-function platform lists collapsed into one `PLATFORM_TABLES`.
+- `send_consolidated_poll_summary` groups the cycle's results into a 👤 sub-section per persona
+  (Unassigned last); flat single-section output when no personas exist.
+- Milestones: `check_milestones_batch` is now scoped by `account_id` — this both labels the alert
+  (persona/account) **and fixes a latent double-fire** when a platform has multiple accounts (each
+  account's poll previously rescanned every account's submissions).
+- Instant new-fave/comment alerts lead with a persona/account line when the platform has multiple
+  accounts (IB/FA thread `account_id` directly; the other 9 read an async-safe
+  `current_alert_account` ContextVar set once per account in the orchestrator). All labelling is
+  suppressed on single-unassigned-account installs (no ugly "Unassigned —" prefix).
+
+**Per-persona overview** (`frontend/js/accounts.js`, `app.js`)
+- New `#/persona/:id` route: combined scalar stat cards + a per-platform breakdown + the member
+  accounts, each with a "View →" deep-link that opens that platform's dashboard pre-scoped to the
+  account. Persona names on the Accounts page link through to it.
+
+**Tests:** `tests/test_personas.py` (CRUD / assign / stats / manifest / IB scoping), a
+`tests/test_scope_<p>.py` per platform (scoped vs aggregate), and `tests/test_persona_digests.py`
+(per-persona segmentation, no-persona fallback, skip-empty, summary grouping, milestone scoping).
+Full suite green (158 passed).
+
+---
+
 ## [2.29.0] - 2026-06-26 - Bold dashboard redesign: new shell, Platforms hub, configurable Home
 
 **Why:** the server dashboard felt clunky and hard to get around — a 60px hover-to-expand icon

@@ -239,6 +239,11 @@ def _start_poll_orchestrator():
                 if not check(creds):
                     continue  # account has no usable credentials — skip
                 label = a.get("label") or platform
+                # Tag this account onto the task context so per-cycle instant
+                # alerts (maybe_send_telegram_summary) can label which account /
+                # persona they belong to. Isolated per gathered platform task.
+                from polling.notifications import current_alert_account
+                current_alert_account.set((platform, a["account_id"]))
                 try:
                     stats = await fn(a["account_id"])
                     out.append({"platform": platform, "account_id": a["account_id"],

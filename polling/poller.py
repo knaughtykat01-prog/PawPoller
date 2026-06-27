@@ -127,12 +127,14 @@ def _send_notifications(new_fave_details: list[dict], new_comment_details: list[
 
 
 async def _send_telegram(new_fave_details: list[dict], new_comment_details: list[dict],
-                         new_watcher_details: list[dict] | None = None) -> None:
+                         new_watcher_details: list[dict] | None = None,
+                         account_id: int | None = None) -> None:
     """Send a single Telegram message summarising the cycle's activity.
 
     Faves, comments, watchers go in three sections separated by blank
     lines so the chat doesn't get three pings for one cycle. Filters
     mirror the toast path for parity (comments-only, min-faves-delta).
+    With multiple IB accounts, the message leads with a persona/account line.
     """
     if new_watcher_details is None:
         new_watcher_details = []
@@ -175,8 +177,15 @@ async def _send_telegram(new_fave_details: list[dict], new_comment_details: list
         ))
     if not sections:
         return
+    body = "\n\n".join(sections)
+    # Lead with the persona/account identity when IB has multiple accounts, so
+    # each account's pings are attributable (empty on single-account installs).
+    from polling.telegram import account_alert_prefix
+    prefix = account_alert_prefix("ib", account_id)
+    if prefix:
+        body = f"🐾 <b>{prefix[:-3]}</b>\n\n{body}"   # strip the trailing " — "
     await notifications.send_telegram(
-        token, chat_id, "\n\n".join(sections), log_label="IB",
+        token, chat_id, body, log_label="IB",
     )
 
 
@@ -438,7 +447,7 @@ async def run_poll_cycle(account_id: int | None = None, force_full: bool = False
                 logger.warning("Failed to send notifications: %s", ne, exc_info=True)
 
             try:
-                await _send_telegram(new_fave_details, new_comment_details, new_watcher_details)
+                await _send_telegram(new_fave_details, new_comment_details, new_watcher_details, account_id)
             except Exception as te:
                 logger.warning("Failed to send Telegram notification: %s", te, exc_info=True)
 
@@ -459,7 +468,7 @@ async def run_poll_cycle(account_id: int | None = None, force_full: bool = False
             except Exception as te:
                 logger.warning("Failed to send IB Telegram summary: %s", te, exc_info=True)
             try:
-                await check_milestones_batch("ib", "snapshots", "submissions")
+                await check_milestones_batch("ib", "snapshots", "submissions", account_id)
             except Exception as me:
                 logger.warning("Failed to check IB milestones: %s", me, exc_info=True)
             try:

@@ -238,7 +238,7 @@ async def run_bsky_poll_cycle(account_id: int | None = None, force_full: bool = 
             except Exception as te:
                 logger.warning("Failed to send BSKY Telegram summary: %s", te, exc_info=True)
             try:
-                await check_milestones_batch("bsky", "bsky_snapshots", "bsky_submissions")
+                await check_milestones_batch("bsky", "bsky_snapshots", "bsky_submissions", account_id)
             except Exception as me:
                 logger.warning("Failed to check BSKY milestones: %s", me, exc_info=True)
             try:

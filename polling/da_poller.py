@@ -246,7 +246,7 @@ async def run_da_poll_cycle(account_id: int | None = None, force_full: bool = Fa
             except Exception as te:
                 logger.warning("Failed to send DA Telegram summary: %s", te, exc_info=True)
             try:
-                await check_milestones_batch("da", "da_snapshots", "da_submissions")
+                await check_milestones_batch("da", "da_snapshots", "da_submissions", account_id)
             except Exception as me:
                 logger.warning("Failed to check DA milestones: %s", me, exc_info=True)
             try:

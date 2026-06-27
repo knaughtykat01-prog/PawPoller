@@ -5249,11 +5249,67 @@ old shape, then the migration immediately upgrades it (cheap on empty tables).
   other posters (ws, sf, sqw, ao3, da, bsky, ik) still read flat creds and post as
   the default account. The frontend publish-check matrix also doesn't expose a
   "post as account" selector yet.
-- The **Accounts page** shows per-account stat rollups (`accounts.account_stats`),
-  but the main per-submission dashboard charts/tables in `app.js` still aggregate
-  across accounts — a per-account picker there is pending, as is the frontend
-  "post as account" selector in the publish-check matrix.
+- The **Accounts page** shows per-account stat rollups (`accounts.account_stats`).
+  The per-account dashboard picker is now **done** (2.30.0 — see §19.7); the
+  frontend "post as account" selector in the publish-check matrix is still pending.
 - Cross-cutting done: the consolidated Telegram summary labels accounts when a
   platform has more than one; drift records (`posting/sync.py`) carry `account_id`.
   Pending: the diagnostics tab per account; desktop `main.py` polls only default
   accounts (polling is server-side, so low priority).
+
+### 19.7 Personas + per-account scoping (2.30.0)
+
+The identity layer that makes multi-account usable. CHANGELOG [2.30.0].
+
+**Personas** (`database/personas.py`) — a `personas` table (`persona_id`, `name`,
+`color`, `sort_order`) + a nullable `accounts.persona_id` (NULL = Unassigned).
+The link is a **soft reference** (no SQL FK): `delete_persona` nulls its accounts'
+`persona_id` first. The module mirrors `accounts.py` — CRUD,
+`assign_account_persona` (dedicated, because `update_account` skips `None` and so
+can't unassign), `list_accounts_by_persona` (the `None` key is Unassigned),
+`persona_stats` (sums `accounts.account_stats` over the persona's accounts +
+per-platform breakdown — reuses, no new SQL), and `get_manifest`/`apply_manifest`.
+Migration is an idempotent `ADD COLUMN persona_id` + index at the **end** of
+`_run_migrations` (no rebuild — additive only). Sync adds a `_personas_manifest`
+applied **before** the accounts manifest (so account→persona refs resolve), and
+the accounts manifest gained a `persona_id` field (old-client absence never
+clobbers a local assignment). API: `personas_router` (`/api/personas` CRUD +
+`GET /{id}` detail) + `POST /api/accounts/{id}/persona`.
+
+**Per-account read scoping** (`database/scope.py`) — `account_clause(account_id,
+alias="") -> (sql, params)` is the single optional `account_id = ?` predicate
+(`None` ⇒ `("", [])` ⇒ All accounts, byte-identical to pre-scoping). Every
+platform's `get_*_summary` / `get_all_*_submissions` / `get_*_aggregate_snapshots`
+(+ recent faves/comments where present) take an optional `account_id` and splice
+the clause in; the snapshot subquery in the fastest-growing / delta joins stays
+unscoped because submission_ids are account-unique. The `/summary`, `/submissions`,
+`/aggregate` endpoints on all 11 platforms gained `account_id: int | None =
+Query(None)`. **Growth-rate + watcher-count helpers stay aggregate** (deliberate
+follow-up). Frontend: `app.js` `_populateAccountSwitch` adds an account `<select>`
+to the context bar **only when a platform has 2+ enabled accounts**; `_acctId(code)`
+holds the per-platform filter and is threaded into each platform's dashboard /
+submissions / compare fetches. The cross-platform Overview + Platforms hub stay
+aggregate by design.
+
+**Per-persona notifications** (`polling/telegram.py`) — digests reuse
+`account_clause` via the now account-aware `_get_platform_totals` /
+`_get_digest_deltas` / `_get_watcher_stats`, and the per-function platform lists
+collapsed into one `PLATFORM_TABLES`. `send_digest_report` +
+`send_weekly_digest_report` iterate `list_accounts_by_persona` and emit **one
+message per persona** (+ an Unassigned digest) — per-account breakdown +
+persona-combined totals + top gainers; **no-personas installs still get the single
+combined digest** (`_ordered_digest_units` decides). `send_consolidated_poll_summary`
+groups the cycle's results into a 👤 sub-section per persona. `check_milestones_batch`
+takes an `account_id` — scoping the scan both labels the alert and **fixes a latent
+double-fire** (each account's poll previously rescanned every account's submissions).
+Instant new-fave/comment alerts lead with a persona/account line: IB/FA thread
+`account_id` into `_send_telegram`/`_send_fa_telegram` directly; the other 9 read an
+async-safe `notifications.current_alert_account` ContextVar that the orchestrator
+(`server.py _poll_accounts`) sets once per account. `_should_label_account` suppresses
+every prefix on single-unassigned-account installs.
+
+**Persona overview** (`frontend/js/accounts.js` `renderPersonaDetail`, route
+`#/persona/:id` in `app.js`) — combined stat cards (`Components.statCard`) +
+per-platform breakdown + member accounts; each account's "View →" sets
+`App._accountFilter[platform]` and navigates to that platform's dashboard
+pre-scoped. Persona names on the Accounts page link through.

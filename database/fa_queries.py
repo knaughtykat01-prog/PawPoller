@@ -18,6 +18,7 @@ fa_-prefixed tables. Key differences from the Inkbunny module:
 
 from __future__ import annotations
 import json
+from database.scope import account_clause  # optional `account_id = ?` WHERE-injection
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
@@ -87,14 +88,17 @@ def get_fa_previous_favorites_count(conn: sqlite3.Connection, submission_id: int
     return row["favorites_count"] if row else None
 
 
-def get_all_fa_submissions(conn: sqlite3.Connection, sort_by: str = "views", order: str = "desc") -> list[dict]:
+def get_all_fa_submissions(conn: sqlite3.Connection, sort_by: str = "views", order: str = "desc", account_id: int | None = None) -> list[dict]:
     # Whitelist-based sort column validation, same pattern as IB.
     # Uses posted_at instead of create_datetime (FA terminology difference).
     allowed_sorts = {"views", "favorites_count", "comments_count", "title", "posted_at", "updated_at"}
     if sort_by not in allowed_sorts:
         sort_by = "views"
     order_dir = "DESC" if order.lower() == "desc" else "ASC"
-    rows = conn.execute(f"SELECT * FROM fa_submissions ORDER BY {sort_by} {order_dir}").fetchall()
+    where, params = account_clause(account_id)
+    sql = "SELECT * FROM fa_submissions" + (f" WHERE {where}" if where else "")
+    sql += f" ORDER BY {sort_by} {order_dir}"
+    rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -126,9 +130,10 @@ def get_fa_snapshots(conn: sqlite3.Connection, submission_id: int, start: str | 
     return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
-def get_fa_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = None, end: str | None = None) -> list[dict]:
+def get_fa_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = None, end: str | None = None, account_id: int | None = None) -> list[dict]:
     """Aggregate time-series across all FA submissions per poll timestamp.
-    Mirrors queries.get_aggregate_snapshots for the fa_snapshots table."""
+    Mirrors queries.get_aggregate_snapshots for the fa_snapshots table. With
+    *account_id* set, the totals are scoped to that account."""
     sql = "SELECT polled_at, SUM(views) as views, SUM(favorites_count) as favorites_count, SUM(comments_count) as comments_count FROM fa_snapshots"
     params: list[Any] = []
     conditions = []
@@ -138,6 +143,10 @@ def get_fa_aggregate_snapshots(conn: sqlite3.Connection, start: str | None = Non
     if end:
         conditions.append("polled_at <= ?")
         params.append(end)
+    acc_sql, acc_params = account_clause(account_id)
+    if acc_sql:
+        conditions.append(acc_sql)
+        params.extend(acc_params)
     if conditions:
         sql += " WHERE " + " AND ".join(conditions)
     sql += " GROUP BY polled_at ORDER BY polled_at ASC"
@@ -226,15 +235,18 @@ def get_fa_comments(conn: sqlite3.Connection, submission_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_fa_recent_comments(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
-    """Most recently detected FA comments, joined with submission titles for display."""
-    rows = conn.execute(
-        """SELECT c.*, s.title as submission_title
-           FROM fa_comments c
-           JOIN fa_submissions s ON c.submission_id = s.submission_id
-           ORDER BY c.first_seen_at DESC LIMIT ?""",
-        (limit,),
-    ).fetchall()
+def get_fa_recent_comments(conn: sqlite3.Connection, limit: int = 20, account_id: int | None = None) -> list[dict]:
+    """Most recently detected FA comments, joined with submission titles for display.
+    With *account_id* set, comments are scoped to that account."""
+    where, params = account_clause(account_id, "c")
+    sql = ("SELECT c.*, s.title as submission_title"
+           " FROM fa_comments c"
+           " JOIN fa_submissions s ON c.submission_id = s.submission_id")
+    if where:
+        sql += " WHERE " + where
+    sql += " ORDER BY c.first_seen_at DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -290,7 +302,7 @@ def get_fa_poll_log(conn: sqlite3.Connection, limit: int = 50) -> list[dict]:
 
 # ── FA Summary Stats ──────────────────────────────────────────
 
-def get_fa_summary(conn: sqlite3.Connection) -> dict:
+def get_fa_summary(conn: sqlite3.Connection, account_id: int | None = None) -> dict:
     """Main dashboard data source for FA -- mirrors queries.get_summary.
 
     Key differences from the IB version:
@@ -298,26 +310,37 @@ def get_fa_summary(conn: sqlite3.Connection) -> dict:
     - NO recent_faves returned (FA lacks individual fave user tracking)
     - Only recent_comments are included in the activity feed
     - thumbnail_url is aliased to thumb_url for frontend consistency with IB
+
+    With *account_id* set, every total/top-list is scoped to that account; the
+    "All accounts" default (account_id=None) keeps the aggregate behaviour.
     """
+    where, wp = account_clause(account_id)
+    w = f" WHERE {where}" if where else ""
     totals = conn.execute(
         "SELECT COUNT(*) as total_submissions, COALESCE(SUM(views),0) as total_views, "
         "COALESCE(SUM(favorites_count),0) as total_favorites, COALESCE(SUM(comments_count),0) as total_comments "
-        "FROM fa_submissions"
+        "FROM fa_submissions" + w,
+        wp,
     ).fetchone()
     # No offsets applied -- unlike IB, FA does not track deleted submissions.
     totals = dict(totals)
 
     top_viewed = conn.execute(
-        "SELECT submission_id, title, views, thumbnail_url as thumb_url FROM fa_submissions ORDER BY views DESC LIMIT 5"
+        "SELECT submission_id, title, views, thumbnail_url as thumb_url FROM fa_submissions" + w + " ORDER BY views DESC LIMIT 5",
+        wp,
     ).fetchall()
 
     top_faved = conn.execute(
-        "SELECT submission_id, title, favorites_count, thumbnail_url as thumb_url FROM fa_submissions ORDER BY favorites_count DESC LIMIT 5"
+        "SELECT submission_id, title, favorites_count, thumbnail_url as thumb_url FROM fa_submissions" + w + " ORDER BY favorites_count DESC LIMIT 5",
+        wp,
     ).fetchall()
 
     # Fastest-growing: same LEFT JOIN subquery pattern as IB.
     # Finds the nearest snapshot >= 24h old per submission, computes the
-    # delta between current stats and that snapshot.
+    # delta between current stats and that snapshot. Only the outer `s` needs
+    # account scoping -- submission_ids are unique to their account, so the
+    # snapshot subquery is implicitly account-correct.
+    sw, sp = account_clause(account_id, "s")
     fastest_growing = conn.execute(
         """SELECT s.submission_id, s.title, s.thumbnail_url as thumb_url,
                   COALESCE(s.views - oldest.views, 0) as views_gained,
@@ -333,12 +356,13 @@ def get_fa_summary(conn: sqlite3.Connection) -> dict:
                    GROUP BY submission_id
                ) s2 ON s1.submission_id = s2.submission_id AND s1.polled_at = s2.max_polled
            ) oldest ON s.submission_id = oldest.submission_id
-           WHERE COALESCE(s.views - oldest.views, 0) > 0
-           ORDER BY views_gained DESC LIMIT 5"""
+           WHERE """ + (sw + " AND " if sw else "") + """COALESCE(s.views - oldest.views, 0) > 0
+           ORDER BY views_gained DESC LIMIT 5""",
+        sp,
     ).fetchall()
 
     # No recent_faves here -- FA does not expose individual fave users.
-    recent_comments = get_fa_recent_comments(conn, limit=10)
+    recent_comments = get_fa_recent_comments(conn, limit=10, account_id=account_id)
 
     return {
         "total_submissions": totals["total_submissions"],
