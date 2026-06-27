@@ -840,22 +840,32 @@ class SoFurryClient:
         return out
 
     async def upload_content(self, submission_id: str, file_path: str,
-                             csrf: str | None = None) -> str | None:
-        """Upload a content file (a chapter) to an existing submission.
+                             csrf: str | None = None,
+                             content_type: str | None = None) -> str | None:
+        """Upload a content file to an existing submission.
 
         Adds another item to the submission's `content[]` array. Returns the new
-        contentId. The file must be ≥ 1 KB (SoFurry enforces a 1 KB floor).
+        contentId. Story chapters are HTML (≥ 1 KB, SoFurry's floor); artwork
+        submissions upload the image itself. content_type is auto-detected from
+        the file extension when not given (image MIME for png/jpg/gif/webp, else
+        text/html) so the same endpoint carries both stories and art.
         """
         if csrf is None:
             csrf = await self._ensure_api_session()
         with open(file_path, "rb") as f:
             file_data = f.read()
         filename = os.path.basename(file_path)
+        if content_type is None:
+            ext = os.path.splitext(filename)[1].lstrip(".").lower()
+            content_type = {
+                "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                "gif": "image/gif", "webp": "image/webp",
+            }.get(ext, "text/html")
         resp = await self._http.post(
             f"{SOFURRY_API}/upload-content",
             headers=self._api_headers(csrf),
             data={"submissionId": str(submission_id)},
-            files={"file": (filename, file_data, "text/html")},
+            files={"file": (filename, file_data, content_type)},
             timeout=120.0,
         )
         if resp.status_code != 200:

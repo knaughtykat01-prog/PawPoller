@@ -33,7 +33,7 @@ class WeasylPoster(PlatformPoster):
     supports_file_replace = False
     min_post_interval = 5
     max_file_size = 10 * 1024 * 1024  # 10 MB for text
-    accepted_file_types = ["pdf", "txt", "md", "png", "jpg", "gif"]
+    accepted_file_types = ["pdf", "txt", "md", "png", "jpg", "jpeg", "gif", "webp"]
 
     def __init__(self):
         self._client: WeasylClient | None = None
@@ -59,14 +59,32 @@ class WeasylPoster(PlatformPoster):
             rating = _rating_to_ws(package.rating)
             tags_str = " ".join(package.tags)
 
-            result = await client.submit_literary(
-                package.file_path,
-                title=package.title,
-                description=package.description,
-                tags=tags_str,
-                rating=rating,
-                cover_path=package.thumbnail_path,
-            )
+            is_image = package.file_type in ("png", "jpg", "jpeg", "gif", "webp")
+            if is_image:
+                settings = config.get_settings()
+                try:
+                    subtype = int(package.extra.get("subtype")
+                                  or settings.get("artwork_ws_subtype") or 0)
+                except (TypeError, ValueError):
+                    subtype = 0
+                result = await client.submit_visual(
+                    package.file_path,
+                    title=package.title,
+                    description=package.description,
+                    tags=tags_str,
+                    rating=rating,
+                    subtype=subtype,
+                    thumbnail_path=package.thumbnail_path,
+                )
+            else:
+                result = await client.submit_literary(
+                    package.file_path,
+                    title=package.title,
+                    description=package.description,
+                    tags=tags_str,
+                    rating=rating,
+                    cover_path=package.thumbnail_path,
+                )
 
             return PostResult(
                 success=True,

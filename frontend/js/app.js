@@ -600,6 +600,8 @@ const App = {
             /* Story sub-routes (e.g. #/posting/story/...) keep "Stories" lit. */
             if (!active && parts[0] === 'posting' && parts[1] !== 'queue'
                 && parts[1] !== 'log' && href === '#/posting') active = true;
+            /* Artwork sub-routes (#/artwork/new, #/artwork/image/...) keep "Artwork" lit. */
+            if (!active && parts[0] === 'artwork' && href === '#/artwork') active = true;
             link.classList.toggle('active', active);
         });
 
@@ -758,6 +760,15 @@ const App = {
         } else if (parts[0] === 'editor' && parts[1]) {
             // Story name may contain slashes (e.g. The_Abstinent_Bet/Nice_Version)
             Editor.renderEditor(parts.slice(1).join('/'));
+        } else if (parts[0] === 'artwork' && !parts[1]) {
+            if (window.Artwork) window.Artwork.render();
+        } else if (parts[0] === 'artwork' && parts[1] === 'new') {
+            if (window.Artwork) window.Artwork.renderUpload();
+        } else if (parts[0] === 'artwork' && parts[1] === 'image' && parts[2]) {
+            // Artwork name may contain slashes — rejoin the tail.
+            if (window.Artwork) window.Artwork.renderDetail(parts.slice(2).join('/'));
+        } else if (parts[0] === 'artwork' && parts[1] === 'log') {
+            if (window.Artwork) window.Artwork.renderLog();
         } else {
             this._setContent('<div class="empty-state"><h3>Page not found</h3></div>');
         }

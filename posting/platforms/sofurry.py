@@ -85,7 +85,7 @@ class SoFurryPoster(PlatformPoster):
     supports_file_replace = True
     min_post_interval = 5
     max_file_size = 512 * 1024  # 512 KB
-    accepted_file_types = ["txt", "html", "png", "jpg", "gif", "mp3"]
+    accepted_file_types = ["txt", "html", "png", "jpg", "jpeg", "gif", "webp", "mp3"]
 
     def __init__(self):
         self._client: SoFurryClient | None = None
@@ -251,6 +251,11 @@ class SoFurryPoster(PlatformPoster):
         _t = self._start_timer()
         try:
             client = await self._ensure_client()
+
+            # Artwork (single image) — bypass the chaptered-story machinery and
+            # post the image directly as a SoFurry Artwork submission.
+            if package.file_type in ("png", "jpg", "jpeg", "gif", "webp"):
+                return await self._post_image(client, package, _t)
 
             # Resolve chapter 1 file (if chaptered) or full-story file
             story = story_reader.load_story(package.story_name)
@@ -644,15 +649,70 @@ class SoFurryPoster(PlatformPoster):
             logger.error("SF file replace failed for %s: %s", external_id, e)
             return PostResult(success=False, error=str(e), duration_seconds=self._elapsed(_t))
 
+    # SoFurry caps story HTML at 512 KB but accepts much larger images.
+    _IMAGE_MAX = 30 * 1024 * 1024  # 30 MB for artwork
+
+    async def _post_image(self, client, package: StoryUploadPackage, _t) -> PostResult:
+        """Post a single image as a SoFurry Artwork submission.
+
+        Same beta /api create flow as stories, but category=10 (Artwork) and an
+        image content item (the client's upload_content auto-detects the image
+        MIME). Honors the draft/privacy extras like the story path.
+        """
+        if not package.file_path:
+            return PostResult(success=False, error="No image for SoFurry upload",
+                              duration_seconds=self._elapsed(_t))
+        rating = _rating_to_sf(package.rating)
+        draft_mode = bool(package.extra.get("draft", False))
+        explicit_privacy = _normalize_privacy(package.extra.get("privacy"))
+        if explicit_privacy is not None:
+            privacy = explicit_privacy
+        elif draft_mode:
+            privacy = _PRIVACY_PRIVATE
+        else:
+            privacy = _PRIVACY_PUBLIC
+
+        settings = config.get_settings()
+        try:
+            sub_type = int(package.extra.get("sub_type")
+                           or settings.get("artwork_sf_sub_type") or 11)
+        except (TypeError, ValueError):
+            sub_type = 11  # Drawing
+
+        result = await client.create_submission(
+            package.file_path,
+            title=package.title,
+            description=package.description,
+            tags=package.tags,
+            category=10,        # Artwork
+            sub_type=sub_type,  # 11 = Drawing (default)
+            rating=rating,
+            privacy=privacy,
+        )
+        return PostResult(
+            success=True,
+            external_id=result.get("submission_id", ""),
+            external_url=result.get("url", ""),
+            duration_seconds=self._elapsed(_t),
+        )
+
     def validate(self, package: StoryUploadPackage) -> list[str]:
-        errors = super().validate(package)
+        is_image = package.file_type in ("png", "jpg", "jpeg", "gif", "webp")
+        errors = []
+        if not package.title:
+            errors.append("Title is required")
         if len(package.tags) < 2:
             errors.append(f"SoFurry requires at least 2 tags (got {len(package.tags)})")
         if package.file_path:
             import os
-            size = os.path.getsize(package.file_path) if os.path.isfile(package.file_path) else 0
-            if size > self.max_file_size:
-                errors.append(f"SoFurry max file size is 512KB (got {size / 1024:.0f}KB)")
+            if not os.path.isfile(package.file_path):
+                errors.append(f"File not found: {package.file_path}")
+            else:
+                size = os.path.getsize(package.file_path)
+                cap = self._IMAGE_MAX if is_image else self.max_file_size
+                if size > cap:
+                    label = "30MB" if is_image else "512KB"
+                    errors.append(f"SoFurry max file size is {label} (got {size / 1024:.0f}KB)")
         return errors
 
 

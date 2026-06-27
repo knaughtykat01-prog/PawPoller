@@ -514,6 +514,55 @@ const API = {
     getPostingChanges() { return this.get('/api/posting/changes'); },
     claimSubmissions(data = {}) { return this.post('/api/posting/claim', data); },
 
+    /* ── Artwork Hub ──────────────────────────────────────────── */
+    getArtworks() { return this.get('/api/artwork/images'); },
+    getArtwork(name) { return this.get(`/api/artwork/images/${encodeURIComponent(name)}`); },
+    updateArtwork(name, data) {
+        return fetch(`/api/artwork/images/${encodeURIComponent(name)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        }).then(r => { if (!r.ok) throw new Error(`Save failed: ${r.status}`); return r.json(); });
+    },
+    deleteArtwork(name) {
+        return fetch(`/api/artwork/images/${encodeURIComponent(name)}`, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error(`Delete failed: ${r.status}`); return r.json(); });
+    },
+    uploadArtwork(file, metadata, thumbnail, onProgress) {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('metadata', JSON.stringify(metadata || {}));
+        if (thumbnail) fd.append('thumbnail', thumbnail);
+        return this._upload('/api/artwork/upload', fd, onProgress);
+    },
+    createArtworkFromPath(data) { return this.post('/api/artwork/create-from-path', data); },
+    publishArtwork(data) { return this.post('/api/artwork/publish', data); },
+    getArtworkPublications() { return this.get('/api/artwork/publications'); },
+    getArtworkLog(params = {}) { return this.get('/api/artwork/log', params); },
+    getArtworkSettings() { return this.get('/api/artwork/settings'); },
+    saveArtworkSettings(data) { return this.post('/api/artwork/settings', data); },
+    artworkSyncPush(data = {}) { return this.post('/api/artwork/sync/push', data); },
+
+    /* FormData upload with optional progress (XHR — fetch lacks upload progress). */
+    _upload(path, formData, onProgress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            if (onProgress) xhr.upload.addEventListener('progress', e => {
+                if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+            });
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try { resolve(JSON.parse(xhr.responseText)); } catch { resolve({}); }
+                } else {
+                    reject(new Error(`Upload ${xhr.status}: ${xhr.responseText}`));
+                }
+            });
+            xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
+            xhr.open('POST', path);
+            xhr.send(formData);
+        });
+    },
+
     /* ── Setup wizard ─────────────────────────────────────────── */
     getSetupStatus() { return this.get('/api/settings/setup-status'); },
     markSetupComplete() { return this.post('/api/settings/setup-complete'); },

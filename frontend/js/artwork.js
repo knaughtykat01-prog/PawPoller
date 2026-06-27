@@ -1,0 +1,521 @@
+/* ── Artwork hub (PostyBirb-style image posting) ─────────────────
+ *
+ * A standalone image uploader parallel to the Stories hub: drop in an image,
+ * fill per-platform metadata, publish to multiple art sites at once. Posted art
+ * is tracked in the same analytics as stories (pollers auto-discover it).
+ * Renders into #app, dispatched from the SPA router on #/artwork.
+ *
+ * Works on both runtimes: the browser file input + FormData upload works
+ * everywhere; on the desktop app a native file-dialog bridge
+ * (window.pywebview.api.open_image_dialog) lets you pick a local file by path.
+ */
+window.Artwork = {
+
+    /* Image-capable platforms the hub posts to (v1), in display order. */
+    _PLATFORMS: ['ib', 'fa', 'sf', 'bsky', 'ik', 'ws', 'da'],
+
+    _pendingFile: null,    // browser File awaiting upload
+    _pendingPath: null,    // desktop local path awaiting copy
+    _previewUrl: null,     // object URL for the live preview (revoked on re-pick)
+
+    esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+            { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+        ));
+    },
+
+    _plat(code) {
+        return (window.PLATFORMS || []).find(p => p.code === code)
+            || { code, label: code, emoji: '', color: '#888' };
+    },
+
+    _isDesktop() {
+        return !!(window.pywebview && window.pywebview.api
+            && window.pywebview.api.open_image_dialog);
+    },
+
+    _imgUrl(name, file) {
+        return `/api/artwork/image?name=${encodeURIComponent(name)}&file=${encodeURIComponent(file)}`;
+    },
+
+    _toast(kind, msg) {
+        if (window.toast && window.toast[kind]) window.toast[kind](msg);
+    },
+
+    /* ── Hub: grid of artworks ──────────────────────────────── */
+
+    async render() {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+                <div>
+                    <h1>Artwork</h1>
+                    <p class="muted">Upload an image, set per-platform details, and publish to
+                    your art sites at once. Posted art is tracked in analytics like stories.</p>
+                </div>
+                <div style="display:flex;gap:.5rem;flex-shrink:0;">
+                    <a class="btn" href="#/artwork/log">History</a>
+                    <a class="btn btn-primary" href="#/artwork/new">+ New artwork</a>
+                </div>
+            </div>
+            <div id="artwork-grid"><div class="loading-spinner">Loading…</div></div>`;
+
+        let data;
+        try {
+            data = await API.getArtworks();
+        } catch (err) {
+            document.getElementById('artwork-grid').innerHTML =
+                `<div class="card error">Failed to load artworks: ${this.esc(err.message)}</div>`;
+            return;
+        }
+        const items = (data && data.artworks) || [];
+        const grid = document.getElementById('artwork-grid');
+        if (!items.length) {
+            grid.innerHTML = `
+                <div class="empty-state">
+                    <h3>No artwork yet</h3>
+                    <p class="muted">Upload your first image to get started.</p>
+                    <a class="btn btn-primary" href="#/artwork/new">+ New artwork</a>
+                </div>`;
+            return;
+        }
+        grid.className = 'artwork-grid';
+        grid.innerHTML = items.map(a => this._card(a)).join('');
+    },
+
+    _card(a) {
+        const cover = a.image
+            ? `<div class="artwork-card-cover" style="background-image:url('${this._imgUrl(a.name, a.image)}')"></div>`
+            : `<div class="artwork-card-cover artwork-card-cover--empty">no image</div>`;
+        const rating = a.rating
+            ? `<span class="artwork-badge artwork-badge--${this.esc(a.rating)}">${this.esc(a.rating)}</span>` : '';
+        const plats = (a.platforms || []).map(c =>
+            `<span class="artwork-plat" title="${this.esc(this._plat(c).label)}">${this._plat(c).emoji || c}</span>`).join('');
+        return `
+            <a class="artwork-card" href="#/artwork/image/${encodeURIComponent(a.name)}">
+                ${cover}
+                <div class="artwork-card-body">
+                    <div class="artwork-card-title">${this.esc(a.title || a.name)}</div>
+                    <div class="artwork-card-meta">${rating}<span class="artwork-plats">${plats}</span></div>
+                </div>
+            </a>`;
+    },
+
+    /* ── Create / upload flow ───────────────────────────────── */
+
+    async renderUpload() {
+        this._pendingFile = null;
+        this._pendingPath = null;
+        if (this._previewUrl) { URL.revokeObjectURL(this._previewUrl); this._previewUrl = null; }
+
+        const app = document.getElementById('app');
+        const desktopBtn = this._isDesktop()
+            ? `<button type="button" class="btn" id="art-pick-local">Choose local file…</button>` : '';
+
+        app.innerHTML = `
+            <div class="page-header">
+                <h1>New artwork</h1>
+                <p class="muted"><a href="#/artwork">← Back to Artwork</a></p>
+            </div>
+            <div class="artwork-upload">
+                <div class="artwork-upload-col">
+                    <div id="art-drop" class="artwork-drop">
+                        <div class="artwork-drop-inner" id="art-drop-inner">
+                            <div class="artwork-drop-icon">&#128444;</div>
+                            <p>Drag an image here, or</p>
+                            <label class="btn btn-primary">Choose image
+                                <input type="file" id="art-file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+                            </label>
+                            ${desktopBtn}
+                            <p class="muted artwork-drop-hint">PNG, JPG, GIF or WebP</p>
+                        </div>
+                        <img id="art-preview" class="artwork-preview" alt="preview" hidden>
+                    </div>
+                </div>
+                <div class="artwork-upload-col">
+                    <div class="card">
+                        <label class="field">Title
+                            <input type="text" id="art-title" placeholder="Artwork title">
+                        </label>
+                        <label class="field">Description
+                            <textarea id="art-desc" rows="4" placeholder="Caption / description"></textarea>
+                        </label>
+                        <div class="field-row">
+                            <label class="field">Rating
+                                <select id="art-rating">
+                                    <option value="general">General</option>
+                                    <option value="mature">Mature</option>
+                                    <option value="adult" selected>Adult</option>
+                                </select>
+                            </label>
+                        </div>
+                        <label class="field">Tags <span class="muted">(comma-separated, used as the default for every platform)</span>
+                            <textarea id="art-tags" rows="2" placeholder="tag one, tag two, tag three"></textarea>
+                        </label>
+                    </div>
+                    <div class="card">
+                        <h3>Publish to</h3>
+                        <p class="muted" style="margin:.2rem 0 .6rem;">Tick a platform to publish, pick the account,
+                        and optionally override its tags.</p>
+                        <div id="art-platforms"></div>
+                    </div>
+                    <div class="artwork-actions">
+                        <button class="btn" id="art-save">Save to library</button>
+                        <button class="btn btn-primary" id="art-publish">Save &amp; publish</button>
+                        <span id="art-msg" class="muted"></span>
+                    </div>
+                </div>
+            </div>`;
+
+        this._renderPlatformRows(document.getElementById('art-platforms'));
+        this._wireUpload();
+        await this._populateAccountSelectors();
+    },
+
+    _renderPlatformRows(el) {
+        el.innerHTML = this._PLATFORMS.map(code => {
+            const p = this._plat(code);
+            return `
+            <div class="artwork-plat-row" data-platform="${code}">
+                <label class="artwork-plat-toggle">
+                    <input type="checkbox" class="art-plat-check" value="${code}">
+                    <span class="artwork-plat-emoji">${p.emoji || ''}</span>
+                    <span class="artwork-plat-name">${this.esc(p.label)}</span>
+                </label>
+                <span class="art-acct-slot" data-platform="${code}"></span>
+                <details class="artwork-plat-adv">
+                    <summary>Override</summary>
+                    <label class="field">Tags for ${this.esc(p.label)}
+                        <input type="text" class="art-plat-tags" data-platform="${code}" placeholder="(defaults to the tags above)">
+                    </label>
+                </details>
+            </div>`;
+        }).join('');
+    },
+
+    async _populateAccountSelectors() {
+        for (const code of this._PLATFORMS) {
+            const slot = document.querySelector(`.art-acct-slot[data-platform="${code}"]`);
+            if (!slot) continue;
+            try {
+                const data = await API.getAccounts(code);
+                const accts = (data.accounts || []).filter(a => a.enabled);
+                if (accts.length < 2) continue;   // single account → no picker needed
+                const opts = accts.map(a =>
+                    `<option value="${a.account_id}"${a.is_default ? ' selected' : ''}>` +
+                    `${this.esc(a.label || a.handle || ('account ' + a.account_id))}</option>`).join('');
+                slot.innerHTML = `<label class="art-acct">as <select class="art-acct-select" data-platform="${code}">${opts}</select></label>`;
+            } catch (e) { /* default account on any failure */ }
+        }
+    },
+
+    _wireUpload() {
+        const fileInput = document.getElementById('art-file');
+        const drop = document.getElementById('art-drop');
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files && fileInput.files[0]) this._setFile(fileInput.files[0]);
+        });
+        ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => {
+            e.preventDefault(); drop.classList.add('dragover');
+        }));
+        ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => {
+            e.preventDefault(); drop.classList.remove('dragover');
+        }));
+        drop.addEventListener('drop', e => {
+            const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+            if (f) this._setFile(f);
+        });
+
+        const localBtn = document.getElementById('art-pick-local');
+        if (localBtn) localBtn.addEventListener('click', () => this._pickDesktopFile());
+
+        document.getElementById('art-save').addEventListener('click', () => this._save(false));
+        document.getElementById('art-publish').addEventListener('click', () => this._save(true));
+
+        // Auto-fill the title from the filename if the user hasn't typed one.
+        const titleInput = document.getElementById('art-title');
+        titleInput.dataset.touched = '';
+        titleInput.addEventListener('input', () => { titleInput.dataset.touched = '1'; });
+    },
+
+    _setFile(file) {
+        if (!/\.(png|jpe?g|gif|webp)$/i.test(file.name)) {
+            this._toast('error', 'Please choose a PNG, JPG, GIF or WebP image.');
+            return;
+        }
+        this._pendingFile = file;
+        this._pendingPath = null;
+        if (this._previewUrl) URL.revokeObjectURL(this._previewUrl);
+        this._previewUrl = URL.createObjectURL(file);
+        this._showPreview(this._previewUrl, file.name);
+    },
+
+    async _pickDesktopFile() {
+        try {
+            const result = await window.pywebview.api.open_image_dialog();
+            const path = Array.isArray(result) ? result[0] : result;
+            if (!path) return;
+            this._pendingPath = path;
+            this._pendingFile = null;
+            // Desktop can't object-URL a disk path; show the filename + serve via
+            // a transient name? Simplest: show the basename and a generic icon.
+            const base = String(path).split(/[\\/]/).pop();
+            this._showPreview('', base);
+        } catch (e) {
+            this._toast('error', 'File dialog failed: ' + (e.message || e));
+        }
+    },
+
+    _showPreview(url, label) {
+        const img = document.getElementById('art-preview');
+        const inner = document.getElementById('art-drop-inner');
+        const titleInput = document.getElementById('art-title');
+        if (titleInput && !titleInput.dataset.touched && !titleInput.value) {
+            titleInput.value = (label || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
+        }
+        if (url) {
+            img.src = url; img.hidden = false; inner.style.display = 'none';
+        } else {
+            img.hidden = true; inner.style.display = '';
+            inner.querySelector('.artwork-drop-hint').textContent = 'Selected: ' + (label || 'file');
+        }
+    },
+
+    _parseTags(s) {
+        if (!s) return [];
+        const sep = s.indexOf(',') >= 0 ? ',' : /\s/;
+        return s.split(sep).map(t => t.trim()).filter(Boolean);
+    },
+
+    _collectMetadata() {
+        const title = document.getElementById('art-title').value.trim();
+        const description = document.getElementById('art-desc').value;
+        const rating = document.getElementById('art-rating').value;
+        const defaultTags = this._parseTags(document.getElementById('art-tags').value);
+
+        const tags = {};
+        if (defaultTags.length) tags.default = defaultTags;
+
+        const checked = Array.from(document.querySelectorAll('.art-plat-check:checked')).map(c => c.value);
+        // Per-platform tag overrides
+        document.querySelectorAll('.art-plat-tags').forEach(inp => {
+            const code = inp.dataset.platform;
+            if (!checked.includes(code)) return;
+            const over = this._parseTags(inp.value);
+            if (over.length) tags[code] = over;
+        });
+
+        const accountIds = {};
+        document.querySelectorAll('.art-acct-select').forEach(sel => {
+            if (checked.includes(sel.dataset.platform)) accountIds[sel.dataset.platform] = parseInt(sel.value, 10);
+        });
+
+        return {
+            title, description, rating, tags,
+            platforms: checked,
+            _accountIds: accountIds,
+        };
+    },
+
+    async _save(publish) {
+        const msg = document.getElementById('art-msg');
+        const meta = this._collectMetadata();
+        if (!this._pendingFile && !this._pendingPath) {
+            msg.textContent = 'Choose an image first.'; return;
+        }
+        if (!meta.title) { msg.textContent = 'Enter a title.'; return; }
+        if (publish && !meta.platforms.length) { msg.textContent = 'Tick at least one platform to publish.'; return; }
+
+        const accountIds = meta._accountIds;
+        delete meta._accountIds;
+
+        const saveBtn = document.getElementById('art-save');
+        const pubBtn = document.getElementById('art-publish');
+        saveBtn.disabled = pubBtn.disabled = true;
+        msg.textContent = 'Saving…';
+
+        let name;
+        try {
+            if (this._pendingPath) {
+                const r = await API.createArtworkFromPath({ path: this._pendingPath, metadata: meta });
+                name = r.name;
+            } else {
+                const r = await API.uploadArtwork(this._pendingFile, meta, null,
+                    pct => { msg.textContent = `Uploading… ${pct}%`; });
+                name = r.name;
+            }
+        } catch (err) {
+            msg.textContent = 'Save failed: ' + err.message;
+            saveBtn.disabled = pubBtn.disabled = false;
+            return;
+        }
+
+        if (!publish) {
+            this._toast('success', 'Saved to library');
+            window.location.hash = `#/artwork/image/${encodeURIComponent(name)}`;
+            return;
+        }
+
+        msg.textContent = 'Publishing…';
+        try {
+            const res = await API.publishArtwork({
+                artwork_name: name,
+                platforms: meta.platforms,
+                account_ids: accountIds,
+            });
+            const ok = res.successes || 0, fail = res.failures || 0;
+            this._toast(fail ? 'error' : 'success', `Published: ${ok} ok, ${fail} failed`);
+            window.location.hash = `#/artwork/image/${encodeURIComponent(name)}`;
+        } catch (err) {
+            msg.textContent = 'Saved, but publish failed: ' + err.message;
+            saveBtn.disabled = pubBtn.disabled = false;
+        }
+    },
+
+    /* ── Detail ─────────────────────────────────────────────── */
+
+    async renderDetail(name) {
+        const app = document.getElementById('app');
+        app.innerHTML = `<div class="loading-spinner">Loading…</div>`;
+        let data;
+        try {
+            data = await API.getArtwork(name);
+        } catch (err) {
+            app.innerHTML = `<div class="card error">Artwork not found: ${this.esc(name)}</div>`;
+            return;
+        }
+        const cover = data.image
+            ? `<img class="artwork-detail-img" src="${this._imgUrl(name, data.image)}" alt="${this.esc(data.title)}">` : '';
+        const pubRows = (data.publications || []).map(p => {
+            const plat = this._plat(p.platform);
+            const st = p.stats || {};
+            const link = p.external_url
+                ? `<a href="${this.esc(p.external_url)}" target="_blank" rel="noopener">view ↗</a>` : '—';
+            const stats = p.stats
+                ? `${Utils.formatNumber(st.views || 0)} views · ${Utils.formatNumber(st.favorites_count || 0)} faves · ${Utils.formatNumber(st.comments_count || 0)} comments`
+                : '<span class="muted">not yet polled</span>';
+            return `<tr>
+                <td>${plat.emoji || ''} ${this.esc(plat.label)}</td>
+                <td><span class="artwork-status artwork-status--${this.esc(p.status)}">${this.esc(p.status)}</span></td>
+                <td>${stats}</td>
+                <td>${link}</td>
+            </tr>`;
+        }).join('');
+
+        app.innerHTML = `
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+                <div>
+                    <h1>${this.esc(data.title || name)}</h1>
+                    <p class="muted"><a href="#/artwork">← Back to Artwork</a></p>
+                </div>
+                <div style="display:flex;gap:.5rem;flex-shrink:0;">
+                    <button class="btn btn-danger" id="art-delete">Delete</button>
+                </div>
+            </div>
+            <div class="artwork-detail">
+                <div class="artwork-detail-col">${cover}</div>
+                <div class="artwork-detail-col">
+                    <div class="card">
+                        <div class="artwork-detail-meta">
+                            ${data.rating ? `<span class="artwork-badge artwork-badge--${this.esc(data.rating)}">${this.esc(data.rating)}</span>` : ''}
+                        </div>
+                        ${data.description ? `<p>${this.esc(data.description)}</p>` : '<p class="muted">No description.</p>'}
+                    </div>
+                    <div class="card">
+                        <h3>Published</h3>
+                        ${pubRows
+                            ? `<table class="data-table"><thead><tr><th>Platform</th><th>Status</th><th>Stats</th><th></th></tr></thead><tbody>${pubRows}</tbody></table>`
+                            : '<p class="muted">Not published anywhere yet.</p>'}
+                    </div>
+                    <div class="card">
+                        <h3>Publish to more</h3>
+                        <div id="art-detail-platforms"></div>
+                        <div class="artwork-actions">
+                            <button class="btn btn-primary" id="art-detail-publish">Publish</button>
+                            <span id="art-detail-msg" class="muted"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        // A compact platform picker for "publish to more", excluding already-posted.
+        const posted = new Set((data.publications || [])
+            .filter(p => p.status === 'posted').map(p => p.platform));
+        this._renderPlatformRows(document.getElementById('art-detail-platforms'));
+        // Pre-disable already-posted platforms.
+        document.querySelectorAll('#art-detail-platforms .art-plat-row').forEach(row => {
+            if (posted.has(row.dataset.platform)) {
+                row.style.opacity = '.5';
+                const cb = row.querySelector('.art-plat-check');
+                if (cb) { cb.disabled = true; cb.title = 'Already posted'; }
+            }
+        });
+        await this._populateAccountSelectors();
+
+        document.getElementById('art-delete').addEventListener('click', () => this._delete(name));
+        document.getElementById('art-detail-publish').addEventListener('click', () => this._publishMore(name));
+    },
+
+    async _publishMore(name) {
+        const msg = document.getElementById('art-detail-msg');
+        const checked = Array.from(document.querySelectorAll('#art-detail-platforms .art-plat-check:checked'))
+            .map(c => c.value);
+        if (!checked.length) { msg.textContent = 'Tick at least one platform.'; return; }
+        const accountIds = {};
+        document.querySelectorAll('#art-detail-platforms .art-acct-select').forEach(sel => {
+            if (checked.includes(sel.dataset.platform)) accountIds[sel.dataset.platform] = parseInt(sel.value, 10);
+        });
+        msg.textContent = 'Publishing…';
+        try {
+            const res = await API.publishArtwork({ artwork_name: name, platforms: checked, account_ids: accountIds });
+            const ok = res.successes || 0, fail = res.failures || 0;
+            this._toast(fail ? 'error' : 'success', `Published: ${ok} ok, ${fail} failed`);
+            this.renderDetail(name);
+        } catch (err) {
+            msg.textContent = 'Publish failed: ' + err.message;
+        }
+    },
+
+    async _delete(name) {
+        if (!confirm('Delete this artwork from your library? Any already-published posts stay live on each platform.')) return;
+        try {
+            await API.deleteArtwork(name);
+            this._toast('success', 'Deleted');
+            window.location.hash = '#/artwork';
+        } catch (err) {
+            this._toast('error', 'Delete failed: ' + err.message);
+        }
+    },
+
+    /* ── Log ────────────────────────────────────────────────── */
+
+    async renderLog() {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="page-header">
+                <h1>Artwork history</h1>
+                <p class="muted"><a href="#/artwork">← Back to Artwork</a></p>
+            </div>
+            <div id="art-log"><div class="loading-spinner">Loading…</div></div>`;
+        let data;
+        try {
+            data = await API.getArtworkLog();
+        } catch (err) {
+            document.getElementById('art-log').innerHTML =
+                `<div class="card error">Failed to load: ${this.esc(err.message)}</div>`;
+            return;
+        }
+        const rows = (data.log || []).map(e => `
+            <tr>
+                <td>${this.esc(e.created_at || '')}</td>
+                <td>${this._plat(e.platform).emoji || ''} ${this.esc(this._plat(e.platform).label)}</td>
+                <td>${this.esc(e.story_name || '')}</td>
+                <td>${this.esc(e.action || '')}</td>
+                <td><span class="artwork-status artwork-status--${this.esc(e.status)}">${this.esc(e.status)}</span></td>
+                <td class="muted">${this.esc(e.error_message || '')}</td>
+            </tr>`).join('');
+        document.getElementById('art-log').innerHTML = rows
+            ? `<table class="data-table"><thead><tr><th>When</th><th>Platform</th><th>Artwork</th><th>Action</th><th>Status</th><th>Error</th></tr></thead><tbody>${rows}</tbody></table>`
+            : '<div class="empty-state"><p class="muted">No artwork posts yet.</p></div>';
+    },
+};

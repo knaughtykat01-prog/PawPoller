@@ -640,13 +640,18 @@ class FAClient:
         gender: str = "0",
         scrap: bool = False,
         thumbnail_path: str | None = None,
+        submission_type: str = "story",
     ) -> dict:
-        """Upload a story submission to FurAffinity.
+        """Upload a submission to FurAffinity.
 
         Three-step form scraping flow (same as PostyBirb):
           1. GET /submit/ → scrape hidden 'key' input
           2. POST /submit/upload → multipart with key + file + submission_type
           3. POST /submit/finalize → urlencoded with new key + all metadata
+
+        submission_type selects FA's upload kind: "story" (text) or
+        "submission" (visual art). The finalize metadata is identical; only the
+        category (``cat``) differs by kind, set by the caller.
 
         Args:
             file_path: Path to PDF/TXT/DOC file.
@@ -701,7 +706,7 @@ class FAClient:
 
         upload_data = {
             "key": key1,
-            "submission_type": "story",
+            "submission_type": submission_type,
         }
 
         resp = await client.post(
@@ -769,6 +774,45 @@ class FAClient:
 
         logger.info("FA: Story submitted — %s (id=%s)", clean_url, submission_id)
         return {"submission_id": submission_id, "url": clean_url}
+
+    async def submit_visual(
+        self,
+        file_path: str,
+        *,
+        title: str = "",
+        description: str = "",
+        keywords: str = "",
+        rating: str = "1",
+        cat: str = "1",
+        atype: str = "1",
+        species: str = "1",
+        gender: str = "0",
+        scrap: bool = False,
+        thumbnail_path: str | None = None,
+    ) -> dict:
+        """Upload a visual-art submission (image) to FurAffinity.
+
+        Same 3-step form flow as submit_story, but submission_type='submission'
+        so FA treats the file as artwork rather than a story. ``cat`` defaults to
+        "1" (All); callers pass a visual category from settings. The thumbnail
+        is unused for image submissions (FA derives the preview from the image).
+
+        Returns a dict with 'submission_id' and 'url'.
+        """
+        return await self.submit_story(
+            file_path,
+            title=title,
+            description=description,
+            keywords=keywords,
+            rating=rating,
+            cat=cat,
+            atype=atype,
+            species=species,
+            gender=gender,
+            scrap=scrap,
+            thumbnail_path=thumbnail_path,
+            submission_type="submission",
+        )
 
     async def edit_submission(
         self,

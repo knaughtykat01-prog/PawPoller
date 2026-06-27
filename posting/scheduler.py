@@ -116,6 +116,9 @@ async def _process_queue_item(item: dict) -> None:
     # "default account" (None lets the manager resolve the platform default).
     account_id = item["account_id"] if "account_id" in item.keys() else None
     account_id = account_id or None
+    # Artwork rows reuse this queue with content_type='artwork'; older rows
+    # predate the column and are stories.
+    content_type = item["content_type"] if "content_type" in item.keys() else "story"
 
     logger.info(
         "Processing queue item #%d: %s %s ch%d on %s (account %s)",
@@ -130,7 +133,12 @@ async def _process_queue_item(item: dict) -> None:
         conn.close()
 
     try:
-        if action == "post":
+        if action == "post" and content_type == "artwork":
+            results = await manager.post_artwork(
+                story_name, [platform],
+                account_ids={platform: account_id} if account_id else None,
+            )
+        elif action == "post":
             results = await manager.post_story(
                 story_name, [platform], [chapter_index],
                 account_ids={platform: account_id} if account_id else None,
@@ -149,7 +157,8 @@ async def _process_queue_item(item: dict) -> None:
             try:
                 # Find the pub_id that was created/updated
                 pub = posting_queries.get_publication_by_story(
-                    conn, story_name, chapter_index, platform, account_id
+                    conn, story_name, chapter_index, platform, account_id,
+                    content_type=content_type,
                 )
                 pub_id = pub["pub_id"] if pub else None
                 posting_queries.update_queue_status(

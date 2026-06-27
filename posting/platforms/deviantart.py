@@ -40,8 +40,8 @@ class DeviantArtPoster(PlatformPoster):
     supports_edit = True
     supports_file_replace = False  # Update endpoint replaces body content
     min_post_interval = 5
-    max_file_size = 0  # No file upload — body text
-    accepted_file_types = ["txt", "md"]
+    max_file_size = 0  # Literature has no file; Sta.sh caps images ~30 MB (unenforced here)
+    accepted_file_types = ["txt", "md", "png", "jpg", "jpeg", "gif", "webp"]
 
     def __init__(self):
         self._client: DAClient | None = None
@@ -87,30 +87,47 @@ class DeviantArtPoster(PlatformPoster):
         return self._client, self._access_token
 
     async def post(self, package: StoryUploadPackage) -> PostResult:
-        """Create a literature deviation on DeviantArt."""
+        """Create a deviation on DeviantArt — image (Sta.sh) or literature."""
         _t = self._start_timer()
         try:
             client, token = await self._ensure_client()
-
-            # Read story content
-            body = ""
-            if package.file_path:
-                with open(package.file_path, "r", encoding="utf-8") as f:
-                    body = f.read()
-            if not body:
-                body = package.description
-
             is_mature, mature_level, mature_class = _rating_to_da(package.rating)
 
-            result = await client.oauth_create_literature(
-                title=package.title[:50],
-                body=body,
-                tags=package.tags[:30],
-                is_mature=is_mature,
-                mature_level=mature_level,
-                mature_classification=mature_class,
-                access_token=token,
-            )
+            if package.file_type in ("png", "jpg", "jpeg", "gif", "webp"):
+                # Image: stash the file, then publish it to the gallery.
+                stash = await client.oauth_stash_submit(
+                    package.file_path,
+                    title=package.title[:50],
+                    artist_comments=package.description,
+                    tags=package.tags[:30],
+                    access_token=token,
+                )
+                settings = config.get_settings()
+                result = await client.oauth_stash_publish(
+                    stash["itemid"],
+                    is_mature=is_mature,
+                    mature_level=mature_level,
+                    mature_classification=mature_class,
+                    catpath=package.extra.get("catpath", settings.get("artwork_da_catpath", "")),
+                    access_token=token,
+                )
+            else:
+                # Literature: read story content + create the deviation.
+                body = ""
+                if package.file_path:
+                    with open(package.file_path, "r", encoding="utf-8") as f:
+                        body = f.read()
+                if not body:
+                    body = package.description
+                result = await client.oauth_create_literature(
+                    title=package.title[:50],
+                    body=body,
+                    tags=package.tags[:30],
+                    is_mature=is_mature,
+                    mature_level=mature_level,
+                    mature_classification=mature_class,
+                    access_token=token,
+                )
 
             dev_id = result.get("deviationid", "")
             url = result.get("url", "")

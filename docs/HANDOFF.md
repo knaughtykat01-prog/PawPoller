@@ -1,14 +1,36 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-27
-**Current version:** 2.30.0 — **Personas** (per-account views + per-persona digests across all 11
-platforms). **Released + deployed** on 2026-06-27 (commit `3375db5`, tag `v2.30.0`; CI published all
-three desktop assets; GCP VM `/api/health` reports `2.30.0`, clean startup, personas migration ran
-idempotently). Full suite green (158 passed). Builds on the 2.29.0 redesign shell. **Follow-up:**
-desktop `.exe` ships via CI (done); the publish-check "post as account" selector + growth-rate/
-watcher-count scoping + a per-persona Telegram chat override remain deferred.
+**Current version:** 2.31.0 — **Artwork** (PostyBirb-style image posting across 7 platforms). **Built +
+tested, not yet released** — ready for `/pp-release 2.31.0` → `/pp-deploy` on your go. Full suite green
+(175 passed, 1 skipped). End-to-end verified in-browser (upload → publish → `content_type='artwork'`
+registry row, Stories views unaffected) on an isolated DB. ⚠ FA / SoFurry / Weasyl / DeviantArt image
+posting is implemented but **needs a live smoke test** (can't post without creds); **DeviantArt also
+needs the DA app re-authorized with `stash`+`publish` OAuth scopes**. Prior release 2.30.0 (Personas)
+is live on the VM (commit `3375db5`, tag `v2.30.0`).
 
-**2.30.0 personas (this session)** — the identity layer on top of the existing multi-account data
+**2.31.0 artwork (this session)** — a standalone PostyBirb-style image uploader parallel to Stories.
+Reuses the posting engine; analytics are free (pollers auto-discover the gallery). CHANGELOG [2.31.0].
+- **Registry reuse** (`db.py`, `posting_queries.py`): additive `content_type` on publications/
+  posting_queue/posting_log (`_rebuild_publications_content_type` folds it into the UNIQUE). Write/
+  keyed query fns take `content_type="story"`; cross-story list reads filter to `'story'`;
+  `get_pending_queue` stays unfiltered (scheduler routes on it). Defaults keep story callers unchanged.
+- **Engine** (`posting/artwork_reader.py` NEW, `manager.post_artwork`, `scheduler.py`): one folder per
+  artwork (image + `artwork.json`) under `artwork_archive_path` (Docker `/app/data/artwork`, desktop
+  `…/m_x/Archives/Artwork`); `build_artwork_package` → a `StoryUploadPackage` with an image file_path
+  fed through the SAME posters; records `content_type='artwork'`.
+- **API + UI** (`routes/artwork_api.py` NEW, `frontend/js/artwork.js` NEW, `app.js`/`index.html`/
+  `css/artwork.css`/`api.js`): `/api/artwork/*` (list/detail/upload/create-from-path/publish/image/
+  settings/log/sync); `window.Artwork` hub + create flow + detail + `#/artwork` routes + nav entry.
+- **Posters** — Inkbunny/Itaku/Bluesky verified (bsky got a Pillow downscale). FA `submit_visual`,
+  SoFurry image-as-Artwork (MIME-aware `upload_content`), Weasyl `submit_visual`, DA Sta.sh
+  (`oauth_stash_submit`+`oauth_stash_publish`) — **all need a live smoke test**; DA needs `stash`+
+  `publish` scope re-auth. Desktop: `main.py` `js_api.open_image_dialog` bridge.
+- **Follow-ups:** live-verify FA/SF/WS/DA + DA re-auth; multi-image galleries; per-platform category
+  pickers in the UI (today FA/SF/WS categories come from `artwork_*` settings); artwork sync wired to
+  the desktop pawsync flow.
+
+**2.30.0 personas (prior session)** — the identity layer on top of the existing multi-account data
 model. Four parts, all account-aware via the new `database/scope.py` `account_clause`. CHANGELOG [2.30.0].
 - **Personas** (`database/personas.py` NEW): `personas` table + nullable `accounts.persona_id`
   (NULL = Unassigned; soft ref, no FK). CRUD + `assign_account_persona` + `list_accounts_by_persona`

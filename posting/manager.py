@@ -23,10 +23,12 @@ _RETRY_DELAYS = [60, 300, 1800]
 
 
 def _schedule_retry(story_name: str, ch_idx: int, platform: str, action: str,
-                    attempt: int, error: str) -> bool:
+                    attempt: int, error: str, content_type: str = "story") -> bool:
     """Queue a retry for a failed post/update if under max attempts.
 
     Returns True if a retry was queued, False if max attempts exceeded.
+    content_type='artwork' keeps an artwork's retry routed back to post_artwork
+    by the scheduler (which branches on the queued row's content_type).
     """
     max_attempts = 3
     if attempt >= max_attempts:
@@ -41,6 +43,7 @@ def _schedule_retry(story_name: str, ch_idx: int, platform: str, action: str,
     try:
         posting_queries.add_to_queue(
             conn, story_name, ch_idx, platform, action,
+            content_type=content_type,
             scheduled_at=scheduled,
             priority=-1,
         )
@@ -301,6 +304,143 @@ async def post_story(
             # Rate limit between chapters on the same platform
             if ch_idx != chapter_list[-1]:
                 await poster._rate_limit()
+
+    return results
+
+
+async def post_artwork(
+    artwork_name: str,
+    platforms: list[str],
+    extras: dict[str, Any] | None = None,
+    account_ids: dict[str, int] | None = None,
+) -> list[dict[str, Any]]:
+    """Post one artwork (a single image) to multiple platforms.
+
+    The image-posting parallel to ``post_story``: same per-platform posters,
+    validation, registry, and desktop-queue/retry fallbacks. The only
+    differences are the source (artwork_reader, not story_reader), the fixed
+    chapter_index 0, and content_type='artwork' on every registry write.
+
+    Args:
+        artwork_name: Artwork folder name in the artwork archive.
+        platforms: Platform IDs (e.g. ["ib", "fa", "bsky"]).
+        extras: Per-package overrides merged into ``package.extra`` before posting.
+        account_ids: Optional ``{platform: account_id}`` selecting which account
+            to post AS per platform. Platforms not listed use their default.
+
+    Returns:
+        List of result dicts with platform, success, url, error.
+    """
+    from posting import artwork_reader
+    account_ids = account_ids or {}
+    artwork = artwork_reader.load_artwork(artwork_name)
+    results: list[dict[str, Any]] = []
+
+    for platform in platforms:
+        account_id = _resolve_account_id(platform, account_ids.get(platform))
+        poster = _get_poster(platform, account_id)
+        package = artwork_reader.build_artwork_package(artwork, platform)
+        if extras:
+            package.extra.update(extras)
+
+        # Validate
+        errors = poster.validate(package)
+        if errors:
+            results.append({
+                "platform": platform,
+                "chapter_index": 0,
+                "chapter_title": "",
+                "success": False,
+                "error": "; ".join(errors),
+            })
+            logger.warning("Validation failed for artwork %s on %s: %s",
+                           artwork_name, platform, errors)
+            continue
+
+        # Post
+        result = await poster.post(package)
+
+        # Compute file hash for change detection (the image itself)
+        from posting.sync import hash_file
+        current_hash = hash_file(package.file_path) if package.file_path else ""
+
+        # Auto-recover failures, mirroring post_story:
+        #   1. Desktop-requiring platforms (FA/DA) → queue for desktop
+        #   2. Rate-limit / transient errors → backoff retry
+        queued_for_desktop = False
+        retry_queued = False
+        if not result.success:
+            from posting.scheduler import _runtime_mode
+            if poster.requires_mode == "desktop" and _runtime_mode == "server":
+                conn = get_connection()
+                try:
+                    posting_queries.add_to_queue(
+                        conn, artwork_name, 0, platform, "post",
+                        account_id=account_id,
+                        content_type="artwork",
+                        requires="desktop",
+                    )
+                    queued_for_desktop = True
+                    logger.info(
+                        "Auto-queued artwork %s on %s (account %s) for desktop "
+                        "(server post failed: %s)",
+                        artwork_name, platform, account_id, result.error,
+                    )
+                finally:
+                    conn.close()
+            elif not queued_for_desktop:
+                retry_queued = _schedule_retry(
+                    artwork_name, 0, platform, "post", 0, result.error or "unknown",
+                    content_type="artwork",
+                )
+
+        # Record in database (content_type='artwork' so it never collides with
+        # a same-named story and the Stories views never show it).
+        conn = get_connection()
+        try:
+            pub_id = posting_queries.upsert_publication(
+                conn, artwork_name, 0, platform,
+                account_id=account_id,
+                content_type="artwork",
+                external_id=result.external_id,
+                external_url=result.external_url,
+                title_used=package.title,
+                description_used=package.description[:500],
+                tags_used=package.tags,
+                rating_used=package.rating,
+                format_file=package.file_path or "",
+                file_hash=current_hash,
+                word_count=0,
+                status="posted" if result.success else "failed",
+            )
+            posting_queries.log_posting_action(
+                conn, platform, artwork_name, 0,
+                action="post",
+                account_id=account_id,
+                content_type="artwork",
+                status="success" if result.success else (
+                    "queued_desktop" if queued_for_desktop else "failed"),
+                pub_id=pub_id,
+                external_id=result.external_id,
+                external_url=result.external_url,
+                error_message=result.error,
+                duration_seconds=result.duration_seconds,
+            )
+        finally:
+            conn.close()
+
+        results.append({
+            "platform": platform,
+            "chapter_index": 0,
+            "chapter_title": "",
+            "success": result.success,
+            "queued_desktop": queued_for_desktop,
+            "retry_queued": retry_queued,
+            "external_id": result.external_id,
+            "external_url": result.external_url,
+            "error": result.error,
+            "duration": result.duration_seconds,
+        })
 
     return results
 

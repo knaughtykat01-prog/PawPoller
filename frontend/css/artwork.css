@@ -1,0 +1,219 @@
+/* ── Artwork hub ─────────────────────────────────────────────
+ * Styles for the PostyBirb-style image uploader (frontend/js/artwork.js).
+ * Uses theme tokens throughout so it tracks all 8 themes.
+ */
+
+/* Grid of artwork cards */
+.artwork-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 1rem;
+}
+
+.artwork-card {
+    display: block;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.artwork-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--accent);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.artwork-card-cover {
+    aspect-ratio: 1 / 1;
+    background-size: cover;
+    background-position: center;
+    background-color: var(--bg-tertiary);
+}
+.artwork-card-cover--empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+.artwork-card-body { padding: .6rem .7rem; }
+.artwork-card-title {
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.artwork-card-meta {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    margin-top: .35rem;
+}
+.artwork-plats { margin-left: auto; display: flex; gap: 2px; }
+.artwork-plat { font-size: 14px; }
+
+/* Rating badges */
+.artwork-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    padding: 2px 7px;
+    border-radius: var(--radius-pill);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+.artwork-badge--general { background: rgba(90, 224, 160, 0.18); color: var(--success); }
+.artwork-badge--mature  { background: rgba(240, 160, 80, 0.18);  color: var(--accent-warm); }
+.artwork-badge--adult   { background: rgba(240, 112, 112, 0.18); color: var(--danger); }
+
+/* ── Upload / create layout ── */
+.artwork-upload {
+    display: grid;
+    grid-template-columns: minmax(260px, 380px) 1fr;
+    gap: 1.25rem;
+    align-items: start;
+}
+.artwork-upload-col { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+
+.artwork-drop {
+    position: relative;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg-secondary);
+    min-height: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    transition: border-color .15s ease, background .15s ease;
+    overflow: hidden;
+}
+.artwork-drop.dragover {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+}
+.artwork-drop-inner { padding: 2rem 1rem; }
+.artwork-drop-icon { font-size: 40px; opacity: .8; margin-bottom: .4rem; }
+.artwork-drop-inner p { margin: .5rem 0; color: var(--text-secondary); }
+.artwork-drop-inner .btn { margin: .3rem .25rem; }
+.artwork-drop-hint { font-size: 12px; }
+.artwork-preview {
+    width: 100%;
+    max-height: 70vh;
+    object-fit: contain;
+    display: block;
+    background: var(--bg-tertiary);
+}
+
+/* Form fields */
+.artwork-upload .field,
+.artwork-detail .field {
+    display: block;
+    margin-bottom: .75rem;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.artwork-upload .field input[type="text"],
+.artwork-upload .field textarea,
+.artwork-upload .field select {
+    display: block;
+    width: 100%;
+    margin-top: .25rem;
+    padding: .5rem .6rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 14px;
+    box-sizing: border-box;
+}
+.artwork-upload .field textarea { resize: vertical; }
+.field-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+.field-row .field { flex: 1; min-width: 140px; }
+
+/* Platform rows */
+.artwork-plat-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .45rem 0;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+.artwork-plat-row:last-child { border-bottom: none; }
+.artwork-plat-toggle {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    cursor: pointer;
+    min-width: 160px;
+}
+.artwork-plat-emoji { font-size: 16px; }
+.artwork-plat-name { font-weight: 600; }
+.art-acct { font-size: 12px; color: var(--text-muted); }
+.art-acct select {
+    margin-left: .25rem;
+    padding: .2rem .35rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+}
+.artwork-plat-adv { margin-left: auto; font-size: 12px; }
+.artwork-plat-adv summary { cursor: pointer; color: var(--accent); }
+.artwork-plat-adv .field { margin-top: .4rem; }
+.artwork-plat-adv input {
+    padding: .35rem .5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    width: 260px;
+    max-width: 100%;
+}
+
+.artwork-actions {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    flex-wrap: wrap;
+}
+
+/* ── Detail ── */
+.artwork-detail {
+    display: grid;
+    grid-template-columns: minmax(260px, 440px) 1fr;
+    gap: 1.25rem;
+    align-items: start;
+}
+.artwork-detail-col { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+.artwork-detail-img {
+    width: 100%;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+}
+.artwork-detail-meta { margin-bottom: .5rem; }
+
+.artwork-status {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: var(--radius-pill);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+.artwork-status--posted  { background: rgba(90, 224, 160, 0.18); color: var(--success); }
+.artwork-status--failed  { background: rgba(240, 112, 112, 0.18); color: var(--danger); }
+.artwork-status--success { background: rgba(90, 224, 160, 0.18); color: var(--success); }
+
+/* Stack on narrow viewports */
+@media (max-width: 760px) {
+    .artwork-upload, .artwork-detail { grid-template-columns: 1fr; }
+}

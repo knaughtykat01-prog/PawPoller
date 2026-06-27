@@ -30,6 +30,7 @@ def upsert_publication(
     platform: str,
     *,
     account_id: int | None = None,
+    content_type: str = "story",
     external_id: str = "",
     external_url: str = "",
     title_used: str = "",
@@ -54,11 +55,12 @@ def upsert_publication(
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     tags_json = json.dumps(tags_used or [])
 
-    # Check if exists (scoped to the account).
+    # Check if exists (scoped to the account + content_type).
     row = conn.execute(
         "SELECT pub_id, update_count FROM publications "
-        "WHERE story_name = ? AND chapter_index = ? AND platform = ? AND account_id = ?",
-        (story_name, chapter_index, platform, account_id),
+        "WHERE content_type = ? AND story_name = ? AND chapter_index = ? "
+        "AND platform = ? AND account_id = ?",
+        (content_type, story_name, chapter_index, platform, account_id),
     ).fetchone()
 
     if row:
@@ -78,11 +80,13 @@ def upsert_publication(
     else:
         cursor = conn.execute(
             """INSERT INTO publications
-                (story_name, chapter_index, platform, account_id, external_id, external_url,
+                (content_type, story_name, chapter_index, platform, account_id,
+                 external_id, external_url,
                  title_used, description_used, tags_used, rating_used,
                  format_file, file_hash, word_count, status, first_posted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (story_name, chapter_index, platform, account_id, external_id, external_url,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (content_type, story_name, chapter_index, platform, account_id,
+             external_id, external_url,
              title_used, description_used, tags_json, rating_used,
              format_file, file_hash, word_count, status, now),
         )
@@ -97,10 +101,18 @@ def get_publications(
     story_name: str | None = None,
     platform: str | None = None,
     status: str | None = None,
+    content_type: str | None = "story",
 ) -> list[dict]:
-    """Get publications with optional filters."""
+    """Get publications with optional filters.
+
+    content_type defaults to "story" so the Stories views never see artwork
+    rows; pass "artwork" for the Artwork hub or None for everything.
+    """
     query = "SELECT * FROM publications WHERE 1=1"
     params: list = []
+    if content_type is not None:
+        query += " AND content_type = ?"
+        params.append(content_type)
     if story_name:
         query += " AND story_name = ?"
         params.append(story_name)
@@ -123,13 +135,17 @@ def get_publication(conn: sqlite3.Connection, pub_id: int) -> dict | None:
 def get_publications_with_stats(
     conn: sqlite3.Connection,
     story_name: str | None = None,
+    content_type: str | None = "story",
 ) -> list[dict]:
     """Get publications enriched with live stats from the polling submission tables.
 
     Joins each publication's external_id with the platform-specific submission table
-    to pull in current views, faves, comments counts.
+    to pull in current views, faves, comments counts. Because pollers auto-discover
+    the whole gallery, artwork rows enrich from the same submission tables — pass
+    content_type="artwork" for the Artwork hub.
     """
-    pubs = get_publications(conn, story_name=story_name, status="posted")
+    pubs = get_publications(conn, story_name=story_name, status="posted",
+                            content_type=content_type)
 
     # Platform table mapping: platform → (table, id_col, stat_columns)
     stat_tables = {
@@ -173,19 +189,21 @@ def get_publication_by_story(
     chapter_index: int,
     platform: str,
     account_id: int | None = None,
+    content_type: str = "story",
 ) -> dict | None:
-    """Get a publication by its (story, chapter, platform[, account]) key.
+    """Get a publication by its (content_type, story, chapter, platform[, account]) key.
 
     account_id None resolves to the platform's default account so existing
-    single-account callers keep getting the default account's row.
+    single-account callers keep getting the default account's row. content_type
+    defaults to "story"; the Artwork hub passes "artwork".
     """
     if account_id is None:
         from database import accounts as _accts
         account_id = _accts.get_default_account_id(conn, platform, create=True)
     row = conn.execute(
-        "SELECT * FROM publications WHERE story_name = ? AND chapter_index = ? "
-        "AND platform = ? AND account_id = ?",
-        (story_name, chapter_index, platform, account_id),
+        "SELECT * FROM publications WHERE content_type = ? AND story_name = ? "
+        "AND chapter_index = ? AND platform = ? AND account_id = ?",
+        (content_type, story_name, chapter_index, platform, account_id),
     ).fetchone()
     return dict(row) if row else None
 
@@ -200,6 +218,7 @@ def add_to_queue(
     action: str = "post",
     *,
     account_id: int | None = None,
+    content_type: str = "story",
     scheduled_at: str | None = None,
     title_override: str | None = None,
     description_override: str | None = None,
@@ -224,12 +243,12 @@ def add_to_queue(
         account_id = _accts.get_default_account_id(conn, platform, create=True)
     cursor = conn.execute(
         """INSERT INTO posting_queue
-            (story_name, chapter_index, platform, account_id, action, scheduled_at,
-             title_override, description_override, tags_override,
+            (content_type, story_name, chapter_index, platform, account_id, action,
+             scheduled_at, title_override, description_override, tags_override,
              rating_override, file_path_override, priority, requires)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (story_name, chapter_index, platform, account_id, action, scheduled_at,
-         title_override, description_override, tags_override,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (content_type, story_name, chapter_index, platform, account_id, action,
+         scheduled_at, title_override, description_override, tags_override,
          rating_override, file_path_override, priority, requires),
     )
     conn.commit()
@@ -275,11 +294,14 @@ def get_queue(
     conn: sqlite3.Connection,
     include_completed: bool = False,
     story_name: str | None = None,
+    content_type: str | None = "story",
 ) -> list[dict]:
     """Get queue items, optionally filtered by story.
 
     The story_name filter is used by the story detail page to render only
-    that story's pending items as a callout card.
+    that story's pending items as a callout card. content_type defaults to
+    "story" so the Stories queue view never shows artwork; the Artwork hub
+    passes "artwork".
     """
     params: list = []
     if include_completed:
@@ -295,6 +317,13 @@ def get_queue(
         else:
             query += " WHERE story_name = ?"
         params.append(story_name)
+
+    if content_type is not None:
+        if "WHERE" in query:
+            query += " AND content_type = ?"
+        else:
+            query += " WHERE content_type = ?"
+        params.append(content_type)
 
     rows = conn.execute(query + order, params).fetchall()
     return [dict(r) for r in rows]
@@ -357,7 +386,8 @@ def cancel_queue_item(conn: sqlite3.Connection, queue_id: int) -> bool:
 
 def cancel_all_for(conn: sqlite3.Connection, *, platform: str | None = None,
                    story_name: str | None = None,
-                   chapter_index: int | None = None) -> int:
+                   chapter_index: int | None = None,
+                   content_type: str | None = None) -> int:
     """Bulk-cancel queue items matching the filter. Used by the editor's
     'cancel all retries for X' affordance and the diagnostics cleanup
     flow when a poster bug spams the queue.
@@ -381,6 +411,9 @@ def cancel_all_for(conn: sqlite3.Connection, *, platform: str | None = None,
     if chapter_index is not None:
         sql += " AND chapter_index = ?"
         params.append(chapter_index)
+    if content_type is not None:
+        sql += " AND content_type = ?"
+        params.append(content_type)
     cursor = conn.execute(sql, params)
     conn.commit()
     return cursor.rowcount
@@ -391,6 +424,7 @@ def delete_publication(
     story_name: str,
     chapter_index: int,
     platform: str,
+    content_type: str = "story",
 ) -> bool:
     """Remove the publications row for (story, chapter, platform).
 
@@ -403,8 +437,8 @@ def delete_publication(
     """
     cursor = conn.execute(
         "DELETE FROM publications "
-        "WHERE story_name = ? AND chapter_index = ? AND platform = ?",
-        (story_name, chapter_index, platform),
+        "WHERE content_type = ? AND story_name = ? AND chapter_index = ? AND platform = ?",
+        (content_type, story_name, chapter_index, platform),
     )
     conn.commit()
     return cursor.rowcount > 0
@@ -415,6 +449,7 @@ def update_publication_url(
     story_name: str,
     chapter_index: int,
     platform: str,
+    content_type: str = "story",
     *,
     external_url: str,
     external_id: str,
@@ -431,8 +466,8 @@ def update_publication_url(
     cursor = conn.execute(
         "UPDATE publications "
         "SET external_url = ?, external_id = ? "
-        "WHERE story_name = ? AND chapter_index = ? AND platform = ?",
-        (external_url, external_id, story_name, chapter_index, platform),
+        "WHERE content_type = ? AND story_name = ? AND chapter_index = ? AND platform = ?",
+        (external_url, external_id, content_type, story_name, chapter_index, platform),
     )
     conn.commit()
     return cursor.rowcount > 0
@@ -449,6 +484,7 @@ def log_posting_action(
     status: str,
     *,
     account_id: int = 0,
+    content_type: str = "story",
     pub_id: int | None = None,
     queue_id: int | None = None,
     external_id: str | None = None,
@@ -459,10 +495,10 @@ def log_posting_action(
     """Append an entry to the posting log. Returns log_id."""
     cursor = conn.execute(
         """INSERT INTO posting_log
-            (pub_id, queue_id, platform, story_name, chapter_index, account_id,
+            (pub_id, queue_id, platform, story_name, chapter_index, account_id, content_type,
              action, status, external_id, external_url, error_message, duration_seconds)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (pub_id, queue_id, platform, story_name, chapter_index, account_id,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (pub_id, queue_id, platform, story_name, chapter_index, account_id, content_type,
          action, status, external_id, external_url, error_message, duration_seconds),
     )
     conn.commit()
@@ -473,13 +509,24 @@ def get_posting_log(
     conn: sqlite3.Connection,
     story_name: str | None = None,
     limit: int = 50,
+    content_type: str | None = "story",
 ) -> list[dict]:
-    """Get posting log entries, newest first."""
+    """Get posting log entries, newest first.
+
+    content_type defaults to "story" so the Stories log view never shows
+    artwork; the Artwork hub passes "artwork", None returns everything.
+    """
     query = "SELECT * FROM posting_log"
     params: list = []
+    conds = []
+    if content_type is not None:
+        conds.append("content_type = ?")
+        params.append(content_type)
     if story_name:
-        query += " WHERE story_name = ?"
+        conds.append("story_name = ?")
         params.append(story_name)
+    if conds:
+        query += " WHERE " + " AND ".join(conds)
     query += " ORDER BY created_at DESC LIMIT ?"
     params.append(limit)
     return [dict(r) for r in conn.execute(query, params).fetchall()]

@@ -38,7 +38,7 @@ class InkbunnyPoster(PlatformPoster):
     supports_file_replace = True
     min_post_interval = 5
     max_file_size = 200 * 1024 * 1024  # 200 MB
-    accepted_file_types = ["txt", "doc", "rtf", "pdf", "png", "jpg", "gif", "mp3", "mp4"]
+    accepted_file_types = ["txt", "doc", "rtf", "pdf", "png", "jpg", "jpeg", "gif", "webp", "mp3", "mp4"]
 
     def __init__(self, account_id: int | None = None):
         self._client: InkbunnyClient | None = None
@@ -106,8 +106,8 @@ class InkbunnyPoster(PlatformPoster):
 
             # Determine submission type
             sub_type = "4"  # writing (default for stories)
-            if package.file_type in ("png", "jpg", "gif"):
-                sub_type = "1"  # picture
+            if package.file_type in ("png", "jpg", "jpeg", "gif", "webp"):
+                sub_type = "1"  # picture (artwork upload)
 
             # Step 1: Upload file (+ thumbnail if available)
             submission_id = await client.upload_submission(

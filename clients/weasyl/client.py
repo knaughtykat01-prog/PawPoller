@@ -328,6 +328,71 @@ class WeasylClient:
 
         raise RuntimeError(f"Weasyl submission failed — status {resp.status_code}, url={final_url}")
 
+    async def submit_visual(
+        self,
+        file_path: str,
+        *,
+        title: str = "",
+        description: str = "",
+        tags: str = "",
+        rating: int = 40,
+        subtype: int = 0,
+        folder_id: int | None = None,
+        thumbnail_path: str | None = None,
+    ) -> dict:
+        """Submit a visual artwork (image) to Weasyl.
+
+        Mirrors submit_literary but posts to /submit/visual with the image as
+        ``submitfile`` and an optional ``thumbfile``. ``subtype`` is a Weasyl
+        visual subtype code (e.g. 1030=Digital); 0 lets Weasyl pick a default.
+        """
+        csrf = await self._get_csrf_token("https://www.weasyl.com/submit/visual")
+
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+        filename = os.path.basename(file_path)
+
+        form_data = {
+            "title": title,
+            "rating": str(rating),
+            "content": description,
+            "tags": tags,
+            "subtype": str(subtype),
+        }
+        if csrf:
+            form_data["token"] = csrf
+        if folder_id:
+            form_data["folderid"] = str(folder_id)
+
+        files = {"submitfile": (filename, file_data)}
+        if thumbnail_path and os.path.isfile(thumbnail_path):
+            with open(thumbnail_path, "rb") as tf:
+                files["thumbfile"] = (os.path.basename(thumbnail_path), tf.read(), "image/png")
+
+        resp = await self._http.post(
+            "https://www.weasyl.com/submit/visual",
+            data=form_data,
+            files=files,
+            timeout=120.0,
+            follow_redirects=True,
+        )
+
+        final_url = str(resp.url)
+        sid_match = re.search(r'/submission/(\d+)', final_url)
+        if sid_match:
+            submission_id = sid_match.group(1)
+            logger.info("WS: Submitted visual work — id=%s url=%s", submission_id, final_url)
+            return {"submission_id": submission_id, "url": final_url}
+
+        body_match = re.search(r'/submission/(\d+)', resp.text[:2000])
+        if body_match:
+            submission_id = body_match.group(1)
+            url = f"https://www.weasyl.com/submission/{submission_id}"
+            logger.info("WS: Submitted visual work (from body) — id=%s", submission_id)
+            return {"submission_id": submission_id, "url": url}
+
+        raise RuntimeError(f"Weasyl visual submission failed — status {resp.status_code}, url={final_url}")
+
     async def edit_submission(
         self,
         submission_id: str,

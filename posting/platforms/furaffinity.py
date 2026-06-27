@@ -44,7 +44,7 @@ class FurAffinityPoster(PlatformPoster):
     min_post_interval = 70  # FA enforces this
     requires_mode = "desktop"  # FA blocks datacenter IPs, needs residential + browser cookies
     max_file_size = 10 * 1024 * 1024  # 10 MB
-    accepted_file_types = ["pdf", "doc", "docx", "rtf", "txt", "odt", "jpg", "png", "gif"]
+    accepted_file_types = ["pdf", "doc", "docx", "rtf", "txt", "odt", "jpg", "jpeg", "png", "gif"]
 
     def __init__(self, account_id: int | None = None):
         self._client: FAClient | None = None
@@ -89,26 +89,39 @@ class FurAffinityPoster(PlatformPoster):
             rating = _rating_to_fa(package.rating)
             # FA tags are space-separated with underscores for multi-word
             keywords = " ".join(t.replace(" ", "_") for t in package.tags)
-
-            # Get extra FA-specific fields from package or defaults
             settings = config.get_settings()
-            cat = package.extra.get("cat", settings.get("posting_fa_category", "13"))
-            atype = package.extra.get("atype", settings.get("posting_fa_theme", "1"))
-            species = package.extra.get("species", settings.get("posting_fa_species", "1"))
-            gender = package.extra.get("gender", settings.get("posting_fa_gender", "0"))
 
-            result = await client.submit_story(
-                package.file_path,
-                title=package.title[:60],
-                description=package.description,
-                keywords=keywords,
-                rating=rating,
-                cat=cat,
-                atype=atype,
-                species=species,
-                gender=gender,
-                thumbnail_path=package.thumbnail_path,
-            )
+            is_image = package.file_type in ("png", "jpg", "jpeg", "gif", "webp")
+            if is_image:
+                # Visual-art submission. The category/species/gender come from
+                # the artwork_fa_* settings — the story defaults (cat="13"=Story)
+                # are wrong for art. package.extra wins if the artwork set them.
+                cat = package.extra.get("cat", settings.get("artwork_fa_category", "1"))
+                atype = package.extra.get("atype", settings.get("artwork_fa_theme", "1"))
+                species = package.extra.get("species", settings.get("artwork_fa_species", "1"))
+                gender = package.extra.get("gender", settings.get("artwork_fa_gender", "0"))
+                result = await client.submit_visual(
+                    package.file_path,
+                    title=package.title[:60],
+                    description=package.description,
+                    keywords=keywords,
+                    rating=rating,
+                    cat=cat, atype=atype, species=species, gender=gender,
+                )
+            else:
+                cat = package.extra.get("cat", settings.get("posting_fa_category", "13"))
+                atype = package.extra.get("atype", settings.get("posting_fa_theme", "1"))
+                species = package.extra.get("species", settings.get("posting_fa_species", "1"))
+                gender = package.extra.get("gender", settings.get("posting_fa_gender", "0"))
+                result = await client.submit_story(
+                    package.file_path,
+                    title=package.title[:60],
+                    description=package.description,
+                    keywords=keywords,
+                    rating=rating,
+                    cat=cat, atype=atype, species=species, gender=gender,
+                    thumbnail_path=package.thumbnail_path,
+                )
 
             return PostResult(
                 success=True,

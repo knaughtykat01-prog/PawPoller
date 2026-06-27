@@ -902,6 +902,32 @@ def main():
     # feel of a native desktop app while the UI is actually a web app.
     import webview
 
+    class _DesktopApi:
+        """JS bridge exposed to the dashboard as window.pywebview.api.*.
+
+        Each method is callable from the frontend and returns a Promise on the
+        JS side. The Artwork hub uses open_image_dialog so the desktop app can
+        pick a local image by path (copied into the archive server-side) instead
+        of round-tripping the bytes through a browser upload.
+        """
+        def open_image_dialog(self):
+            try:
+                win = webview.windows[0] if webview.windows else None
+                if win is None:
+                    return []
+                result = win.create_file_dialog(
+                    webview.OPEN_DIALOG,
+                    allow_multiple=False,
+                    file_types=(
+                        "Image files (*.png;*.jpg;*.jpeg;*.gif;*.webp)",
+                        "All files (*.*)",
+                    ),
+                )
+                return list(result) if result else []
+            except Exception as e:
+                logger.error("open_image_dialog failed: %s", e)
+                return []
+
     logger.info("Opening native window at %s", url)
     _window = webview.create_window(
         "PawPoller",
@@ -909,6 +935,7 @@ def main():
         width=1200,
         height=800,
         min_size=(800, 500),
+        js_api=_DesktopApi(),
     )
 
     # Register the closing callback so we can intercept the close event

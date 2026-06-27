@@ -5313,3 +5313,105 @@ every prefix on single-unassigned-account installs.
 per-platform breakdown + member accounts; each account's "View →" sets
 `App._accountFilter[platform]` and navigates to that platform's dashboard
 pre-scoped. Persona names on the Accounts page link through.
+
+## 20. Artwork hub (PostyBirb-style image posting, 2.31.0)
+
+A standalone image uploader parallel to the Stories hub: drop in an image, set
+per-platform metadata, publish to multiple art sites at once. It **reuses the
+posting engine** rather than forking it — the same posters, manager, registry,
+scheduler, and retry/desktop-queue fallbacks carry both stories and artwork.
+
+**Why it's cheap.** Two facts shrank the build: (1) **analytics are free** —
+every poller auto-discovers the user's whole gallery with no content-type
+filter, so posted art is tracked (views/faves/comments, charts, milestones) on
+the next poll with zero poller changes; (2) `StoryUploadPackage` (in
+`posting/platforms/base.py`) already carries `file_path`/`file_type`/
+`thumbnail_path`/tags/rating, so an image is just a package whose `file_path`
+is the image.
+
+### 20.1 Registry — the `content_type` discriminator
+
+`publications` / `posting_queue` / `posting_log` gained an additive
+`content_type TEXT NOT NULL DEFAULT 'story'` column (idempotent ADD COLUMN in
+`_run_migrations`, mirroring the account_id rollout). `_rebuild_publications_content_type`
+(in `_run_table_rebuilds`, right after `_rebuild_publications`) folds it into the
+publications UNIQUE → `UNIQUE(content_type, story_name, chapter_index, platform,
+account_id)`, so an artwork named like a story can't UPSERT onto the story's row.
+The rebuild is defensive about whether the account_id rebuild already dropped the
+freshly-added column (reads the live column set).
+
+In `database/posting_queries.py` the write/keyed functions (`upsert_publication`,
+`get_publication_by_story`, `add_to_queue`, `log_posting_action`,
+`delete_publication`, `update_publication_url`) take a `content_type="story"`
+param; the cross-story **list** reads (`get_publications`, `get_queue`,
+`get_posting_log`) filter to `content_type='story'` so artwork never leaks into
+the Stories views. **`get_pending_queue` is deliberately unfiltered** — the
+scheduler must see both content types and routes on each row's `content_type`.
+Every default is `"story"`, so the existing story flow is byte-for-byte unchanged.
+
+### 20.2 Engine — `artwork_reader` + `post_artwork`
+
+`posting/artwork_reader.py` (mirrors `story_reader.py`): one folder per artwork
+under `get_artwork_archive_path()` (setting `artwork_archive_path` → Docker
+`/app/data/artwork` on the existing persistent volume → desktop
+`…/m_x/Archives/Artwork`). Each folder has the image + an `artwork.json`
+(`title/description/author/rating/image/thumbnail` + per-platform
+`tags/titles/descriptions/categories` maps). `create_artwork` (used by both
+upload paths), `load_artwork` (traversal-guarded), and `build_artwork_package`
+→ a `StoryUploadPackage` (chapter 0, image `file_path`, per-platform cascade,
+`extra` = the platform's category map).
+
+`manager.post_artwork(artwork_name, platforms, account_ids, extras)` is the
+parallel of `post_story`: per platform it builds the image package, validates,
+posts via the **same** `_get_poster`/`poster.post`, records
+`content_type='artwork'`, and reuses the desktop-queue + `_schedule_retry` + log
+fallbacks. `scheduler._process_queue_item` branches on the queued row's
+`content_type` → `post_artwork` vs `post_story`/`update_story`.
+
+### 20.3 API + frontend
+
+`routes/artwork_api.py` (`/api/artwork/*`, registered in `dashboard.py`):
+`images` (list) / `images/{name}` (detail + live stats / delete / PATCH) /
+**upload** (browser `UploadFile` → `create_artwork`) / **create-from-path**
+(desktop local file copied in) / **publish** (→ `post_artwork`) / **image**
+(query-param + traversal-guarded serving) / artwork-scoped `publications` + `log`
+/ `settings` / `sync/{upload,push}` (tar.gz desktop⇄server media).
+
+`frontend/js/artwork.js` (`window.Artwork`): a card-grid hub, a create flow
+(drag-drop / `<input type=file>` / desktop native picker, live preview, default
+metadata + collapsible per-platform tag overrides, platform checkboxes +
+per-platform account `<select>`s), a detail page (cover + per-platform
+publications with stats + "publish to more"), and a history view. `#/artwork`
+routes + an **Artwork** nav entry sit beside Stories.
+
+### 20.4 Per-platform image posting
+
+The 7 image-capable platforms (the 4 fiction-only sites — ao3, sqw, wp — plus tw,
+which has no poster, are excluded):
+
+| Platform | How an image posts | State |
+|---|---|---|
+| Inkbunny | `upload_submission(submission_type="1")` (picture) | verified |
+| Itaku | `upload_image` (already image-native) | verified |
+| Bluesky | image embed (Pillow downscale for the ~1 MB blob cap) | verified |
+| FurAffinity | `submit_visual` — `submission_type="submission"` + visual category | **needs live test** |
+| SoFurry | image as Artwork (category 10) via MIME-aware `upload_content` | **needs live test** |
+| Weasyl | `submit_visual` → `/submit/visual` (image as `submitfile`) | **needs live test** |
+| DeviantArt | Sta.sh `oauth_stash_submit` → `oauth_stash_publish` | **needs live test + scope re-auth** |
+
+The READY three were verified end-to-end in-browser. FA/SF/Weasyl/DA were built
+from the existing client patterns + each site's form/API but can't be verified
+without posting live; **DeviantArt also needs the DA app re-authorized with
+`stash`+`publish` OAuth scopes** (the literature-only token will 401/403). The
+per-platform submission categories for FA/SF/Weasyl come from `artwork_*`
+settings: `artwork_fa_category/species/gender`, `artwork_sf_sub_type`,
+`artwork_ws_subtype`, `artwork_da_catpath` (plus `artwork_enabled`,
+`artwork_archive_path`, `artwork_default_platforms/rating`).
+
+### 20.5 Desktop bridge
+
+`main.py` passes a `js_api` object to `webview.create_window`; its
+`open_image_dialog()` opens a native file dialog and returns the chosen path, so
+the desktop app posts a local image by path (copied into the archive) instead of
+re-uploading bytes. The browser upload path is the universal fallback (works on
+desktop and the server).

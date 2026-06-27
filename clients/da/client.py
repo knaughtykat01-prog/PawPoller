@@ -452,6 +452,111 @@ class DAClient:
         logger.info("DA: Created literature deviation %s — %s", dev_id, title[:40])
         return {"deviationid": dev_id, "url": f"https://www.deviantart.com/knaughtykat/art/{dev_id}"}
 
+    async def oauth_stash_submit(
+        self,
+        file_path: str,
+        *,
+        title: str = "",
+        artist_comments: str = "",
+        tags: list[str] | None = None,
+        access_token: str = "",
+    ) -> dict:
+        """Upload an image to Sta.sh (POST /api/v1/oauth2/stash/submit).
+
+        Step 1 of image publishing — stashes the file and returns its itemid.
+        The DA app's access token must include the **stash** scope; an app set
+        up for literature-only (user.manage) will 401/403 until re-authorized.
+
+        Returns a dict with 'itemid' (+ 'stackid' if present).
+        """
+        if not access_token:
+            raise RuntimeError("DA: OAuth2 access token required")
+        import os
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+        filename = os.path.basename(file_path)
+        ext = os.path.splitext(filename)[1].lstrip(".").lower()
+        mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                "gif": "image/gif", "webp": "image/webp"}.get(ext, "application/octet-stream")
+
+        data = {"title": title[:50], "access_token": access_token}
+        if artist_comments:
+            data["artist_comments"] = artist_comments
+        if tags:
+            data["tags"] = ", ".join(tags[:30])
+
+        resp = await self._http.post(
+            "https://www.deviantart.com/api/v1/oauth2/stash/submit",
+            data=data,
+            files={"file": (filename, file_data, mime)},
+            timeout=120.0,
+        )
+        if resp.status_code == 401:
+            raise RuntimeError("DA: OAuth token expired or invalid (401)")
+        if resp.status_code != 200:
+            raise RuntimeError(f"DA: stash/submit failed — {resp.status_code}: {resp.text[:200]}")
+        result = resp.json()
+        itemid = result.get("itemid")
+        if not itemid:
+            raise RuntimeError(f"DA: stash/submit response missing itemid: {str(result)[:200]}")
+        logger.info("DA: stashed image itemid=%s", itemid)
+        return {"itemid": itemid, "stackid": result.get("stackid")}
+
+    async def oauth_stash_publish(
+        self,
+        itemid: str | int,
+        *,
+        is_mature: bool = False,
+        mature_level: str = "",
+        mature_classification: list[str] | None = None,
+        catpath: str = "",
+        galleryids: list[str] | None = None,
+        allow_comments: bool = True,
+        access_token: str = "",
+    ) -> dict:
+        """Publish a stashed item to the gallery (POST /stash/publish).
+
+        Step 2 of image publishing. Requires the **publish** scope. DA mandates
+        agreeing to the submission policy + ToS, so agree_submission/agree_tos
+        are always sent as "1". Returns a dict with 'deviationid' and 'url'.
+        """
+        if not access_token:
+            raise RuntimeError("DA: OAuth2 access token required")
+        params: dict[str, str] = {
+            "itemid": str(itemid),
+            "agree_submission": "1",
+            "agree_tos": "1",
+            "allow_comments": "1" if allow_comments else "0",
+            "access_token": access_token,
+        }
+        if is_mature:
+            params["is_mature"] = "1"
+            if mature_level:
+                params["mature_level"] = mature_level
+            if mature_classification:
+                for mc in mature_classification:
+                    params["mature_classification[]"] = mc
+        if catpath:
+            params["catpath"] = catpath
+        if galleryids:
+            for i, gid in enumerate(galleryids):
+                params[f"galleryids[{i}]"] = gid
+
+        resp = await self._http.post(
+            "https://www.deviantart.com/api/v1/oauth2/stash/publish",
+            data=params,
+            timeout=60.0,
+        )
+        if resp.status_code == 401:
+            raise RuntimeError("DA: OAuth token expired or invalid (401)")
+        if resp.status_code != 200:
+            raise RuntimeError(f"DA: stash/publish failed — {resp.status_code}: {resp.text[:200]}")
+        result = resp.json()
+        dev_id = result.get("deviationid", "")
+        url = result.get("url", "") or f"https://www.deviantart.com/deviation/{dev_id}"
+        logger.info("DA: published deviation %s from stash", dev_id)
+        return {"deviationid": dev_id, "url": url}
+
     async def oauth_update_literature(
         self,
         deviation_id: str,

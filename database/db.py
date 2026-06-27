@@ -167,6 +167,7 @@ def _run_table_rebuilds() -> None:
         _rebuild_fa_watchers(conn, _accounts)
         _rebuild_sf_watchers(conn, _accounts)
         _rebuild_publications(conn, _accounts)
+        _rebuild_publications_content_type(conn, _accounts)
     finally:
         try:
             conn.execute("PRAGMA foreign_keys=ON")
@@ -387,6 +388,80 @@ def _rebuild_publications(conn: sqlite3.Connection, _accounts) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_publications_status ON publications(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_publications_account ON publications(account_id)")
     logger.info("Rebuilt publications for multi-account (UNIQUE incl account_id)")
+
+
+def _rebuild_publications_content_type(conn: sqlite3.Connection, _accounts) -> None:
+    """publications: fold content_type into the UNIQUE key.
+
+    Runs after _rebuild_publications (which adds account_id). An artwork can be
+    named like a story (e.g. its own cover art); without content_type in the
+    key, both post chapter 0 to the same platform/account and the artwork
+    UPSERTs onto the story's row. Idempotent — guarded on content_type already
+    being in the stored UNIQUE. Defensive about whether the column survived the
+    account_id rebuild (whose fixed INSERT list drops it on legacy DBs): reads
+    the live column set rather than assuming it's present.
+    """
+    if not _table_exists(conn, "publications"):
+        return
+    ddl = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='publications'"
+    ).fetchone()
+    if ddl and "UNIQUE(content_type" in (ddl[0] or ""):
+        return  # already migrated
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(publications)").fetchall()}
+    ct_expr = "COALESCE(content_type, 'story')" if "content_type" in cols else "'story'"
+    acct_expr = "account_id" if "account_id" in cols else "0"
+    conn.execute("DROP TABLE IF EXISTS publications_ct_new")
+    conn.execute(
+        """CREATE TABLE publications_ct_new (
+            pub_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            content_type     TEXT NOT NULL DEFAULT 'story',
+            story_name       TEXT NOT NULL,
+            chapter_index    INTEGER DEFAULT 0,
+            chapter_title    TEXT DEFAULT '',
+            platform         TEXT NOT NULL,
+            account_id       INTEGER NOT NULL DEFAULT 0,
+            external_id      TEXT NOT NULL DEFAULT '',
+            external_url     TEXT DEFAULT '',
+            format_file      TEXT DEFAULT '',
+            file_hash        TEXT DEFAULT '',
+            tags_used        TEXT DEFAULT '[]',
+            title_used       TEXT DEFAULT '',
+            description_used TEXT DEFAULT '',
+            rating_used      TEXT DEFAULT '',
+            status           TEXT NOT NULL DEFAULT 'draft',
+            first_posted_at  TEXT,
+            last_updated_at  TEXT,
+            update_count     INTEGER DEFAULT 0,
+            last_error       TEXT,
+            created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+            word_count       INTEGER DEFAULT 0,
+            UNIQUE(content_type, story_name, chapter_index, platform, account_id)
+        )"""
+    )
+    # Preserve pub_id so posting_queue/posting_log FK references stay valid.
+    conn.execute(
+        f"""INSERT INTO publications_ct_new
+            (pub_id, content_type, story_name, chapter_index, chapter_title, platform,
+             account_id, external_id, external_url, format_file, file_hash, tags_used,
+             title_used, description_used, rating_used, status, first_posted_at,
+             last_updated_at, update_count, last_error, created_at, word_count)
+        SELECT pub_id, {ct_expr}, story_name, chapter_index, chapter_title, platform,
+             {acct_expr}, external_id, external_url, format_file, COALESCE(file_hash, ''),
+             tags_used, title_used, description_used, rating_used, status, first_posted_at,
+             last_updated_at, update_count, last_error, COALESCE(created_at, datetime('now')),
+             word_count
+        FROM publications"""
+    )
+    conn.execute("DROP TABLE publications")
+    conn.execute("ALTER TABLE publications_ct_new RENAME TO publications")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_publications_story ON publications(story_name)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_publications_platform ON publications(platform)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_publications_status ON publications(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_publications_account ON publications(account_id)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_publications_content_type ON publications(content_type)")
+    logger.info("Rebuilt publications to fold content_type into UNIQUE")
 
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
@@ -760,4 +835,22 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         if "duplicate column" not in str(e).lower():
             raise
     conn.execute("CREATE INDEX IF NOT EXISTS idx_accounts_persona ON accounts(persona_id)")
+
+    # Migration: content_type discriminator on the posting registry. Lets the
+    # Artwork hub reuse publications/posting_queue/posting_log for image posts
+    # without colliding with stories. Additive column (DEFAULT 'story' → every
+    # existing row is a story) on all three tables. posting_queue/posting_log
+    # carry no UNIQUE on the (story, chapter, platform) tuple, so a plain add is
+    # enough; folding content_type into the publications UNIQUE happens in
+    # _run_table_rebuilds() (_rebuild_publications_content_type), same as the
+    # account_id rollout.
+    for _t in ("publications", "posting_queue", "posting_log"):
+        if _t in tables:
+            try:
+                conn.execute(
+                    f"ALTER TABLE {_t} ADD COLUMN content_type TEXT NOT NULL DEFAULT 'story'")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
+
     conn.commit()

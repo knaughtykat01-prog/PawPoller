@@ -4,6 +4,86 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.31.0] - 2026-06-27 - Artwork: PostyBirb-style image posting across 7 platforms
+
+**Why:** PawPoller published **stories**; the user also makes **artwork** and wanted the PostyBirb
+workflow inside the app — drop in an image, fill per-platform metadata, publish to multiple art sites
+at once, and have that art tracked in the same analytics as stories. The posting engine was
+story-archive-centric; this adds a standalone, file-first image flow on top of it without forking the
+engine.
+
+**Architecture — reuse, don't fork.** Artwork rides the *same* posters, manager, registry, scheduler,
+and retry/desktop-queue fallbacks as stories. Two enablers: (1) **analytics is free** — every poller
+auto-discovers the whole gallery with no content-type filter, so posted art is tracked
+(views/faves/comments, charts, milestones) on the next poll with zero poller changes; (2) the
+`StoryUploadPackage` already carries everything an image needs, so `build_artwork_package` returns one
+with an image `file_path`.
+
+**Registry — `content_type` discriminator** (`database/db.py`, `database/posting_schema.sql`,
+`database/posting_queries.py`)
+- Additive `content_type TEXT NOT NULL DEFAULT 'story'` on `publications` / `posting_queue` /
+  `posting_log` (idempotent ADD COLUMN, mirrors the account_id rollout). New
+  `_rebuild_publications_content_type` folds it into the publications UNIQUE →
+  `UNIQUE(content_type, story_name, chapter_index, platform, account_id)` so an artwork named like a
+  story can't collide. Defensive about whether the account_id rebuild dropped the column first.
+- `posting_queries` write/keyed fns gained a `content_type="story"` param; the cross-story list reads
+  (`get_publications`, `get_queue`, `get_posting_log`) gained a `content_type='story'` filter so
+  artwork never leaks into the Stories views. `get_pending_queue` is deliberately unfiltered — the
+  scheduler sees both and routes on the row's content_type. Every default is `"story"`, so existing
+  callers are byte-for-byte unchanged.
+
+**Artwork engine** (`posting/artwork_reader.py` NEW, `posting/manager.py`, `posting/scheduler.py`)
+- `artwork_reader`: one folder per artwork (image + `artwork.json` with per-platform tags/titles/
+  descriptions/categories) under a new `artwork_archive_path` (Docker `/app/data/artwork`; desktop
+  `…/m_x/Archives/Artwork`). `create_artwork` (used by both upload paths), `load_artwork` (traversal-
+  guarded), `build_artwork_package` (image package, chapter 0, per-platform cascade).
+- `manager.post_artwork` — parallel to `post_story`, posts via the same posters, records
+  `content_type='artwork'`, reuses the desktop-queue + retry + log fallbacks. Scheduler branches on
+  the queued row's content_type → `post_artwork` vs `post_story`.
+
+**API** (`routes/artwork_api.py` NEW, `dashboard.py`): `/api/artwork/*` — list/detail, **upload**
+(browser `UploadFile`), **create-from-path** (desktop local file), **publish** (→ `post_artwork`),
+image serving (query-param + traversal guard), artwork-scoped publications/log, settings, and tar.gz
+sync push/upload (desktop⇄server media).
+
+**Frontend Artwork hub** (`frontend/js/artwork.js` NEW, `app.js`, `index.html`, `css/artwork.css`,
+`api.js`)
+- `window.Artwork`: a card-grid hub, a PostyBirb-style create flow (drag-drop / file-picker / desktop
+  native picker, live preview, default metadata + per-platform tag overrides, platform checkboxes +
+  per-platform account selectors), a detail page (real cover + per-platform publications with live
+  stats + "publish to more"), and a history view. New `#/artwork` routes + an **Artwork** nav entry.
+
+**Per-platform image posting** (the 7 image-capable platforms)
+- **Ready (verified):** Inkbunny (`submission_type=1`), Itaku (`upload_image`), Bluesky (image-native;
+  added a Pillow downscale for the ~1 MB blob cap + image-or-text validation).
+- **New client methods:** FurAffinity `submit_visual` (`submission_type=submission` + visual category
+  from `artwork_fa_*` settings); SoFurry posts the image as Artwork (category 10) via a MIME-aware
+  `upload_content`; Weasyl `submit_visual` (`/submit/visual`); DeviantArt Sta.sh (`oauth_stash_submit`
+  + `oauth_stash_publish`).
+- ⚠ **Needs a live smoke test** before relying on them: FA/SF/Weasyl/DA image posting were built from
+  the existing code + each site's form/API but can't be verified without posting live. **DeviantArt
+  also needs the DA app re-authorized with `stash`+`publish` OAuth scopes** (the literature-only app
+  token will 401/403). New settings: `artwork_enabled`, `artwork_archive_path`,
+  `artwork_default_platforms/rating`, `artwork_fa_category/species/gender`, `artwork_ws_subtype`,
+  `artwork_sf_sub_type`, `artwork_da_catpath`.
+
+**Desktop** (`main.py`): a pywebview `js_api` bridge exposes `open_image_dialog` so the desktop app
+picks a local image by path (copied into the archive) instead of re-uploading bytes.
+
+**Security hardening** (pre-flight review): `create-from-path` is gated to the desktop runtime (it
+reads a server-side path, so it would be a local-file-read gadget on the server); the artwork tar.gz
+sync rejects symlink/hardlink members (zip-slip); and thumbnail uploads are capped at 50 MB like the
+primary image. All artwork endpoints sit behind the existing dashboard auth; path traversal is
+re-anchor-guarded and all new SQL is parameterised.
+
+**Tests:** `test_artwork_db` (content_type isolation + same-name coexistence), `test_artwork_reader`
+(create/load/build), `test_integration_artwork` (the full `post_artwork` pipeline via a stub poster),
+`test_migration_content_type` (legacy→content_type-in-UNIQUE, backfill, idempotent). Suite: 175
+passed, 1 skipped. End-to-end verified in-browser (upload → publish → `content_type='artwork'`
+registry row → Stories views unaffected) against an isolated DB.
+
+---
+
 ## [2.30.0] - 2026-06-27 - Personas: per-account views + per-persona digests across all 11 platforms
 
 **Why:** running several accounts was only half-supported — the data layer was account-aware, but
