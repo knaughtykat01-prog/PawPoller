@@ -1,13 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-27
-**Current version:** 2.31.0 — **Artwork** (PostyBirb-style image posting across 7 platforms). **Built +
-tested, not yet released** — ready for `/pp-release 2.31.0` → `/pp-deploy` on your go. Full suite green
-(175 passed, 1 skipped). End-to-end verified in-browser (upload → publish → `content_type='artwork'`
-registry row, Stories views unaffected) on an isolated DB. ⚠ FA / SoFurry / Weasyl / DeviantArt image
-posting is implemented but **needs a live smoke test** (can't post without creds); **DeviantArt also
-needs the DA app re-authorized with `stash`+`publish` OAuth scopes**. Prior release 2.30.0 (Personas)
-is live on the VM (commit `3375db5`, tag `v2.30.0`).
+**Current version:** 2.31.0 — **Artwork** (PostyBirb-style image posting across 7 platforms).
+**Released + deployed** on 2026-06-27 (commit `e7cbe96`, tag `v2.31.0`; CI published all three desktop
+assets; GCP VM `/api/health` reports `2.31.0`, clean boot, the content_type migration ran on the
+production DB — log: "Rebuilt publications to fold content_type into UNIQUE"). Full suite green (175
+passed, 1 skipped). End-to-end verified in-browser (upload → publish → `content_type='artwork'`
+registry row, Stories views unaffected). ⚠ **FA / SoFurry / Weasyl / DeviantArt image posting is
+implemented but needs a live smoke test** (can't post without creds); **DeviantArt also needs the DA
+app re-authorized with `stash`+`publish` OAuth scopes**.
 
 **2.31.0 artwork (this session)** — a standalone PostyBirb-style image uploader parallel to Stories.
 Reuses the posting engine; analytics are free (pollers auto-discover the gallery). CHANGELOG [2.31.0].
