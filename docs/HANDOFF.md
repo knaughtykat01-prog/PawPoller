@@ -2,8 +2,11 @@
 
 **Last updated:** 2026-06-27
 **Current version:** 2.30.0 — **Personas** (per-account views + per-persona digests across all 11
-platforms). **Built + tested, NOT yet released/deployed** — ship as one release via `/pp-release
-2.30.0` → `/pp-deploy`. Full suite green (158 passed). Builds on the 2.29.0 redesign shell.
+platforms). **Released + deployed** on 2026-06-27 (commit `3375db5`, tag `v2.30.0`; CI published all
+three desktop assets; GCP VM `/api/health` reports `2.30.0`, clean startup, personas migration ran
+idempotently). Full suite green (158 passed). Builds on the 2.29.0 redesign shell. **Follow-up:**
+desktop `.exe` ships via CI (done); the publish-check "post as account" selector + growth-rate/
+watcher-count scoping + a per-persona Telegram chat override remain deferred.
 
 **2.30.0 personas (this session)** — the identity layer on top of the existing multi-account data
 model. Four parts, all account-aware via the new `database/scope.py` `account_clause`. CHANGELOG [2.30.0].
