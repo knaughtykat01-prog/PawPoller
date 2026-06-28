@@ -2,11 +2,13 @@
 
 **Last updated:** 2026-06-28
 **Current version:** 2.32.0 — **Brand identity** (quill-tail logo + nib-badge app icon).
-**Released + deployed** 2026-06-28 to the GCP VM. New brand mark in the dashboard sidebar + favicon
-(new `/img` static mount + `/favicon.ico` route; `frontend/index.html`, `frontend/css/layout.css`,
-`dashboard.py`) and the desktop tray + EXE/taskbar icon (`assets/tray_icon.png`, new
-`assets/pawpoller.ico`, `pawpoller.spec` — reaches desktop users on the next build). Marketing site
-shipped separately to pawpoller.pages.dev (commit `a939e12`). CHANGELOG [2.32.0].
+**Released + deployed** 2026-06-28 (commit `e6c1d31`, tag `v2.32.0`; CI published all three desktop
+assets — `PawPoller-Setup-2.32.0.exe`, `PawPoller-windows-x64.zip`, `PawPoller-2.32.0-x86_64.AppImage`;
+GCP VM `/api/health` reports `2.32.0`, clean boot; suite green, 175 passed / 1 skipped). New brand mark
+in the dashboard sidebar + favicon (new `/img` static mount + `/favicon.ico` route; `frontend/index.html`,
+`frontend/css/layout.css`, `dashboard.py`) and the desktop tray + EXE/taskbar icon (`assets/tray_icon.png`,
+new `assets/pawpoller.ico`, `pawpoller.spec` — reaches desktop users via the v2.32.0 installers above).
+Marketing site shipped separately to pawpoller.pages.dev (commit `a939e12`). CHANGELOG [2.32.0].
 
 **Prior release — 2.31.0 — Artwork** (PostyBirb-style image posting across 7 platforms):
 **Released + deployed** on 2026-06-27 (commit `e7cbe96`, tag `v2.31.0`; CI published all three desktop
