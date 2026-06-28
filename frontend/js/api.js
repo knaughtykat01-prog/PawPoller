@@ -521,6 +521,7 @@ const API = {
     importArtwork(platform, submissionId) {
         return this.post(`/api/artwork/import/${platform}/${encodeURIComponent(submissionId)}`);
     },
+    importBulk(platform) { return this.post(`/api/artwork/import/bulk/${platform}`); },
 
     /* ── Artwork Hub ──────────────────────────────────────────── */
     getArtworks() { return this.get('/api/artwork/images'); },

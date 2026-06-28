@@ -256,6 +256,41 @@ def import_artwork_from_platform(platform: str, submission_id: str):
         raise HTTPException(400, detail=str(e))
 
 
+@artwork_router.post("/import/bulk/{platform}")
+def import_all_for_platform(platform: str):
+    """Import every discovered (unlinked) submission for one platform.
+
+    Per-item failures (e.g. a row with no direct image URL) are collected, not
+    fatal — so one bad submission doesn't abort the batch.
+    """
+    from posting import artwork_importer
+    from routes.submissions_api import get_discovered_unlinked
+
+    conn = get_connection()
+    try:
+        items = get_discovered_unlinked(conn, platform_filter=platform)
+    finally:
+        conn.close()
+
+    imported, skipped, failed = [], [], []
+    for it in items:
+        sid = it["submission_id"]
+        try:
+            res = artwork_importer.import_artwork(platform, sid)
+            (imported if res.get("status") == "imported" else skipped).append(
+                {"submission_id": sid, "name": res.get("name"), "status": res.get("status")})
+        except Exception as e:
+            failed.append({"submission_id": sid, "title": it.get("title"), "error": str(e)[:160]})
+
+    return {
+        "platform": platform,
+        "imported": len(imported),
+        "skipped": len(skipped),
+        "failed": len(failed),
+        "results": {"imported": imported, "skipped": skipped, "failed": failed},
+    }
+
+
 # ── Publish ───────────────────────────────────────────────────
 
 @artwork_router.post("/publish")

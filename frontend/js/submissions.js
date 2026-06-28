@@ -196,16 +196,43 @@ window.Submissions = {
         if (!el) return;
         if (!this._discItems.length) {
             el.innerHTML = `<div class="empty-state"><h3>Nothing unlinked</h3>
-                <p class="muted">Every discovered submission is already linked to a work.</p></div>`;
+                <p class="muted">Every discovered submission is already linked or imported.</p></div>`;
             return;
         }
-        el.innerHTML = this._discItems.map((d, i) => this._discRow(d, i)).join('');
+        // Per-platform bulk-import bar.
+        const counts = {};
+        this._discItems.forEach(d => { counts[d.platform] = (counts[d.platform] || 0) + 1; });
+        const bulk = Object.keys(counts).sort().map(p =>
+            `<button class="btn" data-bulk="${p}">Import all ${counts[p]} from ${this.esc(this._plat(p).label)}</button>`).join(' ');
+        el.innerHTML = `
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;">
+                <span class="muted" style="font-size:.85rem;">Bulk import as artwork:</span> ${bulk}
+            </div>
+            ${this._discItems.map((d, i) => this._discRow(d, i)).join('')}`;
         this._discItems.forEach((_d, i) => {
             const lbtn = document.getElementById(`disc-link-btn-${i}`);
             if (lbtn) lbtn.addEventListener('click', () => this._linkOne(i));
             const ibtn = document.getElementById(`disc-import-btn-${i}`);
             if (ibtn) ibtn.addEventListener('click', () => this._importOne(i));
         });
+        document.querySelectorAll('#disc-list [data-bulk]').forEach(b =>
+            b.addEventListener('click', () => this._importAll(b.dataset.bulk)));
+    },
+
+    async _importAll(platform) {
+        const btns = [...document.querySelectorAll(`#disc-list [data-bulk="${platform}"]`)];
+        btns.forEach(b => { b.disabled = true; b.textContent = 'Importing…'; });
+        try {
+            const res = await API.importBulk(platform);
+            this._toast('success',
+                `${platform.toUpperCase()}: imported ${res.imported}, skipped ${res.skipped}, failed ${res.failed}`);
+            const disc = await API.getDiscovered();
+            this._discItems = (disc && disc.discovered) || [];
+            this._paintDiscovered();
+        } catch (err) {
+            this._toast('error', `Bulk import failed: ${err.message}`);
+            this._paintDiscovered();
+        }
     },
 
     async _importOne(i) {

@@ -4104,6 +4104,12 @@ Files:
     stored submission metadata + image URL → `create_artwork(source=…)` + links
     it. Frontend: an **Import** button on discovered rows. FA full-res needs a
     residential IP (desktop).
+  - Phase 4 (2.36.0): `POST /api/artwork/import/bulk/{platform}` (import all
+    discovered for a platform, per-item errors collected) + a per-platform
+    "Import all" bar; DeviantArt/Itaku added to `PLATFORM_TABLES`; and an import
+    guard — `image_url()` drops the page `url` (adds `thumb_url`) and
+    `import_artwork` validates Content-Type/magic bytes so non-images are
+    rejected, not turned into broken artworks.
 - `@app.get("/epub-viewer.html")` route reads the file and substitutes
   `__APP_VERSION__` for cache busting on `tokens.css` + the viewer JS
 - Path-scoped `_build_epub_viewer_csp()` relaxation (see Security

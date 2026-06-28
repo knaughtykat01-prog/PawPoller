@@ -77,6 +77,18 @@ PLATFORM_TABLES = {
         "title_col": "title",
         "url_template": "https://bsky.app/profile/_/post/{id}",
     },
+    "da": {
+        "table": "da_submissions",
+        "id_col": "submission_id",
+        "title_col": "title",
+        "url_template": "https://www.deviantart.com/deviation/{id}",
+    },
+    "ik": {
+        "table": "ik_submissions",
+        "id_col": "submission_id",
+        "title_col": "title",
+        "url_template": "https://itaku.ee/images/{id}",
+    },
 }
 
 # Word-to-number mapping for "Part One", "Part Two" etc.

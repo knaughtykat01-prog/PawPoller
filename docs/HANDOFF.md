@@ -1,15 +1,23 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-28
-**Current version:** 2.35.0 — **Submissions hub, Phase 3** (gallery import).
-**Released + deployed** 2026-06-28 (tag `v2.35.0`). `POST /api/artwork/import/{platform}/{submission_id}`
-imports a discovered submission as a local artwork **and links it** — a *generic* importer
-(`posting/artwork_importer.py`) that reuses the metadata the pollers already stored
-(title/description/keywords/rating + image URL), downloads the image (full-res where stored: FA
-`download_url`, Weasyl `media_url`; thumbnail fallback for SF/IB), `create_artwork(source=…)` + dedup
-via `import_source`. **Import** button added to each discovered row. `tests/test_artwork_importer.py`
-(11 tests total). Caveat: FA full-res CDN may block datacenter IPs → run FA imports from desktop.
-Spec: `docs/specs/submissions-hub.md`. Remaining: Phase 4 (bulk import + DeviantArt/Itaku).
+**Current version:** 2.36.0 — **Submissions hub, Phase 4** (bulk import + DeviantArt/Itaku + IB/SF guard).
+**Built + verified locally; pending release/deploy.** Completes the Submissions hub spec:
+- **Bulk import** — `POST /api/artwork/import/bulk/{platform}` imports every discovered submission for a
+  platform (per-item errors collected, not fatal); a per-platform "Import all (N)" bar in the
+  Discovered view.
+- **DeviantArt + Itaku** — added to `posting.sync.PLATFORM_TABLES` so they now appear in discovered +
+  import (thumbnail-quality; they store only `thumbnail_url`).
+- **IB/SF import guard** — `image_url()` no longer falls back to a generic page `url` (Inkbunny stored
+  the submission page there → would download HTML); added `thumb_url` (IB's thumbnail). `import_artwork`
+  now validates the download is actually an image (Content-Type **or** magic bytes) and rejects
+  non-images with a clear error, so a bad submission can't create a broken artwork.
+`tests/test_artwork_importer.py` (12 hub tests). Spec: `docs/specs/submissions-hub.md` — **all phases shipped**.
+
+**Prior release — 2.35.0 — Submissions hub, Phase 3** (gallery import):
+**Released + deployed** 2026-06-28 (commit `7c57ca0`, tag `v2.35.0`; VM-verified end-to-end — FA import
+downloaded a real 119 KB image, mapped tags/rating, linked, then reverted). Generic
+`posting/artwork_importer.py` + `POST /api/artwork/import/{platform}/{submission_id}` + Import button.
 
 **Prior release — 2.34.0 — Submissions hub, Phase 2** (discovered bucket + link-to-work):
 **Released + deployed** 2026-06-28 (commit `e6afbaf`, tag `v2.34.0`; VM verified — 16 discovered

@@ -4,6 +4,33 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.36.0] - 2026-06-28 - Submissions hub (Phase 4): bulk import + DeviantArt/Itaku + IB/SF guard
+
+**Why:** Completes the Submissions hub spec — bulk gallery import, DeviantArt/Itaku coverage, and a
+guard so the platforms that don't expose a direct image URL can't create broken artworks.
+
+**Bulk import** (`routes/artwork_api.py`, `frontend/js/submissions.js`)
+- `POST /api/artwork/import/bulk/{platform}` imports every discovered (unlinked) submission for one
+  platform, collecting per-item results so one failure doesn't abort the batch.
+- A per-platform **"Import all (N) from …"** bar at the top of the Discovered view.
+
+**DeviantArt + Itaku** (`posting/sync.py`)
+- Added `da` / `ik` to `PLATFORM_TABLES`, so `da_submissions` / `ik_submissions` now show up in the
+  discovered bucket and can be imported (thumbnail-quality — they store only `thumbnail_url`). Also
+  means `claim_existing_submissions` now scans them (art won't name-match stories → harmless).
+
+**IB/SF import guard** (`posting/artwork_importer.py`)
+- `image_url()` no longer falls back to a generic `url` column — Inkbunny stores the submission *page*
+  URL there, which would download HTML. Added `thumb_url` (Inkbunny's thumbnail) instead.
+- `import_artwork` now validates the downloaded bytes are actually an image (by Content-Type **or**
+  magic bytes) and rejects non-images with a clear message — no more broken artwork from a bad URL.
+  Extension is chosen from the URL, then magic bytes, then Content-Type.
+
+**Tests** (`tests/test_artwork_importer.py`) — `image_url` page-URL exclusion + `thumb_url` fallback,
+`pick_ext` (url/magic/content-type), and the `is_image` guard (rejects HTML). Suite green (12 hub tests).
+
+---
+
 ## [2.35.0] - 2026-06-28 - Submissions hub (Phase 3): gallery import
 
 **Why:** Phase 2 surfaced discovered submissions and let you *link* them to existing works. Phase 3

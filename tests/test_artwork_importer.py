@@ -1,9 +1,11 @@
 """Unit tests for the generic artwork importer's pure helpers
 (posting.artwork_importer). The full import_artwork() path needs DB + network +
-filesystem, so it's exercised live, not here; these cover the mapping logic that
-makes one importer work across platforms.
+filesystem, so it's exercised live, not here; these cover the mapping + guard
+logic that makes one importer work safely across platforms.
 """
-from posting.artwork_importer import norm_rating, image_url, ext_from_url, parse_tags
+from posting.artwork_importer import (
+    norm_rating, image_url, pick_ext, is_image, parse_tags,
+)
 
 
 def test_norm_rating_maps_per_platform_terms():
@@ -16,17 +18,29 @@ def test_norm_rating_maps_per_platform_terms():
     assert norm_rating(None) == ""
 
 
-def test_image_url_prefers_full_res():
+def test_image_url_prefers_full_res_and_ignores_page_url():
     assert image_url({"download_url": "full", "thumbnail_url": "t"}) == "full"  # FA
     assert image_url({"media_url": "full", "thumbnail_url": "t"}) == "full"     # Weasyl
-    assert image_url({"thumbnail_url": "t"}) == "t"                            # SF fallback
+    assert image_url({"thumbnail_url": "t"}) == "t"                            # SF / DA / IK
+    assert image_url({"thumb_url": "tb"}) == "tb"                              # Inkbunny thumbnail
+    # A generic page `url` (Inkbunny stores the submission page here) is NOT an image source.
+    assert image_url({"url": "https://inkbunny.net/s/123"}) == ""
     assert image_url({}) == ""
 
 
-def test_ext_from_url():
-    assert ext_from_url("https://d.fa.net/art/x/file.jpg") == ".jpg"
-    assert ext_from_url("https://x/y/FILE.PNG?token=1") == ".png"
-    assert ext_from_url("https://x/y/noextension") == ".png"  # default
+def test_pick_ext_from_url_magic_then_content_type():
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
+    assert pick_ext("https://x/y/file.jpg", "", b"") == ".jpg"        # from URL
+    assert pick_ext("https://x/y/noext", "image/png", b"") == ".png"  # from Content-Type
+    assert pick_ext("https://x/y/noext", "", png) == ".png"          # from magic bytes
+    assert pick_ext("https://x/y/noext", "", b"") == ".png"          # default
+
+
+def test_is_image_guard_rejects_html():
+    assert is_image("image/jpeg", b"")                       # by header
+    assert is_image("", b"\xff\xd8\xff\xe0\x00\x10JFIF")     # by JPEG magic bytes
+    assert not is_image("text/html", b"<!DOCTYPE html><html>")  # HTML rejected
+    assert not is_image("", b"not an image at all")
 
 
 def test_parse_tags_handles_json_list_csv_and_empty():

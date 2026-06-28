@@ -44,17 +44,45 @@ def norm_rating(val) -> str:
 
 
 def image_url(row: dict) -> str:
-    """Best available image URL: full-res where stored, else the thumbnail."""
+    """Best available image URL: full-res where stored, else the thumbnail.
+
+    Deliberately does NOT fall back to a generic ``url`` column — on some
+    platforms (Inkbunny) that holds the submission *page* URL, not an image, so
+    using it would download HTML. ``thumb_url`` (Inkbunny's thumbnail) is safe.
+    """
     return (row.get("download_url") or row.get("media_url") or row.get("file_url")
-            or row.get("url") or row.get("thumbnail_url") or "")
+            or row.get("thumbnail_url") or row.get("thumb_url") or "")
 
 
-def ext_from_url(url: str) -> str:
+# Magic-byte signatures so we can reject non-images even when a server lies about
+# (or omits) the Content-Type header.
+_MAGIC = [(b"\x89PNG\r\n\x1a\n", ".png"), (b"\xff\xd8\xff", ".jpg"), (b"GIF87a", ".gif"),
+          (b"GIF89a", ".gif")]
+_CT_EXT = {"image/jpeg": ".jpg", "image/jpg": ".jpg", "image/png": ".png",
+           "image/gif": ".gif", "image/webp": ".webp"}
+
+
+def magic_ext(data: bytes) -> str:
+    for sig, ext in _MAGIC:
+        if data[:len(sig)] == sig:
+            return ext
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    return ""
+
+
+def is_image(content_type: str, data: bytes) -> bool:
+    """True if the payload looks like an image (by header OR magic bytes)."""
+    return (content_type or "").lower().startswith("image/") or bool(magic_ext(data))
+
+
+def pick_ext(url: str, content_type: str, data: bytes) -> str:
+    """Choose a file extension from the URL, then magic bytes, then Content-Type."""
     path = urlparse(url).path.lower()
     for e in IMAGE_EXTS:
         if path.endswith(e):
             return e
-    return ".png"
+    return magic_ext(data) or _CT_EXT.get((content_type or "").lower(), ".png")
 
 
 def parse_tags(raw) -> list[str]:
@@ -117,6 +145,15 @@ def import_artwork(platform: str, submission_id: str) -> dict:
         resp = client.get(url)
         resp.raise_for_status()
         image_bytes = resp.content
+        content_type = resp.headers.get("content-type", "").split(";")[0].strip()
+
+    # Guard: only create an artwork from an actual image. Some platforms store a
+    # page URL instead of a file (Inkbunny), which would otherwise download HTML.
+    if not is_image(content_type, image_bytes):
+        raise ValueError(
+            f"Stored URL did not return an image (content-type: {content_type or 'unknown'}). "
+            f"{platform.upper()} may not expose a direct image URL — full import for it is pending."
+        )
 
     title = d.get(cfg["title_col"]) or f"{platform}_{submission_id}"
     tags = parse_tags(d.get("keywords"))
@@ -125,7 +162,7 @@ def import_artwork(platform: str, submission_id: str) -> dict:
 
     name = artwork_reader.create_artwork(
         title=title,
-        image_filename=f"image{ext_from_url(url)}",
+        image_filename=f"image{pick_ext(url, content_type, image_bytes)}",
         image_bytes=image_bytes,
         description=d.get("description", "") or "",
         rating=rating,
