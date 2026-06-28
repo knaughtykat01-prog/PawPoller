@@ -30,6 +30,7 @@ from routes.bsky_api import bsky_router
 from routes.tw_api import tw_router
 from routes.posting_api import posting_router
 from routes.artwork_api import artwork_router
+from routes.submissions_api import works_router
 from routes.editor_api import editor_router
 from routes.dashboard_auth import dashboard_auth_router
 from routes.settings_api import settings_router, accounts_router, personas_router
@@ -308,6 +309,7 @@ app.include_router(bsky_router)  # Bluesky routes (/api/bsky/*)
 app.include_router(tw_router)    # X/Twitter routes (/api/tw/*)
 app.include_router(posting_router)  # Posting module routes (/api/posting/*)
 app.include_router(artwork_router)  # Artwork hub routes (/api/artwork/*)
+app.include_router(works_router)    # Unified Submissions hub (/api/works)
 app.include_router(editor_router)   # Story editor routes (/api/editor/*)
 app.include_router(settings_router)  # Settings sync routes (/api/settings/*)
 app.include_router(accounts_router)  # Multi-account registry routes (/api/accounts/*)

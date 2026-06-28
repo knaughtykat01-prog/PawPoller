@@ -4,6 +4,37 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.33.0] - 2026-06-28 - Submissions hub (Phase 1): unified per-work library
+
+**Why:** Stories and Artwork lived in separate tabs with no single "everything I've posted" view.
+This adds a central **Submissions** hub that lists every work (story *or* artwork) **grouped per
+work**, with `All / Stories / Artwork` subtabs and a persona filter, and opens the existing per-work
+detail on click. Phase 1 of `docs/specs/submissions-hub.md` — a read-only aggregation over data the
+app already has (the local archives + the publications registry); the discovered-unlinked bucket and
+gallery import are later phases.
+
+**Backend** (`routes/submissions_api.py` NEW, `dashboard.py`)
+- `GET /api/works` lists works merged from the story + artwork archives, each enriched from the
+  publications registry with its **posted** platforms, publication count, and persona(s) (resolved
+  `account_id → persona`). Filters: `type` (all/story/artwork), `persona`, `search`, `sort`
+  (recent/title/platforms). Named `/api/works` because `/api/submissions` is the analytics
+  discovered-submissions endpoint. The grouping/filter/sort logic is a pure, unit-testable
+  `assemble_works()` helper; the route just fetches data and delegates.
+
+**Frontend** (`frontend/js/submissions.js` NEW, `frontend/index.html`, `frontend/js/app.js`,
+`frontend/js/api.js`)
+- New **Submissions** sidebar item (central hub, above Stories/Artwork) + route `#/submissions`.
+- The hub renders a card grid (reusing the `.story-card` styling) with a segmented
+  `All/Stories/Artwork` filter, a persona dropdown (shown only with >1 persona), search, and sort;
+  filtering is client-side over one fetched list. Cards link to the existing story/artwork detail.
+- `API.getWorks()` added.
+
+**Tests** (`tests/test_works.py` NEW)
+- Cover per-work grouping, posted-only platform aggregation, persona resolution, the
+  type/persona/search filters, and thumbnail/detail-route building.
+
+---
+
 ## [2.32.0] - 2026-06-28 - Brand identity: quill-tail logo + nib-badge app icon
 
 **Why:** PawPoller had no real logo — the dashboard used a 🐾 emoji plus a ◆ glyph, the desktop app a

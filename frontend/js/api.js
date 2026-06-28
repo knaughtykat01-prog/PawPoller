@@ -514,6 +514,9 @@ const API = {
     getPostingChanges() { return this.get('/api/posting/changes'); },
     claimSubmissions(data = {}) { return this.post('/api/posting/claim', data); },
 
+    /* ── Submissions hub (unified works library) ──────────────── */
+    getWorks(params = {}) { return this.get('/api/works', params); },
+
     /* ── Artwork Hub ──────────────────────────────────────────── */
     getArtworks() { return this.get('/api/artwork/images'); },
     getArtwork(name) { return this.get(`/api/artwork/images/${encodeURIComponent(name)}`); },

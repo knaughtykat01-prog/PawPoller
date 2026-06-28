@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-28
-**Current version:** 2.32.0 — **Brand identity** (quill-tail logo + nib-badge app icon).
+**Current version:** 2.33.0 — **Submissions hub, Phase 1** (unified per-work library).
+**Built + verified locally; pending release/deploy.** New `/api/works` endpoint
+(`routes/submissions_api.py` → `assemble_works`) and a central **Submissions** tab
+(`frontend/js/submissions.js`, route `#/submissions`, sidebar item above Stories/Artwork) showing
+stories + artwork **grouped per work**, with `All/Stories/Artwork` subtabs + a persona filter — a
+read-only aggregation over existing archive + publications data; cards link to the existing per-work
+detail. `tests/test_works.py` green (5 tests). Spec: `docs/specs/submissions-hub.md`. The
+discovered-unlinked bucket + gallery import are later phases.
+
+**Prior release — 2.32.0 — Brand identity** (quill-tail logo + nib-badge app icon):
 **Released + deployed** 2026-06-28 (commit `e6c1d31`, tag `v2.32.0`; CI published all three desktop
 assets — `PawPoller-Setup-2.32.0.exe`, `PawPoller-windows-x64.zip`, `PawPoller-2.32.0-x86_64.AppImage`;
 GCP VM `/api/health` reports `2.32.0`, clean boot; suite green, 175 passed / 1 skipped). New brand mark

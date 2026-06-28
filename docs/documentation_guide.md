@@ -4088,6 +4088,12 @@ Files:
   libs + brand assets load without auth (parity with the rest of the SPA assets)
 - `@app.get("/favicon.ico")` (2.32.0) serves the nib-badge `.ico` for the bare
   browser request (path is also in `_AUTH_EXEMPT_PATHS`)
+- `app.include_router(works_router)` (2.33.0) — the unified **Submissions hub** at
+  `/api/works` (`routes/submissions_api.py`): a per-work list merging the story +
+  artwork archives with the publications registry (posted platforms + persona),
+  built by the pure, unit-tested `assemble_works()` helper. Frontend:
+  `frontend/js/submissions.js`, route `#/submissions`, sidebar item above
+  Stories/Artwork. Phase 1 of `docs/specs/submissions-hub.md`.
 - `@app.get("/epub-viewer.html")` route reads the file and substitutes
   `__APP_VERSION__` for cache busting on `tokens.css` + the viewer JS
 - Path-scoped `_build_epub_viewer_csp()` relaxation (see Security
