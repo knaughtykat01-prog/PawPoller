@@ -1,14 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-28
-**Current version:** 2.33.0 — **Submissions hub, Phase 1** (unified per-work library).
-**Built + verified locally; pending release/deploy.** New `/api/works` endpoint
-(`routes/submissions_api.py` → `assemble_works`) and a central **Submissions** tab
-(`frontend/js/submissions.js`, route `#/submissions`, sidebar item above Stories/Artwork) showing
-stories + artwork **grouped per work**, with `All/Stories/Artwork` subtabs + a persona filter — a
-read-only aggregation over existing archive + publications data; cards link to the existing per-work
-detail. `tests/test_works.py` green (5 tests). Spec: `docs/specs/submissions-hub.md`. The
-discovered-unlinked bucket + gallery import are later phases.
+**Current version:** 2.34.0 — **Submissions hub, Phase 2** (discovered bucket + link-to-work).
+**Released + deployed** 2026-06-28 (tag `v2.34.0`). New `/api/works/discovered` (poller-found
+submissions with no publication link, normalized across platforms via `build_discovered`) and
+`/api/works/link` (links a discovered submission to an existing work through `upsert_publication`); a
+**Discovered** view in the Submissions hub with a per-row work-picker (`frontend/js/submissions.js`,
+route `#/submissions/discovered`). `tests/test_works.py` green (7 tests). Verified on the VM: **16
+real discovered submissions** found against 62 linked publications; link persists end-to-end. Spec:
+`docs/specs/submissions-hub.md`. Gallery import = Phase 3 (in progress).
+
+**Prior release — 2.33.0 — Submissions hub, Phase 1** (unified per-work library):
+**Released + deployed** 2026-06-28 (commit `1787d7e`, tag `v2.33.0`; CI published desktop assets; VM
+verified — 16 works, 2 personas). `/api/works` + central **Submissions** tab; per-work grouping,
+`All/Stories/Artwork` subtabs, persona filter; cards open the existing per-work detail.
 
 **Prior release — 2.32.0 — Brand identity** (quill-tail logo + nib-badge app icon):
 **Released + deployed** 2026-06-28 (commit `e6c1d31`, tag `v2.32.0`; CI published all three desktop

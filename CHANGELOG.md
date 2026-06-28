@@ -4,6 +4,36 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.34.0] - 2026-06-28 - Submissions hub (Phase 2): discovered bucket + link-to-work
+
+**Why:** The pollers already discover every submission on your platforms for analytics, but anything
+posted *outside* PawPoller (or that auto-claim couldn't name-match) was invisible in the work views.
+Phase 2 surfaces those as a **Discovered** bucket and lets you **link** one to an existing work, so it
+folds into the per-work hub. Phase 2 of `docs/specs/submissions-hub.md`.
+
+**Backend** (`routes/submissions_api.py`)
+- `GET /api/works/discovered` — submissions across the per-platform tables (reusing
+  `posting.sync.PLATFORM_TABLES`) that have **no matching publication** (`external_id` not in
+  `publications`), normalized to one shape (platform, id, title, thumbnail, type, url, stats,
+  posted_at). The dedup/normalize logic is the pure, unit-tested `build_discovered()`.
+- `POST /api/works/link` — links a discovered submission to an existing work by writing a publication
+  (`upsert_publication`, `external_id` = the platform submission id, `status='posted'`), so the work
+  shows that platform in the hub and the submission leaves the discovered bucket.
+
+**Frontend** (`frontend/js/submissions.js`, `frontend/js/app.js`, `frontend/js/api.js`)
+- A **Discovered** link in the Submissions hub header → `#/submissions/discovered`: a list of unlinked
+  submissions, each with a thumbnail, platform, type, a "view" link, and a **work-picker dropdown +
+  Link** button. Linking removes the row and (via the publication) attaches it to the chosen work.
+- `API.getDiscovered()` + `API.linkSubmission()`.
+
+**Tests** (`tests/test_works.py`) — `build_discovered` coverage: linked-exclusion, type/thumbnail/url
+normalization, newest-first sort, blank-id skip. Suite green.
+
+**Verified on the VM:** 16 real discovered submissions found against 62 linked publications; the link
+action persists end-to-end. Gallery *import* (downloading the image + metadata) is Phase 3.
+
+---
+
 ## [2.33.0] - 2026-06-28 - Submissions hub (Phase 1): unified per-work library
 
 **Why:** Stories and Artwork lived in separate tabs with no single "everything I've posted" view.

@@ -33,13 +33,20 @@ window.Submissions = {
         'padding:.45rem .65rem;border-radius:8px;border:1px solid var(--card-border-inner);' +
         'background:var(--bg-elev,transparent);color:inherit;font:inherit;',
 
+    _toast(kind, msg) {
+        if (window.toast && window.toast[kind]) window.toast[kind](msg);
+    },
+
     async render() {
         const app = document.getElementById('app');
         app.innerHTML = `
-            <div class="page-header">
-                <h1>Submissions</h1>
-                <p class="muted">Everything you've made — stories and artwork — in one place.
-                Filter by type or persona, then open any work for its full per-platform detail.</p>
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+                <div>
+                    <h1>Submissions</h1>
+                    <p class="muted">Everything you've made — stories and artwork — in one place.
+                    Filter by type or persona, then open any work for its full per-platform detail.</p>
+                </div>
+                <a class="btn" href="#/submissions/discovered" style="flex-shrink:0;">Discovered &rarr;</a>
             </div>
             <div id="subs-controls"></div>
             <div id="subs-grid"><div class="loading-spinner">Loading…</div></div>`;
@@ -151,5 +158,95 @@ window.Submissions = {
                     ${persona}
                 </div>
             </a>`;
+    },
+
+    /* ── Discovered (unlinked) bucket + link-to-work (Phase 2) ──── */
+
+    async renderDiscovered() {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+                <div>
+                    <h1>Discovered submissions</h1>
+                    <p class="muted">Posts the pollers found on your platforms that aren't linked to a
+                    local work yet. Link one to an existing work to fold it into the hub.</p>
+                </div>
+                <a class="btn" href="#/submissions" style="flex-shrink:0;">&larr; Submissions</a>
+            </div>
+            <div id="disc-list"><div class="loading-spinner">Loading…</div></div>`;
+
+        let disc, works;
+        try {
+            [disc, works] = await Promise.all([API.getDiscovered(), API.getWorks()]);
+        } catch (err) {
+            document.getElementById('disc-list').innerHTML =
+                `<div class="card error">Failed to load: ${this.esc(err.message)}</div>`;
+            return;
+        }
+        this._discItems = (disc && disc.discovered) || [];
+        this._workOptions = ((works && works.works) || []).map(w => ({
+            value: `${w.content_type}:${w.name}`,
+            label: `[${w.content_type}] ${w.title}`,
+        }));
+        this._paintDiscovered();
+    },
+
+    _paintDiscovered() {
+        const el = document.getElementById('disc-list');
+        if (!el) return;
+        if (!this._discItems.length) {
+            el.innerHTML = `<div class="empty-state"><h3>Nothing unlinked</h3>
+                <p class="muted">Every discovered submission is already linked to a work.</p></div>`;
+            return;
+        }
+        el.innerHTML = this._discItems.map((d, i) => this._discRow(d, i)).join('');
+        this._discItems.forEach((_d, i) => {
+            const btn = document.getElementById(`disc-link-btn-${i}`);
+            if (btn) btn.addEventListener('click', () => this._linkOne(i));
+        });
+    },
+
+    _discRow(d, i) {
+        const thumb = d.thumbnail_url
+            ? `<img src="${this.esc(d.thumbnail_url)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0;">`
+            : `<div style="width:56px;height:56px;border-radius:8px;background:var(--bg-elev);flex-shrink:0;"></div>`;
+        const plat = this._plat(d.platform);
+        const opts = this._workOptions.map(o =>
+            `<option value="${this.esc(o.value)}">${this.esc(o.label)}</option>`).join('');
+        return `
+            <div class="card" style="display:flex;gap:1rem;align-items:center;padding:.85rem 1rem;margin-bottom:.6rem;flex-wrap:wrap;">
+                ${thumb}
+                <div style="flex:1;min-width:160px;">
+                    <div style="font-weight:600;">${this.esc(d.title)}</div>
+                    <div class="muted" style="font-size:.8rem;">
+                        <span title="${this.esc(plat.label)}">${plat.emoji || ''} ${this.esc(plat.label)}</span>${d.type ? ` &middot; ${this.esc(d.type)}` : ''}
+                        &middot; <a href="${this.esc(d.url)}" target="_blank" rel="noopener">view &#8599;</a>
+                    </div>
+                </div>
+                <select id="disc-sel-${i}" style="${this._inputStyle}max-width:240px;">
+                    <option value="">Link to work…</option>
+                    ${opts}
+                </select>
+                <button class="btn btn-primary" id="disc-link-btn-${i}">Link</button>
+            </div>`;
+    },
+
+    async _linkOne(i) {
+        const sel = document.getElementById(`disc-sel-${i}`);
+        if (!sel || !sel.value) { this._toast('error', 'Pick a work to link to first'); return; }
+        const d = this._discItems[i];
+        const [content_type, ...rest] = sel.value.split(':');
+        const name = rest.join(':');
+        try {
+            await API.linkSubmission({
+                platform: d.platform, submission_id: d.submission_id,
+                content_type, name, title: d.title, url: d.url,
+            });
+            this._toast('success', `Linked to ${name}`);
+            this._discItems.splice(i, 1);
+            this._paintDiscovered();
+        } catch (err) {
+            this._toast('error', `Link failed: ${err.message}`);
+        }
     },
 };

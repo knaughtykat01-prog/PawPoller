@@ -4094,6 +4094,11 @@ Files:
   built by the pure, unit-tested `assemble_works()` helper. Frontend:
   `frontend/js/submissions.js`, route `#/submissions`, sidebar item above
   Stories/Artwork. Phase 1 of `docs/specs/submissions-hub.md`.
+  - Phase 2 (2.34.0) adds `GET /api/works/discovered` (poller-found submissions
+    with no publication link, normalized via `build_discovered` over
+    `posting.sync.PLATFORM_TABLES`) and `POST /api/works/link` (links one to a
+    work via `upsert_publication`). Frontend: the **Discovered** view at
+    `#/submissions/discovered` with a per-row work-picker.
 - `@app.get("/epub-viewer.html")` route reads the file and substitutes
   `__APP_VERSION__` for cache busting on `tokens.css` + the viewer JS
 - Path-scoped `_build_epub_viewer_csp()` relaxation (see Security

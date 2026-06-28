@@ -1,6 +1,6 @@
 # Spec: Unified Submissions Hub (works library + gallery import)
 
-**Status:** Phase 1 built (2.33.0, pending release); Phases 2–4 proposed
+**Status:** Phases 1–2 shipped (2.33.0, 2.34.0); Phases 3–4 proposed
 **Created:** 2026-06-28
 **Targets:** post-2.32.0
 

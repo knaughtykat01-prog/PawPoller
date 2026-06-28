@@ -769,6 +769,8 @@ const App = {
             if (window.Artwork) window.Artwork.renderDetail(parts.slice(2).join('/'));
         } else if (parts[0] === 'artwork' && parts[1] === 'log') {
             if (window.Artwork) window.Artwork.renderLog();
+        } else if (parts[0] === 'submissions' && parts[1] === 'discovered') {
+            if (window.Submissions) window.Submissions.renderDiscovered();
         } else if (parts[0] === 'submissions') {
             if (window.Submissions) window.Submissions.render();
         } else {

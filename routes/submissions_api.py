@@ -169,3 +169,111 @@ def list_works(
     except Exception as e:
         logger.error("Error listing works: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
+
+
+# ── Discovered (unlinked) bucket + link-to-work (Phase 2) ─────────────────────
+
+def build_discovered(platform_rows: list[tuple], linked: set) -> list[dict]:
+    """Normalize per-platform submission rows into the discovered-unlinked list.
+
+    Pure (unit-testable): given a list of ``(platform, cfg, [row_dict, ...])`` and
+    the set of already-linked ``(platform, submission_id)`` pairs, return the
+    submissions that have NO matching publication, normalized to one shape.
+    """
+    out: list[dict] = []
+    for platform, cfg, rows in platform_rows:
+        id_col, title_col = cfg["id_col"], cfg["title_col"]
+        for d in rows:
+            sid = str(d.get(id_col) or "")
+            if not sid or (platform, sid) in linked:
+                continue
+            stype = (d.get("category") or d.get("content_type") or d.get("subtype")
+                     or d.get("type_name") or "")
+            out.append({
+                "platform": platform,
+                "submission_id": sid,
+                "title": d.get(title_col) or f"#{sid}",
+                "thumbnail_url": d.get("thumbnail_url") or d.get("thumb_url") or "",
+                "type": stype,
+                "url": cfg["url_template"].format(id=sid),
+                "views": d.get("views"),
+                "favorites": d.get("favorites_count") or d.get("favorites"),
+                "comments": d.get("comments_count") or d.get("comments"),
+                "posted_at": (d.get("posted_at") or d.get("create_datetime")
+                              or d.get("created_at") or ""),
+            })
+    out.sort(key=lambda x: x.get("posted_at") or "", reverse=True)
+    return out
+
+
+def get_discovered_unlinked(conn, platform_filter: str | None = None) -> list[dict]:
+    """Discovered submissions (across platforms) with no publication link."""
+    from posting.sync import PLATFORM_TABLES
+    linked = {
+        (r["platform"], str(r["external_id"]))
+        for r in conn.execute(
+            "SELECT platform, external_id FROM publications WHERE external_id != ''")
+    }
+    platform_rows: list[tuple] = []
+    for plat, cfg in PLATFORM_TABLES.items():
+        if platform_filter and plat != platform_filter:
+            continue
+        try:
+            rows = [dict(r) for r in conn.execute(f"SELECT * FROM {cfg['table']}").fetchall()]
+        except Exception:
+            continue  # table may not exist on this install
+        platform_rows.append((plat, cfg, rows))
+    return build_discovered(platform_rows, linked)
+
+
+@works_router.get("/works/discovered")
+def list_discovered(platform: str | None = Query(None)):
+    """Submissions the pollers found that aren't linked to any local work."""
+    try:
+        conn = get_connection()
+        try:
+            items = get_discovered_unlinked(conn, platform_filter=platform)
+        finally:
+            conn.close()
+        return {"discovered": items}
+    except Exception as e:
+        logger.error("Error listing discovered submissions: %s", e, exc_info=True)
+        raise HTTPException(500, detail=str(e))
+
+
+@works_router.post("/works/link")
+def link_submission(body: dict):
+    """Link a discovered platform submission to an existing local work.
+
+    Writes a publication row (`external_id` = the platform submission id) so the
+    work shows that platform in the hub and the submission leaves the discovered
+    bucket. ``content_type`` should be the target work's type (story | artwork).
+    """
+    platform = body.get("platform")
+    submission_id = str(body.get("submission_id") or "")
+    name = body.get("name")
+    content_type = body.get("content_type", "story")
+    title = body.get("title", "")
+    url = body.get("url", "")
+    if not (platform and submission_id and name):
+        raise HTTPException(400, detail="platform, submission_id and name are required")
+    try:
+        conn = get_connection()
+        try:
+            pub_id = posting_queries.upsert_publication(
+                conn,
+                story_name=name,
+                chapter_index=0,
+                platform=platform,
+                content_type=content_type,
+                external_id=submission_id,
+                external_url=url,
+                title_used=title,
+                status="posted",
+            )
+        finally:
+            conn.close()
+        return {"status": "linked", "pub_id": pub_id}
+    except Exception as e:
+        logger.error("Link failed: %s", e, exc_info=True)
+        raise HTTPException(500, detail=str(e))

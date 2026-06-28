@@ -4,7 +4,7 @@
 posted platforms and persona(s). It's a pure function over already-fetched
 data, so these tests pass fixtures directly — no DB or on-disk archives.
 """
-from routes.submissions_api import assemble_works
+from routes.submissions_api import assemble_works, build_discovered
 
 PUBS = [
     # My_Story: posted to ib + sf (account 1); one queued (not posted) on fa.
@@ -70,3 +70,39 @@ def test_thumb_and_detail_routes():
     assert works["My_Story"]["detail_route"] == "#/posting/story/My_Story"
     assert works["My_Art"]["thumb_url"].startswith("/api/artwork/image?name=My_Art")
     assert works["My_Art"]["detail_route"] == "#/artwork/image/My_Art"
+
+
+# ── Phase 2: discovered (unlinked) bucket ──────────────────────────
+
+CFG_FA = {"id_col": "submission_id", "title_col": "title",
+          "url_template": "https://www.furaffinity.net/view/{id}/"}
+CFG_SF = {"id_col": "submission_id", "title_col": "title",
+          "url_template": "https://sofurry.com/s/{id}"}
+
+
+def test_discovered_excludes_linked_and_normalizes():
+    rows_fa = [
+        {"submission_id": 111, "title": "Linked Art", "category": "Artwork (Digital)",
+         "thumbnail_url": "http://t/1.jpg", "posted_at": "2026-02-02"},
+        {"submission_id": 222, "title": "Unlinked Art", "category": "Artwork (Digital)",
+         "thumbnail_url": "http://t/2.jpg", "posted_at": "2026-03-03"},
+    ]
+    rows_sf = [
+        {"submission_id": 333, "title": "Unlinked Story", "content_type": "Writing",
+         "posted_at": "2026-01-01"},
+    ]
+    linked = {("fa", "111")}  # 111 already has a publication
+    out = build_discovered([("fa", CFG_FA, rows_fa), ("sf", CFG_SF, rows_sf)], linked)
+
+    assert {(d["platform"], d["submission_id"]) for d in out} == {("fa", "222"), ("sf", "333")}
+    by = {d["submission_id"]: d for d in out}
+    assert by["222"]["type"] == "Artwork (Digital)"          # type from `category`
+    assert by["222"]["thumbnail_url"] == "http://t/2.jpg"
+    assert by["222"]["url"] == "https://www.furaffinity.net/view/222/"
+    assert by["333"]["type"] == "Writing"                    # type from `content_type`
+    assert [d["submission_id"] for d in out] == ["222", "333"]  # newest posted_at first
+
+
+def test_discovered_skips_blank_ids():
+    rows = [{"submission_id": "", "title": "x"}, {"submission_id": None, "title": "y"}]
+    assert build_discovered([("fa", CFG_FA, rows)], set()) == []
