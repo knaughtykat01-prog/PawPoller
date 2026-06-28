@@ -518,6 +518,9 @@ const API = {
     getWorks(params = {}) { return this.get('/api/works', params); },
     getDiscovered(params = {}) { return this.get('/api/works/discovered', params); },
     linkSubmission(body) { return this.post('/api/works/link', body); },
+    importArtwork(platform, submissionId) {
+        return this.post(`/api/artwork/import/${platform}/${encodeURIComponent(submissionId)}`);
+    },
 
     /* ── Artwork Hub ──────────────────────────────────────────── */
     getArtworks() { return this.get('/api/artwork/images'); },

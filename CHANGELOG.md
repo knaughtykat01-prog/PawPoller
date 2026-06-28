@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.35.0] - 2026-06-28 - Submissions hub (Phase 3): gallery import
+
+**Why:** Phase 2 surfaced discovered submissions and let you *link* them to existing works. Phase 3
+lets you **import** one as a new local artwork — pulling the image + metadata into the archive — for
+posts you don't already have locally. Phase 3 of `docs/specs/submissions-hub.md`.
+
+**Backend** (`posting/artwork_importer.py` NEW, `routes/artwork_api.py`, `posting/artwork_reader.py`)
+- A **generic** importer rather than per-platform API clients: it reuses the metadata the pollers
+  already stored in the per-platform submission tables (title / description / keywords→tags / rating +
+  image URL), downloads the image (full-res where the platform records one — FA `download_url`,
+  Weasyl `media_url`; thumbnail fallback for SF/IB), calls `create_artwork`, and **links it**
+  (`upsert_publication`) so it folds into the hub and leaves the discovered bucket.
+- Dedup via an `import_source` block in `artwork.json` (`create_artwork` gained a `source` param;
+  `find_existing` skips already-imported submissions).
+- `POST /api/artwork/import/{platform}/{submission_id}`.
+
+**Frontend** (`frontend/js/submissions.js`, `frontend/js/api.js`)
+- An **Import** button on each discovered row (next to Link). On success the row is removed and the
+  submission becomes a managed artwork. `API.importArtwork()`.
+
+**Tests** (`tests/test_artwork_importer.py`) — rating mapping, image-URL fallback chain, extension
+detection, and tag parsing (JSON list / CSV / empty). Suite green (11 hub tests).
+
+**Caveats:** FA's full-res CDN may refuse datacenter IPs — run FA imports from the desktop
+(residential IP), like AO3 imports. SF/IB import the stored thumbnail (no full-res column).
+Bulk "import whole gallery" + DeviantArt/Itaku are Phase 4.
+
+---
+
 ## [2.34.0] - 2026-06-28 - Submissions hub (Phase 2): discovered bucket + link-to-work
 
 **Why:** The pollers already discover every submission on your platforms for analytics, but anything

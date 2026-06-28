@@ -4099,6 +4099,11 @@ Files:
     `posting.sync.PLATFORM_TABLES`) and `POST /api/works/link` (links one to a
     work via `upsert_publication`). Frontend: the **Discovered** view at
     `#/submissions/discovered` with a per-row work-picker.
+  - Phase 3 (2.35.0) adds `POST /api/artwork/import/{platform}/{submission_id}`
+    (`posting/artwork_importer.py`): a generic importer that reuses the pollers'
+    stored submission metadata + image URL → `create_artwork(source=…)` + links
+    it. Frontend: an **Import** button on discovered rows. FA full-res needs a
+    residential IP (desktop).
 - `@app.get("/epub-viewer.html")` route reads the file and substitutes
   `__APP_VERSION__` for cache busting on `tokens.css` + the viewer JS
 - Path-scoped `_build_epub_viewer_csp()` relaxation (see Security

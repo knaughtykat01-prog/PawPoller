@@ -1,14 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-28
-**Current version:** 2.34.0 — **Submissions hub, Phase 2** (discovered bucket + link-to-work).
-**Released + deployed** 2026-06-28 (tag `v2.34.0`). New `/api/works/discovered` (poller-found
-submissions with no publication link, normalized across platforms via `build_discovered`) and
-`/api/works/link` (links a discovered submission to an existing work through `upsert_publication`); a
-**Discovered** view in the Submissions hub with a per-row work-picker (`frontend/js/submissions.js`,
-route `#/submissions/discovered`). `tests/test_works.py` green (7 tests). Verified on the VM: **16
-real discovered submissions** found against 62 linked publications; link persists end-to-end. Spec:
-`docs/specs/submissions-hub.md`. Gallery import = Phase 3 (in progress).
+**Current version:** 2.35.0 — **Submissions hub, Phase 3** (gallery import).
+**Released + deployed** 2026-06-28 (tag `v2.35.0`). `POST /api/artwork/import/{platform}/{submission_id}`
+imports a discovered submission as a local artwork **and links it** — a *generic* importer
+(`posting/artwork_importer.py`) that reuses the metadata the pollers already stored
+(title/description/keywords/rating + image URL), downloads the image (full-res where stored: FA
+`download_url`, Weasyl `media_url`; thumbnail fallback for SF/IB), `create_artwork(source=…)` + dedup
+via `import_source`. **Import** button added to each discovered row. `tests/test_artwork_importer.py`
+(11 tests total). Caveat: FA full-res CDN may block datacenter IPs → run FA imports from desktop.
+Spec: `docs/specs/submissions-hub.md`. Remaining: Phase 4 (bulk import + DeviantArt/Itaku).
+
+**Prior release — 2.34.0 — Submissions hub, Phase 2** (discovered bucket + link-to-work):
+**Released + deployed** 2026-06-28 (commit `e6afbaf`, tag `v2.34.0`; VM verified — 16 discovered
+submissions). `/api/works/discovered` + `/api/works/link`; Discovered view with per-row work-picker.
 
 **Prior release — 2.33.0 — Submissions hub, Phase 1** (unified per-work library):
 **Released + deployed** 2026-06-28 (commit `1787d7e`, tag `v2.33.0`; CI published desktop assets; VM

@@ -238,6 +238,24 @@ def update_artwork(name: str, body: dict):
     return {"status": "saved", "name": name}
 
 
+# ── Import (gallery → local artwork; Phase 3) ─────────────────
+
+@artwork_router.post("/import/{platform}/{submission_id}")
+def import_artwork_from_platform(platform: str, submission_id: str):
+    """Import a discovered platform submission as a local artwork and link it.
+
+    Reuses the metadata the pollers already stored (title/description/keywords/
+    rating + image URL), downloads the image, creates the artwork, and writes a
+    publication so it folds into the Submissions hub.
+    """
+    from posting import artwork_importer
+    try:
+        return artwork_importer.import_artwork(platform, submission_id)
+    except Exception as e:
+        logger.error("Artwork import failed for %s/%s: %s", platform, submission_id, e)
+        raise HTTPException(400, detail=str(e))
+
+
 # ── Publish ───────────────────────────────────────────────────
 
 @artwork_router.post("/publish")

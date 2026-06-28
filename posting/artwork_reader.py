@@ -273,6 +273,7 @@ def create_artwork(
     platforms: list[str] | None = None,
     thumbnail_filename: str | None = None,
     thumbnail_bytes: bytes | None = None,
+    source: dict | None = None,
 ) -> str:
     """Create a new artwork folder (image + artwork.json). Returns its name.
 
@@ -305,6 +306,7 @@ def create_artwork(
         "descriptions": descriptions or {},
         "categories": categories or {},
         "platforms": platforms or [],
+        "import_source": source or {},
         "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
     }
     (folder / "artwork.json").write_text(

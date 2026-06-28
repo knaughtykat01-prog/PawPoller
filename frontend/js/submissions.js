@@ -201,9 +201,27 @@ window.Submissions = {
         }
         el.innerHTML = this._discItems.map((d, i) => this._discRow(d, i)).join('');
         this._discItems.forEach((_d, i) => {
-            const btn = document.getElementById(`disc-link-btn-${i}`);
-            if (btn) btn.addEventListener('click', () => this._linkOne(i));
+            const lbtn = document.getElementById(`disc-link-btn-${i}`);
+            if (lbtn) lbtn.addEventListener('click', () => this._linkOne(i));
+            const ibtn = document.getElementById(`disc-import-btn-${i}`);
+            if (ibtn) ibtn.addEventListener('click', () => this._importOne(i));
         });
+    },
+
+    async _importOne(i) {
+        const d = this._discItems[i];
+        const btn = document.getElementById(`disc-import-btn-${i}`);
+        if (btn) { btn.disabled = true; btn.textContent = 'Importing…'; }
+        try {
+            const res = await API.importArtwork(d.platform, d.submission_id);
+            this._toast('success', res.status === 'already_imported'
+                ? `Already imported as ${res.name}` : `Imported as ${res.name}`);
+            this._discItems.splice(i, 1);
+            this._paintDiscovered();
+        } catch (err) {
+            this._toast('error', `Import failed: ${err.message}`);
+            if (btn) { btn.disabled = false; btn.textContent = 'Import'; }
+        }
     },
 
     _discRow(d, i) {
@@ -223,11 +241,12 @@ window.Submissions = {
                         &middot; <a href="${this.esc(d.url)}" target="_blank" rel="noopener">view &#8599;</a>
                     </div>
                 </div>
-                <select id="disc-sel-${i}" style="${this._inputStyle}max-width:240px;">
+                <select id="disc-sel-${i}" style="${this._inputStyle}max-width:220px;">
                     <option value="">Link to work…</option>
                     ${opts}
                 </select>
                 <button class="btn btn-primary" id="disc-link-btn-${i}">Link</button>
+                <button class="btn" id="disc-import-btn-${i}" title="Download the image + metadata as a new artwork">Import</button>
             </div>`;
     },
 
