@@ -1,13 +1,19 @@
-# PawPoller
+<p align="center">
+  <img src="frontend/img/logo-quill.png" alt="PawPoller logo" width="108">
+</p>
 
-**Multi-platform story publishing pipeline for furry fiction writers.**
+<h1 align="center">PawPoller</h1>
 
-🌐 **[pawpoller.pages.dev](https://pawpoller.pages.dev)** — features, screenshots, download
+<p align="center"><strong>Multi-platform story publishing pipeline for furry fiction writers.</strong></p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB.svg)](https://python.org)
-[![Platform: Windows](https://img.shields.io/badge/Platform-Windows-0078D6.svg)](#quick-start)
-[![Docker](https://img.shields.io/badge/Docker-supported-2496ED.svg)](#server--docker-deployment)
+<p align="center">🌐 <a href="https://pawpoller.pages.dev"><strong>pawpoller.pages.dev</strong></a> &nbsp;·&nbsp; features, screenshots, download</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.11+-3776AB.svg" alt="Python 3.11+"></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-0078D6.svg" alt="Platform: Windows and Linux"></a>
+  <a href="#server--docker-deployment"><img src="https://img.shields.io/badge/Docker-supported-2496ED.svg" alt="Docker supported"></a>
+</p>
 
 PawPoller is a desktop app and self-hosted server for publishing fiction across furry writing platforms. Write your stories in Markdown, convert them to every format (BBCode, HTML, Styled HTML, PDF), publish to 11 platforms with per-chapter tags and descriptions, and track views, favourites, and comments from a single dashboard. Think of it as [PostyBirb](https://www.postybirb.com/) but built for writers instead of visual artists -- chaptered posting, format conversion, story analytics, and drift detection.
 
@@ -32,9 +38,25 @@ PawPoller is a desktop app and self-hosted server for publishing fiction across 
 
 ## Screenshots
 
-*Screenshots coming soon.*
+<p align="center">
+  <img src="site/public/screens/story-archive.png" alt="Story archive with cover art" width="760"><br>
+  <em>Story archive: every completed story with cover art, ratings, relationships, and status</em>
+</p>
 
-<!-- TODO: Add screenshots of the dashboard, editor, analytics charts, and posting workflow -->
+<p align="center">
+  <img src="site/public/screens/analytics-overview.png" alt="Analytics dashboard across 11 platforms" width="760"><br>
+  <em>Analytics across 11 platforms: views, favourites, and comment trends over time</em>
+</p>
+
+<p align="center">
+  <img src="site/public/screens/publish-check-matrix.png" alt="Publish-check matrix" width="760"><br>
+  <em>Publish-check matrix: every chapter and platform at a glance (posted / drifted / blocked)</em>
+</p>
+
+<p align="center">
+  <img src="site/public/screens/editor-anchors.png" alt="Four-pane Markdown editor" width="760"><br>
+  <em>Four-pane editor: Markdown source, live preview, and every derived format in sync</em>
+</p>
 
 ---
 
