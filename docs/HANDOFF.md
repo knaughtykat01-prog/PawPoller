@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-06-27
-**Current version:** 2.31.0 — **Artwork** (PostyBirb-style image posting across 7 platforms).
+**Last updated:** 2026-06-28
+**Current version:** 2.32.0 — **Brand identity** (quill-tail logo + nib-badge app icon).
+**Released + deployed** 2026-06-28 to the GCP VM. New brand mark in the dashboard sidebar + favicon
+(new `/img` static mount + `/favicon.ico` route; `frontend/index.html`, `frontend/css/layout.css`,
+`dashboard.py`) and the desktop tray + EXE/taskbar icon (`assets/tray_icon.png`, new
+`assets/pawpoller.ico`, `pawpoller.spec` — reaches desktop users on the next build). Marketing site
+shipped separately to pawpoller.pages.dev (commit `a939e12`). CHANGELOG [2.32.0].
+
+**Prior release — 2.31.0 — Artwork** (PostyBirb-style image posting across 7 platforms):
 **Released + deployed** on 2026-06-27 (commit `e7cbe96`, tag `v2.31.0`; CI published all three desktop
 assets; GCP VM `/api/health` reports `2.31.0`, clean boot, the content_type migration ran on the
 production DB — log: "Rebuilt publications to fold content_type into UNIQUE"). Full suite green (175

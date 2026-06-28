@@ -82,7 +82,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,  # hide console window in release build
-    icon=None,
+    icon='assets/pawpoller.ico',
 )
 
 coll = COLLECT(

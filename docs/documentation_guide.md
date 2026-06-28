@@ -4082,8 +4082,12 @@ Files:
 
 `dashboard.py` plumbing:
 - `app.mount("/vendor", StaticFiles(...))` next to `/css` and `/js`
-- `_AUTH_EXEMPT_PREFIXES = ("/css/", "/js/", "/vendor/")` so vendored
-  libs load without auth (parity with the rest of the SPA assets)
+  (and `/img` since 2.32.0, serving the brand assets: `logo-quill.png`,
+  `favicon.png`/`.ico`, `apple-touch-icon.png`)
+- `_AUTH_EXEMPT_PREFIXES = ("/css/", "/js/", "/vendor/", "/img/")` so vendored
+  libs + brand assets load without auth (parity with the rest of the SPA assets)
+- `@app.get("/favicon.ico")` (2.32.0) serves the nib-badge `.ico` for the bare
+  browser request (path is also in `_AUTH_EXEMPT_PATHS`)
 - `@app.get("/epub-viewer.html")` route reads the file and substitutes
   `__APP_VERSION__` for cache busting on `tokens.css` + the viewer JS
 - Path-scoped `_build_epub_viewer_csp()` relaxation (see Security

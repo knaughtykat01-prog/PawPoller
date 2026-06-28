@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.32.0] - 2026-06-28 - Brand identity: quill-tail logo + nib-badge app icon
+
+**Why:** PawPoller had no real logo — the dashboard used a 🐾 emoji plus a ◆ glyph, the desktop app a
+placeholder tray icon, and there was no favicon at all. This adds a designed brand mark (a
+fox-tail-into-quill "quill-tail") as the primary logo and a copper nib-badge as the app/favicon,
+applied consistently across the dashboard (web + desktop), the desktop tray/window icon, and the
+marketing site.
+
+**Dashboard** (`frontend/index.html`, `frontend/css/layout.css`, `dashboard.py`)
+- Sidebar header: the 🐾 + ◆ glyphs are replaced with the quill-tail mark (`/img/logo-quill.png`);
+  `.sidebar-logo` restyled from a 24px emoji glyph to a 26px `object-fit:contain` image.
+- Favicon: the app previously served none (`/favicon.ico` was auth-exempt but 404'd). Added `<link>`
+  tags in `index.html` + a real `/favicon.ico` route, and a new `/img` static mount (added to
+  `_AUTH_EXEMPT_PREFIXES` so it loads pre-auth) serving `logo-quill.png`, `favicon.png`/`.ico`, and
+  `apple-touch-icon.png`.
+
+**Desktop** (`assets/tray_icon.png`, `assets/pawpoller.ico` NEW, `pawpoller.spec`)
+- Tray icon swapped to the nib-badge. New multi-size `pawpoller.ico` wired into the PyInstaller EXE
+  (`icon=`) so the window/taskbar icon is branded. Takes effect on the next desktop build/installer.
+
+**Marketing site** (`site/`) — shipped separately to pawpoller.pages.dev (commit `a939e12`):
+quill-tail nav/footer logo + nib-badge favicon, plus an anti-slop redesign pass (stale version fix
+2.25.0→2.31.0, em-dash purge, eyebrow cleanup 8→1, self-hosted fonts, OG image, a11y fixes).
+
+**Notes:** the legacy UI shell (`index_legacy.html`) keeps its old glyphs by design (frozen comparison
+shell); the `/favicon.ico` route still covers its tab icon. Brand marks generated with Recraft.
+
+---
+
 ## [2.31.0] - 2026-06-27 - Artwork: PostyBirb-style image posting across 7 platforms
 
 **Why:** PawPoller published **stories**; the user also makes **artwork** and wanted the PostyBirb

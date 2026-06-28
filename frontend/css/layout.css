@@ -37,11 +37,10 @@
     min-height: 62px;
 }
 .sidebar-logo {
-    font-size: 24px;
+    width: 26px;
+    height: 26px;
     flex-shrink: 0;
-    line-height: 1;
-    display: flex;
-    align-items: center;
+    object-fit: contain;
 }
 .sidebar-header h1 {
     font-family: var(--font-display);

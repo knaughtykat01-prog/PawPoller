@@ -247,7 +247,7 @@ _AUTH_EXEMPT_PATHS = frozenset({
     # context on every page, producing console error noise.
     "/favicon.ico",
 })
-_AUTH_EXEMPT_PREFIXES = ("/css/", "/js/", "/vendor/")
+_AUTH_EXEMPT_PREFIXES = ("/css/", "/js/", "/vendor/", "/img/")
 
 
 @app.middleware("http")
@@ -324,6 +324,14 @@ frontend_dir = config.resource_path("frontend")
 app.mount("/css", StaticFiles(directory=str(frontend_dir / "css")), name="css")
 app.mount("/js", StaticFiles(directory=str(frontend_dir / "js")), name="js")
 app.mount("/vendor", StaticFiles(directory=str(frontend_dir / "vendor")), name="vendor")
+app.mount("/img", StaticFiles(directory=str(frontend_dir / "img")), name="img")
+
+
+# Browsers request /favicon.ico at the document root regardless of <link> tags;
+# serve the nib-badge .ico here. The path is auth-exempt (_AUTH_EXEMPT_PATHS).
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(str(frontend_dir / "img" / "favicon.ico"))
 
 
 # SPA (Single Page Application) serving pattern. The root route serves index.html,
