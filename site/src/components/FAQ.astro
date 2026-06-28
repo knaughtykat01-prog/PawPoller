@@ -14,7 +14,7 @@ const faqs = [
   },
   {
     q: 'Does it work on Mac or Linux?',
-    a: 'Windows and Linux both have native desktop builds — a one-click .exe installer (or portable zip) for Windows, and a single-file .AppImage for Linux that runs on Ubuntu 22.04+ / Fedora 37+ / Debian 12+ / Arch with no install. macOS is on the public roadmap; the Apple Developer cert + notarization decision is the open question. In the meantime macOS users can run the headless Docker mode and access the dashboard from any browser.',
+    a: 'Windows and Linux both have native desktop builds: a one-click .exe installer (or portable zip) for Windows, and a single-file .AppImage for Linux that runs on Ubuntu 22.04+ / Fedora 37+ / Debian 12+ / Arch with no install. macOS is on the public roadmap; the Apple Developer cert plus notarization decision is the open question. In the meantime macOS users can run the headless Docker mode and access the dashboard from any browser.',
   },
   {
     q: 'Why nine posting platforms but eleven polled?',
@@ -22,7 +22,7 @@ const faqs = [
   },
   {
     q: 'Can I eventually use it from the browser without self-hosting?',
-    a: 'That\'s the plan for the Cloud tier — a one-click hosted instance owned by you, not a shared service. A true multi-tenant SaaS tier is possible further out but needs real demand first; holding credentials for many users at once is a serious responsibility.',
+    a: 'That\'s the plan for the Cloud tier: a one-click hosted instance owned by you, not a shared service. A true multi-tenant SaaS tier is possible further out but needs real demand first; holding credentials for many users at once is a serious responsibility.',
   },
   {
     q: 'Can I help?',
@@ -31,13 +31,16 @@ const faqs = [
 ];
 ---
 <section id="faq" class="py-24">
-  <div class="container-prose">
-    <div class="mx-auto max-w-2xl text-center">
-      <span class="chip">FAQ</span>
-      <h2 class="mt-4 text-4xl text-ink-50 md:text-5xl">Short answers to honest questions.</h2>
+  <div class="container-prose grid gap-12 md:grid-cols-[0.85fr_1.15fr] md:gap-16">
+    <div class="md:sticky md:top-24 md:self-start">
+      <h2 class="text-4xl text-ink-50 md:text-5xl">Short answers to honest questions.</h2>
+      <p class="mt-6 text-ink-300">
+        Free, local-first, and explicit about what it will and won't do on your behalf. Still unsure? Open a thread on
+        <a class="link-accent" href="https://github.com/knaughtykat01-prog/PawPoller/discussions">GitHub Discussions</a>.
+      </p>
     </div>
 
-    <div class="mx-auto mt-14 max-w-3xl divide-y divide-ink-800 rounded-lg border border-ink-800 bg-ink-900/50">
+    <div class="divide-y divide-ink-800 rounded-lg border border-ink-800 bg-ink-900/50">
       {faqs.map((f) => (
         <details class="group p-6 open:bg-ink-900/80">
           <summary class="flex cursor-pointer items-center justify-between text-ink-100 transition hover:text-copper-300">

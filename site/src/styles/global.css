@@ -8,16 +8,22 @@
     background: theme('colors.ink.900');
     color: theme('colors.ink.50');
   }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+  }
   body {
     font-family: theme('fontFamily.sans');
     font-feature-settings: 'ss01', 'cv11';
     -webkit-font-smoothing: antialiased;
   }
+  /* Code samples show literal Markdown/HTML syntax — kill JetBrains Mono's
+     coding ligatures so `<!-- -->` renders as plain hyphens, not em-dash strokes. */
+  pre, code { font-variant-ligatures: none; }
   h1, h2, h3, h4 {
     font-family: theme('fontFamily.serif');
     letter-spacing: -0.01em;
   }
-  /* Subtle textured background — faint paper grain */
+  /* Subtle textured background: faint paper grain */
   body::before {
     content: '';
     position: fixed;

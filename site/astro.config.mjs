@@ -1,5 +1,6 @@
 import { defineConfig } from 'astro/config';
 import tailwind from '@astrojs/tailwind';
+import icon from 'astro-icon';
 
 // Live at https://pawpoller.pages.dev (Cloudflare Pages, auto-deploy
 // from master). CF Pages serves at the project root, so no base path.
@@ -8,5 +9,5 @@ import tailwind from '@astrojs/tailwind';
 export default defineConfig({
   site: 'https://pawpoller.pages.dev',
   trailingSlash: 'ignore',
-  integrations: [tailwind({ applyBaseStyles: false })],
+  integrations: [tailwind({ applyBaseStyles: false }), icon()],
 });

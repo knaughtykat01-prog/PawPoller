@@ -28,9 +28,11 @@ export default {
         },
       },
       fontFamily: {
-        serif: ['"Crimson Pro"', 'Georgia', 'serif'],
-        sans:  ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        mono:  ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        // Self-hosted via @fontsource-variable (see BaseLayout.astro).
+        // Variable family names first, static names + system stacks as fallback.
+        serif: ['"Crimson Pro Variable"', '"Crimson Pro"', 'Georgia', 'serif'],
+        sans:  ['"Inter Variable"', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono:  ['"JetBrains Mono Variable"', '"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       boxShadow: {
         glow: '0 0 40px -10px rgba(208, 129, 54, 0.35)',

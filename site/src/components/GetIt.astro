@@ -1,30 +1,32 @@
 ---
+import { SITE_VERSION } from '../consts';
+
 const tiers = [
   {
     status: 'Available now',
     statusColor: 'bg-sage-500',
     title: 'Desktop',
-    subtitle: 'Windows · Linux · macOS planned',
+    subtitle: 'Windows and Linux',
     body:
-      'Native app for Windows (one-click installer or portable zip) and Linux (single-file AppImage — no install needed). System tray, native notifications, embedded browser login. macOS support is on the roadmap.',
-    cta: { label: 'Download v2.25.0', href: 'https://github.com/knaughtykat01-prog/PawPoller/releases/latest' },
-    footnote: 'MIT licensed · free forever',
+      'Native app for Windows (one-click installer or portable zip) and Linux (single-file AppImage, no install needed). System tray, native notifications, embedded browser login. macOS support is on the roadmap.',
+    cta: { label: `Download v${SITE_VERSION}`, href: 'https://github.com/knaughtykat01-prog/PawPoller/releases/latest' },
+    footnote: 'MIT licensed, free forever',
   },
   {
     status: 'Available now',
     statusColor: 'bg-sage-500',
     title: 'Self-hosted',
-    subtitle: 'Docker · headless · your server',
+    subtitle: 'Docker on your own server',
     body:
       'Run PawPoller 24/7 on a VPS, home server, or Raspberry Pi. Poll while you sleep, access the dashboard from any device. Setup guide covers Cloudflare Tunnel, Caddy, and nginx reverse proxies.',
     cta: { label: 'Read the setup guide', href: 'https://github.com/knaughtykat01-prog/PawPoller/blob/master/docs/SETUP.md' },
-    footnote: 'Hosting cost: $0–10/mo',
+    footnote: 'Hosting cost: $0-10/mo',
   },
   {
     status: 'Coming soon',
     statusColor: 'bg-copper-500/80',
     title: 'Cloud',
-    subtitle: 'One-click hosted · pay-as-you-go',
+    subtitle: 'One-click hosted, pay as you go',
     body:
       'Deploy your own PawPoller instance to Railway, Fly.io, or DigitalOcean with a single click. You own your data and credentials; you pay the PaaS directly. No central service holding your secrets.',
     cta: { label: 'Join the waitlist', href: 'https://github.com/knaughtykat01-prog/PawPoller/discussions' },
@@ -35,8 +37,7 @@ const tiers = [
 <section id="get" class="border-t border-ink-800/60 bg-ink-950/30 py-24">
   <div class="container-prose">
     <div class="mx-auto max-w-2xl text-center">
-      <span class="chip">Get PawPoller</span>
-      <h2 class="mt-4 text-4xl text-ink-50 md:text-5xl">Three ways to run it.</h2>
+      <h2 class="text-4xl text-ink-50 md:text-5xl">Three ways to run it.</h2>
       <p class="mt-6 text-ink-300">
         Same app, same database format, same feature set. Pick whichever shape fits your workflow.
       </p>
@@ -59,8 +60,7 @@ const tiers = [
     </div>
 
     <div class="mt-12 rounded-lg border border-ink-800 bg-ink-900/70 p-6 font-mono text-sm text-ink-200">
-      <div class="mb-3 flex items-center gap-2 text-xs uppercase tracking-wider text-ink-400">
-        <span class="h-1.5 w-1.5 rounded-full bg-copper-400"></span>
+      <div class="mb-3 text-xs uppercase tracking-wider text-ink-400">
         Fastest Docker quick-start
       </div>
       <pre class="overflow-x-auto"><code>git clone https://github.com/knaughtykat01-prog/PawPoller.git

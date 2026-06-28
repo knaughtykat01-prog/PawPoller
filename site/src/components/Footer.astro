@@ -1,11 +1,12 @@
 ---
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const year = new Date().getFullYear();
 ---
 <footer class="border-t border-ink-800/60 bg-ink-950/60">
   <div class="container-prose grid gap-12 py-16 md:grid-cols-[2fr_1fr_1fr_1fr]">
     <div>
-      <div class="flex items-center gap-2 font-serif text-xl font-semibold text-ink-50">
-        <span class="text-copper-400">◆</span>
+      <div class="flex items-center gap-2.5 font-serif text-xl font-semibold text-ink-50">
+        <img src={`${base}/logo-quill.png`} alt="" width="28" height="28" class="h-7 w-7" />
         PawPoller
       </div>
       <p class="mt-4 max-w-sm text-sm leading-relaxed text-ink-400">
