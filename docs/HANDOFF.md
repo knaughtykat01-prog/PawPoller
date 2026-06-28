@@ -1,18 +1,19 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-06-28
-**Current version:** 2.36.0 — **Submissions hub, Phase 4** (bulk import + DeviantArt/Itaku + IB/SF guard).
-**Built + verified locally; pending release/deploy.** Completes the Submissions hub spec:
-- **Bulk import** — `POST /api/artwork/import/bulk/{platform}` imports every discovered submission for a
-  platform (per-item errors collected, not fatal); a per-platform "Import all (N)" bar in the
-  Discovered view.
-- **DeviantArt + Itaku** — added to `posting.sync.PLATFORM_TABLES` so they now appear in discovered +
-  import (thumbnail-quality; they store only `thumbnail_url`).
-- **IB/SF import guard** — `image_url()` no longer falls back to a generic page `url` (Inkbunny stored
-  the submission page there → would download HTML); added `thumb_url` (IB's thumbnail). `import_artwork`
-  now validates the download is actually an image (Content-Type **or** magic bytes) and rejects
-  non-images with a clear error, so a bad submission can't create a broken artwork.
-`tests/test_artwork_importer.py` (12 hub tests). Spec: `docs/specs/submissions-hub.md` — **all phases shipped**.
+**Last updated:** 2026-06-29
+**Current version:** 2.37.0 — **Full-resolution Inkbunny import**.
+**Released + deployed** 2026-06-29 (tag `v2.37.0`). Artwork import now re-fetches Inkbunny's **original
+file** (`files[].file_url_full`) via the API — reusing the poller's cached session SID — instead of the
+stored thumbnail (`_resolve_ib_full_url` in `posting/artwork_importer.py`, applied only for `ib`;
+FA/Weasyl already store full-res). **SoFurry full-res is NOT feasible**: its `/s/{id}.data` reader
+exposes no image URL and SF is text-centric, so SF art import stays unsupported (graceful, guarded).
+DeviantArt/Itaku remain thumbnail-only (no full-res column).
+
+**Prior release — 2.36.0 — Submissions hub, Phase 4** (bulk import + DeviantArt/Itaku + IB/SF guard):
+**Released + deployed** 2026-06-28 (commit `4b1c4cf`, tag `v2.36.0`; VM-verified — IB guard imports a
+real thumbnail, SF fails gracefully, DA/Itaku scanned). Completed the Submissions hub spec
+(`docs/specs/submissions-hub.md`): bulk `import/bulk/{platform}` + "Import all" bar, DA/Itaku in
+`PLATFORM_TABLES`, and the import image-validation guard.
 
 **Prior release — 2.35.0 — Submissions hub, Phase 3** (gallery import):
 **Released + deployed** 2026-06-28 (commit `7c57ca0`, tag `v2.35.0`; VM-verified end-to-end — FA import

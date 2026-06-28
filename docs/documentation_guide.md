@@ -4110,6 +4110,10 @@ Files:
     guard — `image_url()` drops the page `url` (adds `thumb_url`) and
     `import_artwork` validates Content-Type/magic bytes so non-images are
     rejected, not turned into broken artworks.
+  - 2.37.0: Inkbunny imports now re-fetch the **original** file via the API
+    (`_resolve_ib_full_url` → `files[].file_url_full`, reusing the poller's cached
+    SID) instead of the thumbnail. SoFurry full-res isn't feasible (the `.data`
+    reader exposes no image URL); DA/Itaku remain thumbnail-only.
 - `@app.get("/epub-viewer.html")` route reads the file and substitutes
   `__APP_VERSION__` for cache busting on `tokens.css` + the viewer JS
 - Path-scoped `_build_epub_viewer_csp()` relaxation (see Security

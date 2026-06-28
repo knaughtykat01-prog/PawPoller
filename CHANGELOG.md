@@ -4,6 +4,22 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.37.0] - 2026-06-29 - Full-resolution Inkbunny import
+
+**Why:** Phases 3/4 imported Inkbunny at thumbnail quality (the poller stores only a thumbnail for IB).
+This re-fetches the original file so IB imports match FA/Weasyl full-res.
+
+**Inkbunny** (`posting/artwork_importer.py`)
+- `_resolve_ib_full_url(submission_id)` calls the IB API (`api_submissions.php`), reusing the poller's
+  cached session SID (no re-login), and returns `files[].file_url_full` (the original). `import_artwork`
+  applies it for `ib` only and falls back to the stored thumbnail if the API call fails.
+
+**Not done (honest scope):** **SoFurry full-res is not feasible** — its beta `/s/{id}.data` reader
+exposes no image URL, and SF is text-centric, so SF art import stays unsupported (the image-validation
+guard from 2.36.0 handles it gracefully). DeviantArt/Itaku remain thumbnail-only (no full-res column).
+
+---
+
 ## [2.36.0] - 2026-06-28 - Submissions hub (Phase 4): bulk import + DeviantArt/Itaku + IB/SF guard
 
 **Why:** Completes the Submissions hub spec — bulk gallery import, DeviantArt/Itaku coverage, and a

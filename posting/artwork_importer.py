@@ -15,6 +15,7 @@ desktop (residential IP), same as AO3 imports.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -22,6 +23,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+import config
 from database.db import get_connection
 from database import posting_queries
 from posting import artwork_reader
@@ -112,6 +114,46 @@ def find_existing(platform: str, submission_id: str) -> str | None:
     return None
 
 
+async def _resolve_ib_full_url(submission_id: str) -> str:
+    """Fetch Inkbunny's full-resolution file URL via the API.
+
+    The poller only stores a thumbnail for IB; the original file lives in the
+    API's ``files[].file_url_full``. Reuses the cached session SID the poller
+    persists (so no re-login), mirroring the story importer's IB path.
+    """
+    from clients.ib.client import InkbunnyClient
+    from database import queries, accounts as _accts
+
+    settings = config.get_settings()
+    conn = get_connection()
+    try:
+        acct = _accts.get_default_account_id(conn, "ib", create=True)
+        cached = queries.get_cached_session(conn, acct)
+    finally:
+        conn.close()
+    cached_sid = cached["sid"] if cached else None
+
+    client = InkbunnyClient(username=settings.get("username", ""),
+                            password=settings.get("password", ""))
+    if cached and cached.get("user_id"):
+        client.user_id = cached["user_id"]
+    try:
+        await client.ensure_session(cached_sid)
+        resp = await client._http.post(
+            f"{config.INKBUNNY_API_BASE}/api_submissions.php",
+            data={"sid": client.sid, "submission_ids": str(submission_id)},
+        )
+        resp.raise_for_status()
+        subs = resp.json().get("submissions", [])
+        if subs:
+            files = subs[0].get("files", [])
+            if files:
+                return files[0].get("file_url_full", "") or files[0].get("file_url_screen", "")
+    finally:
+        await client.close()
+    return ""
+
+
 def import_artwork(platform: str, submission_id: str) -> dict:
     """Import one discovered submission as a local artwork + link it.
 
@@ -138,6 +180,17 @@ def import_artwork(platform: str, submission_id: str) -> dict:
 
     d = dict(row)
     url = image_url(d)
+    # Upgrade to full resolution where a per-platform re-fetch is available.
+    # FA/Weasyl already store a full-res URL; Inkbunny stores only a thumbnail,
+    # so re-fetch the original file from its API.
+    if platform == "ib":
+        try:
+            full = asyncio.run(_resolve_ib_full_url(submission_id))
+            if full:
+                url = full
+        except Exception as e:
+            logger.warning("IB full-res resolve failed for %s (%s); using stored image",
+                           submission_id, e)
     if not url:
         raise ValueError("No image URL stored for this submission")
 
