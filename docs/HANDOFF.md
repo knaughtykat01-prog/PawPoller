@@ -1,7 +1,13 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.38.4 — **Accounts: platform-named counts + click-through**.
+**Current version:** 2.38.5 — **Dashboards: count stat card opens the list**.
+**Released + deployed** 2026-06-29 (tag `v2.38.5`). The "Total Tweets/Posts/Works/Submissions" stat card
+on every platform dashboard is now a link to that platform's submissions list (scoped to the viewed
+account). `Components.statCard` gained an optional `href` → renders `a.stat-card`; all 11 dashboards pass
+their submissions route (`frontend/js/components.js`, `frontend/js/app.js`).
+
+**Prior release — 2.38.4 — Accounts: platform-named counts + click-through**.
 **Released + deployed** 2026-06-29 (tag `v2.38.4`). Account/persona stat chips use a platform-appropriate
 noun for the count (X→tweets, Bluesky/Itaku→posts, DA→deviations, AO3/SQW→works, WP→stories,
 IB/FA/WS/SF→submissions; persona combined stays "subs"), and the count chip is now a link that opens the

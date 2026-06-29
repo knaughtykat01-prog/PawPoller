@@ -4,6 +4,15 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.38.5] - 2026-06-29 - Dashboards: count stat card opens the list
+
+- The "Total Tweets / Posts / Works / Submissions" stat card on every platform dashboard is now a
+  **link** — clicking it opens that platform's submissions list (scoped to the currently-viewed account).
+  `Components.statCard` gained an optional `href` (renders as `a.stat-card`); all 11 dashboards pass their
+  submissions route. `frontend/js/components.js`, `frontend/js/app.js`.
+
+---
+
 ## [2.38.4] - 2026-06-29 - Accounts: platform-named counts + click-through
 
 - The account/persona stat chips now use a **platform-appropriate noun** for the count instead of the

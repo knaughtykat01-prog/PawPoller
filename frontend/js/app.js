@@ -2456,7 +2456,7 @@ const App = {
                 ${ibGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(ibGoals)}</div>` : ''}
 
                 <div class="stats-grid">
-                    ${Components.statCard('Total Submissions', summary.total_submissions)}
+                    ${Components.statCard('Total Submissions', summary.total_submissions, null, '#/submissions')}
                     ${Components.statCard('Total Views', summary.total_views)}
                     ${Components.statCard('Total Favorites', summary.total_favorites)}
                     ${Components.statCard('Total Comments', summary.total_comments)}
@@ -2818,7 +2818,7 @@ const App = {
                 ${faGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(faGoals)}</div>` : ''}
 
                 <div class="stats-grid">
-                    ${Components.statCard('Total Submissions', summary.total_submissions)}
+                    ${Components.statCard('Total Submissions', summary.total_submissions, null, '#/fa/submissions')}
                     ${Components.statCard('Total Views', summary.total_views)}
                     ${Components.statCard('Total Favorites', summary.total_favorites)}
                     ${Components.statCard('Total Comments', summary.total_comments)}
@@ -3183,7 +3183,7 @@ const App = {
                 ${wsGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(wsGoals)}</div>` : ''}
 
                 <div class="stats-grid">
-                    ${Components.statCard('Total Submissions', summary.total_submissions)}
+                    ${Components.statCard('Total Submissions', summary.total_submissions, null, '#/ws/submissions')}
                     ${Components.statCard('Total Views', summary.total_views)}
                     ${Components.statCard('Total Favorites', summary.total_favorites)}
                     ${Components.statCard('Total Comments', summary.total_comments)}
@@ -3516,7 +3516,7 @@ const App = {
                 ${sfGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(sfGoals)}</div>` : ''}
 
                 <div class="stats-grid">
-                    ${Components.statCard('Total Submissions', summary.total_submissions)}
+                    ${Components.statCard('Total Submissions', summary.total_submissions, null, '#/sf/submissions')}
                     ${Components.statCard('Total Views', summary.total_views)}
                     ${Components.statCard('Total Likes', summary.total_favorites)}
                     ${Components.statCard('Total Comments', summary.total_comments)}
@@ -3824,7 +3824,7 @@ const App = {
                 ${sqwGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(sqwGoals)}</div>` : ''}
 
                 <div class="stats-grid">
-                    ${Components.statCard('Total Works', summary.total_submissions)}
+                    ${Components.statCard('Total Works', summary.total_submissions, null, '#/sqw/submissions')}
                     ${Components.statCard('Total Hits', summary.total_views)}
                     ${Components.statCard('Total Kudos', summary.total_favorites)}
                     ${Components.statCard('Total Comments', summary.total_comments)}
@@ -4128,7 +4128,7 @@ const App = {
                 ${ao3Goals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(ao3Goals)}</div>` : ''}
 
                 <div class="stats-grid">
-                    ${Components.statCard('Total Works', summary.total_submissions)}
+                    ${Components.statCard('Total Works', summary.total_submissions, null, '#/ao3/submissions')}
                     ${Components.statCard('Total Hits', summary.total_views)}
                     ${Components.statCard('Total Kudos', summary.total_favorites)}
                     ${Components.statCard('Total Comments', summary.total_comments)}
@@ -4434,7 +4434,7 @@ const App = {
                 ${daGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(daGoals)}</div>` : ''}
 
                 <div class="stats-grid">
-                    ${Components.statCard('Total Submissions', summary.total_submissions)}
+                    ${Components.statCard('Total Submissions', summary.total_submissions, null, '#/da/submissions')}
                     ${Components.statCard('Total Views', summary.total_views)}
                     ${Components.statCard('Total Favourites', summary.total_favorites)}
                     ${Components.statCard('Total Comments', summary.total_comments)}
@@ -4751,7 +4751,7 @@ const App = {
                 ${wpGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(wpGoals)}</div>` : ''}
 
                 <div class="stats-grid">
-                    ${Components.statCard('Total Submissions', summary.total_submissions)}
+                    ${Components.statCard('Total Submissions', summary.total_submissions, null, '#/wp/submissions')}
                     ${Components.statCard('Total Reads', summary.total_reads || summary.total_views || 0)}
                     ${Components.statCard('Total Votes', summary.total_votes || summary.total_favorites || 0)}
                     ${Components.statCard('Total Comments', summary.total_comments)}
@@ -5066,7 +5066,7 @@ const App = {
                 ${ikGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(ikGoals)}</div>` : ''}
 
                 <div class="stats-grid">
-                    ${Components.statCard('Total Submissions', summary.total_submissions)}
+                    ${Components.statCard('Total Submissions', summary.total_submissions, null, '#/ik/submissions')}
                     ${Components.statCard('Total Likes', summary.total_likes || 0)}
                     ${Components.statCard('Total Comments', summary.total_comments)}
                     ${Components.statCard('Total Reshares', summary.total_reshares || 0)}
@@ -5373,7 +5373,7 @@ const App = {
                 ${bskyGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(bskyGoals)}</div>` : ''}
 
                 <div class="stats-grid">
-                    ${Components.statCard('Total Posts', summary.total_submissions)}
+                    ${Components.statCard('Total Posts', summary.total_submissions, null, '#/bsky/submissions')}
                     ${Components.statCard('Total Likes', summary.total_likes || 0)}
                     ${Components.statCard('Total Reposts', summary.total_reposts || 0)}
                     ${Components.statCard('Total Replies', summary.total_comments || summary.total_replies || 0)}
@@ -5688,7 +5688,7 @@ const App = {
                 ${twGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(twGoals)}</div>` : ''}
 
                 <div class="stats-grid">
-                    ${Components.statCard('Total Tweets', summary.total_submissions)}
+                    ${Components.statCard('Total Tweets', summary.total_submissions, null, '#/tw/submissions')}
                     ${Components.statCard('Total Views', summary.total_views || 0)}
                     ${Components.statCard('Total Likes', summary.total_likes || 0)}
                     ${Components.statCard('Total Retweets', summary.total_retweets || 0)}

@@ -16,18 +16,22 @@ const Components = {
      * @param {number|null} delta - Optional 24-hour change value; null hides the delta row
      * @returns {string} HTML string for one .stat-card element
      */
-    statCard(label, value, delta = null) {
+    statCard(label, value, delta = null, href = null) {
         let deltaHtml = '';
         if (delta !== null && delta !== undefined) {
             deltaHtml = Utils.formatDelta(delta);
         }
-        return `
-            <div class="stat-card">
+        const inner = `
                 <div class="label">${Utils.escapeHtml(label)}</div>
                 <div class="value">${Utils.formatNumber(value)}</div>
                 ${deltaHtml ? `<div>${deltaHtml} <span style="font-size:11px;color:var(--text-muted)">24h</span></div>` : ''}
-            </div>
         `;
+        // With an href the card becomes a link (e.g. "Total Tweets" → the tweets
+        // list). a.stat-card already has hover styling in components.css.
+        if (href) {
+            return `<a class="stat-card" href="${href}" style="text-decoration:none;color:inherit;cursor:pointer">${inner}</a>`;
+        }
+        return `<div class="stat-card">${inner}</div>`;
     },
 
     /**
