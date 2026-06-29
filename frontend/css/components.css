@@ -360,6 +360,33 @@ a.stat-card:hover {
     padding: 14px;
 }
 
+/* Content-type display tag on a card (Tweet / Reply / Quote / Repost). */
+.card-type-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 1px 7px;
+    border-radius: var(--radius-pill);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    margin-bottom: 7px;
+}
+.card-type-badge.type-reply {
+    color: var(--info);
+    border-color: color-mix(in srgb, var(--info) 40%, transparent);
+}
+.card-type-badge.type-quote {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.card-type-badge.type-retweet {
+    color: var(--success);
+    border-color: color-mix(in srgb, var(--success) 40%, transparent);
+}
+
 .submission-card-title {
     font-size: 14px;
     font-weight: 600;

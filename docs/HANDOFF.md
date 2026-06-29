@@ -1,7 +1,13 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.39.2 — **X: quote tweets show the quoted post's image**.
+**Current version:** 2.39.3 — **X: content-type tags on cards (Tweet/Reply/Quote/Repost)**.
+**Released + deployed** 2026-06-29 (tag `v2.39.3`). Each tweet card shows a colour-coded type badge
+(Tweet/Reply/Quote/Repost) so entries are identifiable at a glance. `submissionCardGrid` gained
+`typeKey`/`typeLabels`; X grid passes `content_type` + `Components.TW_TYPE_LABELS` (also used by the table
+Type column + detail meta). `frontend/js/components.js`, `frontend/js/app.js`, `frontend/css/components.css`.
+
+**Prior release — 2.39.2 — X: quote tweets show the quoted post's image**.
 **Released + deployed** 2026-06-29 (tag `v2.39.2`). Quote tweets carry no media of their own (the image
 is in the quoted post), so all 6 quote tweets showed no thumbnail. `_extract_tweet_stats` now falls back
 to the quoted post's media (`quoted_status_result.result.legacy.{extended_entities,entities}.media`).

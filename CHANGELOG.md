@@ -4,6 +4,16 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.39.3] - 2026-06-29 - X: content-type tags on cards (Tweet/Reply/Quote/Repost)
+
+- Each tweet card now shows a **type badge** so you can tell what it is at a glance — **Tweet / Reply /
+  Quote / Repost** (colour-coded: reply=info, quote=accent, repost=success). `submissionCardGrid` gained
+  optional `typeKey` + `typeLabels`; the X grid passes `content_type` + `Components.TW_TYPE_LABELS`. The
+  submissions table "Type" column and the detail page now use the same friendly labels (e.g. retweet →
+  "Repost"). `frontend/js/components.js`, `frontend/js/app.js`, `frontend/css/components.css`.
+
+---
+
 ## [2.39.2] - 2026-06-29 - X: quote tweets show the quoted post's image
 
 - A **quote tweet** carries no media of its own — the image lives in the post it quotes (e.g. quoting

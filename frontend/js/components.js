@@ -8,6 +8,9 @@
 
 const Components = {
 
+    // Friendly labels for X content types (raw → display tag).
+    TW_TYPE_LABELS: { tweet: 'Tweet', reply: 'Reply', quote: 'Quote', retweet: 'Repost' },
+
     /**
      * Single metric card with optional 24h delta indicator.
      * Used in stats-grid sections on all dashboards (IB, FA, WS, Overview).
@@ -123,10 +126,16 @@ const Components = {
                 return `<span class="submission-card-stat">${val}${delta ? ' ' + delta : ''} <small>${st.label}</small></span>`;
             }).join('');
             const date = opts.dateKey && s[opts.dateKey] ? Utils.formatDate(s[opts.dateKey]) : '';
+            const typeRaw = opts.typeKey ? (s[opts.typeKey] || '') : '';
+            const typeBadge = typeRaw
+                ? `<span class="card-type-badge type-${Utils.escapeHtml(typeRaw)}">${Utils.escapeHtml(
+                    (opts.typeLabels && opts.typeLabels[typeRaw]) || (typeRaw.charAt(0).toUpperCase() + typeRaw.slice(1)))}</span>`
+                : '';
             return `
                 <a href="#${opts.detailRoute}/${id}" class="submission-card">
                     ${thumbUrl ? `<div class="submission-card-thumb"><img src="${thumbUrl}" loading="lazy" alt=""></div>` : ''}
                     <div class="submission-card-body">
+                        ${typeBadge}
                         <div class="submission-card-title">${Utils.escapeHtml(title)}</div>
                         <div class="submission-card-stats">${statsHtml}</div>
                         ${date ? `<div class="submission-card-date">${date}</div>` : ''}
@@ -1306,7 +1315,7 @@ const Components = {
         const rows = submissions.map(s => `
             <tr>
                 <td data-label="Title"><a href="#/tw/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
-                <td data-label="Type">${Utils.escapeHtml(s.content_type || 'tweet')}</td>
+                <td data-label="Type">${Utils.escapeHtml(Components.TW_TYPE_LABELS[s.content_type] || s.content_type || 'Tweet')}</td>
                 <td data-label="Views">${Utils.formatNumber(s.views || 0)} ${Utils.formatDelta(s.views_delta)}</td>
                 <td data-label="Likes">${Utils.formatNumber(s.likes || 0)} ${Utils.formatDelta(s.likes_delta)}</td>
                 <td data-label="Retweets">${Utils.formatNumber(s.retweets || 0)} ${Utils.formatDelta(s.retweets_delta)}</td>

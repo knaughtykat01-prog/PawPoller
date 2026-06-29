@@ -5771,6 +5771,7 @@ const App = {
             // 2.16.14 (BUG-021): closure so the search filter can re-render
             const twGridRenderer = (subs) => Components.submissionCardGrid(subs, {
                 idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumbnail_url', proxyThumb: false,
+                typeKey: 'content_type', typeLabels: Components.TW_TYPE_LABELS,
                 detailRoute: '/tw/submission', dateKey: 'posted_at',
                 stats: [
                     { key: 'views', deltaKey: 'views_delta', label: 'views' },
@@ -5825,7 +5826,7 @@ const App = {
                 <div class="detail-header">
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
-                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(sub.content_type || 'tweet')}</div>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.TW_TYPE_LABELS[sub.content_type] || sub.content_type || 'Tweet')}</div>
                         <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on X</a></div>
                         ${sub.thumbnail_url ? `<div class="detail-media"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank"><img src="${Utils.escapeHtml(sub.thumbnail_url)}" loading="lazy" alt="tweet image" style="max-width:340px;max-height:340px;border-radius:var(--radius,12px);margin:10px 0;border:1px solid var(--border)"></a></div>` : ''}
                         <div class="detail-stats">
