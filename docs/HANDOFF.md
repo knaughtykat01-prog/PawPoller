@@ -1,7 +1,13 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.40.0 — **Platform logos + Bluesky content-type tagging**.
+**Current version:** 2.40.1 — **Sharper Inkbunny + Weasyl logos**.
+**Released + deployed** 2026-06-29 (tag `v2.40.1`). The 2.40.0 Inkbunny/Weasyl logos were tiny 16px
+favicons; replaced with Inkbunny's bunny mascot (`logo/bunny.png` 154×164) and Weasyl's scalable SVG
+favicon. `frontend/js/platforms.js` now treats both `ik` and `ws` as SVG logos. (Browser was used to grab
+these where urllib was Cloudflare/DNS-blocked.)
+
+**Prior release — 2.40.0 — Platform logos + Bluesky content-type tagging**.
 **Released + deployed** 2026-06-29 (tag `v2.40.0`). (1) Bundled real platform logos (favicons; Itaku=SVG)
 under `frontend/img/platforms/`, shown on the Platforms hub tiles (white badge) + Accounts cards via
 `platformByCode().logo`, with a trademark **disclaimer** on both pages. (2) Bluesky now tags posts

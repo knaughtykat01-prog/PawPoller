@@ -4,6 +4,15 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.40.1] - 2026-06-29 - Sharper Inkbunny + Weasyl logos
+
+- The Inkbunny and Weasyl logos were tiny (only 16px favicons were available, so they floated in the
+  badge). Replaced with proper sources: **Inkbunny** now uses its bunny mascot (`logo/bunny.png`, 154×164)
+  and **Weasyl** uses its scalable **SVG** favicon. Both now fill the badge crisply.
+  `frontend/img/platforms/{ib.png,ws.svg}`, `frontend/js/platforms.js` (ws joins ik as an SVG logo).
+
+---
+
 ## [2.40.0] - 2026-06-29 - Platform logos + Bluesky content-type tagging
 
 **Platform logos** (`frontend/img/platforms/`, `frontend/js/{platforms,app,accounts}.js`, CSS)

@@ -25,10 +25,11 @@
     const byCode = {};
     PLATFORMS.forEach(p => { byCode[p.code] = p; });
 
-    // Each platform's official logo (favicon), bundled under /img/platforms/.
-    // Itaku ships an SVG; the rest are PNGs. Trademarks of their owners — see the
-    // disclaimer on the Platforms hub.
-    PLATFORMS.forEach(p => { p.logo = '/img/platforms/' + p.code + (p.code === 'ik' ? '.svg' : '.png'); });
+    // Each platform's official logo, bundled under /img/platforms/. Itaku and
+    // Weasyl ship SVGs (scalable); the rest are PNGs. Trademarks of their owners
+    // — see the disclaimer on the Platforms hub.
+    const _svgLogos = ['ik', 'ws'];
+    PLATFORMS.forEach(p => { p.logo = '/img/platforms/' + p.code + (_svgLogos.includes(p.code) ? '.svg' : '.png'); });
 
     /* platformRoute(code, sub) — hash route for a platform sub-view.
      *
