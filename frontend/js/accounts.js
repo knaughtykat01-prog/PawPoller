@@ -19,17 +19,16 @@ window.Accounts = {
     async render() {
         const app = document.getElementById('app');
         app.innerHTML = `
-            <div class="page-header">
-                <h1>Accounts</h1>
-                <p class="muted">Run more than one account per platform. Each platform's
-                default account keeps your existing credentials; add extra accounts below.
-                Group accounts across platforms into a <strong>persona</strong> for scoped
-                views and per-persona digests.</p>
-            </div>
-            <div id="fa-polling-card" class="card" style="margin-bottom:1rem;"></div>
-            <div id="personas-card" class="card" style="margin-bottom:1rem;">Loading…</div>
-            <div id="accounts-add" class="card" style="margin-bottom:1rem;"></div>
-            <div id="accounts-list">Loading…</div>`;
+            <div class="page-header"><h2>Accounts</h2></div>
+            <p class="acct-intro muted">Run more than one account per platform. Each platform's
+            default account keeps your existing credentials; add extra accounts below. Group accounts
+            across platforms into a <strong>persona</strong> for scoped views and per-persona digests.</p>
+            <div class="acct-page">
+                <section id="personas-card" class="acct-section">Loading…</section>
+                <section id="accounts-add" class="acct-section"></section>
+                <div id="accounts-list">Loading…</div>
+                <section id="fa-polling-card" class="acct-section"></section>
+            </div>`;
 
         this._renderFaPollingToggle(document.getElementById('fa-polling-card'));
 
@@ -41,7 +40,7 @@ window.Accounts = {
             ]);
         } catch (err) {
             document.getElementById('accounts-list').innerHTML =
-                `<div class="card error">Failed to load accounts: ${this.esc(err.message)}</div>`;
+                `<section class="acct-section">Failed to load accounts: ${this.esc(err.message)}</section>`;
             return;
         }
         this._meta = data;
@@ -53,26 +52,32 @@ window.Accounts = {
 
     _renderPersonasCard(el) {
         if (!el) return;
-        const rows = (this._personas || []).map(p => `
-            <tr>
-                <td><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${this.esc(p.color || '#6c8cff')};margin-right:.4rem;vertical-align:middle;"></span>
-                    <a href="#/persona/${p.persona_id}" title="Open persona overview"><strong>${this.esc(p.name)}</strong></a></td>
-                <td class="muted">${(p.accounts || []).length} account(s)</td>
-                <td class="muted">${this._statsCell(p.stats && p.stats.combined)}</td>
-                <td style="text-align:right;white-space:nowrap;">
+        const rows = (this._personas || []).map(p => {
+            const n = (p.accounts || []).length;
+            return `
+            <div class="persona-row">
+                <span class="persona-dot" style="background:${this.esc(p.color || 'var(--accent)')}"></span>
+                <a class="persona-name" href="#/persona/${p.persona_id}" title="Open persona overview">${this.esc(p.name)}</a>
+                <span class="persona-meta">${n} account${n === 1 ? '' : 's'}</span>
+                <span class="acct-stats">${this._statChips(p.stats && p.stats.combined)}</span>
+                <span class="spacer"></span>
+                <span class="acct-actions">
                     <a class="btn btn-sm" href="#/persona/${p.persona_id}">Overview</a>
                     <button class="btn btn-sm" data-persona-rename="${p.persona_id}" data-name="${this.esc(p.name)}">Rename</button>
                     <button class="btn btn-sm btn-danger" data-persona-delete="${p.persona_id}">Delete</button>
-                </td>
-            </tr>`).join('');
+                </span>
+            </div>`;
+        }).join('');
         el.innerHTML = `
             <h3>Personas</h3>
-            <p class="muted" style="margin:.2rem 0 .6rem;">A persona bundles accounts across platforms into
-            one identity. Assign accounts to a persona in the list below.</p>
-            ${rows ? `<table class="data-table"><tbody>${rows}</tbody></table>` : '<p class="muted">No personas yet.</p>'}
-            <div class="form-row" style="display:flex;gap:.5rem;align-items:flex-end;margin-top:.6rem;flex-wrap:wrap;">
-                <label>New persona<br><input id="persona-name" type="text" placeholder="e.g. KitheTiger"></label>
-                <label>Colour<br><input id="persona-color" type="color" value="#6c8cff"></label>
+            <p class="acct-section-sub">A persona bundles accounts across platforms into one identity.
+            Assign accounts to a persona in the list below.</p>
+            ${rows ? `<div class="persona-list">${rows}</div>` : '<p class="muted">No personas yet.</p>'}
+            <div class="acct-form" style="margin-top:14px;">
+                <label class="acct-field"><span>New persona</span>
+                    <input class="acct-input" id="persona-name" type="text" placeholder="e.g. KitheTiger"></label>
+                <label class="acct-field"><span>Colour</span>
+                    <input class="acct-color" id="persona-color" type="color" value="#9b7dff"></label>
                 <button id="persona-create-btn" class="btn btn-primary">Create persona</button>
                 <span id="persona-msg" class="muted"></span>
             </div>`;
@@ -117,7 +122,7 @@ window.Accounts = {
             (this._personas || []).map(p =>
                 `<option value="${p.persona_id}"${a.persona_id === p.persona_id ? ' selected' : ''}>${this.esc(p.name)}</option>`)
         ).join('');
-        return `<select class="persona-assign" data-account="${a.account_id}">${opts}</select>`;
+        return `<select class="acct-select sm persona-assign" data-account="${a.account_id}">${opts}</select>`;
     },
 
     async _assignPersona(accountId, value) {
@@ -129,20 +134,22 @@ window.Accounts = {
 
     async _renderFaPollingToggle(el) {
         if (!el || !window.API) return;
-        let checked = false;
-        try {
-            const prefs = await API.getPreferences();
-            checked = !!prefs.fa_direct_polling;
-        } catch (e) { /* default off */ }
+        // Render synchronously (the toggle state fills in after the fetch) so
+        // this is never a blank card while preferences load.
         el.innerHTML = `
             <h3>FurAffinity polling</h3>
-            <label><input type="checkbox" id="fa-direct-toggle" ${checked ? 'checked' : ''}>
-                Poll FurAffinity directly (bypass FAExport)</label>
-            <p class="muted" style="margin:.35rem 0 0;">FAExport (the proxy PawPoller normally
-            uses for FA stats) is blocked by Cloudflare. Enable this to scrape FA directly with
-            your cookies instead. <strong>Only works from the desktop app</strong> — FA blocks the
-            datacenter server's IP.</p>`;
+            <p class="acct-section-sub">FAExport (the proxy PawPoller normally uses for FA stats) is
+            blocked by Cloudflare. Enable this to scrape FA directly with your cookies instead.
+            <strong>Only works from the desktop app</strong> — FA blocks the datacenter server's IP.</p>
+            <label class="acct-setting-row">
+                <span class="toggle-switch"><input type="checkbox" id="fa-direct-toggle"><span class="toggle-slider"></span></span>
+                <span>Poll FurAffinity directly (bypass FAExport)</span>
+            </label>`;
         const cb = el.querySelector('#fa-direct-toggle');
+        try {
+            const prefs = await API.getPreferences();
+            cb.checked = !!prefs.fa_direct_polling;
+        } catch (e) { /* default off */ }
         cb.addEventListener('change', async () => {
             try {
                 await API.savePreferences({ fa_direct_polling: cb.checked });
@@ -159,13 +166,19 @@ window.Accounts = {
             `<option value="${p}">${this.esc(names[p])}</option>`).join('');
         el.innerHTML = `
             <h3>Add account</h3>
-            <div class="form-row" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;">
-                <label>Platform<br><select id="acct-platform">${options}</select></label>
-                <label>Label<br><input id="acct-label" type="text" placeholder="e.g. Alt account"></label>
+            <p class="acct-section-sub">Pick a platform, give the account a label, and enter its
+            credentials. The first account on a platform becomes its default.</p>
+            <div class="acct-form">
+                <label class="acct-field"><span>Platform</span>
+                    <select class="acct-select" id="acct-platform">${options}</select></label>
+                <label class="acct-field"><span>Label</span>
+                    <input class="acct-input" id="acct-label" type="text" placeholder="e.g. Alt account"></label>
             </div>
-            <div id="acct-cred-fields" style="margin:.5rem 0;display:flex;gap:.5rem;flex-wrap:wrap;"></div>
-            <button id="acct-create-btn" class="btn btn-primary">Create account</button>
-            <span id="acct-create-msg" class="muted"></span>`;
+            <div id="acct-cred-fields" class="acct-form" style="margin-top:12px;"></div>
+            <div class="acct-form" style="margin-top:14px;">
+                <button id="acct-create-btn" class="btn btn-primary">Create account</button>
+                <span id="acct-create-msg" class="muted"></span>
+            </div>`;
 
         const platformSel = el.querySelector('#acct-platform');
         const renderFields = () => this._renderCredFields(
@@ -179,10 +192,18 @@ window.Accounts = {
     _renderCredFields(el, platform, data) {
         const fields = (data.platform_fields || {})[platform] || [];
         el.innerHTML = fields.map(f =>
-            `<label>${this.esc(f.field)}<br>
-                <input class="acct-cred" data-field="${this.esc(f.field)}"
+            `<label class="acct-field"><span>${this.esc(this._prettyField(platform, f.field))}</span>
+                <input class="acct-input acct-cred" data-field="${this.esc(f.field)}"
                        type="${f.secret ? 'password' : 'text'}" autocomplete="off"></label>`
         ).join('') || '<span class="muted">No credential fields for this platform.</span>';
+    },
+
+    /* Turn a canonical field name into a human label: drop the platform prefix
+     * and the underscores (e.g. "tw_auth_token" → "auth token"). */
+    _prettyField(platform, field) {
+        let f = String(field || '');
+        if (f.startsWith(platform + '_')) f = f.slice(platform.length + 1);
+        return f.replace(/_/g, ' ');
     },
 
     async _create(el) {
@@ -207,7 +228,7 @@ window.Accounts = {
         const accounts = data.accounts || [];
         const names = data.platform_names || {};
         if (!accounts.length) {
-            el.innerHTML = '<div class="card muted">No accounts configured yet.</div>';
+            el.innerHTML = '<section class="acct-section"><p class="muted">No accounts configured yet.</p></section>';
             return;
         }
         // Group by platform.
@@ -215,15 +236,25 @@ window.Accounts = {
         accounts.forEach(a => { (byPlatform[a.platform] ||= []).push(a); });
 
         el.innerHTML = Object.keys(byPlatform).map(platform => {
-            const rows = byPlatform[platform].map(a => this._accountRow(a)).join('');
-            return `<div class="card" style="margin-bottom:1rem;">
-                        <h3>${this.esc(names[platform] || platform)}</h3>
-                        <table class="data-table"><tbody>${rows}</tbody></table>
+            const meta = (window.platformByCode && window.platformByCode(platform)) || null;
+            const color = meta ? meta.color : 'var(--accent)';
+            const emoji = meta ? meta.emoji : '';
+            const label = (meta && meta.label) || names[platform] || platform;
+            const list = byPlatform[platform];
+            const rows = list.map(a => this._accountRow(a, color)).join('');
+            return `<div class="acct-plat-card" style="--pc:${color}">
+                        <div class="acct-plat-head">
+                            ${emoji ? `<span class="plat-emoji">${emoji}</span>` : ''}
+                            <span class="plat-name">${this.esc(label)}</span>
+                            <span class="plat-count">${list.length} account${list.length === 1 ? '' : 's'}</span>
+                        </div>
+                        ${rows}
                     </div>`;
         }).join('');
 
-        el.querySelectorAll('[data-toggle]').forEach(btn =>
-            btn.addEventListener('click', () => this._toggle(btn.dataset.toggle, btn.dataset.enabled === '1')));
+        // Enabled/disabled is a toggle switch now — listen for change, not click.
+        el.querySelectorAll('[data-toggle]').forEach(cb =>
+            cb.addEventListener('change', () => this._toggle(cb.dataset.toggle, cb.dataset.enabled === '1')));
         el.querySelectorAll('[data-delete]').forEach(btn =>
             btn.addEventListener('click', () => this._delete(btn.dataset.delete)));
         el.querySelectorAll('.persona-assign').forEach(sel =>
@@ -243,24 +274,35 @@ window.Accounts = {
              + `${this._fmt(s.favorites)} faves · ${this._fmt(s.comments)} comments`;
     },
 
-    _accountRow(a) {
+    /* Stat chips for the account/persona rows (the bold-redesign look). */
+    _statChips(s) {
+        if (!s) return '<span class="muted">No data yet</span>';
+        return `<span class="acct-stat"><b>${this._fmt(s.submissions)}</b> subs</span>`
+             + `<span class="acct-stat"><b>${this._fmt(s.views)}</b> views</span>`
+             + `<span class="acct-stat"><b>${this._fmt(s.favorites)}</b> faves</span>`
+             + `<span class="acct-stat"><b>${this._fmt(s.comments)}</b> comments</span>`;
+    },
+
+    _accountRow(a, color) {
         const badge = a.is_default
-            ? '<span class="badge" title="Owns the legacy credentials and history">default</span>' : '';
-        const status = a.enabled
-            ? '<span class="badge badge-ok">enabled</span>'
-            : '<span class="badge badge-off">disabled</span>';
-        const toggle = `<button class="btn btn-sm" data-toggle="${a.account_id}" data-enabled="${a.enabled ? 1 : 0}">
-                            ${a.enabled ? 'Disable' : 'Enable'}</button>`;
+            ? '<span class="badge badge-default" title="Owns the legacy credentials and history">default</span>' : '';
         const del = a.is_default ? ''
             : `<button class="btn btn-sm btn-danger" data-delete="${a.account_id}">Delete</button>`;
-        return `<tr>
-            <td><strong>${this.esc(a.label || '(unnamed)')}</strong> ${badge}</td>
-            <td>${this.esc(a.handle || '')}</td>
-            <td class="muted">${this._statsCell(a.stats)}</td>
-            <td title="Persona">${this._personaSelect(a)}</td>
-            <td>${status}</td>
-            <td style="text-align:right;white-space:nowrap;">${toggle} ${del}</td>
-        </tr>`;
+        const toggle = `<label class="toggle-switch" title="${a.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'}">
+                <input type="checkbox" data-toggle="${a.account_id}" data-enabled="${a.enabled ? 1 : 0}" ${a.enabled ? 'checked' : ''}>
+                <span class="toggle-slider"></span></label>`;
+        return `<div class="acct-card${a.enabled ? '' : ' disabled'}" style="--pc:${color || 'var(--accent)'}">
+            <div class="acct-id">
+                <span class="acct-name">${this.esc(a.label || '(unnamed)')} ${badge}</span>
+                ${a.handle ? `<span class="acct-handle">${this.esc(a.handle)}</span>` : ''}
+            </div>
+            <span class="acct-stats">${this._statChips(a.stats)}</span>
+            <span class="acct-actions">
+                <span class="persona-wrap"><span>Persona</span>${this._personaSelect(a)}</span>
+                ${toggle}
+                ${del}
+            </span>
+        </div>`;
     },
 
     /* renderPersonaDetail(id) — the per-persona overview page (#/persona/:id):

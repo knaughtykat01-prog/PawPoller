@@ -4,7 +4,26 @@ All notable changes to PawPoller are documented here.
 
 ---
 
-## [2.37.2] - 2026-06-29 - Fix: newly-connected platforms never got an account row
+## [2.38.0] - 2026-06-29 - Accounts page redesign (matches the bold UI)
+
+**Why:** The Accounts page still used raw, mostly-unstyled markup — bare browser inputs, an
+undefined `.badge` (so "default"/"enabled" rendered as plain text), one oversized card per platform,
+and an empty card at the top while FA prefs loaded. It looked nothing like the rest of the dashboard.
+
+**Redesign** (`frontend/css/accounts.css` (new), `frontend/js/accounts.js`, `frontend/index.html`)
+- New token-based stylesheet (tracks all 8 themes; no hardcoded colours). Per-platform brand colour
+  comes in via `--pc` from `window.platformByCode()`.
+- Platform groups are now compact cards with a brand-coloured left edge, platform emoji + name + an
+  account-count pill; each account is a row with a `DEFAULT` badge, handle, stat **chips**
+  (subs/views/faves/comments), a themed persona dropdown, a **toggle switch** for enable/disable
+  (replaces the Disable button + plaintext status), and Delete on non-default accounts.
+- Personas render as clean rows (colour dot, name, count, stat chips, actions); the add-account and
+  new-persona forms use themed inputs/selects with tidy labels (credential fields are de-prefixed,
+  e.g. `tw_auth_token` → "auth token").
+- Defined the missing `.badge` primitive; the FA-polling toggle renders synchronously (no more blank
+  card) as a styled setting row at the bottom.
+
+No backend changes — purely the Accounts/persona UI.
 
 **Why:** After connecting X and Bluesky (now possible since 2.37.1), they never appeared on the
 Accounts page and weren't picked up by the multi-account poll scheduler — they had saved credentials

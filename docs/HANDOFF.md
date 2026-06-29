@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.37.2 — **Fix: newly-connected platforms never got an account row**.
+**Current version:** 2.38.0 — **Accounts page redesign**.
+**Released + deployed** 2026-06-29 (tag `v2.38.0`). The Accounts/personas page was raw, unstyled markup
+(bare inputs, undefined `.badge`, one oversized card per platform, an empty FA-prefs card); rebuilt it
+to match the bold UI: new token-based `frontend/css/accounts.css`, per-platform brand-coloured cards
+(`--pc` via `window.platformByCode()`), account rows with `DEFAULT` badge + stat chips + themed persona
+dropdown + a toggle switch for enable/disable, themed add-account/persona forms, and the FA-polling
+toggle as a styled setting row. Defined the missing `.badge` primitive. Frontend-only — no backend
+changes. Verified visually via a stubbed-API harness screenshot. CHANGELOG [2.38.0].
+
+**Prior release — 2.37.2 — Fix: newly-connected platforms never got an account row**.
 **Released + deployed** 2026-06-29 (tag `v2.37.2`). After connecting X/Bluesky (possible since 2.37.1)
 they never showed on the Accounts page or got polled: `get_default_account_id(create=True)` inserted the
 default-account row but never committed, so the pollers' `account_id=None` path and `server.py`'s
