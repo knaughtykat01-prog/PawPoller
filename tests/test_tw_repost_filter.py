@@ -111,6 +111,33 @@ def test_snowflake_bad_id_returns_empty():
     assert _snowflake_to_utc(None) == ""
 
 
+def test_tagged_repost_grabs_original_image_and_stats():
+    # A kept (tagged) repost reports the ORIGINAL post's image + engagement.
+    repost = {
+        "rest_id": "111",
+        "legacy": {
+            "full_text": "RT @artist: look @KiiKinar",
+            "retweeted_status_result": {"result": {
+                "rest_id": "999",
+                "legacy": {
+                    "full_text": "look @KiiKinar I drew you",
+                    "favorite_count": 50, "retweet_count": 7,
+                    "entities": {"user_mentions": [{"screen_name": "KiiKinar"}]},
+                    "extended_entities": {"media": [
+                        {"media_url_https": "https://pbs.twimg.com/media/ABC.jpg"}]},
+                },
+                "core": {"user_results": {"result": {"legacy": {"screen_name": "artist"}}}},
+                "views": {"count": "1234"},
+            }},
+        },
+    }
+    assert _is_repost(repost) and _user_tagged_in(repost, "KiiKinar")
+    src = _repost_original(repost)
+    d = TWClient("a", "b", "KiiKinar")._extract_tweet_stats(src)
+    assert d["thumbnail_url"] == "https://pbs.twimg.com/media/ABC.jpg"
+    assert d["likes"] == 50 and d["views"] == 1234
+
+
 def test_extract_uses_snowflake_when_created_at_missing():
     c = TWClient("a", "b", "KiiKinar")
     result = {"rest_id": "1445919810076827648",
