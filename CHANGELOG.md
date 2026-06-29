@@ -4,6 +4,24 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.38.1] - 2026-06-29 - X polling: skip reposts + a usable empty state
+
+**X poller now skips reposts** (`clients/tw/client.py`)
+- The `UserTweets` timeline interleaves the account's own posts/replies with its **retweets**. A
+  retweet's engagement (likes/views/etc.) belongs to the *original author*, not this account, so they
+  were polluting the X dashboard. `get_all_tweet_ids` now skips reposts at discovery (new `_is_repost`
+  helper); your own posts, **replies (comments)**, and quote tweets are kept. Existing retweet rows are
+  removed from `tw_submissions`/`tw_snapshots` on deploy.
+
+**Empty-state dashboards got a Poll button** (`frontend/js/components.js`, `frontend/css/components.css`)
+- When a platform is connected but has **no polled data yet** (e.g. an X account with zero tweets), the
+  dashboard showed a misleading "{platform} not connected" screen whose only action was "Set up" — there
+  was no way to poll/retry. `platformEmptyState` now distinguishes *not connected* from *connected but
+  empty*: the latter reads "No {platform} data yet" and offers a working **Poll now** button (wired to
+  the same `_dashPoll` as the dashboard header) plus a settings link. Applies to all 11 platforms.
+
+---
+
 ## [2.38.0] - 2026-06-29 - Accounts page redesign (matches the bold UI)
 
 **Why:** The Accounts page still used raw, mostly-unstyled markup — bare browser inputs, an

@@ -2037,6 +2037,16 @@ a.stat-card:hover {
     min-width: 180px;
 }
 
+.platform-empty-state .empty-state-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.platform-empty-state .empty-state-actions .btn {
+    min-width: 150px;
+}
+
 .platform-empty-state .empty-state-secondary {
     margin-top: 14px;
     font-size: 12px;

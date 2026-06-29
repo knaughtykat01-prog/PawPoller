@@ -1622,6 +1622,28 @@ const Components = {
             ik: '\u{1F3AF}', bsky: '\u{1F98B}', tw: '\u{1F426}',
         };
         const emoji = emojis[code] || '\u{1F517}';
+        // Two distinct states:
+        //  • not connected  → no opts; CTA is "set up".
+        //  • connected but empty → caller passes opts.reason (or .configured).
+        //    The account IS connected, it just has no polled data yet, so the
+        //    right action is to poll/retry — not "set up". (Without this, an
+        //    account with zero items, e.g. an X handle with no tweets, showed
+        //    a misleading "not connected" screen and no poll button.)
+        const configured = !!(opts.configured || opts.reason);
+        if (configured) {
+            const reason = opts.reason || `${label} is connected but nothing has been polled yet.`;
+            return `
+                <div class="platform-empty-state">
+                    <div class="empty-state-emoji">${emoji}</div>
+                    <h3>No ${Utils.escapeHtml(label)} data yet</h3>
+                    <p>${Utils.escapeHtml(reason)}</p>
+                    <div class="empty-state-actions">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'${code}')">Poll now</button>
+                        <a href="#/settings" class="btn btn-secondary">${Utils.escapeHtml(label)} settings</a>
+                    </div>
+                </div>
+            `;
+        }
         const reason = opts.reason || `Connect ${label} to start polling.`;
         return `
             <div class="platform-empty-state">

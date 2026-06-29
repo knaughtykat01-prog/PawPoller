@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.38.0 — **Accounts page redesign**.
+**Current version:** 2.38.1 — **X polling: skip reposts + usable empty state**.
+**Released + deployed** 2026-06-29 (tag `v2.38.1`). (1) The X poller skipped reposts: `UserTweets`
+interleaves the account's own posts/replies with retweets whose stats belong to the original author, so
+`get_all_tweet_ids` now drops reposts at discovery (`_is_repost` in `clients/tw/client.py`) — own posts,
+replies, and quote tweets are kept; existing `content_type='retweet'` rows were purged from the live DB.
+(2) `platformEmptyState` (all 11 platforms) now distinguishes *not connected* from *connected but empty*;
+the empty case shows "No {platform} data yet" + a working **Poll now** button (the X-with-0-tweets state
+previously had no poll/retry action). CHANGELOG [2.38.1].
+
+**Prior release — 2.38.0 — Accounts page redesign**.
 **Released + deployed** 2026-06-29 (tag `v2.38.0`). The Accounts/personas page was raw, unstyled markup
 (bare inputs, undefined `.badge`, one oversized card per platform, an empty FA-prefs card); rebuilt it
 to match the bold UI: new token-based `frontend/css/accounts.css`, per-platform brand-coloured cards

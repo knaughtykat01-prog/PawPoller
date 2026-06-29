@@ -97,6 +97,18 @@ def _safe_int(val: Any) -> int:
         return 0
 
 
+def _is_repost(result: dict) -> bool:
+    """True if a UserTweets timeline result is a repost (retweet of another
+    account). The UserTweets timeline interleaves the account's own posts and
+    replies with its retweets; a retweet's engagement (likes/views/etc.) belongs
+    to the ORIGINAL author, not this account, so we skip them when discovering
+    what to track. Quote tweets are the account's own posts (they use
+    `quoted_status_id_str`, not `retweeted_status_result`) and are kept.
+    """
+    legacy = (result or {}).get("legacy", {}) or {}
+    return bool(legacy.get("retweeted_status_result"))
+
+
 class TWClient:
     """Async HTTP client for X/Twitter using cookie-based GraphQL endpoints."""
 
@@ -294,6 +306,12 @@ class TWClient:
                     # Handle tweet with visibility results
                     if result.get("__typename") == "TweetWithVisibilityResults":
                         result = result.get("tweet", result)
+
+                    # Skip reposts (retweets of other accounts). Their stats are
+                    # the original author's, not this account's — tracking them
+                    # would pollute the dashboard with content you only reposted.
+                    if _is_repost(result):
+                        continue
 
                     tweet_id = result.get("rest_id", "")
                     if tweet_id and tweet_id not in seen_ids:
