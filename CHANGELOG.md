@@ -4,6 +4,22 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.39.1] - 2026-06-29 - X: tweet dates + show attached images
+
+- **Tweet dates were blank** — X has stopped reliably populating `legacy.created_at` in the timeline, so
+  every tweet had an empty `posted_at`. Now the date is derived from the **Snowflake tweet id** (the id
+  encodes its creation time), formatted `YYYY-MM-DD HH:MM:SS` UTC; falls back to `created_at`. Works for
+  every tweet and is back-filled onto existing rows from their ids (no re-poll needed).
+  `clients/tw/client.py` (`_snowflake_to_utc`).
+- Tweets/posts with an attached image now **show that image** — in the submissions grid (card thumbnail)
+  and on the X detail page (linked to the original). The thumbnail was already captured; the grids just
+  had `thumbKey: null`. Now `thumbKey: 'thumbnail_url'`, `proxyThumb: false` (X/Bluesky CDNs hotlink; CSP
+  already allows `img-src https:`). `frontend/js/app.js`.
+- Better X media capture (`clients/tw/client.py`): read `extended_entities.media` first (covers videos'
+  still preview and multi-image tweets), falling back to `entities.media`.
+
+---
+
 ## [2.39.0] - 2026-06-29 - X: real tweet stats (from the timeline) + tagged reposts
 
 **Fix — every X tweet was "(untitled)" with 0 stats** (`clients/tw/client.py`, `polling/tw_poller.py`)

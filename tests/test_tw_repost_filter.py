@@ -6,7 +6,7 @@ must skip reposts while keeping the account's own posts, replies, and quotes.
 """
 
 from clients.tw.client import (
-    _is_repost, _user_tagged_in, _repost_original, TWClient,
+    _is_repost, _user_tagged_in, _repost_original, _snowflake_to_utc, TWClient,
 )
 
 
@@ -88,3 +88,33 @@ def test_extract_stats_from_timeline_result():
     assert d["likes"] == 5 and d["retweets"] == 2 and d["views"] == 100
     assert d["title"].startswith("hello world")
     assert d["link"] == "https://x.com/KiiKinar/status/123"
+
+
+# ── Dates derived from the Snowflake id (X stopped filling created_at) ──
+
+def test_snowflake_date_extraction():
+    # A real tweet id → its encoded creation time (UTC). 1700000000000000000
+    # decodes to early September 2023.
+    out = _snowflake_to_utc("1700000000000000000")
+    assert out.startswith("2023-09")
+
+
+def test_snowflake_date_format_is_parseable():
+    out = _snowflake_to_utc(1445919810076827648)
+    # "YYYY-MM-DD HH:MM:SS" shape that Utils._parseDate handles.
+    assert len(out) == 19 and out[4] == "-" and out[13] == ":"
+
+
+def test_snowflake_bad_id_returns_empty():
+    assert _snowflake_to_utc("") == ""
+    assert _snowflake_to_utc("not-a-number") == ""
+    assert _snowflake_to_utc(None) == ""
+
+
+def test_extract_uses_snowflake_when_created_at_missing():
+    c = TWClient("a", "b", "KiiKinar")
+    result = {"rest_id": "1445919810076827648",
+              "legacy": {"full_text": "hi", "favorite_count": 0, "entities": {}}}
+    d = c._extract_tweet_stats(result)
+    assert d["posted_at"]  # non-empty, derived from the id
+    assert d["posted_at"][:4].isdigit()

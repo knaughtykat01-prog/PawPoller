@@ -5452,7 +5452,7 @@ const App = {
             const bskyGridRenderer = (subs) => Components.submissionCardGrid(
                 subs.map(s => ({ ...s, _rkey: String(s.submission_id).split('/').pop() })),
                 {
-                    idKey: '_rkey', titleKey: 'title', thumbKey: null,
+                    idKey: '_rkey', titleKey: 'title', thumbKey: 'thumbnail_url', proxyThumb: false,
                     detailRoute: '/bsky/submission', dateKey: 'posted_at',
                     stats: [
                         { key: 'likes', deltaKey: 'likes_delta', label: 'likes' },
@@ -5770,7 +5770,7 @@ const App = {
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
             // 2.16.14 (BUG-021): closure so the search filter can re-render
             const twGridRenderer = (subs) => Components.submissionCardGrid(subs, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: null,
+                idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumbnail_url', proxyThumb: false,
                 detailRoute: '/tw/submission', dateKey: 'posted_at',
                 stats: [
                     { key: 'views', deltaKey: 'views_delta', label: 'views' },
@@ -5827,6 +5827,7 @@ const App = {
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(sub.content_type || 'tweet')}</div>
                         <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on X</a></div>
+                        ${sub.thumbnail_url ? `<div class="detail-media"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank"><img src="${Utils.escapeHtml(sub.thumbnail_url)}" loading="lazy" alt="tweet image" style="max-width:340px;max-height:340px;border-radius:var(--radius,12px);margin:10px 0;border:1px solid var(--border)"></a></div>` : ''}
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.views || 0)} <span class="lbl">views</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.likes || 0)} <span class="lbl">likes</span></div>

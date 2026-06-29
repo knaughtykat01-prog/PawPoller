@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -95,6 +96,25 @@ def _safe_int(val: Any) -> int:
         return int(val)
     except (ValueError, TypeError):
         return 0
+
+
+# Snowflake epoch (2010-11-04T01:42:54.657Z). X tweet ids encode their creation
+# time in the high bits — the reliable source for a tweet's date now that X has
+# stopped consistently populating legacy.created_at in the timeline response.
+_TWITTER_EPOCH_MS = 1288834974657
+
+
+def _snowflake_to_utc(tweet_id: Any) -> str:
+    """Creation time from a Snowflake tweet id as 'YYYY-MM-DD HH:MM:SS' (UTC),
+    or '' if the id isn't a usable snowflake."""
+    try:
+        ms = (int(tweet_id) >> 22) + _TWITTER_EPOCH_MS
+        dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+    except (ValueError, TypeError, OverflowError, OSError):
+        return ""
+    if dt.year < 2006:   # sanity: pre-Twitter → not a snowflake
+        return ""
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _is_repost(result: dict) -> bool:
@@ -449,14 +469,18 @@ class TWClient:
         quotes = _safe_int(legacy.get("quote_count", 0))
         bookmarks = _safe_int(legacy.get("bookmark_count", 0))
 
-        # Thumbnail from media entities
+        # Thumbnail from attached media. extended_entities covers videos and
+        # multi-image tweets (its media_url_https is the still preview for video);
+        # entities.media is the older single-image fallback.
         thumbnail_url = ""
-        media_entities = legacy.get("entities", {}).get("media", [])
-        if media_entities:
-            thumbnail_url = media_entities[0].get("media_url_https", "")
+        media = ((legacy.get("extended_entities") or {}).get("media")
+                 or (legacy.get("entities") or {}).get("media") or [])
+        if media:
+            thumbnail_url = media[0].get("media_url_https", "")
 
-        # Posted at
-        posted_at = legacy.get("created_at", "")
+        # Posted at — derive from the Snowflake id (X no longer reliably fills
+        # legacy.created_at in the timeline); fall back to created_at if needed.
+        posted_at = _snowflake_to_utc(tweet_id) or legacy.get("created_at", "")
 
         # Keywords from hashtags
         hashtags = legacy.get("entities", {}).get("hashtags", [])

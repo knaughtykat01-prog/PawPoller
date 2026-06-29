@@ -1,7 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.39.0 — **X: real tweet stats (from timeline) + tagged reposts**.
+**Current version:** 2.39.1 — **X: tweet dates + show attached images**.
+**Released + deployed** 2026-06-29 (tag `v2.39.1`). (1) Tweet dates were blank (X stopped filling
+`legacy.created_at`); now derived from the Snowflake tweet id (`_snowflake_to_utc` →
+`YYYY-MM-DD HH:MM:SS` UTC) and back-filled onto existing rows from their ids. (2) Tweets/posts with an
+attached image now show it in the submissions grid + X detail page (`thumbKey: 'thumbnail_url'`,
+`proxyThumb: false`; CSP allows `img-src https:`); X media capture prefers `extended_entities.media`.
+`clients/tw/client.py`, `frontend/js/app.js`.
+
+**Prior release — 2.39.0 — X: real tweet stats (from timeline) + tagged reposts**.
 **Released + deployed** 2026-06-29 (tag `v2.39.0`). (1) Every X tweet was "(untitled)"/0: the poller
 discovered via `UserTweets` then fetched per-tweet detail via `TweetResultByRestId`, whose GraphQL id
 rotated and **404'd for every tweet**. The `UserTweets` timeline already carries text + stats, so
