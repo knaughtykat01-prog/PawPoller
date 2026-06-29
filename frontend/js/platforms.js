@@ -25,6 +25,11 @@
     const byCode = {};
     PLATFORMS.forEach(p => { byCode[p.code] = p; });
 
+    // Each platform's official logo (favicon), bundled under /img/platforms/.
+    // Itaku ships an SVG; the rest are PNGs. Trademarks of their owners — see the
+    // disclaimer on the Platforms hub.
+    PLATFORMS.forEach(p => { p.logo = '/img/platforms/' + p.code + (p.code === 'ik' ? '.svg' : '.png'); });
+
     /* platformRoute(code, sub) — hash route for a platform sub-view.
      *
      * Inkbunny is the legacy "default" platform: its dashboard is `#/ib`, but

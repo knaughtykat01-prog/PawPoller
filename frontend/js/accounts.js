@@ -28,6 +28,8 @@ window.Accounts = {
                 <section id="accounts-add" class="acct-section"></section>
                 <div id="accounts-list">Loading…</div>
                 <section id="fa-polling-card" class="acct-section"></section>
+                <p class="logo-disclaimer">Platform names and logos are trademarks of their respective
+                owners, shown only to identify each service. PawPoller is not affiliated with them.</p>
             </div>`;
 
         this._renderFaPollingToggle(document.getElementById('fa-polling-card'));
@@ -239,12 +241,16 @@ window.Accounts = {
             const meta = (window.platformByCode && window.platformByCode(platform)) || null;
             const color = meta ? meta.color : 'var(--accent)';
             const emoji = meta ? meta.emoji : '';
+            const logo = meta ? meta.logo : '';
             const label = (meta && meta.label) || names[platform] || platform;
+            const icon = logo
+                ? `<span class="plat-logo"><img src="${logo}" alt="${this.esc(label)} logo" loading="lazy"></span>`
+                : (emoji ? `<span class="plat-emoji">${emoji}</span>` : '');
             const list = byPlatform[platform];
             const rows = list.map(a => this._accountRow(a, color)).join('');
             return `<div class="acct-plat-card" style="--pc:${color}">
                         <div class="acct-plat-head">
-                            ${emoji ? `<span class="plat-emoji">${emoji}</span>` : ''}
+                            ${icon}
                             <span class="plat-name">${this.esc(label)}</span>
                             <span class="plat-count">${list.length} account${list.length === 1 ? '' : 's'}</span>
                         </div>

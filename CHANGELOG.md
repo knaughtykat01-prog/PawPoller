@@ -4,6 +4,24 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.40.0] - 2026-06-29 - Platform logos + Bluesky content-type tagging
+
+**Platform logos** (`frontend/img/platforms/`, `frontend/js/{platforms,app,accounts}.js`, CSS)
+- Bundled each platform's real logo (their favicon; Itaku ships an SVG) and surfaced them where the app
+  used emoji: the **Platforms hub tiles** (on a white badge so they read on the saturated colour) and the
+  **Accounts** page platform cards. `window.platformByCode().logo` exposes the path.
+- **Legal disclaimer** added under the Platforms hub and on the Accounts page: *platform names and logos
+  are trademarks of their respective owners; PawPoller is independent and unaffiliated; logos are shown
+  solely to identify each service.*
+
+**Bluesky content-type tagging** (`clients/bsky/client.py`, frontend) — parity with X (2.39.3)
+- Bluesky posts are now typed **Post / Reply / Quote / Repost** (badge on the card + detail meta). Replies
+  and quotes are detected from the post record/embed; reposts are kept only when **you're tagged**
+  (`_post_mentions_did`) and reported with the original's stats, mirroring the X poller. Quote-with-media
+  thumbnails are picked up from `recordWithMedia`.
+
+---
+
 ## [2.39.3] - 2026-06-29 - X: content-type tags on cards (Tweet/Reply/Quote/Repost)
 
 - Each tweet card now shows a **type badge** so you can tell what it is at a glance — **Tweet / Reply /

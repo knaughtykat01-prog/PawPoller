@@ -382,7 +382,8 @@ a.stat-card:hover {
     color: var(--accent);
     border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
-.card-type-badge.type-retweet {
+.card-type-badge.type-retweet,
+.card-type-badge.type-repost {
     color: var(--success);
     border-color: color-mix(in srgb, var(--success) 40%, transparent);
 }

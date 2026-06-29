@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.39.3 — **X: content-type tags on cards (Tweet/Reply/Quote/Repost)**.
+**Current version:** 2.40.0 — **Platform logos + Bluesky content-type tagging**.
+**Released + deployed** 2026-06-29 (tag `v2.40.0`). (1) Bundled real platform logos (favicons; Itaku=SVG)
+under `frontend/img/platforms/`, shown on the Platforms hub tiles (white badge) + Accounts cards via
+`platformByCode().logo`, with a trademark **disclaimer** on both pages. (2) Bluesky now tags posts
+Post/Reply/Quote/Repost (parity with X 2.39.3): replies/quotes detected in `_parse_post`, reposts kept
+only when the account is @-tagged (`_post_mentions_did`) and shown with the original's stats. Logos are
+served via the existing auth-exempt `/img` mount and bundled in the desktop build (`pawpoller.spec`
+includes `frontend/`). Re-poll Bluesky to populate the new types. CHANGELOG [2.40.0].
+
+**Prior release — 2.39.3 — X: content-type tags on cards (Tweet/Reply/Quote/Repost)**.
 **Released + deployed** 2026-06-29 (tag `v2.39.3`). Each tweet card shows a colour-coded type badge
 (Tweet/Reply/Quote/Repost) so entries are identifiable at a glance. `submissionCardGrid` gained
 `typeKey`/`typeLabels`; X grid passes `content_type` + `Components.TW_TYPE_LABELS` (also used by the table

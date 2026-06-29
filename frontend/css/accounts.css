@@ -137,6 +137,13 @@ button.acct-stat { font: inherit; line-height: inherit; }
 .acct-plat-card + .acct-plat-card { margin-top: 12px; }
 .acct-plat-head { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
 .acct-plat-head .plat-emoji { font-size: 18px; line-height: 1; }
+.acct-plat-head .plat-logo {
+    width: 26px; height: 26px; border-radius: 6px;
+    background: #fff; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+.acct-plat-head .plat-logo img { width: 18px; height: 18px; object-fit: contain; }
 .acct-plat-head .plat-name {
     font-family: var(--font-display); font-weight: 800; font-size: 14px;
     letter-spacing: -0.01em; color: var(--text-primary);

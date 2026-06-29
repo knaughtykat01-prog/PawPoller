@@ -2018,7 +2018,7 @@ const App = {
                     <span class="hub-tile-wm">${p.emoji}</span>
                     ${p.pollOnly ? '<span class="hub-tile-pill">poll only</span>' : ''}
                     <div class="hub-tile-top">
-                        <span class="hub-tile-emoji">${p.emoji}</span>
+                        <span class="hub-tile-logo">${p.logo ? `<img src="${p.logo}" alt="${p.label} logo" loading="lazy">` : `<span class="hub-tile-emoji">${p.emoji}</span>`}</span>
                         <span class="platform-grid-status pp-health-dot" id="pg-status-${p.code}" data-tooltip=""></span>
                     </div>
                     <div class="hub-tile-name">${p.label}</div>
@@ -2032,6 +2032,9 @@ const App = {
                 <h2>Platforms</h2>
             </div>
             <div class="hub-grid" id="platform-grid">${tiles}</div>
+            <p class="logo-disclaimer">Platform names and logos are trademarks of their respective owners.
+            PawPoller is an independent tool, not affiliated with or endorsed by any of these platforms;
+            their logos are shown solely to identify each service.</p>
         `);
 
         /* Populate live status dots immediately (platform_health re-fetches
@@ -5198,7 +5201,7 @@ const App = {
                 <div class="detail-header">
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
-                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(sub.content_type || 'image')}</div>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.BSKY_TYPE_LABELS[sub.content_type] || sub.content_type || 'Post')}</div>
                         <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Itaku</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.likes || 0)} <span class="lbl">likes</span></div>
@@ -5453,6 +5456,7 @@ const App = {
                 subs.map(s => ({ ...s, _rkey: String(s.submission_id).split('/').pop() })),
                 {
                     idKey: '_rkey', titleKey: 'title', thumbKey: 'thumbnail_url', proxyThumb: false,
+                    typeKey: 'content_type', typeLabels: Components.BSKY_TYPE_LABELS,
                     detailRoute: '/bsky/submission', dateKey: 'posted_at',
                     stats: [
                         { key: 'likes', deltaKey: 'likes_delta', label: 'likes' },

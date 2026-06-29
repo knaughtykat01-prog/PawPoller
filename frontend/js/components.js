@@ -8,8 +8,9 @@
 
 const Components = {
 
-    // Friendly labels for X content types (raw → display tag).
+    // Friendly labels for content types (raw → display tag).
     TW_TYPE_LABELS: { tweet: 'Tweet', reply: 'Reply', quote: 'Quote', retweet: 'Repost' },
+    BSKY_TYPE_LABELS: { post: 'Post', reply: 'Reply', quote: 'Quote', repost: 'Repost' },
 
     /**
      * Single metric card with optional 24h delta indicator.

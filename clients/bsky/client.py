@@ -55,6 +55,19 @@ def _is_repost_item(item: dict) -> bool:
     return "reasonRepost" in (reason.get("$type") or "")
 
 
+def _post_mentions_did(post: dict, did: str) -> bool:
+    """True if *did* is @-mentioned in the post's rich-text facets. Used to keep
+    reposts that actually tag the account (mirrors the X poller)."""
+    if not did:
+        return False
+    record = (post or {}).get("record", {}) or {}
+    for facet in record.get("facets", []) or []:
+        for feat in facet.get("features", []) or []:
+            if feat.get("$type") == "app.bsky.richtext.facet#mention" and feat.get("did") == did:
+                return True
+    return False
+
+
 class BskyClient:
     """Async HTTP client for Bluesky's AT Protocol API."""
 
@@ -275,11 +288,13 @@ class BskyClient:
                 break
 
             for item in feed:
-                # Skip reposts: their post belongs to the original author, so
-                # their stats aren't yours.
-                if _is_repost_item(item):
-                    continue
+                # Reposts are dropped UNLESS the account is tagged in them (then
+                # they're kept and flagged so they show as a "Repost"). Their
+                # stats are the original author's — mirrors the X poller.
+                is_repost = _is_repost_item(item)
                 post = item.get("post", {})
+                if is_repost and not _post_mentions_did(post, self._did):
+                    continue
                 uri = post.get("uri", "")
                 if uri and uri not in seen_uris:
                     seen_uris.add(uri)
@@ -287,10 +302,10 @@ class BskyClient:
                     record = post.get("record", {})
                     text = record.get("text", "")
                     title = text[:80] + ("..." if len(text) > 80 else "") if text else ""
-                    all_posts.append({
-                        "post_uri": uri,
-                        "title": title,
-                    })
+                    entry = {"post_uri": uri, "title": title}
+                    if is_repost:
+                        entry["content_type"] = "repost"   # threaded through to upsert
+                    all_posts.append(entry)
 
             cursor = data.get("cursor")
             if not cursor:
@@ -349,10 +364,13 @@ class BskyClient:
                     post_map = {p.get("uri", ""): p for p in posts}
                     for item in batch:
                         post_data = post_map.get(item["post_uri"])
-                        if post_data:
-                            details.append(self._parse_post(post_data))
-                        else:
-                            details.append(self._empty_detail(item["post_uri"]))
+                        detail = (self._parse_post(post_data) if post_data
+                                  else self._empty_detail(item["post_uri"]))
+                        # Repost flag is known only at discovery (feed reason) —
+                        # override the parsed type so it shows as a "Repost".
+                        if item.get("content_type"):
+                            detail["content_type"] = item["content_type"]
+                        details.append(detail)
                 else:
                     # Batch failed — add empty details
                     for item in batch:
@@ -376,10 +394,17 @@ class BskyClient:
         record = post.get("record", {})
         text = record.get("text", "")
 
-        # Determine content type
+        # Determine content type. A repost flag (set at discovery) overrides this
+        # later in get_post_details_batch; here we tell apart reply/quote/post.
         embed = post.get("embed", {})
         embed_type = embed.get("$type", "") if isinstance(embed, dict) else ""
         has_media = bool(embed_type)
+        if record.get("reply"):
+            content_type = "reply"
+        elif "embed.record" in embed_type:   # record / recordWithMedia = quote
+            content_type = "quote"
+        else:
+            content_type = "post"
 
         # Build post link
         link = f"https://bsky.app/profile/{handle}/post/{rkey}"
@@ -411,6 +436,13 @@ class BskyClient:
         elif embed_type == "app.bsky.embed.external#view":
             ext = embed.get("external", {})
             thumbnail_url = ext.get("thumb", "")
+        elif embed_type == "app.bsky.embed.recordWithMedia#view":
+            # Quote-with-media: the image is under embed.media.
+            media = embed.get("media", {}) or {}
+            if media.get("$type") == "app.bsky.embed.images#view":
+                imgs = media.get("images", [])
+                if imgs:
+                    thumbnail_url = imgs[0].get("thumb", "")
 
         return {
             "post_uri": uri,
@@ -418,7 +450,7 @@ class BskyClient:
             "full_text": text,
             "username": handle,
             "posted_at": record.get("createdAt", ""),
-            "content_type": "post",
+            "content_type": content_type,
             "rating": "General",
             "description": text,
             "keywords": keywords,
