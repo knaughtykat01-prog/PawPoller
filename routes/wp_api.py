@@ -68,7 +68,7 @@ async def wp_connect(body: dict):
     # check leaves a live session in place for the next poll cycle.
     from polling.wp_poller import _get_or_create_client
     overlay = {**config.get_settings(), "wp_target_user": target_user}
-    client = _get_or_create_client(overlay)
+    client = _get_or_create_client(overlay, target_user)
     try:
         result = await client.validate_user()
     except Exception as e:

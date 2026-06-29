@@ -75,7 +75,7 @@ async def sqw_connect(body: dict):
         "sqw_password": password,
         "sqw_target_user": target_user,
     }
-    client = _get_or_create_client(overlay)
+    client = _get_or_create_client(overlay, username, password, target_user)
     try:
         result = await client.validate_session()
     except Exception as e:

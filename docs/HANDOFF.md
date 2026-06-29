@@ -1,7 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.37.0 — **Full-resolution Inkbunny import**.
+**Current version:** 2.37.1 — **Fix: all platform "Connect" buttons were 500ing**.
+**Released + deployed** 2026-06-29 (tag `v2.37.1`). Connecting any account (caught in prod for **X** and
+**Bluesky**) crashed with `TypeError: _get_or_create_client() missing N required positional arguments`:
+the pollers moved to multi-account signatures `_get_or_create_client(settings, <creds...>)` but all eight
+`/auth/connect` handlers still called the old single-arg `(overlay)` form. Fixed each
+`routes/{ao3,bsky,da,ik,sf,sqw,tw,wp}_api.py` to pass the creds its poller requires, plus a static
+arity regression guard (`tests/test_connect_client_arity.py`). CHANGELOG [2.37.1].
+
+**Prior release — 2.37.0 — Full-resolution Inkbunny import**:
 **Released + deployed** 2026-06-29 (tag `v2.37.0`). Artwork import now re-fetches Inkbunny's **original
 file** (`files[].file_url_full`) via the API — reusing the poller's cached session SID — instead of the
 stored thumbnail (`_resolve_ib_full_url` in `posting/artwork_importer.py`, applied only for `ib`;

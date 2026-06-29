@@ -82,7 +82,7 @@ async def tw_connect(body: dict):
         "tw_ct0": ct0,
         "tw_target_user": target_user,
     }
-    client = _get_or_create_client(overlay)
+    client = _get_or_create_client(overlay, auth_token, ct0, target_user)
     try:
         valid = await client.validate_cookies()
     except Exception as e:

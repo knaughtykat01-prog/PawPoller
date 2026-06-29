@@ -87,7 +87,9 @@ async def ao3_connect(body: dict):
         "ao3_target_user": target_user,
         "ao3_session_cookie": session_cookie,
     }
-    client = _get_or_create_client(overlay)
+    client = _get_or_create_client(
+        overlay, overlay["ao3_username"], overlay["ao3_password"],
+        target_user, session_cookie)
     try:
         result = await client.validate_session()
     except Exception as e:

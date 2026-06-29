@@ -83,7 +83,10 @@ async def sf_connect(body: dict):
         "sf_password": password,
         "sf_display_name": display_name,
     }
-    client = _get_or_create_client(overlay)
+    # SF resolves creds from the overlay; is_default=True makes account_id
+    # irrelevant to the settings-key lookup, so 0 is a safe placeholder for
+    # the default-account connect/validate flow.
+    client = _get_or_create_client(overlay, 0, True)
     # TOTP code is request-scoped — it's not in settings, so apply it
     # directly. The singleton accessor doesn't know about it.
     if totp_code:

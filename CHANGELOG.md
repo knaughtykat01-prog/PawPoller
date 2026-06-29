@@ -4,6 +4,27 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.37.1] - 2026-06-29 - Fix: every platform's "Connect" was 500ing
+
+**Why:** Connecting any account (caught in prod for **X** and **Bluesky**) returned a 500
+`TypeError: _get_or_create_client() missing N required positional arguments`. The pollers were
+refactored to multi-account credential signatures `_get_or_create_client(settings, <creds...>)`,
+but all eight `/auth/connect` route handlers still called the old single-arg
+`_get_or_create_client(overlay)` form — so every connect attempt crashed before validating creds.
+
+**Fix** (`routes/{ao3,bsky,da,ik,sf,sqw,tw,wp}_api.py`)
+- Each connect handler now passes the credential args its poller's `_get_or_create_client` requires
+  (e.g. bsky `(overlay, identifier, app_password)`, tw `(overlay, auth_token, ct0, target_user)`,
+  ao3 `(overlay, ao3_username, ao3_password, target_user, session_cookie)`). SoFurry uses the
+  account-aware `(overlay, account_id, is_default)` form (`is_default=True` resolves the overlay's
+  top-level creds for the default-account connect flow).
+
+**Regression guard** (`tests/test_connect_client_arity.py`)
+- Statically parses each connect handler's `_get_or_create_client(...)` call and asserts its
+  positional-arg count matches the poller's real signature — fails loudly if the two drift again.
+
+---
+
 ## [2.37.0] - 2026-06-29 - Full-resolution Inkbunny import
 
 **Why:** Phases 3/4 imported Inkbunny at thumbnail quality (the poller stores only a thumbnail for IB).

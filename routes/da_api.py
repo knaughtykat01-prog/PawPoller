@@ -76,7 +76,7 @@ async def da_connect(body: dict):
         "da_cookie": cookie,
         "da_target_user": target_user,
     }
-    client = _get_or_create_client(overlay)
+    client = _get_or_create_client(overlay, cookie, target_user)
     try:
         valid = await client.validate_cookies()
     except Exception as e:

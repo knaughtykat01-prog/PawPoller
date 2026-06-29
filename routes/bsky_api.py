@@ -76,7 +76,7 @@ async def bsky_connect(body: dict):
         "bsky_identifier": identifier,
         "bsky_app_password": app_password,
     }
-    client = _get_or_create_client(overlay)
+    client = _get_or_create_client(overlay, identifier, app_password)
     try:
         handle = await client.validate_session()
     except Exception as e:
