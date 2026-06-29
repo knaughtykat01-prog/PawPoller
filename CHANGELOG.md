@@ -4,6 +4,14 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.38.3] - 2026-06-29 - Accounts: rename account labels
+
+- Each account row on the Accounts page now has a **Rename** button (next to the persona dropdown /
+  enable toggle / delete) to edit its label. Wires the existing `PATCH /api/accounts/{id}` (label) — the
+  backend already supported it; only the UI affordance was missing. `frontend/js/accounts.js`.
+
+---
+
 ## [2.38.2] - 2026-06-29 - Bluesky polling: skip reposts (+ track your replies)
 
 **Why:** Same issue as X (2.38.1) but for Bluesky. `getAuthorFeed` interleaves your own posts with your

@@ -1,7 +1,12 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.38.2 — **Bluesky polling: skip reposts (+ track replies)**.
+**Current version:** 2.38.3 — **Accounts: rename account labels**.
+**Released + deployed** 2026-06-29 (tag `v2.38.3`). Added a **Rename** button to each account row on the
+Accounts page (`frontend/js/accounts.js`, `_renameAccount`) — prompts for a new label and calls the
+existing `PATCH /api/accounts/{id}`. Backend already supported it; only the UI was missing.
+
+**Prior release — 2.38.2 — Bluesky polling: skip reposts (+ track replies)**.
 **Released + deployed** 2026-06-29 (tag `v2.38.2`). Same fix as X (2.38.1), for Bluesky: `getAuthorFeed`
 interleaves the actor's posts with reposts whose `post` is the original author's, so their stats were
 polluting the dashboard. `get_all_post_uris` now skips repost items (`_is_repost_item` in

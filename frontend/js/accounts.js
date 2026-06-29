@@ -257,6 +257,8 @@ window.Accounts = {
             cb.addEventListener('change', () => this._toggle(cb.dataset.toggle, cb.dataset.enabled === '1')));
         el.querySelectorAll('[data-delete]').forEach(btn =>
             btn.addEventListener('click', () => this._delete(btn.dataset.delete)));
+        el.querySelectorAll('[data-rename]').forEach(btn =>
+            btn.addEventListener('click', () => this._renameAccount(btn.dataset.rename, btn.dataset.label)));
         el.querySelectorAll('.persona-assign').forEach(sel =>
             sel.addEventListener('change', () => this._assignPersona(sel.dataset.account, sel.value)));
     },
@@ -291,6 +293,7 @@ window.Accounts = {
         const toggle = `<label class="toggle-switch" title="${a.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'}">
                 <input type="checkbox" data-toggle="${a.account_id}" data-enabled="${a.enabled ? 1 : 0}" ${a.enabled ? 'checked' : ''}>
                 <span class="toggle-slider"></span></label>`;
+        const rename = `<button class="btn btn-sm" data-rename="${a.account_id}" data-label="${this.esc(a.label || '')}">Rename</button>`;
         return `<div class="acct-card${a.enabled ? '' : ' disabled'}" style="--pc:${color || 'var(--accent)'}">
             <div class="acct-id">
                 <span class="acct-name">${this.esc(a.label || '(unnamed)')} ${badge}</span>
@@ -300,9 +303,23 @@ window.Accounts = {
             <span class="acct-actions">
                 <span class="persona-wrap"><span>Persona</span>${this._personaSelect(a)}</span>
                 ${toggle}
+                ${rename}
                 ${del}
             </span>
         </div>`;
+    },
+
+    async _renameAccount(id, current) {
+        const label = prompt('Account label', current || '');
+        if (label == null) return;          // cancelled
+        const trimmed = label.trim();
+        if (!trimmed) return;               // don't blank the label
+        try {
+            await API.updateAccount(id, { label: trimmed });
+            this.render();
+        } catch (err) {
+            alert('Failed to rename account: ' + err.message);
+        }
     },
 
     /* renderPersonaDetail(id) — the per-persona overview page (#/persona/:id):
