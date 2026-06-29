@@ -4,6 +4,23 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.38.2] - 2026-06-29 - Bluesky polling: skip reposts (+ track your replies)
+
+**Why:** Same issue as X (2.38.1) but for Bluesky. `getAuthorFeed` interleaves your own posts with your
+**reposts**, and the poller added every feed item's `post` — but a repost's `post` is the *original
+author's*, so its likes/reposts/replies were showing on your dashboard (e.g. a reposted drawing with
+891 likes / 132 reposts that isn't yours).
+
+**Fix** (`clients/bsky/client.py`)
+- `get_all_post_uris` now skips repost items (new `_is_repost_item` — matches `reason` of type
+  `…#reasonRepost`; pinned posts via `reasonPin` are kept since they're your own).
+- Switched the feed filter from `posts_no_replies` to `posts_with_replies` so your **replies (comments)**
+  are tracked too — matching the X poller (own posts + replies, no reposts).
+- Existing repost rows (author handle ≠ your handle) are purged from `bsky_submissions`/`bsky_snapshots`
+  on deploy.
+
+---
+
 ## [2.38.1] - 2026-06-29 - X polling: skip reposts + a usable empty state
 
 **X poller now skips reposts** (`clients/tw/client.py`)

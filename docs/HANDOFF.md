@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.38.1 — **X polling: skip reposts + usable empty state**.
+**Current version:** 2.38.2 — **Bluesky polling: skip reposts (+ track replies)**.
+**Released + deployed** 2026-06-29 (tag `v2.38.2`). Same fix as X (2.38.1), for Bluesky: `getAuthorFeed`
+interleaves the actor's posts with reposts whose `post` is the original author's, so their stats were
+polluting the dashboard. `get_all_post_uris` now skips repost items (`_is_repost_item` in
+`clients/bsky/client.py`; `reasonRepost` dropped, `reasonPin`/pins kept) and the feed filter moved from
+`posts_no_replies` to `posts_with_replies` so your replies (comments) are tracked too — matching X (own
+posts + replies, no reposts). Existing repost rows (author handle ≠ your handle) were purged from the
+live DB (e.g. a reposted "Old Tai Lung Drawing" with 891 likes). CHANGELOG [2.38.2].
+
+**Prior release — 2.38.1 — X polling: skip reposts + usable empty state**.
 **Released + deployed** 2026-06-29 (tag `v2.38.1`). (1) The X poller skipped reposts: `UserTweets`
 interleaves the account's own posts/replies with retweets whose stats belong to the original author, so
 `get_all_tweet_ids` now drops reposts at discovery (`_is_repost` in `clients/tw/client.py`) — own posts,

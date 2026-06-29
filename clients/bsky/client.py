@@ -42,6 +42,19 @@ def _safe_int(val: Any) -> int:
         return 0
 
 
+def _is_repost_item(item: dict) -> bool:
+    """True if a getAuthorFeed item is a repost (the actor reposted someone
+    else's post). Such items carry a `reason` of type ``…#reasonRepost`` and
+    their ``post`` is the ORIGINAL author's — whose likes/reposts/replies aren't
+    the actor's, so tracking them would pollute the dashboard. Pinned posts
+    (``reasonPin``) are the actor's own and are NOT treated as reposts.
+    """
+    reason = item.get("reason")
+    if not isinstance(reason, dict):
+        return False
+    return "reasonRepost" in (reason.get("$type") or "")
+
+
 class BskyClient:
     """Async HTTP client for Bluesky's AT Protocol API."""
 
@@ -242,7 +255,10 @@ class BskyClient:
             params: dict[str, str] = {
                 "actor": self._did,
                 "limit": "100",
-                "filter": "posts_no_replies",
+                # Include the actor's replies (comments by you) — reposts are
+                # dropped below. Matches the X poller: own posts + replies, no
+                # reposts.
+                "filter": "posts_with_replies",
             }
             if cursor:
                 params["cursor"] = cursor
@@ -259,6 +275,10 @@ class BskyClient:
                 break
 
             for item in feed:
+                # Skip reposts: their post belongs to the original author, so
+                # their stats aren't yours.
+                if _is_repost_item(item):
+                    continue
                 post = item.get("post", {})
                 uri = post.get("uri", "")
                 if uri and uri not in seen_uris:
