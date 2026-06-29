@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.38.5 — **Dashboards: count stat card opens the list**.
+**Current version:** 2.39.0 — **X: real tweet stats (from timeline) + tagged reposts**.
+**Released + deployed** 2026-06-29 (tag `v2.39.0`). (1) Every X tweet was "(untitled)"/0: the poller
+discovered via `UserTweets` then fetched per-tweet detail via `TweetResultByRestId`, whose GraphQL id
+rotated and **404'd for every tweet**. The `UserTweets` timeline already carries text + stats, so
+`clients/tw/client.py` now parses them straight from the timeline (`get_all_tweets()` →
+`_extract_tweet_stats`) and `polling/tw_poller.py` drops the dead detail pass. Re-poll repopulates.
+(2) Reposts stay excluded **except when the account is @-tagged** in them (`_user_tagged_in` /
+`_repost_original`); a kept repost shows the original post's stats, `content_type='retweet'`.
+If X stats ever zero out again, suspect a rotated GraphQL query id. CHANGELOG [2.39.0].
+
+**Prior release — 2.38.5 — Dashboards: count stat card opens the list**.
 **Released + deployed** 2026-06-29 (tag `v2.38.5`). The "Total Tweets/Posts/Works/Submissions" stat card
 on every platform dashboard is now a link to that platform's submissions list (scoped to the viewed
 account). `Components.statCard` gained an optional `href` → renders `a.stat-card`; all 11 dashboards pass

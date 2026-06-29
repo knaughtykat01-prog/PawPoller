@@ -161,24 +161,20 @@ async def run_tw_poll_cycle(account_id: int | None = None, force_full: bool = Fa
         if not valid:
             raise ValueError("X/Twitter cookie validation failed -- update auth_token and ct0 in Settings")
 
-        # Step 2: Discover tweets
-        _update_tw_progress("searching", message="Fetching tweet list...")
-        tweet_items = await client.get_all_tweet_ids()
-        stats["submissions_found"] = len(tweet_items)
-        logger.info("TW: Found %d tweets", len(tweet_items))
+        # Step 2: Fetch tweets. Stats come straight from the UserTweets timeline
+        # (the per-tweet TweetResultByRestId endpoint 404s), so there's no second
+        # detail pass — get_all_tweets() returns full detail dicts.
+        _update_tw_progress("searching", message="Fetching tweets...")
+        details = await client.get_all_tweets()
+        stats["submissions_found"] = len(details)
+        logger.info("TW: Found %d tweets", len(details))
 
-        if not tweet_items:
+        if not details:
             _update_tw_progress("complete", message="No tweets found.")
             tw_queries.finish_tw_poll_log(conn, log_id, "success",
                                           duration_seconds=time.time() - start_time, **stats)
             conn.commit()
             return stats
-
-        # Step 3: Fetch details
-        _update_tw_progress("fetching_details",
-                            message=f"Fetching details for {len(tweet_items)} tweets...")
-        details = await client.get_tweet_details_batch(tweet_items)
-        logger.info("TW: Fetched details for %d tweets", len(details))
 
         # Step 4: Upsert + snapshot
         new_activity_details: list[dict] = []

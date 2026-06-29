@@ -4,6 +4,24 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.39.0] - 2026-06-29 - X: real tweet stats (from the timeline) + tagged reposts
+
+**Fix — every X tweet was "(untitled)" with 0 stats** (`clients/tw/client.py`, `polling/tw_poller.py`)
+- The poller discovered tweets via `UserTweets` (works) then fetched each one's detail via
+  `TweetResultByRestId` — whose GraphQL id had rotated and **404'd for every tweet**, so all tweets were
+  stored with no text and zero views/likes/retweets. The `UserTweets` timeline already includes each
+  tweet's full text + engagement, so `get_all_tweets()` now parses stats **straight from the timeline**
+  (via `_extract_tweet_stats`) and the poller skips the dead per-tweet detail pass. Faster, and tweets
+  now show their real text and numbers. (The tweet detail page already links out via "View on X".)
+- Re-poll repopulates existing accounts; old "(untitled)/0" rows fill in on the next poll.
+
+**Tagged reposts** (`clients/tw/client.py`)
+- Reposts are still dropped — **except when the account is @-tagged in them** (those are posts about you).
+  A kept repost reports the *original* post's stats and is marked `content_type='retweet'`. New helpers
+  `_user_tagged_in` / `_repost_original`; covered by `tests/test_tw_repost_filter.py`.
+
+---
+
 ## [2.38.5] - 2026-06-29 - Dashboards: count stat card opens the list
 
 - The "Total Tweets / Posts / Works / Submissions" stat card on every platform dashboard is now a

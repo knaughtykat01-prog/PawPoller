@@ -109,6 +109,34 @@ def _is_repost(result: dict) -> bool:
     return bool(legacy.get("retweeted_status_result"))
 
 
+def _repost_original(result: dict) -> dict | None:
+    """The original tweet object inside a repost timeline entry, or None."""
+    orig = (((result or {}).get("legacy", {}) or {})
+            .get("retweeted_status_result", {}) or {}).get("result", {})
+    if orig.get("__typename") == "TweetWithVisibilityResults":
+        orig = orig.get("tweet", orig)
+    return orig or None
+
+
+def _user_tagged_in(result: dict, target_user: str) -> bool:
+    """True if *target_user* is @-mentioned in the tweet — or, for a repost, in
+    the original post. Used to keep the reposts that actually tag the account
+    while still dropping the rest.
+    """
+    tu = (target_user or "").lower().lstrip("@")
+    if not tu:
+        return False
+    for r in (result, _repost_original(result)):
+        if not r:
+            continue
+        mentions = (((r.get("legacy", {}) or {}).get("entities", {}) or {})
+                    .get("user_mentions", []) or [])
+        for m in mentions:
+            if (m.get("screen_name", "") or "").lower() == tu:
+                return True
+    return False
+
+
 class TWClient:
     """Async HTTP client for X/Twitter using cookie-based GraphQL endpoints."""
 
@@ -226,11 +254,18 @@ class TWClient:
 
     # -- Tweet Discovery ------------------------------------------------------
 
-    async def get_all_tweet_ids(self) -> list[dict]:
-        """Fetch all tweet IDs for the target user via UserTweets GraphQL.
+    async def get_all_tweets(self) -> list[dict]:
+        """Fetch the target user's tweets — with full stats — via UserTweets.
 
-        Returns a list of dicts with 'tweet_id' and 'title' keys.
-        Uses cursor-based pagination.
+        The timeline response already carries each tweet's text and engagement
+        (legacy.favorite_count, retweet_count, views, …), so we parse stats
+        straight from it instead of a second per-tweet TweetResultByRestId fetch
+        (that endpoint's GraphQL id rotates and was returning 404 for every
+        tweet, leaving everything "(untitled)" with zero stats).
+
+        Reposts are dropped unless the account is tagged in them; a kept repost
+        surfaces the ORIGINAL post's stats. Returns a list of full detail dicts
+        (same shape as :meth:`_extract_tweet_stats`). Cursor-paginated.
         """
         user_id = await self._get_user_id()
         if not user_id:
@@ -307,22 +342,21 @@ class TWClient:
                     if result.get("__typename") == "TweetWithVisibilityResults":
                         result = result.get("tweet", result)
 
-                    # Skip reposts (retweets of other accounts). Their stats are
-                    # the original author's, not this account's — tracking them
-                    # would pollute the dashboard with content you only reposted.
-                    if _is_repost(result):
+                    # Reposts (retweets of other accounts) are dropped UNLESS the
+                    # account is tagged in them — those are posts about you worth
+                    # keeping. A kept repost reports the original post's stats.
+                    repost = _is_repost(result)
+                    if repost and not _user_tagged_in(result, self.target_user):
                         continue
+                    source = (_repost_original(result) or result) if repost else result
 
-                    tweet_id = result.get("rest_id", "")
+                    detail = self._extract_tweet_stats(source)
+                    if repost:
+                        detail["content_type"] = "retweet"
+                    tweet_id = detail.get("tweet_id", "")
                     if tweet_id and tweet_id not in seen_ids:
                         seen_ids.add(tweet_id)
-                        legacy = result.get("legacy", {})
-                        text = legacy.get("full_text", "")
-                        title = text[:80] + ("..." if len(text) > 80 else "") if text else ""
-                        all_tweets.append({
-                            "tweet_id": tweet_id,
-                            "title": title,
-                        })
+                        all_tweets.append(detail)
                         new_this_page += 1
 
             if new_this_page == 0 and not next_cursor:
