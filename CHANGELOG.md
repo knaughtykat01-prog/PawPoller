@@ -4,6 +4,15 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.39.2] - 2026-06-29 - X: quote tweets show the quoted post's image
+
+- A **quote tweet** carries no media of its own — the image lives in the post it quotes (e.g. quoting
+  someone's art that tags you). `_extract_tweet_stats` now falls back to the **quoted post's** media
+  (`quoted_status_result.result.legacy.{extended_entities,entities}.media`) when the tweet itself has
+  none, so quoted images show. `clients/tw/client.py`. (Takes effect on the next poll of each account.)
+
+---
+
 ## [2.39.1] - 2026-06-29 - X: tweet dates + show attached images
 
 - **Tweet dates were blank** — X has stopped reliably populating `legacy.created_at` in the timeline, so

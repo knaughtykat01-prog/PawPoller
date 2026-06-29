@@ -477,6 +477,18 @@ class TWClient:
                  or (legacy.get("entities") or {}).get("media") or [])
         if media:
             thumbnail_url = media[0].get("media_url_https", "")
+        # Quote tweets usually carry no media of their own — the image lives in
+        # the QUOTED post (e.g. quoting someone's art). Fall back to it so the
+        # quoted image still shows.
+        if not thumbnail_url:
+            quoted = ((result.get("quoted_status_result") or {}).get("result") or {})
+            if quoted.get("__typename") == "TweetWithVisibilityResults":
+                quoted = quoted.get("tweet", quoted)
+            q_legacy = quoted.get("legacy", {}) or {}
+            q_media = ((q_legacy.get("extended_entities") or {}).get("media")
+                       or (q_legacy.get("entities") or {}).get("media") or [])
+            if q_media:
+                thumbnail_url = q_media[0].get("media_url_https", "")
 
         # Posted at — derive from the Snowflake id (X no longer reliably fills
         # legacy.created_at in the timeline); fall back to created_at if needed.

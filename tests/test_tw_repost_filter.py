@@ -138,6 +138,24 @@ def test_tagged_repost_grabs_original_image_and_stats():
     assert d["likes"] == 50 and d["views"] == 1234
 
 
+def test_quote_tweet_grabs_quoted_post_image():
+    # A quote tweet has no media of its own; the image is in the quoted post.
+    c = TWClient("a", "b", "KiiKinar")
+    result = {
+        "rest_id": "1994383496316678229",
+        "legacy": {"full_text": "And the second accompanying piece by @Ariryu_owo",
+                   "favorite_count": 0, "quoted_status_id_str": "555", "entities": {}},
+        "quoted_status_result": {"result": {
+            "rest_id": "555",
+            "legacy": {"full_text": "art!", "extended_entities": {"media": [
+                {"media_url_https": "https://pbs.twimg.com/media/QUOTED.jpg"}]}},
+        }},
+    }
+    d = c._extract_tweet_stats(result)
+    assert d["content_type"] == "quote"
+    assert d["thumbnail_url"] == "https://pbs.twimg.com/media/QUOTED.jpg"
+
+
 def test_extract_uses_snowflake_when_created_at_missing():
     c = TWClient("a", "b", "KiiKinar")
     result = {"rest_id": "1445919810076827648",

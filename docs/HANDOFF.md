@@ -1,7 +1,13 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.39.1 — **X: tweet dates + show attached images**.
+**Current version:** 2.39.2 — **X: quote tweets show the quoted post's image**.
+**Released + deployed** 2026-06-29 (tag `v2.39.2`). Quote tweets carry no media of their own (the image
+is in the quoted post), so all 6 quote tweets showed no thumbnail. `_extract_tweet_stats` now falls back
+to the quoted post's media (`quoted_status_result.result.legacy.{extended_entities,entities}.media`).
+`clients/tw/client.py`. Existing quote rows fill in on the next successful poll (X rate limits apply).
+
+**Prior release — 2.39.1 — X: tweet dates + show attached images**.
 **Released + deployed** 2026-06-29 (tag `v2.39.1`). (1) Tweet dates were blank (X stopped filling
 `legacy.created_at`); now derived from the Snowflake tweet id (`_snowflake_to_utc` →
 `YYYY-MM-DD HH:MM:SS` UTC) and back-filled onto existing rows from their ids. (2) Tweets/posts with an
