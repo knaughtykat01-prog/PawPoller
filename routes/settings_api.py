@@ -498,6 +498,11 @@ async def list_accounts_endpoint(platform: str | None = None):
     from database import accounts as adb
     conn = _accounts_conn()
     try:
+        # Ensure any platform that has credentials but no account row yet gets
+        # its default account before we list — so freshly connected platforms
+        # (e.g. X / Bluesky) show up immediately instead of after the next poll
+        # cycle or restart. Idempotent; get_default_account_id self-commits.
+        adb.seed_default_accounts(conn, config.get_settings())
         rows = adb.list_accounts(conn, platform=platform)
         # Attach per-account stat rollups so the UI can show numbers side by side.
         for r in rows:

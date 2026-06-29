@@ -4,6 +4,30 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.37.2] - 2026-06-29 - Fix: newly-connected platforms never got an account row
+
+**Why:** After connecting X and Bluesky (now possible since 2.37.1), they never appeared on the
+Accounts page and weren't picked up by the multi-account poll scheduler — they had saved credentials
+but no row in the `accounts` table.
+
+**Root cause** (`database/accounts.py`)
+- `get_default_account_id(create=True)` inserted the default-account row but **never committed**
+  (unlike `create_account`, which does). The connection is `isolation_level=''` (implicit
+  transactions), so every caller that closed without committing — the pollers' `account_id=None` path
+  and `server.py`'s per-cycle `seed_default_accounts` — silently rolled the insert back. The original 9
+  platforms survived only because the `init_db` migration commits; tw/bsky never had creds at a restart
+  (every connect 500'd before 2.37.1), so the committing path never ran for them.
+
+**Fix**
+- `get_default_account_id` now `conn.commit()`s right after the INSERT, so create-on-demand is durable
+  for every caller (pollers, posting, seed).
+- `GET /api/accounts` (`routes/settings_api.py`) seeds default accounts before listing, so a freshly
+  connected platform shows up immediately instead of waiting for the next poll cycle or restart.
+- Regression test `tests/test_accounts.py::…::test_get_default_account_id_self_commits` — creates on one
+  connection without committing, asserts a separate connection sees the row.
+
+---
+
 ## [2.37.1] - 2026-06-29 - Fix: every platform's "Connect" was 500ing
 
 **Why:** Connecting any account (caught in prod for **X** and **Bluesky**) returned a 500

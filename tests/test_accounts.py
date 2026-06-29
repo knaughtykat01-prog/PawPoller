@@ -119,6 +119,25 @@ class TestAccountsRegistry:
         assert aid is not None
         assert accounts.get_default_account_id(conn, "ib") == aid
 
+    def test_get_default_account_id_self_commits(self, conn):
+        """create=True must persist even when the caller never commits.
+
+        Regression: the pollers and the server poll-loop seed call this and then
+        close their connection WITHOUT committing. Before the fix the INSERT
+        rolled back on close, leaving platforms with creds (tw/bsky) but no
+        account row — so they never appeared on the Accounts page or got polled.
+        """
+        from database.db import get_connection
+        writer = get_connection()
+        try:
+            aid = accounts.get_default_account_id(
+                writer, "tw", create=True, settings={"tw_target_user": "kit"})
+            assert aid is not None
+        finally:
+            writer.close()  # deliberately NO writer.commit()
+        # A separate connection must see the row -> it was committed internally.
+        assert accounts.get_default_account_id(conn, "tw") == aid
+
     def test_only_one_default_per_platform(self, conn):
         accounts.get_default_account_id(conn, "ib", create=True, settings={})
         conn.commit()

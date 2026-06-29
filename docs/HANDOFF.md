@@ -1,7 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.37.1 — **Fix: all platform "Connect" buttons were 500ing**.
+**Current version:** 2.37.2 — **Fix: newly-connected platforms never got an account row**.
+**Released + deployed** 2026-06-29 (tag `v2.37.2`). After connecting X/Bluesky (possible since 2.37.1)
+they never showed on the Accounts page or got polled: `get_default_account_id(create=True)` inserted the
+default-account row but never committed, so the pollers' `account_id=None` path and `server.py`'s
+per-cycle `seed_default_accounts` (both close without committing) rolled it back every time. Fixed it to
+`conn.commit()` after the INSERT; `GET /api/accounts` now seeds before listing so freshly connected
+platforms appear immediately. Regression test in `tests/test_accounts.py`. CHANGELOG [2.37.2].
+
+**Prior release — 2.37.1 — Fix: all platform "Connect" buttons were 500ing**.
 **Released + deployed** 2026-06-29 (tag `v2.37.1`). Connecting any account (caught in prod for **X** and
 **Bluesky**) crashed with `TypeError: _get_or_create_client() missing N required positional arguments`:
 the pollers moved to multi-account signatures `_get_or_create_client(settings, <creds...>)` but all eight

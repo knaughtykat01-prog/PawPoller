@@ -137,6 +137,11 @@ def get_default_account_id(conn: sqlite3.Connection, platform: str,
         " VALUES (?, ?, ?, 1, 1, 0)",
         (platform, label, handle),
     )
+    # Commit immediately: most callers (pollers, posting, the server poll-loop
+    # seed) close their connection without committing, so without this the new
+    # default account silently rolls back — the bug that left tw/bsky with creds
+    # but no account row. create_account() commits for the same reason.
+    conn.commit()
     return cur.lastrowid
 
 
