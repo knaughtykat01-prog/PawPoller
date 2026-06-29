@@ -4,6 +4,18 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.38.4] - 2026-06-29 - Accounts: platform-named counts + click-through
+
+- The account/persona stat chips now use a **platform-appropriate noun** for the count instead of the
+  generic "subs": X → **tweets**, Bluesky/Itaku → **posts**, DeviantArt → **deviations**, AO3/SquidgeWorld
+  → **works**, Wattpad → **stories**, galleries (IB/FA/WS/SF) → **submissions**. Persona combined totals
+  (cross-platform) stay "subs".
+- The count chip on each account row is now a **link** — clicking it opens that platform's submissions
+  list scoped to the account (e.g. pull up @KiiKinar's 17 tweets). Reuses the existing account-filter
+  (`App._accountFilter` + `_acctId`). `frontend/js/accounts.js`, `frontend/css/accounts.css`.
+
+---
+
 ## [2.38.3] - 2026-06-29 - Accounts: rename account labels
 
 - Each account row on the Accounts page now has a **Rename** button (next to the persona dropdown /

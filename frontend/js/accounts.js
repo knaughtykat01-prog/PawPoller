@@ -259,6 +259,8 @@ window.Accounts = {
             btn.addEventListener('click', () => this._delete(btn.dataset.delete)));
         el.querySelectorAll('[data-rename]').forEach(btn =>
             btn.addEventListener('click', () => this._renameAccount(btn.dataset.rename, btn.dataset.label)));
+        el.querySelectorAll('[data-view-acct]').forEach(btn =>
+            btn.addEventListener('click', () => this._viewAccount(btn.dataset.viewAcct, btn.dataset.plat)));
         el.querySelectorAll('.persona-assign').forEach(sel =>
             sel.addEventListener('change', () => this._assignPersona(sel.dataset.account, sel.value)));
     },
@@ -270,19 +272,44 @@ window.Accounts = {
         return String(n);
     },
 
-    _statsCell(s) {
+    /* Per-platform noun for the submissions count — X has "tweets", not "subs". */
+    _unit(platform) {
+        return {
+            tw: 'tweets', bsky: 'posts', ik: 'posts', da: 'deviations',
+            ao3: 'works', sqw: 'works', wp: 'stories',
+            ib: 'submissions', fa: 'submissions', ws: 'submissions', sf: 'submissions',
+        }[platform] || 'subs';
+    },
+
+    _statsCell(s, platform) {
         if (!s) return '<span class="muted">—</span>';
-        return `${this._fmt(s.submissions)} subs · ${this._fmt(s.views)} views · `
+        return `${this._fmt(s.submissions)} ${this._unit(platform)} · ${this._fmt(s.views)} views · `
              + `${this._fmt(s.favorites)} faves · ${this._fmt(s.comments)} comments`;
     },
 
-    /* Stat chips for the account/persona rows (the bold-redesign look). */
-    _statChips(s) {
+    /* Stat chips for the account/persona rows. With platform + accountId, the
+     * count chip becomes a link that opens that platform's submissions list
+     * scoped to the account — so you can pull up the actual tweets/posts. */
+    _statChips(s, platform, accountId) {
         if (!s) return '<span class="muted">No data yet</span>';
-        return `<span class="acct-stat"><b>${this._fmt(s.submissions)}</b> subs</span>`
+        const unit = this._unit(platform);
+        const count = this._fmt(s.submissions);
+        const subs = (platform && accountId)
+            ? `<button class="acct-stat acct-stat-link" data-view-acct="${accountId}" data-plat="${this.esc(platform)}" title="View ${unit}"><b>${count}</b> ${unit} →</button>`
+            : `<span class="acct-stat"><b>${count}</b> ${unit}</span>`;
+        return subs
              + `<span class="acct-stat"><b>${this._fmt(s.views)}</b> views</span>`
              + `<span class="acct-stat"><b>${this._fmt(s.favorites)}</b> faves</span>`
              + `<span class="acct-stat"><b>${this._fmt(s.comments)}</b> comments</span>`;
+    },
+
+    /* Open a platform's submissions list scoped to one account. */
+    _viewAccount(accountId, platform) {
+        App._accountFilter = App._accountFilter || {};
+        App._accountFilter[platform] = Number(accountId);
+        window.location.hash = window.platformRoute
+            ? window.platformRoute(platform, 'submissions')
+            : '#/' + platform;
     },
 
     _accountRow(a, color) {
@@ -299,7 +326,7 @@ window.Accounts = {
                 <span class="acct-name">${this.esc(a.label || '(unnamed)')} ${badge}</span>
                 ${a.handle ? `<span class="acct-handle">${this.esc(a.handle)}</span>` : ''}
             </div>
-            <span class="acct-stats">${this._statChips(a.stats)}</span>
+            <span class="acct-stats">${this._statChips(a.stats, a.platform, a.account_id)}</span>
             <span class="acct-actions">
                 <span class="persona-wrap"><span>Persona</span>${this._personaSelect(a)}</span>
                 ${toggle}
@@ -375,7 +402,7 @@ window.Accounts = {
                 <td><strong>${this.esc(a.label || '(unnamed)')}</strong></td>
                 <td class="muted">${this.esc(names[a.platform] || a.platform)}</td>
                 <td class="muted">${this.esc(a.handle || '')}</td>
-                <td class="muted">${this._statsCell(a.stats)}</td>
+                <td class="muted">${this._statsCell(a.stats, a.platform)}</td>
                 <td style="text-align:right;">
                     <button class="btn btn-sm" data-view-acct="${a.account_id}" data-plat="${this.esc(a.platform)}">View →</button>
                 </td>

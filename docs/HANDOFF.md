@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-29
-**Current version:** 2.38.3 — **Accounts: rename account labels**.
+**Current version:** 2.38.4 — **Accounts: platform-named counts + click-through**.
+**Released + deployed** 2026-06-29 (tag `v2.38.4`). Account/persona stat chips use a platform-appropriate
+noun for the count (X→tweets, Bluesky/Itaku→posts, DA→deviations, AO3/SQW→works, WP→stories,
+IB/FA/WS/SF→submissions; persona combined stays "subs"), and the count chip is now a link that opens the
+platform's submissions list scoped to the account (reuses `App._accountFilter`/`_acctId`).
+`frontend/js/accounts.js` (`_unit`, `_statChips`, `_viewAccount`), `frontend/css/accounts.css`.
+
+**Prior release — 2.38.3 — Accounts: rename account labels**.
 **Released + deployed** 2026-06-29 (tag `v2.38.3`). Added a **Rename** button to each account row on the
 Accounts page (`frontend/js/accounts.js`, `_renameAccount`) — prompts for a new label and calls the
 existing `PATCH /api/accounts/{id}`. Backend already supported it; only the UI was missing.

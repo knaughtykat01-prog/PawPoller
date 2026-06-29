@@ -79,6 +79,18 @@
 .acct-stat b { color: var(--text-primary); font-weight: 700; }
 .acct-stats .muted { font-size: 12px; }
 
+/* Clickable count chip — opens the account's submissions list */
+button.acct-stat { font: inherit; line-height: inherit; }
+.acct-stat-link {
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: border-color var(--transition), color var(--transition);
+}
+.acct-stat-link:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
 /* ── Badge (primitive was used but never defined) ──────────── */
 .badge {
     display: inline-block;
