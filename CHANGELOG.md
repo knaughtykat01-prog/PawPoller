@@ -4,6 +4,15 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.41.1] - 2026-06-30 - Fix CI: Mastodon test event-loop
+
+- `tests/test_mast_parse.py` used `asyncio.get_event_loop().run_until_complete(...)`, which raises
+  `RuntimeError: There is no current event loop` on CI's Python 3.11 (locally it only warned). Switched to
+  `asyncio.run()` with a single wrapping coroutine. App code unchanged — this only unblocks Build &
+  Release (which halts on test failure, so 2.41.0 produced no desktop installers).
+
+---
+
 ## [2.41.0] - 2026-06-30 - New platform: Mastodon (poll-only, 12th platform)
 
 Added **Mastodon** as the 12th tracked platform — poll-only analytics, mirroring the Bluesky/X

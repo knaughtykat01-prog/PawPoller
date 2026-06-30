@@ -105,13 +105,18 @@ def test_get_all_post_uris_drops_untagged_reblog_keeps_tagged():
         return pages.pop(0) if pages else []
 
     c._get_json = fake_get_json
-    items = asyncio.get_event_loop().run_until_complete(c.get_all_post_uris())
+
+    async def _run():
+        items = await c.get_all_post_uris()
+        details = await c.get_post_details_batch(items)
+        return items, details
+
+    items, details = asyncio.run(_run())
     uris = {i["post_uri"] for i in items}
     assert uris == {"uri-own", "uri-orig-tagged"}     # untagged boost dropped
     repost = next(i for i in items if i["post_uri"] == "uri-orig-tagged")
     assert repost.get("content_type") == "repost"
 
-    details = asyncio.get_event_loop().run_until_complete(c.get_post_details_batch(items))
     by_uri = {d["post_uri"]: d for d in details}
     assert by_uri["uri-orig-tagged"]["content_type"] == "repost"
     assert by_uri["uri-own"]["content_type"] == "post"

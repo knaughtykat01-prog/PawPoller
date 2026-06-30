@@ -1,7 +1,11 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-30
-**Current version:** 2.41.0 — **New platform: Mastodon (poll-only, 12th platform)**.
+**Current version:** 2.41.1 — **Fix CI: Mastodon test event-loop** (test-only; `asyncio.run()` instead
+of the deprecated `get_event_loop()` in `test_mast_parse.py`, which hard-failed on CI's Python 3.11 and
+blocked Build & Release — so 2.41.0 built no desktop installers). App code identical to 2.41.0.
+
+**Prior release — 2.41.0 — New platform: Mastodon (poll-only, 12th platform)**.
 **Released + deployed** 2026-06-30 (tag `v2.41.0`). Added Mastodon as the 12th tracked platform,
 poll-only, mirroring the Bluesky/X pattern. Decentralised → connect with your **instance URL** + a
 **personal access token** (Settings → Development → New application, scope `read`). Tracks likes
