@@ -11,14 +11,18 @@ const platforms = [
   { name: 'Itaku',       poll: true, post: false, note: 'Read-only analytics' },
   { name: 'Bluesky',     poll: true, post: false, note: 'Announcements (coming soon)' },
   { name: 'X / Twitter', poll: true, post: false, note: 'Read-only analytics' },
+  { name: 'Mastodon',    poll: true, post: false, testing: true, note: 'Read-only analytics' },
+  { name: 'Tumblr',      poll: true, post: false, testing: true, note: 'Notes analytics' },
+  { name: 'Pixiv',       poll: true, post: false, testing: true, note: 'Illustrations + novels' },
+  { name: 'Threads',     poll: true, post: false, testing: true, note: 'Official API · Meta app required' },
 ];
 ---
 <section id="platforms" class="border-t border-ink-800/60 bg-ink-950/30 py-24">
   <div class="container-prose">
     <div class="max-w-2xl">
-      <h2 class="text-4xl text-ink-50 md:text-5xl">Eleven polled. Nine posted.</h2>
+      <h2 class="text-4xl text-ink-50 md:text-5xl">Fifteen polled. Nine posted.</h2>
       <p class="mt-6 text-ink-300">
-        Polling tracks views, favourites and comments across all eleven. Posting supports nine of them today; the last two are on the roadmap.
+        Polling tracks views, favourites, notes and comments across fifteen platforms. Posting supports nine of them today; the rest are read-only analytics. The four newest (Mastodon, Tumblr, Pixiv, Threads) are live in the app and currently undergoing testing.
       </p>
     </div>
 
@@ -35,10 +39,13 @@ const platforms = [
         <tbody class="divide-y divide-ink-800 text-sm">
           {platforms.map((p) => (
             <tr class="transition hover:bg-ink-800/30">
-              <td class="px-6 py-4 font-medium text-ink-50">{p.name}</td>
+              <td class="px-6 py-4 font-medium text-ink-50">
+                {p.name}
+                {p.testing && <span class="ml-2 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">Testing</span>}
+              </td>
               <td class="px-6 py-4">
                 {p.poll
-                  ? <span class="inline-flex h-2 w-2 rounded-full bg-sage-500"></span>
+                  ? <span class={`inline-flex h-2 w-2 rounded-full ${p.testing ? 'bg-amber-400' : 'bg-sage-500'}`}></span>
                   : <span class="inline-flex h-2 w-2 rounded-full bg-ink-700"></span>
                 }
               </td>
@@ -48,11 +55,17 @@ const platforms = [
                   : <span class="inline-flex h-2 w-2 rounded-full bg-ink-700"></span>
                 }
               </td>
-              <td class="hidden px-6 py-4 text-ink-300 md:table-cell">{p.note}</td>
+              <td class="hidden px-6 py-4 text-ink-300 md:table-cell">{p.note}{p.testing && <span class="text-amber-300/80"> · undergoing testing</span>}</td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+
+    <div class="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-xs text-ink-400">
+      <span class="inline-flex items-center gap-2"><span class="inline-flex h-2 w-2 rounded-full bg-sage-500"></span> Polling live</span>
+      <span class="inline-flex items-center gap-2"><span class="inline-flex h-2 w-2 rounded-full bg-copper-400"></span> Posting</span>
+      <span class="inline-flex items-center gap-2"><span class="inline-flex h-2 w-2 rounded-full bg-amber-400"></span> Polling in testing</span>
     </div>
   </div>
 </section>
