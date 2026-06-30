@@ -1,20 +1,21 @@
 ---
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const platforms = [
-  { name: 'Inkbunny',    poll: true, post: true, note: 'Chaptered, official API' },
-  { name: 'FurAffinity', poll: true, post: true, note: 'Scraping, desktop-only for posting' },
-  { name: 'SoFurry',     poll: true, post: true, note: 'Chaptered' },
-  { name: 'Weasyl',      poll: true, post: true, testing: true, note: 'Official API' },
-  { name: 'AO3',         poll: true, post: true, note: 'Chaptered + work skins' },
-  { name: 'SquidgeWorld',poll: true, post: true, note: 'Chaptered + work skins' },
-  { name: 'DeviantArt',  poll: true, post: true, note: 'Eclipse API' },
-  { name: 'Wattpad',     poll: true, post: false, note: 'Read-only analytics' },
-  { name: 'Itaku',       poll: true, post: false, testing: true, note: 'Read-only analytics' },
-  { name: 'Bluesky',     poll: true, post: false, note: 'Announcements (coming soon)' },
-  { name: 'X / Twitter', poll: true, post: false, note: 'Read-only analytics' },
-  { name: 'Mastodon',    poll: true, post: false, testing: true, note: 'Read-only analytics' },
-  { name: 'Tumblr',      poll: true, post: false, testing: true, note: 'Notes analytics' },
-  { name: 'Pixiv',       poll: true, post: false, testing: true, note: 'Illustrations + novels' },
-  { name: 'Threads',     poll: true, post: false, testing: true, note: 'Official API · Meta app required' },
+  { name: 'Inkbunny',    logo: 'ib.png',   poll: true, post: true, note: 'Chaptered, official API' },
+  { name: 'FurAffinity', logo: 'fa.png',   poll: true, post: true, note: 'Scraping, desktop-only for posting' },
+  { name: 'SoFurry',     logo: 'sf.png',   poll: true, post: true, note: 'Chaptered' },
+  { name: 'Weasyl',      logo: 'ws.svg',   poll: true, post: true, testing: true, note: 'Official API' },
+  { name: 'AO3',         logo: 'ao3.png',  poll: true, post: true, note: 'Chaptered + work skins' },
+  { name: 'SquidgeWorld',logo: 'sqw.png',  poll: true, post: true, note: 'Chaptered + work skins' },
+  { name: 'DeviantArt',  logo: 'da.png',   poll: true, post: true, note: 'Eclipse API · artwork' },
+  { name: 'Wattpad',     logo: 'wp.png',   poll: true, post: false, note: 'Read-only analytics' },
+  { name: 'Itaku',       logo: 'ik.svg',   poll: true, post: false, testing: true, note: 'Artwork analytics' },
+  { name: 'Bluesky',     logo: 'bsky.png', poll: true, post: false, note: 'Posts: likes, reposts, replies' },
+  { name: 'X / Twitter', logo: 'tw.png',   poll: true, post: false, note: 'Tweets: views, likes, retweets' },
+  { name: 'Mastodon',    logo: 'mast.svg', poll: true, post: false, testing: true, note: 'Posts: favourites, boosts, replies' },
+  { name: 'Tumblr',      logo: 'tum.svg',  poll: true, post: false, testing: true, note: 'Posts: notes' },
+  { name: 'Pixiv',       logo: 'pix.svg',  poll: true, post: false, testing: true, note: 'Illustrations + novels' },
+  { name: 'Threads',     logo: 'thr.svg',  poll: true, post: false, testing: true, note: 'Posts: views, likes, reposts · Meta app required' },
 ];
 ---
 <section id="platforms" class="border-t border-ink-800/60 bg-ink-950/30 py-24">
@@ -22,11 +23,25 @@ const platforms = [
     <div class="max-w-2xl">
       <h2 class="text-4xl text-ink-50 md:text-5xl">Fifteen polled. Nine posted.</h2>
       <p class="mt-6 text-ink-300">
-        Polling tracks views, favourites, notes and comments across fifteen platforms. Posting supports nine of them today; the rest are read-only analytics. A few are currently undergoing testing — marked below.
+        Track your whole footprint in one place — <strong class="text-ink-100">stories, artwork and social posts</strong>. Polling pulls views, favourites, notes, bookmarks, reposts and comments across fifteen platforms. Posting supports nine fiction sites today; the rest are read-only analytics. A few are currently undergoing testing — marked below.
       </p>
     </div>
 
-    <div class="mt-14 overflow-hidden rounded-lg border border-ink-800">
+    <div class="mt-12 flex flex-wrap items-center gap-3">
+      {platforms.map((p) => (
+        <span
+          class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-ink-800"
+          title={p.name + (p.testing ? ' (undergoing testing)' : '')}
+        >
+          <img src={`${base}/platforms/${p.logo}`} alt={p.name} width="28" height="28" class="h-7 w-7 object-contain" loading="lazy" />
+        </span>
+      ))}
+    </div>
+    <p class="mt-3 text-xs text-ink-500">
+      Platform names and logos are trademarks of their respective owners. PawPoller is independent and unaffiliated; logos identify each service.
+    </p>
+
+    <div class="mt-10 overflow-hidden rounded-lg border border-ink-800">
       <table class="w-full text-left">
         <thead class="bg-ink-800/60 text-xs uppercase tracking-wider text-ink-400">
           <tr>
