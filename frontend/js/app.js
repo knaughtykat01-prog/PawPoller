@@ -76,6 +76,9 @@ const App = {
     _mastCompareMetric: 'likes',
     _tumSortState: { field: 'notes', order: 'desc' },
     _tumCompareIds: new Set(),
+    _pixSortState: { field: 'views', order: 'desc' },
+    _pixCompareIds: new Set(),
+    _pixCompareMetric: 'views',
     _twSortState: { field: 'views', order: 'desc' },
     _twCompareIds: new Set(),
     _twCompareMetric: 'views',
@@ -743,6 +746,14 @@ const App = {
             this.renderTUMDetail(parts[2]);
         } else if (parts[0] === 'tum' && parts[1] === 'compare') {
             this.renderTUMCompare();
+        } else if (parts[0] === 'pix' && (!parts[1] || parts[1] === '')) {
+            this.renderPIXDashboard();
+        } else if (parts[0] === 'pix' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderPIXSubmissions();
+        } else if (parts[0] === 'pix' && parts[1] === 'submission' && parts[2]) {
+            this.renderPIXDetail(parts[2]);
+        } else if (parts[0] === 'pix' && parts[1] === 'compare') {
+            this.renderPIXCompare();
         } else if (parts[0] === 'tw' && (!parts[1] || parts[1] === '')) {
             this.renderTWDashboard();
         } else if (parts[0] === 'tw' && parts[1] === 'submissions' && !parts[2]) {
@@ -987,6 +998,7 @@ const App = {
             { key: 'tw',   name: 'X / Twitter' },
             { key: 'mast', name: 'Mastodon' },
             { key: 'tum',  name: 'Tumblr' },
+            { key: 'pix',  name: 'Pixiv' },
         ];
         try {
             const prefs = await API.getPreferences();
@@ -1049,6 +1061,7 @@ const App = {
                 { key: 'bsky', auth: auth.bskyAuth?.has_credentials, name: 'Bluesky', statusFn: 'getBSKYStatus', logFn: 'getBSKYPollLog', tableFn: 'bskyPollLogTable' },
                 { key: 'mast', auth: auth.mastAuth?.has_credentials, name: 'Mastodon', statusFn: 'getMASTStatus', logFn: 'getMASTPollLog', tableFn: 'mastPollLogTable' },
                 { key: 'tum', auth: auth.tumAuth?.has_credentials, name: 'Tumblr', statusFn: 'getTUMStatus', logFn: 'getTUMPollLog', tableFn: 'tumPollLogTable' },
+                { key: 'pix', auth: auth.pixAuth?.has_credentials, name: 'Pixiv', statusFn: 'getPIXStatus', logFn: 'getPIXPollLog', tableFn: 'pixPollLogTable' },
                 { key: 'tw', auth: auth.twAuth?.has_credentials, name: 'Twitter', statusFn: 'getTWStatus', logFn: 'getTWPollLog', tableFn: 'twPollLogTable' },
             ];
             const connected = platforms.filter(p => p.auth);
@@ -1131,14 +1144,14 @@ const App = {
     _platformLabels: {
         ib: 'Inkbunny', fa: 'FurAffinity', ws: 'Weasyl', sf: 'SoFurry',
         sqw: 'SquidgeWorld', ao3: 'AO3', da: 'DeviantArt', wp: 'Wattpad',
-        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr',
+        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr', pix: 'Pixiv',
     },
 
     async _dashPoll(btn, platform) {
         const label = this._platformLabels[platform] || platform.toUpperCase();
         btn.disabled = true;
         btn.textContent = 'Polling...';
-        const fns = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll', sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll', wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll', mast: 'triggerMASTPoll', tum: 'triggerTUMPoll' };
+        const fns = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll', sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll', wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll', mast: 'triggerMASTPoll', tum: 'triggerTUMPoll', pix: 'triggerPIXPoll' };
         try {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
@@ -1156,7 +1169,7 @@ const App = {
         if (!confirm(`Full resync re-fetches every ${label} submission from scratch. This can take several minutes and will hit ${label}'s rate limits hard. Continue?`)) return;
         btn.disabled = true;
         btn.textContent = 'Syncing...';
-        const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync', mast: 'fullMASTResync', tum: 'fullTUMResync' };
+        const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync', mast: 'fullMASTResync', tum: 'fullTUMResync', pix: 'fullPIXResync' };
         try {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
@@ -1476,6 +1489,7 @@ const App = {
             { key: 'tw', name: 'X / Twitter', emoji: '&#128038;', color: 'var(--platform-tw)', url: 'https://twitter.com/login' },
             { key: 'mast', name: 'Mastodon', emoji: '&#128024;', color: 'var(--platform-mast)', url: 'https://joinmastodon.org/servers' },
             { key: 'tum', name: 'Tumblr', emoji: '&#128216;', color: 'var(--platform-tum)', url: 'https://www.tumblr.com/oauth/apps' },
+            { key: 'pix', name: 'Pixiv', emoji: '&#128396;', color: 'var(--platform-pix)', url: 'https://www.pixiv.net/' },
         ];
 
         /* Detect runtime and pre-load existing state so the wizard can
@@ -1494,7 +1508,7 @@ const App = {
         /* Per-platform connection status (used in the platforms step) */
         const authStatus = {};
         try {
-            const [ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw, mast, tum] = await Promise.all([
+            const [ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw, mast, tum, pix] = await Promise.all([
                 API.getAuthStatus().catch(() => ({})),
                 API.getFAAuthStatus().catch(() => ({})),
                 API.getWSAuthStatus().catch(() => ({})),
@@ -1508,6 +1522,7 @@ const App = {
                 API.getTWAuthStatus().catch(() => ({})),
                 API.getMASTAuthStatus().catch(() => ({})),
                 API.getTUMAuthStatus().catch(() => ({})),
+                API.getPIXAuthStatus().catch(() => ({})),
             ]);
             authStatus.ib = ib.has_credentials;
             authStatus.fa = fa.has_cookies;
@@ -1522,6 +1537,7 @@ const App = {
             authStatus.tw = tw.has_credentials;
             authStatus.mast = mast.has_credentials;
             authStatus.tum = tum.has_credentials;
+            authStatus.pix = pix.has_credentials;
         } catch { /* ignore — all default to undefined/false */ }
 
         /* Wizard state */
@@ -2031,6 +2047,7 @@ const App = {
             da: () => API.getDASummary(), wp: () => API.getWPSummary(), ik: () => API.getIKSummary(),
             bsky: () => API.getBSKYSummary(), tw: () => API.getTWSummary(),
             mast: () => API.getMASTSummary(), tum: () => API.getTUMSummary(),
+            pix: () => API.getPIXSummary(),
         };
         const results = await Promise.all(plats.map(p =>
             (fetchers[p.code] ? fetchers[p.code]() : Promise.resolve(null)).catch(() => null)
@@ -2080,7 +2097,7 @@ const App = {
         this._loading();
         try {
             /* Fetch all platform data in parallel; .catch() fallbacks prevent one failure from blocking all */
-            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, bskySummary, twSummary, mastSummary, tumSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, bskyAgg, twAgg, mastAgg, tumAgg, topFans, trending] = await Promise.all([
+            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, bskySummary, twSummary, mastSummary, tumSummary, pixSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, bskyAgg, twAgg, mastAgg, tumAgg, pixAgg, topFans, trending] = await Promise.all([
                 API.getSummary().catch(() => null),
                 API.getFASummary().catch(() => null),
                 API.getWSSummary().catch(() => null),
@@ -2094,6 +2111,7 @@ const App = {
                 API.getTWSummary().catch(() => null),
                 API.getMASTSummary().catch(() => null),
                 API.getTUMSummary().catch(() => null),
+                API.getPIXSummary().catch(() => null),
                 API.getAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getFAAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getWSAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
@@ -2107,6 +2125,7 @@ const App = {
                 API.getTWAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getMASTAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getTUMAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
+                API.getPIXAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getTopFans(10).catch(() => ({ fans: [] })),
                 API.getTrending({ hours: 24, threshold: 2.0 }).catch(() => ({ trending: [] })),
             ]);
@@ -2128,19 +2147,20 @@ const App = {
             const tw = twSummary || {};
             const mast = mastSummary || {};
             const tum = tumSummary || {};
+            const pix = pixSummary || {};
 
             /* Sum totals across all platforms for the top-level stat cards.
              * Wattpad uses 'reads' instead of 'views' and 'votes' instead of 'favorites',
              * so we map them into the unified totals here.
              * Itaku has NO views — only likes (mapped to favorites), comments, and reshares. */
-            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0) + (bsky.total_submissions || 0) + (tw.total_submissions || 0) + (mast.total_submissions || 0) + (tum.total_submissions || 0);
-            const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0) + (sqw.total_views || 0) + (ao3.total_views || 0) + (da.total_views || 0) + (wp.total_reads || wp.total_views || 0) + (tw.total_views || 0);
-            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0) + (bsky.total_likes || 0) + (tw.total_likes || 0) + (mast.total_likes || 0) + (tum.total_notes || 0);
-            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0) + (ao3.total_comments || 0) + (da.total_comments || 0) + (wp.total_comments || 0) + (ik.total_comments || 0) + (bsky.total_comments || 0) + (tw.total_comments || 0) + (mast.total_comments || mast.total_replies || 0);
+            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0) + (bsky.total_submissions || 0) + (tw.total_submissions || 0) + (mast.total_submissions || 0) + (tum.total_submissions || 0) + (pix.total_submissions || 0);
+            const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0) + (sqw.total_views || 0) + (ao3.total_views || 0) + (da.total_views || 0) + (wp.total_reads || wp.total_views || 0) + (tw.total_views || 0) + (pix.total_views || 0);
+            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0) + (bsky.total_likes || 0) + (tw.total_likes || 0) + (mast.total_likes || 0) + (tum.total_notes || 0) + (pix.total_favorites || 0);
+            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0) + (ao3.total_comments || 0) + (da.total_comments || 0) + (wp.total_comments || 0) + (ik.total_comments || 0) + (bsky.total_comments || 0) + (tw.total_comments || 0) + (mast.total_comments || mast.total_replies || 0) + (pix.total_comments || 0);
             const totalDownloads = (da.total_downloads || 0);
 
             /* Merge top lists across platforms: tag each with _platform, sort desc, take top 10 */
-            const mergeTop = (ibList, faList, wsList, sfList, sqwList, ao3List, daList, wpList, ikList, bskyList, twList, mastList, tumList, key) => {
+            const mergeTop = (ibList, faList, wsList, sfList, sqwList, ao3List, daList, wpList, ikList, bskyList, twList, mastList, tumList, pixList, key) => {
                 const merged = [];
                 (ibList || []).forEach(item => merged.push({ ...item, _platform: 'ib' }));
                 (faList || []).forEach(item => merged.push({ ...item, _platform: 'fa' }));
@@ -2161,12 +2181,14 @@ const App = {
                 (mastList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'mast' }));
                 /* Tumblr has no views — map notes to favorites_count for unified merging */
                 (tumList || []).forEach(item => merged.push({ ...item, favorites_count: item.notes || item.favorites_count || 0, _platform: 'tum' }));
+                /* Pixiv uses the gallery shape (views + favorites_count) directly */
+                (pixList || []).forEach(item => merged.push({ ...item, _platform: 'pix' }));
                 merged.sort((a, b) => (b[key] || 0) - (a[key] || 0));
                 return merged.slice(0, 10);
             };
 
-            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, ao3.top_viewed, da.top_viewed, wp.top_viewed || wp.top_read, null, null, tw.top_viewed, null, null, 'views');
-            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, ao3.top_faved, da.top_faved, wp.top_faved || wp.top_voted, ik.top_liked || ik.top_faved, bsky.top_liked || bsky.top_faved, tw.top_liked || tw.top_faved, mast.top_liked || mast.top_faved, tum.top_noted, 'favorites_count');
+            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, ao3.top_viewed, da.top_viewed, wp.top_viewed || wp.top_read, null, null, tw.top_viewed, null, null, pix.top_viewed, 'views');
+            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, ao3.top_faved, da.top_faved, wp.top_faved || wp.top_voted, ik.top_liked || ik.top_faved, bsky.top_liked || bsky.top_faved, tw.top_liked || tw.top_faved, mast.top_liked || mast.top_faved, tum.top_noted, pix.top_faved, 'favorites_count');
 
             /* Merge recent faves + comments into a unified timeline, sorted newest first */
             const recentActivity = [];
@@ -2195,6 +2217,8 @@ const App = {
             (mast.recent_faves || mast.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'mast', _type: 'fave' }));
             (mast.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'mast', _type: 'comment' }));
             (tum.recent_faves || tum.recent_notes || []).forEach(item => recentActivity.push({ ...item, _platform: 'tum', _type: 'fave' }));
+            (pix.recent_faves || pix.recent_bookmarks || []).forEach(item => recentActivity.push({ ...item, _platform: 'pix', _type: 'fave' }));
+            (pix.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'pix', _type: 'comment' }));
             recentActivity.sort((a, b) => new Date(b.first_seen_at || 0) - new Date(a.first_seen_at || 0));
 
             /* Per-platform mini stat card showing views, faves, subs with a coloured badge */
@@ -2226,6 +2250,7 @@ const App = {
                 platformCard('<span class="platform-badge tw">\u{1F426} TW</span>', 'X/Twitter', { total_views: tw.total_views || 0, total_favorites: tw.total_likes || 0, total_submissions: tw.total_submissions || 0 }, 'tw'),
                 platformCard('<span class="platform-badge mast">\u{1F418} MAST</span>', 'Mastodon', { total_views: 0, total_favorites: mast.total_likes || 0, total_submissions: mast.total_submissions || 0 }, 'mast'),
                 platformCard('<span class="platform-badge tum">\u{1F4D8} TUM</span>', 'Tumblr', { total_views: 0, total_favorites: tum.total_notes || 0, total_submissions: tum.total_submissions || 0 }, 'tum'),
+                platformCard('<span class="platform-badge pix">\u{1F58C} PIX</span>', 'Pixiv', { total_views: pix.total_views || 0, total_favorites: pix.total_favorites || 0, total_submissions: pix.total_submissions || 0 }, 'pix'),
             ].join('');
 
             /* Per-platform aggregate view charts — only those with history. */
@@ -2243,6 +2268,7 @@ const App = {
                 { id: 'chart-tw-views', title: 'X/Twitter Views', snapshots: twAgg?.snapshots, keys: ['views'] },
                 { id: 'chart-mast-likes', title: 'Mastodon Likes', snapshots: mastAgg?.snapshots, keys: ['likes'] },
                 { id: 'chart-tum-notes', title: 'Tumblr Notes', snapshots: tumAgg?.snapshots, keys: ['notes'] },
+                { id: 'chart-pix-views', title: 'Pixiv Views', snapshots: pixAgg?.snapshots, keys: ['views'] },
             ].filter(c => c.snapshots && c.snapshots.length > 0);
             const chartsHtml = chartSpecs.length
                 ? chartSpecs.map(c => `<div class="chart-container"><h3>${c.title}</h3><div class="chart-wrap"><canvas id="${c.id}"></canvas></div></div>`).join('')
@@ -6272,6 +6298,303 @@ const App = {
         }
     },
 
+    // ── PIX Dashboard ─────────────────────────────────────────
+    // Pixiv dashboard with gallery metrics: Views, Bookmarks, Comments.
+
+    async renderPIXDashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getPIXSummary({ account_id: this._acctId('pix') }),
+                API.getPIXAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('pix') }),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const pixPins = (pins.pins || []).filter(p => p.platform === 'pix');
+            const pixGoals = (goals.goals || []).filter(g => g.platform === 'pix' || g.platform === 'all');
+
+            const pixHealth = window.PlatformHealth && window.PlatformHealth.get('pix');
+            const isUnconfigured = pixHealth && pixHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>Pixiv Dashboard</h2></div>
+                    ${Components.platformEmptyState('pix', isUnconfigured ? {} : { reason: 'Pixiv is configured but no works have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Pixiv Dashboard</h2>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'pix')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'pix')">Full Resync</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('pix')">Export CSV</button>
+                    </div>
+                </div>
+
+                ${pixPins.length ? Components.pinnedSubmissions(pixPins, 'pix') : ''}
+                ${pixGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(pixGoals)}</div>` : ''}
+
+                <div class="stats-grid">
+                    ${Components.statCard('Total Works', summary.total_submissions, null, '#/pix/submissions')}
+                    ${Components.statCard('Total Views', summary.total_views || 0)}
+                    ${Components.statCard('Total Bookmarks', summary.total_favorites || 0)}
+                    ${Components.statCard('Total Comments', summary.total_comments || 0)}
+                </div>
+
+                ${summary.growth_rates ? Components.growthRateCards(summary.growth_rates, { views: 'views/day', faves: 'bookmarks/day', comments: 'comments/day' }) : ''}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Views Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-views"></canvas></div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Viewed</h3>
+                        ${Components.pixTopList(summary.top_viewed, 'views', 'title', 'submission_id')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Top Bookmarked</h3>
+                        ${Components.pixTopList(summary.top_faved, 'favorites_count', 'title', 'submission_id')}
+                    </div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Fastest Growing (24h)</h3>
+                        ${Components.pixTopList(summary.fastest_growing, 'views_gained', 'title', 'submission_id')}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-views', agg.snapshots, ['views']);
+            }
+
+            this._bindDateRange(() => this.renderPIXDashboard());
+            this._bindPinAndGoalActions(() => this.renderPIXDashboard());
+            this._startAutoRefresh(() => this.renderPIXDashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading PIX dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── PIX Submissions ─────────────────────────────────────────
+
+    async renderPIXSubmissions() {
+        this._loading();
+        try {
+            const data = await API.getPIXSubmissions({
+                sort_by: this._pixSortState.field,
+                order: this._pixSortState.order,
+                account_id: this._acctId('pix'),
+            });
+
+            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
+            // Pixiv CDN thumbnails 403 without a pixiv Referer — route them
+            // through the backend proxy and skip the generic proxy step.
+            const pixGridRenderer = (subs) => Components.submissionCardGrid(
+                subs.map(s => ({ ...s, _thumb: Utils.pixThumbUrl(s.thumbnail_url) })),
+                {
+                    idKey: 'submission_id', titleKey: 'title', thumbKey: '_thumb', proxyThumb: false,
+                    typeKey: 'content_type', typeLabels: Components.PIX_TYPE_LABELS,
+                    detailRoute: '/pix/submission', dateKey: 'posted_at',
+                    stats: [
+                        { key: 'views', deltaKey: 'views_delta', label: 'views' },
+                        { key: 'favorites_count', deltaKey: 'favorites_delta', label: 'bookmarks' },
+                        { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
+                    ],
+                }
+            );
+            const gridHtml = pixGridRenderer(data.submissions);
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>Pixiv Works</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search works...">
+                    <div class="view-toggle">
+                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
+                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
+                    </div>
+                </div>
+                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
+                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                    ${Components.pixSubmissionsTable(data.submissions)}
+                </div>
+            `;
+
+            this._setContent(html);
+            this._bindViewToggle();
+            this._bindPIXTableSort();
+            this._bindPIXSearch(data.submissions, pixGridRenderer);
+            this._startAutoRefresh(() => this.renderPIXSubmissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading PIX submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── PIX Submission Detail ───────────────────────────────────
+
+    async renderPIXDetail(workId) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getPIXSubmission(workId),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const fullId = sub.submission_id;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'pix' && String(p.submission_id) === String(fullId));
+            const currentTags = sub.tags || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/pix/submissions" class="back-link">&larr; Back to Pixiv Works</a>
+                <div class="detail-header">
+                    ${sub.thumbnail_url ? `<img class="detail-thumb" src="${Utils.pixThumbUrl(sub.thumbnail_url)}" alt="" style="max-width:160px;border-radius:8px;margin-right:16px">` : ''}
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.PIX_TYPE_LABELS[sub.content_type] || sub.content_type || 'Illust')}${sub.rating && sub.rating !== 'General' ? ' &middot; ' + Utils.escapeHtml(sub.rating) : ''}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Pixiv</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.views || 0)} <span class="lbl">views</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.favorites_count || 0)} <span class="lbl">bookmarks</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.comments_count || 0)} <span class="lbl">comments</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="pix" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="pix" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+
+                ${Components.growthRateCards(data.growth_rates, { views: 'views/day', faves: 'bookmarks/day', comments: 'comments/day' })}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Stats Over Time</h3>
+                    <div class="chart-wrap"><canvas id="chart-detail"></canvas></div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots, ['views', 'favorites_count', 'comments_count']);
+            }
+
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getPIXSnapshots(workId, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots, ['views', 'favorites_count', 'comments_count']);
+            });
+
+            this._bindDetailPinTag('pix', fullId, allTags.tags || [], () => this.renderPIXDetail(workId));
+            this._startAutoRefresh(() => this.renderPIXDetail(workId));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading PIX work</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── PIX Compare ─────────────────────────────────────────────
+
+    async renderPIXCompare() {
+        this._loading();
+        try {
+            const data = await API.getPIXSubmissions({ sort_by: 'views', order: 'desc', account_id: this._acctId('pix') });
+            const subs = data.submissions;
+
+            const chips = subs.map(s => `
+                <label class="compare-chip ${this._pixCompareIds.has(String(s.submission_id)) ? 'selected' : ''}" data-id="${Utils.escapeHtml(String(s.submission_id))}">
+                    <input type="checkbox" ${this._pixCompareIds.has(String(s.submission_id)) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>
+            `).join('');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Compare Pixiv Works</h2>
+                    <div>
+                        <select class="filter-select" id="compare-metric">
+                            <option value="views" ${this._pixCompareMetric === 'views' ? 'selected' : ''}>Views</option>
+                            <option value="favorites_count" ${this._pixCompareMetric === 'favorites_count' ? 'selected' : ''}>Bookmarks</option>
+                            <option value="comments_count" ${this._pixCompareMetric === 'comments_count' ? 'selected' : ''}>Comments</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 Pixiv works to compare their trends over time.</p>
+                <div class="compare-select">${chips}</div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container" id="compare-chart-container" style="${this._pixCompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3>
+                    <div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._pixCompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 works above to see their trends compared.</p></div>' : ''}
+            `;
+
+            this._setContent(html);
+
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = chip.dataset.id;
+                    if (this._pixCompareIds.has(id)) {
+                        this._pixCompareIds.delete(id);
+                    } else if (this._pixCompareIds.size < 5) {
+                        this._pixCompareIds.add(id);
+                    }
+                    this.renderPIXCompare();
+                });
+            });
+
+            const metricSelect = document.getElementById('compare-metric');
+            if (metricSelect) {
+                metricSelect.addEventListener('change', () => {
+                    this._pixCompareMetric = metricSelect.value;
+                    this._loadPIXComparisonChart();
+                });
+            }
+
+            this._bindDateRange(() => this._loadPIXComparisonChart());
+
+            if (this._pixCompareIds.size >= 2) {
+                await this._loadPIXComparisonChart();
+            }
+
+            this._startAutoRefresh(() => this.renderPIXCompare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadPIXComparisonChart() {
+        try {
+            if (this._pixCompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getPIXComparison([...this._pixCompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, this._pixCompareMetric);
+        } catch (e) {
+            console.error('Failed to load PIX comparison chart:', e);
+        }
+    },
+
     // ── TW Dashboard ─────────────────────────────────────────
     // X/Twitter dashboard with Views, Likes, Retweets, Replies, Quotes, Bookmarks.
 
@@ -6659,7 +6982,7 @@ const App = {
                 // Determine platform badge colour and the correct hash route prefix
                 const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[m.platform] || badgeMap.ib;
-                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', ib: '/submission/' };
+                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', pix: '/pix/submission/', ib: '/submission/' };
                 const prefix = prefixMap[m.platform] || prefixMap.ib;
                 return `
                     <tr>
@@ -7002,7 +7325,7 @@ const App = {
         try {
             // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
             // Polling tab data is loaded lazily when the user clicks into it.
-            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, updateInfo, postingSettings, browserLoginInfo, setupStatus] = await Promise.all([
+            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, updateInfo, postingSettings, browserLoginInfo, setupStatus] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
@@ -7020,6 +7343,7 @@ const App = {
                 API.getTWAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getMASTAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getTUMAuthStatus().catch(() => ({ has_credentials: false })),
+                API.getPIXAuthStatus().catch(() => ({ has_credentials: false })),
                 API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' })),
                 API.getPostingSettings().catch(() => ({ posting_enabled: false, posting_default_platforms: [], posting_default_rating: 'adult', posting_server_url: '', posting_server_api_key: '', posting_story_archive_path: '' })),
                 API.getBrowserLoginPlatforms().catch(() => ({ available: false, platforms: [] })),
@@ -7037,7 +7361,7 @@ const App = {
             const _pollingOwner = setupStatus.polling_owner || (_isServer ? 'local' : (_isPaired ? 'server' : 'local'));
 
             // Store auth state for lazy-loaded polling tab
-            this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth };
+            this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth };
 
             // Store browser login availability for platform connect forms
             const _browserLoginAvailable = browserLoginInfo.available;
@@ -7445,6 +7769,23 @@ const App = {
                     </div>
                     <div class="settings-row">
                         <div>
+                            <span class="settings-label">PIX poll interval</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">How often to check for new Pixiv data</div>
+                        </div>
+                        <select class="filter-select" id="pref-pix-poll-interval" style="width:auto">
+                            <option value="15" ${prefs.pix_poll_interval_minutes === 15 ? 'selected' : ''}>15 min</option>
+                            <option value="30" ${prefs.pix_poll_interval_minutes === 30 ? 'selected' : ''}>30 min</option>
+                            <option value="60" ${prefs.pix_poll_interval_minutes === 60 || !prefs.pix_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
+                            <option value="120" ${prefs.pix_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
+                            <option value="240" ${prefs.pix_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.pix_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.pix_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.pix_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.pix_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
+                        </select>
+                    </div>
+                    <div class="settings-row">
+                        <div>
                             <span class="settings-label">Display timezone</span>
                             <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Timezone for Telegram messages and timestamps</div>
                         </div>
@@ -7598,6 +7939,7 @@ const App = {
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('tw')">Export TW</button>
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('mast')">Export MAST</button>
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('tum')">Export TUM</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('pix')">Export PIX</button>
                     </div>
                 </div>
 
@@ -8425,6 +8767,46 @@ const App = {
                 </details>
 
                 <details class="settings-accordion">
+                    <summary><span class="status-dot ${pixAuth.has_credentials ? 'connected' : 'disconnected'}"></span>Pixiv${pixAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(pixAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
+                    ${pixAuth.has_credentials ? `
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Status</span>
+                        </div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(pixAuth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">PIX desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for Pixiv activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-pix-notifications" ${prefs.pix_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="pix-poll-btn">PIX Poll Now</button>
+                        <button class="btn btn-secondary" id="pix-resync-btn">PIX Full Resync</button>
+                        <button class="btn btn-danger" id="pix-disconnect-btn">Disconnect</button>
+                        <span id="pix-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to Pixiv with a one-time <strong>refresh token</strong>. Pixiv has no official API, so the token is obtained via a browser login (e.g. the <code>gppt</code> helper). Optionally set a target user ID to track someone else's public works (defaults to your own account).</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="password" id="pix-refresh-token" class="search-input" placeholder="Refresh token">
+                        <input type="text" id="pix-user-id" class="search-input" placeholder="Target user ID (optional)">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="pix-connect-btn">Connect</button>
+                        <span id="pix-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                    </div>
+                </details>
+
+                <details class="settings-accordion">
                     <summary><span class="status-dot ${twAuth.has_credentials ? 'connected' : 'disconnected'}"></span>X / Twitter${twAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(twAuth.username || '')}</span>` : ''}</summary>
                     <div class="accordion-body">
                     ${twAuth.has_credentials ? `
@@ -8690,6 +9072,7 @@ const App = {
                     prefs.tw_poll_interval_minutes = parseInt(val('pref-tw-poll-interval')) || 60;
                     prefs.mast_poll_interval_minutes = parseInt(val('pref-mast-poll-interval')) || 60;
                     prefs.tum_poll_interval_minutes = parseInt(val('pref-tum-poll-interval')) || 60;
+                    prefs.pix_poll_interval_minutes = parseInt(val('pref-pix-poll-interval')) || 60;
 
                     // Timezone
                     if (val('pref-timezone')) prefs.display_timezone = val('pref-timezone');
@@ -8722,6 +9105,7 @@ const App = {
                     if (document.getElementById('pref-tw-notifications')) prefs.tw_notifications_enabled = !!chk('pref-tw-notifications');
                     if (document.getElementById('pref-mast-notifications')) prefs.mast_notifications_enabled = !!chk('pref-mast-notifications');
                     if (document.getElementById('pref-tum-notifications')) prefs.tum_notifications_enabled = !!chk('pref-tum-notifications');
+                    if (document.getElementById('pref-pix-notifications')) prefs.pix_notifications_enabled = !!chk('pref-pix-notifications');
 
                     await API.savePreferences(prefs);
 
@@ -8769,6 +9153,7 @@ const App = {
                     if (auth.twAuth?.has_credentials) triggers.push(API.triggerTWPoll());
                     if (auth.mastAuth?.has_credentials) triggers.push(API.triggerMASTPoll());
                     if (auth.tumAuth?.has_credentials) triggers.push(API.triggerTUMPoll());
+                    if (auth.pixAuth?.has_credentials) triggers.push(API.triggerPIXPoll());
                     const results = await Promise.allSettled(triggers);
                     const failed = results.filter(r => r.status === 'rejected');
                     btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';
@@ -8809,6 +9194,7 @@ const App = {
                     if (auth.twAuth?.has_credentials) resyncs.push(API.fullTWResync());
                     if (auth.mastAuth?.has_credentials) resyncs.push(API.fullMASTResync());
                     if (auth.tumAuth?.has_credentials) resyncs.push(API.fullTUMResync());
+                    if (auth.pixAuth?.has_credentials) resyncs.push(API.fullPIXResync());
                     const results = await Promise.allSettled(resyncs);
                     const failed = results.filter(r => r.status === 'rejected');
                     btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';
@@ -9467,6 +9853,15 @@ const App = {
             document.getElementById('pref-tum-poll-interval')?.addEventListener('change', async (e) => {
                 try {
                     await API.savePreferences({ tum_poll_interval_minutes: parseInt(e.target.value) });
+                } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
+            // PIX poll interval dropdown
+            document.getElementById('pref-pix-poll-interval')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ pix_poll_interval_minutes: parseInt(e.target.value) });
                 } catch (err) {
                     alert('Failed to save: ' + err.message);
                 }
@@ -10137,6 +10532,78 @@ const App = {
                 tumNotifToggle.addEventListener('change', async (e) => {
                     try {
                         await API.savePreferences({ tum_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
+            // PIX Connect: sends refresh_token + optional user_id
+            const pixConnectBtn = document.getElementById('pix-connect-btn');
+            if (pixConnectBtn) {
+                pixConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('pix-msg');
+                    const refresh_token = document.getElementById('pix-refresh-token').value.trim();
+                    const user_id = document.getElementById('pix-user-id').value.trim();
+                    if (!refresh_token) {
+                        msg.textContent = 'Refresh token is required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    pixConnectBtn.disabled = true;
+                    pixConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.pixConnect({ refresh_token, user_id });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        pixConnectBtn.textContent = 'Connect';
+                        pixConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            // PIX Disconnect
+            const pixDisconnectBtn = document.getElementById('pix-disconnect-btn');
+            if (pixDisconnectBtn) {
+                pixDisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect Pixiv? This clears your credentials.')) return;
+                    try {
+                        await API.pixDisconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+
+            // PIX Poll Now / Full Resync
+            const pixPollBtn = document.getElementById('pix-poll-btn');
+            if (pixPollBtn) {
+                pixPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: pixPollBtn, msgId: 'pix-msg', platform: 'pix', apiMethod: 'triggerPIXPoll',
+                }));
+            }
+            const pixResyncBtn = document.getElementById('pix-resync-btn');
+            if (pixResyncBtn) {
+                pixResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: pixResyncBtn, msgId: 'pix-msg', platform: 'pix', apiMethod: 'fullPIXResync',
+                }));
+            }
+
+            // PIX: Notifications toggle
+            const pixNotifToggle = document.getElementById('pref-pix-notifications');
+            if (pixNotifToggle) {
+                pixNotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ pix_notifications_enabled: e.target.checked });
                     } catch (err) {
                         e.target.checked = !e.target.checked;
                         alert('Failed to save preference: ' + err.message);
@@ -11318,6 +11785,45 @@ const App = {
             if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.tumSubmissionsTable(filtered);
             this._bindTUMTableSort();
+        };
+
+        input?.addEventListener('input', doFilter);
+    },
+
+    // PIX table sort binding — same pattern as the gallery platforms.
+    _bindPIXTableSort() {
+        document.querySelectorAll('#pix-submissions-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (this._pixSortState.field === field) {
+                    this._pixSortState.order = this._pixSortState.order === 'desc' ? 'asc' : 'desc';
+                } else {
+                    this._pixSortState.field = field;
+                    this._pixSortState.order = 'desc';
+                }
+                this.renderPIXSubmissions();
+            });
+        });
+    },
+
+    // PIX variant of _bindSearch(). Filters by text (title only).
+    _bindPIXSearch(allSubmissions, gridRenderer) {
+        const input = document.getElementById('search-input');
+
+        const doFilter = () => {
+            const q = (input?.value || '').toLowerCase();
+
+            let filtered = allSubmissions;
+            if (q) {
+                filtered = filtered.filter(s =>
+                    (s.title || '').toLowerCase().includes(q)
+                );
+            }
+
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
+            document.getElementById('table-container').innerHTML = Components.pixSubmissionsTable(filtered);
+            this._bindPIXTableSort();
         };
 
         input?.addEventListener('input', doFilter);

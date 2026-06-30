@@ -364,6 +364,24 @@ const API = {
     triggerTUMPoll() { return this.post('/api/tum/poll/trigger'); },
     fullTUMResync() { return this.post('/api/tum/poll/full-resync'); },
     getTUMPollProgress() { return this.get('/api/tum/poll/progress'); },
+    /* ── PIX (Pixiv) convenience methods ──────────────────────────
+     * App-API (OAuth refresh token). Works identified by namespaced ids.
+     * Gallery metrics: views, favorites_count (bookmarks), comments_count.
+     */
+    getPIXAuthStatus() { return this.get('/api/pix/auth/status'); },
+    pixConnect(data) { return this.post('/api/pix/auth/connect', data); },
+    pixDisconnect() { return this.post('/api/pix/auth/disconnect'); },
+    getPIXStatus() { return this.get('/api/pix/status'); },
+    getPIXSummary(params) { return this.get('/api/pix/summary', params); },
+    getPIXSubmissions(params) { return this.get('/api/pix/submissions', params); },
+    getPIXSubmission(id) { return this.get(`/api/pix/submissions/${encodeURIComponent(id)}`); },
+    getPIXSnapshots(id, params) { return this.get(`/api/pix/submissions/${encodeURIComponent(id)}/snapshots`, params); },
+    getPIXAggregate(params) { return this.get('/api/pix/aggregate', params); },
+    getPIXComparison(ids, params) { return this.get('/api/pix/comparison', { ids: ids.join(','), ...params }); },
+    getPIXPollLog(limit) { return this.get('/api/pix/poll_log', { limit }); },
+    triggerPIXPoll() { return this.post('/api/pix/poll/trigger'); },
+    fullPIXResync() { return this.post('/api/pix/poll/full-resync'); },
+    getPIXPollProgress() { return this.get('/api/pix/poll/progress'); },
     /* ── TW (X/Twitter) convenience methods ───────────────────────
      * Cookie-based GraphQL API. Tweets identified by numeric ID strings.
      * Tracks views, likes, retweets, replies, quotes, bookmarks.
@@ -389,11 +407,11 @@ const API = {
      * download, not JSON to be parsed in-page.
      */
     exportSubmissions(platform) {
-        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions', sqw: '/api/sqw/export/submissions', ao3: '/api/ao3/export/submissions', da: '/api/da/export/submissions', wp: '/api/wp/export/submissions', ik: '/api/ik/export/submissions', bsky: '/api/bsky/export/submissions', tw: '/api/tw/export/submissions', mast: '/api/mast/export/submissions', tum: '/api/tum/export/submissions' };
+        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions', sqw: '/api/sqw/export/submissions', ao3: '/api/ao3/export/submissions', da: '/api/da/export/submissions', wp: '/api/wp/export/submissions', ik: '/api/ik/export/submissions', bsky: '/api/bsky/export/submissions', tw: '/api/tw/export/submissions', mast: '/api/mast/export/submissions', tum: '/api/tum/export/submissions', pix: '/api/pix/export/submissions' };
         window.open(urls[platform] || urls.ib, '_blank');
     },
     exportSnapshots(platform, id) {
-        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots', sqw: '/api/sqw/export/snapshots', ao3: '/api/ao3/export/snapshots', da: '/api/da/export/snapshots', wp: '/api/wp/export/snapshots', ik: '/api/ik/export/snapshots', bsky: '/api/bsky/export/snapshots', tw: '/api/tw/export/snapshots', mast: '/api/mast/export/snapshots', tum: '/api/tum/export/snapshots' };
+        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots', sqw: '/api/sqw/export/snapshots', ao3: '/api/ao3/export/snapshots', da: '/api/da/export/snapshots', wp: '/api/wp/export/snapshots', ik: '/api/ik/export/snapshots', bsky: '/api/bsky/export/snapshots', tw: '/api/tw/export/snapshots', mast: '/api/mast/export/snapshots', tum: '/api/tum/export/snapshots', pix: '/api/pix/export/snapshots' };
         const url = (bases[platform] || bases.ib) + (id ? `?id=${id}` : '');
         window.open(url, '_blank');
     },

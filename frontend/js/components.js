@@ -13,6 +13,7 @@ const Components = {
     BSKY_TYPE_LABELS: { post: 'Post', reply: 'Reply', quote: 'Quote', repost: 'Repost' },
     MAST_TYPE_LABELS: { post: 'Post', reply: 'Reply', quote: 'Quote', repost: 'Repost' },
     TUM_TYPE_LABELS: { text: 'Text', photo: 'Photo', quote: 'Quote', link: 'Link', chat: 'Chat', audio: 'Audio', video: 'Video', answer: 'Answer' },
+    PIX_TYPE_LABELS: { illust: 'Illust', manga: 'Manga', ugoira: 'Ugoira', novel: 'Novel' },
 
     /**
      * Single metric card with optional 24h delta indicator.
@@ -402,9 +403,9 @@ const Components = {
             return '<p style="color:var(--text-muted);font-size:13px">No data yet</p>';
         }
         const lis = items.map(item => {
-            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', ib: '/submission/' };
+            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', pix: '/pix/submission/', ib: '/submission/' };
             const prefix = prefixes[item._platform] || prefixes.ib;
-            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', mast: '<span class="platform-badge mast">MAST</span>', tum: '<span class="platform-badge tum">TUM</span>', ib: '<span class="platform-badge ib">IB</span>' };
+            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', mast: '<span class="platform-badge mast">MAST</span>', tum: '<span class="platform-badge tum">TUM</span>', pix: '<span class="platform-badge pix">PIX</span>', ib: '<span class="platform-badge ib">IB</span>' };
             const badge = badges[item._platform] || badges.ib;
             return `
                 <li>
@@ -431,9 +432,9 @@ const Components = {
             return '<p style="color:var(--text-muted);font-size:13px">No recent activity</p>';
         }
         return items.map(item => {
-            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', ib: '/submission/' };
+            const prefixes = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', pix: '/pix/submission/', ib: '/submission/' };
             const prefix = prefixes[item._platform] || prefixes.ib;
-            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', mast: '<span class="platform-badge mast">MAST</span>', tum: '<span class="platform-badge tum">TUM</span>', ib: '<span class="platform-badge ib">IB</span>' };
+            const badges = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', mast: '<span class="platform-badge mast">MAST</span>', tum: '<span class="platform-badge tum">TUM</span>', pix: '<span class="platform-badge pix">PIX</span>', ib: '<span class="platform-badge ib">IB</span>' };
             const badge = badges[item._platform] || badges.ib;
             const action = item._type === 'fave' ? 'faved' : 'on';
             return `
@@ -1460,6 +1461,90 @@ const Components = {
         `;
     },
 
+    // ── PIX Components ───────────────────────────────────────────
+
+    /**
+     * Clickable ranked list for PIX submissions.
+     */
+    pixTopList(items, valueKey, labelKey = 'title', idKey = 'submission_id') {
+        if (!items || items.length === 0) {
+            return '<p style="color:var(--text-muted);font-size:13px">No data yet</p>';
+        }
+        const lis = items.map(item => `
+            <li>
+                <span class="top-title" onclick="App.navigate('/pix/submission/${encodeURIComponent(item[idKey])}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
+            </li>
+        `).join('');
+        return `<ul class="top-list">${lis}</ul>`;
+    },
+
+    /**
+     * PIX-specific submissions table.
+     * Columns: Title, Type, Views, Bookmarks, Comments, Posted.
+     */
+    pixSubmissionsTable(submissions) {
+        if (!submissions || submissions.length === 0) {
+            return `<div class="empty-state"><h3>No works</h3><p>Connect your Pixiv account and run a poll to fetch data.</p></div>`;
+        }
+        const rows = submissions.map(s => `
+            <tr>
+                <td data-label="Title"><a href="#/pix/submission/${encodeURIComponent(s.submission_id)}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Type">${Utils.escapeHtml(Components.PIX_TYPE_LABELS[s.content_type] || s.content_type || 'Illust')}</td>
+                <td data-label="Views">${Utils.formatNumber(s.views || 0)} ${Utils.formatDelta(s.views_delta)}</td>
+                <td data-label="Bookmarks">${Utils.formatNumber(s.favorites_count || 0)} ${Utils.formatDelta(s.favorites_delta)}</td>
+                <td data-label="Comments">${Utils.formatNumber(s.comments_count || 0)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td data-label="Posted">${Utils.formatDate(s.posted_at)}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table" id="pix-submissions-table" data-mobile-cards>
+                <thead>
+                    <tr>
+                        <th data-sort="title">Title</th>
+                        <th data-sort="content_type">Type</th>
+                        <th data-sort="views">Views</th>
+                        <th data-sort="favorites_count">Bookmarks</th>
+                        <th data-sort="comments_count">Comments</th>
+                        <th data-sort="posted_at">Posted</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
+    /**
+     * PIX-specific poll history table with color-coded status.
+     */
+    pixPollLogTable(polls) {
+        if (!polls || polls.length === 0) {
+            return '<p style="color:var(--text-muted)">No PIX polls recorded yet.</p>';
+        }
+        const rows = polls.map(p => `
+            <tr>
+                <td>${Utils.formatDateTime(p.started_at)}</td>
+                <td><span style="color:${p.status === 'success' ? 'var(--success)' : p.status === 'error' ? 'var(--danger)' : 'var(--warning)'}">${p.status}</span></td>
+                <td>${p.submissions_found || 0}</td>
+                <td>${p.snapshots_inserted || 0}</td>
+                <td>${p.duration_seconds ? p.duration_seconds.toFixed(1) + 's' : '--'}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${Utils.escapeHtml(p.error_message || '')}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th><th>Status</th><th>Subs</th><th>Snaps</th><th>Duration</th><th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
     // ── TW Components ────────────────────────────────────────────
 
     /**
@@ -1620,9 +1705,9 @@ const Components = {
             return '<p style="color:var(--text-muted);font-size:13px">No trending submissions detected. Need at least a few polls to calculate trends.</p>';
         }
         return items.map(item => {
-            const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', mast: '<span class="platform-badge mast">MAST</span>', tum: '<span class="platform-badge tum">TUM</span>', ib: '<span class="platform-badge ib">IB</span>' };
+            const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', mast: '<span class="platform-badge mast">MAST</span>', tum: '<span class="platform-badge tum">TUM</span>', pix: '<span class="platform-badge pix">PIX</span>', ib: '<span class="platform-badge ib">IB</span>' };
             const platformBadge = badgeMap[item.platform] || badgeMap.ib;
-            const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', ib: '/submission/' };
+            const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', pix: '/pix/submission/', ib: '/submission/' };
             const prefix = prefixMap[item.platform] || prefixMap.ib;
             const metrics = [];
             if (item.views_delta) metrics.push(`Views +${item.views_delta}`);
@@ -1655,7 +1740,7 @@ const Components = {
         }
         return links.map(link => {
             const members = (link.members || []).map(m => {
-                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', mast: '<span class="platform-badge mast">MAST</span>', tum: '<span class="platform-badge tum">TUM</span>', ib: '<span class="platform-badge ib">IB</span>' };
+                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', mast: '<span class="platform-badge mast">MAST</span>', tum: '<span class="platform-badge tum">TUM</span>', pix: '<span class="platform-badge pix">PIX</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[m.platform] || badgeMap.ib;
                 return `${badge} ${Utils.escapeHtml(Utils.truncate(m.title || '#' + m.submission_id, 25))}`;
             }).join('<br>');
@@ -1687,7 +1772,7 @@ const Components = {
         }
         return suggestions.map(s => {
             const items = s.items.map(i => {
-                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', mast: '<span class="platform-badge mast">MAST</span>', tum: '<span class="platform-badge tum">TUM</span>', ib: '<span class="platform-badge ib">IB</span>' };
+                const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', mast: '<span class="platform-badge mast">MAST</span>', tum: '<span class="platform-badge tum">TUM</span>', pix: '<span class="platform-badge pix">PIX</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[i.platform] || badgeMap.ib;
                 return `${badge} ${Utils.escapeHtml(Utils.truncate(i.title, 30))}`;
             }).join(' &harr; ');
@@ -1807,7 +1892,7 @@ const Components = {
         const emojis = {
             ib: '\u{1F43E}', fa: '\u{1F98A}', ws: '\u{1F98E}', sf: '\u{1F43A}',
             sqw: '\u{1F991}', ao3: '\u{1F4D6}', da: '\u{1F3A8}', wp: '\u{1F4D9}',
-            ik: '\u{1F3AF}', bsky: '\u{1F98B}', tw: '\u{1F426}', mast: '\u{1F418}', tum: '\u{1F4D8}',
+            ik: '\u{1F3AF}', bsky: '\u{1F98B}', tw: '\u{1F426}', mast: '\u{1F418}', tum: '\u{1F4D8}', pix: '\u{1F58C}',
         };
         const emoji = emojis[code] || '\u{1F517}';
         // Two distinct states:

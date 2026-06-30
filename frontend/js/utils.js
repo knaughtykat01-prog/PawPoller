@@ -183,6 +183,11 @@ const Utils = {
         return '/api/fa/thumb?url=' + encodeURIComponent(url);
     },
 
+    pixThumbUrl(url) {
+        if (!url) return '';
+        return '/api/pix/thumb?url=' + encodeURIComponent(url);
+    },
+
     /* ── getDateRange ───────────────────────────────────────────
      * Converts a UI preset string ("24h", "7d", "30d", "90d", "all")
      * into { start, end } ISO datetime strings (without the "T" and

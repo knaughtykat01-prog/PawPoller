@@ -76,6 +76,8 @@ _ENV_TO_SETTINGS = {
     "MAST_ACCESS_TOKEN":  "mast_access_token",
     "TUM_API_KEY":        "tum_api_key",
     "TUM_BLOG":           "tum_blog",
+    "PIX_REFRESH_TOKEN":  "pix_refresh_token",
+    "PIX_USER_ID":        "pix_user_id",
     "TELEGRAM_BOT_TOKEN": "telegram_bot_token",
     "TELEGRAM_CHAT_ID":   "telegram_chat_id",
     "TELEGRAM_ENABLED":   "telegram_enabled",
@@ -203,6 +205,7 @@ def _start_poll_orchestrator():
         from polling.tw_poller import run_tw_poll_cycle
         from polling.mast_poller import run_mast_poll_cycle
         from polling.tum_poller import run_tum_poll_cycle
+        from polling.pix_poller import run_pix_poll_cycle
 
         settings = config.get_settings()
         from polling.notifications import describe_error
@@ -219,7 +222,7 @@ def _start_poll_orchestrator():
                          "bsky": run_bsky_poll_cycle, "tw": run_tw_poll_cycle,
                          "sf": run_sf_poll_cycle, "sqw": run_sqw_poll_cycle,
                          "ao3": run_ao3_poll_cycle, "mast": run_mast_poll_cycle,
-                         "tum": run_tum_poll_cycle}
+                         "tum": run_tum_poll_cycle, "pix": run_pix_poll_cycle}
 
         # Ensure every configured platform has its default account row (covers
         # creds added since the last startup migration), then read enabled ones.
@@ -233,7 +236,7 @@ def _start_poll_orchestrator():
         for a in enabled_accounts:
             accts_by_platform.setdefault(a["platform"], []).append(a)
 
-        # All 13 platforms are now account-aware — no legacy single-account path.
+        # All 14 platforms are now account-aware — no legacy single-account path.
         legacy_checks: list = []
 
         async def _poll_accounts(platform, fn, accts):

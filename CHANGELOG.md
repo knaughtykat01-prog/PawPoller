@@ -4,6 +4,39 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.43.0] - 2026-06-30 - New platform: Pixiv (poll-only, 14th platform)
+
+Added **Pixiv** as the 14th tracked platform — poll-only analytics for both **illustrations and novels**
+(big furry art + fiction presence). Pixiv has no official API, so this uses the same reverse-engineered
+app-API as the pixivpy library: **OAuth via a one-time refresh token** (obtained through a browser login,
+e.g. the `gppt` helper). An optional target user ID tracks someone else's public works (defaults to the
+authenticated account).
+
+- **New backend** (`clients/pix/`, `polling/pix_poller.py`, `routes/pix_api.py` `/api/pix/*`,
+  `database/pix_queries.py` + `pix_schema.sql`): refreshes the access token (signed `X-Client-Hash`),
+  pages through `/v1/user/illusts` + `/v1/user/novels`, and tracks the **gallery shape** — views
+  (total_view), bookmarks (total_bookmarks → favorites_count), comments. Works are typed
+  Illust / Manga / Ugoira / Novel; `x_restrict` maps to a General / R-18 / R-18G rating.
+- **Thumbnail proxy** (`GET /api/pix/thumb`): Pixiv's CDN (`i.pximg.net`) 403s without a pixiv `Referer`,
+  so thumbnails are proxied through the backend with that header injected (domain-whitelisted to
+  pximg.net). `Utils.pixThumbUrl()` routes grid/detail images through it.
+- **Wired through everything**: account registry, credential resolution, schema bootstrap + per-account
+  migration, poll dispatch (server + desktop), router mount, Telegram digests/milestones,
+  trending/spike + link-combine analytics (Pixiv reuses the default views/faves/comments metric triple),
+  the CLI, and `.env.example` (`PIX_REFRESH_TOKEN` / `PIX_USER_ID`).
+- **Frontend**: dashboard (Total Works/Views/Bookmarks/Comments, growth cards, views-over-time, Top
+  Viewed/Bookmarked) / submissions grid (with proxied thumbnails + type badge) / detail (with artwork
+  preview) / compare, a Settings → Connect accordion (refresh token + optional user ID), poll-interval +
+  notification toggles, the Platforms hub tile + Overview aggregation, and a Pixiv-blue logo badge with
+  the trademark disclaimer. `--platform-pix` token added.
+- **Tests**: `tests/test_scope_pix.py` + `tests/test_pix_parse.py` (metric mapping, illust/novel typing,
+  rating, the OAuth client-hash construction, combined illust+novel discovery).
+- To go live: obtain a Pixiv refresh token via a browser login (e.g. `gppt`), connect under Settings,
+  then poll. Posting is **not** included (poll-only). This completes the four-platform expansion
+  (Mastodon, Tumblr, Pixiv done; Threads deferred — Meta app review + content restrictions).
+
+---
+
 ## [2.42.0] - 2026-06-30 - New platform: Tumblr (poll-only, 13th platform)
 
 Added **Tumblr** as the 13th tracked platform — poll-only analytics. Tumblr is read via the v2 API using

@@ -423,6 +423,9 @@ MAST_REQUEST_DELAY_SECONDS = 0.5  # Mastodon REST — per-instance limits are ge
 # ── Tumblr settings ──
 TUM_REQUEST_DELAY_SECONDS = 0.5  # Tumblr v2 API — generous rate limits for read
 
+# ── Pixiv settings ──
+PIX_REQUEST_DELAY_SECONDS = 1.0  # Pixiv app-API — be gentle, it rate-limits hard
+
 # ── Settings sync (Phase 7a) ────────────────────────────────
 
 CREDENTIAL_FIELDS = frozenset({
@@ -451,6 +454,8 @@ CREDENTIAL_FIELDS = frozenset({
     "mast_access_token",
     # Tumblr
     "tum_api_key",
+    # Pixiv
+    "pix_refresh_token",
     # CF proxy
     "cf_worker_url", "cf_worker_key",
     # Dashboard auth
@@ -508,6 +513,7 @@ PLATFORM_CREDENTIAL_FIELDS = {
     "tw": ["tw_auth_token", "tw_ct0", "tw_target_user"],
     "mast": ["mast_instance_url", "mast_access_token"],
     "tum": ["tum_api_key", "tum_blog"],
+    "pix": ["pix_refresh_token", "pix_user_id"],
 }
 
 # Matches an account-namespaced settings key: acct_<id>_<canonical_field>.
@@ -774,7 +780,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.42.0"
+APP_VERSION = "2.43.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

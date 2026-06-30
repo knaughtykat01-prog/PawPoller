@@ -1,16 +1,22 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-30
-**Current version:** 2.42.0 — **New platform: Tumblr (poll-only, 13th platform)**.
+**Current version:** 2.43.0 — **New platform: Pixiv (poll-only, 14th platform)**.
+**Released + deployed** 2026-06-30 (tag `v2.43.0`). Pixiv tracks illustrations + novels via the
+reverse-engineered app-API (pixivpy-style), **OAuth via a one-time refresh token** (browser login, e.g.
+`gppt`); optional target user_id (defaults to self). Gallery metrics: views / bookmarks
+(favorites_count) / comments. Works typed Illust/Manga/Ugoira/Novel; x_restrict → rating. **Thumbnail
+proxy** `GET /api/pix/thumb` injects a pixiv Referer (i.pximg.net 403s without it). New: `clients/pix/`,
+`polling/pix_poller.py`, `routes/pix_api.py`, `database/pix_*`; wired through everything; reuses the
+default views/faves/comments metric triple. Pixiv-blue logo badge. Tests: `test_scope_pix.py`,
+`test_pix_parse.py`. **To go live:** get a refresh token via a Pixiv browser login → connect under
+Settings → poll. **Platform expansion complete except Threads** (deferred — Meta app review + Meta's
+hostility to adult/furry content make it low-value; revisit only if Rhys wants it).
+
+**Prior release — 2.42.0 — New platform: Tumblr (poll-only, 13th platform)**.
 **Released + deployed** 2026-06-30 (tag `v2.42.0`). Tumblr read via the v2 API with the app's OAuth
 Consumer Key ("API key") + a blog identifier — no token dance. Tracks **notes** (Tumblr's single
-engagement number; no reliable breakdown). Posts keep Tumblr's type (Text/Photo/Quote/…) as the badge;
-photo posts get a thumbnail. New: `clients/tum/`, `polling/tum_poller.py`, `routes/tum_api.py`,
-`database/tum_*`; wired through accounts/config/db/server/main/dashboard/telegram/analytics/cli/frontend;
-Tumblr "t" logo (SVG, brand navy). Tests: `test_scope_tum.py`, `test_tum_parse.py`. **To go live:**
-register an app at tumblr.com/oauth/apps → copy the OAuth Consumer Key → connect under Settings with your
-blog name → poll. **Remaining platform-expansion work:** Threads (needs a Meta app + OAuth) and Pixiv
-(refresh-token login) — both still to build, same poll-only pattern.
+engagement number; no reliable breakdown). New: `clients/tum/` etc. Tumblr "t" logo (SVG, brand navy).
 
 **Prior release — 2.41.1 — Fix CI: Mastodon test event-loop** (test-only; `asyncio.run()` instead
 of the deprecated `get_event_loop()` in `test_mast_parse.py`, which hard-failed on CI's Python 3.11 and
