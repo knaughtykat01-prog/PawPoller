@@ -41,6 +41,7 @@ _TW_SCHEMA_PATH = config.resource_path("database/tw_schema.sql")      # X/Twitte
 _MAST_SCHEMA_PATH = config.resource_path("database/mast_schema.sql")  # Mastodon tables
 _TUM_SCHEMA_PATH = config.resource_path("database/tum_schema.sql")    # Tumblr tables
 _PIX_SCHEMA_PATH = config.resource_path("database/pix_schema.sql")    # Pixiv tables
+_THR_SCHEMA_PATH = config.resource_path("database/thr_schema.sql")    # Threads tables
 _POSTING_SCHEMA_PATH = config.resource_path("database/posting_schema.sql")  # Posting module tables
 
 
@@ -109,6 +110,8 @@ def init_db() -> None:
         conn.executescript(tum_schema_sql)
         pix_schema_sql = _PIX_SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(pix_schema_sql)
+        thr_schema_sql = _THR_SCHEMA_PATH.read_text(encoding="utf-8")
+        conn.executescript(thr_schema_sql)
         posting_schema_sql = _POSTING_SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(posting_schema_sql)
         # Apply any migrations for tables added after the original schema release.
@@ -575,7 +578,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     # Migration 0d: account_id rollout for the simple platforms (no watcher/
     # kudos/session tables — just submissions/snapshots/poll_log). Each is the
     # Weasyl template via the shared helper.
-    for _p in ("ws", "da", "wp", "ik", "bsky", "tw", "mast", "tum", "pix"):
+    for _p in ("ws", "da", "wp", "ik", "bsky", "tw", "mast", "tum", "pix", "thr"):
         _add_account_id_and_backfill(
             conn, _accounts, _p,
             [f"{_p}_submissions", f"{_p}_snapshots", f"{_p}_poll_log"],

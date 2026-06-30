@@ -1342,6 +1342,7 @@ a.stat-card:hover {
 .platform-badge.mast { background: #6364ff25; color: var(--platform-mast); }
 .platform-badge.tum { background: #36465d25; color: var(--platform-tum); }
 .platform-badge.pix { background: #0096fa25; color: var(--platform-pix); }
+.platform-badge.thr { background: #55555525; color: var(--platform-thr); }
 
 /* ── FA Metadata ─────────────────────────────────────────── */
 .fa-metadata {

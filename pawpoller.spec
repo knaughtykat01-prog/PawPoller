@@ -43,6 +43,7 @@ a = Analysis(
         ('database/mast_schema.sql', 'database'),
         ('database/tum_schema.sql', 'database'),
         ('database/pix_schema.sql', 'database'),
+        ('database/thr_schema.sql', 'database'),
         ('database/posting_schema.sql', 'database'),
         ('assets', 'assets'),
     ],

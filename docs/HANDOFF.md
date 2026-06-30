@@ -1,17 +1,25 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-30
-**Current version:** 2.43.0 — **New platform: Pixiv (poll-only, 14th platform)**.
+**Current version:** 2.44.0 — **New platform: Threads (poll-only, 15th platform)**. **Completes the
+four-platform expansion** (Mastodon, Tumblr, Pixiv, Threads all shipped).
+**Released + deployed** 2026-06-30 (tag `v2.44.0`). Threads (Meta) has an OFFICIAL API
+(graph.threads.net); connect with a long-lived access token from a Meta app with `threads_basic` +
+`threads_manage_insights` scopes (best-effort token refresh on connect). Tracks views/likes/reposts/
+replies/quotes (X-shaped); per-post engagement from `/{media}/insights` (handles total_value + values[]
+shapes). Posts typed Text/Image/Video/Album/Quote/Repost. New: `clients/thr/`, `polling/thr_poller.py`,
+`routes/thr_api.py`, `database/thr_*`; wired through everything; maps to views/likes/replies like X.
+Monochrome logo badge, `--platform-thr` = mid-grey (#555, reads on light+dark). Tests: `test_scope_thr.py`,
+`test_thr_parse.py`. **CAVEAT (told Rhys, he said build anyway):** Meta gates the API behind Business-app
+review and removes adult/furry content → may be connectable-but-empty/blocked for his accounts. Client is
+built to the documented API; live behaviour depends on his Meta app. **To go live:** stand up a Meta app,
+get a long-lived token with the insights scope → connect under Settings → poll.
+
+**Prior release — 2.43.0 — New platform: Pixiv (poll-only, 14th platform)**.
 **Released + deployed** 2026-06-30 (tag `v2.43.0`). Pixiv tracks illustrations + novels via the
-reverse-engineered app-API (pixivpy-style), **OAuth via a one-time refresh token** (browser login, e.g.
-`gppt`); optional target user_id (defaults to self). Gallery metrics: views / bookmarks
-(favorites_count) / comments. Works typed Illust/Manga/Ugoira/Novel; x_restrict → rating. **Thumbnail
-proxy** `GET /api/pix/thumb` injects a pixiv Referer (i.pximg.net 403s without it). New: `clients/pix/`,
-`polling/pix_poller.py`, `routes/pix_api.py`, `database/pix_*`; wired through everything; reuses the
-default views/faves/comments metric triple. Pixiv-blue logo badge. Tests: `test_scope_pix.py`,
-`test_pix_parse.py`. **To go live:** get a refresh token via a Pixiv browser login → connect under
-Settings → poll. **Platform expansion complete except Threads** (deferred — Meta app review + Meta's
-hostility to adult/furry content make it low-value; revisit only if Rhys wants it).
+reverse-engineered app-API (pixivpy-style), OAuth via a one-time refresh token; gallery metrics
+(views/bookmarks/comments). **Thumbnail proxy** `GET /api/pix/thumb` injects a pixiv Referer. New:
+`clients/pix/` etc. Pixiv-blue logo badge.
 
 **Prior release — 2.42.0 — New platform: Tumblr (poll-only, 13th platform)**.
 **Released + deployed** 2026-06-30 (tag `v2.42.0`). Tumblr read via the v2 API with the app's OAuth

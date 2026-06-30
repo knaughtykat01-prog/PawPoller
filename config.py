@@ -426,6 +426,9 @@ TUM_REQUEST_DELAY_SECONDS = 0.5  # Tumblr v2 API — generous rate limits for re
 # ── Pixiv settings ──
 PIX_REQUEST_DELAY_SECONDS = 1.0  # Pixiv app-API — be gentle, it rate-limits hard
 
+# ── Threads settings ──
+THR_REQUEST_DELAY_SECONDS = 1.0  # Threads Graph API — per-post insights, go gentle
+
 # ── Settings sync (Phase 7a) ────────────────────────────────
 
 CREDENTIAL_FIELDS = frozenset({
@@ -456,6 +459,8 @@ CREDENTIAL_FIELDS = frozenset({
     "tum_api_key",
     # Pixiv
     "pix_refresh_token",
+    # Threads
+    "thr_access_token",
     # CF proxy
     "cf_worker_url", "cf_worker_key",
     # Dashboard auth
@@ -514,6 +519,7 @@ PLATFORM_CREDENTIAL_FIELDS = {
     "mast": ["mast_instance_url", "mast_access_token"],
     "tum": ["tum_api_key", "tum_blog"],
     "pix": ["pix_refresh_token", "pix_user_id"],
+    "thr": ["thr_access_token", "thr_user_id"],
 }
 
 # Matches an account-namespaced settings key: acct_<id>_<canonical_field>.
@@ -780,7 +786,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.43.0"
+APP_VERSION = "2.44.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

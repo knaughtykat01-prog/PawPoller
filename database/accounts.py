@@ -31,13 +31,13 @@ import sqlite3
 logger = logging.getLogger(__name__)
 
 # All platform codes PawPoller knows about. Order is the display order.
-PLATFORMS = ["ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik", "bsky", "tw", "mast", "tum", "pix"]
+PLATFORMS = ["ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik", "bsky", "tw", "mast", "tum", "pix", "thr"]
 
 PLATFORM_NAMES = {
     "ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry",
     "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad",
     "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter", "mast": "Mastodon",
-    "tum": "Tumblr", "pix": "Pixiv",
+    "tum": "Tumblr", "pix": "Pixiv", "thr": "Threads",
 }
 
 # Predicate per platform: does settings hold credentials for a default account?
@@ -58,6 +58,7 @@ DEFAULT_CRED_CHECKS = {
     "mast": lambda s: bool(s.get("mast_instance_url") and s.get("mast_access_token")),
     "tum": lambda s: bool(s.get("tum_api_key") and s.get("tum_blog")),
     "pix": lambda s: bool(s.get("pix_refresh_token")),
+    "thr": lambda s: bool(s.get("thr_access_token")),
 }
 
 # The flat settings key whose value names the default account (for display).
@@ -76,6 +77,7 @@ _HANDLE_KEYS = {
     "mast": ["mast_instance_url"],
     "tum": ["tum_blog"],
     "pix": ["pix_user_id"],
+    "thr": ["thr_username", "thr_user_id"],
 }
 
 
@@ -178,7 +180,7 @@ _STATS_TABLE = {
     "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions",
     "bsky": "bsky_submissions", "tw": "tw_submissions", "sf": "sf_submissions",
     "sqw": "sqw_submissions", "ao3": "ao3_submissions", "mast": "mast_submissions",
-    "tum": "tum_submissions", "pix": "pix_submissions",
+    "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions",
 }
 
 

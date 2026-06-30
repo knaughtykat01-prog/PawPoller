@@ -4,6 +4,36 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.44.0] - 2026-06-30 - New platform: Threads (poll-only, 15th platform)
+
+Added **Threads** (Meta) as the 15th tracked platform — poll-only analytics. Unlike the other recent
+adds, Threads has an **official API** (graph.threads.net): connect with a **long-lived user access token**
+from a Meta app holding the `threads_basic` + `threads_manage_insights` scopes. Closest in shape to the X
+poller — tracks **views, likes, reposts, replies, quotes**.
+
+- **New backend** (`clients/thr/`, `polling/thr_poller.py`, `routes/thr_api.py` `/api/thr/*`,
+  `database/thr_queries.py` + `thr_schema.sql`): resolves the account, best-effort **refreshes** the
+  long-lived token on connect, pages through `/{user}/threads`, and pulls per-post engagement from the
+  `/{media}/insights` endpoint (handling both the `total_value` and `values[]` response shapes). Posts are
+  typed Text / Image / Video / Album / Quote / Repost from `media_type` + `is_quote_post`.
+- **Wired through everything**: account registry, credential resolution, schema bootstrap + per-account
+  migration, poll dispatch (server + desktop), router mount, Telegram digests/milestones,
+  trending/spike + link-combine analytics (Threads maps to views/likes/replies like X), the CLI, and
+  `.env.example` (`THR_ACCESS_TOKEN` / `THR_USER_ID`).
+- **Frontend**: dashboard (Total Posts/Views/Likes/Reposts/Replies, growth cards, views-over-time, Top
+  Viewed/Liked) / submissions grid (type badge + thumbnail) / detail / compare, a Settings → Connect
+  accordion (access token + optional user ID, **with an in-UI note about the Meta app-review + adult-content
+  caveat**), poll-interval + notification toggles, the Platforms hub tile + Overview aggregation, and a
+  monochrome Threads logo badge. `--platform-thr` token (mid-grey so it reads on light + dark themes).
+- **Tests**: `tests/test_scope_thr.py` + `tests/test_thr_parse.py` (insights mapping incl. both response
+  shapes, media-type/quote typing, discovery→details flow).
+- **Heads-up (unchanged from when we discussed it):** Meta gates the API behind Business-app review and
+  removes adult/furry content, so this may be **connectable-but-empty or blocked** for some accounts. The
+  client is built to the documented API; live behaviour depends on your Meta app + token. Posting is not
+  included (poll-only). **This completes the four-platform expansion** (Mastodon, Tumblr, Pixiv, Threads).
+
+---
+
 ## [2.43.0] - 2026-06-30 - New platform: Pixiv (poll-only, 14th platform)
 
 Added **Pixiv** as the 14th tracked platform — poll-only analytics for both **illustrations and novels**

@@ -281,7 +281,7 @@ window.Accounts = {
     /* Per-platform noun for the submissions count — X has "tweets", not "subs". */
     _unit(platform) {
         return {
-            tw: 'tweets', bsky: 'posts', mast: 'posts', tum: 'posts', ik: 'posts', da: 'deviations',
+            tw: 'tweets', bsky: 'posts', mast: 'posts', tum: 'posts', thr: 'posts', ik: 'posts', da: 'deviations',
             pix: 'works', ao3: 'works', sqw: 'works', wp: 'stories',
             ib: 'submissions', fa: 'submissions', ws: 'submissions', sf: 'submissions',
         }[platform] || 'subs';

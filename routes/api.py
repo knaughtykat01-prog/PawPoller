@@ -37,7 +37,7 @@ from fastapi.responses import Response, StreamingResponse
 from database.db import get_connection, init_db
 from database import (
     queries, fa_queries, ws_queries, sf_queries, sqw_queries, ao3_queries,
-    da_queries, wp_queries, ik_queries, bsky_queries, tw_queries, mast_queries, tum_queries, pix_queries,
+    da_queries, wp_queries, ik_queries, bsky_queries, tw_queries, mast_queries, tum_queries, pix_queries, thr_queries,
     group_queries, analytics_queries,
 )
 from polling.poller import run_poll_cycle, poll_progress
@@ -273,6 +273,7 @@ def get_all_poll_progress():
     _safe("mast", lambda: __import__("polling.mast_poller", fromlist=["mast_poll_progress"]).mast_poll_progress)
     _safe("tum", lambda: __import__("polling.tum_poller", fromlist=["tum_poll_progress"]).tum_poll_progress)
     _safe("pix", lambda: __import__("polling.pix_poller", fromlist=["pix_poll_progress"]).pix_poll_progress)
+    _safe("thr", lambda: __import__("polling.thr_poller", fromlist=["thr_poll_progress"]).thr_poll_progress)
 
     return progress
 
@@ -298,6 +299,7 @@ _PLATFORM_HEALTH_CONFIG = [
     ("mast", mast_queries, "get_mast_last_poll", "mast_poll_interval_minutes", lambda s: bool(s.get("mast_instance_url") and s.get("mast_access_token"))),
     ("tum", tum_queries, "get_tum_last_poll", "tum_poll_interval_minutes", lambda s: bool(s.get("tum_api_key") and s.get("tum_blog"))),
     ("pix", pix_queries, "get_pix_last_poll", "pix_poll_interval_minutes", lambda s: bool(s.get("pix_refresh_token"))),
+    ("thr", thr_queries, "get_thr_last_poll", "thr_poll_interval_minutes", lambda s: bool(s.get("thr_access_token"))),
 ]
 
 
@@ -887,6 +889,7 @@ def get_preferences():
         "mast_notifications_enabled": settings.get("mast_notifications_enabled", True),
         "tum_notifications_enabled": settings.get("tum_notifications_enabled", True),
         "pix_notifications_enabled": settings.get("pix_notifications_enabled", True),
+        "thr_notifications_enabled": settings.get("thr_notifications_enabled", True),
         # ── Watcher / follower notification toggles ────────────────
         "watcher_notifications_enabled": settings.get("watcher_notifications_enabled", True),
         "fa_watcher_notifications_enabled": settings.get("fa_watcher_notifications_enabled", True),
@@ -905,6 +908,7 @@ def get_preferences():
         "mast_poll_interval_minutes": settings.get("mast_poll_interval_minutes", 60),
         "tum_poll_interval_minutes": settings.get("tum_poll_interval_minutes", 60),
         "pix_poll_interval_minutes": settings.get("pix_poll_interval_minutes", 60),
+        "thr_poll_interval_minutes": settings.get("thr_poll_interval_minutes", 60),
         # ── Notification filter preferences ────────────────────────
         # When enabled, notifications are only sent for new comments
         # (suppressing fave/activity alerts for that platform).
@@ -936,6 +940,7 @@ def get_preferences():
         "mast_use_cf_proxy": settings.get("mast_use_cf_proxy", False),
         "tum_use_cf_proxy":  settings.get("tum_use_cf_proxy", False),
         "pix_use_cf_proxy":  settings.get("pix_use_cf_proxy", False),
+        "thr_use_cf_proxy":  settings.get("thr_use_cf_proxy", False),
         # Whether the worker URL/key are configured at all (drives the
         # disabled state on the UI toggles).
         "cf_worker_configured": bool(settings.get("cf_worker_url")) and bool(settings.get("cf_worker_key")),
@@ -1002,6 +1007,7 @@ def save_preferences(body: dict):
         "mast_notifications_enabled",
         "tum_notifications_enabled",
         "pix_notifications_enabled",
+        "thr_notifications_enabled",
     ):
         if key in body:
             update[key] = bool(body[key])
@@ -1053,6 +1059,7 @@ def save_preferences(body: dict):
         "mast_poll_interval_minutes",
         "tum_poll_interval_minutes",
         "pix_poll_interval_minutes",
+        "thr_poll_interval_minutes",
     ):
         if key in body:
             val = int(body[key])
@@ -1078,7 +1085,7 @@ def save_preferences(body: dict):
     for key in (
         "ib_use_cf_proxy", "fa_use_cf_proxy", "ws_use_cf_proxy",
         "sqw_use_cf_proxy", "bsky_use_cf_proxy", "ik_use_cf_proxy",
-        "wp_use_cf_proxy", "tw_use_cf_proxy", "mast_use_cf_proxy", "tum_use_cf_proxy", "pix_use_cf_proxy",
+        "wp_use_cf_proxy", "tw_use_cf_proxy", "mast_use_cf_proxy", "tum_use_cf_proxy", "pix_use_cf_proxy", "thr_use_cf_proxy",
     ):
         if key in body:
             update[key] = bool(body[key])
@@ -1657,7 +1664,7 @@ def get_pins():
     result = []
     conn = get_connection()
     try:
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions", "tum": "tum_submissions", "pix": "pix_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions", "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions"}
         for pin in pins:
             table = table_map.get(pin.get("platform"))
             if not table:
@@ -1715,7 +1722,7 @@ def get_goals():
     try:
         rows = conn.execute("SELECT * FROM goals ORDER BY created_at DESC").fetchall()
         result = []
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions", "tum": "tum_submissions", "pix": "pix_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions", "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions"}
         for row in rows:
             g = dict(row)
             metric = g["metric"]
@@ -1904,7 +1911,7 @@ def get_tag_stats(tag_id: int):
     conn = get_connection()
     try:
         members = conn.execute("SELECT platform, submission_id FROM submission_tags WHERE tag_id = ?", (tag_id,)).fetchall()
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions", "tum": "tum_submissions", "pix": "pix_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions", "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions"}
         # Platform-specific column mappings for stats aggregation
         _metrics = {
             "ib": ("views", "favorites_count", "comments_count"),
@@ -1921,6 +1928,7 @@ def get_tag_stats(tag_id: int):
             "mast": (None, "likes", "replies"),
             "tum": (None, "notes", None),
             "pix": ("views", "favorites_count", "comments_count"),
+            "thr": ("views", "likes", "replies"),
         }
         total_views = total_faves = total_comments = 0
         subs = []

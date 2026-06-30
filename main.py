@@ -611,6 +611,44 @@ def _start_pix_poller():
         logger.debug("PIX poller thread exiting: %s", e)  # Daemon teardown
 
 
+# ── Background THR poller ─────────────────────────────────────
+# Threads uses an OAuth long-lived access token + optional target user id.
+
+def _start_thr_poller():
+    """Run Threads poller in its own daemon thread with a dynamic interval from settings."""
+    import asyncio
+    from polling.thr_poller import run_thr_poll_cycle
+
+    async def _scheduled_thr_poll():
+        settings = config.get_settings()
+        if not settings.get("thr_access_token"):
+            logger.info("Scheduled THR poll skipped — no Threads credentials configured")
+            return
+        try:
+            await run_thr_poll_cycle()
+        except Exception as e:
+            logger.error("Scheduled THR poll failed: %s", e)
+
+    async def _run():
+        logger.info("THR poller loop started")
+        while True:
+            settings = config.get_settings()
+            interval = settings.get("thr_poll_interval_minutes", 60)
+            logger.info("Next THR poll in %d minutes", interval)
+            await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("THR poll skipped -- polling is paused")
+                continue
+            await _scheduled_thr_poll()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run())
+    except Exception as e:
+        logger.debug("THR poller thread exiting: %s", e)  # Daemon teardown
+
+
 # ── 6-Hourly Telegram Digest ─────────────────────────────────
 # Sends a cross-platform stats digest every 6 hours via Telegram.
 # Uses its own asyncio event loop like the pollers.
@@ -961,6 +999,10 @@ def main():
         logger.info("Starting PIX background poller...")
         pix_poller_thread = threading.Thread(target=_start_pix_poller, daemon=True)
         pix_poller_thread.start()
+
+        logger.info("Starting THR background poller...")
+        thr_poller_thread = threading.Thread(target=_start_thr_poller, daemon=True)
+        thr_poller_thread.start()
 
         logger.info("Starting Telegram digest scheduler...")
         digest_thread = threading.Thread(target=_start_digest_scheduler, daemon=True)
