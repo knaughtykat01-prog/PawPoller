@@ -420,6 +420,9 @@ TW_REQUEST_DELAY_SECONDS = 2.0  # X GraphQL — aggressive rate limiting, needs 
 # ── Mastodon settings ──
 MAST_REQUEST_DELAY_SECONDS = 0.5  # Mastodon REST — per-instance limits are generous
 
+# ── Tumblr settings ──
+TUM_REQUEST_DELAY_SECONDS = 0.5  # Tumblr v2 API — generous rate limits for read
+
 # ── Settings sync (Phase 7a) ────────────────────────────────
 
 CREDENTIAL_FIELDS = frozenset({
@@ -446,6 +449,8 @@ CREDENTIAL_FIELDS = frozenset({
     "tw_auth_token", "tw_ct0",
     # Mastodon
     "mast_access_token",
+    # Tumblr
+    "tum_api_key",
     # CF proxy
     "cf_worker_url", "cf_worker_key",
     # Dashboard auth
@@ -502,6 +507,7 @@ PLATFORM_CREDENTIAL_FIELDS = {
     "bsky": ["bsky_identifier", "bsky_app_password"],
     "tw": ["tw_auth_token", "tw_ct0", "tw_target_user"],
     "mast": ["mast_instance_url", "mast_access_token"],
+    "tum": ["tum_api_key", "tum_blog"],
 }
 
 # Matches an account-namespaced settings key: acct_<id>_<canonical_field>.
@@ -768,7 +774,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.41.1"
+APP_VERSION = "2.42.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

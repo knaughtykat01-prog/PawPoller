@@ -535,6 +535,44 @@ def _start_mast_poller():
         logger.debug("MAST poller thread exiting: %s", e)  # Daemon teardown
 
 
+# ── Background TUM poller ─────────────────────────────────────
+# Tumblr uses a read-only API key + blog identifier.
+
+def _start_tum_poller():
+    """Run Tumblr poller in its own daemon thread with a dynamic interval from settings."""
+    import asyncio
+    from polling.tum_poller import run_tum_poll_cycle
+
+    async def _scheduled_tum_poll():
+        settings = config.get_settings()
+        if not settings.get("tum_api_key") or not settings.get("tum_blog"):
+            logger.info("Scheduled TUM poll skipped — no Tumblr credentials configured")
+            return
+        try:
+            await run_tum_poll_cycle()
+        except Exception as e:
+            logger.error("Scheduled TUM poll failed: %s", e)
+
+    async def _run():
+        logger.info("TUM poller loop started")
+        while True:
+            settings = config.get_settings()
+            interval = settings.get("tum_poll_interval_minutes", 60)
+            logger.info("Next TUM poll in %d minutes", interval)
+            await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("TUM poll skipped -- polling is paused")
+                continue
+            await _scheduled_tum_poll()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run())
+    except Exception as e:
+        logger.debug("TUM poller thread exiting: %s", e)  # Daemon teardown
+
+
 # ── 6-Hourly Telegram Digest ─────────────────────────────────
 # Sends a cross-platform stats digest every 6 hours via Telegram.
 # Uses its own asyncio event loop like the pollers.
@@ -877,6 +915,10 @@ def main():
         logger.info("Starting MAST background poller...")
         mast_poller_thread = threading.Thread(target=_start_mast_poller, daemon=True)
         mast_poller_thread.start()
+
+        logger.info("Starting TUM background poller...")
+        tum_poller_thread = threading.Thread(target=_start_tum_poller, daemon=True)
+        tum_poller_thread.start()
 
         logger.info("Starting Telegram digest scheduler...")
         digest_thread = threading.Thread(target=_start_digest_scheduler, daemon=True)

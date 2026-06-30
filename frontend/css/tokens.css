@@ -106,6 +106,7 @@
     --platform-bsky: #0085ff;
     --platform-tw:   #1d9bf0;
     --platform-mast: #6364ff;
+    --platform-tum:  #36465d;
 
     /* ── Legacy token aliases ────────────────────────────── */
     /* Older CSS (editor.css, diagnostics.css, components.css) was

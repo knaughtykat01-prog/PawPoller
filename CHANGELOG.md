@@ -4,6 +4,34 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.42.0] - 2026-06-30 - New platform: Tumblr (poll-only, 13th platform)
+
+Added **Tumblr** as the 13th tracked platform — poll-only analytics. Tumblr is read via the v2 API using
+the app's **OAuth Consumer Key** (Tumblr's "API key") + a **blog identifier** — no OAuth token dance, so
+connecting is just paste-a-key-and-blog-name.
+
+- **New backend** (`clients/tum/`, `polling/tum_poller.py`, `routes/tum_api.py` `/api/tum/*`,
+  `database/tum_queries.py` + `tum_schema.sql`): fetches the blog's posts (offset/limit paging) and tracks
+  **notes** — Tumblr's single engagement number (note_count = likes + reblogs + replies combined; Tumblr
+  doesn't expose a reliable breakdown, so only the total is tracked). Posts keep Tumblr's own **type**
+  (Text / Photo / Quote / Link / Chat / Audio / Video / Answer) as the content-type badge; photo posts
+  surface a thumbnail. The listing already carries note_count, so there's no second per-post fetch.
+- **Wired through everything**: account registry, credential resolution, schema bootstrap + per-account
+  migration, poll dispatch (server + desktop), router mount, Telegram digests/milestones, trending/spike
+  + link-combine analytics (notes → the engagement bucket), the CLI, and `.env.example` (`TUM_API_KEY` /
+  `TUM_BLOG`).
+- **Frontend**: dashboard (Total Posts + Total Notes, notes-over-time chart, Most Notes / Fastest
+  Growing) / submissions grid (notes + type badge + thumbnail) / detail / compare (notes), a Settings →
+  Connect accordion (blog + API key), poll-interval + notification toggles, the Platforms hub tile +
+  Overview aggregation, and the Tumblr "t" logo on a white badge with the trademark disclaimer.
+  `--platform-tum` token added.
+- **Tests**: `tests/test_scope_tum.py` + `tests/test_tum_parse.py` (notes mapping, post-type, photo
+  thumbnail, pagination/dedupe, blog normalisation).
+- To go live: register an app at tumblr.com/oauth/apps, copy the OAuth Consumer Key, connect under
+  Settings with your blog name, then poll. Posting is **not** included (poll-only).
+
+---
+
 ## [2.41.1] - 2026-06-30 - Fix CI: Mastodon test event-loop
 
 - `tests/test_mast_parse.py` used `asyncio.get_event_loop().run_until_complete(...)`, which raises

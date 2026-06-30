@@ -41,6 +41,7 @@ a = Analysis(
         ('database/bsky_schema.sql', 'database'),
         ('database/tw_schema.sql', 'database'),
         ('database/mast_schema.sql', 'database'),
+        ('database/tum_schema.sql', 'database'),
         ('database/posting_schema.sql', 'database'),
         ('assets', 'assets'),
     ],

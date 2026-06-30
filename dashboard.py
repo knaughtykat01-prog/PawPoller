@@ -29,6 +29,7 @@ from routes.ik_api import ik_router
 from routes.bsky_api import bsky_router
 from routes.tw_api import tw_router
 from routes.mast_api import mast_router
+from routes.tum_api import tum_router
 from routes.posting_api import posting_router
 from routes.artwork_api import artwork_router
 from routes.submissions_api import works_router
@@ -309,6 +310,7 @@ app.include_router(ik_router)    # Itaku routes (/api/ik/*)
 app.include_router(bsky_router)  # Bluesky routes (/api/bsky/*)
 app.include_router(tw_router)    # X/Twitter routes (/api/tw/*)
 app.include_router(mast_router)  # Mastodon routes (/api/mast/*)
+app.include_router(tum_router)   # Tumblr routes (/api/tum/*)
 app.include_router(posting_router)  # Posting module routes (/api/posting/*)
 app.include_router(artwork_router)  # Artwork hub routes (/api/artwork/*)
 app.include_router(works_router)    # Unified Submissions hub (/api/works)

@@ -74,6 +74,8 @@ const App = {
     _mastSortState: { field: 'likes', order: 'desc' },
     _mastCompareIds: new Set(),
     _mastCompareMetric: 'likes',
+    _tumSortState: { field: 'notes', order: 'desc' },
+    _tumCompareIds: new Set(),
     _twSortState: { field: 'views', order: 'desc' },
     _twCompareIds: new Set(),
     _twCompareMetric: 'views',
@@ -733,6 +735,14 @@ const App = {
             this.renderMASTDetail(parts[2]);
         } else if (parts[0] === 'mast' && parts[1] === 'compare') {
             this.renderMASTCompare();
+        } else if (parts[0] === 'tum' && (!parts[1] || parts[1] === '')) {
+            this.renderTUMDashboard();
+        } else if (parts[0] === 'tum' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderTUMSubmissions();
+        } else if (parts[0] === 'tum' && parts[1] === 'submission' && parts[2]) {
+            this.renderTUMDetail(parts[2]);
+        } else if (parts[0] === 'tum' && parts[1] === 'compare') {
+            this.renderTUMCompare();
         } else if (parts[0] === 'tw' && (!parts[1] || parts[1] === '')) {
             this.renderTWDashboard();
         } else if (parts[0] === 'tw' && parts[1] === 'submissions' && !parts[2]) {
@@ -976,6 +986,7 @@ const App = {
             { key: 'wp',   name: 'Wattpad' },
             { key: 'tw',   name: 'X / Twitter' },
             { key: 'mast', name: 'Mastodon' },
+            { key: 'tum',  name: 'Tumblr' },
         ];
         try {
             const prefs = await API.getPreferences();
@@ -1037,6 +1048,7 @@ const App = {
                 { key: 'ik', auth: auth.ikAuth?.has_credentials, name: 'Itaku', statusFn: 'getIKStatus', logFn: 'getIKPollLog', tableFn: 'ikPollLogTable' },
                 { key: 'bsky', auth: auth.bskyAuth?.has_credentials, name: 'Bluesky', statusFn: 'getBSKYStatus', logFn: 'getBSKYPollLog', tableFn: 'bskyPollLogTable' },
                 { key: 'mast', auth: auth.mastAuth?.has_credentials, name: 'Mastodon', statusFn: 'getMASTStatus', logFn: 'getMASTPollLog', tableFn: 'mastPollLogTable' },
+                { key: 'tum', auth: auth.tumAuth?.has_credentials, name: 'Tumblr', statusFn: 'getTUMStatus', logFn: 'getTUMPollLog', tableFn: 'tumPollLogTable' },
                 { key: 'tw', auth: auth.twAuth?.has_credentials, name: 'Twitter', statusFn: 'getTWStatus', logFn: 'getTWPollLog', tableFn: 'twPollLogTable' },
             ];
             const connected = platforms.filter(p => p.auth);
@@ -1119,14 +1131,14 @@ const App = {
     _platformLabels: {
         ib: 'Inkbunny', fa: 'FurAffinity', ws: 'Weasyl', sf: 'SoFurry',
         sqw: 'SquidgeWorld', ao3: 'AO3', da: 'DeviantArt', wp: 'Wattpad',
-        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon',
+        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr',
     },
 
     async _dashPoll(btn, platform) {
         const label = this._platformLabels[platform] || platform.toUpperCase();
         btn.disabled = true;
         btn.textContent = 'Polling...';
-        const fns = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll', sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll', wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll', mast: 'triggerMASTPoll' };
+        const fns = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll', sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll', wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll', mast: 'triggerMASTPoll', tum: 'triggerTUMPoll' };
         try {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
@@ -1144,7 +1156,7 @@ const App = {
         if (!confirm(`Full resync re-fetches every ${label} submission from scratch. This can take several minutes and will hit ${label}'s rate limits hard. Continue?`)) return;
         btn.disabled = true;
         btn.textContent = 'Syncing...';
-        const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync', mast: 'fullMASTResync' };
+        const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync', mast: 'fullMASTResync', tum: 'fullTUMResync' };
         try {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
@@ -1463,6 +1475,7 @@ const App = {
             { key: 'bsky', name: 'Bluesky', emoji: '&#129419;', color: 'var(--platform-bsky)', url: 'https://bsky.app/' },
             { key: 'tw', name: 'X / Twitter', emoji: '&#128038;', color: 'var(--platform-tw)', url: 'https://twitter.com/login' },
             { key: 'mast', name: 'Mastodon', emoji: '&#128024;', color: 'var(--platform-mast)', url: 'https://joinmastodon.org/servers' },
+            { key: 'tum', name: 'Tumblr', emoji: '&#128216;', color: 'var(--platform-tum)', url: 'https://www.tumblr.com/oauth/apps' },
         ];
 
         /* Detect runtime and pre-load existing state so the wizard can
@@ -1481,7 +1494,7 @@ const App = {
         /* Per-platform connection status (used in the platforms step) */
         const authStatus = {};
         try {
-            const [ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw, mast] = await Promise.all([
+            const [ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw, mast, tum] = await Promise.all([
                 API.getAuthStatus().catch(() => ({})),
                 API.getFAAuthStatus().catch(() => ({})),
                 API.getWSAuthStatus().catch(() => ({})),
@@ -1494,6 +1507,7 @@ const App = {
                 API.getBSKYAuthStatus().catch(() => ({})),
                 API.getTWAuthStatus().catch(() => ({})),
                 API.getMASTAuthStatus().catch(() => ({})),
+                API.getTUMAuthStatus().catch(() => ({})),
             ]);
             authStatus.ib = ib.has_credentials;
             authStatus.fa = fa.has_cookies;
@@ -1507,6 +1521,7 @@ const App = {
             authStatus.bsky = bsky.has_credentials;
             authStatus.tw = tw.has_credentials;
             authStatus.mast = mast.has_credentials;
+            authStatus.tum = tum.has_credentials;
         } catch { /* ignore — all default to undefined/false */ }
 
         /* Wizard state */
@@ -2015,7 +2030,7 @@ const App = {
             sf: () => API.getSFSummary(), sqw: () => API.getSQWSummary(), ao3: () => API.getAO3Summary(),
             da: () => API.getDASummary(), wp: () => API.getWPSummary(), ik: () => API.getIKSummary(),
             bsky: () => API.getBSKYSummary(), tw: () => API.getTWSummary(),
-            mast: () => API.getMASTSummary(),
+            mast: () => API.getMASTSummary(), tum: () => API.getTUMSummary(),
         };
         const results = await Promise.all(plats.map(p =>
             (fetchers[p.code] ? fetchers[p.code]() : Promise.resolve(null)).catch(() => null)
@@ -2065,7 +2080,7 @@ const App = {
         this._loading();
         try {
             /* Fetch all platform data in parallel; .catch() fallbacks prevent one failure from blocking all */
-            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, bskySummary, twSummary, mastSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, bskyAgg, twAgg, mastAgg, topFans, trending] = await Promise.all([
+            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, bskySummary, twSummary, mastSummary, tumSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, bskyAgg, twAgg, mastAgg, tumAgg, topFans, trending] = await Promise.all([
                 API.getSummary().catch(() => null),
                 API.getFASummary().catch(() => null),
                 API.getWSSummary().catch(() => null),
@@ -2078,6 +2093,7 @@ const App = {
                 API.getBSKYSummary().catch(() => null),
                 API.getTWSummary().catch(() => null),
                 API.getMASTSummary().catch(() => null),
+                API.getTUMSummary().catch(() => null),
                 API.getAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getFAAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getWSAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
@@ -2090,6 +2106,7 @@ const App = {
                 API.getBSKYAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getTWAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getMASTAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
+                API.getTUMAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getTopFans(10).catch(() => ({ fans: [] })),
                 API.getTrending({ hours: 24, threshold: 2.0 }).catch(() => ({ trending: [] })),
             ]);
@@ -2110,19 +2127,20 @@ const App = {
             const bsky = bskySummary || {};
             const tw = twSummary || {};
             const mast = mastSummary || {};
+            const tum = tumSummary || {};
 
             /* Sum totals across all platforms for the top-level stat cards.
              * Wattpad uses 'reads' instead of 'views' and 'votes' instead of 'favorites',
              * so we map them into the unified totals here.
              * Itaku has NO views — only likes (mapped to favorites), comments, and reshares. */
-            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0) + (bsky.total_submissions || 0) + (tw.total_submissions || 0) + (mast.total_submissions || 0);
+            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0) + (bsky.total_submissions || 0) + (tw.total_submissions || 0) + (mast.total_submissions || 0) + (tum.total_submissions || 0);
             const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0) + (sqw.total_views || 0) + (ao3.total_views || 0) + (da.total_views || 0) + (wp.total_reads || wp.total_views || 0) + (tw.total_views || 0);
-            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0) + (bsky.total_likes || 0) + (tw.total_likes || 0) + (mast.total_likes || 0);
+            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0) + (bsky.total_likes || 0) + (tw.total_likes || 0) + (mast.total_likes || 0) + (tum.total_notes || 0);
             const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0) + (ao3.total_comments || 0) + (da.total_comments || 0) + (wp.total_comments || 0) + (ik.total_comments || 0) + (bsky.total_comments || 0) + (tw.total_comments || 0) + (mast.total_comments || mast.total_replies || 0);
             const totalDownloads = (da.total_downloads || 0);
 
             /* Merge top lists across platforms: tag each with _platform, sort desc, take top 10 */
-            const mergeTop = (ibList, faList, wsList, sfList, sqwList, ao3List, daList, wpList, ikList, bskyList, twList, mastList, key) => {
+            const mergeTop = (ibList, faList, wsList, sfList, sqwList, ao3List, daList, wpList, ikList, bskyList, twList, mastList, tumList, key) => {
                 const merged = [];
                 (ibList || []).forEach(item => merged.push({ ...item, _platform: 'ib' }));
                 (faList || []).forEach(item => merged.push({ ...item, _platform: 'fa' }));
@@ -2141,12 +2159,14 @@ const App = {
                 (twList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'tw' }));
                 /* Mastodon has no views — map likes to favorites_count for unified merging */
                 (mastList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'mast' }));
+                /* Tumblr has no views — map notes to favorites_count for unified merging */
+                (tumList || []).forEach(item => merged.push({ ...item, favorites_count: item.notes || item.favorites_count || 0, _platform: 'tum' }));
                 merged.sort((a, b) => (b[key] || 0) - (a[key] || 0));
                 return merged.slice(0, 10);
             };
 
-            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, ao3.top_viewed, da.top_viewed, wp.top_viewed || wp.top_read, null, null, tw.top_viewed, null, 'views');
-            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, ao3.top_faved, da.top_faved, wp.top_faved || wp.top_voted, ik.top_liked || ik.top_faved, bsky.top_liked || bsky.top_faved, tw.top_liked || tw.top_faved, mast.top_liked || mast.top_faved, 'favorites_count');
+            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, ao3.top_viewed, da.top_viewed, wp.top_viewed || wp.top_read, null, null, tw.top_viewed, null, null, 'views');
+            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, ao3.top_faved, da.top_faved, wp.top_faved || wp.top_voted, ik.top_liked || ik.top_faved, bsky.top_liked || bsky.top_faved, tw.top_liked || tw.top_faved, mast.top_liked || mast.top_faved, tum.top_noted, 'favorites_count');
 
             /* Merge recent faves + comments into a unified timeline, sorted newest first */
             const recentActivity = [];
@@ -2174,6 +2194,7 @@ const App = {
             (tw.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'tw', _type: 'comment' }));
             (mast.recent_faves || mast.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'mast', _type: 'fave' }));
             (mast.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'mast', _type: 'comment' }));
+            (tum.recent_faves || tum.recent_notes || []).forEach(item => recentActivity.push({ ...item, _platform: 'tum', _type: 'fave' }));
             recentActivity.sort((a, b) => new Date(b.first_seen_at || 0) - new Date(a.first_seen_at || 0));
 
             /* Per-platform mini stat card showing views, faves, subs with a coloured badge */
@@ -2204,6 +2225,7 @@ const App = {
                 platformCard('<span class="platform-badge bsky">\u{1F98B} BSKY</span>', 'Bluesky', { total_views: 0, total_favorites: bsky.total_likes || 0, total_submissions: bsky.total_submissions || 0 }, 'bsky'),
                 platformCard('<span class="platform-badge tw">\u{1F426} TW</span>', 'X/Twitter', { total_views: tw.total_views || 0, total_favorites: tw.total_likes || 0, total_submissions: tw.total_submissions || 0 }, 'tw'),
                 platformCard('<span class="platform-badge mast">\u{1F418} MAST</span>', 'Mastodon', { total_views: 0, total_favorites: mast.total_likes || 0, total_submissions: mast.total_submissions || 0 }, 'mast'),
+                platformCard('<span class="platform-badge tum">\u{1F4D8} TUM</span>', 'Tumblr', { total_views: 0, total_favorites: tum.total_notes || 0, total_submissions: tum.total_submissions || 0 }, 'tum'),
             ].join('');
 
             /* Per-platform aggregate view charts — only those with history. */
@@ -2220,6 +2242,7 @@ const App = {
                 { id: 'chart-bsky-likes', title: 'Bluesky Likes', snapshots: bskyAgg?.snapshots, keys: ['likes'] },
                 { id: 'chart-tw-views', title: 'X/Twitter Views', snapshots: twAgg?.snapshots, keys: ['views'] },
                 { id: 'chart-mast-likes', title: 'Mastodon Likes', snapshots: mastAgg?.snapshots, keys: ['likes'] },
+                { id: 'chart-tum-notes', title: 'Tumblr Notes', snapshots: tumAgg?.snapshots, keys: ['notes'] },
             ].filter(c => c.snapshots && c.snapshots.length > 0);
             const chartsHtml = chartSpecs.length
                 ? chartSpecs.map(c => `<div class="chart-container"><h3>${c.title}</h3><div class="chart-wrap"><canvas id="${c.id}"></canvas></div></div>`).join('')
@@ -5989,6 +6012,266 @@ const App = {
         }
     },
 
+    // ── TUM Dashboard ─────────────────────────────────────────
+    // Tumblr dashboard with a single engagement metric: Notes.
+
+    async renderTUMDashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getTUMSummary({ account_id: this._acctId('tum') }),
+                API.getTUMAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('tum') }),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const tumPins = (pins.pins || []).filter(p => p.platform === 'tum');
+            const tumGoals = (goals.goals || []).filter(g => g.platform === 'tum' || g.platform === 'all');
+
+            const tumHealth = window.PlatformHealth && window.PlatformHealth.get('tum');
+            const isUnconfigured = tumHealth && tumHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>Tumblr Dashboard</h2></div>
+                    ${Components.platformEmptyState('tum', isUnconfigured ? {} : { reason: 'Tumblr is configured but no posts have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Tumblr Dashboard</h2>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'tum')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'tum')">Full Resync</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('tum')">Export CSV</button>
+                    </div>
+                </div>
+
+                ${tumPins.length ? Components.pinnedSubmissions(tumPins, 'tum') : ''}
+                ${tumGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(tumGoals)}</div>` : ''}
+
+                <div class="stats-grid">
+                    ${Components.statCard('Total Posts', summary.total_submissions, null, '#/tum/submissions')}
+                    ${Components.statCard('Total Notes', summary.total_notes || 0)}
+                </div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Notes Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-notes"></canvas></div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Most Notes</h3>
+                        ${Components.tumTopList(summary.top_noted, 'notes', 'title', 'submission_id')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Fastest Growing (24h)</h3>
+                        ${Components.tumTopList(summary.fastest_growing, 'notes_gained', 'title', 'submission_id')}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-notes', agg.snapshots, ['notes']);
+            }
+
+            this._bindDateRange(() => this.renderTUMDashboard());
+            this._bindPinAndGoalActions(() => this.renderTUMDashboard());
+            this._startAutoRefresh(() => this.renderTUMDashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading TUM dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── TUM Submissions ─────────────────────────────────────────
+
+    async renderTUMSubmissions() {
+        this._loading();
+        try {
+            const data = await API.getTUMSubmissions({
+                sort_by: this._tumSortState.field,
+                order: this._tumSortState.order,
+                account_id: this._acctId('tum'),
+            });
+
+            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
+            const tumGridRenderer = (subs) => Components.submissionCardGrid(
+                subs,
+                {
+                    idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumbnail_url', proxyThumb: false,
+                    typeKey: 'content_type', typeLabels: Components.TUM_TYPE_LABELS,
+                    detailRoute: '/tum/submission', dateKey: 'posted_at',
+                    stats: [
+                        { key: 'notes', deltaKey: 'notes_delta', label: 'notes' },
+                    ],
+                }
+            );
+            const gridHtml = tumGridRenderer(data.submissions);
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>Tumblr Posts</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search posts...">
+                    <div class="view-toggle">
+                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
+                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
+                    </div>
+                </div>
+                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
+                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                    ${Components.tumSubmissionsTable(data.submissions)}
+                </div>
+            `;
+
+            this._setContent(html);
+            this._bindViewToggle();
+            this._bindTUMTableSort();
+            this._bindTUMSearch(data.submissions, tumGridRenderer);
+            this._startAutoRefresh(() => this.renderTUMSubmissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading TUM submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── TUM Submission Detail ───────────────────────────────────
+
+    async renderTUMDetail(postId) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getTUMSubmission(postId),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const fullId = sub.submission_id;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'tum' && String(p.submission_id) === String(fullId));
+            const currentTags = sub.tags || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/tum/submissions" class="back-link">&larr; Back to Tumblr Posts</a>
+                <div class="detail-header">
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.TUM_TYPE_LABELS[sub.content_type] || sub.content_type || 'Text')}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Tumblr</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.notes || 0)} <span class="lbl">notes</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="tum" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="tum" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Notes Over Time</h3>
+                    <div class="chart-wrap"><canvas id="chart-detail"></canvas></div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots, ['notes']);
+            }
+
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getTUMSnapshots(postId, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots, ['notes']);
+            });
+
+            this._bindDetailPinTag('tum', fullId, allTags.tags || [], () => this.renderTUMDetail(postId));
+            this._startAutoRefresh(() => this.renderTUMDetail(postId));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading TUM post</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── TUM Compare ─────────────────────────────────────────────
+
+    async renderTUMCompare() {
+        this._loading();
+        try {
+            const data = await API.getTUMSubmissions({ sort_by: 'notes', order: 'desc', account_id: this._acctId('tum') });
+            const subs = data.submissions;
+
+            const chips = subs.map(s => `
+                <label class="compare-chip ${this._tumCompareIds.has(String(s.submission_id)) ? 'selected' : ''}" data-id="${Utils.escapeHtml(String(s.submission_id))}">
+                    <input type="checkbox" ${this._tumCompareIds.has(String(s.submission_id)) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>
+            `).join('');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>Compare Tumblr Posts</h2></div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 Tumblr posts to compare their notes over time.</p>
+                <div class="compare-select">${chips}</div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container" id="compare-chart-container" style="${this._tumCompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3>
+                    <div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._tumCompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 posts above to see their notes compared.</p></div>' : ''}
+            `;
+
+            this._setContent(html);
+
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = chip.dataset.id;
+                    if (this._tumCompareIds.has(id)) {
+                        this._tumCompareIds.delete(id);
+                    } else if (this._tumCompareIds.size < 5) {
+                        this._tumCompareIds.add(id);
+                    }
+                    this.renderTUMCompare();
+                });
+            });
+
+            this._bindDateRange(() => this._loadTUMComparisonChart());
+
+            if (this._tumCompareIds.size >= 2) {
+                await this._loadTUMComparisonChart();
+            }
+
+            this._startAutoRefresh(() => this.renderTUMCompare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadTUMComparisonChart() {
+        try {
+            if (this._tumCompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getTUMComparison([...this._tumCompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, 'notes');
+        } catch (e) {
+            console.error('Failed to load TUM comparison chart:', e);
+        }
+    },
+
     // ── TW Dashboard ─────────────────────────────────────────
     // X/Twitter dashboard with Views, Likes, Retweets, Replies, Quotes, Bookmarks.
 
@@ -6376,7 +6659,7 @@ const App = {
                 // Determine platform badge colour and the correct hash route prefix
                 const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[m.platform] || badgeMap.ib;
-                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', ib: '/submission/' };
+                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', ib: '/submission/' };
                 const prefix = prefixMap[m.platform] || prefixMap.ib;
                 return `
                     <tr>
@@ -6719,7 +7002,7 @@ const App = {
         try {
             // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
             // Polling tab data is loaded lazily when the user clicks into it.
-            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, updateInfo, postingSettings, browserLoginInfo, setupStatus] = await Promise.all([
+            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, updateInfo, postingSettings, browserLoginInfo, setupStatus] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
@@ -6736,6 +7019,7 @@ const App = {
                 API.getBSKYAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getTWAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getMASTAuthStatus().catch(() => ({ has_credentials: false })),
+                API.getTUMAuthStatus().catch(() => ({ has_credentials: false })),
                 API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' })),
                 API.getPostingSettings().catch(() => ({ posting_enabled: false, posting_default_platforms: [], posting_default_rating: 'adult', posting_server_url: '', posting_server_api_key: '', posting_story_archive_path: '' })),
                 API.getBrowserLoginPlatforms().catch(() => ({ available: false, platforms: [] })),
@@ -6753,7 +7037,7 @@ const App = {
             const _pollingOwner = setupStatus.polling_owner || (_isServer ? 'local' : (_isPaired ? 'server' : 'local'));
 
             // Store auth state for lazy-loaded polling tab
-            this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth };
+            this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth };
 
             // Store browser login availability for platform connect forms
             const _browserLoginAvailable = browserLoginInfo.available;
@@ -7144,6 +7428,23 @@ const App = {
                     </div>
                     <div class="settings-row">
                         <div>
+                            <span class="settings-label">TUM poll interval</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">How often to check for new Tumblr data</div>
+                        </div>
+                        <select class="filter-select" id="pref-tum-poll-interval" style="width:auto">
+                            <option value="15" ${prefs.tum_poll_interval_minutes === 15 ? 'selected' : ''}>15 min</option>
+                            <option value="30" ${prefs.tum_poll_interval_minutes === 30 ? 'selected' : ''}>30 min</option>
+                            <option value="60" ${prefs.tum_poll_interval_minutes === 60 || !prefs.tum_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
+                            <option value="120" ${prefs.tum_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
+                            <option value="240" ${prefs.tum_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.tum_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.tum_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.tum_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.tum_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
+                        </select>
+                    </div>
+                    <div class="settings-row">
+                        <div>
                             <span class="settings-label">Display timezone</span>
                             <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Timezone for Telegram messages and timestamps</div>
                         </div>
@@ -7296,6 +7597,7 @@ const App = {
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('bsky')">Export BSKY</button>
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('tw')">Export TW</button>
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('mast')">Export MAST</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('tum')">Export TUM</button>
                     </div>
                 </div>
 
@@ -8083,6 +8385,46 @@ const App = {
                 </details>
 
                 <details class="settings-accordion">
+                    <summary><span class="status-dot ${tumAuth.has_credentials ? 'connected' : 'disconnected'}"></span>Tumblr${tumAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(tumAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
+                    ${tumAuth.has_credentials ? `
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Status</span>
+                        </div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(tumAuth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">TUM desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for Tumblr activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-tum-notifications" ${prefs.tum_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="tum-poll-btn">TUM Poll Now</button>
+                        <button class="btn btn-secondary" id="tum-resync-btn">TUM Full Resync</button>
+                        <button class="btn btn-danger" id="tum-disconnect-btn">Disconnect</button>
+                        <span id="tum-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to Tumblr with an app API key and a blog name. Register an app at <code>tumblr.com/oauth/apps</code>, copy the <strong>OAuth Consumer Key</strong>, and enter the blog you want to track.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="tum-blog" class="search-input" placeholder="Blog (e.g. staff or staff.tumblr.com)">
+                        <input type="password" id="tum-api-key" class="search-input" placeholder="OAuth Consumer Key">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="tum-connect-btn">Connect</button>
+                        <span id="tum-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                    </div>
+                </details>
+
+                <details class="settings-accordion">
                     <summary><span class="status-dot ${twAuth.has_credentials ? 'connected' : 'disconnected'}"></span>X / Twitter${twAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(twAuth.username || '')}</span>` : ''}</summary>
                     <div class="accordion-body">
                     ${twAuth.has_credentials ? `
@@ -8347,6 +8689,7 @@ const App = {
                     prefs.bsky_poll_interval_minutes = parseInt(val('pref-bsky-poll-interval')) || 60;
                     prefs.tw_poll_interval_minutes = parseInt(val('pref-tw-poll-interval')) || 60;
                     prefs.mast_poll_interval_minutes = parseInt(val('pref-mast-poll-interval')) || 60;
+                    prefs.tum_poll_interval_minutes = parseInt(val('pref-tum-poll-interval')) || 60;
 
                     // Timezone
                     if (val('pref-timezone')) prefs.display_timezone = val('pref-timezone');
@@ -8378,6 +8721,7 @@ const App = {
                     if (document.getElementById('pref-bsky-notifications')) prefs.bsky_notifications_enabled = !!chk('pref-bsky-notifications');
                     if (document.getElementById('pref-tw-notifications')) prefs.tw_notifications_enabled = !!chk('pref-tw-notifications');
                     if (document.getElementById('pref-mast-notifications')) prefs.mast_notifications_enabled = !!chk('pref-mast-notifications');
+                    if (document.getElementById('pref-tum-notifications')) prefs.tum_notifications_enabled = !!chk('pref-tum-notifications');
 
                     await API.savePreferences(prefs);
 
@@ -8424,6 +8768,7 @@ const App = {
                     if (auth.bskyAuth?.has_credentials) triggers.push(API.triggerBSKYPoll());
                     if (auth.twAuth?.has_credentials) triggers.push(API.triggerTWPoll());
                     if (auth.mastAuth?.has_credentials) triggers.push(API.triggerMASTPoll());
+                    if (auth.tumAuth?.has_credentials) triggers.push(API.triggerTUMPoll());
                     const results = await Promise.allSettled(triggers);
                     const failed = results.filter(r => r.status === 'rejected');
                     btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';
@@ -8463,6 +8808,7 @@ const App = {
                     if (auth.bskyAuth?.has_credentials) resyncs.push(API.fullBSKYResync());
                     if (auth.twAuth?.has_credentials) resyncs.push(API.fullTWResync());
                     if (auth.mastAuth?.has_credentials) resyncs.push(API.fullMASTResync());
+                    if (auth.tumAuth?.has_credentials) resyncs.push(API.fullTUMResync());
                     const results = await Promise.allSettled(resyncs);
                     const failed = results.filter(r => r.status === 'rejected');
                     btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';
@@ -9117,6 +9463,15 @@ const App = {
                 }
             });
 
+            // TUM poll interval dropdown
+            document.getElementById('pref-tum-poll-interval')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ tum_poll_interval_minutes: parseInt(e.target.value) });
+                } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
             // Display timezone dropdown
             document.getElementById('pref-timezone')?.addEventListener('change', async (e) => {
                 try {
@@ -9710,6 +10065,78 @@ const App = {
                 mastNotifToggle.addEventListener('change', async (e) => {
                     try {
                         await API.savePreferences({ mast_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
+            // TUM Connect: sends api_key + blog
+            const tumConnectBtn = document.getElementById('tum-connect-btn');
+            if (tumConnectBtn) {
+                tumConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('tum-msg');
+                    const blog = document.getElementById('tum-blog').value.trim();
+                    const api_key = document.getElementById('tum-api-key').value.trim();
+                    if (!blog || !api_key) {
+                        msg.textContent = 'Blog and API key are required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    tumConnectBtn.disabled = true;
+                    tumConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.tumConnect({ blog, api_key });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        tumConnectBtn.textContent = 'Connect';
+                        tumConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            // TUM Disconnect
+            const tumDisconnectBtn = document.getElementById('tum-disconnect-btn');
+            if (tumDisconnectBtn) {
+                tumDisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect Tumblr? This clears your credentials.')) return;
+                    try {
+                        await API.tumDisconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+
+            // TUM Poll Now / Full Resync
+            const tumPollBtn = document.getElementById('tum-poll-btn');
+            if (tumPollBtn) {
+                tumPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: tumPollBtn, msgId: 'tum-msg', platform: 'tum', apiMethod: 'triggerTUMPoll',
+                }));
+            }
+            const tumResyncBtn = document.getElementById('tum-resync-btn');
+            if (tumResyncBtn) {
+                tumResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: tumResyncBtn, msgId: 'tum-msg', platform: 'tum', apiMethod: 'fullTUMResync',
+                }));
+            }
+
+            // TUM: Notifications toggle
+            const tumNotifToggle = document.getElementById('pref-tum-notifications');
+            if (tumNotifToggle) {
+                tumNotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ tum_notifications_enabled: e.target.checked });
                     } catch (err) {
                         e.target.checked = !e.target.checked;
                         alert('Failed to save preference: ' + err.message);
@@ -10852,6 +11279,45 @@ const App = {
             if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.mastSubmissionsTable(filtered);
             this._bindMASTTableSort();
+        };
+
+        input?.addEventListener('input', doFilter);
+    },
+
+    // TUM table sort binding — same pattern as MAST but for TUM.
+    _bindTUMTableSort() {
+        document.querySelectorAll('#tum-submissions-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (this._tumSortState.field === field) {
+                    this._tumSortState.order = this._tumSortState.order === 'desc' ? 'asc' : 'desc';
+                } else {
+                    this._tumSortState.field = field;
+                    this._tumSortState.order = 'desc';
+                }
+                this.renderTUMSubmissions();
+            });
+        });
+    },
+
+    // TUM variant of _bindSearch(). Filters by text (title only).
+    _bindTUMSearch(allSubmissions, gridRenderer) {
+        const input = document.getElementById('search-input');
+
+        const doFilter = () => {
+            const q = (input?.value || '').toLowerCase();
+
+            let filtered = allSubmissions;
+            if (q) {
+                filtered = filtered.filter(s =>
+                    (s.title || '').toLowerCase().includes(q)
+                );
+            }
+
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
+            document.getElementById('table-container').innerHTML = Components.tumSubmissionsTable(filtered);
+            this._bindTUMTableSort();
         };
 
         input?.addEventListener('input', doFilter);

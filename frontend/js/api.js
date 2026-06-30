@@ -346,6 +346,24 @@ const API = {
     triggerMASTPoll() { return this.post('/api/mast/poll/trigger'); },
     fullMASTResync() { return this.post('/api/mast/poll/full-resync'); },
     getMASTPollProgress() { return this.get('/api/mast/poll/progress'); },
+    /* ── TUM (Tumblr) convenience methods ─────────────────────────
+     * Read-only v2 API (API key + blog). Posts identified by numeric ids.
+     * Single engagement metric: notes (likes + reblogs + replies).
+     */
+    getTUMAuthStatus() { return this.get('/api/tum/auth/status'); },
+    tumConnect(data) { return this.post('/api/tum/auth/connect', data); },
+    tumDisconnect() { return this.post('/api/tum/auth/disconnect'); },
+    getTUMStatus() { return this.get('/api/tum/status'); },
+    getTUMSummary(params) { return this.get('/api/tum/summary', params); },
+    getTUMSubmissions(params) { return this.get('/api/tum/submissions', params); },
+    getTUMSubmission(id) { return this.get(`/api/tum/submissions/${encodeURIComponent(id)}`); },
+    getTUMSnapshots(id, params) { return this.get(`/api/tum/submissions/${encodeURIComponent(id)}/snapshots`, params); },
+    getTUMAggregate(params) { return this.get('/api/tum/aggregate', params); },
+    getTUMComparison(ids, params) { return this.get('/api/tum/comparison', { ids: ids.join(','), ...params }); },
+    getTUMPollLog(limit) { return this.get('/api/tum/poll_log', { limit }); },
+    triggerTUMPoll() { return this.post('/api/tum/poll/trigger'); },
+    fullTUMResync() { return this.post('/api/tum/poll/full-resync'); },
+    getTUMPollProgress() { return this.get('/api/tum/poll/progress'); },
     /* ── TW (X/Twitter) convenience methods ───────────────────────
      * Cookie-based GraphQL API. Tweets identified by numeric ID strings.
      * Tracks views, likes, retweets, replies, quotes, bookmarks.
@@ -371,11 +389,11 @@ const API = {
      * download, not JSON to be parsed in-page.
      */
     exportSubmissions(platform) {
-        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions', sqw: '/api/sqw/export/submissions', ao3: '/api/ao3/export/submissions', da: '/api/da/export/submissions', wp: '/api/wp/export/submissions', ik: '/api/ik/export/submissions', bsky: '/api/bsky/export/submissions', tw: '/api/tw/export/submissions', mast: '/api/mast/export/submissions' };
+        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions', sqw: '/api/sqw/export/submissions', ao3: '/api/ao3/export/submissions', da: '/api/da/export/submissions', wp: '/api/wp/export/submissions', ik: '/api/ik/export/submissions', bsky: '/api/bsky/export/submissions', tw: '/api/tw/export/submissions', mast: '/api/mast/export/submissions', tum: '/api/tum/export/submissions' };
         window.open(urls[platform] || urls.ib, '_blank');
     },
     exportSnapshots(platform, id) {
-        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots', sqw: '/api/sqw/export/snapshots', ao3: '/api/ao3/export/snapshots', da: '/api/da/export/snapshots', wp: '/api/wp/export/snapshots', ik: '/api/ik/export/snapshots', bsky: '/api/bsky/export/snapshots', tw: '/api/tw/export/snapshots', mast: '/api/mast/export/snapshots' };
+        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots', sqw: '/api/sqw/export/snapshots', ao3: '/api/ao3/export/snapshots', da: '/api/da/export/snapshots', wp: '/api/wp/export/snapshots', ik: '/api/ik/export/snapshots', bsky: '/api/bsky/export/snapshots', tw: '/api/tw/export/snapshots', mast: '/api/mast/export/snapshots', tum: '/api/tum/export/snapshots' };
         const url = (bases[platform] || bases.ib) + (id ? `?id=${id}` : '');
         window.open(url, '_blank');
     },

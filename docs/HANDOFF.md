@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-30
-**Current version:** 2.41.1 — **Fix CI: Mastodon test event-loop** (test-only; `asyncio.run()` instead
+**Current version:** 2.42.0 — **New platform: Tumblr (poll-only, 13th platform)**.
+**Released + deployed** 2026-06-30 (tag `v2.42.0`). Tumblr read via the v2 API with the app's OAuth
+Consumer Key ("API key") + a blog identifier — no token dance. Tracks **notes** (Tumblr's single
+engagement number; no reliable breakdown). Posts keep Tumblr's type (Text/Photo/Quote/…) as the badge;
+photo posts get a thumbnail. New: `clients/tum/`, `polling/tum_poller.py`, `routes/tum_api.py`,
+`database/tum_*`; wired through accounts/config/db/server/main/dashboard/telegram/analytics/cli/frontend;
+Tumblr "t" logo (SVG, brand navy). Tests: `test_scope_tum.py`, `test_tum_parse.py`. **To go live:**
+register an app at tumblr.com/oauth/apps → copy the OAuth Consumer Key → connect under Settings with your
+blog name → poll. **Remaining platform-expansion work:** Threads (needs a Meta app + OAuth) and Pixiv
+(refresh-token login) — both still to build, same poll-only pattern.
+
+**Prior release — 2.41.1 — Fix CI: Mastodon test event-loop** (test-only; `asyncio.run()` instead
 of the deprecated `get_event_loop()` in `test_mast_parse.py`, which hard-failed on CI's Python 3.11 and
 blocked Build & Release — so 2.41.0 built no desktop installers). App code identical to 2.41.0.
 

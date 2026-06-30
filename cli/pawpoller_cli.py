@@ -49,11 +49,12 @@ console = Console()
 
 # ── Constants ──────────────────────────────────────────────────────
 
-PLATFORMS = ["ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik", "bsky", "tw", "mast"]
+PLATFORMS = ["ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik", "bsky", "tw", "mast", "tum"]
 PLATFORM_LABELS = {
     "ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry",
     "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad",
     "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter", "mast": "Mastodon",
+    "tum": "Tumblr",
 }
 
 POSTING_PLATFORMS = ["ib", "fa", "ws", "sf", "sqw", "ao3", "ik", "da", "bsky"]
