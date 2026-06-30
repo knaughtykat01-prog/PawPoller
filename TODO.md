@@ -23,6 +23,8 @@ counts appear. Once one works, tell Claude and it'll flip that platform from "te
       access token**. In PawPoller: paste the token (user ID optional) → Connect → Poll Now.
       - ⚠️ Meta requires app review for production access **and** restricts adult/furry content — it may come back
         empty or blocked. If it misbehaves, that's almost certainly Meta's gating, not the code.
+- [ ] **Weasyl** + **Itaku** are also flagged *testing* (already connected — re-verify their polling pulls
+      current data, then tell Claude to drop their badges).
 - [ ] After verifying each: ping Claude to (a) mark it live on the marketing page, (b) drop the "in testing" badge.
 
 ---
