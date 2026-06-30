@@ -7047,6 +7047,17 @@ const App = {
                     </div>
                 </div>`}
 
+                <div class="settings-section">
+                    <h3>Website</h3>
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Marketing site &amp; project home</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Features, screenshots and download links.</div>
+                        </div>
+                        <a class="btn btn-secondary" href="https://pawpoller.pages.dev" target="_blank" rel="noopener noreferrer" style="padding:4px 12px;font-size:12px">pawpoller.pages.dev &nearr;</a>
+                    </div>
+                </div>
+
                 </div><!-- /tab:about -->
 
                 <!-- ═══ TAB: Publishing ═══ -->

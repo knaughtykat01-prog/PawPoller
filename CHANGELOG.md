@@ -4,6 +4,13 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.40.2] - 2026-06-30 - Marketing-site link in About
+
+- The **About** tab (Settings) now has a **Website** row linking to the marketing site
+  (`https://pawpoller.pages.dev`, opens in a new tab). `frontend/js/app.js`.
+
+---
+
 ## [2.40.1] - 2026-06-29 - Sharper Inkbunny + Weasyl logos
 
 - The Inkbunny and Weasyl logos were tiny (only 16px favicons were available, so they floated in the

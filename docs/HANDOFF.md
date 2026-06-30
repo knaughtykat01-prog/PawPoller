@@ -1,7 +1,12 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-06-29
-**Current version:** 2.40.1 — **Sharper Inkbunny + Weasyl logos**.
+**Last updated:** 2026-06-30
+**Current version:** 2.40.2 — **Marketing-site link in About**.
+**Released + deployed** 2026-06-30 (tag `v2.40.2`). The Settings → **About** tab gained a **Website** row
+linking to the marketing site (`https://pawpoller.pages.dev`, new tab). `frontend/js/app.js`. (Marketing
+site source lives in `site/` — Cloudflare Pages project, deployed at pawpoller.pages.dev.)
+
+**Prior release — 2.40.1 — Sharper Inkbunny + Weasyl logos**.
 **Released + deployed** 2026-06-29 (tag `v2.40.1`). The 2.40.0 Inkbunny/Weasyl logos were tiny 16px
 favicons; replaced with Inkbunny's bunny mascot (`logo/bunny.png` 154×164) and Weasyl's scalable SVG
 favicon. `frontend/js/platforms.js` now treats both `ik` and `ws` as SVG logos. (Browser was used to grab
