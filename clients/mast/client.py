@@ -1,0 +1,342 @@
+"""Mastodon (MAST) REST API client.
+
+Mastodon is decentralised — every instance (mastodon.social, pawb.fun,
+meow.social, snouts.online, …) runs the same open REST API, so the client
+is pointed at the user's *instance URL* and authenticates with a personal
+**access token** (Settings → Development → New application on the instance,
+scopes ``read``). No OAuth dance, no refresh token needed.
+
+Key details:
+  - Post IDs are ActivityPub URIs (https://instance/users/x/statuses/123),
+    globally unique, stored as TEXT (mirrors the bsky URI scheme).
+  - Stats: favourites → likes, reblogs → reposts, replies. Mastodon has no
+    native quote count, so quotes is always 0 (kept for schema parity).
+  - The statuses timeline already carries the counts, so unlike Bluesky there
+    is no second per-post fetch — get_all_post_uris carries the raw status and
+    get_post_details_batch just parses it (mirrors the X poller).
+  - Reblogs (boosts) are someone else's post; they're dropped UNLESS the
+    account is @-mentioned in the boosted post (then kept + flagged 'repost'),
+    matching the Bluesky/X pollers.
+  - Pagination: max_id cursor (id of the last status seen).
+"""
+
+from __future__ import annotations
+import asyncio
+import html
+import logging
+import re
+from typing import Any
+
+import httpx
+
+import config
+
+logger = logging.getLogger(__name__)
+
+_HEADERS = {
+    "User-Agent": "PawPoller/1.0",
+    "Accept": "application/json",
+}
+
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _safe_int(val: Any) -> int:
+    """Safely convert a value to int, handling None, comma-formatted strings, etc."""
+    if val is None:
+        return 0
+    try:
+        if isinstance(val, str):
+            val = val.replace(",", "").strip()
+        return int(val)
+    except (ValueError, TypeError):
+        return 0
+
+
+def _strip_html(body: str) -> str:
+    """Mastodon status content is HTML — flatten to plain text for titles."""
+    if not body:
+        return ""
+    # Treat block/line breaks as spaces so words don't run together.
+    text = re.sub(r"<br\s*/?>|</p>", " ", body, flags=re.IGNORECASE)
+    text = _TAG_RE.sub("", text)
+    return html.unescape(text).strip()
+
+
+def _normalise_instance(url: str) -> str:
+    """Normalise an instance URL to ``https://host`` (no trailing slash/path)."""
+    url = (url or "").strip()
+    if not url:
+        return ""
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = "https://" + url
+    return url.rstrip("/")
+
+
+def _status_mentions_account(status: dict, account_id: str) -> bool:
+    """True if *account_id* is @-mentioned in the status. Used to keep reblogs
+    that actually tag the account (mirrors the bsky/X pollers)."""
+    if not account_id:
+        return False
+    for m in (status or {}).get("mentions", []) or []:
+        if str(m.get("id")) == str(account_id):
+            return True
+    return False
+
+
+class MastClient:
+    """Async HTTP client for a Mastodon instance's REST API."""
+
+    def __init__(self, instance_url: str = "", access_token: str = "",
+                 proxy_url: str = "", proxy_key: str = ""):
+        self.instance_url = _normalise_instance(instance_url)
+        self.access_token = access_token
+        self._account_id: str = ""
+        self._handle: str = ""          # @user@instance
+        self._username: str = ""
+        self._logged_in = False
+
+        # Optional CF Worker proxy — opt-in backup, not required from any IP
+        # today. Mirrors the bsky client; enabled via mast_use_cf_proxy.
+        if proxy_url and proxy_key:
+            from polling.cf_proxy import CloudflareProxyTransport
+            transport = CloudflareProxyTransport(proxy_url, proxy_key)
+            logger.info("Mast client using CF proxy: %s", proxy_url)
+        else:
+            transport = httpx.AsyncHTTPTransport(retries=2)
+        self._http = httpx.AsyncClient(
+            timeout=30.0,
+            follow_redirects=True,
+            headers=_HEADERS,
+            transport=transport,
+        )
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        await self.close()
+
+    async def close(self) -> None:
+        await self._http.aclose()
+
+    def update_credentials(self, instance_url: str, access_token: str) -> None:
+        """Update stored credentials. Resets login state if changed."""
+        new_instance = _normalise_instance(instance_url)
+        changed = (self.instance_url != new_instance or self.access_token != access_token)
+        self.instance_url = new_instance
+        self.access_token = access_token
+        if changed:
+            self._logged_in = False
+            self._account_id = ""
+            self._handle = ""
+            self._username = ""
+
+    # -- Auth -----------------------------------------------------------------
+
+    async def validate_session(self) -> str | None:
+        """Verify the token against verify_credentials. Returns the handle
+        (@user@instance) on success, the account id is cached for polling."""
+        if not self.instance_url or not self.access_token:
+            return None
+        data = await self._get_json("/api/v1/accounts/verify_credentials")
+        if data and isinstance(data, dict) and data.get("id"):
+            self._account_id = str(data["id"])
+            self._username = data.get("username", "")
+            # acct is bare username on the home instance; build a full handle.
+            host = self.instance_url.split("://", 1)[-1]
+            acct = data.get("acct", self._username)
+            self._handle = f"@{acct}@{host}" if "@" not in acct else f"@{acct}"
+            self._logged_in = True
+            return self._handle
+        return None
+
+    async def ensure_logged_in(self) -> bool:
+        if self._logged_in and self._account_id:
+            return True
+        return bool(await self.validate_session())
+
+    # -- HTTP Helpers ---------------------------------------------------------
+
+    async def _get_json(self, path: str, params: dict | None = None) -> dict | list | None:
+        """GET a JSON endpoint on the instance with Bearer auth + error handling."""
+        url = f"{self.instance_url}{path}"
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        try:
+            resp = await self._http.get(url, params=params, headers=headers)
+
+            if resp.status_code == 429:
+                logger.warning("MAST: Rate limited (429), waiting 30s...")
+                await asyncio.sleep(30)
+                resp = await self._http.get(url, params=params, headers=headers)
+
+            if resp.status_code == 401:
+                logger.error("MAST: Unauthorised (401) — token invalid or revoked")
+                return None
+            if resp.status_code == 404:
+                logger.warning("MAST: Not found (404) for %s", path)
+                return None
+
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError as e:
+            logger.error("MAST: Failed to fetch %s: %s", path, e)
+            return None
+        except Exception as e:
+            logger.error("MAST: JSON parse error for %s: %s", path, e)
+            return None
+
+    # -- Post Discovery -------------------------------------------------------
+
+    async def get_all_post_uris(self) -> list[dict]:
+        """Fetch all statuses for the authenticated account, newest first.
+
+        Returns a list of dicts carrying the raw status under 'status' (so the
+        details pass needs no extra round-trip). Reblogs are dropped unless the
+        account is @-tagged in the boosted post (then kept + flagged 'repost').
+        Pagination is max_id-based.
+        """
+        if not await self.ensure_logged_in():
+            logger.error("MAST: Not logged in, cannot fetch statuses")
+            return []
+
+        all_posts: list[dict] = []
+        seen: set[str] = set()
+        max_id: str | None = None
+
+        for _page_safety in range(1000):
+            params: dict[str, str] = {
+                "limit": "40",
+                # Keep replies (comments by you); reblogs handled per-item below.
+                "exclude_replies": "false",
+                "exclude_reblogs": "false",
+            }
+            if max_id:
+                params["max_id"] = max_id
+
+            data = await self._get_json(
+                f"/api/v1/accounts/{self._account_id}/statuses",
+                params=params,
+            )
+            if not data or not isinstance(data, list):
+                break
+            if not data:
+                break
+
+            for status in data:
+                max_id = status.get("id", max_id)   # advance cursor regardless
+                reblog = status.get("reblog")
+                is_repost = isinstance(reblog, dict)
+                # A boost wraps someone else's status — track it only when the
+                # account is tagged in the original, and then track the original.
+                if is_repost:
+                    if not _status_mentions_account(reblog, self._account_id):
+                        continue
+                    target = reblog
+                else:
+                    target = status
+
+                uri = target.get("uri", "") or target.get("url", "")
+                if not uri or uri in seen:
+                    continue
+                seen.add(uri)
+                entry = {"post_uri": uri, "status": target}
+                if is_repost:
+                    entry["content_type"] = "repost"
+                all_posts.append(entry)
+
+            if len(data) < 40:
+                break
+            await asyncio.sleep(config.MAST_REQUEST_DELAY_SECONDS)
+
+        logger.info("MAST: Found %d statuses for %s", len(all_posts), self._handle)
+        return all_posts
+
+    # -- Post Details ---------------------------------------------------------
+
+    async def get_post_details_batch(self, items: list[dict]) -> list[dict]:
+        """Parse the raw statuses gathered in discovery. No extra API calls —
+        the Mastodon timeline already carries all counts (mirrors the X poller).
+        """
+        details: list[dict] = []
+        for item in items:
+            status = item.get("status")
+            detail = (self._parse_status(status) if status
+                      else self._empty_detail(item.get("post_uri", "")))
+            if item.get("content_type"):
+                detail["content_type"] = item["content_type"]
+            details.append(detail)
+        return details
+
+    # -- Parsing Helpers ------------------------------------------------------
+
+    def _parse_status(self, status: dict) -> dict:
+        """Parse a Mastodon status object into a normalised detail dict."""
+        uri = status.get("uri", "") or status.get("url", "")
+        link = status.get("url", "") or uri
+        account = status.get("account", {}) or {}
+        handle = account.get("acct", self._username)
+        text = _strip_html(status.get("content", ""))
+
+        # Content type — reblog flag (set at discovery) overrides this later.
+        if status.get("in_reply_to_id"):
+            content_type = "reply"
+        elif status.get("quote") or status.get("quote_id"):
+            content_type = "quote"
+        else:
+            content_type = "post"
+
+        media = status.get("media_attachments", []) or []
+        has_media = bool(media)
+        thumbnail_url = ""
+        if media:
+            first = media[0] or {}
+            thumbnail_url = first.get("preview_url", "") or first.get("url", "")
+        embed_type = (media[0].get("type", "") if media else "")
+
+        keywords = [t.get("name", "") for t in (status.get("tags", []) or []) if t.get("name")]
+
+        # Sensitive flag → rough rating; CWs map to a Mature-ish marker.
+        rating = "Mature" if status.get("sensitive") else "General"
+
+        return {
+            "post_uri": uri,
+            "title": text[:80] + ("..." if len(text) > 80 else "") if text else "",
+            "full_text": text,
+            "username": handle,
+            "posted_at": status.get("created_at", ""),
+            "content_type": content_type,
+            "rating": rating,
+            "description": text,
+            "keywords": keywords,
+            "link": link,
+            "thumbnail_url": thumbnail_url,
+            "likes": _safe_int(status.get("favourites_count", 0)),
+            "reposts": _safe_int(status.get("reblogs_count", 0)),
+            "replies": _safe_int(status.get("replies_count", 0)),
+            "quotes": 0,   # Mastodon has no native quote count
+            "has_media": 1 if has_media else 0,
+            "embed_type": embed_type,
+        }
+
+    def _empty_detail(self, uri: str) -> dict:
+        """Return an empty detail dict for a status that couldn't be parsed."""
+        return {
+            "post_uri": uri,
+            "title": "",
+            "full_text": "",
+            "username": self._username,
+            "posted_at": "",
+            "content_type": "post",
+            "rating": "General",
+            "description": "",
+            "keywords": [],
+            "link": uri,
+            "thumbnail_url": "",
+            "likes": 0,
+            "reposts": 0,
+            "replies": 0,
+            "quotes": 0,
+            "has_media": 0,
+            "embed_type": "",
+        }

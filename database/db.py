@@ -38,6 +38,7 @@ _WP_SCHEMA_PATH = config.resource_path("database/wp_schema.sql")   # Wattpad tab
 _IK_SCHEMA_PATH = config.resource_path("database/ik_schema.sql")   # Itaku tables
 _BSKY_SCHEMA_PATH = config.resource_path("database/bsky_schema.sql")  # Bluesky tables
 _TW_SCHEMA_PATH = config.resource_path("database/tw_schema.sql")      # X/Twitter tables
+_MAST_SCHEMA_PATH = config.resource_path("database/mast_schema.sql")  # Mastodon tables
 _POSTING_SCHEMA_PATH = config.resource_path("database/posting_schema.sql")  # Posting module tables
 
 
@@ -100,6 +101,8 @@ def init_db() -> None:
         conn.executescript(bsky_schema_sql)
         tw_schema_sql = _TW_SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(tw_schema_sql)
+        mast_schema_sql = _MAST_SCHEMA_PATH.read_text(encoding="utf-8")
+        conn.executescript(mast_schema_sql)
         posting_schema_sql = _POSTING_SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(posting_schema_sql)
         # Apply any migrations for tables added after the original schema release.
@@ -566,7 +569,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     # Migration 0d: account_id rollout for the simple platforms (no watcher/
     # kudos/session tables — just submissions/snapshots/poll_log). Each is the
     # Weasyl template via the shared helper.
-    for _p in ("ws", "da", "wp", "ik", "bsky", "tw"):
+    for _p in ("ws", "da", "wp", "ik", "bsky", "tw", "mast"):
         _add_account_id_and_backfill(
             conn, _accounts, _p,
             [f"{_p}_submissions", f"{_p}_snapshots", f"{_p}_poll_log"],

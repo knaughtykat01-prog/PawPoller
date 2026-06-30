@@ -31,12 +31,12 @@ import sqlite3
 logger = logging.getLogger(__name__)
 
 # All platform codes PawPoller knows about. Order is the display order.
-PLATFORMS = ["ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik", "bsky", "tw"]
+PLATFORMS = ["ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik", "bsky", "tw", "mast"]
 
 PLATFORM_NAMES = {
     "ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry",
     "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad",
-    "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter",
+    "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter", "mast": "Mastodon",
 }
 
 # Predicate per platform: does settings hold credentials for a default account?
@@ -54,6 +54,7 @@ DEFAULT_CRED_CHECKS = {
     "ik": lambda s: bool(s.get("ik_target_user")),
     "bsky": lambda s: bool(s.get("bsky_identifier") and s.get("bsky_app_password")),
     "tw": lambda s: bool(s.get("tw_auth_token") and s.get("tw_target_user")),
+    "mast": lambda s: bool(s.get("mast_instance_url") and s.get("mast_access_token")),
 }
 
 # The flat settings key whose value names the default account (for display).
@@ -69,6 +70,7 @@ _HANDLE_KEYS = {
     "ik": ["ik_target_user"],
     "bsky": ["bsky_identifier"],
     "tw": ["tw_target_user"],
+    "mast": ["mast_instance_url"],
 }
 
 
@@ -170,7 +172,7 @@ _STATS_TABLE = {
     "ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions",
     "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions",
     "bsky": "bsky_submissions", "tw": "tw_submissions", "sf": "sf_submissions",
-    "sqw": "sqw_submissions", "ao3": "ao3_submissions",
+    "sqw": "sqw_submissions", "ao3": "ao3_submissions", "mast": "mast_submissions",
 }
 
 

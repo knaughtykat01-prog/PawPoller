@@ -1,7 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-06-30
-**Current version:** 2.40.2 — **Marketing-site link in About**.
+**Current version:** 2.41.0 — **New platform: Mastodon (poll-only, 12th platform)**.
+**Released + deployed** 2026-06-30 (tag `v2.41.0`). Added Mastodon as the 12th tracked platform,
+poll-only, mirroring the Bluesky/X pattern. Decentralised → connect with your **instance URL** + a
+**personal access token** (Settings → Development → New application, scope `read`). Tracks likes
+(favourites) / reposts (boosts) / replies; posts typed Post/Reply/Quote/Repost; boosts kept only when
+you're @-tagged. No native quote count (column kept for schema parity, hidden in UI). Posting NOT
+included. New: `clients/mast/`, `polling/mast_poller.py`, `routes/mast_api.py`, `database/mast_*`; wired
+through accounts/config/db/server/main/dashboard/telegram/analytics/cli/frontend; official logo
+(recoloured to brand purple `#6364ff`, SVG). Tests: `test_scope_mast.py`, `test_mast_parse.py`.
+**To go live:** connect an account under Settings, then poll — clients can't pull data until a token is
+supplied. Adding the next platforms (Threads, Tumblr, Pixiv) is largely replication of this pattern.
+
+**Prior release — 2.40.2 — Marketing-site link in About**.
 **Released + deployed** 2026-06-30 (tag `v2.40.2`). The Settings → **About** tab gained a **Website** row
 linking to the marketing site (`https://pawpoller.pages.dev`, new tab). `frontend/js/app.js`. (Marketing
 site source lives in `site/` — Cloudflare Pages project, deployed at pawpoller.pages.dev.)

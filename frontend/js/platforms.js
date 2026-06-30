@@ -20,6 +20,7 @@
         { code: 'ik',   label: 'Itaku',        emoji: '\u{1F5BC}', color: 'var(--platform-ik)',   pollOnly: true  },
         { code: 'bsky', label: 'Bluesky',      emoji: '\u{1F98B}', color: 'var(--platform-bsky)', pollOnly: true  },
         { code: 'tw',   label: 'X / Twitter',  emoji: '\u{1F426}', color: 'var(--platform-tw)',   pollOnly: true  },
+        { code: 'mast', label: 'Mastodon',     emoji: '\u{1F418}', color: 'var(--platform-mast)', pollOnly: true  },
     ];
 
     const byCode = {};
@@ -28,7 +29,7 @@
     // Each platform's official logo, bundled under /img/platforms/. Itaku and
     // Weasyl ship SVGs (scalable); the rest are PNGs. Trademarks of their owners
     // — see the disclaimer on the Platforms hub.
-    const _svgLogos = ['ik', 'ws'];
+    const _svgLogos = ['ik', 'ws', 'mast'];
     PLATFORMS.forEach(p => { p.logo = '/img/platforms/' + p.code + (_svgLogos.includes(p.code) ? '.svg' : '.png'); });
 
     /* platformRoute(code, sub) — hash route for a platform sub-view.

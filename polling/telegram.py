@@ -39,6 +39,7 @@ PLATFORM_METRICS = {
     "ik":  {"views": None,   "faves": "likes", "comments": "comments_count"},
     "bsky": {"views": None,  "faves": "likes", "comments": "replies"},
     "tw":  {"views": "views", "faves": "likes", "comments": "replies"},
+    "mast": {"views": None,  "faves": "likes", "comments": "replies"},
 }
 
 # Single source for each platform's (snapshot_table, submission_table) pair —
@@ -55,6 +56,7 @@ PLATFORM_TABLES = {
     "ik":   ("ik_snapshots", "ik_submissions"),
     "bsky": ("bsky_snapshots", "bsky_submissions"),
     "tw":   ("tw_snapshots", "tw_submissions"),
+    "mast": ("mast_snapshots", "mast_submissions"),
 }
 
 # Default milestone thresholds — overridden by settings.json if configured.
@@ -116,8 +118,8 @@ async def send_telegram(text: str) -> bool:
 
 # ── Poll cycle summary ───────────────────────────────────────
 
-PLATFORM_EMOJI = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺", "sqw": "🦑", "ao3": "📖", "da": "🎨", "wp": "📙", "ik": "🎯", "bsky": "🦋", "tw": "🐦"}
-PLATFORM_NAME = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter"}
+PLATFORM_EMOJI = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺", "sqw": "🦑", "ao3": "📖", "da": "🎨", "wp": "📙", "ik": "🎯", "bsky": "🦋", "tw": "🐦", "mast": "🐘"}
+PLATFORM_NAME = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter", "mast": "Mastodon"}
 
 
 # ── Persona / account context (multi-account notification labelling) ─────────
@@ -550,7 +552,7 @@ async def check_goals() -> None:
     conn = get_connection()
     try:
         goals = conn.execute("SELECT * FROM goals WHERE completed_at IS NULL").fetchall()
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions"}
 
         for g in goals:
             g = dict(g)

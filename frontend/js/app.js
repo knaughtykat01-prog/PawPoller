@@ -71,6 +71,9 @@ const App = {
     _bskySortState: { field: 'likes', order: 'desc' },
     _bskyCompareIds: new Set(),
     _bskyCompareMetric: 'likes',
+    _mastSortState: { field: 'likes', order: 'desc' },
+    _mastCompareIds: new Set(),
+    _mastCompareMetric: 'likes',
     _twSortState: { field: 'views', order: 'desc' },
     _twCompareIds: new Set(),
     _twCompareMetric: 'views',
@@ -722,6 +725,14 @@ const App = {
             this.renderBSKYDetail(parts[2]);
         } else if (parts[0] === 'bsky' && parts[1] === 'compare') {
             this.renderBSKYCompare();
+        } else if (parts[0] === 'mast' && (!parts[1] || parts[1] === '')) {
+            this.renderMASTDashboard();
+        } else if (parts[0] === 'mast' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderMASTSubmissions();
+        } else if (parts[0] === 'mast' && parts[1] === 'submission' && parts[2]) {
+            this.renderMASTDetail(parts[2]);
+        } else if (parts[0] === 'mast' && parts[1] === 'compare') {
+            this.renderMASTCompare();
         } else if (parts[0] === 'tw' && (!parts[1] || parts[1] === '')) {
             this.renderTWDashboard();
         } else if (parts[0] === 'tw' && parts[1] === 'submissions' && !parts[2]) {
@@ -964,6 +975,7 @@ const App = {
             { key: 'ik',   name: 'Itaku' },
             { key: 'wp',   name: 'Wattpad' },
             { key: 'tw',   name: 'X / Twitter' },
+            { key: 'mast', name: 'Mastodon' },
         ];
         try {
             const prefs = await API.getPreferences();
@@ -1024,6 +1036,7 @@ const App = {
                 { key: 'wp', auth: auth.wpAuth?.has_credentials, name: 'Wattpad', statusFn: 'getWPStatus', logFn: 'getWPPollLog', tableFn: 'wpPollLogTable' },
                 { key: 'ik', auth: auth.ikAuth?.has_credentials, name: 'Itaku', statusFn: 'getIKStatus', logFn: 'getIKPollLog', tableFn: 'ikPollLogTable' },
                 { key: 'bsky', auth: auth.bskyAuth?.has_credentials, name: 'Bluesky', statusFn: 'getBSKYStatus', logFn: 'getBSKYPollLog', tableFn: 'bskyPollLogTable' },
+                { key: 'mast', auth: auth.mastAuth?.has_credentials, name: 'Mastodon', statusFn: 'getMASTStatus', logFn: 'getMASTPollLog', tableFn: 'mastPollLogTable' },
                 { key: 'tw', auth: auth.twAuth?.has_credentials, name: 'Twitter', statusFn: 'getTWStatus', logFn: 'getTWPollLog', tableFn: 'twPollLogTable' },
             ];
             const connected = platforms.filter(p => p.auth);
@@ -1106,14 +1119,14 @@ const App = {
     _platformLabels: {
         ib: 'Inkbunny', fa: 'FurAffinity', ws: 'Weasyl', sf: 'SoFurry',
         sqw: 'SquidgeWorld', ao3: 'AO3', da: 'DeviantArt', wp: 'Wattpad',
-        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter',
+        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon',
     },
 
     async _dashPoll(btn, platform) {
         const label = this._platformLabels[platform] || platform.toUpperCase();
         btn.disabled = true;
         btn.textContent = 'Polling...';
-        const fns = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll', sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll', wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll' };
+        const fns = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll', sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll', wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll', mast: 'triggerMASTPoll' };
         try {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
@@ -1131,7 +1144,7 @@ const App = {
         if (!confirm(`Full resync re-fetches every ${label} submission from scratch. This can take several minutes and will hit ${label}'s rate limits hard. Continue?`)) return;
         btn.disabled = true;
         btn.textContent = 'Syncing...';
-        const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync' };
+        const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync', mast: 'fullMASTResync' };
         try {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
@@ -1449,6 +1462,7 @@ const App = {
             { key: 'ik', name: 'Itaku', emoji: '&#128444;', color: 'var(--platform-ik)', url: 'https://itaku.ee/login' },
             { key: 'bsky', name: 'Bluesky', emoji: '&#129419;', color: 'var(--platform-bsky)', url: 'https://bsky.app/' },
             { key: 'tw', name: 'X / Twitter', emoji: '&#128038;', color: 'var(--platform-tw)', url: 'https://twitter.com/login' },
+            { key: 'mast', name: 'Mastodon', emoji: '&#128024;', color: 'var(--platform-mast)', url: 'https://joinmastodon.org/servers' },
         ];
 
         /* Detect runtime and pre-load existing state so the wizard can
@@ -1467,7 +1481,7 @@ const App = {
         /* Per-platform connection status (used in the platforms step) */
         const authStatus = {};
         try {
-            const [ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw] = await Promise.all([
+            const [ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw, mast] = await Promise.all([
                 API.getAuthStatus().catch(() => ({})),
                 API.getFAAuthStatus().catch(() => ({})),
                 API.getWSAuthStatus().catch(() => ({})),
@@ -1479,6 +1493,7 @@ const App = {
                 API.getIKAuthStatus().catch(() => ({})),
                 API.getBSKYAuthStatus().catch(() => ({})),
                 API.getTWAuthStatus().catch(() => ({})),
+                API.getMASTAuthStatus().catch(() => ({})),
             ]);
             authStatus.ib = ib.has_credentials;
             authStatus.fa = fa.has_cookies;
@@ -1491,6 +1506,7 @@ const App = {
             authStatus.ik = ik.has_credentials;
             authStatus.bsky = bsky.has_credentials;
             authStatus.tw = tw.has_credentials;
+            authStatus.mast = mast.has_credentials;
         } catch { /* ignore — all default to undefined/false */ }
 
         /* Wizard state */
@@ -1999,6 +2015,7 @@ const App = {
             sf: () => API.getSFSummary(), sqw: () => API.getSQWSummary(), ao3: () => API.getAO3Summary(),
             da: () => API.getDASummary(), wp: () => API.getWPSummary(), ik: () => API.getIKSummary(),
             bsky: () => API.getBSKYSummary(), tw: () => API.getTWSummary(),
+            mast: () => API.getMASTSummary(),
         };
         const results = await Promise.all(plats.map(p =>
             (fetchers[p.code] ? fetchers[p.code]() : Promise.resolve(null)).catch(() => null)
@@ -2048,7 +2065,7 @@ const App = {
         this._loading();
         try {
             /* Fetch all platform data in parallel; .catch() fallbacks prevent one failure from blocking all */
-            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, bskySummary, twSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, bskyAgg, twAgg, topFans, trending] = await Promise.all([
+            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, bskySummary, twSummary, mastSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, bskyAgg, twAgg, mastAgg, topFans, trending] = await Promise.all([
                 API.getSummary().catch(() => null),
                 API.getFASummary().catch(() => null),
                 API.getWSSummary().catch(() => null),
@@ -2060,6 +2077,7 @@ const App = {
                 API.getIKSummary().catch(() => null),
                 API.getBSKYSummary().catch(() => null),
                 API.getTWSummary().catch(() => null),
+                API.getMASTSummary().catch(() => null),
                 API.getAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getFAAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getWSAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
@@ -2071,6 +2089,7 @@ const App = {
                 API.getIKAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getBSKYAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getTWAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
+                API.getMASTAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getTopFans(10).catch(() => ({ fans: [] })),
                 API.getTrending({ hours: 24, threshold: 2.0 }).catch(() => ({ trending: [] })),
             ]);
@@ -2090,19 +2109,20 @@ const App = {
             const ik = ikSummary || {};
             const bsky = bskySummary || {};
             const tw = twSummary || {};
+            const mast = mastSummary || {};
 
             /* Sum totals across all platforms for the top-level stat cards.
              * Wattpad uses 'reads' instead of 'views' and 'votes' instead of 'favorites',
              * so we map them into the unified totals here.
              * Itaku has NO views — only likes (mapped to favorites), comments, and reshares. */
-            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0) + (bsky.total_submissions || 0) + (tw.total_submissions || 0);
+            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0) + (bsky.total_submissions || 0) + (tw.total_submissions || 0) + (mast.total_submissions || 0);
             const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0) + (sqw.total_views || 0) + (ao3.total_views || 0) + (da.total_views || 0) + (wp.total_reads || wp.total_views || 0) + (tw.total_views || 0);
-            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0) + (bsky.total_likes || 0) + (tw.total_likes || 0);
-            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0) + (ao3.total_comments || 0) + (da.total_comments || 0) + (wp.total_comments || 0) + (ik.total_comments || 0) + (bsky.total_comments || 0) + (tw.total_comments || 0);
+            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0) + (bsky.total_likes || 0) + (tw.total_likes || 0) + (mast.total_likes || 0);
+            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0) + (ao3.total_comments || 0) + (da.total_comments || 0) + (wp.total_comments || 0) + (ik.total_comments || 0) + (bsky.total_comments || 0) + (tw.total_comments || 0) + (mast.total_comments || mast.total_replies || 0);
             const totalDownloads = (da.total_downloads || 0);
 
             /* Merge top lists across platforms: tag each with _platform, sort desc, take top 10 */
-            const mergeTop = (ibList, faList, wsList, sfList, sqwList, ao3List, daList, wpList, ikList, bskyList, twList, key) => {
+            const mergeTop = (ibList, faList, wsList, sfList, sqwList, ao3List, daList, wpList, ikList, bskyList, twList, mastList, key) => {
                 const merged = [];
                 (ibList || []).forEach(item => merged.push({ ...item, _platform: 'ib' }));
                 (faList || []).forEach(item => merged.push({ ...item, _platform: 'fa' }));
@@ -2119,12 +2139,14 @@ const App = {
                 (bskyList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'bsky' }));
                 /* X/Twitter maps likes to favorites_count for unified merging */
                 (twList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'tw' }));
+                /* Mastodon has no views — map likes to favorites_count for unified merging */
+                (mastList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'mast' }));
                 merged.sort((a, b) => (b[key] || 0) - (a[key] || 0));
                 return merged.slice(0, 10);
             };
 
-            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, ao3.top_viewed, da.top_viewed, wp.top_viewed || wp.top_read, null, null, tw.top_viewed, 'views');
-            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, ao3.top_faved, da.top_faved, wp.top_faved || wp.top_voted, ik.top_liked || ik.top_faved, bsky.top_liked || bsky.top_faved, tw.top_liked || tw.top_faved, 'favorites_count');
+            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, ao3.top_viewed, da.top_viewed, wp.top_viewed || wp.top_read, null, null, tw.top_viewed, null, 'views');
+            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, ao3.top_faved, da.top_faved, wp.top_faved || wp.top_voted, ik.top_liked || ik.top_faved, bsky.top_liked || bsky.top_faved, tw.top_liked || tw.top_faved, mast.top_liked || mast.top_faved, 'favorites_count');
 
             /* Merge recent faves + comments into a unified timeline, sorted newest first */
             const recentActivity = [];
@@ -2150,6 +2172,8 @@ const App = {
             (bsky.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'bsky', _type: 'comment' }));
             (tw.recent_faves || tw.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'tw', _type: 'fave' }));
             (tw.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'tw', _type: 'comment' }));
+            (mast.recent_faves || mast.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'mast', _type: 'fave' }));
+            (mast.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'mast', _type: 'comment' }));
             recentActivity.sort((a, b) => new Date(b.first_seen_at || 0) - new Date(a.first_seen_at || 0));
 
             /* Per-platform mini stat card showing views, faves, subs with a coloured badge */
@@ -2179,6 +2203,7 @@ const App = {
                 platformCard('<span class="platform-badge ik">\u{1F3AF} IK</span>', 'Itaku', { total_views: 0, total_favorites: ik.total_likes || 0, total_submissions: ik.total_submissions || 0 }, 'ik'),
                 platformCard('<span class="platform-badge bsky">\u{1F98B} BSKY</span>', 'Bluesky', { total_views: 0, total_favorites: bsky.total_likes || 0, total_submissions: bsky.total_submissions || 0 }, 'bsky'),
                 platformCard('<span class="platform-badge tw">\u{1F426} TW</span>', 'X/Twitter', { total_views: tw.total_views || 0, total_favorites: tw.total_likes || 0, total_submissions: tw.total_submissions || 0 }, 'tw'),
+                platformCard('<span class="platform-badge mast">\u{1F418} MAST</span>', 'Mastodon', { total_views: 0, total_favorites: mast.total_likes || 0, total_submissions: mast.total_submissions || 0 }, 'mast'),
             ].join('');
 
             /* Per-platform aggregate view charts — only those with history. */
@@ -2194,6 +2219,7 @@ const App = {
                 { id: 'chart-ik-likes', title: 'Itaku Likes', snapshots: ikAgg?.snapshots, keys: ['likes'] },
                 { id: 'chart-bsky-likes', title: 'Bluesky Likes', snapshots: bskyAgg?.snapshots, keys: ['likes'] },
                 { id: 'chart-tw-views', title: 'X/Twitter Views', snapshots: twAgg?.snapshots, keys: ['views'] },
+                { id: 'chart-mast-likes', title: 'Mastodon Likes', snapshots: mastAgg?.snapshots, keys: ['likes'] },
             ].filter(c => c.snapshots && c.snapshots.length > 0);
             const chartsHtml = chartSpecs.length
                 ? chartSpecs.map(c => `<div class="chart-container"><h3>${c.title}</h3><div class="chart-wrap"><canvas id="${c.id}"></canvas></div></div>`).join('')
@@ -5650,6 +5676,319 @@ const App = {
         }
     },
 
+    // ── MAST Dashboard ─────────────────────────────────────────
+    // Mastodon dashboard with Likes (favourites), Reposts (boosts), Replies.
+    // Mastodon has no quote metric, so there's no Quotes card (mirrors bsky otherwise).
+
+    async renderMASTDashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getMASTSummary({ account_id: this._acctId('mast') }),
+                API.getMASTAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('mast') }),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const mastPins = (pins.pins || []).filter(p => p.platform === 'mast');
+            const mastGoals = (goals.goals || []).filter(g => g.platform === 'mast' || g.platform === 'all');
+
+            // Empty-state short-circuit: see SF dashboard for the pattern.
+            const mastHealth = window.PlatformHealth && window.PlatformHealth.get('mast');
+            const isUnconfigured = mastHealth && mastHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>Mastodon Dashboard</h2></div>
+                    ${Components.platformEmptyState('mast', isUnconfigured ? {} : { reason: 'Mastodon is configured but no posts have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Mastodon Dashboard</h2>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="App._dashPoll(this,'mast')">Poll Now</button>
+                        <button class="btn btn-secondary" onclick="App._dashResync(this,'mast')">Full Resync</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('mast')">Export CSV</button>
+                    </div>
+                </div>
+
+                ${mastPins.length ? Components.pinnedSubmissions(mastPins, 'mast') : ''}
+                ${mastGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(mastGoals)}</div>` : ''}
+
+                <div class="stats-grid">
+                    ${Components.statCard('Total Posts', summary.total_submissions, null, '#/mast/submissions')}
+                    ${Components.statCard('Total Likes', summary.total_likes || 0)}
+                    ${Components.statCard('Total Reposts', summary.total_reposts || 0)}
+                    ${Components.statCard('Total Replies', summary.total_comments || summary.total_replies || 0)}
+                </div>
+
+                ${summary.growth_rates ? (() => {
+                    const rates = {};
+                    for (const period of ['24h', '7d', '30d']) {
+                        const r = summary.growth_rates[period];
+                        if (r) {
+                            rates[period] = {
+                                views_per_day: r.likes_per_day != null ? r.likes_per_day : 0,
+                                faves_per_day: r.reposts_per_day != null ? r.reposts_per_day : 0,
+                                comments_per_day: r.comments_per_day || r.replies_per_day || 0,
+                            };
+                        }
+                    }
+                    return Components.growthRateCards(rates, { views: 'likes/day', faves: 'reposts/day', comments: 'replies/day' });
+                })() : ''}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Likes Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-likes"></canvas></div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Liked</h3>
+                        ${Components.mastTopList(summary.top_liked || summary.top_faved, 'likes', 'title', 'submission_id')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Top Reposted</h3>
+                        ${Components.mastTopList(summary.top_reposted, 'reposts', 'title', 'submission_id')}
+                    </div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Fastest Growing (24h)</h3>
+                        ${Components.mastTopList(summary.fastest_growing, 'likes_gained', 'title', 'submission_id')}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-likes', agg.snapshots, ['likes']);
+            }
+
+            this._bindDateRange(() => this.renderMASTDashboard());
+            this._bindPinAndGoalActions(() => this.renderMASTDashboard());
+            this._startAutoRefresh(() => this.renderMASTDashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading MAST dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── MAST Submissions ─────────────────────────────────────────
+
+    async renderMASTSubmissions() {
+        this._loading();
+        try {
+            const data = await API.getMASTSubmissions({
+                sort_by: this._mastSortState.field,
+                order: this._mastSortState.order,
+                account_id: this._acctId('mast'),
+            });
+
+            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
+            // MAST uses rkey (last segment of submission_id URI) for routing.
+            const mastGridRenderer = (subs) => Components.submissionCardGrid(
+                subs.map(s => ({ ...s, _rkey: String(s.submission_id).split('/').pop() })),
+                {
+                    idKey: '_rkey', titleKey: 'title', thumbKey: 'thumbnail_url', proxyThumb: false,
+                    typeKey: 'content_type', typeLabels: Components.MAST_TYPE_LABELS,
+                    detailRoute: '/mast/submission', dateKey: 'posted_at',
+                    stats: [
+                        { key: 'likes', deltaKey: 'likes_delta', label: 'likes' },
+                        { key: 'reposts', deltaKey: 'reposts_delta', label: 'reposts' },
+                        { key: 'replies', deltaKey: 'replies_delta', label: 'replies' },
+                    ],
+                }
+            );
+            const gridHtml = mastGridRenderer(data.submissions);
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>Mastodon Posts</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search posts...">
+                    <div class="view-toggle">
+                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
+                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
+                    </div>
+                </div>
+                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
+                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                    ${Components.mastSubmissionsTable(data.submissions)}
+                </div>
+            `;
+
+            this._setContent(html);
+            this._bindViewToggle();
+            this._bindMASTTableSort();
+            this._bindMASTSearch(data.submissions, mastGridRenderer);
+            this._startAutoRefresh(() => this.renderMASTSubmissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading MAST submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── MAST Submission Detail ───────────────────────────────────
+
+    async renderMASTDetail(rkey) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getMASTSubmission(rkey),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const fullId = sub.submission_id;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'mast' && String(p.submission_id) === String(fullId));
+            const currentTags = sub.tags || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/mast/submissions" class="back-link">&larr; Back to Mastodon Posts</a>
+                <div class="detail-header">
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.MAST_TYPE_LABELS[sub.content_type] || sub.content_type || 'Post')}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Mastodon</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.likes || 0)} <span class="lbl">likes</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.reposts || 0)} <span class="lbl">reposts</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.replies || 0)} <span class="lbl">replies</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="mast" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="mast" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+
+                ${Components.growthRateCards(data.growth_rates, { views: 'likes/day', faves: 'reposts/day', comments: 'replies/day' })}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Stats Over Time</h3>
+                    <div class="chart-wrap"><canvas id="chart-detail"></canvas></div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots, ['likes', 'reposts', 'replies']);
+            }
+
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getMASTSnapshots(rkey, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots, ['likes', 'reposts', 'replies']);
+            });
+
+            this._bindDetailPinTag('mast', fullId, allTags.tags || [], () => this.renderMASTDetail(rkey));
+            this._startAutoRefresh(() => this.renderMASTDetail(rkey));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading MAST post</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── MAST Compare ─────────────────────────────────────────────
+
+    async renderMASTCompare() {
+        this._loading();
+        try {
+            const data = await API.getMASTSubmissions({ sort_by: 'likes', order: 'desc', account_id: this._acctId('mast') });
+            const subs = data.submissions;
+
+            const chips = subs.map(s => {
+                const rkey = String(s.submission_id).split('/').pop();
+                return `
+                <label class="compare-chip ${this._mastCompareIds.has(rkey) ? 'selected' : ''}" data-id="${rkey}" data-full-id="${Utils.escapeHtml(s.submission_id)}">
+                    <input type="checkbox" ${this._mastCompareIds.has(rkey) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>
+            `;
+            }).join('');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Compare Mastodon Posts</h2>
+                    <div>
+                        <select class="filter-select" id="compare-metric">
+                            <option value="likes" ${this._mastCompareMetric === 'likes' ? 'selected' : ''}>Likes</option>
+                            <option value="reposts" ${this._mastCompareMetric === 'reposts' ? 'selected' : ''}>Reposts</option>
+                            <option value="replies" ${this._mastCompareMetric === 'replies' ? 'selected' : ''}>Replies</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 Mastodon posts to compare their trends over time.</p>
+                <div class="compare-select">${chips}</div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container" id="compare-chart-container" style="${this._mastCompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3>
+                    <div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._mastCompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 posts above to see their trends compared.</p></div>' : ''}
+            `;
+
+            this._setContent(html);
+
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = chip.dataset.id;
+                    if (this._mastCompareIds.has(id)) {
+                        this._mastCompareIds.delete(id);
+                    } else if (this._mastCompareIds.size < 5) {
+                        this._mastCompareIds.add(id);
+                    }
+                    this.renderMASTCompare();
+                });
+            });
+
+            const metricSelect = document.getElementById('compare-metric');
+            if (metricSelect) {
+                metricSelect.addEventListener('change', () => {
+                    this._mastCompareMetric = metricSelect.value;
+                    this._loadMASTComparisonChart();
+                });
+            }
+
+            this._bindDateRange(() => this._loadMASTComparisonChart());
+
+            if (this._mastCompareIds.size >= 2) {
+                await this._loadMASTComparisonChart();
+            }
+
+            this._startAutoRefresh(() => this.renderMASTCompare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadMASTComparisonChart() {
+        try {
+            if (this._mastCompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getMASTComparison([...this._mastCompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, this._mastCompareMetric);
+        } catch (e) {
+            console.error('Failed to load MAST comparison chart:', e);
+        }
+    },
+
     // ── TW Dashboard ─────────────────────────────────────────
     // X/Twitter dashboard with Views, Likes, Retweets, Replies, Quotes, Bookmarks.
 
@@ -6037,7 +6376,7 @@ const App = {
                 // Determine platform badge colour and the correct hash route prefix
                 const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[m.platform] || badgeMap.ib;
-                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', ib: '/submission/' };
+                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', ib: '/submission/' };
                 const prefix = prefixMap[m.platform] || prefixMap.ib;
                 return `
                     <tr>
@@ -6380,7 +6719,7 @@ const App = {
         try {
             // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
             // Polling tab data is loaded lazily when the user clicks into it.
-            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, updateInfo, postingSettings, browserLoginInfo, setupStatus] = await Promise.all([
+            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, updateInfo, postingSettings, browserLoginInfo, setupStatus] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
@@ -6396,6 +6735,7 @@ const App = {
                 API.getIKAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getBSKYAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getTWAuthStatus().catch(() => ({ has_credentials: false })),
+                API.getMASTAuthStatus().catch(() => ({ has_credentials: false })),
                 API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' })),
                 API.getPostingSettings().catch(() => ({ posting_enabled: false, posting_default_platforms: [], posting_default_rating: 'adult', posting_server_url: '', posting_server_api_key: '', posting_story_archive_path: '' })),
                 API.getBrowserLoginPlatforms().catch(() => ({ available: false, platforms: [] })),
@@ -6413,7 +6753,7 @@ const App = {
             const _pollingOwner = setupStatus.polling_owner || (_isServer ? 'local' : (_isPaired ? 'server' : 'local'));
 
             // Store auth state for lazy-loaded polling tab
-            this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth };
+            this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth };
 
             // Store browser login availability for platform connect forms
             const _browserLoginAvailable = browserLoginInfo.available;
@@ -6787,6 +7127,23 @@ const App = {
                     </div>
                     <div class="settings-row">
                         <div>
+                            <span class="settings-label">MAST poll interval</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">How often to check for new Mastodon data</div>
+                        </div>
+                        <select class="filter-select" id="pref-mast-poll-interval" style="width:auto">
+                            <option value="15" ${prefs.mast_poll_interval_minutes === 15 ? 'selected' : ''}>15 min</option>
+                            <option value="30" ${prefs.mast_poll_interval_minutes === 30 ? 'selected' : ''}>30 min</option>
+                            <option value="60" ${prefs.mast_poll_interval_minutes === 60 || !prefs.mast_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
+                            <option value="120" ${prefs.mast_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
+                            <option value="240" ${prefs.mast_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.mast_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.mast_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.mast_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.mast_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
+                        </select>
+                    </div>
+                    <div class="settings-row">
+                        <div>
                             <span class="settings-label">Display timezone</span>
                             <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Timezone for Telegram messages and timestamps</div>
                         </div>
@@ -6938,6 +7295,7 @@ const App = {
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('ik')">Export IK</button>
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('bsky')">Export BSKY</button>
                         <button class="btn btn-secondary" onclick="API.exportSubmissions('tw')">Export TW</button>
+                        <button class="btn btn-secondary" onclick="API.exportSubmissions('mast')">Export MAST</button>
                     </div>
                 </div>
 
@@ -7685,6 +8043,46 @@ const App = {
                 </details>
 
                 <details class="settings-accordion">
+                    <summary><span class="status-dot ${mastAuth.has_credentials ? 'connected' : 'disconnected'}"></span>Mastodon${mastAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(mastAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
+                    ${mastAuth.has_credentials ? `
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Status</span>
+                        </div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(mastAuth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">MAST desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for Mastodon activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-mast-notifications" ${prefs.mast_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="mast-poll-btn">MAST Poll Now</button>
+                        <button class="btn btn-secondary" id="mast-resync-btn">MAST Full Resync</button>
+                        <button class="btn btn-danger" id="mast-disconnect-btn">Disconnect</button>
+                        <span id="mast-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to Mastodon with your instance URL and a personal access token. On your instance go to Settings &gt; Development &gt; New application, give it the <code>read</code> scope, and copy "Your access token".</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="mast-instance-url" class="search-input" placeholder="Instance URL (e.g. https://mastodon.social)">
+                        <input type="password" id="mast-access-token" class="search-input" placeholder="Access token">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="mast-connect-btn">Connect</button>
+                        <span id="mast-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                    </div>
+                </details>
+
+                <details class="settings-accordion">
                     <summary><span class="status-dot ${twAuth.has_credentials ? 'connected' : 'disconnected'}"></span>X / Twitter${twAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(twAuth.username || '')}</span>` : ''}</summary>
                     <div class="accordion-body">
                     ${twAuth.has_credentials ? `
@@ -7948,6 +8346,7 @@ const App = {
                     prefs.ik_poll_interval_minutes = parseInt(val('pref-ik-poll-interval')) || 60;
                     prefs.bsky_poll_interval_minutes = parseInt(val('pref-bsky-poll-interval')) || 60;
                     prefs.tw_poll_interval_minutes = parseInt(val('pref-tw-poll-interval')) || 60;
+                    prefs.mast_poll_interval_minutes = parseInt(val('pref-mast-poll-interval')) || 60;
 
                     // Timezone
                     if (val('pref-timezone')) prefs.display_timezone = val('pref-timezone');
@@ -7978,6 +8377,7 @@ const App = {
                     if (document.getElementById('pref-ik-notifications')) prefs.ik_notifications_enabled = !!chk('pref-ik-notifications');
                     if (document.getElementById('pref-bsky-notifications')) prefs.bsky_notifications_enabled = !!chk('pref-bsky-notifications');
                     if (document.getElementById('pref-tw-notifications')) prefs.tw_notifications_enabled = !!chk('pref-tw-notifications');
+                    if (document.getElementById('pref-mast-notifications')) prefs.mast_notifications_enabled = !!chk('pref-mast-notifications');
 
                     await API.savePreferences(prefs);
 
@@ -8023,6 +8423,7 @@ const App = {
                     if (auth.ikAuth?.has_credentials) triggers.push(API.triggerIKPoll());
                     if (auth.bskyAuth?.has_credentials) triggers.push(API.triggerBSKYPoll());
                     if (auth.twAuth?.has_credentials) triggers.push(API.triggerTWPoll());
+                    if (auth.mastAuth?.has_credentials) triggers.push(API.triggerMASTPoll());
                     const results = await Promise.allSettled(triggers);
                     const failed = results.filter(r => r.status === 'rejected');
                     btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';
@@ -8061,6 +8462,7 @@ const App = {
                     if (auth.ikAuth?.has_credentials) resyncs.push(API.fullIKResync());
                     if (auth.bskyAuth?.has_credentials) resyncs.push(API.fullBSKYResync());
                     if (auth.twAuth?.has_credentials) resyncs.push(API.fullTWResync());
+                    if (auth.mastAuth?.has_credentials) resyncs.push(API.fullMASTResync());
                     const results = await Promise.allSettled(resyncs);
                     const failed = results.filter(r => r.status === 'rejected');
                     btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';
@@ -8706,6 +9108,15 @@ const App = {
                 }
             });
 
+            // MAST poll interval dropdown
+            document.getElementById('pref-mast-poll-interval')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ mast_poll_interval_minutes: parseInt(e.target.value) });
+                } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
             // Display timezone dropdown
             document.getElementById('pref-timezone')?.addEventListener('change', async (e) => {
                 try {
@@ -9227,6 +9638,78 @@ const App = {
                 bskyNotifToggle.addEventListener('change', async (e) => {
                     try {
                         await API.savePreferences({ bsky_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
+            // MAST Connect: sends instance_url + access_token
+            const mastConnectBtn = document.getElementById('mast-connect-btn');
+            if (mastConnectBtn) {
+                mastConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('mast-msg');
+                    const instance_url = document.getElementById('mast-instance-url').value.trim();
+                    const access_token = document.getElementById('mast-access-token').value.trim();
+                    if (!instance_url || !access_token) {
+                        msg.textContent = 'Instance URL and access token are required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    mastConnectBtn.disabled = true;
+                    mastConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.mastConnect({ instance_url, access_token });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        mastConnectBtn.textContent = 'Connect';
+                        mastConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            // MAST Disconnect
+            const mastDisconnectBtn = document.getElementById('mast-disconnect-btn');
+            if (mastDisconnectBtn) {
+                mastDisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect Mastodon? This clears your credentials.')) return;
+                    try {
+                        await API.mastDisconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+
+            // MAST Poll Now / Full Resync — see _pollingTabPoll/_pollingTabResync
+            const mastPollBtn = document.getElementById('mast-poll-btn');
+            if (mastPollBtn) {
+                mastPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: mastPollBtn, msgId: 'mast-msg', platform: 'mast', apiMethod: 'triggerMASTPoll',
+                }));
+            }
+            const mastResyncBtn = document.getElementById('mast-resync-btn');
+            if (mastResyncBtn) {
+                mastResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: mastResyncBtn, msgId: 'mast-msg', platform: 'mast', apiMethod: 'fullMASTResync',
+                }));
+            }
+
+            // MAST: Notifications toggle
+            const mastNotifToggle = document.getElementById('pref-mast-notifications');
+            if (mastNotifToggle) {
+                mastNotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ mast_notifications_enabled: e.target.checked });
                     } catch (err) {
                         e.target.checked = !e.target.checked;
                         alert('Failed to save preference: ' + err.message);
@@ -10330,6 +10813,45 @@ const App = {
             if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.bskySubmissionsTable(filtered);
             this._bindBSKYTableSort();
+        };
+
+        input?.addEventListener('input', doFilter);
+    },
+
+    // MAST table sort binding — same pattern as BSKY but for MAST.
+    _bindMASTTableSort() {
+        document.querySelectorAll('#mast-submissions-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (this._mastSortState.field === field) {
+                    this._mastSortState.order = this._mastSortState.order === 'desc' ? 'asc' : 'desc';
+                } else {
+                    this._mastSortState.field = field;
+                    this._mastSortState.order = 'desc';
+                }
+                this.renderMASTSubmissions();
+            });
+        });
+    },
+
+    // MAST variant of _bindSearch(). Filters by text (title only).
+    _bindMASTSearch(allSubmissions, gridRenderer) {
+        const input = document.getElementById('search-input');
+
+        const doFilter = () => {
+            const q = (input?.value || '').toLowerCase();
+
+            let filtered = allSubmissions;
+            if (q) {
+                filtered = filtered.filter(s =>
+                    (s.title || '').toLowerCase().includes(q)
+                );
+            }
+
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
+            document.getElementById('table-container').innerHTML = Components.mastSubmissionsTable(filtered);
+            this._bindMASTTableSort();
         };
 
         input?.addEventListener('input', doFilter);

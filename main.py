@@ -497,6 +497,44 @@ def _start_tw_poller():
         logger.debug("TW poller thread exiting: %s", e)  # Daemon teardown
 
 
+# ── Background MAST poller ────────────────────────────────────
+# Mastodon uses a per-instance personal access token (instance_url + token).
+
+def _start_mast_poller():
+    """Run Mastodon poller in its own daemon thread with a dynamic interval from settings."""
+    import asyncio
+    from polling.mast_poller import run_mast_poll_cycle
+
+    async def _scheduled_mast_poll():
+        settings = config.get_settings()
+        if not settings.get("mast_instance_url") or not settings.get("mast_access_token"):
+            logger.info("Scheduled MAST poll skipped — no Mastodon credentials configured")
+            return
+        try:
+            await run_mast_poll_cycle()
+        except Exception as e:
+            logger.error("Scheduled MAST poll failed: %s", e)
+
+    async def _run():
+        logger.info("MAST poller loop started")
+        while True:
+            settings = config.get_settings()
+            interval = settings.get("mast_poll_interval_minutes", 60)
+            logger.info("Next MAST poll in %d minutes", interval)
+            await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("MAST poll skipped -- polling is paused")
+                continue
+            await _scheduled_mast_poll()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run())
+    except Exception as e:
+        logger.debug("MAST poller thread exiting: %s", e)  # Daemon teardown
+
+
 # ── 6-Hourly Telegram Digest ─────────────────────────────────
 # Sends a cross-platform stats digest every 6 hours via Telegram.
 # Uses its own asyncio event loop like the pollers.
@@ -835,6 +873,10 @@ def main():
         logger.info("Starting TW background poller...")
         tw_poller_thread = threading.Thread(target=_start_tw_poller, daemon=True)
         tw_poller_thread.start()
+
+        logger.info("Starting MAST background poller...")
+        mast_poller_thread = threading.Thread(target=_start_mast_poller, daemon=True)
+        mast_poller_thread.start()
 
         logger.info("Starting Telegram digest scheduler...")
         digest_thread = threading.Thread(target=_start_digest_scheduler, daemon=True)

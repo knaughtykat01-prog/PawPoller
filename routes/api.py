@@ -37,7 +37,7 @@ from fastapi.responses import Response, StreamingResponse
 from database.db import get_connection, init_db
 from database import (
     queries, fa_queries, ws_queries, sf_queries, sqw_queries, ao3_queries,
-    da_queries, wp_queries, ik_queries, bsky_queries, tw_queries,
+    da_queries, wp_queries, ik_queries, bsky_queries, tw_queries, mast_queries,
     group_queries, analytics_queries,
 )
 from polling.poller import run_poll_cycle, poll_progress
@@ -270,6 +270,7 @@ def get_all_poll_progress():
     _safe("ik", lambda: __import__("polling.ik_poller", fromlist=["ik_poll_progress"]).ik_poll_progress)
     _safe("bsky", lambda: __import__("polling.bsky_poller", fromlist=["bsky_poll_progress"]).bsky_poll_progress)
     _safe("tw", lambda: __import__("polling.tw_poller", fromlist=["tw_poll_progress"]).tw_poll_progress)
+    _safe("mast", lambda: __import__("polling.mast_poller", fromlist=["mast_poll_progress"]).mast_poll_progress)
 
     return progress
 
@@ -292,6 +293,7 @@ _PLATFORM_HEALTH_CONFIG = [
     ("ik",   ik_queries,   "get_ik_last_poll",   "ik_poll_interval_minutes",   lambda s: bool(s.get("ik_target_user"))),
     ("bsky", bsky_queries, "get_bsky_last_poll", "bsky_poll_interval_minutes", lambda s: bool(s.get("bsky_identifier") and s.get("bsky_app_password"))),
     ("tw",   tw_queries,   "get_tw_last_poll",   "tw_poll_interval_minutes",   lambda s: bool(s.get("tw_auth_token") and s.get("tw_ct0"))),
+    ("mast", mast_queries, "get_mast_last_poll", "mast_poll_interval_minutes", lambda s: bool(s.get("mast_instance_url") and s.get("mast_access_token"))),
 ]
 
 
@@ -878,6 +880,7 @@ def get_preferences():
         "ik_notifications_enabled": settings.get("ik_notifications_enabled", True),
         "bsky_notifications_enabled": settings.get("bsky_notifications_enabled", True),
         "tw_notifications_enabled": settings.get("tw_notifications_enabled", True),
+        "mast_notifications_enabled": settings.get("mast_notifications_enabled", True),
         # ── Watcher / follower notification toggles ────────────────
         "watcher_notifications_enabled": settings.get("watcher_notifications_enabled", True),
         "fa_watcher_notifications_enabled": settings.get("fa_watcher_notifications_enabled", True),
@@ -893,6 +896,7 @@ def get_preferences():
         "ik_poll_interval_minutes": settings.get("ik_poll_interval_minutes", 60),
         "bsky_poll_interval_minutes": settings.get("bsky_poll_interval_minutes", 60),
         "tw_poll_interval_minutes": settings.get("tw_poll_interval_minutes", 60),
+        "mast_poll_interval_minutes": settings.get("mast_poll_interval_minutes", 60),
         # ── Notification filter preferences ────────────────────────
         # When enabled, notifications are only sent for new comments
         # (suppressing fave/activity alerts for that platform).
@@ -921,6 +925,7 @@ def get_preferences():
         "ik_use_cf_proxy":   settings.get("ik_use_cf_proxy", False),
         "wp_use_cf_proxy":   settings.get("wp_use_cf_proxy", False),
         "tw_use_cf_proxy":   settings.get("tw_use_cf_proxy", False),
+        "mast_use_cf_proxy": settings.get("mast_use_cf_proxy", False),
         # Whether the worker URL/key are configured at all (drives the
         # disabled state on the UI toggles).
         "cf_worker_configured": bool(settings.get("cf_worker_url")) and bool(settings.get("cf_worker_key")),
@@ -984,6 +989,7 @@ def save_preferences(body: dict):
         "ik_notifications_enabled",
         "bsky_notifications_enabled",
         "tw_notifications_enabled",
+        "mast_notifications_enabled",
     ):
         if key in body:
             update[key] = bool(body[key])
@@ -1032,6 +1038,7 @@ def save_preferences(body: dict):
         "ik_poll_interval_minutes",
         "bsky_poll_interval_minutes",
         "tw_poll_interval_minutes",
+        "mast_poll_interval_minutes",
     ):
         if key in body:
             val = int(body[key])
@@ -1057,7 +1064,7 @@ def save_preferences(body: dict):
     for key in (
         "ib_use_cf_proxy", "fa_use_cf_proxy", "ws_use_cf_proxy",
         "sqw_use_cf_proxy", "bsky_use_cf_proxy", "ik_use_cf_proxy",
-        "wp_use_cf_proxy", "tw_use_cf_proxy",
+        "wp_use_cf_proxy", "tw_use_cf_proxy", "mast_use_cf_proxy",
     ):
         if key in body:
             update[key] = bool(body[key])
@@ -1636,7 +1643,7 @@ def get_pins():
     result = []
     conn = get_connection()
     try:
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions"}
         for pin in pins:
             table = table_map.get(pin.get("platform"))
             if not table:
@@ -1694,7 +1701,7 @@ def get_goals():
     try:
         rows = conn.execute("SELECT * FROM goals ORDER BY created_at DESC").fetchall()
         result = []
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions"}
         for row in rows:
             g = dict(row)
             metric = g["metric"]
@@ -1883,7 +1890,7 @@ def get_tag_stats(tag_id: int):
     conn = get_connection()
     try:
         members = conn.execute("SELECT platform, submission_id FROM submission_tags WHERE tag_id = ?", (tag_id,)).fetchall()
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions"}
+        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions"}
         # Platform-specific column mappings for stats aggregation
         _metrics = {
             "ib": ("views", "favorites_count", "comments_count"),
@@ -1897,6 +1904,7 @@ def get_tag_stats(tag_id: int):
             "ik": (None, "likes", "comments_count"),
             "bsky": (None, "likes", "replies"),
             "tw": ("views", "likes", "replies"),
+            "mast": (None, "likes", "replies"),
         }
         total_views = total_faves = total_comments = 0
         subs = []

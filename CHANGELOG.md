@@ -4,6 +4,36 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.41.0] - 2026-06-30 - New platform: Mastodon (poll-only, 12th platform)
+
+Added **Mastodon** as the 12th tracked platform — poll-only analytics, mirroring the Bluesky/X
+pattern. Mastodon is decentralised, so the client points at your **instance URL** and authenticates
+with a per-instance **personal access token** (Settings → Development → New application, scope `read`).
+
+- **New backend** (`clients/mast/`, `polling/mast_poller.py`, `routes/mast_api.py` `/api/mast/*`,
+  `database/mast_queries.py` + `mast_schema.sql`): pulls your statuses via the open REST API and tracks
+  **likes** (favourites), **reposts** (boosts) and **replies**. The timeline already carries the counts,
+  so there's no second per-post fetch (like the X poller). Content is typed **Post / Reply / Quote /
+  Repost**; boosts are kept only when you're **@-tagged** in the boosted post (and then track the
+  original's stats), mirroring the Bluesky/X pollers. Mastodon has no native quote count, so `quotes` is
+  always 0 (the column is kept for cross-platform schema parity but hidden in the UI).
+- **Wired through everything**: account registry (`database/accounts.py`), credential resolution
+  (`config.py`), schema bootstrap + per-account migration (`database/db.py`), poll dispatch
+  (`server.py` + `main.py` desktop thread), router mount (`dashboard.py`), Telegram digests/milestones,
+  trending/spike + link-combine analytics, the CLI, and `.env.example` (`MAST_INSTANCE_URL` /
+  `MAST_ACCESS_TOKEN`).
+- **Frontend**: full dashboard / submissions grid (with type badges + thumbnails) / detail / compare
+  views, a Settings → Connect accordion (instance URL + access token), poll-interval + notification
+  toggles, the Platforms hub tile + Overview aggregation, and the official **Mastodon logo** (recoloured
+  to the current brand purple `#6364ff`, served as SVG) on a white badge with the existing trademark
+  disclaimer. `--platform-mast` token added.
+- **Tests**: `tests/test_scope_mast.py` (per-account read scoping) + `tests/test_mast_parse.py`
+  (count mapping, HTML strip, instance normalisation, content-type detection, tagged-boost filtering).
+- To go live: connect an account under Settings, then poll. Posting to Mastodon is **not** included
+  (poll-only, like X/Bluesky/Itaku/Wattpad).
+
+---
+
 ## [2.40.2] - 2026-06-30 - Marketing-site link in About
 
 - The **About** tab (Settings) now has a **Website** row linking to the marketing site

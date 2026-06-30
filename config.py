@@ -417,6 +417,9 @@ BSKY_REQUEST_DELAY_SECONDS = 1.0  # Bluesky AT Protocol — generous rate limits
 # ── X/Twitter settings ──
 TW_REQUEST_DELAY_SECONDS = 2.0  # X GraphQL — aggressive rate limiting, needs higher delay
 
+# ── Mastodon settings ──
+MAST_REQUEST_DELAY_SECONDS = 0.5  # Mastodon REST — per-instance limits are generous
+
 # ── Settings sync (Phase 7a) ────────────────────────────────
 
 CREDENTIAL_FIELDS = frozenset({
@@ -441,6 +444,8 @@ CREDENTIAL_FIELDS = frozenset({
     "bsky_identifier", "bsky_app_password",
     # X/Twitter
     "tw_auth_token", "tw_ct0",
+    # Mastodon
+    "mast_access_token",
     # CF proxy
     "cf_worker_url", "cf_worker_key",
     # Dashboard auth
@@ -496,6 +501,7 @@ PLATFORM_CREDENTIAL_FIELDS = {
     "ik": ["ik_target_user", "ik_auth_token"],
     "bsky": ["bsky_identifier", "bsky_app_password"],
     "tw": ["tw_auth_token", "tw_ct0", "tw_target_user"],
+    "mast": ["mast_instance_url", "mast_access_token"],
 }
 
 # Matches an account-namespaced settings key: acct_<id>_<canonical_field>.
@@ -762,7 +768,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.40.2"
+APP_VERSION = "2.41.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

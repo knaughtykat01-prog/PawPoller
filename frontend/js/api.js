@@ -328,6 +328,24 @@ const API = {
     triggerBSKYPoll() { return this.post('/api/bsky/poll/trigger'); },
     fullBSKYResync() { return this.post('/api/bsky/poll/full-resync'); },
     getBSKYPollProgress() { return this.get('/api/bsky/poll/progress'); },
+    /* ── MAST (Mastodon) convenience methods ──────────────────────
+     * Per-instance REST API. Posts identified by ActivityPub URIs.
+     * Tracks likes (favourites), reposts (boosts), replies.
+     */
+    getMASTAuthStatus() { return this.get('/api/mast/auth/status'); },
+    mastConnect(data) { return this.post('/api/mast/auth/connect', data); },
+    mastDisconnect() { return this.post('/api/mast/auth/disconnect'); },
+    getMASTStatus() { return this.get('/api/mast/status'); },
+    getMASTSummary(params) { return this.get('/api/mast/summary', params); },
+    getMASTSubmissions(params) { return this.get('/api/mast/submissions', params); },
+    getMASTSubmission(id) { return this.get(`/api/mast/submissions/${encodeURIComponent(id)}`); },
+    getMASTSnapshots(id, params) { return this.get(`/api/mast/submissions/${encodeURIComponent(id)}/snapshots`, params); },
+    getMASTAggregate(params) { return this.get('/api/mast/aggregate', params); },
+    getMASTComparison(ids, params) { return this.get('/api/mast/comparison', { ids: ids.join(','), ...params }); },
+    getMASTPollLog(limit) { return this.get('/api/mast/poll_log', { limit }); },
+    triggerMASTPoll() { return this.post('/api/mast/poll/trigger'); },
+    fullMASTResync() { return this.post('/api/mast/poll/full-resync'); },
+    getMASTPollProgress() { return this.get('/api/mast/poll/progress'); },
     /* ── TW (X/Twitter) convenience methods ───────────────────────
      * Cookie-based GraphQL API. Tweets identified by numeric ID strings.
      * Tracks views, likes, retweets, replies, quotes, bookmarks.
@@ -353,11 +371,11 @@ const API = {
      * download, not JSON to be parsed in-page.
      */
     exportSubmissions(platform) {
-        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions', sqw: '/api/sqw/export/submissions', ao3: '/api/ao3/export/submissions', da: '/api/da/export/submissions', wp: '/api/wp/export/submissions', ik: '/api/ik/export/submissions', bsky: '/api/bsky/export/submissions', tw: '/api/tw/export/submissions' };
+        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions', sqw: '/api/sqw/export/submissions', ao3: '/api/ao3/export/submissions', da: '/api/da/export/submissions', wp: '/api/wp/export/submissions', ik: '/api/ik/export/submissions', bsky: '/api/bsky/export/submissions', tw: '/api/tw/export/submissions', mast: '/api/mast/export/submissions' };
         window.open(urls[platform] || urls.ib, '_blank');
     },
     exportSnapshots(platform, id) {
-        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots', sqw: '/api/sqw/export/snapshots', ao3: '/api/ao3/export/snapshots', da: '/api/da/export/snapshots', wp: '/api/wp/export/snapshots', ik: '/api/ik/export/snapshots', bsky: '/api/bsky/export/snapshots', tw: '/api/tw/export/snapshots' };
+        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots', sqw: '/api/sqw/export/snapshots', ao3: '/api/ao3/export/snapshots', da: '/api/da/export/snapshots', wp: '/api/wp/export/snapshots', ik: '/api/ik/export/snapshots', bsky: '/api/bsky/export/snapshots', tw: '/api/tw/export/snapshots', mast: '/api/mast/export/snapshots' };
         const url = (bases[platform] || bases.ib) + (id ? `?id=${id}` : '');
         window.open(url, '_blank');
     },
