@@ -481,6 +481,15 @@ body.sidebar-collapsed .poll-progress-bar { left: var(--sidebar-w-collapsed); }
     /* Clear the fixed hamburger (top-left) so the breadcrumb/switcher
        on platform pages doesn't sit under it. */
     .context-bar { padding: 10px 16px 10px calc(env(safe-area-inset-left, 0px) + 58px); }
+    /* The Legacy/Beta UI switch (#pp-ui-switch, dashboard.py) is fixed at the
+       top-right with a max z-index. On the first context-bar row the breadcrumb
+       would run under it, hiding the CURRENT page name (which sits at the right
+       end). Reserve space for the toggle and let the *earlier* crumbs truncate
+       so `.here` (the current page) always stays fully readable. */
+    #context-bar .ctx-crumbs { flex-wrap: nowrap; min-width: 0; overflow: hidden; max-width: calc(100% - 150px); }
+    #context-bar .ctx-crumbs > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #context-bar .ctx-crumbs > .here,
+    #context-bar .ctx-crumbs > .sep { flex: 0 0 auto; }
     .poll-progress-bar { left: 0; }
 
     .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }

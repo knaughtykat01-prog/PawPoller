@@ -4,6 +4,24 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.44.2] - 2026-07-02 - Fix: mobile breadcrumb hidden under the Legacy/Beta UI switch
+
+Second find from a full mobile-viewport sweep (every route driven at 390px in headless Chrome). On
+platform-scoped pages the context-bar breadcrumb (e.g. "Platforms › Inkbunny › Submissions") ran under
+the server-injected `#pp-ui-switch` Legacy/Beta toggle — fixed at the top-right with a max z-index — so
+the **current page name**, which sits at the right end of the crumb trail, was occluded.
+
+- **Fix** (`frontend/css/layout.css`, `@media (max-width: 768px)`): constrain `.ctx-crumbs` to clear the
+  toggle (`max-width: calc(100% - 150px)`) and truncate the *earlier* crumbs (ellipsis) while pinning the
+  current crumb (`.here`) and separators (`flex: 0 0 auto`). Result: "Pl… › In… › Submissions" — the
+  current page always stays fully readable. Verified live: crumb right-edge 295px→224px (exactly the
+  toggle's left edge), current crumb visible.
+- **Swept clean:** all 13 routes have zero horizontal overflow; Overview / Submissions / Settings /
+  Editor / Platforms / Accounts render correctly at phone width. (Known-minor, not changed: the Settings
+  tab strip scrolls horizontally with no scroll-hint — all 11 tabs remain reachable by swipe.)
+
+---
+
 ## [2.44.1] - 2026-07-02 - Fix: mobile drawer section labels chopped in half
 
 The nav drawer's section headings (**PUBLISHING**, **CREATE**, **INSIGHTS & TOOLS**) rendered clipped to

@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-02
-**Current version:** 2.44.1 — **Mobile fix: nav drawer section labels no longer chopped in half.**
+**Current version:** 2.44.2 — **Mobile fix: context-bar breadcrumb no longer hidden under the Legacy/Beta
+UI switch.** From a full mobile sweep (all 13 routes driven at 390px in headless Chrome). On platform pages
+the breadcrumb ran under the fixed top-right `#pp-ui-switch` toggle, occluding the current page name.
+Fix (`frontend/css/layout.css` `@media ≤768px`): `.ctx-crumbs` gets `max-width: calc(100% - 150px)` + the
+earlier crumbs truncate (ellipsis) while `.here` + `.sep` are pinned `flex:0 0 auto` → "Pl… › In… ›
+Submissions". Verified live (crumb right 295→224px). Sweep otherwise clean (zero horizontal overflow on
+every route). Known-minor left as-is: Settings 11-tab strip scrolls horizontally with no scroll hint.
+CSS-only; deploy via `pawupdate`.
+
+**Prior release — 2.44.1 — Mobile fix: nav drawer section labels no longer chopped in half.**
 `.nav-group-label` had a default `flex-shrink` + `overflow:hidden` (→ flex `min-height` computes to 0), so
 the flex layout crushed the drawer's "PUBLISHING / CREATE / INSIGHTS & TOOLS" headings to a padding-sliver
 when the drawer overflowed a short phone viewport (nav rows resist — `min-height:48px` on mobile). Added
