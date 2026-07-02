@@ -1,7 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-02
-**Current version:** 2.44.2 — **Mobile fix: context-bar breadcrumb no longer hidden under the Legacy/Beta
+**Current version:** 2.44.3 — **Mobile polish: scroll hint on the Settings tab strip.** Third item from the
+mobile sweep. 11 settings tabs, only ~4 fit at 390px, scrolled with no cue. Added a scroll-aware edge fade
+(`frontend/css/editor.css` + `frontend/js/app.js`): settings render toggles `of-end`/`of-start` on
+`.settings-tabs` by scroll position → soft mask fade on whichever side has more; active tab scrolled into
+view on render. Mobile-only (mask rules `data-mobile`-scoped); listener on the per-render element (no leak).
+Verified live. **Mobile sweep now complete** — 3 fixes (2.44.1 drawer labels, 2.44.2 breadcrumb, 2.44.3 tab
+hint); all 13 routes otherwise clean.
+
+**Prior release — 2.44.2 — Mobile fix: context-bar breadcrumb no longer hidden under the Legacy/Beta
 UI switch.** From a full mobile sweep (all 13 routes driven at 390px in headless Chrome). On platform pages
 the breadcrumb ran under the fixed top-right `#pp-ui-switch` toggle, occluding the current page name.
 Fix (`frontend/css/layout.css` `@media ≤768px`): `.ctx-crumbs` gets `max-width: calc(100% - 150px)` + the

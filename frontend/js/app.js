@@ -9316,6 +9316,22 @@ const App = {
                         window.Diagnostics.mount(document.getElementById('diagnostics-mount'));
                     }
                 });
+
+                // Scroll-aware edge fades + keep the active tab in view, so it's
+                // obvious on narrow screens that the strip scrolls to more tabs.
+                // Listener is on the (per-render) tabBar element, so it's GC'd
+                // with it — no accumulation across settings re-renders.
+                const updateTabFade = () => {
+                    const max = tabBar.scrollWidth - tabBar.clientWidth;
+                    tabBar.classList.toggle('of-start', tabBar.scrollLeft > 4);
+                    tabBar.classList.toggle('of-end', tabBar.scrollLeft < max - 4);
+                };
+                tabBar.addEventListener('scroll', updateTabFade, { passive: true });
+                requestAnimationFrame(() => {
+                    tabBar.querySelector('.settings-tab.active')
+                        ?.scrollIntoView({ inline: 'center', block: 'nearest' });
+                    updateTabFade();
+                });
             }
 
             // Load lazy tabs on initial render if active

@@ -4,6 +4,23 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.44.3] - 2026-07-02 - Mobile polish: scroll hint on the Settings tab strip
+
+Third item from the mobile sweep (polish, not a bug). The Settings tab strip has 11 tabs
+(General … Diagnostics) but only ~4 fit at 390px; the rest scrolled horizontally with no visual cue they
+exist.
+
+- **Fix** (`frontend/css/editor.css` + `frontend/js/app.js`): a scroll-aware edge fade on `.settings-tabs`
+  (mobile only). The settings render toggles `of-end` / `of-start` classes from the strip's scroll
+  position, so a soft mask fade shows on whichever side has more tabs — right at the start, both in the
+  middle, left at the end. The active tab is also scrolled into view on render, so a deep-linked tab
+  (e.g. `#/settings/diagnostics`) isn't hidden off-screen. Verified live (`of-end` at scrollLeft 0 →
+  `of-start of-end` mid → `of-start` at end). No desktop effect — the mask rules are `data-mobile="1"`
+  scoped and the strip doesn't overflow there. The scroll listener lives on the per-render strip element
+  (GC'd with it — no accumulation across re-renders).
+
+---
+
 ## [2.44.2] - 2026-07-02 - Fix: mobile breadcrumb hidden under the Legacy/Beta UI switch
 
 Second find from a full mobile-viewport sweep (every route driven at 390px in headless Chrome). On

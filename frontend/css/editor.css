@@ -4264,6 +4264,23 @@ html[data-mobile="1"] .settings-tab {
     font-size: 13px;
 }
 
+/* Scroll-aware edge fades — hint that the tab strip scrolls to reveal more
+ * tabs (there are 11; only ~4 fit at 390px). The settings render (app.js)
+ * toggles `of-end` (more tabs to the right) and `of-start` (scrolled; more to
+ * the left) so the fade only appears on the side that actually has more. */
+html[data-mobile="1"] .settings-tabs.of-end:not(.of-start) {
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+            mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+}
+html[data-mobile="1"] .settings-tabs.of-start:not(.of-end) {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px);
+            mask-image: linear-gradient(90deg, transparent, #000 24px);
+}
+html[data-mobile="1"] .settings-tabs.of-start.of-end {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+            mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+}
+
 /* Settings sections / accordion — tighten padding, ensure the
  * accordion summary is comfortable to tap. */
 html[data-mobile="1"] .settings-section {
