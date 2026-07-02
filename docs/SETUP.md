@@ -53,7 +53,7 @@ The wizard walks you through four steps:
 
 1. **Welcome** — overview.
 2. **Story archive path** — point at a folder where your stories live (or will live). See §5 for the expected layout.
-3. **Platform connections** — cards for all 11 platforms. You can skip this and fill it in later from Settings.
+3. **Platform connections** — cards for all 15 platforms. You can skip this and fill it in later from Settings.
 4. **Done**. Dashboard opens.
 
 ### 1.4 Where your data lives
@@ -217,7 +217,7 @@ python -m PyInstaller pawpoller.spec --noconfirm
 
 ## 2. Docker / headless (self-hosted, web-accessible)
 
-Best for leaving PawPoller polling 24/7 and reaching the dashboard from any device on your LAN — or behind a reverse proxy, from the public internet. This is how the author runs it on a GCP VM.
+Best for leaving PawPoller polling 24/7 and reaching the dashboard from any device on your LAN — or, behind a reverse proxy, from the public internet.
 
 ### 2.1 Requirements
 
@@ -242,18 +242,15 @@ DASHBOARD_PASSWORD=pick-something-long-and-random
 
 Without a password, anyone who can hit port 8420 gets full control — including your credentials.
 
-### 2.3 Point docker-compose at your story archive
+### 2.3 Point PawPoller at your story archive
 
-`docker-compose.yml` bind-mounts the story archive. The shipped file points at the author's path — change it:
+The container bind-mounts a host directory as the story archive (where your `MASTER.md` files and generated formats live). Set it in `.env`:
 
-```yaml
-volumes:
-  - pawpoller-data:/app/data
-  - pawpoller-logs:/app/logs
-  - /home/YOU/story-archive:/app/story-archive   # ← change this path
+```
+PAWPOLLER_ARCHIVE_DIR=/home/YOU/story-archive
 ```
 
-The two named volumes (`pawpoller-data`, `pawpoller-logs`) are managed by Docker and survive container rebuilds. The bind mount is where your `MASTER.md` files and generated formats live — put it somewhere you back up.
+If unset it defaults to `./story-archive` next to `docker-compose.yml`. The two named volumes (`pawpoller-data`, `pawpoller-logs`) are managed by Docker and survive rebuilds; the archive bind-mount is yours to back up. (Skip this if you don't use the story-publishing side.)
 
 ### 2.4 Start it
 
@@ -266,10 +263,10 @@ Check it's up:
 ```bash
 docker compose ps
 docker compose logs --tail=50
-curl -s http://localhost:8420/health
+curl -s http://localhost:8420/api/health
 ```
 
-Visit `http://<host>:8420` (or `http://localhost:8420` on the same machine) and log in with the credentials you set.
+Visit `http://localhost:8420` on the host and log in with the credentials you set. (By default the dashboard is loopback-only — to reach it from another device, see §2.5.)
 
 ### 2.5 Exposing it to the web
 
@@ -319,13 +316,7 @@ server {
 }
 ```
 
-Whichever proxy you use, **don't forget to close public access to port 8420 itself** — bind Docker to localhost instead:
-
-```yaml
-# docker-compose.yml
-ports:
-  - "127.0.0.1:8420:8420"   # only reachable from the host; proxy handles the rest
-```
+Whichever proxy you use, keep port 8420 itself off the public internet — your reverse proxy should reach it over loopback. **This is the default:** PawPoller binds `127.0.0.1:8420` unless you set `PAWPOLLER_BIND`. Only expose it directly (`PAWPOLLER_BIND=0.0.0.0` in `.env`) if you know what you're doing and have `DASHBOARD_PASSWORD` set.
 
 ### 2.6 Updating
 
@@ -498,6 +489,10 @@ Short version per platform:
 | AO3 | Username + password | Your AO3 account |
 | SquidgeWorld | Username + password | Your SqW account |
 | DeviantArt | Session cookie | DevTools → Cookies → copy `auth`/`auth_secure`/`userinfo` |
+| Mastodon | Instance URL + access token | Your instance → Preferences → Development → New application (scope `read`) |
+| Tumblr | OAuth consumer key + blog | tumblr.com/oauth/apps → register an app → copy the "OAuth Consumer Key" |
+| Pixiv | Refresh token | One-time browser login (e.g. the `gppt` helper) |
+| Threads | Meta access token | A Meta app with `threads_basic` + `threads_manage_insights` scopes |
 | Wattpad / Itaku / Bluesky / X | Public or app-password — see the in-app settings cards | |
 
 ### 5.1 Credential vault (optional)
@@ -528,15 +523,15 @@ Adds a Turnstile challenge to the login form. Useful if you've exposed the dashb
 - **PDFs blank on Linux/Docker** — missing WeasyPrint system libs. `apt-get install libpango-1.0-0 libpangoft2-1.0-0` and rebuild.
 - **"AO3 login keeps failing from my server"** — AO3 sometimes puts Cloudflare Shields-up on datacenter IPs. Route through the Cloudflare Worker proxy (CF_WORKER_URL in `.env`) or run AO3 posting from the desktop.
 - **"FurAffinity only works on desktop"** — correct, by design. FA blocks most datacenter IPs; the server mode auto-queues FA posts for the desktop app to process when it's next online.
-- **"My stories disappeared after `docker compose up`"** — you probably didn't fix the bind-mount path in §2.3 and the container is reading someone else's empty folder. Check `docker compose config` to see the resolved path.
+- **"My stories disappeared after `docker compose up`"** — you probably didn't set `PAWPOLLER_ARCHIVE_DIR` (§2.3), so the container mounted the default empty `./story-archive`. Check `docker compose config` to see the resolved path.
 - **"I forgot the dashboard password"** — with Docker running, `docker compose exec pawpoller python -c "from auth import reset_admin_password; reset_admin_password('newpassword')"`.
 
 ---
 
 ## 7. Where to go next
 
-- [`documentation_guide.md`](documentation_guide.md) — full technical reference (architecture, threading, database schema, every API endpoint, every platform client under `clients/`)
-- [`../CHANGELOG.md`](../CHANGELOG.md) — what shipped in each version
+- The heavily-commented source — start with `dashboard.py`, then a platform under `clients/{xx}/` and its `polling/{xx}_poller.py`
+- [Releases](https://github.com/knaughtykat01-prog/PawPoller/releases) — what shipped in each version
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — dev setup, adding a new platform, code style
 - [`ROADMAP_PUBLIC.md`](ROADMAP_PUBLIC.md) — what's planned
 

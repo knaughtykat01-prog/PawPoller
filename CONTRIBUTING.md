@@ -40,12 +40,12 @@ posting). Imports look like `from clients.{xx}.client import {Class}`.
 1. Fork and create a feature branch
 2. Keep PRs focused — one feature or fix per PR
 3. Update CHANGELOG.md with your changes
-4. Run `python -m unittest discover -s tests` before submitting
+4. Run `python -m pytest tests/` before submitting
 5. JS changes: verify with `node -c frontend/js/*.js`
 
 ## Architecture Overview
 
-See `docs/documentation_guide.md` for the full technical reference.
+See [`docs/SETUP.md`](docs/SETUP.md) for the architecture overview; the source is heavily commented throughout.
 
 Key points:
 - `main.py` = desktop mode (pywebview + pystray + per-platform pollers)

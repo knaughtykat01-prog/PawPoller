@@ -15,14 +15,14 @@
   <a href="#server--docker-deployment"><img src="https://img.shields.io/badge/Docker-supported-2496ED.svg" alt="Docker supported"></a>
 </p>
 
-PawPoller is a desktop app and self-hosted server for publishing fiction across furry writing platforms. Write your stories in Markdown, convert them to every format (BBCode, HTML, Styled HTML, PDF), publish to 11 platforms with per-chapter tags and descriptions, and track views, favourites, and comments from a single dashboard. Think of it as [PostyBirb](https://www.postybirb.com/) but built for writers instead of visual artists -- chaptered posting, format conversion, story analytics, and drift detection.
+PawPoller is a desktop app and self-hosted server for publishing fiction across furry writing platforms. Write your stories in Markdown, convert them to every format (BBCode, HTML, Styled HTML, PDF), post to 9 platforms with per-chapter tags and descriptions, and track views, favourites, and comments across 15 from a single dashboard. Think of it as [PostyBirb](https://www.postybirb.com/) but built for writers instead of visual artists -- chaptered posting, format conversion, story analytics, and drift detection.
 
 ---
 
 ## Features
 
 - **Multi-format conversion** -- Markdown to BBCode (Inkbunny), HTML (SoFurry), Styled HTML (AO3 work skins), PDF, and SquidgeWorld format, all from one source file
-- **11-platform support** -- Inkbunny, FurAffinity, SoFurry, Weasyl, AO3, DeviantArt, SquidgeWorld, Wattpad, Itaku, Bluesky, and X/Twitter
+- **15-platform tracking** -- Inkbunny, FurAffinity, SoFurry, Weasyl, AO3, DeviantArt, SquidgeWorld, Wattpad, Itaku, Bluesky, X/Twitter, Mastodon, Tumblr, Pixiv, and Threads (posting to 9; the rest are read-only analytics)
 - **Chaptered publishing** -- Split multi-chapter stories automatically, with per-chapter tags, descriptions, and thumbnails
 - **Analytics dashboard** -- Track views, favourites, comments, and other metrics across all platforms with historical charts
 - **Polling engine** -- Automatically fetches stats on a schedule, detects new comments and favourites
@@ -44,8 +44,8 @@ PawPoller is a desktop app and self-hosted server for publishing fiction across 
 </p>
 
 <p align="center">
-  <img src="site/public/screens/analytics-overview.png" alt="Analytics dashboard across 11 platforms" width="760"><br>
-  <em>Analytics across 11 platforms: views, favourites, and comment trends over time</em>
+  <img src="site/public/screens/analytics-overview.png" alt="Analytics dashboard across 15 platforms" width="760"><br>
+  <em>Analytics across 15 platforms: views, favourites, and comment trends over time</em>
 </p>
 
 <p align="center">
@@ -109,29 +109,33 @@ python main.py
 git clone https://github.com/knaughtykat01-prog/PawPoller.git
 cd PawPoller
 cp .env.example .env    # Edit with your credentials — set DASHBOARD_PASSWORD!
-# Edit docker-compose.yml: change the story-archive bind-mount path to yours
+# Optional: set PAWPOLLER_ARCHIVE_DIR in .env to your story-archive path
 docker compose up -d --build
 ```
 
-The dashboard is available at `http://localhost:8420`. For public/web access behind TLS, see [docs/SETUP.md §2.5](docs/SETUP.md#25-exposing-it-to-the-web).
+The dashboard binds to `127.0.0.1:8420` by default (loopback only), reachable at `http://localhost:8420` on the host. To reach it from other devices, put it behind a reverse proxy — or set `PAWPOLLER_BIND=0.0.0.0` in `.env`, but only with `DASHBOARD_PASSWORD` set. See [docs/SETUP.md §2.5](docs/SETUP.md#25-exposing-it-to-the-web).
 
 ---
 
 ## Supported Platforms
 
-| Platform | Auth | Poll | Post | Edit | Notes |
-|----------|------|------|------|------|-------|
-| Inkbunny | Username/password | Yes | Yes | Yes | Full API support, chaptered |
-| FurAffinity | Session cookies (a/b) | Yes | Yes | Yes | Scraping-based (no official API) |
-| SoFurry | Email/password | Yes | Yes | Yes | Scraping-based, chaptered |
-| Weasyl | API key | Yes | Yes | Yes | Official API |
-| AO3 | Username/password | Yes | Yes | Yes | Rails CSRF login, work skins, chaptered |
-| DeviantArt | Session cookie | Yes | Yes | Yes | Eclipse API, CF proxy for server |
-| SquidgeWorld | Username/password | Yes | Yes | Yes | Scraping-based, chaptered |
-| Wattpad | Public (read-only) | Yes | -- | -- | Public stats polling only |
-| Itaku | Public (read-only) | Yes | -- | -- | Public stats polling only |
-| Bluesky | Handle/app password | Yes | -- | -- | AT Protocol |
-| X/Twitter | Auth token/ct0 | Yes | -- | -- | GraphQL scraping |
+| Platform | Auth | Poll | Post | Notes |
+|----------|------|------|------|-------|
+| Inkbunny | Username/password | Yes | Yes | Official API; chaptered stories + art |
+| FurAffinity | Session cookies (a/b) | Yes | Yes | Scraping (no official API); posting is desktop-only |
+| SoFurry | Email/password | Yes | Yes | Scraping; chaptered |
+| Weasyl | API key | Yes | Yes\* | Official API (\*posting in validation) |
+| AO3 | Username/password | Yes | Yes | Rails CSRF login; work skins; chaptered |
+| SquidgeWorld | Username/password | Yes | Yes | Scraping; work skins; chaptered |
+| DeviantArt | Session cookie | Yes | Yes | Eclipse API; CF proxy on server |
+| Itaku | Account token | Yes | Yes\* | Artwork (\*posting in validation) |
+| Bluesky | Handle/app password | Yes | Yes | AT Protocol; posts + announcements |
+| Wattpad | Public (read-only) | Yes | -- | Public stats only |
+| X/Twitter | Auth token/ct0 | Yes | -- | GraphQL scraping; views/likes/reposts |
+| Mastodon | Instance URL + access token | Yes | -- | Decentralised; favourites/boosts/replies |
+| Tumblr | API key + blog | Yes | -- | v2 API; notes |
+| Pixiv | Refresh token | Yes | -- | App API; illustrations + novels |
+| Threads | Meta access token | Yes | -- | Official API; needs a Meta app |
 
 ---
 
@@ -198,12 +202,12 @@ python -m PyInstaller pawpoller.spec --noconfirm
 ### Running tests
 
 ```bash
-python -m unittest discover -s tests -p "test_*.py" -v
+python -m pytest tests/ -v
 ```
 
 ### Project documentation
 
-See [`docs/documentation_guide.md`](docs/documentation_guide.md) for the full technical reference covering every module, database schema, API endpoint, and platform client.
+[`docs/SETUP.md`](docs/SETUP.md) covers install and architecture. The source is heavily commented — start with `dashboard.py`, then a platform under `clients/{xx}/` with its `polling/{xx}_poller.py`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the per-platform file pattern.
 
 ---
 
