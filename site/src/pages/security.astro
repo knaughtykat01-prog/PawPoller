@@ -1,0 +1,89 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import PageHero from '../components/PageHero.astro';
+import FAQ from '../components/FAQ.astro';
+import CtaBand from '../components/CtaBand.astro';
+import Footer from '../components/Footer.astro';
+import { Icon } from 'astro-icon/components';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+const pillars = [
+  {
+    icon: 'ph:house-line',
+    title: 'Local-first, always',
+    body: 'PawPoller runs on your own machine or your own server. There is no PawPoller-operated service in the middle — no central database, no account, and nothing to leak. Your stories and stats never leave infrastructure you control.',
+  },
+  {
+    icon: 'ph:lock-key',
+    title: 'Encrypted credential vault',
+    body: 'Platform logins can live in an optional Fernet-encrypted store, keyed against your OS keyring or a dotfile. Your plaintext settings.json stays credential-free, so a stray backup or screen-share never exposes a password.',
+  },
+  {
+    icon: 'ph:hand-palm',
+    title: 'Nothing posts without you',
+    body: 'Every publish action has an explicit confirmation dialog, and live (non-draft) posts require a second confirmation. A full dry-run mode shows exactly what would be submitted to each platform without submitting anything.',
+  },
+  {
+    icon: 'ph:shield-check',
+    title: 'Hardened dashboard',
+    body: 'The self-hosted dashboard uses bcrypt password hashing and signed session cookies, with optional TOTP two-factor, optional Cloudflare Turnstile, and scoped API keys for automation. Legacy plaintext passwords migrate to bcrypt on startup.',
+  },
+  {
+    icon: 'ph:eye-slash',
+    title: 'No telemetry',
+    body: 'No analytics beacons, no phone-home, no usage tracking. The only network calls PawPoller makes are to the platforms you connect and the polls you schedule.',
+  },
+  {
+    icon: 'ph:git-branch',
+    title: 'Open source, auditable',
+    body: 'MIT licensed and fully on GitHub. Read exactly how credentials are handled, fork it, or run your own build. Nothing about how your data is treated is hidden.',
+  },
+];
+---
+<BaseLayout
+  title="Security & your data — local-first, no telemetry | PawPoller"
+  description="PawPoller is local-first: your credentials and stats never leave your machine. Encrypted vault, explicit posting confirmations, hardened dashboard, no telemetry, fully open source."
+>
+  <Nav />
+  <main>
+    <PageHero
+      eyebrow="Security & your data"
+      title="Your data. Your machine."
+      accent="Your rules."
+      lead="PawPoller holds nothing on your behalf. It runs where you put it, stores credentials encrypted, and never posts anything you didn't confirm — because the person responsible for your accounts should be you, not a service."
+      primary={{ label: 'Download PawPoller', href: `${base}/download` }}
+      secondary={{ label: 'Read the source', href: 'https://github.com/knaughtykat01-prog/PawPoller' }}
+    />
+
+    <section class="py-24">
+      <div class="container-prose">
+        <div class="grid gap-x-12 gap-y-12 sm:grid-cols-2">
+          {pillars.map((p) => (
+            <div class="flex gap-4">
+              <Icon name={p.icon} class="mt-1 h-6 w-6 shrink-0 text-copper-400" />
+              <div>
+                <h3 class="text-xl text-ink-50">{p.title}</h3>
+                <p class="mt-2 text-sm leading-relaxed text-ink-300">{p.body}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <FAQ
+      show={['credentials', 'auto-post', 'free']}
+      title="The questions that actually matter."
+      lead="Where secrets live and what PawPoller will do on your behalf."
+    />
+
+    <CtaBand
+      title="Own your pipeline end to end."
+      body="Free, MIT licensed, local-first. Nothing phones home; nothing posts without you."
+      secondary={{ label: 'How posting works', href: `${base}/posting` }}
+    />
+  </main>
+  <Footer />
+</BaseLayout>

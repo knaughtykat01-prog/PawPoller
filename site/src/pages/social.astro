@@ -1,0 +1,86 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import PageHero from '../components/PageHero.astro';
+import PlatformStrip from '../components/PlatformStrip.astro';
+import CtaBand from '../components/CtaBand.astro';
+import Footer from '../components/Footer.astro';
+import { byKind } from '../lib/platforms';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const socialPlatforms = byKind('social');
+
+const metrics = [
+  { platform: 'Bluesky', shape: 'Likes, reposts, replies, quotes — plus posting for announcements.' },
+  { platform: 'X / Twitter', shape: 'Views, likes, reposts, replies, quotes.' },
+  { platform: 'Mastodon', shape: 'Favourites, boosts, replies. Undergoing testing.' },
+  { platform: 'Tumblr', shape: 'A single notes count (likes + reblogs + replies). Undergoing testing.' },
+  { platform: 'Threads', shape: 'Views, likes, reposts, replies, quotes. Needs a Meta app; undergoing testing.' },
+];
+---
+<BaseLayout
+  title="Social post tracking — measure your posts and tweets | PawPoller"
+  description="Track your posts and tweets on Bluesky, X/Twitter, Mastodon, Tumblr and Threads — likes, reposts, replies, quotes, views and notes, alongside your fiction and artwork."
+>
+  <Nav />
+  <main>
+    <PageHero
+      eyebrow="Social posts"
+      title="Your posts and tweets,"
+      accent="measured."
+      lead="The promo you post about a new chapter matters as much as the chapter. PawPoller pulls engagement from your social accounts so it sits right next to your fiction and artwork numbers."
+      primary={{ label: 'Download PawPoller', href: `${base}/download` }}
+      secondary={{ label: 'See all platforms', href: `${base}/platforms` }}
+    />
+
+    <section class="py-24">
+      <div class="container-prose">
+        <div class="max-w-2xl">
+          <h2 class="text-4xl text-ink-50 md:text-5xl">Five networks, tracked.</h2>
+          <p class="mt-6 text-ink-300">
+            Bluesky, X/Twitter, Mastodon, Tumblr and Threads. Most are read-only analytics; Bluesky can also post announcements when you publish.
+          </p>
+        </div>
+        <div class="mt-10">
+          <PlatformStrip items={socialPlatforms} href={`${base}/platforms`} linkLabel="See the capability matrix" />
+        </div>
+      </div>
+    </section>
+
+    <section class="border-t border-ink-800/60 bg-ink-950/30 py-24">
+      <div class="container-prose">
+        <div class="mx-auto max-w-2xl text-center">
+          <h2 class="text-4xl text-ink-50 md:text-5xl">Every network counts differently.</h2>
+          <p class="mt-6 text-ink-300">
+            PawPoller reads whatever each API exposes and lines it up in one place.
+          </p>
+        </div>
+        <div class="mt-12 overflow-hidden rounded-lg border border-ink-800">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-ink-800/60 text-xs uppercase tracking-wider text-ink-400">
+              <tr>
+                <th class="px-6 py-4">Network</th>
+                <th class="px-6 py-4">What gets tracked</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-ink-800">
+              {metrics.map((m) => (
+                <tr class="transition hover:bg-ink-800/30">
+                  <td class="px-6 py-4 font-medium text-ink-50">{m.platform}</td>
+                  <td class="px-6 py-4 text-ink-300">{m.shape}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <CtaBand
+      title="See what your promo actually did."
+      body="Free, MIT licensed, local-first. Social engagement next to your story and artwork stats, in one dashboard."
+      secondary={{ label: 'Polling & analytics', href: `${base}/analytics` }}
+    />
+  </main>
+  <Footer />
+</BaseLayout>

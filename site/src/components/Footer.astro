@@ -1,14 +1,39 @@
 ---
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const year = new Date().getFullYear();
+
+const product = [
+  { label: 'Posting', href: `${base}/posting` },
+  { label: 'Analytics', href: `${base}/analytics` },
+  { label: 'Artwork', href: `${base}/artwork` },
+  { label: 'Social posts', href: `${base}/social` },
+  { label: 'Platforms', href: `${base}/platforms` },
+  { label: 'Security', href: `${base}/security` },
+  { label: 'Download', href: `${base}/download` },
+];
+
+const docs = [
+  { label: 'Setup guide', href: 'https://github.com/knaughtykat01-prog/PawPoller/blob/master/docs/SETUP.md' },
+  { label: 'Technical reference', href: 'https://github.com/knaughtykat01-prog/PawPoller/blob/master/docs/documentation_guide.md' },
+  { label: 'Changelog', href: 'https://github.com/knaughtykat01-prog/PawPoller/blob/master/CHANGELOG.md' },
+  { label: 'Roadmap', href: 'https://github.com/knaughtykat01-prog/PawPoller/blob/master/docs/ROADMAP_PUBLIC.md' },
+  { label: 'Releases', href: 'https://github.com/knaughtykat01-prog/PawPoller/releases' },
+];
+
+const community = [
+  { label: 'GitHub', href: 'https://github.com/knaughtykat01-prog/PawPoller' },
+  { label: 'Issues', href: 'https://github.com/knaughtykat01-prog/PawPoller/issues' },
+  { label: 'Discussions', href: 'https://github.com/knaughtykat01-prog/PawPoller/discussions' },
+  { label: 'Contribute', href: 'https://github.com/knaughtykat01-prog/PawPoller/blob/master/CONTRIBUTING.md' },
+];
 ---
 <footer class="border-t border-ink-800/60 bg-ink-950/60">
   <div class="container-prose grid gap-12 py-16 md:grid-cols-[2fr_1fr_1fr_1fr]">
     <div>
-      <div class="flex items-center gap-2.5 font-serif text-xl font-semibold text-ink-50">
+      <a href={`${base}/`} class="flex items-center gap-2.5 font-serif text-xl font-semibold text-ink-50">
         <img src={`${base}/logo-quill.png`} alt="" width="28" height="28" class="h-7 w-7" />
         PawPoller
-      </div>
+      </a>
       <p class="mt-4 max-w-sm text-sm leading-relaxed text-ink-400">
         A story-first multi-platform publishing pipeline for furry fiction writers. Built by one author getting tired of reformatting the same novella six times.
       </p>
@@ -17,30 +42,27 @@ const year = new Date().getFullYear();
     <div>
       <h4 class="font-serif text-sm uppercase tracking-wider text-copper-300">Product</h4>
       <ul class="mt-4 space-y-2 text-sm text-ink-300">
-        <li><a href="#features" class="transition hover:text-copper-300">Features</a></li>
-        <li><a href="#platforms" class="transition hover:text-copper-300">Platforms</a></li>
-        <li><a href="#get" class="transition hover:text-copper-300">Download</a></li>
-        <li><a href="https://github.com/knaughtykat01-prog/PawPoller/releases" class="transition hover:text-copper-300">Releases</a></li>
+        {product.map((l) => (
+          <li><a href={l.href} class="transition hover:text-copper-300">{l.label}</a></li>
+        ))}
       </ul>
     </div>
 
     <div>
       <h4 class="font-serif text-sm uppercase tracking-wider text-copper-300">Docs</h4>
       <ul class="mt-4 space-y-2 text-sm text-ink-300">
-        <li><a href="https://github.com/knaughtykat01-prog/PawPoller/blob/master/docs/SETUP.md" class="transition hover:text-copper-300">Setup guide</a></li>
-        <li><a href="https://github.com/knaughtykat01-prog/PawPoller/blob/master/docs/documentation_guide.md" class="transition hover:text-copper-300">Technical reference</a></li>
-        <li><a href="https://github.com/knaughtykat01-prog/PawPoller/blob/master/CHANGELOG.md" class="transition hover:text-copper-300">Changelog</a></li>
-        <li><a href="https://github.com/knaughtykat01-prog/PawPoller/blob/master/docs/ROADMAP_PUBLIC.md" class="transition hover:text-copper-300">Roadmap</a></li>
+        {docs.map((l) => (
+          <li><a href={l.href} class="transition hover:text-copper-300">{l.label}</a></li>
+        ))}
       </ul>
     </div>
 
     <div>
       <h4 class="font-serif text-sm uppercase tracking-wider text-copper-300">Community</h4>
       <ul class="mt-4 space-y-2 text-sm text-ink-300">
-        <li><a href="https://github.com/knaughtykat01-prog/PawPoller" class="transition hover:text-copper-300">GitHub</a></li>
-        <li><a href="https://github.com/knaughtykat01-prog/PawPoller/issues" class="transition hover:text-copper-300">Issues</a></li>
-        <li><a href="https://github.com/knaughtykat01-prog/PawPoller/discussions" class="transition hover:text-copper-300">Discussions</a></li>
-        <li><a href="https://github.com/knaughtykat01-prog/PawPoller/blob/master/CONTRIBUTING.md" class="transition hover:text-copper-300">Contribute</a></li>
+        {community.map((l) => (
+          <li><a href={l.href} class="transition hover:text-copper-300">{l.label}</a></li>
+        ))}
       </ul>
     </div>
   </div>

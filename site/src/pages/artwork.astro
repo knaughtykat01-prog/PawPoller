@@ -1,0 +1,85 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import PageHero from '../components/PageHero.astro';
+import PlatformStrip from '../components/PlatformStrip.astro';
+import CtaBand from '../components/CtaBand.astro';
+import Footer from '../components/Footer.astro';
+import { Icon } from 'astro-icon/components';
+import { byKind } from '../lib/platforms';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const artPlatforms = byKind('art');
+
+const points = [
+  {
+    icon: 'ph:chart-line-up',
+    title: 'Reach over time',
+    body: 'Gallery views, favourites and comment counts, snapshotted each poll so you can see which pieces keep drawing eyes weeks after you post them.',
+  },
+  {
+    icon: 'ph:images',
+    title: 'One unified library',
+    body: 'The submissions hub keeps every work — stories and artwork — in a single per-work library, with a discovered bucket for pieces PawPoller finds on your galleries.',
+  },
+  {
+    icon: 'ph:download-simple',
+    title: 'Full-resolution import',
+    body: 'Pull the original file back from FurAffinity, Weasyl and Inkbunny (Inkbunny via an API re-fetch). DeviantArt and Itaku import at thumbnail resolution.',
+  },
+];
+---
+<BaseLayout
+  title="Artwork tracking — measure your illustrations everywhere | PawPoller"
+  description="Track illustrations across Inkbunny, FurAffinity, Weasyl, DeviantArt, Itaku and Pixiv — gallery views, favourites and comments, in one library with full-resolution import."
+>
+  <Nav />
+  <main>
+    <PageHero
+      eyebrow="Artwork & images"
+      title="Your art, tracked"
+      accent="everywhere it lives."
+      lead="PawPoller isn't just for prose. Point it at your galleries and it tracks illustrations the same way it tracks stories — views, favourites and comments across every art site you post to."
+      primary={{ label: 'Download PawPoller', href: `${base}/download` }}
+      secondary={{ label: 'See all platforms', href: `${base}/platforms` }}
+    />
+
+    <section class="py-24">
+      <div class="container-prose">
+        <div class="max-w-2xl">
+          <h2 class="text-4xl text-ink-50 md:text-5xl">Six galleries, one view.</h2>
+          <p class="mt-6 text-ink-300">
+            Inkbunny, FurAffinity and Weasyl host both fiction and art; DeviantArt and Itaku are art-first; Pixiv covers illustrations and novels. PawPoller reads them all.
+          </p>
+        </div>
+        <div class="mt-10">
+          <PlatformStrip items={artPlatforms} href={`${base}/platforms`} linkLabel="See the capability matrix" />
+        </div>
+      </div>
+    </section>
+
+    <section class="border-t border-ink-800/60 bg-ink-950/30 py-24">
+      <div class="container-prose">
+        <div class="grid gap-8 md:grid-cols-3">
+          {points.map((p) => (
+            <div class="card p-8">
+              <Icon name={p.icon} class="h-7 w-7 text-copper-400" />
+              <h3 class="mt-4 text-xl text-ink-50">{p.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-ink-300">{p.body}</p>
+            </div>
+          ))}
+        </div>
+        <p class="mt-8 text-sm text-ink-400">
+          Posting artwork is supported on DeviantArt and Itaku today; the other galleries are read for analytics. See the full breakdown on the <a class="link-accent" href={`${base}/platforms`}>platforms page</a>.
+        </p>
+      </div>
+    </section>
+
+    <CtaBand
+      title="Track the art, not just the words."
+      body="Free, MIT licensed, local-first. One library for every story and every illustration you publish."
+      secondary={{ label: 'Polling & analytics', href: `${base}/analytics` }}
+    />
+  </main>
+  <Footer />
+</BaseLayout>

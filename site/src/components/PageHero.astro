@@ -1,0 +1,41 @@
+---
+import { Icon } from 'astro-icon/components';
+
+export interface Props {
+  eyebrow: string;
+  title: string;
+  /** Optional trailing phrase rendered in copper on its own line. */
+  accent?: string;
+  lead: string;
+  primary?: { label: string; href: string };
+  secondary?: { label: string; href: string };
+}
+
+const { eyebrow, title, accent, lead, primary, secondary } = Astro.props;
+---
+<section class="relative overflow-hidden border-b border-ink-800/60">
+  <div class="container-prose py-16 md:py-24">
+    <div class="max-w-3xl">
+      <span class="chip mb-6 border-copper-700/50 text-copper-300">
+        <span class="h-1.5 w-1.5 rounded-full bg-copper-400"></span>
+        {eyebrow}
+      </span>
+      <h1 class="text-4xl leading-[1.08] text-ink-50 sm:text-5xl md:text-6xl">
+        {title}{accent && <><br /><span class="text-copper-400">{accent}</span></>}
+      </h1>
+      <p class="mt-6 max-w-2xl text-lg leading-relaxed text-ink-200">{lead}</p>
+      {(primary || secondary) && (
+        <div class="mt-8 flex flex-wrap items-center gap-4">
+          {primary && (
+            <a href={primary.href} class="btn-primary">
+              {primary.label}
+              <Icon name="ph:arrow-right" class="h-4 w-4" />
+            </a>
+          )}
+          {secondary && <a href={secondary.href} class="btn-secondary">{secondary.label}</a>}
+        </div>
+      )}
+    </div>
+  </div>
+  <div class="pointer-events-none absolute -right-24 -top-24 -z-10 h-72 w-72 rounded-full bg-copper-500/10 blur-3xl"></div>
+</section>

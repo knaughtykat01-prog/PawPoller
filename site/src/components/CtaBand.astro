@@ -1,0 +1,32 @@
+---
+import { Icon } from 'astro-icon/components';
+
+export interface Props {
+  title?: string;
+  body?: string;
+  primary?: { label: string; href: string };
+  secondary?: { label: string; href: string };
+}
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+const {
+  title = 'Publish once. Track everywhere.',
+  body = 'Free, MIT licensed, local-first. Native desktop builds for Windows and Linux, or self-host with Docker.',
+  primary = { label: 'Download PawPoller', href: `${base}/download` },
+  secondary = { label: 'See all 15 platforms', href: `${base}/platforms` },
+} = Astro.props;
+---
+<section class="border-t border-ink-800/60 bg-ink-950/40 py-20">
+  <div class="container-prose text-center">
+    <h2 class="mx-auto max-w-2xl text-3xl text-ink-50 md:text-4xl">{title}</h2>
+    <p class="mx-auto mt-5 max-w-xl text-ink-300">{body}</p>
+    <div class="mt-8 flex flex-wrap items-center justify-center gap-4">
+      <a href={primary.href} class="btn-primary">
+        {primary.label}
+        <Icon name="ph:arrow-right" class="h-4 w-4" />
+      </a>
+      {secondary && <a href={secondary.href} class="btn-secondary">{secondary.label}</a>}
+    </div>
+  </div>
+</section>

@@ -1,51 +1,65 @@
 ---
 // Marketing screenshots: captured from the production dashboard via
-// playwright at 1920×1080. All four show the desktop layout because
-// that's what most writers will work with day-to-day. Mobile mode
-// exists too (and is captured separately if needed); the marketing
-// audience reads the site on whatever device they have but the
-// app's "wow" view is the wide-window desktop one.
+// playwright at 1920×1080. All show the desktop layout because that's what
+// most writers work with day-to-day. Pages pass `show` to surface just the
+// relevant captures (e.g. /analytics shows the analytics view, /posting
+// shows the editor + publish matrix). Omit `show` for all four.
+
+export interface Props {
+  title?: string;
+  lead?: string;
+  /** Shot keys to render, in this order. Omit to show all. */
+  show?: string[];
+  /** Two columns (default) or a single wide column. */
+  single?: boolean;
+}
+
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 
-const shots = [
-  {
+const CATALOG: Record<string, { file: string; title: string; caption: string }> = {
+  analytics: {
     file: 'analytics-overview.png',
     title: 'Analytics across 15 platforms',
     caption: 'Stories, artwork and social posts in one view — submission totals, view trends, favourite/like counts, reposts and comment activity over time. Inkbunny, FurAffinity, Weasyl, SoFurry, SquidgeWorld, AO3, DeviantArt, Wattpad, Itaku, Bluesky, X/Twitter, plus Mastodon, Tumblr, Pixiv and Threads (in testing).',
   },
-  {
+  editor: {
     file: 'editor-anchors.png',
     title: 'Four-pane editor, one source',
     caption: 'Markdown source on the left with semantic anchors (<!-- @title -->, <!-- @warning -->, <!-- @disclaimer -->). Rich preview, Clean HTML source, and HTML render side by side. Edit once; every derived format stays in sync.',
   },
-  {
+  matrix: {
     file: 'publish-check-matrix.png',
     title: 'Publish to 9 platforms in one grid',
     caption: 'Chapter × platform matrix shows where every chapter stands: ready, posted, drifted (local file changed since upload), blocked (validation failure), or not-supported. Hit "Publish all new" once and the matrix walks every cell.',
   },
-  {
+  archive: {
     file: 'story-archive.png',
     title: 'Story archive with cover art',
     caption: 'Every completed story in one grid: cover art, rating, character relationships, word counts, status badges. The "Stories" hub is the entry point for writing, importing, regenerating, and publishing.',
   },
-];
+};
+
+const {
+  title = 'The interface writers actually use.',
+  lead = 'Real captures from the production dashboard. No mockups, no prettified Figma frames. This is what you\'ll see on day one.',
+  show = ['analytics', 'editor', 'matrix', 'archive'],
+  single = false,
+} = Astro.props;
+
+const shots = show.map((k) => CATALOG[k]).filter(Boolean);
 ---
 <section class="py-24">
   <div class="container-prose">
     <div class="mx-auto max-w-2xl text-center">
-      <h2 class="text-4xl text-ink-50 md:text-5xl">The interface writers actually use.</h2>
-      <p class="mt-6 text-ink-300">
-        Real captures from the production dashboard. No mockups, no
-        prettified Figma frames. This is what you'll see on day one.
-      </p>
+      <h2 class="text-4xl text-ink-50 md:text-5xl">{title}</h2>
+      <p class="mt-6 text-ink-300">{lead}</p>
     </div>
 
-    <div class="mt-14 grid gap-8 lg:grid-cols-2">
+    <div class={`mt-14 grid gap-8 ${single ? 'mx-auto max-w-3xl' : 'lg:grid-cols-2'}`}>
       {shots.map((s) => (
         <figure class="card overflow-hidden flex flex-col">
-          {/* aspect-video (16:9) matches the captured 1920×1080 viewport
-              so the screenshots fill the frame without cropping. A subtle
-              dark surround mimics the dashboard's own chrome. */}
+          {/* aspect-video (16:9) matches the captured 1920×1080 viewport so the
+              screenshots fill the frame without cropping. */}
           <div class="relative bg-ink-950">
             <div class="overflow-hidden bg-ink-900 aspect-video">
               <img

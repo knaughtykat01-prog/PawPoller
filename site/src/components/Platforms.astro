@@ -1,34 +1,14 @@
 ---
+// Full platform matrix: logo strip + capability table + legend. The page
+// (/platforms) supplies the heading via PageHero; this block is just the
+// data. Home uses the lighter <PlatformStrip /> instead.
+import { PLATFORMS } from '../lib/platforms';
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-const platforms = [
-  { name: 'Inkbunny',    logo: 'ib.png',   poll: true, post: true, note: 'Chaptered, official API' },
-  { name: 'FurAffinity', logo: 'fa.png',   poll: true, post: true, note: 'Scraping, desktop-only for posting' },
-  { name: 'SoFurry',     logo: 'sf.png',   poll: true, post: true, note: 'Chaptered' },
-  { name: 'Weasyl',      logo: 'ws.svg',   poll: true, post: true, testing: true, note: 'Official API' },
-  { name: 'AO3',         logo: 'ao3.png',  poll: true, post: true, note: 'Chaptered + work skins' },
-  { name: 'SquidgeWorld',logo: 'sqw.png',  poll: true, post: true, note: 'Chaptered + work skins' },
-  { name: 'DeviantArt',  logo: 'da.png',   poll: true, post: true, note: 'Eclipse API · artwork' },
-  { name: 'Wattpad',     logo: 'wp.png',   poll: true, post: false, note: 'Read-only analytics' },
-  { name: 'Itaku',       logo: 'ik.svg',   poll: true, post: false, testing: true, note: 'Artwork analytics' },
-  { name: 'Bluesky',     logo: 'bsky.png', poll: true, post: false, note: 'Posts: likes, reposts, replies' },
-  { name: 'X / Twitter', logo: 'tw.png',   poll: true, post: false, note: 'Tweets: views, likes, retweets' },
-  { name: 'Mastodon',    logo: 'mast.svg', poll: true, post: false, testing: true, note: 'Posts: favourites, boosts, replies' },
-  { name: 'Tumblr',      logo: 'tum.svg',  poll: true, post: false, testing: true, note: 'Posts: notes' },
-  { name: 'Pixiv',       logo: 'pix.svg',  poll: true, post: false, testing: true, note: 'Illustrations + novels' },
-  { name: 'Threads',     logo: 'thr.svg',  poll: true, post: false, testing: true, note: 'Posts: views, likes, reposts · Meta app required' },
-];
 ---
-<section id="platforms" class="border-t border-ink-800/60 bg-ink-950/30 py-24">
+<section id="platforms" class="py-4">
   <div class="container-prose">
-    <div class="max-w-2xl">
-      <h2 class="text-4xl text-ink-50 md:text-5xl">Fifteen polled. Nine posted.</h2>
-      <p class="mt-6 text-ink-300">
-        Track your whole footprint in one place — <strong class="text-ink-100">stories, artwork and social posts</strong>. Polling pulls views, favourites, notes, bookmarks, reposts and comments across fifteen platforms. Posting supports nine fiction sites today; the rest are read-only analytics. A few are currently undergoing testing — marked below.
-      </p>
-    </div>
-
-    <div class="mt-12 flex flex-wrap items-center gap-3">
-      {platforms.map((p) => (
+    <div class="flex flex-wrap items-center gap-3">
+      {PLATFORMS.map((p) => (
         <span
           class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-ink-800"
           title={p.name + (p.testing ? ' (undergoing testing)' : '')}
@@ -52,7 +32,7 @@ const platforms = [
           </tr>
         </thead>
         <tbody class="divide-y divide-ink-800 text-sm">
-          {platforms.map((p) => (
+          {PLATFORMS.map((p) => (
             <tr class="transition hover:bg-ink-800/30">
               <td class="px-6 py-4 font-medium text-ink-50">
                 {p.name}
@@ -80,7 +60,7 @@ const platforms = [
     <div class="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-xs text-ink-400">
       <span class="inline-flex items-center gap-2"><span class="inline-flex h-2 w-2 rounded-full bg-sage-500"></span> Polling live</span>
       <span class="inline-flex items-center gap-2"><span class="inline-flex h-2 w-2 rounded-full bg-copper-400"></span> Posting</span>
-      <span class="inline-flex items-center gap-2"><span class="inline-flex h-2 w-2 rounded-full bg-amber-400"></span> Polling in testing</span>
+      <span class="inline-flex items-center gap-2"><span class="inline-flex h-2 w-2 rounded-full bg-amber-400"></span> In testing</span>
     </div>
   </div>
 </section>

@@ -1,0 +1,62 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import PageHero from '../components/PageHero.astro';
+import ProblemStatement from '../components/ProblemStatement.astro';
+import HowItWorks from '../components/HowItWorks.astro';
+import Features from '../components/Features.astro';
+import Screenshots from '../components/Screenshots.astro';
+import PlatformStrip from '../components/PlatformStrip.astro';
+import Compare from '../components/Compare.astro';
+import CtaBand from '../components/CtaBand.astro';
+import Footer from '../components/Footer.astro';
+import { PLATFORMS } from '../lib/platforms';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const posters = PLATFORMS.filter((p) => p.post);
+---
+<BaseLayout
+  title="Posting — write once, publish to nine platforms | PawPoller"
+  description="Draft one MASTER.md, regenerate BBCode, HTML, work skins and PDF, and publish chaptered fiction to nine platforms with a publish-check matrix and drift detection."
+>
+  <Nav />
+  <main>
+    <PageHero
+      eyebrow="Posting"
+      title="Write it once."
+      accent="Post it nine places."
+      lead="One Markdown source becomes every format each platform wants — BBCode, SoFurry HTML, AO3/SquidgeWorld work skins, print-ready PDF — and posts where you tell it to. Nothing goes live without your confirmation."
+      primary={{ label: 'Download PawPoller', href: `${base}/download` }}
+      secondary={{ label: 'Compare all platforms', href: `${base}/platforms` }}
+    />
+    <ProblemStatement />
+    <HowItWorks />
+    <Features />
+    <Screenshots
+      show={['editor', 'matrix']}
+      title="See exactly what will post."
+      lead="Edit once on the left; every derived format updates. The publish-check matrix shows every chapter against every platform before a single thing goes out."
+    />
+
+    <section class="border-t border-ink-800/60 bg-ink-950/30 py-24">
+      <div class="container-prose">
+        <div class="max-w-2xl">
+          <h2 class="text-4xl text-ink-50 md:text-5xl">Nine places it posts.</h2>
+          <p class="mt-6 text-ink-300">
+            Six fiction archives (Inkbunny, FurAffinity, SoFurry, Weasyl, AO3, SquidgeWorld), two art galleries (DeviantArt, Itaku) and Bluesky for announcements. FurAffinity posting runs desktop-only because of its datacenter-IP block; a few targets are still undergoing testing.
+          </p>
+        </div>
+        <div class="mt-10">
+          <PlatformStrip items={posters} href={`${base}/platforms`} linkLabel="See the full 15-platform matrix" />
+        </div>
+      </div>
+    </section>
+
+    <Compare />
+    <CtaBand
+      title="Stop reformatting the same story six times."
+      body="Free, MIT licensed, local-first. Native desktop builds for Windows and Linux, or self-host with Docker."
+    />
+  </main>
+  <Footer />
+</BaseLayout>

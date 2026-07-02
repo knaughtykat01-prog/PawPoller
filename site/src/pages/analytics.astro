@@ -1,0 +1,122 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import PageHero from '../components/PageHero.astro';
+import Screenshots from '../components/Screenshots.astro';
+import PlatformStrip from '../components/PlatformStrip.astro';
+import CtaBand from '../components/CtaBand.astro';
+import Footer from '../components/Footer.astro';
+import { Icon } from 'astro-icon/components';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+const groups = [
+  {
+    icon: 'ph:books',
+    title: 'Fiction',
+    body: 'Views, favourites, comments, kudos and bookmarks across Inkbunny, FurAffinity, SoFurry, Weasyl, AO3, SquidgeWorld, Wattpad and Pixiv novels.',
+    href: `${base}/posting`,
+    link: 'Posting →',
+  },
+  {
+    icon: 'ph:image',
+    title: 'Artwork',
+    body: 'Gallery views, favourites and comment counts for illustrations on DeviantArt, Itaku, Pixiv and the art-and-fiction sites that host both.',
+    href: `${base}/artwork`,
+    link: 'Artwork tracking →',
+  },
+  {
+    icon: 'ph:chat-circle-text',
+    title: 'Social posts',
+    body: 'Likes, reposts/boosts, replies, quotes, views and Tumblr notes from Bluesky, X/Twitter, Mastodon, Tumblr and Threads.',
+    href: `${base}/social`,
+    link: 'Social tracking →',
+  },
+];
+
+const how = [
+  { title: 'On a schedule', body: 'Pollers run on a configurable interval — hourly, daily, or whatever cadence you set. Run it 24/7 on a server or on demand from the desktop app.' },
+  { title: 'Snapshots over time', body: 'Every poll writes a timestamped snapshot, so you get trend lines, not just a single current number. Watch a story climb the week after you post it.' },
+  { title: 'One dashboard', body: 'Totals, per-platform breakdowns and per-work detail in one place. No spreadsheet, no fifteen browser tabs, no manual copy-paste.' },
+];
+---
+<BaseLayout
+  title="Polling & analytics — track every view, fave and repost | PawPoller"
+  description="PawPoller polls fifteen platforms and tracks views, favourites, comments, reposts and more over time — for your fiction, artwork and social posts, in one dashboard."
+>
+  <Nav />
+  <main>
+    <PageHero
+      eyebrow="Polling & analytics"
+      title="Every stat, every platform,"
+      accent="one dashboard."
+      lead="PawPoller polls fifteen platforms and records a timestamped snapshot each time — so you see how your fiction, artwork and social posts perform over days and weeks, not just right now."
+      primary={{ label: 'Download PawPoller', href: `${base}/download` }}
+      secondary={{ label: 'See all 15 platforms', href: `${base}/platforms` }}
+    />
+
+    <section class="py-24">
+      <div class="container-prose">
+        <div class="max-w-2xl">
+          <h2 class="text-4xl text-ink-50 md:text-5xl">What it pulls.</h2>
+          <p class="mt-6 text-lg text-ink-300">
+            Different platforms expose different numbers. PawPoller reads whatever each one gives and normalises it into three buckets.
+          </p>
+        </div>
+        <div class="mt-14 grid gap-6 md:grid-cols-3">
+          {groups.map((g) => (
+            <div class="card flex flex-col p-8">
+              <Icon name={g.icon} class="h-7 w-7 text-copper-400" />
+              <h3 class="mt-4 text-2xl text-ink-50">{g.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-ink-300">{g.body}</p>
+              <a href={g.href} class="mt-5 text-sm font-medium text-copper-300 transition hover:text-copper-200">{g.link}</a>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <Screenshots
+      show={['analytics']}
+      single={true}
+      title="The analytics view."
+      lead="Submission totals, view trends and favourite/like counts across every connected platform, with per-work detail a click away."
+    />
+
+    <section class="border-t border-ink-800/60 bg-ink-950/30 py-24">
+      <div class="container-prose">
+        <div class="mx-auto max-w-2xl text-center">
+          <h2 class="text-4xl text-ink-50 md:text-5xl">How polling works.</h2>
+        </div>
+        <div class="mt-14 grid gap-8 md:grid-cols-3">
+          {how.map((h) => (
+            <div class="card p-8">
+              <h3 class="text-xl text-ink-50">{h.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-ink-300">{h.body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section class="py-24">
+      <div class="container-prose">
+        <div class="max-w-2xl">
+          <h2 class="text-4xl text-ink-50 md:text-5xl">Fifteen platforms, polled.</h2>
+          <p class="mt-6 text-ink-300">
+            Everything PawPoller touches is read for analytics, whether or not it can post there.
+          </p>
+        </div>
+        <div class="mt-10">
+          <PlatformStrip href={`${base}/platforms`} linkLabel="See the capability matrix" />
+        </div>
+      </div>
+    </section>
+
+    <CtaBand
+      title="Know what's actually landing."
+      body="Free, MIT licensed, local-first. Poll from the desktop app or run it 24/7 on your own server."
+    />
+  </main>
+  <Footer />
+</BaseLayout>

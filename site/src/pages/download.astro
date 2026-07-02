@@ -1,0 +1,34 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import PageHero from '../components/PageHero.astro';
+import GetIt from '../components/GetIt.astro';
+import FAQ from '../components/FAQ.astro';
+import Footer from '../components/Footer.astro';
+import { SITE_VERSION } from '../consts';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+<BaseLayout
+  title="Download PawPoller — Windows, Linux & self-hosted"
+  description="Get PawPoller free: one-click Windows installer, single-file Linux AppImage, or self-host with Docker on your own server. MIT licensed, no accounts, no telemetry."
+>
+  <Nav />
+  <main>
+    <PageHero
+      eyebrow={`Download · v${SITE_VERSION}`}
+      title="Get PawPoller."
+      accent="Free, forever."
+      lead="Native desktop builds for Windows and Linux, or run it headless with Docker on a server of your own. Same app, same database format, same feature set — pick whatever fits your workflow."
+      primary={{ label: `Download v${SITE_VERSION}`, href: 'https://github.com/knaughtykat01-prog/PawPoller/releases/latest' }}
+      secondary={{ label: 'See all platforms', href: `${base}/platforms` }}
+    />
+    <GetIt />
+    <FAQ
+      show={['os', 'free', 'cloud']}
+      title="Before you install."
+      lead="Platforms, licensing, and where this is headed."
+    />
+  </main>
+  <Footer />
+</BaseLayout>

@@ -1,0 +1,30 @@
+---
+// Lightweight logo strip — the white rounded chips only, no table. Used on
+// the home page (all platforms) and the capability pages (filtered by kind).
+import { PLATFORMS, type Platform } from '../lib/platforms';
+
+export interface Props {
+  items?: Platform[];
+  /** Optional trailing link, e.g. to the full /platforms table. */
+  href?: string;
+  linkLabel?: string;
+}
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const { items = PLATFORMS, href, linkLabel = 'See the full platform matrix' } = Astro.props;
+---
+<div class="flex flex-wrap items-center gap-3">
+  {items.map((p) => (
+    <span
+      class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-ink-800"
+      title={p.name + (p.testing ? ' (undergoing testing)' : '')}
+    >
+      <img src={`${base}/platforms/${p.logo}`} alt={p.name} width="26" height="26" class="h-6 w-6 object-contain" loading="lazy" />
+    </span>
+  ))}
+</div>
+{href && (
+  <a href={href} class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-copper-300 transition hover:text-copper-200">
+    {linkLabel} →
+  </a>
+)}

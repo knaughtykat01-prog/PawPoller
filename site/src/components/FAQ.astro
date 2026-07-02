@@ -1,41 +1,29 @@
 ---
-const faqs = [
-  {
-    q: 'Is it free?',
-    a: 'Yes. MIT licensed, no accounts, no telemetry, no feature gates. Fork it, audit it, run it forever.',
-  },
-  {
-    q: 'Where do my platform passwords live?',
-    a: 'On your own machine or your own server. The optional encrypted vault (Fernet + OS keyring or a dotfile key) stores credentials separately from your plaintext settings.json. No PawPoller-operated service ever sees them.',
-  },
-  {
-    q: 'Does it post things automatically?',
-    a: 'Only when you confirm. Every publish action has an explicit confirmation dialog; live (non-draft) posts require a second confirmation. There is also a full dry-run mode that shows exactly what would be submitted without submitting it.',
-  },
-  {
-    q: 'Does it work on Mac or Linux?',
-    a: 'Windows and Linux both have native desktop builds: a one-click .exe installer (or portable zip) for Windows, and a single-file .AppImage for Linux that runs on Ubuntu 22.04+ / Fedora 37+ / Debian 12+ / Arch with no install. macOS is on the public roadmap; the Apple Developer cert plus notarization decision is the open question. In the meantime macOS users can run the headless Docker mode and access the dashboard from any browser.',
-  },
-  {
-    q: 'Why nine posting platforms but fifteen polled?',
-    a: 'Wattpad, Itaku, Bluesky, X/Twitter, Mastodon, Tumblr, Pixiv and Threads are either public read-only or have posting APIs that discourage third-party automation. PawPoller can read their stats for your analytics; it won\'t pretend to post where it shouldn\'t. Several platforms are currently marked as undergoing testing while we validate them — see the platforms table.',
-  },
-  {
-    q: 'Can I eventually use it from the browser without self-hosting?',
-    a: 'That\'s the plan for the Cloud tier: a one-click hosted instance owned by you, not a shared service. A true multi-tenant SaaS tier is possible further out but needs real demand first; holding credentials for many users at once is a serious responsibility.',
-  },
-  {
-    q: 'Can I help?',
-    a: 'Yes. Bug reports, feature requests, and platform additions are all welcome via GitHub Issues. CONTRIBUTING.md has the platform-adding walkthrough.',
-  },
-];
+import { FAQS } from '../lib/faqs';
+
+export interface Props {
+  title?: string;
+  lead?: string;
+  /** FAQ keys to show, in this order. Omit to show all. */
+  show?: string[];
+}
+
+const {
+  title = 'Short answers to honest questions.',
+  lead = 'Free, local-first, and explicit about what it will and won\'t do on your behalf.',
+  show,
+} = Astro.props;
+
+const faqs = show
+  ? show.map((k) => FAQS.find((f) => f.key === k)).filter((f): f is NonNullable<typeof f> => Boolean(f))
+  : FAQS;
 ---
 <section id="faq" class="py-24">
   <div class="container-prose grid gap-12 md:grid-cols-[0.85fr_1.15fr] md:gap-16">
     <div class="md:sticky md:top-24 md:self-start">
-      <h2 class="text-4xl text-ink-50 md:text-5xl">Short answers to honest questions.</h2>
+      <h2 class="text-4xl text-ink-50 md:text-5xl">{title}</h2>
       <p class="mt-6 text-ink-300">
-        Free, local-first, and explicit about what it will and won't do on your behalf. Still unsure? Open a thread on
+        {lead} Still unsure? Open a thread on
         <a class="link-accent" href="https://github.com/knaughtykat01-prog/PawPoller/discussions">GitHub Discussions</a>.
       </p>
     </div>

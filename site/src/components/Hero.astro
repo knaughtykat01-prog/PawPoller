@@ -17,11 +17,11 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
         Draft your chaptered story once in Markdown. PawPoller generates every format and posts it to nine furry-fiction platforms — then tracks how your stories, artwork and social posts perform across fifteen.
       </p>
       <div class="mt-10 flex flex-wrap items-center gap-4">
-        <a href="#get" class="btn-primary">
+        <a href={`${base}/download`} class="btn-primary">
           Download for Windows + Linux
           <Icon name="ph:arrow-down" class="h-4 w-4" />
         </a>
-        <a href="#get" class="btn-secondary">Self-host with Docker</a>
+        <a href={`${base}/download`} class="btn-secondary">Self-host with Docker</a>
         <a href="https://github.com/knaughtykat01-prog/PawPoller" class="text-sm text-ink-300 transition hover:text-copper-300">
           View the source →
         </a>
