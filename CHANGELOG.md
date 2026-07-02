@@ -4,6 +4,25 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.46.2] - 2026-07-02 - HTTPS-ready: honour proxy headers behind a TLS reverse proxy
+
+Prep for serving the dashboard over HTTPS at `pawpoller.syncopates.app` (Cloudflare-proxied → Caddy origin
+TLS on the VM → app on loopback). One code change enables any reverse-proxy deployment:
+
+- `server.py` runs uvicorn with **`proxy_headers=True`** + **`forwarded_allow_ips=config.DASHBOARD_FORWARDED_IPS`**
+  (new **`PAWPOLLER_FORWARDED_IPS`** env, default `127.0.0.1`). Behind a proxy that terminates TLS the app now
+  sees `X-Forwarded-Proto: https` — so the dashboard session cookie's **Secure** flag turns on
+  (`routes/dashboard_auth.py`) — and `request.client.host` is the real client, not the proxy (resolves the
+  2.46.0 deferred-minor "rate-limiter proxy-IP" note). Default trusts only loopback → **no change for direct
+  binding / desktop**; set `PAWPOLLER_FORWARDED_IPS=*` only when behind a trusted proxy.
+
+The maintainer's TLS layer (Caddy + a Cloudflare Origin Cert, forwarding `CF-Connecting-IP` as
+`X-Forwarded-For`) lives in a **VM-only `docker-compose.override.yml`**, not this repo, to keep the public
+compose generic. Self-hosters put PawPoller behind any reverse proxy the same way. Backward-compatible; no
+schema change.
+
+---
+
 ## [2.46.1] - 2026-07-02 - Credential vault: operator-supplied key (real at-rest protection on servers)
 
 Follow-up to the 2.46.0 security review's §2 finding. The credential vault (Fernet) is genuine at-rest

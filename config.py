@@ -830,7 +830,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.46.1"
+APP_VERSION = "2.46.2"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL
@@ -843,6 +843,14 @@ SUBMISSION_BATCH_SIZE = 100                    # Max submissions fetched per API
 # ── Dashboard (local web server) ──
 DASHBOARD_HOST = "127.0.0.1"  # Localhost only -- not exposed to the network
 DASHBOARD_PORT = 8420          # Arbitrary high port unlikely to conflict
+
+# Trusted proxy IPs for uvicorn's X-Forwarded-* handling. Default 127.0.0.1
+# (safe for desktop / direct binding). Behind a reverse proxy that terminates
+# TLS (e.g. Caddy for pawpoller.syncopates.app), set PAWPOLLER_FORWARDED_IPS=*
+# so request.url.scheme reflects the real HTTPS connection — the dashboard
+# session cookie's Secure flag (routes/dashboard_auth.py) and per-client rate
+# limiting depend on it. Only widen this when actually behind a trusted proxy.
+DASHBOARD_FORWARDED_IPS = os.environ.get("PAWPOLLER_FORWARDED_IPS", "127.0.0.1")
 
 # ── Stat offsets ──
 # The Inkbunny API only returns data for *public* submissions.  If you have

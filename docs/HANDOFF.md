@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-02
-**Current version:** 2.46.1 — **Credential vault: operator-supplied key (real at-rest protection on servers).**
+**Current version:** 2.46.2 — **HTTPS-ready: uvicorn honours proxy headers behind a TLS reverse proxy.**
+`server.py` now runs uvicorn with `proxy_headers=True` + `forwarded_allow_ips` (new `PAWPOLLER_FORWARDED_IPS`,
+default `127.0.0.1`). Behind a TLS-terminating reverse proxy (the maintainer's Caddy for
+`pawpoller.syncopates.app`), the app sees `X-Forwarded-Proto: https` so the dashboard session cookie's
+**Secure** flag turns on and `request.client.host` is the real client (fixes the 2.46.0 deferred-minor
+rate-limiter proxy-IP note). No change when bound directly (default trusts loopback only). **Deploy note:** the
+maintainer server flips `.env` `PAWPOLLER_BIND` back to `127.0.0.1` (Caddy fronts 8420 over HTTPS); the Caddy
+layer is a VM-only `docker-compose.override.yml`, not in this repo. Full pattern + gotchas: Claude memory
+`reference-https-caddy-cloudflare`.
+
+**Prior release — 2.46.1 — Credential vault: operator-supplied key (real at-rest protection on servers).**
 Follow-up to the §2 security finding. The Fernet vault is genuine at-rest protection on desktop (OS keyring)
 but not on a server (key falls back to `data/.vault_key` next to the ciphertext). `config._get_vault_key()`
 now checks an operator-supplied key first — `PAWPOLLER_VAULT_KEY`, or the file at `PAWPOLLER_VAULT_KEY_FILE`

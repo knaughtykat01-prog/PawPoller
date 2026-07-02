@@ -413,7 +413,17 @@ def _start_server(host: str, port: int):
     logger.info("Uvicorn thread starting on %s:%d ...", host, port)
     try:
         from dashboard import app as dash_app
-        uvicorn.run(dash_app, host=host, port=port, log_level="info")
+        uvicorn.run(
+            dash_app, host=host, port=port, log_level="info",
+            # Behind a reverse proxy (the maintainer's Caddy terminates TLS for
+            # pawpoller.syncopates.app), honour X-Forwarded-Proto/-For so
+            # request.url.scheme is https — the dashboard session cookie's
+            # Secure flag depends on it (routes/dashboard_auth.py) — and
+            # request.client.host is the real client, not the proxy. Default
+            # trusts only 127.0.0.1; PAWPOLLER_FORWARDED_IPS widens it.
+            proxy_headers=True,
+            forwarded_allow_ips=config.DASHBOARD_FORWARDED_IPS,
+        )
     except Exception as e:
         logger.error("Uvicorn failed to start: %s", e, exc_info=True)
 
