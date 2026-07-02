@@ -1256,9 +1256,12 @@ class SquidgeWorldClient:
             logger.info("SqW: Created work %s — %s", work_id, url)
             return {"work_id": work_id, "url": url}
 
-        # DEBUG: dump response body to a file so we can see what OTW returned
-        import time
-        debug_path = f"C:/Users/rhysc/claude/PawPoller/sqw_create_debug_{int(time.time())}.html"
+        # Postmortem: dump the response body to the OS temp dir so we can
+        # refine the parser if OTW changes its create-flow response shape.
+        # (Was a hardcoded personal path — failed to write on the Linux server
+        # and littered the repo root on desktop.)
+        import tempfile, time
+        debug_path = f"{tempfile.gettempdir()}/sqw_create_debug_{int(time.time())}.html"
         try:
             with open(debug_path, "w", encoding="utf-8") as f:
                 f.write(f"<!-- final_url: {final_url} -->\n")

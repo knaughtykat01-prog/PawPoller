@@ -1027,9 +1027,11 @@ class AO3Client:
                 )
                 return {"work_id": work_id, "url": url, "published": False}
 
-        # Dump body for debugging
-        import time
-        debug_path = f"/tmp/ao3_create_debug_{int(time.time())}.html"
+        # Postmortem: dump the response body to the OS temp dir. Portable —
+        # AO3 posting runs on the Windows desktop, where /tmp doesn't exist,
+        # so the old hardcoded /tmp path silently never wrote anything.
+        import tempfile, time
+        debug_path = f"{tempfile.gettempdir()}/ao3_create_debug_{int(time.time())}.html"
         try:
             with open(debug_path, "w", encoding="utf-8") as f:
                 f.write(f"<!-- final_url: {final_url} -->\n")

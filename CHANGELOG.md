@@ -4,6 +4,27 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.44.4] - 2026-07-02 - Fix: posting-failure debug dumps wrote to broken / hardcoded paths
+
+When a story-posting flow can't parse the created work's ID out of the response, the client dumps the
+response body to a file for postmortem (so the parser can be refined if the site changes its response
+shape). Two of the three dump sites used paths that don't work where the code actually runs:
+
+- **`clients/sqw/client.py`** — dumped to a hardcoded *personal* path
+  (`C:/Users/rhysc/claude/PawPoller/sqw_create_debug_*.html`). On the Linux server that `open()` throws
+  (write fails, logged as an error); on the Windows desktop it littered the repo root with response-body
+  files.
+- **`clients/ao3/client.py`** (work-create) — dumped to `/tmp/…`, but AO3 posting runs on the **Windows
+  desktop** (residential IP; the datacenter IP is throttled), where `/tmp` doesn't exist — so the write
+  silently failed and the postmortem body was never captured on the one platform that actually needs it.
+
+- **Fix**: both now write to `tempfile.gettempdir()` (portable — the OS temp dir on Windows *and* Linux),
+  matching the third dump site (`ao3` add-chapter) which already did this correctly. Failure path only;
+  no change to any success path or polling behaviour. Removes the last hardcoded personal path from
+  shipped client code.
+
+---
+
 ## [2.44.3] - 2026-07-02 - Mobile polish: scroll hint on the Settings tab strip
 
 Third item from the mobile sweep (polish, not a bug). The Settings tab strip has 11 tabs

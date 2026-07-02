@@ -1,7 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-02
-**Current version:** 2.44.3 — **Mobile polish: scroll hint on the Settings tab strip.** Third item from the
+**Current version:** 2.44.4 — **Fix: posting-failure debug dumps wrote to broken/hardcoded paths.** When a
+posting flow can't parse the created work's ID, the client dumps the response body for postmortem. Two of
+three dump sites used paths that don't work where the code runs: `sqw` used a hardcoded personal path
+(`C:/Users/rhysc/…` — write throws on the Linux server, litters the repo root on desktop); `ao3` work-create
+used `/tmp` (AO3 posting runs on the **Windows desktop**, where `/tmp` doesn't exist → body never captured).
+Both now use `tempfile.gettempdir()` (portable), matching the third site (`ao3` add-chapter) which already
+did. Failure path only — no success-path or polling change. `clients/sqw/client.py`, `clients/ao3/client.py`.
+
+**Prior release — 2.44.3 — Mobile polish: scroll hint on the Settings tab strip.** Third item from the
 mobile sweep. 11 settings tabs, only ~4 fit at 390px, scrolled with no cue. Added a scroll-aware edge fade
 (`frontend/css/editor.css` + `frontend/js/app.js`): settings render toggles `of-end`/`of-start` on
 `.settings-tabs` by scroll position → soft mask fade on whichever side has more; active tab scrolled into
