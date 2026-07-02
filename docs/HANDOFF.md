@@ -7,8 +7,6 @@ the flex layout crushed the drawer's "PUBLISHING / CREATE / INSIGHTS & TOOLS" he
 when the drawer overflowed a short phone viewport (nav rows resist — `min-height:48px` on mobile). Added
 `flex-shrink: 0` in `frontend/css/layout.css`; labels keep full height and the drawer scrolls. Verified via
 a headless-Chrome phone repro (24px→41px). CSS-only; deploy via `pawupdate`.
-**Next up (Rhys's steer):** SoFurry posting rebuild (polling's fixed since 2.27.2; posting still broken
-after SF's SPA rewrite — login + `/ui/` create API + TipTap content format).
 
 **Prior release — 2.44.0 — New platform: Threads (poll-only, 15th platform)**. **Completes the
 four-platform expansion** (Mastodon, Tumblr, Pixiv, Threads all shipped).
