@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-06-30
-**Current version:** 2.44.0 — **New platform: Threads (poll-only, 15th platform)**. **Completes the
+**Last updated:** 2026-07-02
+**Current version:** 2.44.1 — **Mobile fix: nav drawer section labels no longer chopped in half.**
+`.nav-group-label` had a default `flex-shrink` + `overflow:hidden` (→ flex `min-height` computes to 0), so
+the flex layout crushed the drawer's "PUBLISHING / CREATE / INSIGHTS & TOOLS" headings to a padding-sliver
+when the drawer overflowed a short phone viewport (nav rows resist — `min-height:48px` on mobile). Added
+`flex-shrink: 0` in `frontend/css/layout.css`; labels keep full height and the drawer scrolls. Verified via
+a headless-Chrome phone repro (24px→41px). CSS-only; deploy via `pawupdate`.
+**Next up (Rhys's steer):** SoFurry posting rebuild (polling's fixed since 2.27.2; posting still broken
+after SF's SPA rewrite — login + `/ui/` create API + TipTap content format).
+
+**Prior release — 2.44.0 — New platform: Threads (poll-only, 15th platform)**. **Completes the
 four-platform expansion** (Mastodon, Tumblr, Pixiv, Threads all shipped).
 **Released + deployed** 2026-06-30 (tag `v2.44.0`). Threads (Meta) has an OFFICIAL API
 (graph.threads.net); connect with a long-lived access token from a Meta app with `threads_basic` +

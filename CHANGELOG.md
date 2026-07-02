@@ -4,6 +4,21 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.44.1] - 2026-07-02 - Fix: mobile drawer section labels chopped in half
+
+The nav drawer's section headings (**PUBLISHING**, **CREATE**, **INSIGHTS & TOOLS**) rendered clipped to
+their top halves on phones. `.nav-group-label` has `overflow: hidden`, which makes its flex `min-height`
+compute to `0` — so when the drawer's content overflowed a short mobile viewport, the flex layout crushed
+the (shrinkable) labels to a padding-sliver instead of letting the already-scrollable `.nav-links` scroll
+(the nav rows resist being crushed — they carry `min-height: 48px` on mobile).
+
+- **Fix** (`frontend/css/layout.css`): `.nav-group-label { flex-shrink: 0 }` so the labels keep their
+  intrinsic height and the drawer scrolls instead. Verified in a headless-Chrome repro at a phone viewport —
+  the labels go from **24px (crushed)** to **41px (full)**. The desktop collapsed rail is unaffected (its
+  `height: 10px; opacity: 0` override still applies).
+
+---
+
 ## [2.44.0] - 2026-06-30 - New platform: Threads (poll-only, 15th platform)
 
 Added **Threads** (Meta) as the 15th tracked platform — poll-only analytics. Unlike the other recent

@@ -134,6 +134,11 @@
     white-space: nowrap;
     overflow: hidden;
     list-style: none;
+    /* `overflow: hidden` makes a flex item's min-height compute to 0, so
+       when the drawer overflows a short mobile viewport the flex algorithm
+       crushes these labels to a sliver (nav-links resist via min-height:48px).
+       flex-shrink:0 keeps them full-height; the drawer scrolls instead. */
+    flex-shrink: 0;
 }
 .sidebar.collapsed .nav-group-label { opacity: 0; height: 10px; padding: 0; }
 
