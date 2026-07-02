@@ -23,3 +23,10 @@ settings.vault.json
 
 # Claude Code context router (local only)
 CLAUDE.md
+
+# Maintainer TLS reverse-proxy layer (VM-only — never commit; certs/keys)
+/Caddyfile
+/docker-compose.override.yml
+/caddy/
+*.pem
+*.key
