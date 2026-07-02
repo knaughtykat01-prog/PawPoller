@@ -4,6 +4,53 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.46.0] - 2026-07-02 - Security: close the open-instance credential leak (pre-public hardening)
+
+A full-surface security review (public-release threat model: untrusted people self-hosting, each storing
+their own credentials for 15 platforms) found one ship-blocker and two should-fix issues. All fixed here.
+
+**P0 — open-by-default server leaked every stored credential.** `server.py` binds `0.0.0.0`,
+`docker-compose.yml` published `8420:8420` on all interfaces, and the auth middleware passed *every* request
+through when no dashboard password was set (`dashboard.py`). So the documented Docker path — copy
+`.env.example`, skip the (commented-out) password, `docker compose up` — produced a wide-open server on which
+`POST /api/settings/sync` (pull) returns the whole settings dict in cleartext: every platform
+cookie/token/API key, the Telegram token, the GitHub PAT, and the auth hashes. Fixes:
+- `docker-compose.yml` now binds **loopback by default** — `${PAWPOLLER_BIND:-127.0.0.1}:8420:8420`. Exposing
+  it is a deliberate opt-in (`PAWPOLLER_BIND=0.0.0.0`), documented in `.env.example` next to a strengthened
+  "set `DASHBOARD_PASSWORD` before exposing" note.
+- `dashboard.py` middleware now **gates the credential/backup/destructive endpoints** (`/api/settings/sync`,
+  `/api/backup`, `/api/posting/sync/upload`, `/api/settings/uninstall`): on an unconfigured instance they
+  return **403 to any non-loopback caller** (loopback — the desktop app / local operator — still works, and a
+  configured instance enforces normal auth). Closes the leak even if someone binds `0.0.0.0` without a
+  password.
+- `server.py` logs a loud **SECURITY warning** at startup if bound to a non-loopback host with no auth.
+- New regression tests: `tests/test_auth_gate.py` (4 cases).
+
+**P1 — tar-import path traversal via symlink.** `routes/posting_api.py` `/sync/upload` extracted the uploaded
+`.tar.gz` after checking only member *names* for `..` / leading `/` — it didn't reject **symlink/hardlink**
+members, so a link member plus a follow-up write through it escaped the archive root (arbitrary file write;
+worse under the P0). Now rejects link members and re-anchors every member's resolved path under the archive
+root before extracting.
+
+**P1 — credential vault at-rest expectation on the server.** `keyring` isn't in `requirements-server.txt`, so
+on the server the vault falls back to writing `.vault_key` next to `settings.vault.json` on the same volume —
+no real protection there. `docs/SETUP.md §5.1` now says so plainly (the vault is genuine at-rest protection
+only on desktop, where the OS keyring holds the key).
+
+**P2 — hardening.** Redacted the raw SoFurry session-cookie value from `cf_proxy` debug logs (logs length,
+not value).
+
+**Review verdict:** path-traversal on the file servers, the SSRF proxy allowlists, SQL binding, and the
+session/password crypto were all found solid. Tracked-but-deferred (low severity, none block release):
+rate-limiter keys on `request.client.host` behind a proxy; posting debug-dumps to a shared temp dir; a few
+`str(e)` details in per-route error responses; non-constant-time hash compares.
+
+Scope: audit item **§7 (security review)**. Still open: §2 credential-at-rest, §3 first-run, §4 code-signing,
+§5 docs refresh. **Deploy note:** the server's `.env` gets `PAWPOLLER_BIND=0.0.0.0` to preserve its current
+(authenticated) exposure — the loopback default is for fresh installs.
+
+---
+
 ## [2.45.0] - 2026-07-02 - Distribution readiness: personal-data scrub + public-copy packaging
 
 First slice of getting PawPoller ready for others to run. This repo stays PRIVATE (it holds personal dev

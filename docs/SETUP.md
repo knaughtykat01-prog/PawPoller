@@ -500,13 +500,13 @@ Short version per platform:
 | DeviantArt | Session cookie | DevTools → Cookies → copy `auth`/`auth_secure`/`userinfo` |
 | Wattpad / Itaku / Bluesky / X | Public or app-password — see the in-app settings cards | |
 
-### 5.1 Credential vault (optional, recommended for Docker)
+### 5.1 Credential vault (optional)
 
 If you'd rather not leave credentials sitting in plaintext `settings.json`, enable the vault:
 
 - Settings → Credential Security → **Enable Vault**
-- On Windows desktop, the encryption key goes in Windows Credential Manager.
-- On Linux/Docker with no keyring, the key is written to `data/.vault_key` (chmod 600). Back that up separately from `settings.vault.json` — losing one makes the other useless.
+- On **Windows desktop**, the encryption key goes in Windows Credential Manager — separate from the ciphertext, so this is genuine at-rest protection.
+- On **Linux/Docker with no keyring**, the key is written to `data/.vault_key` (chmod 600) **on the same volume as** `settings.vault.json`. Anyone who can read the volume reads both, so on the server the vault protects against casual/off-host snooping (stray backups, image layers) but is **not** real at-rest encryption against someone with host/volume access. Treat server-side storage as effectively plaintext and protect the host + volume accordingly. Back the key up separately from `settings.vault.json` — losing one makes the other useless.
 
 ### 5.2 Two-factor auth
 

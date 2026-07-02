@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-02
-**Current version:** 2.45.0 — **Distribution readiness: personal-data scrub + public-copy packaging.**
+**Current version:** 2.46.0 — **Security: close the open-instance credential leak (pre-public hardening).**
+A full-surface security review (public threat model) found a ship-blocker: an open-by-default server
+(`0.0.0.0` bind + auth middleware short-circuits when no password) leaked every stored credential via
+`POST /api/settings/sync`. Fixes: `docker-compose.yml` binds **loopback by default**
+(`${PAWPOLLER_BIND:-127.0.0.1}:8420:8420`); the auth middleware **gates credential/backup/destructive
+endpoints to 403 for non-loopback callers on an unconfigured instance** (`dashboard.py`); `server.py` warns
+loudly if bound public with no auth; `.env.example` strengthened. Also: tar-import symlink traversal fixed
+(`routes/posting_api.py` `/sync/upload`), vault at-rest expectation corrected for the server
+(`docs/SETUP.md §5.1` — real protection is desktop-only), cookie value redacted in `cf_proxy` debug logs. New
+`tests/test_auth_gate.py` (4). Review found path-traversal / SSRF / SQL / session-crypto SOLID.
+Deferred-minor: rate-limiter proxy-IP, debug-dump temp dir, `str(e)` in some errors, constant-time compares.
+Audit item **§7**; §2/§3/§4/§5 still open. **Deploy:** server `.env` set `PAWPOLLER_BIND=0.0.0.0` to preserve
+its current exposure.
+
+**Prior release — 2.45.0 — Distribution readiness: personal-data scrub + public-copy packaging.**
 First slice of "ready for others." This repo stays PRIVATE; public distribution is a *cleaned copy* built by
 the new **`deploy/make_public.py`** — it excludes the private dev/ops layer (`deploy/`, `qa/`, `site/`,
 `scripts*`, internal docs, personal `tests/` harnesses; keeps the pytest CI suite) and runs a **leak scan**

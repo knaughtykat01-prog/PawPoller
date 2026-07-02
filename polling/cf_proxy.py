@@ -183,7 +183,7 @@ class CloudflareProxyTransport(httpx.AsyncBaseTransport):
         # Capture session cookies from the Worker
         session_cookies = response.headers.get("x-session-cookies")
         if session_cookies:
-            logger.debug("CF proxy: login_and_fetch cookies: %s", session_cookies[:120])
+            logger.debug("CF proxy: login_and_fetch received session cookies (%d chars)", len(session_cookies))
             self._session_cookies = session_cookies
 
         self._update_cookies_from_response(response)

@@ -254,14 +254,39 @@ _AUTH_EXEMPT_PATHS = frozenset({
 })
 _AUTH_EXEMPT_PREFIXES = ("/css/", "/js/", "/vendor/", "/img/")
 
+# Endpoints that return stored credentials / full data backups or perform
+# destructive actions. On an UNCONFIGURED (no-password) instance these must
+# never be served to a remote caller — otherwise an exposed server leaks every
+# stored platform credential via e.g. POST /api/settings/sync. On a configured
+# instance the normal auth check below applies; on an unconfigured instance we
+# allow them only from a loopback client (the desktop app / local operator).
+_SENSITIVE_WHEN_OPEN_PREFIXES = (
+    "/api/settings/sync",
+    "/api/settings/uninstall",
+    "/api/backup",
+    "/api/posting/sync/upload",
+)
+
+
+def _client_is_loopback(request: Request) -> bool:
+    host = request.client.host if request.client else ""
+    return host in ("127.0.0.1", "::1", "localhost")
+
 
 @app.middleware("http")
 async def session_auth_middleware(request: Request, call_next):
-    # If no auth is configured, pass through everything
-    if not config.is_dashboard_auth_required():
-        return await call_next(request)
-
     path = request.url.path
+
+    # If no auth is configured, pass through — EXCEPT the sensitive endpoints
+    # above, which must not be reachable from a remote caller on an open
+    # instance (they'd dump every stored secret / allow remote takeover).
+    if not config.is_dashboard_auth_required():
+        if path.startswith(_SENSITIVE_WHEN_OPEN_PREFIXES) and not _client_is_loopback(request):
+            return Response(
+                status_code=403,
+                content="Set a dashboard password (Settings -> Security) before using this endpoint from a non-local client.",
+            )
+        return await call_next(request)
 
     # Let SPA load (index.html) and static assets through unconditionally
     if path == "/" or path.startswith(_AUTH_EXEMPT_PREFIXES):

@@ -428,6 +428,16 @@ def main():
                         help="Bind address (default: %(default)s)")
     args = parser.parse_args()
 
+    # SECURITY: don't silently expose an unauthenticated dashboard.
+    if args.host not in ("127.0.0.1", "::1", "localhost") and not config.is_dashboard_auth_required():
+        logger.warning(
+            "SECURITY: binding to %s with NO dashboard password set — the "
+            "dashboard and its API (including stored platform credentials) are "
+            "exposed with no authentication. Set DASHBOARD_PASSWORD (or complete "
+            "setup), and/or bind to 127.0.0.1 behind a reverse proxy.",
+            args.host,
+        )
+
     # Graceful shutdown event
     shutdown_event = threading.Event()
 

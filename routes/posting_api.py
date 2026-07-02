@@ -866,11 +866,18 @@ async def sync_upload(file: UploadFile = File(...)):
         contents = await file.read()
         buf = io.BytesIO(contents)
         with tarfile.open(fileobj=buf, mode="r:gz") as tar:
-            # Security: reject paths that escape the archive directory
+            # Security: reject any member that could escape the archive dir.
+            # Link members (sym/hard) are rejected outright — a link followed by
+            # a write through it escapes even without ".." in the names. Every
+            # other member's resolved path must stay under the archive root.
+            base = archive_path.resolve()
             for member in tar.getmembers():
-                if member.name.startswith("/") or ".." in member.name:
+                if member.issym() or member.islnk():
+                    raise HTTPException(400, detail=f"Link members not allowed in archive: {member.name}")
+                target = (base / member.name).resolve()
+                if target != base and base not in target.parents:
                     raise HTTPException(400, detail=f"Unsafe path in archive: {member.name}")
-            tar.extractall(path=str(archive_path))
+            tar.extractall(path=str(base))
 
         # Count what was extracted
         story_dirs = [d for d in archive_path.iterdir() if d.is_dir() and not d.name.startswith(".")]
