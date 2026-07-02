@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-02
-**Current version:** 2.46.0 — **Security: close the open-instance credential leak (pre-public hardening).**
+**Current version:** 2.46.1 — **Credential vault: operator-supplied key (real at-rest protection on servers).**
+Follow-up to the §2 security finding. The Fernet vault is genuine at-rest protection on desktop (OS keyring)
+but not on a server (key falls back to `data/.vault_key` next to the ciphertext). `config._get_vault_key()`
+now checks an operator-supplied key first — `PAWPOLLER_VAULT_KEY`, or the file at `PAWPOLLER_VAULT_KEY_FILE`
+(Docker/K8s secret) — so a server can hold the key off the data volume; malformed keys fail fast. Falls
+through to keyring→dotfile exactly as before when unset (no change for existing installs). Documented in
+`.env.example` + `docs/SETUP.md §5.1`; new `tests/test_vault_key.py` (5). Audit item **§2**; §3 first-run
+remains, §4 signing out-of-scope by choice. Backward-compatible — no deploy action needed.
+
+**Prior release — 2.46.0 — Security: close the open-instance credential leak (pre-public hardening).**
 A full-surface security review (public threat model) found a ship-blocker: an open-by-default server
 (`0.0.0.0` bind + auth middleware short-circuits when no password) leaked every stored credential via
 `POST /api/settings/sync`. Fixes: `docker-compose.yml` binds **loopback by default**

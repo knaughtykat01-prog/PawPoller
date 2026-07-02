@@ -122,12 +122,56 @@ def _secure_file_permissions(path) -> None:
 VAULT_PATH = DATA_DIR / "settings.vault.json"
 
 
+def _operator_vault_key() -> bytes | None:
+    """An operator-supplied vault key, or None if none is configured.
+
+    Read from ``PAWPOLLER_VAULT_KEY`` (the key itself) or, failing that, from
+    the file named by ``PAWPOLLER_VAULT_KEY_FILE`` (e.g. a Docker/K8s secret).
+    This lets a server operator hold the key OUT-OF-BAND (secrets manager,
+    Docker secret, env) instead of the ``.vault_key`` dotfile that otherwise
+    sits next to the ciphertext on the data volume — the only way the vault
+    gives real at-rest protection on a server (see docs/SETUP.md §5.1).
+
+    Raises if a key is supplied but malformed, so a typo fails fast at startup
+    rather than silently making the vault undecryptable.
+    """
+    raw = os.environ.get("PAWPOLLER_VAULT_KEY", "").strip()
+    if not raw:
+        key_path = os.environ.get("PAWPOLLER_VAULT_KEY_FILE", "").strip()
+        if key_path:
+            try:
+                raw = Path(key_path).read_text(encoding="utf-8").strip()
+            except OSError as e:
+                raise RuntimeError(f"PAWPOLLER_VAULT_KEY_FILE unreadable: {e}") from e
+    if not raw:
+        return None
+    key = raw.encode("ascii")
+    try:
+        from cryptography.fernet import Fernet
+        Fernet(key)  # validates it's a 32-byte url-safe-base64 Fernet key
+    except Exception as e:
+        raise RuntimeError(
+            "PAWPOLLER_VAULT_KEY is not a valid Fernet key. Generate one with: "
+            'python -c "from cryptography.fernet import Fernet; '
+            'print(Fernet.generate_key().decode())"'
+        ) from e
+    return key
+
+
 def _get_vault_key() -> bytes:
     """Derive or retrieve the encryption key for the credential vault.
 
-    Uses the system keyring if available, otherwise falls back to a
-    machine-derived key stored in a dotfile.
+    Resolution order:
+      1. Operator-supplied key (``PAWPOLLER_VAULT_KEY`` / ``_FILE``) — use this
+         on a server so the key is not stored next to the ciphertext.
+      2. The system keyring (desktop — key held separately from the vault).
+      3. Fallback: a machine-local ``.vault_key`` dotfile in DATA_DIR. This
+         sits on the same volume as the vault, so it is only as safe as the
+         volume; prefer PAWPOLLER_VAULT_KEY on a server.
     """
+    op_key = _operator_vault_key()
+    if op_key:
+        return op_key
     try:
         import keyring
         key = keyring.get_password("PawPoller", "vault_key")
@@ -786,7 +830,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.46.0"
+APP_VERSION = "2.46.1"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

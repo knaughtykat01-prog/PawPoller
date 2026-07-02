@@ -501,7 +501,8 @@ If you'd rather not leave credentials sitting in plaintext `settings.json`, enab
 
 - Settings → Credential Security → **Enable Vault**
 - On **Windows desktop**, the encryption key goes in Windows Credential Manager — separate from the ciphertext, so this is genuine at-rest protection.
-- On **Linux/Docker with no keyring**, the key is written to `data/.vault_key` (chmod 600) **on the same volume as** `settings.vault.json`. Anyone who can read the volume reads both, so on the server the vault protects against casual/off-host snooping (stray backups, image layers) but is **not** real at-rest encryption against someone with host/volume access. Treat server-side storage as effectively plaintext and protect the host + volume accordingly. Back the key up separately from `settings.vault.json` — losing one makes the other useless.
+- On **Linux/Docker with no keyring**, the key is written to `data/.vault_key` (chmod 600) **on the same volume as** `settings.vault.json`. Anyone who can read the volume reads both, so by default the vault protects against casual/off-host snooping (stray backups, image layers) but is **not** real at-rest encryption against someone with host/volume access.
+- **For real at-rest protection on a server**, supply the key yourself so it lives off the data volume: set `PAWPOLLER_VAULT_KEY` (or point `PAWPOLLER_VAULT_KEY_FILE` at a mounted Docker/K8s secret) **before** enabling the vault. Generate a key with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and keep it in your secrets manager. Changing the key later means disabling then re-enabling the vault. Back the key up separately from `settings.vault.json` — losing one makes the other useless.
 
 ### 5.2 Two-factor auth
 

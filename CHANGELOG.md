@@ -4,6 +4,25 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.46.1] - 2026-07-02 - Credential vault: operator-supplied key (real at-rest protection on servers)
+
+Follow-up to the 2.46.0 security review's §2 finding. The credential vault (Fernet) is genuine at-rest
+protection on desktop (key in the OS keyring) but not on a server: with no keyring, the key falls back to
+`data/.vault_key` **next to** `settings.vault.json`, so anyone with volume access has both.
+
+- `config._get_vault_key()` now checks an **operator-supplied key first**: `PAWPOLLER_VAULT_KEY` (the key
+  itself), or the contents of the file named by `PAWPOLLER_VAULT_KEY_FILE` (a Docker/K8s secret). This lets a
+  server hold the key off the data volume — the only way the vault protects at rest there. Malformed keys
+  **fail fast** with a clear error instead of silently making the vault undecryptable. Falls through to
+  keyring → dotfile exactly as before when neither is set, so **no behaviour change for existing installs**.
+- Documented in `.env.example` and `docs/SETUP.md §5.1` (generate a key, set it *before* enabling the vault).
+- New `tests/test_vault_key.py` (5 cases: env/file priority, fail-fast, round-trip).
+
+Scope: audit item **§2 (credential-at-rest)**. §3 (first-run UX) remains; §4 (code-signing) is out of scope
+by choice. Backward-compatible — no deploy-time action needed.
+
+---
+
 ## [2.46.0] - 2026-07-02 - Security: close the open-instance credential leak (pre-public hardening)
 
 A full-surface security review (public-release threat model: untrusted people self-hosting, each storing
