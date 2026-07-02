@@ -7,9 +7,9 @@ so that future /update commands can push revisions to already-live submissions.
 Matching strategy:
   1. Normalize both story folder names and submission titles (lowercase, strip
      punctuation, collapse whitespace)
-  2. Full-story match: "Extra Credit" ↔ Extra_Credit
-  3. Chapter match: "Hypnotic Claim - Chapter 1: The Seduction" ↔ Hypnotic_Claim ch1
-  4. Multi-part match: "Velvet and Vice (Part One)" ↔ Velvet_And_Vice ch1-4
+  2. Full-story match: "Example Story" ↔ Example_Story
+  3. Chapter match: "Example Story - Chapter 1: The Opening" ↔ Example_Story ch1
+  4. Multi-part match: "Another Story (Part One)" ↔ Another_Story ch1-4
   5. Skip test submissions (titles starting with [TEST])
 """
 

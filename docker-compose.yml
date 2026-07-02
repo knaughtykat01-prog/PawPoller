@@ -6,7 +6,10 @@ services:
     volumes:
       - pawpoller-data:/app/data
       - pawpoller-logs:/app/logs
-      - /home/kithetiger/story-archive:/app/story-archive
+      # Story archive for the editor/publishing features (optional). Override the
+      # host path with PAWPOLLER_ARCHIVE_DIR in .env; defaults to ./story-archive
+      # next to this file.
+      - ${PAWPOLLER_ARCHIVE_DIR:-./story-archive}:/app/story-archive
     restart: unless-stopped
     env_file: .env
 

@@ -405,7 +405,7 @@ def get_story_archive(story: str = Query(...)):
     history that nobody wants in a "send myself this story" download.
 
     The zip includes the story folder name as the top-level prefix so
-    extracting it produces `Hypnotic_Claim/Markdown/MASTER.md` rather
+    extracting it produces `Example_Story/Markdown/MASTER.md` rather
     than dumping `Markdown/MASTER.md` into the user's downloads.
     """
     import io
@@ -472,7 +472,7 @@ async def post_story(body: dict):
     """Post a story to one or more platforms immediately.
 
     Body: {
-        "story_name": "Extra_Credit",
+        "story_name": "Example_Story",
         "platforms": ["ib", "bsky"],
         "chapters": [1, 2, 3],         // optional, null = all
         "account_ids": {"ib": 5}       // optional, {platform: account_id}; absent → default account
@@ -513,7 +513,7 @@ async def update_story(body: dict):
     """Push updates to already-posted submissions.
 
     Body: {
-        "story_name": "Extra_Credit",
+        "story_name": "Example_Story",
         "platforms": ["ib"],        // optional, null = all
         "chapters": [3],            // optional, null = all
         "account_id": 5             // optional — only update this account's pubs
@@ -681,7 +681,7 @@ def add_to_queue(body: dict):
     """Add items to the posting queue.
 
     Body: {
-        "story_name": "Extra_Credit",
+        "story_name": "Example_Story",
         "platforms": ["ib", "sf"],
         "chapters": [1, 2],        // optional
         "action": "post",          // "post" or "update"
@@ -897,7 +897,7 @@ async def sync_push(body: dict):
     Body: {
         "server_url": "http://34.xx.xx.xx:8420",  // optional, uses setting if omitted
         "api_key": "pp_xxxx",                      // optional, uses setting if omitted
-        "story_name": "Extra_Credit"               // optional, sync one story only
+        "story_name": "Example_Story"               // optional, sync one story only
     }
     """
     import httpx as _httpx

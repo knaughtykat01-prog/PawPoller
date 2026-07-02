@@ -13,8 +13,8 @@ Run:
 Config resolution order:
     1. Env vars PAWPOLLER_URL + PAWPOLLER_KEY
     2. ~/.pawpoller-cli.json
-    3. VM fallback: http://127.0.0.1:8420 + first API key read from
-       /home/kithetiger/PawPoller/data/pawpoller.db (kithetiger only).
+    3. Local fallback: http://127.0.0.1:8420 + first API key read from
+       the SQLite DB (PAWPOLLER_DB_PATH, default /app/data/pawpoller.db).
 
 Dependencies: rich, httpx. Install with:
     pip install rich httpx
@@ -66,7 +66,9 @@ CATEGORIES = [
 ]
 
 CONFIG_PATH = Path.home() / ".pawpoller-cli.json"
-VM_DB_PATH = Path("/home/kithetiger/PawPoller/data/pawpoller.db")
+# Local/self-host fallback: read the first API key straight from the DB when
+# no env vars or config file are set. Override with PAWPOLLER_DB_PATH.
+VM_DB_PATH = Path(os.environ.get("PAWPOLLER_DB_PATH", "/app/data/pawpoller.db"))
 DEFAULT_LOCAL_URL = "http://127.0.0.1:8420"
 
 

@@ -1,7 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-02
-**Current version:** 2.44.4 — **Fix: posting-failure debug dumps wrote to broken/hardcoded paths.** When a
+**Current version:** 2.45.0 — **Distribution readiness: personal-data scrub + public-copy packaging.**
+First slice of "ready for others." This repo stays PRIVATE; public distribution is a *cleaned copy* built by
+the new **`deploy/make_public.py`** — it excludes the private dev/ops layer (`deploy/`, `qa/`, `site/`,
+`scripts*`, internal docs, personal `tests/` harnesses; keeps the pytest CI suite) and runs a **leak scan**
+that fails the build if any personal identifier (username, VM user, emails, personal paths, story titles)
+survives. Verified: 306 files, scan clean, 250 tests pass in the clean copy. In-place hygiene too:
+`docker-compose.yml` archive mount → `${PAWPOLLER_ARCHIVE_DIR:-./story-archive}` (**server `.env` now sets
+`PAWPOLLER_ARCHIVE_DIR`** to keep the live mount); `posting/generate_story_json.py` + `cli/pawpoller_cli.py`
+hardcoded paths → env-overridable; real story titles in doc examples → `Example_Story`. This is audit item
+**§1** of public-readiness; §2 (credential-at-rest), §3 (first-run), §4 (signing), §5 (docs/legal), §7
+(security) still open. Regenerate the public copy anytime: `python deploy/make_public.py [OUTDIR]`.
+
+**Prior release — 2.44.4 — Fix: posting-failure debug dumps wrote to broken/hardcoded paths.** When a
 posting flow can't parse the created work's ID, the client dumps the response body for postmortem. Two of
 three dump sites used paths that don't work where the code runs: `sqw` used a hardcoded personal path
 (`C:/Users/rhysc/…` — write throws on the Linux server, litters the repo root on desktop); `ao3` work-create

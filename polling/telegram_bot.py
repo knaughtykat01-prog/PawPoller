@@ -123,7 +123,7 @@ async def _cmd_help(token: str, chat_id: str, args: str) -> None:
 
 <b>📤 Publishing</b>
 /stories — List available stories in archive
-/upload &lt;story&gt; [platforms] — Post story to platforms (e.g. /upload Extra_Credit ib,sf)
+/upload &lt;story&gt; [platforms] — Post story to platforms (e.g. /upload Example_Story ib,sf)
 /update &lt;story&gt; [platforms] — Push updates to already-posted submissions
 /update all [platforms] — Update all stories with changed files
 /posted [story] — Show publication registry
@@ -685,7 +685,7 @@ async def _cmd_upload(token: str, chat_id: str, args: str) -> None:
     """Handle /upload <story> [platforms] — post story to platforms."""
     parts = args.strip().split()
     if not parts:
-        await _send(token, chat_id, "<b>Usage:</b> /upload &lt;story_name&gt; [platforms]\nExample: /upload Extra_Credit ib,sf")
+        await _send(token, chat_id, "<b>Usage:</b> /upload &lt;story_name&gt; [platforms]\nExample: /upload Example_Story ib,sf")
         return
 
     story_name = parts[0]
@@ -720,8 +720,8 @@ async def _cmd_upload(token: str, chat_id: str, args: str) -> None:
 async def _cmd_update(token: str, chat_id: str, args: str) -> None:
     """Handle /update <story|all> [platforms] — push updates to posted submissions.
 
-    /update Extra_Credit       — update one story on all platforms
-    /update Extra_Credit ib    — update one story on specific platform
+    /update Example_Story       — update one story on all platforms
+    /update Example_Story ib    — update one story on specific platform
     /update all                — update all stories with changed files
     /update all fa             — update all changed stories on FA only
     """

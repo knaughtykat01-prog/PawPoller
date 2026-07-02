@@ -4,6 +4,43 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.45.0] - 2026-07-02 - Distribution readiness: personal-data scrub + public-copy packaging
+
+First slice of getting PawPoller ready for others to run. This repo stays PRIVATE (it holds personal dev
+docs, VM ops scripts, live-account test harnesses, and a git history full of personal references); public
+distribution is a *cleaned copy* assembled by a new tool, so there's no history rewrite and no loss of
+working context.
+
+**New — `deploy/make_public.py`**: assembles a public-safe copy of the app into a separate tree, excluding
+the private dev/ops layer (`deploy/`, `qa/`, `site/`, `scripts/`, `scripts_utils/`, internal docs, and the
+personal `tests/` harnesses — keeping only the pytest CI suite), then runs a **leak scan** that greps the
+output for personal identifiers (username, VM user, emails, absolute personal paths, story titles) and
+**fails the build** if any survive. The exclude lists are the source of truth for "what is safe to publish."
+Verified: 306 files included, leak scan clean, and the CI suite (250 tests) passes inside the clean copy.
+
+**In-place hygiene** (improves the private repo too; correct under any distribution model):
+- `docker-compose.yml`: the story-archive bind-mount was hardcoded to a personal path
+  (`/home/kithetiger/story-archive`). Now `${PAWPOLLER_ARCHIVE_DIR:-./story-archive}` — configurable, with a
+  sane default. **Deploy note:** the server's `.env` now sets `PAWPOLLER_ARCHIVE_DIR` to preserve the live
+  mount. Documented in `.env.example`.
+- `posting/generate_story_json.py`: dropped a hardcoded `C:/Users/rhysc/…` archive path; resolves via
+  `$PAWPOLLER_ARCHIVE_DIR` → Docker mount → relative fallback.
+- `cli/pawpoller_cli.py`: the local-fallback DB path was hardcoded to `/home/kithetiger/PawPoller/…`; now
+  `PAWPOLLER_DB_PATH` (default `/app/data/pawpoller.db`).
+- Genericised real story titles used as doc/help examples (`Extra_Credit`, `Hypnotic_Claim`,
+  `Velvet_And_Vice` → `Example_Story` / `Another_Story`) across `polling/telegram_bot.py`,
+  `posting/{manager,sync}.py`, `routes/posting_api.py`, `posting/generate_story_json.py`.
+- Scrubbed a personal email from a historical CHANGELOG entry.
+
+Confirmed already-clean (no action needed): `.env` / `.env.test` / `settings.json` / `data/` are gitignored
+(not tracked); `.env.example` is placeholder-only; the PyInstaller spec bundles only `frontend` / `database`
+/ `assets` (no `data/`, no `.db`, no test scripts).
+
+Scope: this is checklist item **§1 (personal-data scrub)** of the public-readiness audit. Still open: §2
+credential-at-rest, §3 first-run UX, §4 code-signing, §5 docs/LICENSE/ToS, §7 security review.
+
+---
+
 ## [2.44.4] - 2026-07-02 - Fix: posting-failure debug dumps wrote to broken / hardcoded paths
 
 When a story-posting flow can't parse the created work's ID out of the response, the client dumps the
@@ -8591,7 +8628,7 @@ The Cloudflare Worker at `pawproxy.knaughtykat01.workers.dev` had a long-standin
 
 - `deploy/cf-worker.js` — patched `buildHeaders()` (preserve Content-Type, strip Content-Length) + redirect-path Content-Type/Length cleanup + long history-note comment
 - `deploy/wrangler.toml` — added minimal wrangler config so future deploys can use `npx wrangler deploy` from `PawPoller/deploy/`
-- Deployed via `npx wrangler deploy` to the `knaughtykat01@gmail.com` Cloudflare account (the one that owns the `knaughtykat01.workers.dev` subdomain). Initial deploy attempt landed on the wrong account because `wrangler login` had logged into a different identity — fixed by `wrangler logout` + `wrangler login` and picking the right account in the OAuth flow.
+- Deployed via `npx wrangler deploy` to the project's Cloudflare account (the one that owns the `knaughtykat01.workers.dev` subdomain). Initial deploy attempt landed on the wrong account because `wrangler login` had logged into a different identity — fixed by `wrangler logout` + `wrangler login` and picking the right account in the OAuth flow.
 
 ### Test files
 - `tests/check_cf_proxy_state.py` — audit `cf_worker_url`/`cf_worker_key` settings and report which mode the SF poster would pick

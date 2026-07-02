@@ -174,7 +174,7 @@ async def post_story(
     """Post a story to multiple platforms.
 
     Args:
-        story_name: Story folder name (e.g. "Extra_Credit").
+        story_name: Story folder name (e.g. "Example_Story").
         platforms: Platform IDs (e.g. ["ib", "bsky"]).
         chapters: Specific chapter indices (None = all). [0] = full story.
         extras: Per-package overrides merged into ``package.extra`` before

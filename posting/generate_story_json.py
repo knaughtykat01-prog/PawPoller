@@ -6,7 +6,7 @@ overwrites existing story.json files.
 
 Usage:
     python -m posting.generate_story_json                    # all stories
-    python -m posting.generate_story_json Hypnotic_Claim     # one story
+    python -m posting.generate_story_json Example_Story     # one story
     python -m posting.generate_story_json --dry-run           # preview without writing
 """
 
@@ -29,16 +29,25 @@ def _default_author() -> str:
 
 
 def find_archive() -> Path:
-    """Find the story archive directory."""
-    candidates = [
-        Path("C:/Users/rhysc/claude/m_x/Archives/Complete_Stories"),
-        Path("/app/story-archive"),
+    """Find the story archive directory.
+
+    Resolution order: ``$PAWPOLLER_ARCHIVE_DIR``, the Docker bind-mount target,
+    then a sibling ``m_x`` checkout (dev convenience).
+    """
+    candidates = []
+    env_dir = os.environ.get("PAWPOLLER_ARCHIVE_DIR", "").strip()
+    if env_dir:
+        candidates.append(Path(env_dir))
+    candidates += [
+        Path("/app/story-archive"),  # Docker bind-mount target
         Path(__file__).resolve().parent.parent.parent / "m_x" / "Archives" / "Complete_Stories",
     ]
     for p in candidates:
         if p.is_dir():
             return p
-    raise FileNotFoundError("Story archive not found")
+    raise FileNotFoundError(
+        "Story archive not found. Set PAWPOLLER_ARCHIVE_DIR to your archive path."
+    )
 
 
 def generate_story_json(story_path: Path) -> dict:
