@@ -5436,6 +5436,25 @@ per-platform account `<select>`s), a detail page (cover + per-platform
 publications with stats + "publish to more"), and a history view. `#/artwork`
 routes + an **Artwork** nav entry sit beside Stories.
 
+**Full gallery — discovered art merged in (2.48.0).** The hub grid is no longer
+library-only. `render()` fetches `/api/artwork/images` (library) **and**
+`/api/works/discovered` in parallel and merges both into one grid, newest-first,
+"like Stories". Discovered items are filtered client-side to art via
+`_isArt(d)` = art-capable platform (`this._PLATFORMS`) **and** `d.kind !== 'text'`
+**and** a thumbnail. That `kind` comes from the backend: `routes/submissions_api.py`
+`classify_kind(platform, type_str)` (pure/unit-tested) tags each discovered
+submission `art`/`text`/`unknown` — image-only `da`/`ik` and text-only
+`ao3`/`sqw`/`wp` short-circuit; mixed `fa`/`sf`/`ib`/`ws`/`bsky` read the stored
+type string (`category`/`content_type`/`subtype`), text hints winning over art
+hints — and `build_discovered` stamps it on every item. Library cards link to
+their per-work detail; **discovered cards** (`_discoveredCard`) render the
+source-platform badge over the cover + a view count, with **View ↗** (external)
+and **Import** (delegated click → `_importDiscovered` → existing
+`/api/artwork/import/{platform}/{id}` → re-render). Discovered is additive: a
+discovered-fetch error is swallowed so the library grid still shows. No schema
+change, no new endpoint. Styling: `frontend/css/artwork.css` `.artwork-card--disc`
++ `.artwork-disc-*` (reuses the global `.btn-sm`).
+
 ### 20.4 Per-platform image posting
 
 The 7 image-capable platforms (the 4 fiction-only sites — ao3, sqw, wp — plus tw,

@@ -42,16 +42,25 @@ window.Artwork = {
         if (window.toast && window.toast[kind]) window.toast[kind](msg);
     },
 
-    /* ── Hub: grid of artworks ──────────────────────────────── */
-
+    /* ── Hub: grid of artworks (library + discovered) ───────────
+     *
+     * Two sources merged into one grid, "like Stories":
+     *   • Library    — art you uploaded/imported into PawPoller. Clickable to the
+     *                  per-work detail, badged with the platforms it's posted to.
+     *   • Discovered — art the pollers found on your art accounts that isn't in
+     *                  your library yet. Badged with its source platform + views,
+     *                  with View ↗ + Import actions. Filtered to visual work via
+     *                  the backend `kind` tag + the art-capable platform set.
+     */
     async render() {
         const app = document.getElementById('app');
         app.innerHTML = `
             <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
                 <div>
                     <h1>Artwork</h1>
-                    <p class="muted">Upload an image, set per-platform details, and publish to
-                    your art sites at once. Posted art is tracked in analytics like stories.</p>
+                    <p class="muted">Everything you've got — art you've uploaded here plus pieces the
+                    pollers found on your accounts — in one place. Upload new work to publish it to
+                    multiple art sites at once.</p>
                 </div>
                 <div style="display:flex;gap:.5rem;flex-shrink:0;">
                     <a class="btn" href="#/artwork/log">History</a>
@@ -60,27 +69,94 @@ window.Artwork = {
             </div>
             <div id="artwork-grid"><div class="loading-spinner">Loading…</div></div>`;
 
-        let data;
+        const grid = document.getElementById('artwork-grid');
+
+        // Library is essential; discovered is additive — never block the grid on it.
+        let library = [];
         try {
-            data = await API.getArtworks();
+            const data = await API.getArtworks();
+            library = (data && data.artworks) || [];
         } catch (err) {
-            document.getElementById('artwork-grid').innerHTML =
-                `<div class="card error">Failed to load artworks: ${this.esc(err.message)}</div>`;
+            grid.innerHTML = `<div class="card error">Failed to load artworks: ${this.esc(err.message)}</div>`;
             return;
         }
-        const items = (data && data.artworks) || [];
-        const grid = document.getElementById('artwork-grid');
-        if (!items.length) {
+        let discovered = [];
+        try {
+            const dd = await API.getDiscovered();
+            discovered = ((dd && dd.discovered) || []).filter(d => this._isArt(d));
+        } catch (e) { /* show the library regardless of discovered errors */ }
+
+        if (!library.length && !discovered.length) {
+            grid.className = '';
             grid.innerHTML = `
                 <div class="empty-state">
                     <h3>No artwork yet</h3>
-                    <p class="muted">Upload your first image to get started.</p>
+                    <p class="muted">Upload your first image, or once the pollers have run they'll
+                    surface art from your connected accounts here.</p>
                     <a class="btn btn-primary" href="#/artwork/new">+ New artwork</a>
                 </div>`;
             return;
         }
+
+        // Merge into one grid, newest first. Library cards link to their detail;
+        // discovered cards carry View ↗ + Import.
+        const merged = [
+            ...library.map(a => ({ _src: 'lib', _date: a.created_at || '', a })),
+            ...discovered.map(d => ({ _src: 'disc', _date: d.posted_at || '', d })),
+        ].sort((x, y) => (y._date || '').localeCompare(x._date || ''));
+
         grid.className = 'artwork-grid';
-        grid.innerHTML = items.map(a => this._card(a)).join('');
+        grid.innerHTML = merged.map(m =>
+            m._src === 'lib' ? this._card(m.a) : this._discoveredCard(m.d)).join('');
+
+        grid.addEventListener('click', e => {
+            const btn = e.target.closest('.art-import-btn');
+            if (btn) { e.preventDefault(); this._importDiscovered(btn); }
+        });
+    },
+
+    /* Keep only art-capable, visual (non-text), thumbnailed discovered items. */
+    _isArt(d) {
+        return !!d && this._PLATFORMS.includes(d.platform)
+            && d.kind !== 'text' && !!d.thumbnail_url;
+    },
+
+    _discoveredCard(d) {
+        const plat = this._plat(d.platform);
+        const cover = d.thumbnail_url
+            ? `<div class="artwork-card-cover" style="background-image:url('${this.esc(d.thumbnail_url)}')"></div>`
+            : `<div class="artwork-card-cover artwork-card-cover--empty">no image</div>`;
+        const views = (d.views != null)
+            ? `<span class="artwork-disc-stat">${Utils.formatNumber(d.views)} views</span>` : '';
+        return `
+            <div class="artwork-card artwork-card--disc">
+                <a href="${this.esc(d.url)}" target="_blank" rel="noopener" class="artwork-card-coverlink">
+                    ${cover}
+                    <span class="artwork-disc-badge" title="Found on ${this.esc(plat.label)}">${plat.emoji || this.esc(plat.label)}</span>
+                </a>
+                <div class="artwork-card-body">
+                    <div class="artwork-card-title">${this.esc(d.title || ('#' + d.submission_id))}</div>
+                    <div class="artwork-card-meta">${views}</div>
+                    <div class="artwork-disc-actions">
+                        <a class="btn btn-sm" href="${this.esc(d.url)}" target="_blank" rel="noopener">View ↗</a>
+                        <button class="btn btn-sm btn-primary art-import-btn"
+                            data-platform="${this.esc(d.platform)}" data-sid="${this.esc(d.submission_id)}">Import</button>
+                    </div>
+                </div>
+            </div>`;
+    },
+
+    async _importDiscovered(btn) {
+        const platform = btn.dataset.platform, sid = btn.dataset.sid;
+        btn.disabled = true; btn.textContent = 'Importing…';
+        try {
+            await API.importArtwork(platform, sid);
+            this._toast('success', 'Imported to your library');
+            this.render();   // it becomes a library card and leaves the discovered set
+        } catch (err) {
+            btn.disabled = false; btn.textContent = 'Import';
+            this._toast('error', 'Import failed: ' + (err.message || err));
+        }
     },
 
     _card(a) {

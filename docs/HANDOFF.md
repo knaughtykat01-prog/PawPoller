@@ -1,7 +1,23 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-03
-**Current version:** 2.47.0 — **DeviantArt polling moved to the official OAuth2 API (off the cookie/_napi scrape).**
+**Current version:** 2.48.0 — **Artwork tab is now a full gallery — discovered art merged into the grid.**
+The Artwork hub (`#/artwork`) no longer lists only images uploaded *through* PawPoller; it now also surfaces
+**discovered art** the pollers found on your art accounts, reading like the Stories hub (everything in one
+grid). New pure/tested classifier `routes/submissions_api.py` `classify_kind` tags each discovered submission
+`art`/`text`/`unknown` (image-only `da`/`ik` and text-only `ao3`/`sqw`/`wp` short-circuit; mixed
+`fa`/`sf`/`ib`/`ws`/`bsky` read from the stored type string, text hints beating art hints); `build_discovered`
+stamps a `kind` on every item. `frontend/js/artwork.js` `render()` fetches the library **and**
+`/api/works/discovered` in parallel, filters discovered to art-capable platforms + visual `kind` + a thumbnail,
+merges both newest-first: library cards link to their detail; **discovered cards** show a source-platform badge
++ views with **View ↗** / **Import** (existing `/api/artwork/import/{platform}/{id}`). Discovered is additive
+(never blocks the library on a fetch error). No schema change, no new endpoint. New tests in `tests/test_works.py`
+(`classify_kind` + `kind` stamping); full suite **275 passing**; `artwork.js` node-check clean.
+**Next up (this session's plan):** Phase 2 — a new microblog **Posts** module (Bluesky + Mastodon posting
+first), then Phase 3 (Threads/Tumblr/X). Deferred task: an in-dashboard **Pixiv guided-paste Connect** flow
+(Pixiv's `pixiv://` redirect blocks a true one-click browser login).
+
+**Prior release — 2.47.0 — DeviantArt polling moved to the official OAuth2 API (off the cookie/_napi scrape).**
 DA polling now uses an app-only **client-credentials** token (`da_client_id` + `da_client_secret`, no cookie):
 `/gallery/all` enumerates the target user, `/deviation/metadata?ext_stats=true` returns views/favourites/
 comments/downloads (batched 10/call). The DB still keys by the **integer** deviation id (parsed from each

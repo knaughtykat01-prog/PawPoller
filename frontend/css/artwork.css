@@ -55,6 +55,33 @@
 .artwork-plats { margin-left: auto; display: flex; gap: 2px; }
 .artwork-plat { font-size: 14px; }
 
+/* ── Discovered cards (art the pollers found, not yet in the library) ── */
+.artwork-card--disc { display: flex; flex-direction: column; }
+.artwork-card-coverlink {
+    position: relative;
+    display: block;
+    text-decoration: none;
+    color: inherit;
+}
+.artwork-disc-badge {
+    position: absolute;
+    top: .4rem;
+    right: .4rem;
+    font-size: 14px;
+    line-height: 1;
+    padding: 3px 6px;
+    border-radius: var(--radius-pill);
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+}
+.artwork-disc-stat { font-size: 12px; color: var(--text-muted); }
+.artwork-disc-actions {
+    display: flex;
+    gap: .4rem;
+    margin-top: .55rem;
+}
+.artwork-disc-actions .btn { flex: 1; text-align: center; }
+
 /* Rating badges */
 .artwork-badge {
     display: inline-block;

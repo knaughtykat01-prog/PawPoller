@@ -173,6 +173,43 @@ def list_works(
 
 # ── Discovered (unlinked) bucket + link-to-work (Phase 2) ─────────────────────
 
+# Art vs text classification for discovered submissions. Used by the Artwork
+# hub to surface discovered *visual* work (and by any view that wants to split
+# a mixed platform's feed). Two platforms are content-pure for this app; the
+# rest are classified from the per-platform type string (category / subtype /
+# content_type) the poller already stored.
+_ART_ONLY_PLATFORMS = frozenset({"da", "ik"})          # image-only here
+_TEXT_ONLY_PLATFORMS = frozenset({"ao3", "sqw", "wp"})  # literature-only
+# Substrings that mark a type string as prose vs visual. Order matters only in
+# that a text hint wins over an art hint (a "story illustration" is still text).
+_TEXT_TYPE_HINTS = (
+    "stor", "writ", "litera", "prose", "poet", "novel", "chapter", "fiction",
+)
+_ART_TYPE_HINTS = (
+    "art", "visual", "image", "illustration", "digital", "drawing", "sketch",
+    "paint", "photo", "comic", "animation", "post",
+)
+
+
+def classify_kind(platform: str, type_str: str) -> str:
+    """Classify a discovered submission as 'art', 'text', or 'unknown'.
+
+    Pure/unit-testable. Content-pure platforms short-circuit; mixed platforms
+    (fa/sf/ib/ws/bsky) are read from their stored type string. Text hints win
+    over art hints so a "Story illustration" stays text.
+    """
+    if platform in _ART_ONLY_PLATFORMS:
+        return "art"
+    if platform in _TEXT_ONLY_PLATFORMS:
+        return "text"
+    t = (type_str or "").lower()
+    if any(h in t for h in _TEXT_TYPE_HINTS):
+        return "text"
+    if any(h in t for h in _ART_TYPE_HINTS):
+        return "art"
+    return "unknown"
+
+
 def build_discovered(platform_rows: list[tuple], linked: set) -> list[dict]:
     """Normalize per-platform submission rows into the discovered-unlinked list.
 
@@ -195,6 +232,7 @@ def build_discovered(platform_rows: list[tuple], linked: set) -> list[dict]:
                 "title": d.get(title_col) or f"#{sid}",
                 "thumbnail_url": d.get("thumbnail_url") or d.get("thumb_url") or "",
                 "type": stype,
+                "kind": classify_kind(platform, stype),
                 "url": cfg["url_template"].format(id=sid),
                 "views": d.get("views"),
                 "favorites": d.get("favorites_count") or d.get("favorites"),

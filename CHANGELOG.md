@@ -4,6 +4,31 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.48.0] - 2026-07-03 - Artwork hub becomes a full gallery (discovered art merged in)
+
+The **Artwork** tab (`#/artwork`) no longer shows only images you uploaded *through* PawPoller. It now merges
+in **discovered art** — pieces the pollers found on your art accounts — so it reads like the Stories hub:
+everything you have, in one grid.
+
+- **New — art/text classifier (`routes/submissions_api.py` `classify_kind`)**: a pure, unit-tested helper
+  that tags each discovered submission `art` / `text` / `unknown`. Image-only platforms (`da`, `ik`) and
+  literature-only platforms (`ao3`, `sqw`, `wp`) short-circuit; mixed platforms (`fa`/`sf`/`ib`/`ws`/`bsky`)
+  are read from the stored type string (`category` / `content_type` / `subtype`), with text hints winning over
+  art hints so a "Story illustration" stays text. `build_discovered` now stamps a `kind` on every item.
+- **Artwork grid (`frontend/js/artwork.js`)**: `render()` now fetches the library **and** `/api/works/discovered`
+  in parallel, filters discovered to art-capable platforms + visual `kind` + a thumbnail, and merges both into
+  one grid sorted newest-first. Library cards link to their per-work detail as before; **discovered cards** show
+  the source-platform badge + view count with **View ↗** and **Import** actions. Discovered is additive — a
+  discovered-fetch failure never blocks the library grid.
+- **Import in place**: the **Import** button on a discovered card calls the existing
+  `/api/artwork/import/{platform}/{id}`, pulls it into your library, and re-renders (it becomes a library card
+  and leaves the discovered set). DA imports remain thumbnail-only (per the platform specs).
+- **Styling (`frontend/css/artwork.css`)**: discovered cards get a corner platform badge over the cover, a view
+  stat, and a two-button action row (reuses the global `.btn-sm`).
+- No schema change, no new endpoint — reuses `/api/artwork/images` + `/api/works/discovered`.
+
+---
+
 ## [2.47.0] - 2026-07-03 - DeviantArt polling: official OAuth2 API replaces the cookie/_napi scrape
 
 DA polling no longer needs a pasted browser cookie **or** the Cloudflare Worker proxy. It now uses the

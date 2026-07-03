@@ -4,7 +4,7 @@
 posted platforms and persona(s). It's a pure function over already-fetched
 data, so these tests pass fixtures directly — no DB or on-disk archives.
 """
-from routes.submissions_api import assemble_works, build_discovered
+from routes.submissions_api import assemble_works, build_discovered, classify_kind
 
 PUBS = [
     # My_Story: posted to ib + sf (account 1); one queued (not posted) on fa.
@@ -106,3 +106,45 @@ def test_discovered_excludes_linked_and_normalizes():
 def test_discovered_skips_blank_ids():
     rows = [{"submission_id": "", "title": "x"}, {"submission_id": None, "title": "y"}]
     assert build_discovered([("fa", CFG_FA, rows)], set()) == []
+
+
+# ── Art/text classification (Artwork full-gallery) ─────────────────
+
+def test_classify_kind_content_pure_platforms():
+    # Image-only platforms are art regardless of the type string.
+    assert classify_kind("da", "") == "art"
+    assert classify_kind("ik", "image") == "art"
+    # Literature-only platforms are text regardless of the type string.
+    assert classify_kind("ao3", "") == "text"
+    assert classify_kind("sqw", "") == "text"
+    assert classify_kind("wp", "") == "text"
+
+
+def test_classify_kind_mixed_platforms_from_type_string():
+    assert classify_kind("fa", "Artwork (Digital)") == "art"
+    assert classify_kind("fa", "Story") == "text"
+    assert classify_kind("ws", "visual") == "art"
+    assert classify_kind("ws", "literary") == "text"
+    assert classify_kind("sf", "Artwork") == "art"
+    assert classify_kind("sf", "Writing") == "text"
+    assert classify_kind("bsky", "post") == "art"
+
+
+def test_classify_kind_text_hint_wins_over_art_hint():
+    # A "story illustration" is still text — text hints take precedence.
+    assert classify_kind("fa", "Story illustration") == "text"
+
+
+def test_classify_kind_unknown_when_no_hint():
+    assert classify_kind("fa", "") == "unknown"
+    assert classify_kind("fa", "Music") == "unknown"
+
+
+def test_build_discovered_tags_kind():
+    rows_fa = [
+        {"submission_id": 1, "title": "Art", "category": "Artwork (Digital)"},
+        {"submission_id": 2, "title": "Tale", "category": "Story"},
+    ]
+    out = {d["submission_id"]: d for d in build_discovered([("fa", CFG_FA, rows_fa)], set())}
+    assert out["1"]["kind"] == "art"
+    assert out["2"]["kind"] == "text"
