@@ -4,6 +4,42 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.47.0] - 2026-07-03 - DeviantArt polling: official OAuth2 API replaces the cookie/_napi scrape
+
+DA polling no longer needs a pasted browser cookie **or** the Cloudflare Worker proxy. It now uses the
+**official OAuth2 API** — the same API the DA poster already uses — with an app-only **client-credentials**
+token (`client_id` + `client_secret`, no user login).
+
+- **New — `clients/da/client.py`**: a client-credentials token drives `/gallery/all` for enumeration and
+  `/deviation/metadata?ext_stats=true` for stats. `ext_stats` returns **views, views_today, favourites,
+  comments, downloads, downloads_today** for any public deviation — the exact stats the old Eclipse `_napi`
+  scrape produced, minus the fragility. Token endpoint is `https://www.deviantart.com/oauth2/token` (the
+  `/api/v1/...` prefix 404s). `ext_stats` caps at 10 deviations/call, so metadata is batched by 10.
+- **Data shape unchanged**: the DB keys deviations by the **integer** id (parsed from each deviation's URL);
+  the API's UUID `deviationid` is used only transiently for the metadata call. `DAClient` returns the same
+  detail-dict as before, so the poller, `da_queries`, `da_schema.sql`, the hub/analytics/telegram/group code,
+  and the dashboard are **untouched** — no schema migration.
+- **Mature content**: handled by passing `mature_content=true` (verified: mature deviations return full
+  `ext_stats`). No user token needed.
+- **No CF proxy for DA**: DeviantArt left `PROXY_REQUIRED_PLATFORMS` (`polling/cf_proxy.py`) — the official
+  API answers from datacenter IPs (verified 200 from the GCP VM), unlike the IP-walled Eclipse frontend. Same
+  reclassification AO3 got in 2.22.11.
+- **Connect UI** (`frontend/js/app.js`): the DA settings form now takes `client_id` + `client_secret` + the
+  username to track (mirrors the Mastodon token form), replacing the cookie textarea / browser-login capture.
+  `routes/da_api.py` `auth/connect` validates by minting a token and confirming the gallery responds.
+- **Legacy fallback retained**: if no `client_id`/`client_secret` is configured but a `da_cookie` is, the
+  client falls back to the old `_napi` scrape (still proxy-dependent). Not the default.
+
+New tests: `tests/test_da_parse.py` (13 cases — URL-id parse, thumbnail pick, date/HTML helpers, OAuth-vs-cookie
+mode switch, metadata→detail mapping). Full suite: 271 passing. Live-validated end-to-end against a real
+gallery. Research write-up: `docs/research/deviantart_official_api.md`.
+
+Scope: DA polling auth migration. Deploy note: existing DA cookie installs keep working via the fallback until
+reconnected with `client_id`/`client_secret`; on the maintainer server DA had no creds configured, so this is a
+clean cutover.
+
+---
+
 ## [2.46.2] - 2026-07-02 - HTTPS-ready: honour proxy headers behind a TLS reverse proxy
 
 Prep for serving the dashboard over HTTPS at `pawpoller.syncopates.app` (Cloudflare-proxied → Caddy origin

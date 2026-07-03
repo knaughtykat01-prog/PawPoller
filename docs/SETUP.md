@@ -476,7 +476,7 @@ MASTER.md uses HTML-comment anchors (`<!-- @title -->`, `<!-- @body -->`, etc.) 
 
 ## 5. Platform credentials
 
-Different platforms need different auth mechanisms. Most of the awkward ones (FA, DA, X) need session cookies — the desktop app's **"Login via Browser"** button pops up a real browser window, you log in, and it captures the cookies for you. In headless/Docker mode you paste cookies manually (instructions are on each platform's settings card).
+Different platforms need different auth mechanisms. A couple of the awkward ones (FA, X) need session cookies — the desktop app's **"Login via Browser"** button pops up a real browser window, you log in, and it captures the cookies for you. In headless/Docker mode you paste cookies manually (instructions are on each platform's settings card). DeviantArt uses the official API instead: register a DA app and paste its client_id/client_secret (no cookie).
 
 Short version per platform:
 
@@ -488,7 +488,7 @@ Short version per platform:
 | Weasyl | API key | weasyl.com → Settings → API keys → generate |
 | AO3 | Username + password | Your AO3 account |
 | SquidgeWorld | Username + password | Your SqW account |
-| DeviantArt | Session cookie | DevTools → Cookies → copy `auth`/`auth_secure`/`userinfo` |
+| DeviantArt | App client_id + client_secret | deviantart.com/developers/apps → Register Application (Client type: Confidential) → copy client_id + client_secret; also enter the DA username to track |
 | Mastodon | Instance URL + access token | Your instance → Preferences → Development → New application (scope `read`) |
 | Tumblr | OAuth consumer key + blog | tumblr.com/oauth/apps → register an app → copy the "OAuth Consumer Key" |
 | Pixiv | Refresh token | One-time browser login (e.g. the `gppt` helper) |

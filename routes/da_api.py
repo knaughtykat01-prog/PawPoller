@@ -1,8 +1,8 @@
 """REST API endpoints for the DeviantArt (DA) analytics dashboard.
 
-DeviantArt uses the Eclipse frontend with internal _napi JSON endpoints.
-Auth is cookie-based -- users provide their full browser cookie string
-plus a target username to track.
+Polling uses the official OAuth2 API (2.47.0) -- users register a DA app and
+provide its client_id + client_secret plus a target username to track. The
+legacy cookie path is a fallback only.
 
 Stats tracked: views, favourites, comments, downloads.
 Downloads is unique to DeviantArt among PawPoller platforms.
@@ -34,7 +34,11 @@ da_router = APIRouter(prefix="/api/da")
 def da_auth_status():
     """Check whether DA credentials exist and whether there is any DA data."""
     settings = config.get_settings()
-    has_credentials = bool(settings.get("da_cookie"))
+    has_credentials = bool(
+        settings.get("da_client_id")
+        and settings.get("da_client_secret")
+        and settings.get("da_target_user")
+    )
     has_data = False
     conn = get_connection()
     try:
@@ -53,40 +57,41 @@ def da_auth_status():
 
 @da_router.post("/auth/connect")
 async def da_connect(body: dict):
-    """Validate DA cookies and save to settings.
+    """Validate DA app credentials and save to settings.
 
     Auth flow:
-      1. Receive cookie string + target_user from the frontend
-      2. Create a temporary DAClient and validate cookies
+      1. Receive client_id + client_secret + target_user from the frontend
+      2. Mint a client-credentials token and confirm the target gallery responds
       3. If validation succeeds, save credentials to settings.json
     """
-    cookie = body.get("cookie", "").strip()
+    client_id = body.get("client_id", "").strip()
+    client_secret = body.get("client_secret", "").strip()
     target_user = body.get("target_user", "").strip()
 
-    if not cookie:
-        raise HTTPException(400, "Cookie string is required")
+    if not client_id or not client_secret:
+        raise HTTPException(400, "client_id and client_secret are required")
     if not target_user:
         raise HTTPException(400, "Target user is required (the DA user to track)")
 
-    # Validate against the persistent singleton so a successful
-    # validation leaves a live session in place for the next poll cycle.
-    from polling.da_poller import _get_or_create_client
-    overlay = {
-        **config.get_settings(),
-        "da_cookie": cookie,
-        "da_target_user": target_user,
-    }
-    client = _get_or_create_client(overlay, cookie, target_user)
+    # Validate with a throwaway client so we never mutate the shared poll
+    # singleton mid-cycle (the OAuth path re-reads creds from settings on every
+    # cycle, so there's no live session to preserve). Avoids a connect/poll race.
+    client = DAClient(client_id=client_id, client_secret=client_secret,
+                      target_user=target_user)
     try:
-        valid = await client.validate_cookies()
+        valid = await client.validate_credentials()
     except Exception as e:
-        raise HTTPException(502, f"Failed to validate cookies: {e}")
+        raise HTTPException(502, f"Failed to validate credentials: {e}")
+    finally:
+        await client.close()
 
     if not valid:
-        raise HTTPException(401, "Cookies appear invalid — could not access gallery. Check values and try again.")
+        raise HTTPException(401, "Could not authenticate — check the client_id/client_secret "
+                                 "and that the username exists.")
 
     config.save_settings({
-        "da_cookie": cookie,
+        "da_client_id": client_id,
+        "da_client_secret": client_secret,
         "da_target_user": target_user,
         "da_notifications_enabled": True,
     })
@@ -96,8 +101,14 @@ async def da_connect(body: dict):
 
 @da_router.post("/auth/disconnect")
 def da_disconnect():
-    """Clear DA credentials from settings."""
-    config.delete_settings_keys(["da_cookie", "da_target_user"])
+    """Disconnect DA polling.
+
+    Clears the target user (which flips auth/status to disconnected) and the
+    legacy cookie, but deliberately KEEPS da_client_id/da_client_secret: those
+    are shared with the DA *poster* (which also refreshes tokens from them), so
+    deleting them here could break posting. Reconnecting just re-saves them.
+    """
+    config.delete_settings_keys(["da_target_user", "da_cookie"])
     config.save_settings({"da_notifications_enabled": False})
     return {"status": "success", "message": "DeviantArt disconnected"}
 

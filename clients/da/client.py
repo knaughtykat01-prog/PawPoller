@@ -1,20 +1,33 @@
 """DeviantArt (DA) HTTP client.
 
-DeviantArt uses the Eclipse frontend which provides internal `_napi` JSON
-endpoints. Authentication is via browser cookies. Data collection uses these
-internal endpoints since there is no public gallery stats API.
+Polling uses the **official OAuth2 API** (as of 2.47.0): a client-credentials
+token (client_id + client_secret, no user login) enumerates the target user's
+gallery via ``/gallery/all`` and pulls per-deviation stats via
+``/deviation/metadata?ext_stats=true`` — which returns views, views_today,
+favourites, comments, downloads and downloads_today for ANY public deviation.
+This replaces the old browser-cookie Eclipse ``_napi`` scrape, which needed a
+pasted cookie (that expired) and the Cloudflare Worker proxy (DA IP-blocks
+datacenter IPs on the *frontend*; the *API* is not blocked). See
+``docs/research/deviantart_official_api.md``.
+
+The legacy cookie/``_napi`` methods are retained as a fallback: if no
+client_id/client_secret is configured but a ``da_cookie`` is, the client falls
+back to the old scrape. Posting already uses the official OAuth2 API.
 
 Key details:
-  - Deviation IDs are integers
+  - Deviation IDs stored in the DB are integers (parsed from the deviation URL);
+    the API's UUID ``deviationid`` is used only transiently for metadata calls.
   - Stats: views, favourites, comments, downloads
-  - Auth: cookie-based (auth_token cookie from browser)
-  - DA has aggressive rate limiting; respectful delays required
+  - Auth: client-credentials OAuth (primary) or browser cookie (fallback)
+  - ext_stats caps metadata at 10 deviations per call; respectful delays apply
 """
 
 from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
+from datetime import datetime, timezone
 from html import unescape
 from typing import Any
 
@@ -25,6 +38,9 @@ import config
 logger = logging.getLogger(__name__)
 
 _BASE = "https://www.deviantart.com"
+_API = "https://www.deviantart.com/api/v1/oauth2"  # official OAuth2 API base
+_TOKEN_URL = "https://www.deviantart.com/oauth2/token"  # NOT under /api/v1 — that 404s
+_META_BATCH = 10  # deviation/metadata caps at 10 deviations/call when ext_stats=true
 
 _HEADERS = {
     "User-Agent": (
@@ -39,25 +55,39 @@ _HEADERS = {
 
 
 class DAClient:
-    """Async HTTP client for DeviantArt using Eclipse _napi endpoints.
+    """Async HTTP client for DeviantArt.
 
-    Why _napi endpoints instead of a public API:
-      DeviantArt's Eclipse frontend uses internal ``_napi`` JSON endpoints that
-      are undocumented — they were discovered by inspecting browser network
-      traffic.  There is no official public API for gallery stats.
+    Polling (primary): the official OAuth2 API. A client-credentials token
+    (``client_id`` + ``client_secret``, no user login) drives ``/gallery/all``
+    for enumeration and ``/deviation/metadata?ext_stats=true`` for stats — which
+    returns views/favourites/comments/downloads for any public deviation. Works
+    from datacenter IPs, so no CF Worker proxy is needed.
 
-    Why the CF Worker proxy is needed:
-      DA aggressively blocks datacenter IPs, so server deployments must route
-      requests through the Cloudflare Worker proxy to appear as residential
-      traffic.  Desktop/local runs (residential IP) typically work without it.
+    Polling (fallback): the legacy Eclipse ``_napi`` scrape, used only when no
+    ``client_id``/``client_secret`` is configured but a ``cookie_value`` is. That
+    path still needs the CF proxy on datacenter IPs.
+
+    Posting: the official OAuth2 API (see the ``oauth_*`` methods below).
     """
 
-    def __init__(self, cookie_value: str, target_user: str,
-                 proxy_url: str = "", proxy_key: str = ""):
-        self.cookie_value = cookie_value  # Full cookie string from browser
+    def __init__(self, cookie_value: str = "", target_user: str = "", *,
+                 client_id: str = "", client_secret: str = "",
+                 proxy_url: str = "", proxy_key: str = "", cookie: str = ""):
+        self.cookie_value = cookie_value or cookie  # full cookie string (fallback path)
         self.target_user = target_user
+        self.client_id = client_id
+        self.client_secret = client_secret
 
-        # Use Cloudflare Worker proxy if configured (bypasses datacenter IP blocks)
+        # Client-credentials app token cache (official API path).
+        self._app_token: str = ""
+        self._app_token_expires_at: float = 0.0
+        # int deviation_id -> {uuid, title, url, thumbnail_url, posted_at, is_mature, username}
+        # populated by the OAuth enumeration so details can reuse it without re-fetching.
+        self._gallery_cache: dict[int, dict] = {}
+
+        # Use Cloudflare Worker proxy if configured (bypasses datacenter IP blocks).
+        # Only relevant to the legacy cookie/_napi path; the official API is not
+        # IP-walled, so the poller no longer passes proxy creds for DA.
         if proxy_url and proxy_key:
             from polling.cf_proxy import CloudflareProxyTransport
             transport = CloudflareProxyTransport(proxy_url, proxy_key)
@@ -72,6 +102,11 @@ class DAClient:
             transport=transport,
         )
         self._update_cookies()
+
+    @property
+    def _use_oauth(self) -> bool:
+        """Official API when app creds are present; else legacy cookie scrape."""
+        return bool(self.client_id and self.client_secret)
 
     async def __aenter__(self):
         return self
@@ -92,9 +127,19 @@ class DAClient:
                     cookies[key.strip()] = val.strip()
         self._http.cookies.update(cookies)
 
-    def update_credentials(self, cookie_value: str, target_user: str) -> None:
-        self.cookie_value = cookie_value
+    def update_credentials(self, cookie_value: str = "", target_user: str = "", *,
+                           client_id: str = "", client_secret: str = "",
+                           cookie: str = "") -> None:
+        """Re-point the persistent client at another account's credentials."""
+        self.cookie_value = cookie_value or cookie
         self.target_user = target_user
+        # If the app credentials changed, drop the cached token so the next call
+        # mints a fresh one for the new app.
+        if (client_id, client_secret) != (self.client_id, self.client_secret):
+            self._app_token = ""
+            self._app_token_expires_at = 0.0
+        self.client_id = client_id
+        self.client_secret = client_secret
         self._update_cookies()
 
     async def close(self) -> None:
@@ -140,6 +185,226 @@ class DAClient:
 
     # ── Authentication ────────────────────────────────────────
 
+    # ── Official API (OAuth2) — primary polling path ──────────
+
+    async def _get_app_token(self) -> str:
+        """Return a cached client-credentials access token, minting it as needed."""
+        now = time.time()
+        if self._app_token and now < self._app_token_expires_at:
+            return self._app_token
+        resp = await self._http.post(
+            _TOKEN_URL,
+            data={
+                "grant_type": "client_credentials",
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+            },
+            timeout=15.0,
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"DA: client-credentials token failed — {resp.status_code}: {resp.text[:200]}"
+            )
+        data = resp.json()
+        token = data.get("access_token", "")
+        if not token:
+            raise RuntimeError(f"DA: token response missing access_token: {str(data)[:200]}")
+        self._app_token = token
+        self._app_token_expires_at = now + int(data.get("expires_in", 3600)) - 60
+        logger.info("DA: minted client-credentials token (expires in %ss)",
+                    data.get("expires_in", 0))
+        return token
+
+    async def _api_get(self, path: str, params) -> dict | None:
+        """GET an official-API endpoint with the app token. Retries once on 401
+        (stale token) and once on 429 (rate limit). Returns parsed JSON or None."""
+        token = await self._get_app_token()
+        url = f"{_API}{path}"
+        try:
+            resp = await self._http.get(url, params=params,
+                                        headers={"Authorization": f"Bearer {token}"})
+            if resp.status_code == 401:
+                # Token likely expired early — force a refresh and retry once.
+                self._app_token = ""
+                token = await self._get_app_token()
+                resp = await self._http.get(url, params=params,
+                                            headers={"Authorization": f"Bearer {token}"})
+            if resp.status_code == 429:
+                logger.warning("DA: rate limited (429) on %s, waiting 30s...", path)
+                await asyncio.sleep(30)
+                resp = await self._http.get(url, params=params,
+                                            headers={"Authorization": f"Bearer {token}"})
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError as e:
+            logger.error("DA: API GET %s failed: %s", path, e)
+            return None
+        except Exception as e:
+            logger.error("DA: API GET %s parse error: %s", path, e)
+            return None
+
+    async def validate_credentials(self) -> bool:
+        """Validate the configured credentials.
+
+        OAuth path: mint a token and confirm ``/gallery/all`` responds for the
+        target user (an empty gallery still counts as valid). Cookie path: defer
+        to :meth:`validate_cookies`.
+        """
+        if self._use_oauth:
+            if not self.target_user:
+                logger.warning("DA: no target_user set for OAuth validation")
+                return False
+            try:
+                await self._get_app_token()
+            except Exception as e:
+                logger.warning("DA: token mint failed during validation: %s", e)
+                return False
+            data = await self._api_get(
+                "/gallery/all",
+                {"username": self.target_user, "limit": 1, "mature_content": "true"},
+            )
+            if data is None:
+                return False
+            if data.get("error"):
+                logger.warning("DA: gallery/all validation error: %s — %s",
+                               data.get("error"), data.get("error_description"))
+                return False
+            return "results" in data
+        return await self.validate_cookies()
+
+    async def get_all_deviation_ids(self) -> list[dict]:
+        """Enumerate the target user's deviations (OAuth primary, cookie fallback)."""
+        if self._use_oauth:
+            return await self._get_all_deviation_ids_oauth()
+        return await self._get_all_deviation_ids_cookie()
+
+    async def get_deviation_details_batch(self, deviation_ids: list[int]) -> list[dict]:
+        """Fetch stats/metadata for many deviations (OAuth primary, cookie fallback)."""
+        if self._use_oauth:
+            return await self._get_details_batch_oauth(deviation_ids)
+        return await self._get_details_batch_cookie(deviation_ids)
+
+    async def _get_all_deviation_ids_oauth(self) -> list[dict]:
+        """[Official API] Enumerate the target user's gallery via /gallery/all.
+
+        Caches per-deviation fields (UUID, title, url, thumbnail, date, mature)
+        keyed by the integer deviation id parsed from the URL, so the details
+        step can reuse them. Returns ``[{deviation_id: int, title: str}, ...]``.
+        """
+        self._gallery_cache.clear()
+        out: list[dict] = []
+        seen: set[int] = set()
+        offset = 0
+
+        for _page_safety in range(1000):
+            data = await self._api_get("/gallery/all", {
+                "username": self.target_user,
+                "offset": offset,
+                "limit": 24,
+                "mature_content": "true",  # include mature deviations
+            })
+            if data is None:
+                logger.error("DA: gallery/all returned no data at offset %d", offset)
+                break
+            if data.get("error"):
+                logger.error("DA: gallery/all error: %s — %s",
+                             data.get("error"), data.get("error_description"))
+                break
+
+            results = data.get("results") or []
+            if not results:
+                break
+
+            new_this_page = 0
+            for d in results:
+                did = _int_id_from_url(d.get("url", ""))
+                if did is None or did in seen:
+                    continue
+                seen.add(did)
+                self._gallery_cache[did] = {
+                    "uuid": d.get("deviationid", ""),
+                    "title": d.get("title", ""),
+                    "url": d.get("url", ""),
+                    "thumbnail_url": _pick_thumb(d),
+                    "posted_at": _unix_to_iso(d.get("published_time")),
+                    "is_mature": bool(d.get("is_mature")),
+                    "username": (d.get("author") or {}).get("username", self.target_user),
+                }
+                out.append({"deviation_id": did, "title": d.get("title", "")})
+                new_this_page += 1
+
+            if new_this_page == 0 or not data.get("has_more"):
+                break
+            next_offset = data.get("next_offset")
+            offset = next_offset if next_offset is not None else offset + 24
+            await asyncio.sleep(config.DA_REQUEST_DELAY_SECONDS)
+
+        logger.info("DA: gallery/all found %d deviations for %s", len(out), self.target_user)
+        return out
+
+    async def _get_details_batch_oauth(self, deviation_ids: list[int]) -> list[dict]:
+        """[Official API] Fetch stats for many deviations via metadata?ext_stats.
+
+        Chunks by 10 (the ext_stats cap), maps each int id to its cached UUID,
+        and merges the metadata stats with the gallery-cache fields into the same
+        detail-dict shape the legacy path produced.
+        """
+        details: list[dict] = []
+        for chunk in _chunks(deviation_ids, _META_BATCH):
+            int_by_uuid: dict[str, int] = {}
+            params: list[tuple[str, str]] = [("ext_stats", "true"),
+                                             ("ext_submission", "true"),
+                                             ("mature_content", "true")]
+            for did in chunk:
+                cached = self._gallery_cache.get(did)
+                if not cached or not cached.get("uuid"):
+                    logger.debug("DA: no cached UUID for deviation %s — skipping", did)
+                    continue
+                uuid = cached["uuid"]
+                int_by_uuid[uuid.upper()] = did
+                params.append(("deviationids[]", uuid))
+            if not int_by_uuid:
+                continue
+
+            data = await self._api_get("/deviation/metadata", params)
+            if not data or "metadata" not in data:
+                logger.warning("DA: metadata returned no data for a chunk of %d", len(int_by_uuid))
+                continue
+            for m in data.get("metadata", []):
+                uuid = (m.get("deviationid") or "").upper()
+                did = int_by_uuid.get(uuid)
+                if did is None:
+                    continue
+                details.append(self._build_detail(did, m))
+            await asyncio.sleep(config.DA_REQUEST_DELAY_SECONDS)
+        return details
+
+    def _build_detail(self, deviation_id: int, m: dict) -> dict:
+        """Merge a metadata object + gallery cache into a legacy-shaped detail dict."""
+        cached = self._gallery_cache.get(deviation_id, {})
+        stats = m.get("stats") or {}
+        tags = [t.get("tag_name", "") for t in (m.get("tags") or []) if isinstance(t, dict)]
+        subm = m.get("submission") or {}
+        return {
+            "deviation_id": deviation_id,
+            "title": m.get("title") or cached.get("title", ""),
+            "username": (m.get("author") or {}).get("username")
+                        or cached.get("username", self.target_user),
+            "description": _strip_html(m.get("description", "")),
+            "category": subm.get("category", "") or "",
+            "rating": "Mature" if m.get("is_mature") else "General",
+            "views": stats.get("views", 0) or 0,
+            "favorites_count": stats.get("favourites", 0) or 0,
+            "comments_count": stats.get("comments", 0) or 0,
+            "downloads": stats.get("downloads", 0) or 0,
+            "keywords": tags,
+            "link": cached.get("url", "") or f"{_BASE}/deviation/{deviation_id}",
+            "thumbnail_url": cached.get("thumbnail_url", ""),
+            "posted_at": cached.get("posted_at", ""),
+        }
+
+    # ── Legacy cookie / Eclipse _napi path (fallback) ─────────
+
     async def validate_cookies(self) -> bool:
         """Test cookies by accessing the user's gallery page."""
         if not self.cookie_value or not self.target_user:
@@ -156,8 +421,8 @@ class DAClient:
 
     # ── Gallery Discovery ─────────────────────────────────────
 
-    async def get_all_deviation_ids(self) -> list[dict]:
-        """Fetch all deviation IDs for the target user using the _napi endpoint."""
+    async def _get_all_deviation_ids_cookie(self) -> list[dict]:
+        """[Legacy cookie/_napi] Fetch all deviation IDs for the target user."""
         all_deviations: list[dict] = []
         offset = 0
         limit = 24
@@ -364,8 +629,8 @@ class DAClient:
 
         return detail
 
-    async def get_deviation_details_batch(self, deviation_ids: list[int]) -> list[dict]:
-        """Fetch details for multiple deviations sequentially with rate limiting."""
+    async def _get_details_batch_cookie(self, deviation_ids: list[int]) -> list[dict]:
+        """[Legacy cookie/_napi] Fetch details for multiple deviations sequentially."""
         details = []
         for i, dev_id in enumerate(deviation_ids):
             if i > 0:
@@ -635,3 +900,72 @@ def _extract_stat_int(text: str, key: str) -> int:
     """Extract an integer stat value from a JSON-like string."""
     m = re.search(rf'"{key}"\s*:\s*(\d+)', text)
     return int(m.group(1)) if m else 0
+
+
+# ── Official-API helpers ──────────────────────────────────────
+
+_URL_ID_RE = re.compile(r"-(\d+)/?$")
+
+
+def _int_id_from_url(url: str) -> int | None:
+    """Parse the trailing integer deviation id from a deviation URL.
+
+    e.g. ``https://www.deviantart.com/user/art/Some-Title-1351251437`` -> 1351251437.
+    Returns None if no trailing id is present (e.g. status updates).
+    """
+    if not url:
+        return None
+    m = _URL_ID_RE.search(url)
+    return int(m.group(1)) if m else None
+
+
+def _pick_thumb(dev: dict) -> str:
+    """Pick a thumbnail URL from a gallery/all deviation object.
+
+    Prefers the largest ``thumbs`` entry, then ``content.src``, then ``preview.src``.
+    """
+    thumbs = dev.get("thumbs") or []
+    if thumbs:
+        # thumbs are ordered small→large; take the last (largest) with a src.
+        for t in reversed(thumbs):
+            if isinstance(t, dict) and t.get("src"):
+                return t["src"]
+    for key in ("content", "preview"):
+        node = dev.get(key) or {}
+        if isinstance(node, dict) and node.get("src"):
+            return node["src"]
+    return ""
+
+
+def _unix_to_iso(ts) -> str:
+    """Convert a Unix timestamp (int or digit-string) to 'YYYY-MM-DD HH:MM:SS' UTC.
+
+    Passes through anything already non-numeric (or empty) as a best-effort string.
+    """
+    if ts is None or ts == "":
+        return ""
+    try:
+        return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError, OSError):
+        return str(ts)
+
+
+def _strip_html(s: str, limit: int = 2000) -> str:
+    """Reduce an HTML description to plain text.
+
+    Unescape entities FIRST, then strip tags — so escaped markup like
+    ``&lt;script&gt;`` can't be un-escaped back into a live tag after the strip
+    pass. Defence-in-depth: DA descriptions aren't rendered in the dashboard
+    today, but the stored value stays tag-free regardless.
+    """
+    if not s:
+        return ""
+    text = unescape(s)                    # entities -> literal chars first
+    text = re.sub(r"<[^>]+>", "", text)   # then strip any (now-literal) tags
+    return text.strip()[:limit]
+
+
+def _chunks(lst: list, n: int):
+    """Yield successive n-sized chunks from *lst*."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]

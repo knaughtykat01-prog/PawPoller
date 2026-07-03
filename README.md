@@ -127,7 +127,7 @@ The dashboard binds to `127.0.0.1:8420` by default (loopback only), reachable at
 | Weasyl | API key | Yes | Yes\* | Official API (\*posting in validation) |
 | AO3 | Username/password | Yes | Yes | Rails CSRF login; work skins; chaptered |
 | SquidgeWorld | Username/password | Yes | Yes | Scraping; work skins; chaptered |
-| DeviantArt | Session cookie | Yes | Yes | Eclipse API; CF proxy on server |
+| DeviantArt | OAuth2 (client id/secret) | Yes | Yes | Official API; no proxy needed |
 | Itaku | Account token | Yes | Yes\* | Artwork (\*posting in validation) |
 | Bluesky | Handle/app password | Yes | Yes | AT Protocol; posts + announcements |
 | Wattpad | Public (read-only) | Yes | -- | Public stats only |

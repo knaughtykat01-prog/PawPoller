@@ -28,10 +28,17 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-# ── Per-platform proxy gating (2.18.6 / 2.18.7 / 2.22.11) ───────
-# Two platforms (DA, SF) need the CF proxy to function from
-# datacenter IPs and use it implicitly whenever cf_worker_url is
-# configured — *_use_cf_proxy toggles do not apply to them.
+# ── Per-platform proxy gating (2.18.6 / 2.18.7 / 2.22.11 / 2.47.0) ───────
+# One platform (SF) needs the CF proxy to function from datacenter
+# IPs and uses it implicitly whenever cf_worker_url is configured —
+# *_use_cf_proxy toggles do not apply to it.
+#
+# 2.47.0: DeviantArt left PROXY_REQUIRED (same story as AO3 in
+# 2.22.11). DA polling moved from the cookie/Eclipse `_napi` frontend
+# — which IS IP-walled on datacenter ranges — to the official OAuth2
+# API, which is not. Verified 200 from the GCP VM for both
+# `/browse/dailydeviations` and `/gallery/all`. Only the legacy cookie
+# fallback would still need the proxy, and that path is not the default.
 #
 # All other platforms work direct by default. Their per-platform
 # toggle (`<platform>_use_cf_proxy`) means "if a direct call hits a
@@ -62,7 +69,7 @@ PROXY_OPTIONAL_PLATFORMS = frozenset({
 # Required platforms — proxy is the *default* transport whenever
 # cf_worker_url is configured. No fallback / no toggle: these
 # platforms don't work direct from datacenter IPs at all.
-PROXY_REQUIRED_PLATFORMS = frozenset({"da", "sf"})
+PROXY_REQUIRED_PLATFORMS = frozenset({"sf"})
 
 
 def proxy_kwargs(settings: dict, platform_code: str) -> dict:

@@ -4,11 +4,14 @@ Mirrors the AO3 poller pattern (simpler than FA, no comments scraping,
 no watchers). DeviantArt uses cookie-based auth with Eclipse _napi endpoints.
 
 Key differences from other pollers:
-  - Uses DAClient with cookie_value and target_user
-  - Settings keys: da_cookie, da_target_user
+  - Uses DAClient with the official OAuth2 API (client_id/client_secret); the
+    legacy cookie path is a fallback only (2.47.0).
+  - Settings keys: da_client_id, da_client_secret, da_target_user (da_cookie is
+    only consulted for the legacy fallback path).
   - Stats: submissions_found, snapshots_inserted (no kudos/comments tracking)
   - Notifications: "DA:" prefix
   - Downloads metric tracked in addition to views/favorites/comments
+  - No CF proxy: the official API is not IP-walled from datacenter IPs.
 """
 
 from __future__ import annotations
@@ -91,23 +94,31 @@ async def _send_da_telegram(new_details: list[dict]) -> None:
     )
 
 
-def _get_or_create_client(settings: dict, da_cookie: str, da_target: str) -> DAClient:
+def _get_or_create_client(settings: dict, client_id: str, client_secret: str,
+                          target_user: str, cookie: str = "") -> DAClient:
     """Return the persistent DAClient, re-pointed at the given account's creds.
 
     DA accounts poll sequentially (single lock), so one persistent client that
-    gets its credentials updated each cycle is sufficient.
+    gets its credentials updated each cycle is sufficient. Polling uses the
+    official OAuth2 API (client_id/client_secret) and needs no CF proxy; the
+    cookie is passed through only for the legacy fallback path.
     """
     global _da_client
 
     if _da_client is None:
-        from polling.cf_proxy import proxy_kwargs
         _da_client = DAClient(
-            cookie_value=da_cookie,
-            target_user=da_target,
-            **proxy_kwargs(settings, "da"),
+            client_id=client_id,
+            client_secret=client_secret,
+            target_user=target_user,
+            cookie_value=cookie,
         )
     else:
-        _da_client.update_credentials(da_cookie, da_target)
+        _da_client.update_credentials(
+            client_id=client_id,
+            client_secret=client_secret,
+            target_user=target_user,
+            cookie_value=cookie,
+        )
 
     return _da_client
 
@@ -151,17 +162,27 @@ async def run_da_poll_cycle(account_id: int | None = None, force_full: bool = Fa
 
     settings = config.get_settings()
     creds = config.resolve_account_credentials("da", account_id, is_default, settings)
-    client = _get_or_create_client(settings, creds.get("da_cookie", ""),
-                                   creds.get("da_target_user", ""))
+    client = _get_or_create_client(
+        settings,
+        creds.get("da_client_id", ""),
+        creds.get("da_client_secret", ""),
+        creds.get("da_target_user", ""),
+        creds.get("da_cookie", ""),
+    )
 
     try:
         conn = get_connection()
         log_id = da_queries.start_da_poll_log(conn, account_id)
-        # Step 1: Validate cookies
-        _update_da_progress("searching", message="Validating DA cookies...")
-        valid = await client.validate_cookies()
+        # Step 1: Validate credentials (OAuth token + gallery reachable)
+        _update_da_progress("searching", message="Validating DA credentials...")
+        if not (creds.get("da_client_id") and creds.get("da_client_secret")) \
+                and not creds.get("da_cookie"):
+            raise ValueError("DeviantArt not configured -- set client_id/client_secret "
+                             "(or a cookie for the legacy path)")
+        valid = await client.validate_credentials()
         if not valid:
-            raise ValueError("DA cookie validation failed -- check cookies")
+            raise ValueError("DA credential validation failed -- check client_id/client_secret "
+                             "and the target username")
 
         # Step 2: Discover deviations
         _update_da_progress("searching", message="Fetching deviations list...")

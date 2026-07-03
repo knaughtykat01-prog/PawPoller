@@ -8878,35 +8878,16 @@ const App = {
                         <span id="da-msg" style="font-size:13px"></span>
                     </div>
                     ` : `
-                    ${_browserLoginAvailable ? `
-                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Log in to DeviantArt in the popup window. Your cookies will be captured automatically.</p>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect DeviantArt with the official API — no browser cookie needed. <a href="https://www.deviantart.com/developers/apps" target="_blank" style="color:var(--accent)">Register a DA app</a> (Client type: <strong>Confidential</strong>), then paste its client_id and client_secret below plus the username to track.</p>
                     <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
-                        <input type="text" id="da-browser-username" class="search-input" placeholder="DeviantArt username to track">
-                    </div>
-                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                        <button class="btn btn-primary" id="da-browser-login-btn">Login via Browser</button>
-                        <button class="btn btn-outline" id="da-manual-toggle" style="font-size:12px">Enter cookies manually</button>
-                        <span id="da-msg" style="font-size:13px"></span>
-                    </div>
-                    <div id="da-manual-section" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
-                        <p style="color:var(--text-muted);font-size:12px;margin-bottom:8px">Manual entry: paste the full cookie string from DevTools.</p>
-                        <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
-                            <textarea id="da-cookie" class="search-input" placeholder="Full cookie string from browser" rows="3" style="resize:vertical;font-family:monospace;font-size:12px"></textarea>
-                            <input type="text" id="da-target-user" class="search-input" placeholder="DeviantArt username to track">
-                        </div>
-                        <div style="margin-top:8px"><button class="btn btn-primary" id="da-connect-btn">Connect</button></div>
-                    </div>
-                    ` : `
-                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect your DeviantArt account using your full browser cookie string. <a href="https://www.deviantart.com/users/login" target="_blank" style="color:var(--accent)">Open DA login page</a>, log in, then copy your cookie string from DevTools (F12 > Application > Cookies).</p>
-                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
-                        <textarea id="da-cookie" class="search-input" placeholder="Full cookie string from browser" rows="3" style="resize:vertical;font-family:monospace;font-size:12px"></textarea>
+                        <input type="text" id="da-client-id" class="search-input" placeholder="client_id (e.g. 12345)">
+                        <input type="password" id="da-client-secret" class="search-input" placeholder="client_secret">
                         <input type="text" id="da-target-user" class="search-input" placeholder="DeviantArt username to track">
                     </div>
                     <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
                         <button class="btn btn-primary" id="da-connect-btn">Connect</button>
                         <span id="da-msg" style="font-size:13px"></span>
                     </div>
-                    `}
                     `}
                     </div>
                 </details>
@@ -10521,15 +10502,16 @@ const App = {
                 });
             }
 
-            // DA Connect: sends cookie string + target_user to authenticate with DeviantArt
+            // DA Connect: sends client_id + client_secret + target_user (official OAuth2 API)
             const daConnectBtn = document.getElementById('da-connect-btn');
             if (daConnectBtn) {
                 daConnectBtn.addEventListener('click', async () => {
                     const msg = document.getElementById('da-msg');
-                    const cookie = document.getElementById('da-cookie').value.trim();
+                    const client_id = document.getElementById('da-client-id').value.trim();
+                    const client_secret = document.getElementById('da-client-secret').value.trim();
                     const target_user = document.getElementById('da-target-user').value.trim();
-                    if (!cookie || !target_user) {
-                        msg.textContent = 'Both cookie and username are required';
+                    if (!client_id || !client_secret || !target_user) {
+                        msg.textContent = 'client_id, client_secret and username are all required';
                         msg.style.color = 'var(--danger)';
                         return;
                     }
@@ -10537,7 +10519,7 @@ const App = {
                     daConnectBtn.textContent = 'Connecting...';
                     msg.textContent = '';
                     try {
-                        await API.daConnect({ cookie, target_user });
+                        await API.daConnect({ client_id, client_secret, target_user });
                         msg.textContent = 'Connected!';
                         msg.style.color = 'var(--success)';
                         setTimeout(() => this.renderSettings(), 1000);
@@ -10556,7 +10538,7 @@ const App = {
             const daDisconnectBtn = document.getElementById('da-disconnect-btn');
             if (daDisconnectBtn) {
                 daDisconnectBtn.addEventListener('click', async () => {
-                    if (!confirm('Disconnect DeviantArt? This clears saved cookies.')) return;
+                    if (!confirm('Disconnect DeviantArt? This stops polling (your app client_id/secret stay saved for posting).')) return;
                     try {
                         await API.daDisconnect();
                         this.renderSettings();

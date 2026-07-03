@@ -256,8 +256,8 @@ const API = {
     fullAO3Resync() { return this.post('/api/ao3/poll/full-resync'); },
     getAO3PollProgress() { return this.get('/api/ao3/poll/progress'); },
     /* ── DA (DeviantArt) convenience methods ────────────────────────
-     * Mirror of the FA methods, namespaced under /api/da/.
-     * DeviantArt uses cookie-based auth with a target user to track.
+     * Namespaced under /api/da/. Polling uses the official OAuth2 API —
+     * daConnect sends { client_id, client_secret, target_user }.
      */
     getDAAuthStatus() { return this.get('/api/da/auth/status'); },
     daConnect(data) { return this.post('/api/da/auth/connect', data); },

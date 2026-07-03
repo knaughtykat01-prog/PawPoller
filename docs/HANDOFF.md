@@ -1,13 +1,26 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-02
-**Current version:** 2.46.2 — **HTTPS-ready: uvicorn honours proxy headers behind a TLS reverse proxy.**
+**Last updated:** 2026-07-03
+**Current version:** 2.47.0 — **DeviantArt polling moved to the official OAuth2 API (off the cookie/_napi scrape).**
+DA polling now uses an app-only **client-credentials** token (`da_client_id` + `da_client_secret`, no cookie):
+`/gallery/all` enumerates the target user, `/deviation/metadata?ext_stats=true` returns views/favourites/
+comments/downloads (batched 10/call). The DB still keys by the **integer** deviation id (parsed from each
+deviation's URL; the API's UUID is used only for the metadata call), so `da_queries`, `da_schema.sql`, the
+hub/analytics/telegram/group code, and the dashboard are **untouched — no schema migration**. Mature works are
+included via `mature_content=true`. **DA left `PROXY_REQUIRED_PLATFORMS`** — the official API answers from
+datacenter IPs (verified 200 from the VM), so no CF proxy for DA polling. Connect form now takes
+client_id/client_secret/username (`frontend/js/app.js`, `routes/da_api.py`). Legacy cookie `_napi` path retained
+as a fallback. New `tests/test_da_parse.py` (13 cases); full suite 271 passing; live-validated end-to-end
+against a real gallery. Research: `docs/research/deviantart_official_api.md`. **Deploy note:** DA had no creds
+configured on the server, so this is a clean cutover; existing cookie installs keep working via the fallback
+until reconnected.
+
+**Prior release — 2.46.2 — HTTPS-ready: uvicorn honours proxy headers behind a TLS reverse proxy.**
 `server.py` now runs uvicorn with `proxy_headers=True` + `forwarded_allow_ips` (new `PAWPOLLER_FORWARDED_IPS`,
 default `127.0.0.1`). Behind a TLS-terminating reverse proxy (the maintainer's Caddy for
 `pawpoller.syncopates.app`), the app sees `X-Forwarded-Proto: https` so the dashboard session cookie's
 **Secure** flag turns on and `request.client.host` is the real client (fixes the 2.46.0 deferred-minor
-rate-limiter proxy-IP note). No change when bound directly (default trusts loopback only). **Deploy note:** the
-maintainer server flips `.env` `PAWPOLLER_BIND` back to `127.0.0.1` (Caddy fronts 8420 over HTTPS); the Caddy
+rate-limiter proxy-IP note). No change when bound directly (default trusts loopback only). The Caddy
 layer is a VM-only `docker-compose.override.yml`, not in this repo. Full pattern + gotchas: Claude memory
 `reference-https-caddy-cloudflare`.
 

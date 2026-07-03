@@ -22,10 +22,13 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 
 # platform -> (route file, poller module)
+# NOTE: "da" is intentionally absent. As of 2.47.0 the DeviantArt connect
+# handler validates with a throwaway DAClient instead of the shared
+# _get_or_create_client singleton (avoids mutating the poll client mid-cycle —
+# see the 2.47.0 security note), so it doesn't follow this wiring pattern.
 PLATFORMS = {
     "ao3": ("routes/ao3_api.py", "polling.ao3_poller"),
     "bsky": ("routes/bsky_api.py", "polling.bsky_poller"),
-    "da": ("routes/da_api.py", "polling.da_poller"),
     "ik": ("routes/ik_api.py", "polling.ik_poller"),
     "sf": ("routes/sf_api.py", "polling.sf_poller"),
     "sqw": ("routes/sqw_api.py", "polling.sqw_poller"),

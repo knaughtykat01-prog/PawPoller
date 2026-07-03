@@ -23,7 +23,7 @@ The tech stack is FastAPI + SQLite (WAL mode) + Vanilla JS SPA + pywebview + pys
 | 4 | SoFurry     | Art, stories, music  | Scraping + JSON hybrid |
 | 5 | SquidgeWorld| Stories (OTW Archive)| HTML scraping |
 | 6 | AO3         | Stories (OTW Archive)| HTML scraping |
-| 7 | DeviantArt  | Art, literature      | Undocumented Eclipse _napi |
+| 7 | DeviantArt  | Art, literature      | Official OAuth2 API (client-credentials) |
 | 8 | Wattpad     | Stories              | Public REST API |
 | 9 | Itaku       | Art                  | Public REST API |
 | 10 | Bluesky    | Social (microblog)   | AT Protocol public API |
@@ -123,7 +123,7 @@ PawPoller/
 │   ├── sf/                  #   SoFurry — SoFurryClient with CF proxy support
 │   ├── sqw/                 #   SquidgeWorld — SqWClient with Anubis challenge solving
 │   ├── ao3/                 #   AO3 — AO3Client with CSRF auth
-│   ├── da/                  #   DeviantArt — DAClient with cookie auth + proxy
+│   ├── da/                  #   DeviantArt — DAClient, official OAuth2 API (client-credentials, no proxy)
 │   ├── wp/                  #   Wattpad — WPClient (no auth, public API)
 │   ├── ik/                  #   Itaku — IKClient (no auth, public API)
 │   ├── bsky/                #   Bluesky — BskyClient with JWT session auth
@@ -133,7 +133,7 @@ PawPoller/
 │
 ├── auth/                    # Browser-based login helpers (Phase 8a)
 │   ├── __init__.py          #   Package init
-│   └── browser_login.py     #   pywebview popup login for cookie-based platforms (FA, DA, TW, SF, WS, AO3, SqW)
+│   └── browser_login.py     #   pywebview popup login for cookie-based platforms (FA, TW, SF, WS, AO3, SqW)
 │
 ├── polling/
 │   ├── poller.py            # Inkbunny poll cycle orchestration (6-step)
@@ -826,18 +826,24 @@ def _extract_stat(stat_class: str) -> int:
 
 ### DeviantArt (`clients/da/client.py`) — `DAClient`
 
-**Eclipse _napi endpoints**: DeviantArt's public frontend (Eclipse) uses internal JSON API endpoints that are undocumented. These were discovered by inspecting browser network traffic. There is no public gallery stats API.
+**Official OAuth2 API (2.47.0)**: DA polling now runs on DeviantArt's official, documented OAuth2 API — the same API the DA *poster* uses (see §14 posting) — replacing the undocumented Eclipse `_napi` browser-cookie scrape. Authentication is an **app-only client-credentials** token: `da_client_id` + `da_client_secret`, with **no cookie and no user login** required. Full research write-up in `docs/research/deviantart_official_api.md`.
 
 | Endpoint | Purpose |
 |----------|---------|
-| `/_napi/da-user-profile/api/gallery/contents?username=X&offset=Y&limit=24&all_folder=true&mode=newest` | Gallery listing |
-| `/_napi/shared_api/deviation/extended_fetch?deviationid=X&username=Y&type=art` | Full deviation detail with stats |
+| `GET /api/v1/oauth2/gallery/all?username=X&offset=Y&limit=24&mature_content=true` | Gallery enumeration (paginated: `results`, `has_more`, `next_offset`) |
+| `GET /api/v1/oauth2/deviation/metadata?deviationids[]=<UUID>&ext_stats=true` | Per-deviation stats (`stats{views, views_today, favourites, comments, downloads, downloads_today}`) |
 
-**Cookie authentication**: The full cookie string from the user's browser (all cookies for deviantart.com) is parsed and set on the httpx client. Validated by loading the gallery page and checking for `data-userid` or `deviantart.com/notifications` in the HTML.
+**Client-credentials auth**: `POST https://www.deviantart.com/oauth2/token` with `grant_type=client_credentials` mints an app-only bearer token — no per-user authorization, no refresh token. **Token-endpoint gotcha**: the token endpoint is `https://www.deviantart.com/oauth2/token`, **not** `/api/v1/oauth2/token` (which 404s).
 
-**CF Worker proxy**: Required for server deployments because DA aggressively blocks datacenter IP ranges. Desktop mode with a residential IP typically works without the proxy.
+**ext_stats batching**: the metadata call with `ext_stats=true` **caps at 10 deviationids per call**, so stats are fetched in chunks of ≤10 UUIDs.
 
-**HTML scraping fallback**: If `_napi` endpoints fail (e.g., DA changes the internal API), the client falls back to scraping gallery HTML pages using regex patterns on `data-deviationid` attributes and embedded JSON `"stats"` objects.
+**Integer-id preserved (no schema migration)**: the DB continues to key deviations by the **integer** id parsed from each deviation's `url`. The API's UUID `deviationid` is used only transiently — to make the per-deviation `metadata` call — and is not persisted. As a result the poller (`da_poller.py`), `da_queries`, `da_schema.sql`, and dashboard are **unchanged**; there is no schema migration for this switch.
+
+**Mature content**: `mature_content=true` is passed on enumeration so adult works are included (and to avoid a 403 on mature galleries).
+
+**No CF Worker proxy**: DeviantArt **left `PROXY_REQUIRED_PLATFORMS`** in `polling/cf_proxy.py` (now just `{"sf"}`) — the official API answers from datacenter IPs (verified 200 from the GCP VM), unlike the IP-walled Eclipse frontend. This is the same reclassification AO3 received in 2.22.11: once an auth path stops depending on the IP-walled login page, the proxy is no longer needed. See §10 / §5 CF Worker proxy gate.
+
+**Legacy cookie/`_napi` fallback (retained)**: the old browser-cookie Eclipse scrape (`/_napi/da-user-profile/api/gallery/contents` + `/_napi/shared_api/deviation/extended_fetch`, with HTML-scrape fallback on `data-deviationid` + embedded `"stats"` JSON) is kept as a fallback. It is used **only** when no `da_client_id`/`da_client_secret` is configured but a `da_cookie` is. This legacy path still needs the CF Worker proxy on datacenter IPs.
 
 **Unique stat**: DeviantArt is the only platform that tracks `downloads` in addition to views/favorites/comments.
 
@@ -899,7 +905,7 @@ Rate limiting: 1s between requests, 429 handling with 30s backoff.
 
 ### X/Twitter (`clients/tw/client.py`) — `TWClient`
 
-**Cookie-based GraphQL scraping** — same approach as DeviantArt. Uses internal GraphQL endpoints discovered from browser network inspection.
+**Cookie-based GraphQL scraping** — uses internal GraphQL endpoints discovered from browser network inspection. (This is the same cookie-scrape style that DeviantArt polling used before it moved to the official OAuth2 API in 2.47.0; DA now only cookie-scrapes in its retained legacy fallback.)
 
 **Cookie authentication**: `auth_token` + `ct0` cookies from the user's browser. The `ct0` value is also sent as `x-csrf-token` header. Validated by making a lightweight request and checking for non-403 response.
 
@@ -936,7 +942,7 @@ Step 1: Authenticate (if needed)
     │  SF: restore saved cookies or login via CSRF (direct or proxy)
     │  AO3/SqW: Rails form login with CSRF
     │  WS: validate API key
-    │  DA: validate cookie string
+    │  DA: mint client-credentials token + check gallery
     │  BSKY: JWT session (login → refresh → check chain)
     │  TW: validate cookies (auth_token + ct0)
     │  WP/IK: no auth needed
@@ -971,17 +977,19 @@ Finalise: Update poll_log, release concurrency guard
 
 ### CF Worker proxy gate (2.18.6 / 2.18.7)
 
-Three platforms — AO3, DeviantArt, SoFurry — *require* the CF Worker
-proxy to function from datacenter IPs (Cloudflare TLS-fingerprint
-challenges, login-page rate limits, etc). The other eight work direct
-by default, with the proxy as a **fallback** that fires only when a
-direct call hits a block-like failure.
+Only **SoFurry** now *requires* the CF Worker proxy to function from
+datacenter IPs (Cloudflare TLS-fingerprint challenges, login-page rate
+limits, etc). The other ten work direct by default, with the proxy as a
+**fallback** that fires only when a direct call hits a block-like
+failure. (AO3 left `PROXY_REQUIRED` in 2.22.11 and DeviantArt in 2.47.0
+— both once their auth stopped depending on the IP-walled login/frontend
+path; see the reclassification notes below.)
 
 Two decision points in `polling/cf_proxy.py`:
 
 ```python
 proxy_kwargs(settings, platform_code)
-    # default-path: PROXY_REQUIRED (da/sf) only.
+    # default-path: PROXY_REQUIRED (sf) only.
     # OPTIONAL platforms always get {} from this — they run direct.
 
 proxy_kwargs_fallback(settings, platform_code)
@@ -1007,6 +1015,17 @@ default is direct from the GCP VM IP (unique to us, our own quota), with
 the proxy as a manual opt-in fallback. **Rule of thumb:** CF Worker proxy
 is for bypassing IP blocks, not rate limits — sharing egress IP makes
 rate-limit problems strictly worse.
+
+**DeviantArt reclassification (2.47.0):** DA was in `PROXY_REQUIRED`
+because the undocumented Eclipse `_napi` frontend hard-blocks datacenter
+IP ranges. The 2.47.0 migration moved DA polling to the official OAuth2
+API (app-only client-credentials token), which answers from datacenter
+IPs — verified 200 from the GCP VM. Exactly as with AO3 in 2.22.11, once
+the auth path no longer depends on the IP-walled path the proxy is
+unnecessary, so DA left `PROXY_REQUIRED_PLATFORMS` (now just `{"sf"}`).
+The retained legacy cookie/`_napi` fallback (see §4 DeviantArt) still
+needs the proxy on datacenter IPs, but it only runs when app credentials
+are absent.
 
 Pattern in importers (AO3, SqW, IB, FA):
 
@@ -2416,7 +2435,7 @@ WS_REQUEST_DELAY_SECONDS       = 1.0    # Weasyl API calls
 SF_REQUEST_DELAY_SECONDS       = 1.5    # SoFurry scraping (higher for scraping)
 SQW_REQUEST_DELAY_SECONDS      = 2.0    # SquidgeWorld (anti-bot measures)
 AO3_REQUEST_DELAY_SECONDS      = 3.0    # AO3 (volunteer-run, courtesy delay)
-DA_REQUEST_DELAY_SECONDS       = 2.0    # DeviantArt (aggressive rate limiting)
+DA_REQUEST_DELAY_SECONDS       = 2.0    # DeviantArt (paces official-API pages/ext_stats chunks)
 WP_REQUEST_DELAY_SECONDS       = 1.0    # Wattpad public API
 IK_REQUEST_DELAY_SECONDS       = 1.0    # Itaku public API
 BSKY_REQUEST_DELAY_SECONDS     = 1.0    # Bluesky AT Protocol (generous rate limits)
@@ -2485,9 +2504,9 @@ COMMENTS_OFFSET = 0
 
 ### Why It Exists
 
-DeviantArt and SoFurry block requests from datacenter IP ranges (cloud VMs, Docker containers). Residential IPs (desktop mode) typically work fine. The Cloudflare Worker acts as a reverse proxy, routing requests through Cloudflare's IP range which these sites allow.
+SoFurry blocks requests from datacenter IP ranges (cloud VMs, Docker containers). Residential IPs (desktop mode) typically work fine. The Cloudflare Worker acts as a reverse proxy, routing requests through Cloudflare's IP range which these sites allow.
 
-Without the proxy, server deployments would get 403 Forbidden responses from DA and SF. The proxy is only needed for these two platforms — all others work from any IP.
+Without the proxy, server deployments would get 403 Forbidden responses from SoFurry. Since 2.47.0 DeviantArt polling uses the official OAuth2 API, which is **not** IP-walled (verified 200 from the GCP VM), so DA no longer needs the proxy — only the retained legacy DA cookie/`_napi` fallback (used only when no app credentials are configured) still does. The proxy is otherwise only needed for SoFurry — all other platforms work from any IP.
 
 **SoFurry dual-mode**: SF supports both direct login (with cookie persistence) and CF proxy. The poller auto-selects based on whether `cf_worker_url` is configured in settings. Desktop/local deployments use direct login with 30-day cookie persistence. Server/GCP deployments use the CF proxy (cookie persistence disabled since CF Workers rotate IPs). All proxy code in `client.py` is preserved as fallback — re-enabling is a one-line change in `sf_poller.py`.
 
@@ -3010,7 +3029,7 @@ Pollers read via config.get_settings() each cycle
 | SoFurry | Email/password → session | `sf_username` (email!), `sf_password`, `sf_display_name` | SF account email + profile handle |
 | SquidgeWorld | User/pass + CSRF | `sqw_username`, `sqw_password`, `sqw_target_user` | Login account + tracked user's username |
 | AO3 | User/pass + CSRF **or** session cookie | `ao3_username`, `ao3_password`, `ao3_target_user`, `ao3_session_cookie` (optional, takes precedence) | Login account + tracked user. **Cookie mode** (2.18.8+): paste `_otwarchive_session` from your browser to bypass the per-IP login throttle — recommended on datacenter/server deployments |
-| DeviantArt | Browser cookie string | `da_cookie`, `da_target_user` | Full cookie string from browser DevTools |
+| DeviantArt | App client-credentials (OAuth2) | `da_client_id`, `da_client_secret`, `da_target_user` | Register a DA app (Confidential) at the developer portal; use its client_id/secret. (Legacy `da_cookie` still works as a fallback when no app credentials are set.) |
 | Wattpad | None (public) | `wp_target_user` | Just the username to track |
 | Itaku | None (public) | `ik_target_user` | Just the username to track |
 | Bluesky | App password → JWT | `bsky_identifier`, `bsky_app_password` | Settings → App Passwords on bsky.app |
@@ -3063,8 +3082,8 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 | SF "restored session is valid" then fails | Saved cookies expired | The `remember_web_*` cookie lasts ~30 days. After expiry, `check_session()` fails and the app does a fresh login automatically. No manual action needed. |
 | FA polls return no data | Cookies expired | FA cookies (`cookie_a`, `cookie_b`) expire periodically. Re-export them from browser DevTools → Application → Cookies. |
 | FA polls return 403 | Cookies incomplete | Both `cookie_a` AND `cookie_b` are required. Check both are set. |
-| DA polls fail on server | Datacenter IP blocked | Configure CF Worker proxy. DA aggressively blocks cloud/datacenter IP ranges. |
-| DA cookie format wrong | Partial cookie string | Export the **full** cookie string from DevTools (Network tab → copy as cURL → extract Cookie header), not individual cookie values. |
+| DA polls fail / no data | Bad or missing app credentials | Check `da_client_id` / `da_client_secret` (register a Confidential DA app) and that `da_target_user` is the correct tracked username. The official OAuth2 API works from any IP (2.47.0), so the datacenter-IP/CF-proxy fix no longer applies to DA polling. |
+| DA token request 404 | Wrong token endpoint | The token endpoint is `https://www.deviantart.com/oauth2/token`, **not** `/api/v1/oauth2/token` (which 404s). Applies to the client-credentials fetch. |
 | AO3 rate limited (429) | Polling too fast | Increase poll interval. In `main.py`, increase `ao3_poll_interval_minutes`. In `server.py`, increase `poll_interval_minutes` (applies to all platforms). AO3 is volunteer-run with limited infrastructure. Default 60 minutes is usually fine. |
 | WS API returns 401 | Invalid API key | Generate a new key at weasyl.com/control/apikeys. Keys don't expire but can be revoked. |
 | Settings file corrupt/empty | Previously: crash during write | **Fixed**: atomic writes (temp file + `os.replace()`) now prevent this. If corrupt, delete `settings.json` to reset — it will be recreated with empty defaults on next startup. |
@@ -3122,9 +3141,12 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 | AO3 | `/users/login` (GET/POST) | `clients/ao3/client.py` | CSRF auth flow |
 | | `/users/{u}/works` | | Works listing |
 | | `/works/{id}?view_adult=true` | | Work detail + stats |
-| DeviantArt | `/_napi/da-user-profile/api/gallery/contents` | `clients/da/client.py` | Gallery listing |
-| | `/_napi/shared_api/deviation/extended_fetch` | | Deviation detail |
-| | `/{u}/gallery` | | HTML fallback |
+| DeviantArt | `https://www.deviantart.com/oauth2/token` | `clients/da/client.py` | Client-credentials token (NOT `/api/v1/oauth2/token`) |
+| | `/api/v1/oauth2/gallery/all` | | Gallery enumeration (official API) |
+| | `/api/v1/oauth2/deviation/metadata?ext_stats=true` | | Per-deviation stats (≤10 ids/call) |
+| | `/_napi/da-user-profile/api/gallery/contents` | | Legacy cookie fallback — gallery listing |
+| | `/_napi/shared_api/deviation/extended_fetch` | | Legacy cookie fallback — deviation detail |
+| | `/{u}/gallery` | | Legacy cookie fallback — HTML scrape |
 | Wattpad API | `/api/v3/users/{u}/stories/published` | `clients/wp/client.py` | Story listing |
 | Itaku API | `/api/user_profiles/{u}/` | `clients/ik/client.py` | User resolution |
 | | `/api/gallery_images/` | | Content discovery |
@@ -3662,7 +3684,7 @@ AO3 lets you log in with either username OR email. If you log in with email, the
 
 #### DeviantArt (`posting/platforms/deviantart.py`)
 
-**Auth**: Official OAuth2 API — **not** the undocumented `_napi`/`_puppy` endpoints. Requires registering a DA application at the developer portal to get `client_id` and `client_secret`, then doing a one-time Authorization Code flow in the browser to obtain a refresh token.
+**Auth**: Official OAuth2 API — **not** the undocumented `_napi`/`_puppy` endpoints. Requires registering a DA application at the developer portal to get `client_id` and `client_secret`, then doing a one-time Authorization Code flow in the browser to obtain a refresh token. (Since 2.47.0 DA *polling* also runs on this same official OAuth2 API — via an app-only client-credentials token rather than the poster's user refresh token; see §4 DeviantArt.)
 
 **Settings**: `da_client_id`, `da_client_secret`, `da_refresh_token`. Access tokens expire hourly and are auto-refreshed. Refresh tokens last 3 months.
 
@@ -4555,11 +4577,11 @@ First-run detection: when no `setup_complete` flag exists in `settings.json`, th
 
 `auth/browser_login.py` provides pywebview-powered browser login for cookie-based platforms. In desktop mode, users click "Login via Browser" and a native popup opens the platform's real login page; after logging in, cookies are detected and saved automatically. Server mode falls back to helpful login-page links.
 
-- `PLATFORM_LOGIN` configs for 8 platforms (IB, FA, DA, SF, TW, WS, AO3, SqW) with URL, success conditions, and cookie-to-setting mappings. FA / DA / SF / TW capture real auth cookies; IB / WS / AO3 / SqW are verification-only because their APIs need username+password (or API keys) rather than session cookies.
+- `PLATFORM_LOGIN` configs for these platforms (IB, FA, SF, TW, WS, AO3, SqW) with URL, success conditions, and cookie-to-setting mappings. FA / SF / TW capture real auth cookies; IB / WS / AO3 / SqW are verification-only because their APIs need username+password (or API keys) rather than session cookies. (DeviantArt polling moved to app client-credentials in 2.47.0, so DA no longer uses browser-login for polling — the DA poster uses OAuth2 and a legacy cookie fallback exists, but neither is wired through this popup.)
 - `login_via_browser()` calls `webview.create_window()` against the dashboard's already-running pywebview GUI loop — it MUST NOT call `webview.start()` itself (only one `start()` per process is allowed, and on Windows it must be the main thread, both of which `main.py:924` already owns). A top-of-function guard returns `RuntimeError` if `webview.windows` is empty (i.e. no GUI loop). The cookie poller runs in a daemon thread; the cancel path is driven by the window's `closed` event; a 5-minute timeout fires `window.destroy()` if the user walks away. Credentials are saved via `config.save_settings()` once the success_check passes. (Pre-2.18.13 the function called `webview.start()` from a daemon thread, which fails with `pywebview must be run on a main thread` on first attempt — the old wrapper-thread + second-`start()` pattern is the bug 2.18.13 fixes.)
 - `GET /api/settings/browser-login/platforms` — lists supported platforms with availability flag (True in desktop mode only).
 - `POST /api/settings/browser-login/{platform}` — launches the popup and blocks until login completes or window closes. Runs in `run_in_executor` to avoid stalling the event loop.
-- Dashboard: FA, DA, and TW platform connect forms show "Login via Browser" as primary action in desktop mode, with a "Enter cookies manually" toggle for the existing cookie input form.
+- Dashboard: FA and TW platform connect forms show "Login via Browser" as primary action in desktop mode, with a "Enter cookies manually" toggle for the existing cookie input form. (DeviantArt's connect form is now client_id/secret since 2.47.0 — it no longer offers browser-login/cookies for polling.)
 
 ### Theme-Save Trailing Content
 
