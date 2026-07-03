@@ -1,21 +1,29 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-03
-**Current version:** 2.48.0 — **Artwork tab is now a full gallery — discovered art merged into the grid.**
-The Artwork hub (`#/artwork`) no longer lists only images uploaded *through* PawPoller; it now also surfaces
-**discovered art** the pollers found on your art accounts, reading like the Stories hub (everything in one
-grid). New pure/tested classifier `routes/submissions_api.py` `classify_kind` tags each discovered submission
-`art`/`text`/`unknown` (image-only `da`/`ik` and text-only `ao3`/`sqw`/`wp` short-circuit; mixed
-`fa`/`sf`/`ib`/`ws`/`bsky` read from the stored type string, text hints beating art hints); `build_discovered`
-stamps a `kind` on every item. `frontend/js/artwork.js` `render()` fetches the library **and**
-`/api/works/discovered` in parallel, filters discovered to art-capable platforms + visual `kind` + a thumbnail,
-merges both newest-first: library cards link to their detail; **discovered cards** show a source-platform badge
-+ views with **View ↗** / **Import** (existing `/api/artwork/import/{platform}/{id}`). Discovered is additive
-(never blocks the library on a fetch error). No schema change, no new endpoint. New tests in `tests/test_works.py`
-(`classify_kind` + `kind` stamping); full suite **275 passing**; `artwork.js` node-check clean.
-**Next up (this session's plan):** Phase 2 — a new microblog **Posts** module (Bluesky + Mastodon posting
-first), then Phase 3 (Threads/Tumblr/X). Deferred task: an in-dashboard **Pixiv guided-paste Connect** flow
-(Pixiv's `pixiv://` redirect blocks a true one-click browser login).
+**Current version:** 2.49.0 — **New "Posts" module — microblog publishing (Bluesky + Mastodon live).**
+A third publishing hub beside Stories and Artwork: **Posts** (`#/posts`) composes a short post once and pushes
+it to microblog accounts at once. Self-contained store (`database/posts_schema.sql` + `posts_queries.py`:
+`posts` + `post_publications`) — deliberately NOT the story/artwork `publications` registry (a post has no
+title/chapters/file). Engine `posting/post_publisher.py` builds a **fresh** client per publish from resolved
+account creds (never the poller singletons), maps rating → Bluesky self-labels / Mastodon `sensitive`, records
+each outcome. **Mastodon can now post** — new `clients/mast/client.py` `create_status` (+ `_upload_media`);
+**needs a token with a WRITE scope** (the poll-only `read` token 403s — surfaced clearly). Bluesky reuses
+`create_post`. API `routes/posts_api.py` (`/api/posts/*`: list/create-multipart/publish/delete/image);
+frontend `posts.js`+`posts.css` (compose box + feed with per-platform status) + **Posts** nav + `#/posts`.
+**Threads/Tumblr/X are recognised but return "not wired yet"** until Phase 3 (their OAuth posting flows). New
+`tests/test_posts.py` (6); full suite **281 passing**; TestClient HTTP-smoke verified create→list→publish→delete.
+**Next up (this session's plan):** Phase 3 — Threads/Tumblr/X posting (each needs an OAuth user-token flow).
+Deferred task: in-dashboard **Pixiv guided-paste Connect** (Pixiv's `pixiv://` redirect blocks true one-click).
+**Action for the user:** to actually post to Mastodon, regenerate the instance access token with a **write**
+scope (the connect token was `read` for polling) and reconnect.
+
+**Prior release — 2.48.0 — Artwork tab is now a full gallery — discovered art merged into the grid.**
+The Artwork hub (`#/artwork`) also surfaces **discovered art** the pollers found on your art accounts, reading
+like the Stories hub. Pure/tested `routes/submissions_api.py` `classify_kind` tags each discovered submission
+`art`/`text`/`unknown`; `build_discovered` stamps `kind`. `frontend/js/artwork.js` merges `/api/artwork/images`
++ `/api/works/discovered` (filtered to art-capable platforms + visual `kind` + thumbnail); discovered cards show
+a platform badge + views with **View ↗** / **Import**. No schema change.
 
 **Prior release — 2.47.0 — DeviantArt polling moved to the official OAuth2 API (off the cookie/_napi scrape).**
 DA polling now uses an app-only **client-credentials** token (`da_client_id` + `da_client_secret`, no cookie):

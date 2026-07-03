@@ -624,6 +624,25 @@ const API = {
     saveArtworkSettings(data) { return this.post('/api/artwork/settings', data); },
     artworkSyncPush(data = {}) { return this.post('/api/artwork/sync/push', data); },
 
+    /* ── Posts (microblog) module ─────────────────────────────── */
+    getPosts() { return this.get('/api/posts'); },
+    getPost(id) { return this.get(`/api/posts/${id}`); },
+    createPost(formData) {
+        // multipart (optional image rides along) — let the browser set the boundary.
+        return fetch('/api/posts', { method: 'POST', body: formData })
+            .then(async r => {
+                const j = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(j.detail || `Create failed: ${r.status}`);
+                return j;
+            });
+    },
+    publishPost(id, body) { return this.post(`/api/posts/${id}/publish`, body); },
+    deletePost(id) {
+        return fetch(`/api/posts/${id}`, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error(`Delete failed: ${r.status}`); return r.json(); });
+    },
+    postImageUrl(id) { return `/api/posts/image?post_id=${encodeURIComponent(id)}`; },
+
     /* FormData upload with optional progress (XHR — fetch lacks upload progress). */
     _upload(path, formData, onProgress) {
         return new Promise((resolve, reject) => {

@@ -4,6 +4,38 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.49.0] - 2026-07-03 - New "Posts" module: microblog publishing (Bluesky + Mastodon)
+
+A third publishing hub joins Stories and Artwork: **Posts** (`#/posts`) — compose a short "tweet-like" post
+once and publish it to your microblog accounts at once. Phase 1 of the multi-platform Posts module (the
+platforms the user asked for): **Bluesky + Mastodon** post live; **Threads, Tumblr and X** are recognised but
+return a clear "not wired yet" until their OAuth posting flows land (Phase 2 of this feature).
+
+- **New self-contained store** (`database/posts_schema.sql`, `database/posts_queries.py`): `posts` (body /
+  rating / optional image) + `post_publications` (per platform+account: status / external_id / external_url /
+  error). Deliberately **not** the story/artwork `publications` registry — a post has no title/chapters/file, so
+  it gets its own tables. Analytics for what these posts earn still flows through the normal per-platform
+  pollers.
+- **New engine** (`posting/post_publisher.py`): constructs a **fresh** platform client per publish from the
+  account's resolved credentials (never the poller singletons — posting must not mutate a client mid-poll),
+  calls its create method, and records the outcome. Rating → Bluesky self-labels (`mature`→sexual,
+  `adult`→porn) and Mastodon `sensitive`. Re-publishing a failed platform upserts over its prior failure.
+- **Mastodon can now post** (`clients/mast/client.py`): new `create_status` (+ `_upload_media` via
+  `/api/v2/media`) posting to `/api/v1/statuses` with an Idempotency-Key. **Requires a token with a write
+  scope** — the poll-only `read` token 403s (surfaced as a clear error). Bluesky reuses its existing
+  `create_post`.
+- **New API** (`routes/posts_api.py`, `/api/posts/*`): list / create (multipart so an optional image rides
+  along, magic-extension + size guarded) / publish / delete / traversal-safe image server.
+- **New frontend** (`frontend/js/posts.js` + `posts.css`): a compose box (text, optional image, rating,
+  per-platform checkboxes + account pickers, a 300-grapheme Bluesky counter) over a feed of composed posts with
+  per-platform status badges (posted→link, failed→hover error) and delete. New **Posts** nav entry + `#/posts`
+  route.
+- Wired: schema into `database/db.py` init, router into `dashboard.py`. New `tests/test_posts.py` (6 — queries
+  CRUD, publisher guards, end-to-end publish record); full suite **281 passing**; HTTP-smoke-verified
+  end-to-end via TestClient (create→list→publish→delete).
+
+---
+
 ## [2.48.0] - 2026-07-03 - Artwork hub becomes a full gallery (discovered art merged in)
 
 The **Artwork** tab (`#/artwork`) no longer shows only images you uploaded *through* PawPoller. It now merges

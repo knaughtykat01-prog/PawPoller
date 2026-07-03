@@ -5486,3 +5486,86 @@ settings: `artwork_fa_category/species/gender`, `artwork_sf_sub_type`,
 the desktop app posts a local image by path (copied into the archive) instead of
 re-uploading bytes. The browser upload path is the universal fallback (works on
 desktop and the server).
+
+
+## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)
+
+The third publishing hub beside Stories and Artwork, for short-form posts to
+microblog platforms. Compose once → publish to Bluesky + Mastodon at once (Phase
+2); Threads/Tumblr/X are recognised but return a clear "not wired yet" until
+Phase 3 wires their OAuth posting.
+
+### 21.1 Why a separate store (not the publications registry)
+
+A microblog post has no title, chapters, or source file — forcing it onto the
+story/artwork `Package`/`publications` model buys nothing. So Posts gets its own
+pair of tables (`database/posts_schema.sql`):
+
+- **`posts`** — `post_id`, `body`, `rating` (general|mature|adult), `image_path`
+  (optional local media under `DATA_DIR/posts_media/`), `image_alt`, timestamps.
+- **`post_publications`** — one row per `(post_id, platform, account_id)` publish
+  attempt: `status` (pending|posted|failed), `external_id`, `external_url`,
+  `error`. `UNIQUE(post_id, platform, account_id)` so a re-publish upserts over a
+  prior failure.
+
+Wired into `database/db.py` `init_db()` after the posting schema. Analytics for
+what these posts *earn* still flows through the normal per-platform pollers
+(`bsky_submissions`, etc.) — this pair only tracks the compose→publish side.
+Thin CRUD in `database/posts_queries.py` (caller supplies timestamps so the
+helpers stay pure/testable).
+
+### 21.2 Engine — `posting/post_publisher.py`
+
+`publish_post(post_id, platforms, account_ids, settings)` loads the post and, per
+platform, calls `_publish_one`, then upserts the publication row. `_publish_one`
+resolves the account's credentials the same way the pollers do
+(`config.resolve_account_credentials`, default account via
+`accounts_db.get_default_account_id`, legacy single-account fallback) and
+constructs a **fresh** client — never the poller singleton — so posting can't
+mutate a client mid-poll (same lesson as the 2.47.0 DA throwaway-client fix).
+Rating maps to Bluesky self-labels (`_BSKY_LABELS`: mature→`sexual`,
+adult→`porn`) and Mastodon `sensitive`. `SUPPORTED = ("bsky", "mast")`; any other
+platform returns `success=False, error="posting to {x} isn't wired yet"`. Never
+raises — every failure comes back as a result dict + a recorded `failed` row.
+
+### 21.3 Client posting methods
+
+- **Bluesky**: reuses the existing `clients/bsky/client.py` `create_post(text, *,
+  image_path, image_alt, labels)` → `{uri, cid, url}`.
+- **Mastodon**: NEW `clients/mast/client.py` `create_status(text, *, image_path,
+  image_alt, sensitive, visibility, idempotency_key)` → `{id, uri, url}`.
+  Images upload via `_upload_media` (`POST /api/v2/media`, id usable even on the
+  202 "processing" reply); the status posts to `POST /api/v1/statuses` with an
+  `Idempotency-Key`. **Requires a token with a write scope** — the poll-only
+  `read` token 403s, returned to the caller as a clear error (the mast connect
+  form was built for polling, so users must reconnect with a write-scoped token
+  to post).
+
+### 21.4 API + frontend
+
+`routes/posts_api.py` (`/api/posts/*`): `GET ""` (feed, newest-first with
+publications) / `POST ""` (create — multipart so an optional image rides along;
+magic-extension + 25 MB guarded; row created first, image saved as
+`posts_media/{post_id}{ext}`) / `POST /{id}/publish` / `DELETE /{id}` (+ media
+cleanup) / `GET /image?post_id=` (traversal-safe: path derived from the id,
+resolved-parent check). Registered in `dashboard.py`.
+
+`frontend/js/posts.js` (`window.Posts`) + `frontend/css/posts.css`: a single
+page with a compose card (textarea, optional image + preview, rating select,
+per-platform checkboxes with account `<select>`s, a 300-grapheme Bluesky soft
+counter that reddens when Bluesky is checked and over) over a feed of composed
+posts. Each feed card shows the body/image/rating, per-platform status badges
+(posted → external link, failed → hover-title error), and delete. `#/posts`
+route + a **Posts** nav entry (💬) sit beside Artwork. `_PLATFORMS = ['bsky',
+'mast']` today; adding Threads/Tumblr/X in Phase 3 is a one-line extension plus
+their client create methods.
+
+### 21.5 What's verified
+
+Unit tests (`tests/test_posts.py`, 6): queries CRUD + publication upsert,
+`update_post` allowed-field filtering, the rating→label map, the unsupported-
+platform short-circuit, the not-connected credential path, and an end-to-end
+`publish_post` that records a `failed` row. HTTP-smoke-verified through a
+Starlette `TestClient`: create→list→publish (graceful not-connected)→get→delete.
+**Not** verifiable without live posting: an actual toot/skeet landing — that's a
+user-side dashboard test (and would create real posts).

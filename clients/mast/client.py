@@ -340,3 +340,83 @@ class MastClient:
             "has_media": 0,
             "embed_type": "",
         }
+
+    # -- Posting (Posts module) -----------------------------------------------
+
+    async def _upload_media(self, image_path: str, description: str = "") -> str | None:
+        """Upload one image to /api/v2/media, return its media id (or None).
+
+        v2 media may reply 200 (ready) or 202 (still processing) — either way the
+        id is usable straight away; Mastodon holds the status until the media is
+        processed, so we don't need to poll.
+        """
+        import mimetypes
+        import os
+        mime = mimetypes.guess_type(image_path)[0] or "image/jpeg"
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        try:
+            with open(image_path, "rb") as f:
+                files = {"file": (os.path.basename(image_path), f, mime)}
+                data = {"description": description} if description else None
+                resp = await self._http.post(
+                    f"{self.instance_url}/api/v2/media",
+                    files=files, data=data, headers=headers, timeout=120.0,
+                )
+            if resp.status_code not in (200, 202):
+                logger.error("MAST: media upload failed (%s): %s",
+                             resp.status_code, resp.text[:200])
+                return None
+            return str((resp.json() or {}).get("id") or "") or None
+        except Exception as e:
+            logger.error("MAST: media upload error: %s", e)
+            return None
+
+    async def create_status(self, text: str, *, image_path: str | None = None,
+                            image_alt: str = "", sensitive: bool = False,
+                            visibility: str = "public",
+                            idempotency_key: str = "") -> dict | None:
+        """Publish a status (a "toot"). Returns {id, uri, url} on success.
+
+        Requires a token with a **write** scope (the poll-only token minted with
+        scope=read will 403 here — surfaced to the caller as an error).
+        """
+        if not await self.ensure_logged_in():
+            logger.error("MAST: not logged in, cannot post")
+            return None
+
+        media_ids: list[str] = []
+        if image_path:
+            mid = await self._upload_media(image_path, image_alt)
+            if not mid:
+                return None   # image was requested but couldn't be attached
+            media_ids.append(mid)
+
+        payload: dict = {"status": text, "visibility": visibility}
+        if sensitive:
+            payload["sensitive"] = "true"
+        if media_ids:
+            payload["media_ids[]"] = media_ids
+
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        try:
+            resp = await self._http.post(
+                f"{self.instance_url}/api/v1/statuses",
+                data=payload, headers=headers, timeout=60.0,
+            )
+            if resp.status_code == 403:
+                logger.error("MAST: post rejected (403) — token lacks a write scope")
+                return None
+            resp.raise_for_status()
+            status = resp.json() or {}
+            result = {
+                "id": str(status.get("id", "")),
+                "uri": status.get("uri", "") or status.get("url", ""),
+                "url": status.get("url", "") or status.get("uri", ""),
+            }
+            logger.info("MAST: posted status %s", result["url"])
+            return result
+        except Exception as e:
+            logger.error("MAST: post failed: %s", e)
+            return None

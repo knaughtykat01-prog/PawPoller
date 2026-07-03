@@ -43,6 +43,7 @@ _TUM_SCHEMA_PATH = config.resource_path("database/tum_schema.sql")    # Tumblr t
 _PIX_SCHEMA_PATH = config.resource_path("database/pix_schema.sql")    # Pixiv tables
 _THR_SCHEMA_PATH = config.resource_path("database/thr_schema.sql")    # Threads tables
 _POSTING_SCHEMA_PATH = config.resource_path("database/posting_schema.sql")  # Posting module tables
+_POSTS_SCHEMA_PATH = config.resource_path("database/posts_schema.sql")      # Posts (microblog) module tables
 
 
 def get_connection() -> sqlite3.Connection:
@@ -114,6 +115,8 @@ def init_db() -> None:
         conn.executescript(thr_schema_sql)
         posting_schema_sql = _POSTING_SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(posting_schema_sql)
+        posts_schema_sql = _POSTS_SCHEMA_PATH.read_text(encoding="utf-8")
+        conn.executescript(posts_schema_sql)
         # Apply any migrations for tables added after the original schema release.
         _run_migrations(conn)
         conn.commit()

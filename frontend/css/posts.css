@@ -1,0 +1,142 @@
+/* ── Posts hub (microblog composer + feed) ───────────────────
+ * Styles for frontend/js/posts.js. Theme-token based so it tracks all themes.
+ */
+
+.post-compose { display: flex; flex-direction: column; gap: .75rem; }
+
+.post-body {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    min-height: 90px;
+    padding: .7rem .8rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 15px;
+}
+.post-body:focus { outline: none; border-color: var(--accent); }
+
+.post-image-preview {
+    display: flex;
+    align-items: flex-start;
+    gap: .6rem;
+}
+.post-image-preview img {
+    max-width: 220px;
+    max-height: 220px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    object-fit: cover;
+}
+
+.post-compose-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.post-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.post-inline select {
+    padding: .3rem .45rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+}
+.post-count { margin-left: auto; font-variant-numeric: tabular-nums; }
+.post-count.over { color: var(--danger); font-weight: 600; }
+
+.post-platforms {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+.post-plat {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .4rem .7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    font-size: 14px;
+    user-select: none;
+}
+.post-plat-emoji { font-size: 15px; }
+.post-acct-select {
+    margin-left: .35rem;
+    padding: .15rem .3rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.post-compose-actions {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+}
+
+/* ── Feed ── */
+.posts-feed-heading {
+    margin: 1.6rem 0 .8rem;
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--text-muted);
+}
+#post-feed { display: flex; flex-direction: column; gap: .8rem; }
+
+.post-card {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+.post-card-main {
+    display: flex;
+    gap: 1rem;
+    flex: 1;
+    min-width: 0;
+}
+.post-card-body { min-width: 0; flex: 1; }
+.post-card-text {
+    margin: .2rem 0 .5rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.post-card-img {
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+.post-card-pubs { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .35rem; }
+.post-pub {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+}
+.post-pub--ok   { background: rgba(90, 224, 160, 0.15); }
+.post-pub--ok a { color: var(--success); text-decoration: none; }
+.post-pub--fail { background: rgba(240, 112, 112, 0.15); color: var(--danger); cursor: help; }
+.post-card-meta { font-size: 12px; margin-top: .2rem; }
+
+@media (max-width: 620px) {
+    .post-card-main { flex-direction: column; }
+    .post-card-img { width: 100%; height: auto; max-height: 260px; }
+}
