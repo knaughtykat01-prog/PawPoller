@@ -499,8 +499,8 @@ CREDENTIAL_FIELDS = frozenset({
     "tw_auth_token", "tw_ct0",
     # Mastodon
     "mast_access_token",
-    # Tumblr
-    "tum_api_key",
+    # Tumblr (api_key = OAuth consumer key for read; the rest enable posting)
+    "tum_api_key", "tum_consumer_secret", "tum_oauth_token", "tum_oauth_token_secret",
     # Pixiv
     "pix_refresh_token",
     # Threads
@@ -561,7 +561,8 @@ PLATFORM_CREDENTIAL_FIELDS = {
     "bsky": ["bsky_identifier", "bsky_app_password"],
     "tw": ["tw_auth_token", "tw_ct0", "tw_target_user"],
     "mast": ["mast_instance_url", "mast_access_token"],
-    "tum": ["tum_api_key", "tum_blog"],
+    "tum": ["tum_api_key", "tum_blog", "tum_consumer_secret",
+            "tum_oauth_token", "tum_oauth_token_secret"],
     "pix": ["pix_refresh_token", "pix_user_id"],
     "thr": ["thr_access_token", "thr_user_id"],
 }
@@ -830,7 +831,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.49.0"
+APP_VERSION = "2.50.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

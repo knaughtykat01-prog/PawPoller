@@ -8,8 +8,11 @@
  */
 window.Posts = {
 
-    /* Platforms this module can post to today (Phase 2). Threads/Tumblr/X follow. */
-    _PLATFORMS: ['bsky', 'mast'],
+    /* Microblog platforms the module can post to. Bluesky + Mastodon post
+     * images too; Threads/Tumblr/X are text-only for now. */
+    _PLATFORMS: ['bsky', 'mast', 'thr', 'tum', 'tw'],
+    /* Ticked by default — the rest need their posting creds set up first. */
+    _DEFAULT_CHECKED: ['bsky', 'mast'],
 
     /* Bluesky caps a post at 300 graphemes; Mastodon's default is 500. Warn at
      * the tighter limit so a cross-post to Bluesky won't silently truncate. */
@@ -88,11 +91,14 @@ window.Posts = {
     _renderPlatformRows(el) {
         el.innerHTML = this._PLATFORMS.map(code => {
             const p = this._plat(code);
+            const on = this._DEFAULT_CHECKED.includes(code) ? ' checked' : '';
+            const textOnly = !['bsky', 'mast'].includes(code)
+                ? ' <span class="post-plat-note" title="Text-only for now">text</span>' : '';
             return `
             <label class="post-plat" data-platform="${code}">
-                <input type="checkbox" class="post-plat-check" value="${code}" checked>
+                <input type="checkbox" class="post-plat-check" value="${code}"${on}>
                 <span class="post-plat-emoji">${p.emoji || ''}</span>
-                <span>${this.esc(p.label)}</span>
+                <span>${this.esc(p.label)}</span>${textOnly}
                 <span class="post-acct-slot" data-platform="${code}"></span>
             </label>`;
         }).join('');

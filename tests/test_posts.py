@@ -62,8 +62,9 @@ def test_bsky_label_map():
 
 
 def test_publish_unsupported_platform_short_circuits():
+    # A non-microblog platform (Pixiv) is not a post target → clear rejection.
     post = {"body": "hi", "rating": "general", "post_id": 1}
-    res = asyncio.run(post_publisher._publish_one(post, "thr", None, {}))
+    res = asyncio.run(post_publisher._publish_one(post, "pix", None, {}))
     assert res["success"] is False and "isn't wired yet" in res["error"]
 
 
@@ -74,6 +75,28 @@ def test_publish_supported_platform_without_creds(db_conn):
     assert res_b["success"] is False and "isn't connected" in res_b["error"]
     res_m = asyncio.run(post_publisher._publish_one(post, "mast", None, {}))
     assert res_m["success"] is False and "isn't connected" in res_m["error"]
+
+
+def test_publish_new_platforms_without_creds(db_conn):
+    # Phase 3 platforms are now SUPPORTED but return a clear not-connected error.
+    post = {"body": "hi", "rating": "general", "post_id": 1}
+    cases = [
+        ("thr", "Threads account isn't connected"),
+        ("tw", "X/Twitter account isn't connected"),
+        ("tum", "Tumblr posting needs OAuth1 tokens"),
+    ]
+    for plat, needle in cases:
+        res = asyncio.run(post_publisher._publish_one(post, plat, None, {}))
+        assert res["success"] is False and needle in res["error"], (plat, res)
+
+
+def test_text_only_platform_rejects_an_attached_image():
+    # Threads/Tumblr/X are text-only for now — an attached image is refused
+    # BEFORE any credential/network work.
+    post = {"body": "hi", "rating": "general", "post_id": 1, "image_path": "/tmp/x.png"}
+    for plat in ("thr", "tw", "tum"):
+        res = asyncio.run(post_publisher._publish_one(post, plat, None, {}))
+        assert res["success"] is False and "text-only" in res["error"]
 
 
 def test_publish_post_records_a_publication_row(db_conn):

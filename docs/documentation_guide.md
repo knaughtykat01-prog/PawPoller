@@ -5530,16 +5530,39 @@ raises — every failure comes back as a result dict + a recorded `failed` row.
 
 ### 21.3 Client posting methods
 
-- **Bluesky**: reuses the existing `clients/bsky/client.py` `create_post(text, *,
-  image_path, image_alt, labels)` → `{uri, cid, url}`.
-- **Mastodon**: NEW `clients/mast/client.py` `create_status(text, *, image_path,
-  image_alt, sensitive, visibility, idempotency_key)` → `{id, uri, url}`.
-  Images upload via `_upload_media` (`POST /api/v2/media`, id usable even on the
-  202 "processing" reply); the status posts to `POST /api/v1/statuses` with an
-  `Idempotency-Key`. **Requires a token with a write scope** — the poll-only
-  `read` token 403s, returned to the caller as a clear error (the mast connect
-  form was built for polling, so users must reconnect with a write-scoped token
-  to post).
+Image support splits: **Bluesky + Mastodon carry images**; **Threads, Tumblr and
+X are text-only** for now (`post_publisher._TEXT_ONLY`) because each needs
+distinct image work — Threads pulls from a public `image_url` (no upload), X uses
+the chunked media-upload flow, Tumblr needs NPF. The publisher refuses an
+attached image on those three *before* any network call.
+
+- **Bluesky**: reuses `clients/bsky/client.py` `create_post(text, *, image_path,
+  image_alt, labels)` → `{uri, cid, url}`.
+- **Mastodon**: `clients/mast/client.py` `create_status(text, *, image_path,
+  image_alt, sensitive, visibility, idempotency_key)` → `{id, uri, url}`. Images
+  via `_upload_media` (`POST /api/v2/media`, id usable even on the 202 reply);
+  status posts to `POST /api/v1/statuses` with an `Idempotency-Key`. **Needs a
+  write-scope token** — the poll-only `read` token 403s.
+- **Threads** (2.50.0): `clients/thr/client.py` `create_thread(text)` → `{id,
+  url}`. The Graph API 2-step: `POST /{user_id}/threads` (media_type=TEXT) →
+  `POST /{user_id}/threads_publish` (creation_id) → `GET /{media_id}?fields=
+  permalink`. Reuses `thr_access_token`/`thr_user_id`; the token must carry
+  **`threads_content_publish`** or publish 400s.
+- **X/Twitter** (2.50.0): `clients/tw/client.py` `create_tweet(text)` → `{id,
+  url}` via the internal **CreateTweet GraphQL mutation** over the same cookie
+  session as polling (`tw_auth_token`/`tw_ct0`, `_BEARER`, `x-csrf-token=ct0`) —
+  **no new creds**. `_GRAPHQL_CREATE_TWEET` + `_CREATE_TWEET_FEATURES` rotate
+  with X's web client; refresh from x.com's `main.*.js` if it 404s / errors on
+  missing features. X actively fights automation, so treat this as best-effort.
+- **Tumblr** (2.50.0): `clients/tum/client.py` `create_text_post(body, title,
+  tags)` → `{id, url}` via the OAuth1-signed legacy `POST /blog/{blog}/post`
+  (`type=text`). The read-only `api_key` can't post, so this needs the full
+  OAuth1 user token: NEW creds `tum_consumer_secret` / `tum_oauth_token` /
+  `tum_oauth_token_secret` (in `PLATFORM_CREDENTIAL_FIELDS["tum"]` + the
+  vault-encrypted `CREDENTIAL_FIELDS`). No oauth lib is installed, so the
+  **HMAC-SHA1 signer is hand-rolled** (`_oauth1_header` + `_pe`, RFC 5849 §3.4)
+  — unit-tested against the canonical Twitter OAuth1 example and cross-validated
+  with `openssl` (`tests/test_oauth1.py`).
 
 ### 21.4 API + frontend
 
@@ -5557,15 +5580,22 @@ counter that reddens when Bluesky is checked and over) over a feed of composed
 posts. Each feed card shows the body/image/rating, per-platform status badges
 (posted → external link, failed → hover-title error), and delete. `#/posts`
 route + a **Posts** nav entry (💬) sit beside Artwork. `_PLATFORMS = ['bsky',
-'mast']` today; adding Threads/Tumblr/X in Phase 3 is a one-line extension plus
-their client create methods.
+'mast', 'thr', 'tum', 'tw']`; `_DEFAULT_CHECKED = ['bsky', 'mast']` — the three
+text-only platforms are badged **text** and start unticked (they need their
+posting creds set up first).
 
 ### 21.5 What's verified
 
-Unit tests (`tests/test_posts.py`, 6): queries CRUD + publication upsert,
+Unit tests (`tests/test_posts.py`, 8): queries CRUD + publication upsert,
 `update_post` allowed-field filtering, the rating→label map, the unsupported-
-platform short-circuit, the not-connected credential path, and an end-to-end
-`publish_post` that records a `failed` row. HTTP-smoke-verified through a
-Starlette `TestClient`: create→list→publish (graceful not-connected)→get→delete.
-**Not** verifiable without live posting: an actual toot/skeet landing — that's a
-user-side dashboard test (and would create real posts).
+platform short-circuit (Pixiv), the not-connected credential path for all five
+targets, the text-only image guard for thr/tw/tum, and an end-to-end
+`publish_post` that records a `failed` row. OAuth1 (`tests/test_oauth1.py`, 2):
+`_pe` RFC-3986 encoding + the HMAC-SHA1 signature against the canonical Twitter
+example, cross-validated with `openssl`. HTTP-smoke-verified through a Starlette
+`TestClient`: create→list→publish (all five resolve with correct per-platform
+errors)→get→delete. **Not** verifiable without live creds/posting: an actual
+toot/skeet/tweet/thread/tumbl landing — those are user-side dashboard tests (and
+would create real posts). Fragility to watch: X's CreateTweet query id/features
+rotate; Threads needs the publish permission; Tumblr/Mastodon need the right
+token scope.

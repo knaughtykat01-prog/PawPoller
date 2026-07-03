@@ -1,22 +1,32 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-03
-**Current version:** 2.49.0 — **New "Posts" module — microblog publishing (Bluesky + Mastodon live).**
+**Current version:** 2.50.0 — **Posts module posts to ALL FIVE microblog platforms (Threads/Tumblr/X added).**
+The **Posts** hub (`#/posts`) now publishes to Bluesky, Mastodon, Threads, Tumblr and X. The three new ones are
+**text-only** (image cross-posting needs per-platform work: Threads=public image_url, X=chunked media upload,
+Tumblr=NPF) — an attached image is refused on those three up front; Bluesky/Mastodon still carry images.
+**Threads** = 2-step Graph API create→publish (`clients/thr/client.py` `create_thread`, reuses
+`thr_access_token`/`thr_user_id`; token needs `threads_content_publish`). **X** = internal CreateTweet GraphQL
+mutation over the existing cookie session (`clients/tw/client.py` `create_tweet`, no new creds; query
+IDs/feature flags rotate — refresh `_GRAPHQL_CREATE_TWEET`/`_CREATE_TWEET_FEATURES` if it errors). **Tumblr** =
+OAuth1-signed legacy create (`clients/tum/client.py` `create_text_post`); the read `api_key` can't post, so it
+needs NEW creds `tum_consumer_secret`/`tum_oauth_token`/`tum_oauth_token_secret` (added to
+`PLATFORM_CREDENTIAL_FIELDS` + vault `CREDENTIAL_FIELDS`); the HMAC-SHA1 signer is hand-rolled (`_oauth1_header`)
+and unit-tested vs the canonical Twitter vector, cross-checked with openssl. `posting/post_publisher.py`
+`SUPPORTED` = all five, `_TEXT_ONLY = (thr,tw,tum)`. Frontend: composer lists all five; Threads/Tumblr/X badged
+**text** and unticked by default. New `tests/test_oauth1.py` (2) + `test_posts.py` (8); full suite **285 passing**;
+TestClient smoke confirms all five resolve with correct per-platform errors.
+**Session plan COMPLETE** (Phase 1 gallery → Phase 2 Posts → Phase 3 all-five). Deferred task remaining:
+in-dashboard **Pixiv guided-paste Connect** (Pixiv's `pixiv://` redirect blocks true one-click).
+**Actions for the user to actually post:** Mastodon → reconnect with a **write**-scope token (connect token was
+`read`). Threads → token needs `threads_content_publish`. Tumblr → add the 3 OAuth1 tokens. X → uses the existing
+cookie session (brittle — query IDs rotate). Bluesky → works with the app password.
+
+**Prior release — 2.49.0 — New "Posts" module — microblog publishing (Bluesky + Mastodon live).**
 A third publishing hub beside Stories and Artwork: **Posts** (`#/posts`) composes a short post once and pushes
-it to microblog accounts at once. Self-contained store (`database/posts_schema.sql` + `posts_queries.py`:
-`posts` + `post_publications`) — deliberately NOT the story/artwork `publications` registry (a post has no
-title/chapters/file). Engine `posting/post_publisher.py` builds a **fresh** client per publish from resolved
-account creds (never the poller singletons), maps rating → Bluesky self-labels / Mastodon `sensitive`, records
-each outcome. **Mastodon can now post** — new `clients/mast/client.py` `create_status` (+ `_upload_media`);
-**needs a token with a WRITE scope** (the poll-only `read` token 403s — surfaced clearly). Bluesky reuses
-`create_post`. API `routes/posts_api.py` (`/api/posts/*`: list/create-multipart/publish/delete/image);
-frontend `posts.js`+`posts.css` (compose box + feed with per-platform status) + **Posts** nav + `#/posts`.
-**Threads/Tumblr/X are recognised but return "not wired yet"** until Phase 3 (their OAuth posting flows). New
-`tests/test_posts.py` (6); full suite **281 passing**; TestClient HTTP-smoke verified create→list→publish→delete.
-**Next up (this session's plan):** Phase 3 — Threads/Tumblr/X posting (each needs an OAuth user-token flow).
-Deferred task: in-dashboard **Pixiv guided-paste Connect** (Pixiv's `pixiv://` redirect blocks true one-click).
-**Action for the user:** to actually post to Mastodon, regenerate the instance access token with a **write**
-scope (the connect token was `read` for polling) and reconnect.
+it to microblog accounts at once. Self-contained store (`database/posts_schema.sql` + `posts_queries.py`) — NOT
+the story/artwork `publications` registry. Engine `posting/post_publisher.py`; API `routes/posts_api.py`
+(`/api/posts/*`); frontend `posts.js`+`posts.css` + **Posts** nav + `#/posts`.
 
 **Prior release — 2.48.0 — Artwork tab is now a full gallery — discovered art merged into the grid.**
 The Artwork hub (`#/artwork`) also surfaces **discovered art** the pollers found on your art accounts, reading

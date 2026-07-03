@@ -4,6 +4,36 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.50.0] - 2026-07-03 - Posts module Phase 2: Threads, Tumblr & X posting
+
+The Posts hub (`#/posts`) can now publish to **all five** microblog platforms the user asked for. Threads,
+Tumblr and X join Bluesky + Mastodon — **text-only** for now (image cross-posting to these three needs
+per-platform work: Threads wants a public `image_url`, X the chunked media-upload flow, Tumblr NPF). An
+attached image is refused on those three with a clear message before any network call; Bluesky/Mastodon still
+carry images.
+
+- **Threads** (`clients/thr/client.py` `create_thread`): the 2-step Graph API create → publish, reusing the
+  existing `thr_access_token`/`thr_user_id`. The token must carry `threads_content_publish` — without it
+  publish 400s (surfaced clearly).
+- **X/Twitter** (`clients/tw/client.py` `create_tweet`): the internal **CreateTweet GraphQL mutation** over the
+  existing cookie session (`tw_auth_token`/`tw_ct0`) — no new creds. NOTE: X's GraphQL query IDs + feature
+  flags rotate and X fights automation, so `_GRAPHQL_CREATE_TWEET`/`_CREATE_TWEET_FEATURES` may need refreshing
+  if it starts erroring.
+- **Tumblr** (`clients/tum/client.py` `create_text_post`): the OAuth1-signed legacy create endpoint. The
+  read-only `api_key` can't post, so this needs **new OAuth1 user creds** — `tum_consumer_secret`,
+  `tum_oauth_token`, `tum_oauth_token_secret` (added to `PLATFORM_CREDENTIAL_FIELDS` + the vault-encrypted
+  `CREDENTIAL_FIELDS`). No oauth library is installed, so the **HMAC-SHA1 signer is hand-rolled** (`_oauth1_header`
+  / `_pe`) and unit-tested against the canonical Twitter OAuth1 example, cross-validated with `openssl`.
+- **Publisher** (`posting/post_publisher.py`): `SUPPORTED` now covers all five; `_TEXT_ONLY = (thr, tw, tum)`
+  refuses an attached image up front; each branch builds a fresh client from resolved creds and records the
+  outcome, with a clear not-connected / needs-tokens error per platform.
+- **Frontend** (`frontend/js/posts.js` + `posts.css`): the composer lists all five platforms; Threads/Tumblr/X
+  carry a small **text** badge and are **unticked by default** (they need their posting creds set up first).
+- New `tests/test_oauth1.py` (2) + Posts tests extended (now 8); full suite **285 passing**; TestClient smoke
+  confirms all five resolve with correct per-platform errors.
+
+---
+
 ## [2.49.0] - 2026-07-03 - New "Posts" module: microblog publishing (Bluesky + Mastodon)
 
 A third publishing hub joins Stories and Artwork: **Posts** (`#/posts`) — compose a short "tweet-like" post

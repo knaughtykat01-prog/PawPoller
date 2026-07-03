@@ -163,6 +163,45 @@ class ThrClient:
             logger.error("THR: JSON parse error for %s: %s", url, e)
             return None
 
+    async def _post_form(self, url: str, data: dict) -> dict | None:
+        payload = dict(data)
+        payload["access_token"] = self.access_token
+        try:
+            resp = await self._http.post(url, data=payload)
+            if resp.status_code not in (200, 201):
+                logger.error("THR: post failed (%s): %s", resp.status_code, resp.text[:300])
+                return None
+            return resp.json()
+        except Exception as e:
+            logger.error("THR: post error for %s: %s", url, e)
+            return None
+
+    # -- Posting --------------------------------------------------------------
+
+    async def create_thread(self, text: str) -> dict | None:
+        """Publish a text thread (2-step create → publish). Returns {id, url}.
+
+        Text-only: the Graph API pulls images from a PUBLIC ``image_url`` (no file
+        upload), which PawPoller doesn't host yet. The access token must carry the
+        ``threads_content_publish`` permission — without it publish 400s and this
+        returns None (surfaced to the caller as a clear error).
+        """
+        if not await self.ensure_logged_in():
+            return None
+        create = await self._post_form(
+            f"{_API_BASE}/{self.user_id}/threads",
+            {"media_type": "TEXT", "text": text})
+        if not create or not create.get("id"):
+            return None
+        pub = await self._post_form(
+            f"{_API_BASE}/{self.user_id}/threads_publish",
+            {"creation_id": create["id"]})
+        if not pub or not pub.get("id"):
+            return None
+        media_id = str(pub["id"])
+        perma = await self._get_json(f"{_API_BASE}/{media_id}", {"fields": "permalink"})
+        return {"id": media_id, "url": (perma or {}).get("permalink", "")}
+
     # -- Post Discovery -------------------------------------------------------
 
     async def get_all_post_uris(self) -> list[dict]:

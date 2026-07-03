@@ -57,6 +57,9 @@ _HEADERS = {
 _GRAPHQL_USER_BY_SCREEN_NAME = "xmU6X_CKVnQ5lSrCbAmJsg"
 _GRAPHQL_USER_TWEETS = "E3opETHurmVJflFsUBVuUQ"
 _GRAPHQL_TWEET_RESULT_BY_REST_ID = "zXaXQgfyR4GxE3UFlgapRQ"
+# Posting mutation. Query IDs rotate; if CreateTweet 404s, refresh this from
+# x.com's main.*.js bundle (search for "CreateTweet").
+_GRAPHQL_CREATE_TWEET = "a1p9RWpkYKBjWv_I3WzS-A"
 
 # Standard GraphQL features dict required by X's API
 _GRAPHQL_FEATURES = {
@@ -82,6 +85,31 @@ _GRAPHQL_FEATURES = {
     "rweb_video_timestamps_enabled": True,
     "longform_notetweets_rich_text_read_enabled": True,
     "longform_notetweets_inline_media_enabled": True,
+    "responsive_web_enhance_cards_enabled": False,
+}
+
+# CreateTweet needs its own feature set. This too rotates — if the mutation
+# errors with "features cannot be null" / a missing-feature list, sync this with
+# x.com's current CreateTweet payload.
+_CREATE_TWEET_FEATURES = {
+    "communities_web_enable_tweet_community_results_fetch": True,
+    "c9s_tweet_anatomy_moderator_badge_enabled": True,
+    "responsive_web_edit_tweet_api_enabled": True,
+    "graphql_is_translatable_rweb_tweet_is_translatable_enabled": True,
+    "view_counts_everywhere_api_enabled": True,
+    "longform_notetweets_consumption_enabled": True,
+    "responsive_web_twitter_article_tweet_consumption_enabled": True,
+    "tweet_awards_web_tipping_enabled": False,
+    "longform_notetweets_rich_text_read_enabled": True,
+    "longform_notetweets_inline_media_enabled": True,
+    "rweb_video_timestamps_enabled": True,
+    "responsive_web_graphql_exclude_directive_enabled": True,
+    "verified_phone_label_enabled": False,
+    "freedom_of_speech_not_reach_fetch_enabled": True,
+    "standardized_nudges_misinfo": True,
+    "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": True,
+    "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
+    "responsive_web_graphql_timeline_navigation_enabled": True,
     "responsive_web_enhance_cards_enabled": False,
 }
 
@@ -271,6 +299,51 @@ class TWClient:
         except Exception as e:
             logger.error("TW: JSON parse error: %s", e)
             return None
+
+    async def _post_graphql(self, query_id: str, op_name: str,
+                            variables: dict, features: dict) -> dict | None:
+        url = f"{_BASE}/i/api/graphql/{query_id}/{op_name}"
+        body = {"variables": variables, "features": features, "queryId": query_id}
+        try:
+            resp = await self._http.post(url, json=body)
+            if resp.status_code != 200:
+                logger.error("TW: %s failed (%s): %s", op_name, resp.status_code, resp.text[:300])
+                return None
+            return resp.json()
+        except Exception as e:
+            logger.error("TW: %s error: %s", op_name, e)
+            return None
+
+    # -- Posting --------------------------------------------------------------
+
+    async def create_tweet(self, text: str) -> dict | None:
+        """Post a tweet via the internal CreateTweet GraphQL mutation.
+
+        Text-only, same cookie auth as polling. X's query IDs + feature flags
+        rotate and X actively fights automation — if this 404s/errors, refresh
+        ``_GRAPHQL_CREATE_TWEET`` / ``_CREATE_TWEET_FEATURES`` from x.com's bundle.
+        Returns {id, url} or None.
+        """
+        if not (self.auth_token and self.ct0):
+            return None
+        variables = {
+            "tweet_text": text,
+            "dark_request": False,
+            "media": {"media_entities": [], "possibly_sensitive": False},
+            "semantic_annotation_ids": [],
+        }
+        data = await self._post_graphql(
+            _GRAPHQL_CREATE_TWEET, "CreateTweet", variables, _CREATE_TWEET_FEATURES)
+        if not data:
+            return None
+        result = ((data.get("data", {}) or {}).get("create_tweet", {})
+                  .get("tweet_results", {}).get("result", {}))
+        rest_id = result.get("rest_id", "")
+        if not rest_id:
+            logger.error("TW: CreateTweet returned no rest_id: %s", str(data)[:300])
+            return None
+        handle = self.target_user or "i"
+        return {"id": str(rest_id), "url": f"https://x.com/{handle}/status/{rest_id}"}
 
     # -- Tweet Discovery ------------------------------------------------------
 

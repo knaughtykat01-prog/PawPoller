@@ -67,13 +67,62 @@ def _normalise_blog(blog: str) -> str:
     return blog.rstrip("/")
 
 
+# ── OAuth 1.0a signing (RFC 5849) ───────────────────────────────────
+# Tumblr's read API takes just the consumer key, but CREATING a post needs a
+# full OAuth1 user-token signature. No oauth library is installed, so this is a
+# hand-rolled HMAC-SHA1 signer — unit-tested against Twitter's published example
+# vector (tests/test_oauth1.py) so the crypto is verified without live tokens.
+
+def _pe(s: Any) -> str:
+    """Percent-encode per RFC 3986 (unreserved = ALPHA / DIGIT / -._~)."""
+    from urllib.parse import quote
+    return quote(str(s), safe="~")
+
+
+def _oauth1_header(method: str, url: str, params: dict, *, consumer_key: str,
+                   consumer_secret: str, token: str, token_secret: str,
+                   timestamp: int, nonce: str) -> str:
+    """Build an ``Authorization: OAuth ...`` header for a form-body request.
+
+    ``params`` are the request's body/query params (for a form POST they're part
+    of the signature base string, per RFC 5849 §3.4.1.3).
+    """
+    import base64
+    import hashlib
+    import hmac
+
+    oauth = {
+        "oauth_consumer_key": consumer_key,
+        "oauth_nonce": nonce,
+        "oauth_signature_method": "HMAC-SHA1",
+        "oauth_timestamp": str(timestamp),
+        "oauth_token": token,
+        "oauth_version": "1.0",
+    }
+    all_params = {**params, **oauth}
+    encoded = sorted((_pe(k), _pe(v)) for k, v in all_params.items())
+    param_str = "&".join(f"{k}={v}" for k, v in encoded)
+    base = "&".join([method.upper(), _pe(url), _pe(param_str)])
+    signing_key = f"{_pe(consumer_secret)}&{_pe(token_secret)}"
+    sig = base64.b64encode(
+        hmac.new(signing_key.encode(), base.encode(), hashlib.sha1).digest()).decode()
+    oauth["oauth_signature"] = sig
+    return "OAuth " + ", ".join(f'{_pe(k)}="{_pe(v)}"' for k, v in sorted(oauth.items()))
+
+
 class TumClient:
     """Async HTTP client for the Tumblr v2 API (read-only, API-key auth)."""
 
     def __init__(self, api_key: str = "", blog: str = "",
-                 proxy_url: str = "", proxy_key: str = ""):
+                 proxy_url: str = "", proxy_key: str = "",
+                 consumer_secret: str = "", oauth_token: str = "",
+                 oauth_token_secret: str = ""):
         self.api_key = api_key
         self.blog = _normalise_blog(blog)
+        # OAuth1 user-token creds — only needed for POSTING (read uses api_key).
+        self._consumer_secret = consumer_secret
+        self._oauth_token = oauth_token
+        self._oauth_token_secret = oauth_token_secret
         self._blog_name: str = ""
         self._logged_in = False
 
@@ -122,6 +171,48 @@ class TumClient:
             self._logged_in = True
             return self._blog_name
         return None
+
+    # -- Posting --------------------------------------------------------------
+
+    def _can_post(self) -> bool:
+        return bool(self.api_key and self.blog and self._consumer_secret
+                    and self._oauth_token and self._oauth_token_secret)
+
+    async def create_text_post(self, body: str, title: str = "",
+                               tags: list[str] | None = None) -> dict | None:
+        """Create a published text post via the OAuth1-signed legacy endpoint.
+
+        Text-only. Returns {id, url} or None. Needs the full OAuth1 user token
+        (consumer_secret + oauth_token + oauth_token_secret) — the read-only
+        api_key alone can't post.
+        """
+        import secrets
+        import time
+        if not self._can_post():
+            return None
+        url = f"{_API_BASE}/blog/{self.blog}/post"
+        params = {"type": "text", "state": "published", "body": body}
+        if title:
+            params["title"] = title
+        if tags:
+            params["tags"] = ",".join(tags)
+        header = _oauth1_header(
+            "POST", url, params,
+            consumer_key=self.api_key, consumer_secret=self._consumer_secret,
+            token=self._oauth_token, token_secret=self._oauth_token_secret,
+            timestamp=int(time.time()), nonce=secrets.token_hex(16))
+        try:
+            resp = await self._http.post(url, data=params, headers={"Authorization": header})
+            if resp.status_code not in (200, 201):
+                logger.error("TUM: post failed (%s): %s", resp.status_code, resp.text[:300])
+                return None
+            j = resp.json()
+            post_id = str(((j.get("response") or {}).get("id")) or "")
+            host = self.blog if "." in self.blog else f"{self.blog}.tumblr.com"
+            return {"id": post_id, "url": f"https://{host}/post/{post_id}" if post_id else ""}
+        except Exception as e:
+            logger.error("TUM: post error: %s", e)
+            return None
 
     async def ensure_logged_in(self) -> bool:
         if self._logged_in and self._blog_name:
