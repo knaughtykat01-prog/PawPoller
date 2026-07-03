@@ -28,7 +28,7 @@ PawPoller is a desktop app and self-hosted server for publishing fiction across 
 - **Polling engine** -- Automatically fetches stats on a schedule, detects new comments and favourites
 - **Telegram notifications** -- Get alerts for milestones, new comments, and goal completions
 - **Built-in editor** -- Markdown editor with live preview, slop scoring, and format conversion
-- **Tag database** -- 4,600+ tags with per-platform validation and chapter-level tagging
+- **Tag database** -- 20,000+ tags (8,700+ for stories, 11,900+ for artwork) with per-platform validation and chapter-level tagging
 - **Goal tracking** -- Set targets for views/favourites/comments and track progress
 - **Two deployment modes** -- Desktop app (Windows .exe) or headless Docker server
 - **Credential vault** -- Optional encrypted credential storage with system keyring integration
