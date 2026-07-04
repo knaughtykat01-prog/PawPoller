@@ -19,6 +19,7 @@ import config
 from database.db import get_connection
 from database import ao3_queries
 from polling.ao3_poller import run_ao3_poll_cycle, ao3_poll_progress
+from polling.background import spawn
 from clients.ao3.client import AO3Client
 import config
 
@@ -137,8 +138,8 @@ def get_ao3_poll_progress():
 async def trigger_ao3_poll():
     """Manual poll trigger for AO3."""
     try:
-        stats = await run_ao3_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_ao3_poll_cycle(), "run_ao3_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in AO3 poll trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -148,8 +149,8 @@ async def trigger_ao3_poll():
 async def ao3_full_resync():
     """Force full AO3 resync."""
     try:
-        stats = await run_ao3_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_ao3_poll_cycle(force_full=True), "run_ao3_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in AO3 full resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

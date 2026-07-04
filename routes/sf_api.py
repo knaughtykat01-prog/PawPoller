@@ -23,6 +23,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import sf_queries
 from polling.sf_poller import run_sf_poll_cycle, sf_poll_progress
+from polling.background import spawn
 from clients.sf.client import SoFurryClient
 import config
 
@@ -134,8 +135,8 @@ def get_sf_poll_progress():
 async def trigger_sf_poll():
     """Manual poll trigger for SoFurry."""
     try:
-        stats = await run_sf_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_sf_poll_cycle(), "run_sf_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in SF poll trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -145,8 +146,8 @@ async def trigger_sf_poll():
 async def sf_full_resync():
     """Force full SoFurry resync."""
     try:
-        stats = await run_sf_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_sf_poll_cycle(force_full=True), "run_sf_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in SF full resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

@@ -30,6 +30,7 @@ from fastapi.responses import Response, StreamingResponse
 from database.db import get_connection
 from database import fa_queries
 from polling.fa_poller import run_fa_poll_cycle, fa_poll_progress
+from polling.background import spawn
 from clients.fa.client import FAClient
 import config
 
@@ -175,8 +176,8 @@ async def trigger_fa_poll():
     Mirrors IB's /api/poll/trigger. Only fetches data for new/changed submissions.
     """
     try:
-        stats = await run_fa_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_fa_poll_cycle(), "run_fa_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in FA poll trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -190,8 +191,8 @@ async def fa_full_resync():
     inconsistencies or after schema changes.
     """
     try:
-        stats = await run_fa_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_fa_poll_cycle(force_full=True), "run_fa_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in FA full resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

@@ -17,6 +17,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import sqw_queries
 from polling.sqw_poller import run_sqw_poll_cycle, sqw_poll_progress
+from polling.background import spawn
 from clients.sqw.client import SquidgeWorldClient
 import config
 
@@ -113,8 +114,8 @@ def get_sqw_poll_progress():
 async def trigger_sqw_poll():
     """Manual poll trigger for SquidgeWorld."""
     try:
-        stats = await run_sqw_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_sqw_poll_cycle(), "run_sqw_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in SqW poll trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -124,8 +125,8 @@ async def trigger_sqw_poll():
 async def sqw_full_resync():
     """Force full SquidgeWorld resync."""
     try:
-        stats = await run_sqw_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_sqw_poll_cycle(force_full=True), "run_sqw_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in SqW full resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

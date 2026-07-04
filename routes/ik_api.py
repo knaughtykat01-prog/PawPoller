@@ -21,6 +21,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import ik_queries
 from polling.ik_poller import run_ik_poll_cycle, ik_poll_progress
+from polling.background import spawn
 from clients.ik.client import IKClient
 import config
 
@@ -105,8 +106,8 @@ def get_ik_poll_progress():
 async def trigger_ik_poll():
     """Manual poll trigger for Itaku."""
     try:
-        stats = await run_ik_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_ik_poll_cycle(), "run_ik_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in IK poll trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -116,8 +117,8 @@ async def trigger_ik_poll():
 async def ik_full_resync():
     """Force full Itaku resync."""
     try:
-        stats = await run_ik_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_ik_poll_cycle(force_full=True), "run_ik_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in IK full resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

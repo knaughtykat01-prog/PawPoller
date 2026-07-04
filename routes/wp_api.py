@@ -20,6 +20,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import wp_queries
 from polling.wp_poller import run_wp_poll_cycle, wp_poll_progress
+from polling.background import spawn
 from clients.wp.client import WPClient
 import config
 
@@ -104,8 +105,8 @@ def get_wp_poll_progress():
 async def trigger_wp_poll():
     """Manual poll trigger for Wattpad."""
     try:
-        stats = await run_wp_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_wp_poll_cycle(), "run_wp_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in WP poll trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -115,8 +116,8 @@ async def trigger_wp_poll():
 async def wp_full_resync():
     """Force full Wattpad resync."""
     try:
-        stats = await run_wp_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_wp_poll_cycle(force_full=True), "run_wp_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in WP full resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

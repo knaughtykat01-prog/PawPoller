@@ -41,6 +41,7 @@ from database import (
     group_queries, analytics_queries,
 )
 from polling.poller import run_poll_cycle, poll_progress
+from polling.background import spawn
 from clients.ib.client import InkbunnyClient
 import config
 import updater
@@ -708,8 +709,8 @@ async def trigger_poll():
     Compare with /poll/full-resync which forces a complete re-scrape of everything.
     """
     try:
-        stats = await run_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_poll_cycle(), "run_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in /api/poll/trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -727,8 +728,8 @@ async def full_resync():
       - When faving user lists appear incomplete
     """
     try:
-        stats = await run_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_poll_cycle(force_full=True), "run_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in /api/poll/full-resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

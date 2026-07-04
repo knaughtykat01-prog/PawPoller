@@ -19,6 +19,7 @@ from fastapi.responses import StreamingResponse, Response
 from database.db import get_connection
 from database import pix_queries
 from polling.pix_poller import run_pix_poll_cycle, pix_poll_progress
+from polling.background import spawn
 import config
 
 logger = logging.getLogger(__name__)
@@ -123,8 +124,8 @@ def get_pix_poll_progress():
 @pix_router.post("/poll/trigger")
 async def trigger_pix_poll():
     try:
-        stats = await run_pix_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_pix_poll_cycle(), "run_pix_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in PIX poll trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -133,8 +134,8 @@ async def trigger_pix_poll():
 @pix_router.post("/poll/full-resync")
 async def pix_full_resync():
     try:
-        stats = await run_pix_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_pix_poll_cycle(force_full=True), "run_pix_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in PIX full resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

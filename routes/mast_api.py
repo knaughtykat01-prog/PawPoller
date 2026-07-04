@@ -21,6 +21,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import mast_queries
 from polling.mast_poller import run_mast_poll_cycle, mast_poll_progress
+from polling.background import spawn
 from clients.mast.client import MastClient
 import config
 
@@ -113,8 +114,8 @@ def get_mast_poll_progress():
 async def trigger_mast_poll():
     """Manual poll trigger for Mastodon."""
     try:
-        stats = await run_mast_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_mast_poll_cycle(), "run_mast_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in MAST poll trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -124,8 +125,8 @@ async def trigger_mast_poll():
 async def mast_full_resync():
     """Force full Mastodon resync."""
     try:
-        stats = await run_mast_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_mast_poll_cycle(force_full=True), "run_mast_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in MAST full resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

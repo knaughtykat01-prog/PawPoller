@@ -4,6 +4,23 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.51.5] - 2026-07-04 - Fix: manual Poll Now / Full Resync 524 timeout (fire-and-forget triggers)
+
+The companion to 2.51.4. With the buttons firing again, the manual poll/resync triggers surfaced the second bug:
+on slow platforms (AO3, X) the browser got a **Cloudflare 524 timeout**. Every trigger endpoint `await`ed the
+entire `run_<platform>_poll_cycle()` inside the HTTP request, so the response didn't return until the whole scrape
+finished — well past Cloudflare's ~100 s cap.
+
+**Fix.** New `polling/background.py` `spawn(coro, label)` runs the cycle as a detached background task — it keeps a
+strong reference so the task can't be garbage-collected mid-flight, and logs any exception the cycle raises — then
+lets the endpoint return immediately. All **30** manual trigger + full-resync endpoints across the 15
+`routes/*_api.py` now `spawn(...)` and return `{"status": "started"}` instead of blocking on the poll and returning
+its stats. The frontend already only checks that the trigger was accepted (shows "Done!" then reloads), so the
+response-shape change is transparent. Scheduled/background polling is unchanged. 300 tests green.
+`polling/background.py` (new), `routes/*_api.py`. **Needs a server deploy.**
+
+---
+
 ## [2.51.4] - 2026-07-04 - Fix: dashboard buttons dead in the browser (strict CSP blocked inline handlers)
 
 Every inline `onclick=` button — Poll Now / Full Resync, Export CSV, submission-card navigation, group/link/posting

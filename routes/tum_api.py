@@ -19,6 +19,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import tum_queries
 from polling.tum_poller import run_tum_poll_cycle, tum_poll_progress
+from polling.background import spawn
 import config
 
 logger = logging.getLogger(__name__)
@@ -99,8 +100,8 @@ def get_tum_poll_progress():
 @tum_router.post("/poll/trigger")
 async def trigger_tum_poll():
     try:
-        stats = await run_tum_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_tum_poll_cycle(), "run_tum_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in TUM poll trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -109,8 +110,8 @@ async def trigger_tum_poll():
 @tum_router.post("/poll/full-resync")
 async def tum_full_resync():
     try:
-        stats = await run_tum_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_tum_poll_cycle(force_full=True), "run_tum_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in TUM full resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

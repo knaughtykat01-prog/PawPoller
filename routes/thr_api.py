@@ -17,6 +17,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import thr_queries
 from polling.thr_poller import run_thr_poll_cycle, thr_poll_progress
+from polling.background import spawn
 import config
 
 logger = logging.getLogger(__name__)
@@ -97,8 +98,8 @@ def get_thr_poll_progress():
 @thr_router.post("/poll/trigger")
 async def trigger_thr_poll():
     try:
-        stats = await run_thr_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_thr_poll_cycle(), "run_thr_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in THR poll trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -107,8 +108,8 @@ async def trigger_thr_poll():
 @thr_router.post("/poll/full-resync")
 async def thr_full_resync():
     try:
-        stats = await run_thr_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_thr_poll_cycle(force_full=True), "run_thr_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in THR full resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

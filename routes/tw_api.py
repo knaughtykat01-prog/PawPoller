@@ -20,6 +20,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import tw_queries
 from polling.tw_poller import run_tw_poll_cycle, tw_poll_progress
+from polling.background import spawn
 from clients.tw.client import TWClient
 import config
 
@@ -120,8 +121,8 @@ def get_tw_poll_progress():
 async def trigger_tw_poll():
     """Manual poll trigger for X/Twitter."""
     try:
-        stats = await run_tw_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_tw_poll_cycle(), "run_tw_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in TW poll trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -131,8 +132,8 @@ async def trigger_tw_poll():
 async def tw_full_resync():
     """Force full X/Twitter resync."""
     try:
-        stats = await run_tw_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_tw_poll_cycle(force_full=True), "run_tw_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in TW full resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

@@ -21,6 +21,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import da_queries
 from polling.da_poller import run_da_poll_cycle, da_poll_progress
+from polling.background import spawn
 from clients.da.client import DAClient
 import config
 
@@ -124,8 +125,8 @@ def get_da_poll_progress():
 async def trigger_da_poll():
     """Manual poll trigger for DA."""
     try:
-        stats = await run_da_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_da_poll_cycle(), "run_da_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in DA poll trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -135,8 +136,8 @@ async def trigger_da_poll():
 async def da_full_resync():
     """Force full DA resync."""
     try:
-        stats = await run_da_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_da_poll_cycle(force_full=True), "run_da_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in DA full resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))

@@ -35,6 +35,7 @@ from fastapi.responses import StreamingResponse
 from database.db import get_connection
 from database import ws_queries
 from polling.ws_poller import run_ws_poll_cycle, ws_poll_progress
+from polling.background import spawn
 from clients.weasyl.client import WeasylClient
 import config
 
@@ -152,8 +153,8 @@ async def trigger_ws_poll():
     Mirrors IB's /api/poll/trigger and FA's /api/fa/poll/trigger.
     """
     try:
-        stats = await run_ws_poll_cycle()
-        return {"status": "success", "stats": stats}
+        spawn(run_ws_poll_cycle(), "run_ws_poll_cycle")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in WS poll trigger: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
@@ -166,8 +167,8 @@ async def ws_full_resync():
     Mirrors IB and FA full-resync endpoints.
     """
     try:
-        stats = await run_ws_poll_cycle(force_full=True)
-        return {"status": "success", "stats": stats}
+        spawn(run_ws_poll_cycle(force_full=True), "run_ws_poll_cycle full-resync")
+        return {"status": "started"}
     except Exception as e:
         logger.error("Error in WS full resync: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
