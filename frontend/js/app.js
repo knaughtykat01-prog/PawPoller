@@ -7586,7 +7586,7 @@ const App = {
         const isDev = plan.install_type === 'dev';
 
         const overlay = document.createElement('div');
-        overlay.className = 'modal-overlay';
+        overlay.className = 'modal-overlay open';  // '.modal-overlay' is display:none until '.open' is added
         overlay.style.zIndex = '10020';
         overlay.innerHTML = `
             <div class="modal" style="max-width:560px">

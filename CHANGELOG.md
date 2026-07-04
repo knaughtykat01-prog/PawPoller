@@ -4,6 +4,18 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.51.3] - 2026-07-04 - Fix: uninstall dialog was invisible (missing modal `.open` class)
+
+The actual fix for the uninstall button. 2.51.2 hardened the settings listener wiring (a real fragility) but
+that was **not** the cause, so the button still did nothing. Real root cause: `.modal-overlay` is `display:none`
+until a `.open` class is added — every modal in the app adds it — but `_showUninstallDialog()` created its
+overlay with `className = 'modal-overlay'` and **never added `open`**. So clicking "Uninstall PawPoller…" *did*
+fire: it fetched the plan and built + appended the dialog, but the dialog rendered with `display:none` — present
+in the DOM, completely invisible. Indistinguishable from "nothing happens" (no dialog, no error, no alert —
+because nothing actually failed). One-line fix: the overlay is now `'modal-overlay open'`. `frontend/js/app.js`.
+
+---
+
 ## [2.51.2] - 2026-07-04 - Fixes: uninstall button, phantom Inkbunny views, legacy-UI removal
 
 Three fixes from a fresh-device shakedown of the desktop app.

@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-04
-**Current version:** 2.51.2 — **Three fresh-install fixes: uninstall button, phantom Inkbunny "301 views", and legacy-UI removal.**
+**Current version:** 2.51.3 — **Fix: the in-app Uninstall dialog was invisible (missing modal `.open` class).**
+2.51.2's uninstall attempt hardened listener wiring but missed the real cause: `.modal-overlay` is `display:none`
+until `.open` is added, and `_showUninstallDialog()` built its overlay with `className='modal-overlay'` and never
+added `open` — so the click fired, the plan loaded, the dialog was appended, but it rendered hidden ("nothing
+happens" — no dialog, no error). One-line fix (`'modal-overlay open'`). `frontend/js/app.js`. **Lesson:** when a
+hand-rolled modal "does nothing," check it got the `.open` class before chasing the event binding.
+
+**Prior release — 2.51.2 — Three fresh-install fixes: uninstall button, phantom Inkbunny "301 views", and legacy-UI removal.**
 (1) **Uninstall button did nothing** — `renderSettings()` attaches its listeners in one sequential pass, and several
 binds used unguarded `getElementById('x').addEventListener`; a single missing control (setup-mode dependent) threw
 and silently killed every later bind, including the uninstall button. Guarded the seven with `?.`. (2) **Inkbunny
