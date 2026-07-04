@@ -8,10 +8,22 @@ will use pystray._darwin. CI's runners-os matrix picks the right
 spec implicitly because PyInstaller is invoked from the relevant OS.
 """
 
+import glob
 import os
 import sys
 
 block_cipher = None
+
+# Bundle EVERY database/*.sql schema automatically. This used to be a hand-maintained
+# list and it silently rotted: each new platform/module adds a schema that init_db()
+# reads at startup, and forgetting to add its line here ships an EXE that crashes on
+# first run (posts_schema.sql was the one that got missed -> FileNotFoundError). Glob
+# so the spec can never fall behind the source tree again. SPECPATH is the spec's dir,
+# so this is correct regardless of the build's working directory.
+_DB_SCHEMAS = sorted(
+    (path, 'database')
+    for path in glob.glob(os.path.join(SPECPATH, 'database', '*.sql'))
+)
 
 # Per-OS hidden imports — pystray has a different backend per platform
 # and PyInstaller can't autodetect which one will be loaded at runtime.
@@ -29,22 +41,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('frontend', 'frontend'),
-        ('database/schema.sql', 'database'),
-        ('database/fa_schema.sql', 'database'),
-        ('database/ws_schema.sql', 'database'),
-        ('database/sf_schema.sql', 'database'),
-        ('database/sqw_schema.sql', 'database'),
-        ('database/ao3_schema.sql', 'database'),
-        ('database/da_schema.sql', 'database'),
-        ('database/wp_schema.sql', 'database'),
-        ('database/ik_schema.sql', 'database'),
-        ('database/bsky_schema.sql', 'database'),
-        ('database/tw_schema.sql', 'database'),
-        ('database/mast_schema.sql', 'database'),
-        ('database/tum_schema.sql', 'database'),
-        ('database/pix_schema.sql', 'database'),
-        ('database/thr_schema.sql', 'database'),
-        ('database/posting_schema.sql', 'database'),
+        *_DB_SCHEMAS,
         ('assets', 'assets'),
     ],
     hiddenimports=[

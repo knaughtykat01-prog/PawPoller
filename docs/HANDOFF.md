@@ -1,7 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-04
-**Current version:** 2.51.0 — **Follower tracking (count + growth chart) for 8 platforms + submission thumbnails for DeviantArt/Itaku/Wattpad.**
+**Current version:** 2.51.1 — **Desktop packaging fix: the Posts-module schema (`posts_schema.sql`) is now bundled into the PyInstaller build.**
+2.49.0's Posts module added `database/posts_schema.sql`, which `init_db()` reads on every startup, but the file
+was never added to `pawpoller.spec`'s hand-maintained `datas` list — so clean packaged installs (Windows/Linux)
+crashed on first launch with `FileNotFoundError: …\_internal\database\posts_schema.sql`. Dev and the Dockerised
+server were unaffected (they run from source, where the file exists). Fix: the spec now **globs `database/*.sql`**
+(rooted at `SPECPATH`) so every current and future schema is bundled automatically — the list can't silently rot
+again. **Desktop-only, not deployed to the VM** (the server already had the file); no code/behaviour change.
+
+**Prior release — 2.51.0 — Follower tracking (count + growth chart) for 8 platforms + submission thumbnails for DeviantArt/Itaku/Wattpad.**
 Two parity features. **(1) Thumbnails:** DA/Itaku/Wattpad now show their stored preview/cover in the submissions
 grid, table, and detail views (was `thumbKey: null`) — pure frontend; the pollers already captured the URLs and
 the list endpoints already return them. AO3/SQW stay text-only (no platform image). **(2) Followers:** a new

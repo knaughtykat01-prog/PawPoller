@@ -4,6 +4,31 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.51.1] - 2026-07-04 - Desktop packaging fix: bundle the Posts-module schema (posts_schema.sql)
+
+Bugfix-only patch. A clean install of the desktop app crashed on first launch with:
+
+```
+FileNotFoundError: [Errno 2] No such file or directory:
+'C:\Program Files (x86)\PawPoller\_internal\database\posts_schema.sql'
+```
+
+**Cause.** `init_db()` reads every platform/module `database/*_schema.sql` on startup, but
+`pawpoller.spec` bundled a *hand-maintained* list of those files under `datas`. When the Posts
+module shipped in 2.49.0 it added `database/posts_schema.sql`, and the spec was never updated to
+include it — so PyInstaller builds (Windows + Linux) shipped without the file and `read_text()`
+raised before the UI ever came up. Running from source (dev, and the Dockerised server) was
+unaffected because the file is present in the tree.
+
+**Fix.** `pawpoller.spec` now **globs `database/*.sql`** (rooted at `SPECPATH`) instead of listing
+each file by hand, so every current schema — and every one a future platform/module adds — is
+bundled automatically. This "add a schema, forget the spec line" class of bug can't recur.
+
+Desktop-packaging only: no behavioural or API change, and nothing to deploy to the server (which
+already had the file). `pawpoller.spec`, `config.py`.
+
+---
+
 ## [2.51.0] - 2026-07-04 - Follower tracking (8 platforms) + submission thumbnails (DA/Itaku/Wattpad)
 
 Two "parity" features so every platform surfaces the same kind of data.
