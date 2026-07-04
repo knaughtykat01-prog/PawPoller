@@ -337,7 +337,7 @@ const Posting = {
                                 ${updateBadge}
                                 ${changeBadge}
                                 <span class="pub-actions">${link}
-                                    <button class="btn btn-sm btn-secondary" onclick="Posting._updateSingle('${Utils.escapeHtml(storyName)}', '${p.platform}', ${p.chapter_index})">Update</button>
+                                    <button class="btn btn-sm btn-secondary" data-post-action="update-single" data-post-story="${Utils.escapeHtml(storyName)}" data-post-platform="${p.platform}" data-post-chapter="${p.chapter_index}">Update</button>
                                 </span>
                             </div>
                             ${fansHtml}
@@ -351,7 +351,7 @@ const Posting = {
                 const uploadBtns = unpublished.map(p => {
                     const emoji = PLATFORM_EMOJI[p] || '📦';
                     const label = (PLATFORM_LABELS[p] || p).replace(/^.+\s/, '');
-                    return `<button class="btn btn-sm btn-primary" onclick="Posting._uploadTo('${Utils.escapeHtml(storyName)}', '${p}')">${emoji} Upload to ${label}</button>`;
+                    return `<button class="btn btn-sm btn-primary" data-post-action="upload-to" data-post-story="${Utils.escapeHtml(storyName)}" data-post-platform="${p}">${emoji} Upload to ${label}</button>`;
                 }).join('');
                 uploadHtml = `<div class="upload-actions">${uploadBtns}</div>`;
             }
@@ -372,7 +372,7 @@ const Posting = {
                 <div class="card">
                     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem">
                         <h3 style="margin:0">Platforms</h3>
-                        ${pubs.length > 0 ? `<button class="${updateAllClass}" onclick="Posting._updateAll('${Utils.escapeHtml(storyName)}')">${updateAllLabel}</button>` : ''}
+                        ${pubs.length > 0 ? `<button class="${updateAllClass}" data-post-action="update-all" data-post-story="${Utils.escapeHtml(storyName)}">${updateAllLabel}</button>` : ''}
                     </div>
                     ${pubRows || '<p class="page-subtitle">Not published anywhere yet.</p>'}
                     ${uploadHtml}
@@ -720,7 +720,7 @@ const Posting = {
                     <td data-label="Status"><span class="status-badge status-${item.status}">${item.status}</span></td>
                     <td data-label="Created">${Utils.escapeHtml(item.created_at || '')}</td>
                     <td data-label="Actions">${item.status === 'pending'
-                        ? `<button class="btn btn-sm btn-danger" onclick="Posting._cancelQueue(${item.queue_id})">Cancel</button>`
+                        ? `<button class="btn btn-sm btn-danger" data-post-action="cancel-queue" data-post-queue="${item.queue_id}">Cancel</button>`
                         : ''
                     }</td>
                 </tr>`).join('');

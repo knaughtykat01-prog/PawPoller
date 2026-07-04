@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-04
-**Current version:** 2.51.3 — **Fix: the in-app Uninstall dialog was invisible (missing modal `.open` class).**
+**Current version:** 2.51.4 — **Fix: dashboard buttons dead in the browser — strict CSP was blocking all inline `on*=` handlers.**
+Every inline `onclick=` (Poll/Resync, Export, submission-card nav, group/link/posting actions — ~90) silently did
+nothing in a browser (`pawpoller.syncopates.app`); the desktop webview doesn't enforce the response CSP so it was
+unaffected. Cause: CSP is `script-src 'self' <hash>` (no `'unsafe-inline'`), so browsers block inline event
+handlers (confirmed from a live console). Fix: kept the strict CSP and removed inline handlers — all `on*=` became
+`data-*` attributes dispatched by two document-level delegated listeners in `App.init()` (click + capture-phase
+image-error). Zero inline handlers remain. **Known follow-up:** manual Poll/Resync also 524 on slow platforms
+(AO3/X) because the trigger endpoint awaits the whole scrape in-request — fire-and-forget is a separate backend
+patch. Frontend only; **needs a server deploy**. `frontend/js/{app,components,posting,posts,metadata_editor}.js`.
+
+**Prior release — 2.51.3 — Fix: the in-app Uninstall dialog was invisible (missing modal `.open` class).**
 2.51.2's uninstall attempt hardened listener wiring but missed the real cause: `.modal-overlay` is `display:none`
 until `.open` is added, and `_showUninstallDialog()` built its overlay with `className='modal-overlay'` and never
 added `open` — so the click fired, the plan loaded, the dialog was appended, but it rendered hidden ("nothing

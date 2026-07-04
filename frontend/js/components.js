@@ -58,7 +58,7 @@ const Components = {
         }
         const lis = items.map(item => `
             <li>
-                <span class="top-title" onclick="App.navigate('/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/submission/${item[idKey]}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `).join('');
@@ -79,7 +79,7 @@ const Components = {
         return items.map(f => `
             <div class="fave-item">
                 <span class="fave-user">${Utils.escapeHtml(f.username)}</span>
-                <span class="fave-sub" style="cursor:pointer" onclick="App.navigate('/submission/${f.submission_id}')">faved ${Utils.escapeHtml(Utils.truncate(f.submission_title || '', 25))}</span>
+                <span class="fave-sub" style="cursor:pointer" data-nav="/submission/${f.submission_id}">faved ${Utils.escapeHtml(Utils.truncate(f.submission_title || '', 25))}</span>
                 <span class="fave-time">${Utils.timeAgo(f.first_seen_at)}</span>
             </div>
         `).join('');
@@ -320,7 +320,7 @@ const Components = {
         return items.map(c => `
             <div class="fave-item">
                 <span class="fave-user">${Utils.escapeHtml(c.username)}</span>
-                <span class="fave-sub" style="cursor:pointer" onclick="App.navigate('/submission/${c.submission_id}')">on ${Utils.escapeHtml(Utils.truncate(c.submission_title || '', 25))}</span>
+                <span class="fave-sub" style="cursor:pointer" data-nav="/submission/${c.submission_id}">on ${Utils.escapeHtml(Utils.truncate(c.submission_title || '', 25))}</span>
                 <span class="fave-time">${Utils.timeAgo(c.first_seen_at)}</span>
             </div>
         `).join('');
@@ -411,7 +411,7 @@ const Components = {
             return `
                 <li>
                     ${badge}
-                    <span class="top-title" onclick="App.navigate('${prefix}${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 28))}</span>
+                    <span class="top-title" data-nav="${prefix}${item[idKey]}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 28))}</span>
                     <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
                 </li>
             `;
@@ -442,7 +442,7 @@ const Components = {
                 <div class="fave-item">
                     ${badge}
                     <span class="fave-user">${Utils.escapeHtml(item.username)}</span>
-                    <span class="fave-sub" style="cursor:pointer" onclick="App.navigate('${prefix}${item.submission_id}')">${action} ${Utils.escapeHtml(Utils.truncate(item.submission_title || '', 22))}</span>
+                    <span class="fave-sub" style="cursor:pointer" data-nav="${prefix}${item.submission_id}">${action} ${Utils.escapeHtml(Utils.truncate(item.submission_title || '', 22))}</span>
                     <span class="fave-time">${Utils.timeAgo(item.first_seen_at)}</span>
                 </div>
             `;
@@ -466,7 +466,7 @@ const Components = {
         }
         const lis = items.map(item => `
             <li>
-                <span class="top-title" onclick="App.navigate('/fa/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/fa/submission/${item[idKey]}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `).join('');
@@ -486,7 +486,7 @@ const Components = {
         return items.map(c => `
             <div class="fave-item">
                 <span class="fave-user">${Utils.escapeHtml(c.username)}</span>
-                <span class="fave-sub" style="cursor:pointer" onclick="App.navigate('/fa/submission/${c.submission_id}')">on ${Utils.escapeHtml(Utils.truncate(c.submission_title || '', 25))}</span>
+                <span class="fave-sub" style="cursor:pointer" data-nav="/fa/submission/${c.submission_id}">on ${Utils.escapeHtml(Utils.truncate(c.submission_title || '', 25))}</span>
                 <span class="fave-time">${Utils.timeAgo(c.first_seen_at)}</span>
             </div>
         `).join('');
@@ -588,7 +588,7 @@ const Components = {
         }
         const lis = items.map(item => `
             <li>
-                <span class="top-title" onclick="App.navigate('/ws/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/ws/submission/${item[idKey]}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `).join('');
@@ -682,7 +682,7 @@ const Components = {
         }
         const lis = items.map(item => `
             <li>
-                <span class="top-title" onclick="App.navigate('/sf/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/sf/submission/${item[idKey]}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `).join('');
@@ -760,7 +760,7 @@ const Components = {
         }
         const lis = items.map(item => `
             <li>
-                <span class="top-title" onclick="App.navigate('/sqw/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/sqw/submission/${item[idKey]}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `).join('');
@@ -838,7 +838,7 @@ const Components = {
         }
         const lis = items.map(item => `
             <li>
-                <span class="top-title" onclick="App.navigate('/ao3/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/ao3/submission/${item[idKey]}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `).join('');
@@ -925,7 +925,7 @@ const Components = {
         }
         const lis = items.map(item => `
             <li>
-                <span class="top-title" onclick="App.navigate('/da/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/da/submission/${item[idKey]}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `).join('');
@@ -1025,7 +1025,7 @@ const Components = {
         }
         const lis = items.map(item => `
             <li>
-                <span class="top-title" onclick="App.navigate('/wp/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/wp/submission/${item[idKey]}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `).join('');
@@ -1123,7 +1123,7 @@ const Components = {
         }
         const lis = items.map(item => `
             <li>
-                <span class="top-title" onclick="App.navigate('/ik/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/ik/submission/${item[idKey]}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `).join('');
@@ -1219,7 +1219,7 @@ const Components = {
             const rkey = String(item[idKey]).split('/').pop();
             return `
             <li>
-                <span class="top-title" onclick="App.navigate('/bsky/submission/${rkey}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/bsky/submission/${rkey}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `;
@@ -1311,7 +1311,7 @@ const Components = {
             const rkey = String(item[idKey]).split('/').pop();
             return `
             <li>
-                <span class="top-title" onclick="App.navigate('/mast/submission/${rkey}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/mast/submission/${rkey}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `;
@@ -1399,7 +1399,7 @@ const Components = {
         }
         const lis = items.map(item => `
             <li>
-                <span class="top-title" onclick="App.navigate('/tum/submission/${encodeURIComponent(item[idKey])}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/tum/submission/${encodeURIComponent(item[idKey])}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `).join('');
@@ -1479,7 +1479,7 @@ const Components = {
         }
         const lis = items.map(item => `
             <li>
-                <span class="top-title" onclick="App.navigate('/pix/submission/${encodeURIComponent(item[idKey])}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/pix/submission/${encodeURIComponent(item[idKey])}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `).join('');
@@ -1563,7 +1563,7 @@ const Components = {
         }
         const lis = items.map(item => `
             <li>
-                <span class="top-title" onclick="App.navigate('/thr/submission/${encodeURIComponent(item[idKey])}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/thr/submission/${encodeURIComponent(item[idKey])}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `).join('');
@@ -1650,7 +1650,7 @@ const Components = {
         }
         const lis = items.map(item => `
             <li>
-                <span class="top-title" onclick="App.navigate('/tw/submission/${item[idKey]}')">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-title" data-nav="/tw/submission/${item[idKey]}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
                 <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
             </li>
         `).join('');
@@ -1739,7 +1739,7 @@ const Components = {
             return '<div class="empty-state"><h3>No groups yet</h3><p>Create a group to track related submissions across platforms.</p></div>';
         }
         return groups.map(g => `
-            <div class="stat-card" style="cursor:pointer" onclick="App.navigate('/group/${g.group_id}')">
+            <div class="stat-card" style="cursor:pointer" data-nav="/group/${g.group_id}">
                 <div class="label">${Utils.escapeHtml(g.name)}</div>
                 <div style="font-size:13px;color:var(--text-muted);margin-top:4px">${Utils.escapeHtml(g.description || '')}</div>
                 <div style="font-size:12px;color:var(--text-secondary);margin-top:8px">${g.member_count || 0} submissions</div>
@@ -1807,7 +1807,7 @@ const Components = {
             if (item.faves_delta) metrics.push(`Faves +${item.faves_delta}`);
             if (item.comments_delta) metrics.push(`Comments +${item.comments_delta}`);
             return `
-                <div class="stat-card" style="cursor:pointer" onclick="App.navigate('${prefix}${item.submission_id}')">
+                <div class="stat-card" style="cursor:pointer" data-nav="${prefix}${item.submission_id}">
                     <div class="label">${platformBadge} ${Utils.escapeHtml(Utils.truncate(item.title, 35))}</div>
                     <div style="font-size:13px;color:var(--success);margin-top:6px">${metrics.join(' &middot; ')}</div>
                     <div style="font-size:11px;color:var(--text-muted);margin-top:4px">z-score: ${(item.max_z || 0).toFixed(1)}</div>
@@ -1841,8 +1841,8 @@ const Components = {
                 <div class="stat-card">
                     <div style="font-size:13px;margin-bottom:8px">${members}</div>
                     <div style="display:flex;gap:8px;margin-top:8px">
-                        <button class="btn btn-secondary" style="font-size:11px" onclick="App.viewLinkStats(${link.link_id})">Stats</button>
-                        <button class="btn btn-danger" style="font-size:11px" onclick="App.deleteLink(${link.link_id})">Remove</button>
+                        <button class="btn btn-secondary" style="font-size:11px" data-link-stats="${link.link_id}">Stats</button>
+                        <button class="btn btn-danger" style="font-size:11px" data-link-delete="${link.link_id}">Remove</button>
                     </div>
                 </div>
             `;
@@ -2004,7 +2004,7 @@ const Components = {
                     <h3>No ${Utils.escapeHtml(label)} data yet</h3>
                     <p>${Utils.escapeHtml(reason)}</p>
                     <div class="empty-state-actions">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'${code}')">Poll now</button>
+                        <button class="btn btn-primary" data-poll="${code}">Poll now</button>
                         <a href="#/settings" class="btn btn-secondary">${Utils.escapeHtml(label)} settings</a>
                     </div>
                 </div>

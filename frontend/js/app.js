@@ -107,6 +107,58 @@ const App = {
         /* Listen for hash changes so browser back/forward works */
         window.addEventListener('hashchange', () => this.route());
 
+        /* ── CSP-safe click delegation ──────────────────────────────
+         * Our Content-Security-Policy (dashboard.py) is strict:
+         * `script-src 'self' <hash>` with NO 'unsafe-inline', so the
+         * browser BLOCKS every inline on*="…" handler ("Executing inline
+         * event handler violates … Content Security Policy"). All click
+         * actions therefore route through this ONE document-level listener,
+         * keyed on data-* attributes set on the button/card. Attached here,
+         * before the auth-gate early-returns below, so it also works on the
+         * login/setup screens. Handlers that used to be inline onclick=""
+         * (navigate, poll/resync, export, link/group/posting actions) now
+         * carry a data-attribute instead. (2.51.4) */
+        document.addEventListener('click', (e) => {
+            const el = e.target.closest(
+                '[data-nav],[data-poll],[data-resync],[data-export],' +
+                '[data-link-stats],[data-link-delete],[data-remove-group],[data-post-action]'
+            );
+            if (!el) return;
+            const d = el.dataset;
+            if (d.nav !== undefined) { this.navigate(d.nav); return; }
+            if (d.poll !== undefined) { this._dashPoll(el, d.poll); return; }
+            if (d.resync !== undefined) { this._dashResync(el, d.resync); return; }
+            if (d.export !== undefined) { API.exportSubmissions(d.export); return; }
+            if (d.linkStats !== undefined) { this.viewLinkStats(Number(d.linkStats)); return; }
+            if (d.linkDelete !== undefined) { this.deleteLink(Number(d.linkDelete)); return; }
+            if (d.removeGroup !== undefined) {
+                this.removeGroupMember(Number(d.removeGroup), d.removePlatform, d.removeSub);
+                return;
+            }
+            if (d.postAction !== undefined && typeof Posting !== 'undefined') {
+                switch (d.postAction) {
+                    case 'update-single': Posting._updateSingle(d.postStory, d.postPlatform, Number(d.postChapter)); break;
+                    case 'upload-to':     Posting._uploadTo(d.postStory, d.postPlatform); break;
+                    case 'update-all':    Posting._updateAll(d.postStory); break;
+                    case 'cancel-queue':  Posting._cancelQueue(Number(d.postQueue)); break;
+                }
+                return;
+            }
+        });
+
+        /* Image load-error fallback — CSP-safe replacement for inline
+         * onerror="". The `error` event doesn't bubble, so listen in the
+         * capture phase; any <img data-img-fallback> that fails to load
+         * hides itself and reveals its next sibling (the placeholder). (2.51.4) */
+        document.addEventListener('error', (e) => {
+            const t = e.target;
+            if (t && t.matches && t.matches('img[data-img-fallback]')) {
+                t.style.display = 'none';
+                const sib = t.nextElementSibling;
+                if (sib) sib.style.display = 'flex';
+            }
+        }, true);
+
         /* Sidebar expansion → reflow main content. Bind listeners EARLY,
          * before the dashboard/setup auth gates that can return out of
          * init() — the sidebar element lives in the static index.html so
@@ -1141,8 +1193,8 @@ const App = {
                     <div class="settings-row"><span class="settings-label">Last poll status</span><span class="settings-value" style="color:${lastPoll?.status === 'success' ? 'var(--success)' : lastPoll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">${lastPoll?.status || '--'}</span></div>
                     ${lastPoll?.error_message ? `<div class="settings-row"><span class="settings-label">Last error</span><span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(lastPoll.error_message)}</span></div>` : ''}
                     <div style="margin-top:12px;display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'ib')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'ib')">Full Resync</button>
+                        <button class="btn btn-primary" data-poll="ib">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="ib">Full Resync</button>
                     </div>
                     <div style="margin-top:12px">${Components.pollLogTable(ibPollLog.polls)}</div>
                     </div>
@@ -1163,8 +1215,8 @@ const App = {
                     <div class="settings-row"><span class="settings-label">Last poll status</span><span class="settings-value" style="color:${lp?.status === 'success' ? 'var(--success)' : lp?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">${lp?.status || '--'}</span></div>
                     ${lp?.error_message ? `<div class="settings-row"><span class="settings-label">Last error</span><span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(lp.error_message)}</span></div>` : ''}
                     <div style="margin-top:12px;display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'${p.key}')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'${p.key}')">Full Resync</button>
+                        <button class="btn btn-primary" data-poll="${p.key}">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="${p.key}">Full Resync</button>
                     </div>
                     <div style="margin-top:12px">${Components[p.tableFn](pl.polls)}</div>
                     </div>
@@ -2578,8 +2630,8 @@ const App = {
                 <div class="page-header">
                     <h2>Inkbunny Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'ib')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'ib')">Full Resync</button>
+                        <button class="btn btn-primary" data-poll="ib">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="ib">Full Resync</button>
                     </div>
                 </div>
 
@@ -2940,8 +2992,8 @@ const App = {
                 <div class="page-header">
                     <h2>FurAffinity Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'fa')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'fa')">Full Resync</button>
+                        <button class="btn btn-primary" data-poll="fa">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="fa">Full Resync</button>
                     </div>
                 </div>
 
@@ -3304,9 +3356,9 @@ const App = {
                 <div class="page-header">
                     <h2>Weasyl Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'ws')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'ws')">Full Resync</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ws')">Export CSV</button>
+                        <button class="btn btn-primary" data-poll="ws">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="ws">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="ws">Export CSV</button>
                     </div>
                 </div>
 
@@ -3638,9 +3690,9 @@ const App = {
                 <div class="page-header">
                     <h2>SoFurry Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'sf')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'sf')">Full Resync</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('sf')">Export CSV</button>
+                        <button class="btn btn-primary" data-poll="sf">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="sf">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="sf">Export CSV</button>
                     </div>
                 </div>
 
@@ -3946,9 +3998,9 @@ const App = {
                 <div class="page-header">
                     <h2>SquidgeWorld Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'sqw')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'sqw')">Full Resync</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('sqw')">Export CSV</button>
+                        <button class="btn btn-primary" data-poll="sqw">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="sqw">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="sqw">Export CSV</button>
                     </div>
                 </div>
 
@@ -4250,9 +4302,9 @@ const App = {
                 <div class="page-header">
                     <h2>AO3 Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'ao3')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'ao3')">Full Resync</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ao3')">Export CSV</button>
+                        <button class="btn btn-primary" data-poll="ao3">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="ao3">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="ao3">Export CSV</button>
                     </div>
                 </div>
 
@@ -4556,9 +4608,9 @@ const App = {
                 <div class="page-header">
                     <h2>DeviantArt Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'da')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'da')">Full Resync</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('da')">Export CSV</button>
+                        <button class="btn btn-primary" data-poll="da">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="da">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="da">Export CSV</button>
                     </div>
                 </div>
 
@@ -4875,9 +4927,9 @@ const App = {
                 <div class="page-header">
                     <h2>Wattpad Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'wp')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'wp')">Full Resync</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('wp')">Export CSV</button>
+                        <button class="btn btn-primary" data-poll="wp">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="wp">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="wp">Export CSV</button>
                     </div>
                 </div>
 
@@ -5192,9 +5244,9 @@ const App = {
                 <div class="page-header">
                     <h2>Itaku Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'ik')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'ik')">Full Resync</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ik')">Export CSV</button>
+                        <button class="btn btn-primary" data-poll="ik">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="ik">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="ik">Export CSV</button>
                     </div>
                 </div>
 
@@ -5501,9 +5553,9 @@ const App = {
                 <div class="page-header">
                     <h2>Bluesky Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'bsky')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'bsky')">Full Resync</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('bsky')">Export CSV</button>
+                        <button class="btn btn-primary" data-poll="bsky">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="bsky">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="bsky">Export CSV</button>
                     </div>
                 </div>
 
@@ -5819,9 +5871,9 @@ const App = {
                 <div class="page-header">
                     <h2>Mastodon Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'mast')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'mast')">Full Resync</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('mast')">Export CSV</button>
+                        <button class="btn btn-primary" data-poll="mast">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="mast">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="mast">Export CSV</button>
                     </div>
                 </div>
 
@@ -6131,9 +6183,9 @@ const App = {
                 <div class="page-header">
                     <h2>Tumblr Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'tum')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'tum')">Full Resync</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('tum')">Export CSV</button>
+                        <button class="btn btn-primary" data-poll="tum">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="tum">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="tum">Export CSV</button>
                     </div>
                 </div>
 
@@ -6391,9 +6443,9 @@ const App = {
                 <div class="page-header">
                     <h2>Pixiv Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'pix')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'pix')">Full Resync</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('pix')">Export CSV</button>
+                        <button class="btn btn-primary" data-poll="pix">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="pix">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="pix">Export CSV</button>
                     </div>
                 </div>
 
@@ -6689,9 +6741,9 @@ const App = {
                 <div class="page-header">
                     <h2>Threads Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'thr')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'thr')">Full Resync</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('thr')">Export CSV</button>
+                        <button class="btn btn-primary" data-poll="thr">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="thr">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="thr">Export CSV</button>
                     </div>
                 </div>
 
@@ -6989,9 +7041,9 @@ const App = {
                 <div class="page-header">
                     <h2>X/Twitter Dashboard</h2>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="App._dashPoll(this,'tw')">Poll Now</button>
-                        <button class="btn btn-secondary" onclick="App._dashResync(this,'tw')">Full Resync</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('tw')">Export CSV</button>
+                        <button class="btn btn-primary" data-poll="tw">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="tw">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="tw">Export CSV</button>
                     </div>
                 </div>
 
@@ -7354,7 +7406,7 @@ const App = {
                         <td>${Utils.formatNumber(m.views || 0)}</td>
                         <td>${Utils.formatNumber(m.favorites_count || 0)}</td>
                         <td>${Utils.formatNumber(m.comments_count || 0)}</td>
-                        <td><button class="btn btn-danger" style="font-size:11px;padding:2px 8px" onclick="App.removeGroupMember(${groupId},'${m.platform}','${m.submission_id}')">Remove</button></td>
+                        <td><button class="btn btn-danger" style="font-size:11px;padding:2px 8px" data-remove-group="${groupId}" data-remove-platform="${m.platform}" data-remove-sub="${m.submission_id}">Remove</button></td>
                     </tr>
                 `;
             }).join('');
@@ -8307,21 +8359,21 @@ const App = {
                     <h3>Export Data</h3>
                     <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Download submission data as CSV files for each platform.</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ib')">Export IB</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('fa')">Export FA</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ws')">Export WS</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('sf')">Export SF</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('sqw')">Export SqW</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ao3')">Export AO3</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('da')">Export DA</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('wp')">Export WP</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('ik')">Export IK</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('bsky')">Export BSKY</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('tw')">Export TW</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('mast')">Export MAST</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('tum')">Export TUM</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('pix')">Export PIX</button>
-                        <button class="btn btn-secondary" onclick="API.exportSubmissions('thr')">Export THR</button>
+                        <button class="btn btn-secondary" data-export="ib">Export IB</button>
+                        <button class="btn btn-secondary" data-export="fa">Export FA</button>
+                        <button class="btn btn-secondary" data-export="ws">Export WS</button>
+                        <button class="btn btn-secondary" data-export="sf">Export SF</button>
+                        <button class="btn btn-secondary" data-export="sqw">Export SqW</button>
+                        <button class="btn btn-secondary" data-export="ao3">Export AO3</button>
+                        <button class="btn btn-secondary" data-export="da">Export DA</button>
+                        <button class="btn btn-secondary" data-export="wp">Export WP</button>
+                        <button class="btn btn-secondary" data-export="ik">Export IK</button>
+                        <button class="btn btn-secondary" data-export="bsky">Export BSKY</button>
+                        <button class="btn btn-secondary" data-export="tw">Export TW</button>
+                        <button class="btn btn-secondary" data-export="mast">Export MAST</button>
+                        <button class="btn btn-secondary" data-export="tum">Export TUM</button>
+                        <button class="btn btn-secondary" data-export="pix">Export PIX</button>
+                        <button class="btn btn-secondary" data-export="thr">Export THR</button>
                     </div>
                 </div>
 

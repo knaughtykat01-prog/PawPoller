@@ -4,6 +4,32 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.51.4] - 2026-07-04 - Fix: dashboard buttons dead in the browser (strict CSP blocked inline handlers)
+
+Every inline `onclick=` button — Poll Now / Full Resync, Export CSV, submission-card navigation, group/link/posting
+actions, ~90 in all — silently did nothing when the dashboard was opened in a **browser** (e.g.
+`pawpoller.syncopates.app`). The desktop app was unaffected because its webview doesn't enforce the response CSP.
+
+**Cause.** The dashboard's Content-Security-Policy is deliberately strict — `script-src 'self' <hash>` with no
+`'unsafe-inline'`. Browsers treat inline `on*=` event handlers as inline script and **block** them ("Executing
+inline event handler violates … Content Security Policy … The action has been blocked"). So no inline handler ever
+ran in a browser. (Confirmed from a live console.)
+
+**Fix.** Kept the strict CSP — it's real XSS defence, and matters because the dashboard renders scraped
+third-party content — and removed the inline handlers instead. Every `on*=` handler across `app.js`,
+`components.js`, `posting.js`, `posts.js` and `metadata_editor.js` is now a `data-*` attribute dispatched by two
+document-level delegated listeners added in `App.init()`: one for clicks (nav / poll / resync / export / link /
+group / posting), one capture-phase for image load-error fallbacks. Zero inline handlers remain; the CSP header is
+untouched.
+
+**Known — separate follow-up:** manual Poll Now / Full Resync additionally hit a **Cloudflare 524** on slow
+platforms (AO3, X) because the trigger endpoint `await`s the whole scrape inside the request (>100 s). The buttons
+now *fire*; making the endpoint return instantly (fire-and-forget) is a backend change tracked for the next patch.
+Frontend only — **needs a server deploy** to reach the live dashboard.
+`frontend/js/{app,components,posting,posts,metadata_editor}.js`.
+
+---
+
 ## [2.51.3] - 2026-07-04 - Fix: uninstall dialog was invisible (missing modal `.open` class)
 
 The actual fix for the uninstall button. 2.51.2 hardened the settings listener wiring (a real fragility) but

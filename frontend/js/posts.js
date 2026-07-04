@@ -115,8 +115,7 @@ window.Posts = {
                 const opts = accts.map(a =>
                     `<option value="${a.account_id}"${a.is_default ? ' selected' : ''}>` +
                     `${this.esc(a.label || a.handle || ('account ' + a.account_id))}</option>`).join('');
-                slot.innerHTML = `<select class="post-acct-select" data-platform="${code}"
-                    onclick="event.preventDefault()">${opts}</select>`;
+                slot.innerHTML = `<select class="post-acct-select" data-platform="${code}">${opts}</select>`;
             } catch (e) { /* default account on any failure */ }
         }
     },

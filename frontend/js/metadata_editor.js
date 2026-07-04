@@ -3147,7 +3147,7 @@ const MetaEditor = {
             ? `/api/editor/stories/${encodeURIComponent(this.storyName)}/cover?t=${this._coverBustKey}`
             : '';
         const preview = hasCover
-            ? `<img class="metadata-cover-thumb" src="${src}" alt="Cover preview" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" /><div class="metadata-cover-empty" style="display:none;">Preview unavailable</div>`
+            ? `<img class="metadata-cover-thumb" src="${src}" alt="Cover preview" data-img-fallback /><div class="metadata-cover-empty" style="display:none;">Preview unavailable</div>`
             : `<div class="metadata-cover-empty">No cover image</div>`;
         const meta = hasCover
             ? `<div class="metadata-cover-meta"><code>${this._escape(this._coverFilename)}</code></div>`
