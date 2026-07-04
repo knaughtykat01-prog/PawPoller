@@ -271,6 +271,23 @@ class TWClient:
             logger.info("TW: Resolved %s → rest_id=%s", self.target_user, rest_id)
         return rest_id
 
+    async def get_follower_count(self) -> int | None:
+        """Follower count from UserByScreenName (legacy.followers_count)."""
+        variables = json.dumps({"screen_name": self.target_user, "withSafetyModeUserFields": True})
+        features = json.dumps(_GRAPHQL_FEATURES)
+        data = await self._get_json(
+            f"{_BASE}/i/api/graphql/{_GRAPHQL_USER_BY_SCREEN_NAME}/UserByScreenName",
+            params={"variables": variables, "features": features},
+        )
+        if not data or not isinstance(data, dict):
+            return None
+        result = data.get("data", {}).get("user", {}).get("result", {}) or {}
+        legacy = result.get("legacy", {}) or {}
+        fc = legacy.get("followers_count")
+        if fc is None:
+            fc = result.get("followers_count")
+        return _safe_int(fc) if fc is not None else None
+
     # -- HTTP Helpers ---------------------------------------------------------
 
     async def _get_json(self, url: str, params: dict | None = None) -> dict | None:

@@ -28,6 +28,7 @@ import config
 from clients.da.client import DAClient
 from database.db import get_connection
 from polling.notifications import describe_error
+from polling.followers import capture_followers
 from database import da_queries
 
 logger = logging.getLogger(__name__)
@@ -250,6 +251,11 @@ async def run_da_poll_cycle(account_id: int | None = None, force_full: bool = Fa
                 logger.warning("Failed to send DA Telegram notification: %s", te, exc_info=True)
 
         # Finalise
+        # Follower count: reuse the authed client to snapshot the account's
+        # follower total (network fetch first, then a short DB write — no lock
+        # held across the await). Best-effort; never fails the cycle.
+        await capture_followers(client, account_id, conn)
+
         duration = time.time() - start_time
         _update_da_progress("complete", current=len(details), total=len(details),
                             message=f"Done -- {stats['submissions_found']} deviations "

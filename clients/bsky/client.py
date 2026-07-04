@@ -210,6 +210,22 @@ class BskyClient:
             logger.warning("BSKY: Profile validation failed: %s", e)
         return None
 
+    async def get_follower_count(self) -> int | None:
+        """Return the authenticated account's follower count via getProfile."""
+        if not await self.ensure_logged_in():
+            return None
+        try:
+            data = await self._get_json(
+                f"{_API_BASE}/app.bsky.actor.getProfile",
+                params={"actor": self._did},
+            )
+        except Exception as e:
+            logger.warning("BSKY: follower fetch failed: %s", e)
+            return None
+        if data and isinstance(data, dict) and data.get("followersCount") is not None:
+            return _safe_int(data.get("followersCount"))
+        return None
+
     # -- HTTP Helpers ---------------------------------------------------------
 
     async def _get_json(self, url: str, params: dict | None = None) -> dict | list | None:

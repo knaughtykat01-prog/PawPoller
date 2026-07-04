@@ -272,6 +272,30 @@ class DAClient:
             return "results" in data
         return await self.validate_cookies()
 
+    async def get_follower_count(self) -> int | None:
+        """Best-effort watcher (follower) count for the target user.
+
+        Uses the official /user/profile/{username} endpoint. The app-only
+        client-credentials token may lack the `user` scope for this call on some
+        apps; on any failure it returns None so DA simply shows no follower data
+        rather than erroring the poll. Cookie-only installs skip it.
+        """
+        if not self._use_oauth or not self.target_user:
+            return None
+        data = await self._api_get(f"/user/profile/{self.target_user}", None)
+        if not data or not isinstance(data, dict) or data.get("error"):
+            return None
+        stats = data.get("stats", {}) or {}
+        watchers = stats.get("watchers")
+        if watchers is None:
+            watchers = data.get("watchers")
+        if watchers is None:
+            return None
+        try:
+            return int(watchers)
+        except (TypeError, ValueError):
+            return None
+
     async def get_all_deviation_ids(self) -> list[dict]:
         """Enumerate the target user's deviations (OAuth primary, cookie fallback)."""
         if self._use_oauth:

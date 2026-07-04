@@ -264,6 +264,7 @@ const API = {
     daDisconnect() { return this.post('/api/da/auth/disconnect'); },
     getDAStatus() { return this.get('/api/da/status'); },
     getDASummary(params) { return this.get('/api/da/summary', params); },
+    getFollowers(platform, params) { return this.get('/api/followers/' + platform, params); },
     getDASubmissions(params) { return this.get('/api/da/submissions', params); },
     getDASubmission(id) { return this.get(`/api/da/submissions/${id}`); },
     getDASnapshots(id, params) { return this.get(`/api/da/submissions/${id}/snapshots`, params); },

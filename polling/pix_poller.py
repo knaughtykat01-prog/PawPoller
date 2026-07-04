@@ -21,6 +21,7 @@ import config
 from clients.pix.client import PixClient
 from database.db import get_connection
 from polling.notifications import describe_error
+from polling.followers import capture_followers
 from database import pix_queries
 from polling import notifications
 
@@ -212,6 +213,11 @@ async def run_pix_poll_cycle(account_id: int | None = None, force_full: bool = F
                 logger.warning("Failed to send PIX Telegram notification: %s", te, exc_info=True)
 
         # Finalise
+        # Follower count: reuse the authed client to snapshot the account's
+        # follower total (network fetch first, then a short DB write — no lock
+        # held across the await). Best-effort; never fails the cycle.
+        await capture_followers(client, account_id, conn)
+
         duration = time.time() - start_time
         _update_pix_progress("complete", current=len(details), total=len(details),
                             message=f"Done -- {stats['submissions_found']} works in {duration:.1f}s")

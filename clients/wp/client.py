@@ -91,6 +91,21 @@ class WPClient:
             return data["username"]
         return None
 
+    async def get_follower_count(self) -> int | None:
+        """Return the tracked user's follower count (numFollowers)."""
+        if not self.target_user:
+            return None
+        data = await self._get_json(
+            f"{_API_BASE}/api/v3/users/{self.target_user}",
+            params={"fields": "username,numFollowers"},
+        )
+        if data and isinstance(data, dict) and data.get("numFollowers") is not None:
+            try:
+                return int(data["numFollowers"])
+            except (TypeError, ValueError):
+                return None
+        return None
+
     # -- Story Discovery ---------------------------------------------------
 
     async def get_all_story_ids(self) -> list[dict]:

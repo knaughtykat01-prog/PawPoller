@@ -156,6 +156,28 @@ class PixClient:
             return True
         return bool(await self.validate_session())
 
+    async def get_follower_count(self) -> int | None:
+        """Best-effort follower count from /v1/user/detail.
+
+        Pixiv's app-API user-detail `profile` object isn't guaranteed to carry a
+        follower total, so probe the plausible keys and return None otherwise —
+        the follower series just won't populate for Pixiv rather than storing a
+        following-count in its place.
+        """
+        if not await self.ensure_logged_in():
+            return None
+        uid = self.user_id or self._auth_user_id
+        if not uid:
+            return None
+        data = await self._get_json(f"{_API_BASE}/v1/user/detail", params={"user_id": uid})
+        if not data or not isinstance(data, dict):
+            return None
+        profile = data.get("profile", {}) or {}
+        for key in ("total_follower", "total_followers", "follower"):
+            if profile.get(key) is not None:
+                return _safe_int(profile.get(key))
+        return None
+
     # -- HTTP Helpers ---------------------------------------------------------
 
     async def _get_json(self, url: str, params: dict | None = None, _retried: bool = False) -> dict | None:

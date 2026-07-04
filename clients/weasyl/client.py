@@ -86,6 +86,30 @@ class WeasylClient:
             logger.warning("Weasyl API key validation failed: %s", e)
             return None
 
+    async def get_follower_count(self) -> int | None:
+        """Best-effort follower count from /api/users/{login}/view statistics.
+
+        Weasyl's public statistics object exposes follow numbers but the exact
+        key ("followed"/"followers"/"follow_count") isn't stable across doc
+        versions, so probe the plausible keys and return None if none match
+        rather than storing an ambiguous value (deliberately NOT reading
+        "follows", which is the *following* count).
+        """
+        username = self.username or await self.validate_key()
+        if not username:
+            return None
+        try:
+            resp = await self._http.get(f"{WEASYL_API_BASE}/users/{username}/view")
+            resp.raise_for_status()
+            stats = (resp.json() or {}).get("statistics", {}) or {}
+        except Exception as e:
+            logger.warning("Weasyl: follower fetch failed: %s", e)
+            return None
+        for key in ("followers", "followed", "follow_count"):
+            if stats.get(key) is not None:
+                return _safe_int(stats.get(key))
+        return None
+
     # ── Gallery Listing ──────────────────────────────────────
 
     async def get_all_gallery_ids(self) -> list[dict]:

@@ -24,6 +24,7 @@ import config
 from clients.wp.client import WPClient
 from database.db import get_connection
 from polling.notifications import describe_error
+from polling.followers import capture_followers
 from database import wp_queries
 from polling import notifications
 
@@ -219,6 +220,11 @@ async def run_wp_poll_cycle(account_id: int | None = None, force_full: bool = Fa
                 logger.warning("Failed to send WP Telegram notification: %s", te, exc_info=True)
 
         # Finalise
+        # Follower count: reuse the authed client to snapshot the account's
+        # follower total (network fetch first, then a short DB write — no lock
+        # held across the await). Best-effort; never fails the cycle.
+        await capture_followers(client, account_id, conn)
+
         duration = time.time() - start_time
         _update_wp_progress("complete", current=len(details), total=len(details),
                             message=f"Done -- {stats['submissions_found']} stories in {duration:.1f}s")

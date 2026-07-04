@@ -1,7 +1,26 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-03
-**Current version:** 2.50.0 — **Posts module posts to ALL FIVE microblog platforms (Threads/Tumblr/X added).**
+**Last updated:** 2026-07-04
+**Current version:** 2.51.0 — **Follower tracking (count + growth chart) for 8 platforms + submission thumbnails for DeviantArt/Itaku/Wattpad.**
+Two parity features. **(1) Thumbnails:** DA/Itaku/Wattpad now show their stored preview/cover in the submissions
+grid, table, and detail views (was `thumbKey: null`) — pure frontend; the pollers already captured the URLs and
+the list endpoints already return them. AO3/SQW stay text-only (no platform image). **(2) Followers:** a new
+cross-platform count-with-history layer for the 8 platforms whose API exposes one (Weasyl, DeviantArt, Wattpad,
+Itaku, Bluesky, X, Mastodon, Pixiv — IB/FA/SF already track individual watchers). Shared store
+`database/followers.py` (`account_follower_snapshots` keyed by the global `account_id`, + cached
+`accounts.follower_count`/`_at`; `record_snapshot` skips None/negative so a failed fetch never writes a bogus 0).
+Each client got a uniform `get_follower_count()` (Bluesky/Mastodon/X/Wattpad solid; Weasyl/DA/Itaku/Pixiv probe
+the field defensively), and each poller calls `polling/followers.capture_followers()` **after its main commit**
+— the count is fetched before the DB write so no lock is held across the await (gotcha #10), and any failure is
+swallowed. API `GET /api/followers/{platform}` (`supported:false` for platforms with no source). Frontend: each
+of the 8 dashboards shows a **Followers** stat card + **Follower Growth** chart (injected after the stats grid by
+`App._loadFollowerWidget`, reusing `Charts.aggregateLine`), and the Accounts page shows a per-account
+**followers** chip. New `tests/test_followers.py` (15); full suite **300 passing**. **NOT yet deployed** — the
+other session owns the cloud shell; ship with `/pp-deploy`. **Post-deploy:** confirm the four best-effort
+platforms (Weasyl/DA/Itaku/Pixiv) actually populate on the next poll — DA also needs the app token's `user`
+scope — and refine the field probes in those clients against a real API response if any come back empty.
+
+**Prior release — 2.50.0 — Posts module posts to ALL FIVE microblog platforms (Threads/Tumblr/X added).**
 The **Posts** hub (`#/posts`) now publishes to Bluesky, Mastodon, Threads, Tumblr and X. The three new ones are
 **text-only** (image cross-posting needs per-platform work: Threads=public image_url, X=chunked media upload,
 Tumblr=NPF) — an attached image is refused on those three up front; Bluesky/Mastodon still carry images.

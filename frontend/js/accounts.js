@@ -296,17 +296,24 @@ window.Accounts = {
     /* Stat chips for the account/persona rows. With platform + accountId, the
      * count chip becomes a link that opens that platform's submissions list
      * scoped to the account — so you can pull up the actual tweets/posts. */
-    _statChips(s, platform, accountId) {
+    _statChips(s, platform, accountId, followerCount) {
         if (!s) return '<span class="muted">No data yet</span>';
         const unit = this._unit(platform);
         const count = this._fmt(s.submissions);
         const subs = (platform && accountId)
             ? `<button class="acct-stat acct-stat-link" data-view-acct="${accountId}" data-plat="${this.esc(platform)}" title="View ${unit}"><b>${count}</b> ${unit} →</button>`
             : `<span class="acct-stat"><b>${count}</b> ${unit}</span>`;
+        // Follower count only populates for platforms whose poller records one
+        // (the 8 in database.followers.FOLLOWER_PLATFORMS); stays 0 → chip hidden
+        // for the rest, so this is safe to render unconditionally.
+        const followers = (followerCount != null && followerCount > 0)
+            ? `<span class="acct-stat"><b>${this._fmt(followerCount)}</b> followers</span>`
+            : '';
         return subs
              + `<span class="acct-stat"><b>${this._fmt(s.views)}</b> views</span>`
              + `<span class="acct-stat"><b>${this._fmt(s.favorites)}</b> faves</span>`
-             + `<span class="acct-stat"><b>${this._fmt(s.comments)}</b> comments</span>`;
+             + `<span class="acct-stat"><b>${this._fmt(s.comments)}</b> comments</span>`
+             + followers;
     },
 
     /* Open a platform's submissions list scoped to one account. */
@@ -332,7 +339,7 @@ window.Accounts = {
                 <span class="acct-name">${this.esc(a.label || '(unnamed)')} ${badge}</span>
                 ${a.handle ? `<span class="acct-handle">${this.esc(a.handle)}</span>` : ''}
             </div>
-            <span class="acct-stats">${this._statChips(a.stats, a.platform, a.account_id)}</span>
+            <span class="acct-stats">${this._statChips(a.stats, a.platform, a.account_id, a.follower_count)}</span>
             <span class="acct-actions">
                 <span class="persona-wrap"><span>Persona</span>${this._personaSelect(a)}</span>
                 ${toggle}

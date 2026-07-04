@@ -4,6 +4,45 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.51.0] - 2026-07-04 - Follower tracking (8 platforms) + submission thumbnails (DA/Itaku/Wattpad)
+
+Two "parity" features so every platform surfaces the same kind of data.
+
+**1. Submission thumbnails for DeviantArt, Itaku and Wattpad.** These three already stored a thumbnail/cover URL
+(`da/ik.thumbnail_url`, `wp.cover_url`) but their submissions grid, table, and detail views weren't wired to
+show it — so pressing into them looked bare next to Inkbunny/X. Now they render the preview in all three views
+(card grid, list table, detail header), same as the other platforms. Pure frontend — the pollers already
+capture the URLs and the list endpoints already return them (`SELECT *`). AO3/SquidgeWorld stay text-only (no
+platform-side image). `frontend/js/app.js`, `frontend/js/components.js`.
+
+**2. Follower / watcher count tracking — count + growth history + chart — for the 8 platforms whose API exposes
+it** (Weasyl, DeviantArt, Wattpad, Itaku, Bluesky, X/Twitter, Mastodon, Pixiv). Inkbunny/FA/SoFurry already
+track individual watchers; this is the lightweight count-only layer for everyone else.
+- **Shared store** (`database/followers.py` NEW): follower counts are one uniform integer per account, so —
+  unlike the per-platform submission tables — history lives in ONE cross-platform table
+  (`account_follower_snapshots`) keyed by the global `account_id`, plus a cached `follower_count` /
+  `follower_count_at` on `accounts` for fast reads. `record_snapshot` skips a `None`/negative value so a failed
+  fetch never writes a bogus 0 (the zero-snapshot lesson from 2.27.1). Migrated in `database/db.py`.
+- **Capture** (`polling/followers.py` NEW + 8 clients + 8 pollers): each client gained a uniform
+  `get_follower_count()` piggybacking on the profile endpoint it already hits (Bluesky `getProfile`, Mastodon
+  `verify_credentials`, X `UserByScreenName`, Wattpad `numFollowers` — solid; Weasyl/DA/Itaku/Pixiv probe the
+  plausible field defensively and return `None` if absent). Each poller calls the shared `capture_followers()`
+  after its main commit — the count is fetched **before** the DB write so no write lock is held across the
+  network await (poller gotcha #10), and any failure is swallowed so it never breaks a poll.
+- **API** (`routes/followers_api.py` NEW): one endpoint `GET /api/followers/{platform}` serves the count +
+  series for all of them (`supported:false` for platforms with no source, so the frontend calls it uniformly).
+- **Frontend**: each of the 8 platform dashboards shows a **Followers** stat card + a **Follower Growth** chart
+  (reuses `Charts.aggregateLine` with a new `followers` series colour), injected after the stats grid by
+  `App._loadFollowerWidget` so a slow/absent fetch never blocks the dashboard. The Accounts page shows a
+  per-account **followers** chip (`follower_count` rides along on `/api/accounts`).
+- New `tests/test_followers.py` (15): query layer, migration idempotency, the endpoint, and a static guard that
+  all 8 clients expose `get_follower_count`. Full suite **300 passing**.
+- **Note:** the four "solid" platforms populate on the next poll; Weasyl/DA/Itaku/Pixiv are best-effort against
+  live API field names (DA also needs the app token's `user` scope) — verify they populate after deploy and
+  refine the field probes against real responses if any come back empty.
+
+---
+
 ## [2.50.0] - 2026-07-03 - Posts module Phase 2: Threads, Tumblr & X posting
 
 The Posts hub (`#/posts`) can now publish to **all five** microblog platforms the user asked for. Threads,

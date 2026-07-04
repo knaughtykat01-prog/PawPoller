@@ -151,6 +151,13 @@ class MastClient:
             return self._handle
         return None
 
+    async def get_follower_count(self) -> int | None:
+        """Return the authenticated account's follower count via verify_credentials."""
+        data = await self._get_json("/api/v1/accounts/verify_credentials")
+        if data and isinstance(data, dict) and data.get("followers_count") is not None:
+            return _safe_int(data.get("followers_count"))
+        return None
+
     async def ensure_logged_in(self) -> bool:
         if self._logged_in and self._account_id:
             return True

@@ -24,6 +24,7 @@ from routes.sf_api import sf_router
 from routes.sqw_api import sqw_router
 from routes.ao3_api import ao3_router
 from routes.da_api import da_router
+from routes.followers_api import followers_router
 from routes.wp_api import wp_router
 from routes.ik_api import ik_router
 from routes.bsky_api import bsky_router
@@ -349,6 +350,7 @@ app.include_router(editor_router)   # Story editor routes (/api/editor/*)
 app.include_router(settings_router)  # Settings sync routes (/api/settings/*)
 app.include_router(accounts_router)  # Multi-account registry routes (/api/accounts/*)
 app.include_router(personas_router)  # Persona (account grouping) routes (/api/personas/*)
+app.include_router(followers_router)  # Cross-platform follower count + growth (/api/followers/*)
 app.include_router(testing_router)   # Diagnostics & testing routes (/api/testing/*)
 
 # Serve frontend static files. config.resource_path() resolves differently

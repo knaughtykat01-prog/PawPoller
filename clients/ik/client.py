@@ -106,6 +106,28 @@ class IKClient:
             return self.target_user
         return None
 
+    async def get_follower_count(self) -> int | None:
+        """Best-effort follower count from the Itaku user profile.
+
+        Itaku's /user_profiles/{name}/ payload is the only profile source the
+        client already uses; the follower field name isn't formally documented,
+        so try the plausible keys and return None if none are present (the
+        follower series simply won't populate for Itaku rather than storing junk).
+        """
+        if not self.target_user:
+            return None
+        data = await self._get_json(f"{_API_BASE}/user_profiles/{self.target_user}/")
+        if not data or not isinstance(data, dict):
+            return None
+        for key in ("num_followers", "followers_count", "follower_count", "num_follower"):
+            val = data.get(key)
+            if val is not None:
+                try:
+                    return int(val)
+                except (TypeError, ValueError):
+                    return None
+        return None
+
     # ── Content Discovery ─────────────────────────────────────
 
     async def get_all_content_ids(self) -> list[dict]:

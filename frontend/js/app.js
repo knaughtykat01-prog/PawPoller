@@ -929,6 +929,32 @@ const App = {
     /* Current account filter for a platform code (null = All accounts). */
     _acctId(code) { return (this._accountFilter && this._accountFilter[code]) || null; },
 
+    /* Populate a platform dashboard's follower widget (current count + growth
+     * chart) from /api/followers/:platform. Async + best-effort: it injects
+     * itself right after the dashboard's main .stats-grid, so a missing, slow, or
+     * unsupported follower fetch never blocks or reshapes the dashboard. Called
+     * once per dashboard render (auto-refresh re-runs it against the fresh DOM). */
+    async _loadFollowerWidget(platform, accountId) {
+        let data;
+        try { data = await API.getFollowers(platform, { account_id: accountId }); }
+        catch (e) { return; }
+        if (!data || !data.supported || data.followers == null) return;
+        const grid = document.getElementById('app') && document.getElementById('app').querySelector('.stats-grid');
+        if (!grid || !grid.parentNode || grid.parentNode.querySelector('.follower-widget')) return;
+        const series = data.series || [];
+        const hasChart = series.length >= 2;
+        const section = document.createElement('div');
+        section.className = 'follower-widget';
+        section.innerHTML = `
+            <div class="stats-grid" style="margin-top:16px">
+                ${Components.statCard('Followers', data.followers)}
+            </div>
+            ${hasChart ? `<div class="chart-container"><h3>Follower Growth</h3><div class="chart-wrap"><canvas id="chart-followers-${platform}"></canvas></div></div>` : ''}
+        `;
+        grid.parentNode.insertBefore(section, grid.nextSibling);
+        if (hasChart) Charts.aggregateLine('chart-followers-' + platform, series, ['followers']);
+    },
+
     /* _populateAccountSwitch() — async-fills the context bar's account slot with
      * an "All accounts" + per-account <select>, but only when the platform has
      * 2+ enabled accounts. Changing it sets this._accountFilter[code] and
@@ -3335,6 +3361,7 @@ const App = {
                 Charts.topBar('chart-top-faves', summary.top_faved, 'favorites_count');
             }
 
+            this._loadFollowerWidget('ws', this._acctId('ws'));
             this._bindDateRange(() => this.renderWSDashboard());
             this._bindPinAndGoalActions(() => this.renderWSDashboard());
             this._startAutoRefresh(() => this.renderWSDashboard());
@@ -4593,6 +4620,7 @@ const App = {
                 Charts.topBar('chart-top-downloads', summary.top_downloaded, 'downloads');
             }
 
+            this._loadFollowerWidget('da', this._acctId('da'));
             this._bindDateRange(() => this.renderDADashboard());
             this._bindPinAndGoalActions(() => this.renderDADashboard());
             this._startAutoRefresh(() => this.renderDADashboard());
@@ -4617,7 +4645,7 @@ const App = {
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
             // 2.16.14 (BUG-021): closure so the search filter can re-render
             const daGridRenderer = (subs) => Components.submissionCardGrid(subs, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: null,
+                idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumbnail_url', proxyThumb: false,
                 detailRoute: '/da/submission', dateKey: 'posted_at',
                 stats: [
                     { key: 'views', deltaKey: 'views_delta', label: 'views' },
@@ -4676,6 +4704,7 @@ const App = {
                 ${this._refreshIndicatorHtml()}
                 <a href="#/da/submissions" class="back-link">&larr; Back to DA Submissions</a>
                 <div class="detail-header">
+                    ${sub.thumbnail_url ? `<img src="${Utils.escapeHtml(sub.thumbnail_url)}" class="detail-thumb">` : ''}
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(sub.rating || '')}</div>
@@ -4915,6 +4944,7 @@ const App = {
                 Charts.aggregateLine('chart-agg-reads', agg.snapshots, ['reads']);
             }
 
+            this._loadFollowerWidget('wp', this._acctId('wp'));
             this._bindDateRange(() => this.renderWPDashboard());
             this._bindPinAndGoalActions(() => this.renderWPDashboard());
             this._startAutoRefresh(() => this.renderWPDashboard());
@@ -4938,7 +4968,7 @@ const App = {
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
             // 2.16.14 (BUG-021): closure so the search filter can re-render
             const wpGridRenderer = (subs) => Components.submissionCardGrid(subs, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: null,
+                idKey: 'submission_id', titleKey: 'title', thumbKey: 'cover_url', proxyThumb: false,
                 detailRoute: '/wp/submission', dateKey: 'posted_at',
                 stats: [
                     { key: 'reads', deltaKey: 'reads_delta', label: 'reads' },
@@ -4992,6 +5022,7 @@ const App = {
                 ${this._refreshIndicatorHtml()}
                 <a href="#/wp/submissions" class="back-link">&larr; Back to WP Submissions</a>
                 <div class="detail-header">
+                    ${sub.cover_url ? `<img src="${Utils.escapeHtml(sub.cover_url)}" class="detail-thumb">` : ''}
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)}</div>
@@ -5224,6 +5255,7 @@ const App = {
                 Charts.aggregateLine('chart-agg-likes', agg.snapshots, ['likes']);
             }
 
+            this._loadFollowerWidget('ik', this._acctId('ik'));
             this._bindDateRange(() => this.renderIKDashboard());
             this._bindPinAndGoalActions(() => this.renderIKDashboard());
             this._startAutoRefresh(() => this.renderIKDashboard());
@@ -5247,7 +5279,7 @@ const App = {
             const _vm = localStorage.getItem('pp-view-mode') || 'grid';
             // 2.16.14 (BUG-021): closure so the search filter can re-render
             const ikGridRenderer = (subs) => Components.submissionCardGrid(subs, {
-                idKey: 'submission_id', titleKey: 'title', thumbKey: null,
+                idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumbnail_url', proxyThumb: false,
                 detailRoute: '/ik/submission', dateKey: 'posted_at',
                 stats: [
                     { key: 'likes', deltaKey: 'likes_delta', label: 'likes' },
@@ -5301,6 +5333,7 @@ const App = {
                 ${this._refreshIndicatorHtml()}
                 <a href="#/ik/submissions" class="back-link">&larr; Back to IK Submissions</a>
                 <div class="detail-header">
+                    ${sub.thumbnail_url ? `<img src="${Utils.escapeHtml(sub.thumbnail_url)}" class="detail-thumb">` : ''}
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.BSKY_TYPE_LABELS[sub.content_type] || sub.content_type || 'Post')}</div>
@@ -5532,6 +5565,7 @@ const App = {
                 Charts.aggregateLine('chart-agg-likes', agg.snapshots, ['likes']);
             }
 
+            this._loadFollowerWidget('bsky', this._acctId('bsky'));
             this._bindDateRange(() => this.renderBSKYDashboard());
             this._bindPinAndGoalActions(() => this.renderBSKYDashboard());
             this._startAutoRefresh(() => this.renderBSKYDashboard());
@@ -5848,6 +5882,7 @@ const App = {
                 Charts.aggregateLine('chart-agg-likes', agg.snapshots, ['likes']);
             }
 
+            this._loadFollowerWidget('mast', this._acctId('mast'));
             this._bindDateRange(() => this.renderMASTDashboard());
             this._bindPinAndGoalActions(() => this.renderMASTDashboard());
             this._startAutoRefresh(() => this.renderMASTDashboard());
@@ -6406,6 +6441,7 @@ const App = {
                 Charts.aggregateLine('chart-agg-views', agg.snapshots, ['views']);
             }
 
+            this._loadFollowerWidget('pix', this._acctId('pix'));
             this._bindDateRange(() => this.renderPIXDashboard());
             this._bindPinAndGoalActions(() => this.renderPIXDashboard());
             this._startAutoRefresh(() => this.renderPIXDashboard());
@@ -7023,6 +7059,7 @@ const App = {
                 Charts.aggregateLine('chart-agg-views', agg.snapshots, ['views']);
             }
 
+            this._loadFollowerWidget('tw', this._acctId('tw'));
             this._bindDateRange(() => this.renderTWDashboard());
             this._bindPinAndGoalActions(() => this.renderTWDashboard());
             this._startAutoRefresh(() => this.renderTWDashboard());

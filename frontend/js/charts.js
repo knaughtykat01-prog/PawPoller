@@ -288,12 +288,14 @@ const Charts = {
             views: '#9b7dff',            // blue
             favorites_count: '#f0a050',  // red
             comments_count: '#5ae0a0',   // green
+            followers: '#e0679a',        // magenta (follower growth)
         };
         // Human-readable legend labels
         const labels = {
             views: 'Views',
             favorites_count: 'Favorites',
             comments_count: 'Comments',
+            followers: 'Followers',
         };
 
         // Build one dataset per requested metric, plus a trendline for each

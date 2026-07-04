@@ -138,7 +138,7 @@ const Components = {
                 : '';
             return `
                 <a href="#${opts.detailRoute}/${id}" class="submission-card">
-                    ${thumbUrl ? `<div class="submission-card-thumb"><img src="${thumbUrl}" loading="lazy" alt=""></div>` : ''}
+                    ${thumbUrl ? `<div class="submission-card-thumb"><img src="${Utils.escapeHtml(thumbUrl)}" loading="lazy" alt=""></div>` : ''}
                     <div class="submission-card-body">
                         ${typeBadge}
                         <div class="submission-card-title">${Utils.escapeHtml(title)}</div>
@@ -945,6 +945,7 @@ const Components = {
         }
         const rows = submissions.map(s => `
             <tr>
+                <td class="mobile-hide" data-label="">${s.thumbnail_url ? `<img src="${Utils.escapeHtml(s.thumbnail_url)}" class="thumb-cell" loading="eager">` : ''}</td>
                 <td data-label="Title"><a href="#/da/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
                 <td data-label="Category">${Utils.escapeHtml(s.category || '--')}</td>
                 <td data-label="Rating">${Utils.escapeHtml(s.rating || '--')}</td>
@@ -960,6 +961,7 @@ const Components = {
             <table class="data-table" id="da-submissions-table" data-mobile-cards>
                 <thead>
                     <tr>
+                        <th></th>
                         <th data-sort="title">Title</th>
                         <th data-sort="category">Category</th>
                         <th data-sort="rating">Rating</th>
@@ -1043,6 +1045,7 @@ const Components = {
         }
         const rows = submissions.map(s => `
             <tr>
+                <td class="mobile-hide" data-label="">${s.cover_url ? `<img src="${Utils.escapeHtml(s.cover_url)}" class="thumb-cell" loading="eager">` : ''}</td>
                 <td data-label="Title"><a href="#/wp/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
                 <td data-label="Reads">${Utils.formatNumber(s.reads || s.views || 0)} ${Utils.formatDelta(s.reads_delta || s.views_delta)}</td>
                 <td data-label="Votes">${Utils.formatNumber(s.votes || s.favorites_count || 0)} ${Utils.formatDelta(s.votes_delta || s.faves_delta)}</td>
@@ -1056,6 +1059,7 @@ const Components = {
             <table class="data-table" id="wp-submissions-table" data-mobile-cards>
                 <thead>
                     <tr>
+                        <th></th>
                         <th data-sort="title">Title</th>
                         <th data-sort="reads">Reads</th>
                         <th data-sort="votes">Votes</th>
@@ -1139,6 +1143,7 @@ const Components = {
         }
         const rows = submissions.map(s => `
             <tr>
+                <td class="mobile-hide" data-label="">${s.thumbnail_url ? `<img src="${Utils.escapeHtml(s.thumbnail_url)}" class="thumb-cell" loading="eager">` : ''}</td>
                 <td data-label="Title"><a href="#/ik/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
                 <td data-label="Type">${Utils.escapeHtml(s.content_type || 'image')}</td>
                 <td data-label="Likes">${Utils.formatNumber(s.likes || 0)} ${Utils.formatDelta(s.likes_delta)}</td>
@@ -1152,6 +1157,7 @@ const Components = {
             <table class="data-table" id="ik-submissions-table" data-mobile-cards>
                 <thead>
                     <tr>
+                        <th></th>
                         <th data-sort="title">Title</th>
                         <th data-sort="content_type">Type</th>
                         <th data-sort="likes">Likes</th>

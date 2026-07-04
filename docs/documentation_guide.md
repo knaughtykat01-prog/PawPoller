@@ -286,6 +286,33 @@ PawPoller/
     └── fixtures/             # Sample upload payloads referenced by checklist file-upload tests
 ```
 
+### Follower tracking (cross-platform, count + history)
+
+Individual *watchers* are tracked per-platform for Inkbunny/FA/SoFurry (their own
+`*_watchers` tables). Every other platform whose API exposes a **follower count** —
+Weasyl, DeviantArt, Wattpad, Itaku, Bluesky, X, Mastodon, Pixiv — uses a lighter,
+uniform layer added in 2.51.0. A follower count is one integer that means the same
+thing everywhere, so — unlike the per-platform submission analytics — it lives in a
+**single shared table**:
+
+- **`database/followers.py`** — `account_follower_snapshots` (time-series keyed by the
+  global `account_id`) + cached `accounts.follower_count`/`follower_count_at` for fast
+  reads. `record_snapshot()` skips a `None`/negative value so a failed fetch never
+  writes a bogus 0 (the zero-snapshot rule). Created by a `db.py` migration.
+- **`clients/*/client.py` `get_follower_count()`** — one uniform async method per
+  follower-capable client, piggybacking on the profile endpoint the client already
+  hits. Bluesky/Mastodon/X/Wattpad read a documented field; Weasyl/DA/Itaku/Pixiv
+  probe plausible field names and return `None` if absent (best-effort).
+- **`polling/followers.py` `capture_followers()`** — each poller calls this once after
+  its main `conn.commit()`. The count is fetched (network) **before** the follower
+  write so no SQLite write lock is held across the await (the same rule as the poll
+  snapshot loop), and any failure is swallowed so follower capture never fails a poll.
+- **`routes/followers_api.py`** — `GET /api/followers/{platform}` returns the current
+  count + growth series (`supported:false` for platforms with no source). The frontend
+  shows a Followers stat card + Follower Growth chart per dashboard
+  (`App._loadFollowerWidget`, reusing `Charts.aggregateLine`) and a per-account chip on
+  the Accounts page (`follower_count` rides along on `/api/accounts`).
+
 ---
 
 ## 2. Entry Points
