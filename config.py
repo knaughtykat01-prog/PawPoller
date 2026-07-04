@@ -831,7 +831,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.51.1"
+APP_VERSION = "2.51.2"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL
@@ -854,12 +854,13 @@ DASHBOARD_PORT = 8420          # Arbitrary high port unlikely to conflict
 DASHBOARD_FORWARDED_IPS = os.environ.get("PAWPOLLER_FORWARDED_IPS", "127.0.0.1")
 
 # ── Stat offsets ──
-# The Inkbunny API only returns data for *public* submissions.  If you have
-# deleted or private submissions, API-reported totals for views/faves/comments
-# will be lower than the numbers shown on your Inkbunny dashboard.  These
-# offsets are added to the API totals so the dashboard displays numbers that
-# match the real Inkbunny totals.  Adjust them manually if the gap changes.
-VIEWS_OFFSET = 301
+# Optional manual reconciliation for the Inkbunny "All accounts" totals. The IB
+# API only returns data for *public* submissions, so if YOU personally have
+# deleted or private submissions, the API totals read lower than your real IB
+# dashboard. Bump these to close that gap for your own instance — but they must
+# ship at 0, otherwise every fresh install shows phantom stats (e.g. "301 views"
+# with nothing uploaded). Applied only to the aggregate view (database/queries.py).
+VIEWS_OFFSET = 0
 FAVORITES_OFFSET = 0
 COMMENTS_OFFSET = 0
 

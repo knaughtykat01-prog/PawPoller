@@ -9458,7 +9458,7 @@ const App = {
                 }
             });
 
-            document.getElementById('save-all-settings-btn').addEventListener('click', async (e) => {
+            document.getElementById('save-all-settings-btn')?.addEventListener('click', async (e) => {
                 const btn = e.target;
                 btn.disabled = true;
                 btn.textContent = 'Saving...';
@@ -9554,7 +9554,7 @@ const App = {
                 }
             });
 
-            document.getElementById('poll-now-btn').addEventListener('click', async (e) => {
+            document.getElementById('poll-now-btn')?.addEventListener('click', async (e) => {
                 const btn = e.target;
                 btn.disabled = true;
                 btn.textContent = 'Polling all...';
@@ -9596,7 +9596,7 @@ const App = {
 
             // Full Resync: re-scrapes all data for every submission across all platforms.
             // Confirms with the user first since this is a long operation.
-            document.getElementById('full-resync-btn').addEventListener('click', async (e) => {
+            document.getElementById('full-resync-btn')?.addEventListener('click', async (e) => {
                 const btn = e.target;
                 if (!confirm('Full resync re-scrapes every submission across every connected platform from scratch. This can take 10+ minutes and will hit each platform\'s rate limits hard. Use only when you suspect data is stale. Continue?')) return;
                 btn.disabled = true;
@@ -9638,7 +9638,7 @@ const App = {
 
             // Save Credentials: sends username (always) and password (only if changed)
             // to the API. Shows inline success/error message next to the button.
-            document.getElementById('save-creds-btn').addEventListener('click', async () => {
+            document.getElementById('save-creds-btn')?.addEventListener('click', async () => {
                 const btn = document.getElementById('save-creds-btn');
                 const msg = document.getElementById('creds-msg');
                 const username = document.getElementById('cred-username').value.trim();
@@ -9730,7 +9730,7 @@ const App = {
                 }
             });
 
-            document.getElementById('pref-poll-interval').addEventListener('change', async (e) => {
+            document.getElementById('pref-poll-interval')?.addEventListener('change', async (e) => {
                 try {
                     await API.savePreferences({ poll_interval_minutes: parseInt(e.target.value) });
                 } catch (err) {
@@ -9738,7 +9738,7 @@ const App = {
                 }
             });
 
-            document.getElementById('pref-fa-poll-interval').addEventListener('change', async (e) => {
+            document.getElementById('pref-fa-poll-interval')?.addEventListener('change', async (e) => {
                 try {
                     await API.savePreferences({ fa_poll_interval_minutes: parseInt(e.target.value) });
                 } catch (err) {
@@ -9747,7 +9747,7 @@ const App = {
             });
 
             // Clear Session: clears cached API session, forces fresh auth on next request
-            document.getElementById('clear-session-btn').addEventListener('click', async (e) => {
+            document.getElementById('clear-session-btn')?.addEventListener('click', async (e) => {
                 const btn = e.target;
                 btn.disabled = true;
                 btn.textContent = 'Clearing...';

@@ -384,77 +384,28 @@ async def favicon():
 # every release automatically invalidates browser caches without requiring
 # someone to remember to bump per-file `?v=NNN` numbers (the source of BUG-001
 # in 2.14.6).
-# Legacy/beta UI toggle (2.29.0). The redesigned ("beta") shell ships as the
-# default index.html; the pre-redesign ("legacy") shell is frozen as
-# index_legacy.html + *_legacy.{css,js}. serve_index() picks one based on the
-# ?ui= query param (persisted in a cookie) so the operator can flip between the
-# two for comparison without a rebuild. A small switch is injected into both.
-_index_html_cache: dict[tuple[str, str], str] = {}  # (version, ui) -> rendered html
-_UI_MODES = ("beta", "legacy")
-_DEFAULT_UI = "beta"
+# The redesigned dashboard shell (frontend/index.html) is the one and only UI.
+# A pre-2.29.0 "legacy" shell used to ship beside it behind a ?ui= toggle for
+# side-by-side comparison; that scaffold (index_legacy.html + *_legacy.{css,js}
+# + the injected Legacy/Beta switch) was removed in 2.51.2 now that beta has
+# fully settled.
+_index_html_cache: dict[str, str] = {}  # version -> rendered html
 
 
-def _ui_switch_html(ui: str) -> str:
-    """A small fixed-position Legacy/Beta switch injected into both shells.
-    Inline-styled (with token fallbacks) so it renders the same regardless of
-    which stylesheet set is loaded."""
-    def pill(target: str, label: str) -> str:
-        active = ui == target
-        style = (
-            "background:var(--accent,#9b7dff);color:#fff"
-            if active else "color:var(--text-secondary,#9a90b5)"
-        )
-        return (
-            f'<a href="/?ui={target}" title="Switch to the {label} UI" '
-            f'style="text-decoration:none;padding:5px 13px;border-radius:999px;'
-            f'font-weight:600;font-size:12px;line-height:1;{style}">{label}</a>'
-        )
-    return (
-        '<div id="pp-ui-switch" style="position:fixed;z-index:2147483000;'
-        'top:10px;right:12px;display:flex;align-items:center;gap:3px;'
-        'background:var(--bg-card,#241f30);border:1px solid var(--border,#3d3556);'
-        'border-radius:999px;padding:4px;box-shadow:0 6px 22px rgba(0,0,0,.4);'
-        'font-family:system-ui,-apple-system,Segoe UI,sans-serif">'
-        '<span style="color:var(--text-muted,#8a809e);font-size:10px;font-weight:700;'
-        'text-transform:uppercase;letter-spacing:.6px;padding:0 5px 0 8px">UI</span>'
-        + pill("legacy", "Legacy") + pill("beta", "Beta") + "</div>"
-    )
-
-
-def _render_index_html(ui: str = _DEFAULT_UI) -> str:
-    if ui not in _UI_MODES:
-        ui = _DEFAULT_UI
+def _render_index_html() -> str:
     version = config.APP_VERSION
-    cached = _index_html_cache.get((version, ui))
+    cached = _index_html_cache.get(version)
     if cached is not None:
         return cached
-    fname = "index.html" if ui == "beta" else "index_legacy.html"
-    raw = (frontend_dir / fname).read_text(encoding="utf-8")
+    raw = (frontend_dir / "index.html").read_text(encoding="utf-8")
     rendered = raw.replace("__APP_VERSION__", version)
-    switch = _ui_switch_html(ui)
-    if "</body>" in rendered:
-        rendered = rendered.replace("</body>", switch + "\n</body>", 1)
-    else:
-        rendered += switch
-    _index_html_cache[(version, ui)] = rendered
+    _index_html_cache[version] = rendered
     return rendered
 
 
 @app.get("/")
 async def serve_index(request: Request):
-    # ?ui=legacy|beta wins and is remembered in a cookie; otherwise fall back to
-    # the cookie, then the default. The SPA only hits "/" on a full load, so the
-    # cookie keeps the choice across (hash-based) in-app navigation.
-    ui = request.query_params.get("ui")
-    explicit = ui in _UI_MODES
-    if not explicit:
-        ui = request.cookies.get("pp_ui", _DEFAULT_UI)
-    if ui not in _UI_MODES:
-        ui = _DEFAULT_UI
-    resp = Response(content=_render_index_html(ui), media_type="text/html")
-    if explicit:
-        resp.set_cookie("pp_ui", ui, max_age=31536000, samesite="lax")
-    return resp
+    return Response(content=_render_index_html(), media_type="text/html")
 
 
 @app.get("/epub-viewer.html")

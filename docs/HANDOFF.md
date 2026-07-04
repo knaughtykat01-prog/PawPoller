@@ -1,7 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-04
-**Current version:** 2.51.1 — **Desktop packaging fix: the Posts-module schema (`posts_schema.sql`) is now bundled into the PyInstaller build.**
+**Current version:** 2.51.2 — **Three fresh-install fixes: uninstall button, phantom Inkbunny "301 views", and legacy-UI removal.**
+(1) **Uninstall button did nothing** — `renderSettings()` attaches its listeners in one sequential pass, and several
+binds used unguarded `getElementById('x').addEventListener`; a single missing control (setup-mode dependent) threw
+and silently killed every later bind, including the uninstall button. Guarded the seven with `?.`. (2) **Inkbunny
+"301 views" on a clean install** — `config.VIEWS_OFFSET` was hardcoded to 301 (a personal deleted/private-submission
+reconciliation fudge) and added to every install's IB "All accounts" total; defaulted to 0 (mechanism kept, value
+honest). (3) **Legacy UI removed** — deleted the frozen pre-2.29.0 shell (`index_legacy.html` + `app_legacy.js` +
+`tokens_legacy.css`/`layout_legacy.css`) and the `?ui=` toggle / floating Legacy-Beta switch in `dashboard.py`; beta
+is now the sole UI (`_render_index_html` no longer takes a `ui` arg; cache keyed on version only). Full suite **300
+passing**. Desktop-facing; **not deployed to the VM** — the 301 fix reaches the server on its next deploy.
+`config.py`, `frontend/js/app.js`, `dashboard.py`.
+
+**Prior release — 2.51.1 — Desktop packaging fix: the Posts-module schema (`posts_schema.sql`) is now bundled into the PyInstaller build.**
 2.49.0's Posts module added `database/posts_schema.sql`, which `init_db()` reads on every startup, but the file
 was never added to `pawpoller.spec`'s hand-maintained `datas` list — so clean packaged installs (Windows/Linux)
 crashed on first launch with `FileNotFoundError: …\_internal\database\posts_schema.sql`. Dev and the Dockerised

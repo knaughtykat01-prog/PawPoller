@@ -4,6 +4,36 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.51.2] - 2026-07-04 - Fixes: uninstall button, phantom Inkbunny views, legacy-UI removal
+
+Three fixes from a fresh-device shakedown of the desktop app.
+
+**1. Uninstall button did nothing.** In Settings → General → Danger zone, clicking "Uninstall PawPoller…" had no
+effect — no dialog, no error. `renderSettings()` builds the page HTML, then attaches every event listener in one
+long sequential pass. Several of those binds used an *unguarded* `document.getElementById('x').addEventListener(…)`;
+if any one `x` was absent for a given setup mode, that line threw and **every listener after it silently failed to
+attach** — including the uninstall button near the end of the pass. The page still rendered fully, so the button
+looked live but was dead. Guarded the seven unguarded settings binds with `?.` (matching the file's existing
+convention for conditionally-rendered controls), so a single missing control can never again break the rest of the
+wiring. `frontend/js/app.js`.
+
+**2. Inkbunny showed "301 views" on a clean install.** `config.VIEWS_OFFSET` was hardcoded to `301` — a personal
+reconciliation fudge (the IB API only reports *public* submissions, so a user's deleted/private uploads make the
+API total read low). Shipped as a source constant, it added 301 phantom views to every install's Inkbunny "All
+accounts" total. Defaulted it to `0`; the offset mechanism stays for anyone who wants to reconcile their own
+instance, but the shipped value is now honest. `config.py`.
+
+**3. Removed the legacy UI.** The pre-2.29.0 dashboard shell (`index_legacy.html` + `app_legacy.js` +
+`tokens_legacy.css`/`layout_legacy.css`) shipped frozen beside the redesigned "beta" shell behind a `?ui=` toggle
+and a floating Legacy/Beta switch, for side-by-side comparison. Beta has been the default and sole active UI for 22
+releases; deleted the four legacy files and the toggle/switch/cookie plumbing in `dashboard.py`. One UI, no dead
+code, no stray switch injected on every page.
+
+Full suite **300 passing**. Desktop-facing; **not deployed to the VM** in this release — the server picks up the
+301 fix on its next deploy. `config.py`, `frontend/js/app.js`, `dashboard.py`.
+
+---
+
 ## [2.51.1] - 2026-07-04 - Desktop packaging fix: bundle the Posts-module schema (posts_schema.sql)
 
 Bugfix-only patch. A clean install of the desktop app crashed on first launch with:
