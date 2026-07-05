@@ -507,3 +507,68 @@ class TestValidationIntegration:
         errors = poster.validate(pkg)
         assert len(errors) > 0
         assert any("4 tags" in e for e in errors)
+
+
+# ═══════════════════════════════════════════════════════════════
+# FORGET PUBLICATION — must not trip the FK back-references
+# ═══════════════════════════════════════════════════════════════
+
+class TestForgetPublication:
+    """delete_publication() on a row that has already been posted.
+
+    A posted publication is referenced by posting_log (immutable audit
+    trail) and possibly posting_queue via a pub_id FK. With
+    PRAGMA foreign_keys=ON a naive DELETE raised "FOREIGN KEY constraint
+    failed" (500 on DELETE /api/editor/stories/{s}/publication). The fix
+    unlinks the children (NULLs their pub_id) before deleting; the audit
+    log must survive.
+    """
+
+    def test_delete_publication_with_log_and_queue_children(self):
+        conn = get_connection()
+        try:
+            pub_id = posting_queries.upsert_publication(
+                conn, "Chosen", 0, "ao3",
+                external_id="82712456",
+                external_url="https://archiveofourown.org/works/82712456",
+                status="posted",
+            )
+            # Audit-log row (every real post writes one) referencing the pub.
+            posting_queries.log_posting_action(
+                conn, "ao3", "Chosen", 0, "post", "success", pub_id=pub_id,
+            )
+            # A queue row that also back-references the pub.
+            conn.execute(
+                "INSERT INTO posting_queue (story_name, chapter_index, platform, pub_id) "
+                "VALUES (?, ?, ?, ?)",
+                ("Chosen", 0, "ao3", pub_id),
+            )
+            conn.commit()
+
+            # The bug: this raised sqlite3.IntegrityError before the fix.
+            ok = posting_queries.delete_publication(conn, "Chosen", 0, "ao3")
+            assert ok is True
+
+            # Publication is gone…
+            assert posting_queries.get_publication_by_story(
+                conn, "Chosen", 0, "ao3") is None
+            # …but the audit log survives, now unlinked (pub_id NULL).
+            logs = posting_queries.get_posting_log(conn, story_name="Chosen")
+            assert len(logs) == 1
+            assert logs[0]["pub_id"] is None
+            # …and the queue row survives, also unlinked.
+            q = conn.execute(
+                "SELECT pub_id FROM posting_queue WHERE story_name = ?",
+                ("Chosen",),
+            ).fetchone()
+            assert q is not None and q["pub_id"] is None
+        finally:
+            conn.close()
+
+    def test_delete_publication_absent_returns_false(self):
+        conn = get_connection()
+        try:
+            assert posting_queries.delete_publication(
+                conn, "NoSuchStory", 0, "ao3") is False
+        finally:
+            conn.close()

@@ -434,11 +434,36 @@ def delete_publication(
     'ready' (next post is a fresh create, not an edit).
 
     Returns True if a row was deleted, False if no matching row existed.
+
+    Two tables carry a ``pub_id`` foreign key back to ``publications`` —
+    ``posting_queue`` and the immutable ``posting_log`` audit trail. With
+    ``PRAGMA foreign_keys = ON`` a bare ``DELETE FROM publications`` raises
+    ``FOREIGN KEY constraint failed`` the moment the row has ever been posted
+    (a ``posting_log`` row references it). So we unlink the children first —
+    both ``pub_id`` columns are nullable, so we NULL them rather than delete:
+    the queue item keeps its story/chapter/platform identity and the audit
+    log stays intact, they just lose the back-reference to the forgotten row.
     """
-    cursor = conn.execute(
-        "DELETE FROM publications "
+    rows = conn.execute(
+        "SELECT pub_id FROM publications "
         "WHERE content_type = ? AND story_name = ? AND chapter_index = ? AND platform = ?",
         (content_type, story_name, chapter_index, platform),
+    ).fetchall()
+    if not rows:
+        return False
+    pub_ids = [r[0] for r in rows]
+    placeholders = ",".join("?" * len(pub_ids))
+    conn.execute(
+        f"UPDATE posting_queue SET pub_id = NULL WHERE pub_id IN ({placeholders})",
+        pub_ids,
+    )
+    conn.execute(
+        f"UPDATE posting_log SET pub_id = NULL WHERE pub_id IN ({placeholders})",
+        pub_ids,
+    )
+    cursor = conn.execute(
+        f"DELETE FROM publications WHERE pub_id IN ({placeholders})",
+        pub_ids,
     )
     conn.commit()
     return cursor.rowcount > 0

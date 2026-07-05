@@ -1,7 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-05
-**Current version:** 2.51.7 — **Fix: two more scroll-jump-to-top spots (dashboard poll/resync, artwork import).**
+**Current version:** 2.51.8 — **Fix: "forget publication" 500 (FK constraint) + clearer AO3 expired-session error.**
+Two server-log bugs. (1) `DELETE /api/editor/stories/{story}/publication` threw `FOREIGN KEY constraint failed`:
+`publications.pub_id` is referenced by `posting_queue` and the immutable `posting_log`, and with
+`PRAGMA foreign_keys=ON` a bare `DELETE FROM publications` fails once the row has been posted (a log row references
+it). `delete_publication()` now **NULLs** the children's `pub_id` first (both nullable — queue keeps its identity,
+audit log stays intact) then deletes. Two regression tests added. (2) AO3 posting failed with a cryptic "Could not
+extract author pseud ID" — real cause was an expired `_otwarchive_session` cookie (AO3 302'd `/works/new`→
+`/users/login`; the client parsed the login page). `create_work()` now detects the login page (`user[login]` field)
+and raises an actionable "session expired — re-copy your cookie" error. **Diagnostics only — the operational fix is
+to re-paste a fresh AO3 cookie in Settings → Platforms → AO3.** 302 tests green. **Needs a server deploy.**
+`database/posting_queries.py`, `clients/ao3/client.py`, `tests/test_integration_posting.py`.
+
+**Prior release — 2.51.7 — Fix: two more scroll-jump-to-top spots (dashboard poll/resync, artwork import).**
 Follow-up sweep after 2.51.6. Same pattern — an in-page action that triggers a full `#app` rebuild and drops the
 viewport to the top — fixed in two more places: (1) dashboard **Poll Now / Full Resync** (`app.js`
 `_dashPoll`/`_dashResync`) ran `setTimeout(() => this.route(), 1500)` on success; since polls are fire-and-forget
@@ -11,7 +23,7 @@ discovered** (`artwork.js` `_importDiscovered`) called `this.render()`; wrapped 
 (`const y = window.scrollY; await this.render(); window.scrollTo(0, y)`). Audited-and-left: `submissions.js`/`posts.js`
 already update sub-sections in place; the account-filter dropdown re-scopes the whole view (defensible top-of-page
 control); the three `location.reload()` calls (setup-finish/re-run-wizard/restore-backup) are intentional. Frontend
-only. 300 tests green. **Needs a server deploy.** `frontend/js/app.js`, `frontend/js/artwork.js`.
+only. `frontend/js/app.js`, `frontend/js/artwork.js`.
 
 **Prior release — 2.51.6 — Fix: Accounts page jumped to the top on every action.**
 Any Accounts-page mutation (assign platform account to persona, rename/delete persona, add/rename/enable/delete

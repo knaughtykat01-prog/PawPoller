@@ -908,6 +908,19 @@ class AO3Client:
         if not form_html:
             raise RuntimeError("AO3: Could not fetch /works/new form")
 
+        # A stale/invalid `_otwarchive_session` cookie makes AO3 302 the
+        # /works/new request off to /users/login; _get_page follows the
+        # redirect, so form_html is actually the login page. Detect it via
+        # the login form's `user[login]` field (never present on the work
+        # form) and surface an actionable error instead of the cryptic
+        # "couldn't find CSRF token / pseud" that would otherwise follow.
+        if 'name="user[login]"' in form_html:
+            raise RuntimeError(
+                "AO3: session expired or invalid — /works/new redirected to the "
+                "login page. Re-copy your `_otwarchive_session` cookie from a "
+                "logged-in browser into Settings → Platforms → AO3."
+            )
+
         token_m = re.search(
             r'name="authenticity_token"[^>]*value="([^"]+)"', form_html
         )

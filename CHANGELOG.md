@@ -4,6 +4,32 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.51.8] - 2026-07-05 - Fix: "forget publication" 500 (FK constraint); clearer AO3 expired-session error
+
+Two server-log bugs.
+
+**1. `DELETE /api/editor/stories/{story}/publication` → 500 `FOREIGN KEY constraint failed`.** The "forget
+publication" affordance ran a bare `DELETE FROM publications`, but `publications.pub_id` is referenced by two
+children — `posting_queue` and the immutable `posting_log` audit trail. With `PRAGMA foreign_keys = ON` (set on
+every connection), the moment a publication has been posted it has a `posting_log` row, so the delete was rejected.
+`delete_publication()` now unlinks the children first — both `pub_id` columns are nullable, so it **NULLs** them
+rather than deleting: the queue item keeps its identity and the audit log stays intact, they just lose the
+back-reference to the forgotten row. Then the publication deletes cleanly. Two regression tests added (posted-then-
+forget with log + queue children; absent row returns False). `database/posting_queries.py`,
+`tests/test_integration_posting.py`.
+
+**2. AO3 post failed with a cryptic "Could not extract author pseud ID from /works/new".** The real cause was an
+expired/invalid `_otwarchive_session` cookie: AO3 302-redirected `/works/new` to `/users/login`, and the client
+(which follows redirects) parsed the login page and failed to find the pseud. `create_work()` now detects the login
+page (via its `user[login]` field, never present on the work form) and raises an actionable error — *"AO3 session
+expired or invalid … re-copy your `_otwarchive_session` cookie"* — instead of the misleading parse error. This is a
+diagnostics fix only; **the operational fix is to re-paste a fresh AO3 cookie in Settings → Platforms → AO3.**
+`clients/ao3/client.py`.
+
+302 tests green. **Needs a server deploy.**
+
+---
+
 ## [2.51.7] - 2026-07-05 - Fix: two more scroll-jump-to-top spots (dashboard poll/resync, artwork import)
 
 Follow-up to 2.51.6's Accounts fix. Swept the whole frontend for the same pattern — an in-page action that
