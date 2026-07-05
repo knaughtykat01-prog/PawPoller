@@ -33,7 +33,16 @@ window.Accounts = {
             </div>`;
 
         this._renderFaPollingToggle(document.getElementById('fa-polling-card'));
+        await this._refresh();
+    },
 
+    /* Re-fetch accounts + personas and re-fill the data sub-sections IN PLACE.
+     * Unlike render() (which rebuilds the whole #app shell and so drops the
+     * scroll position back to the top), this leaves the page structure
+     * untouched — so calling it after a mutation (assign persona, rename,
+     * toggle, delete, add) refreshes the list without the jarring
+     * jump-to-top. (2.51.6) */
+    async _refresh() {
         let data, personas;
         try {
             [data, personas] = await Promise.all([
@@ -41,7 +50,8 @@ window.Accounts = {
                 API.getPersonas().catch(() => ({ personas: [] })),
             ]);
         } catch (err) {
-            document.getElementById('accounts-list').innerHTML =
+            const list = document.getElementById('accounts-list');
+            if (list) list.innerHTML =
                 `<section class="acct-section">Failed to load accounts: ${this.esc(err.message)}</section>`;
             return;
         }
@@ -98,7 +108,7 @@ window.Accounts = {
         msg.textContent = 'Creating…';
         try {
             await API.createPersona({ name, color });
-            this.render();
+            this._refresh();
         } catch (err) { msg.textContent = 'Error: ' + err.message; }
     },
 
@@ -107,7 +117,7 @@ window.Accounts = {
         if (name == null || !name.trim()) return;
         try {
             await API.updatePersona(id, { name: name.trim() });
-            this.render();
+            this._refresh();
         } catch (err) { alert('Failed to rename: ' + err.message); }
     },
 
@@ -115,7 +125,7 @@ window.Accounts = {
         if (!confirm('Delete this persona? Its accounts will be unassigned (not deleted).')) return;
         try {
             await API.deletePersona(id);
-            this.render();
+            this._refresh();
         } catch (err) { alert('Failed to delete persona: ' + err.message); }
     },
 
@@ -130,7 +140,7 @@ window.Accounts = {
     async _assignPersona(accountId, value) {
         try {
             await API.assignAccountPersona(accountId, value === '' ? null : Number(value));
-            this.render();
+            this._refresh();
         } catch (err) { alert('Failed to assign persona: ' + err.message); }
     },
 
@@ -220,7 +230,7 @@ window.Accounts = {
         try {
             await API.createAccount({ platform, label, credentials });
             msg.textContent = '';
-            this.render();   // refresh the whole page
+            this._refresh();   // re-fill the list in place (keeps scroll position)
         } catch (err) {
             msg.textContent = 'Error: ' + err.message;
         }
@@ -356,7 +366,7 @@ window.Accounts = {
         if (!trimmed) return;               // don't blank the label
         try {
             await API.updateAccount(id, { label: trimmed });
-            this.render();
+            this._refresh();
         } catch (err) {
             alert('Failed to rename account: ' + err.message);
         }
@@ -453,7 +463,7 @@ window.Accounts = {
     async _toggle(accountId, currentlyEnabled) {
         try {
             await API.updateAccount(accountId, { enabled: !currentlyEnabled });
-            this.render();
+            this._refresh();
         } catch (err) {
             alert('Failed to update account: ' + err.message);
         }
@@ -463,7 +473,7 @@ window.Accounts = {
         if (!confirm('Delete this account? Its credentials will be removed. Polled history is left in place.')) return;
         try {
             await API.deleteAccount(accountId);
-            this.render();
+            this._refresh();
         } catch (err) {
             alert('Failed to delete account: ' + err.message);
         }

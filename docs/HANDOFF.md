@@ -1,13 +1,22 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-04
-**Current version:** 2.51.5 — **Fix: manual Poll/Resync 524 timeout — trigger endpoints are now fire-and-forget.**
+**Last updated:** 2026-07-05
+**Current version:** 2.51.6 — **Fix: Accounts page jumped to the top on every action.**
+Any Accounts-page mutation (assign platform account to persona, rename/delete persona, add/rename/enable/delete
+account) scrolled the viewport back to the top. Cause: every handler ended in `this.render()`, and `render()`'s
+first act is `app.innerHTML = <shell with "Loading…">`, which collapses the page height and resets window scroll to
+0 before the re-fetched data refills. Fix: split `render()` — it still builds the shell (on navigation), but the
+data fetch + sub-section fill moved to a new `_refresh()` that updates `personas-card`/`accounts-add`/`accounts-list`
+**in place** (never touches the shell, so scroll is preserved); the 8 post-mutation `this.render()` calls now call
+`this._refresh()`. Frontend only. 300 tests green. **Needs a server deploy.** `frontend/js/accounts.js`.
+
+**Prior release — 2.51.5 — Fix: manual Poll/Resync 524 timeout — trigger endpoints are now fire-and-forget.**
 Companion to 2.51.4 (which un-blocked the buttons). Each of the 30 manual poll/full-resync endpoints used to
 `await run_<platform>_poll_cycle()` inside the request, so slow platforms (AO3/X) blew past Cloudflare's ~100 s cap
 → 524. New `polling/background.py` `spawn(coro, label)` runs the cycle as a detached task (strong-ref'd so it isn't
 GC-cancelled; logs exceptions) and the endpoint returns `{"status":"started"}` immediately. All 15 `routes/*_api.py`
 converted; the frontend only needs acceptance so the shape change is transparent; scheduled polling unchanged. 300
-tests green. **Needs a server deploy.** `polling/background.py` (new), `routes/*_api.py`.
+tests green. `polling/background.py` (new), `routes/*_api.py`.
 
 **Prior release — 2.51.4 — Fix: dashboard buttons dead in the browser — strict CSP was blocking all inline `on*=` handlers.**
 Every inline `onclick=` (Poll/Resync, Export, submission-card nav, group/link/posting actions — ~90) silently did

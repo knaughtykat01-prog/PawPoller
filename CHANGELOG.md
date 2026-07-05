@@ -4,6 +4,25 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.51.6] - 2026-07-05 - Fix: Accounts page jumped to the top on every action
+
+Any mutation on the Accounts page — assigning a platform account to a persona, renaming/deleting a persona,
+adding/renaming/enabling/deleting an account — scrolled the viewport back to the top, so working down a long list
+meant re-scrolling after every click.
+
+**Cause.** Every one of those handlers finished by calling `this.render()`, and `render()` rebuilds the whole
+`#app` shell: its first act is `app.innerHTML = <shell with "Loading…" placeholders>`, which collapses the page to
+near-zero height and drops the window scroll to 0 before the re-fetched data refills the sub-sections.
+
+**Fix.** Split `render()` into two: `render()` still builds the shell (used on navigation), but the data fetch +
+sub-section fill now live in a new `_refresh()` that updates the existing `personas-card` / `accounts-add` /
+`accounts-list` elements **in place** — it never touches the shell, so the scroll position is preserved. The eight
+post-mutation `this.render()` calls now call `this._refresh()`. Navigation still starts at the top (expected);
+in-page actions no longer move the viewport. Frontend only; `frontend/js/accounts.js`. 300 tests green.
+**Needs a server deploy.**
+
+---
+
 ## [2.51.5] - 2026-07-04 - Fix: manual Poll Now / Full Resync 524 timeout (fire-and-forget triggers)
 
 The companion to 2.51.4. With the buttons firing again, the manual poll/resync triggers surfaced the second bug:
