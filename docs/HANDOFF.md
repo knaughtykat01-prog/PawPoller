@@ -1,14 +1,26 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-05
-**Current version:** 2.51.6 — **Fix: Accounts page jumped to the top on every action.**
+**Current version:** 2.51.7 — **Fix: two more scroll-jump-to-top spots (dashboard poll/resync, artwork import).**
+Follow-up sweep after 2.51.6. Same pattern — an in-page action that triggers a full `#app` rebuild and drops the
+viewport to the top — fixed in two more places: (1) dashboard **Poll Now / Full Resync** (`app.js`
+`_dashPoll`/`_dashResync`) ran `setTimeout(() => this.route(), 1500)` on success; since polls are fire-and-forget
+(2.51.5) that re-render showed no fresh data and only reset the button, so it's now a plain button reset (the 60 s
+`_startAutoRefresh` on every platform page already re-renders with scroll preserved). (2) **Artwork → Import
+discovered** (`artwork.js` `_importDiscovered`) called `this.render()`; wrapped in the file's scroll-restore idiom
+(`const y = window.scrollY; await this.render(); window.scrollTo(0, y)`). Audited-and-left: `submissions.js`/`posts.js`
+already update sub-sections in place; the account-filter dropdown re-scopes the whole view (defensible top-of-page
+control); the three `location.reload()` calls (setup-finish/re-run-wizard/restore-backup) are intentional. Frontend
+only. 300 tests green. **Needs a server deploy.** `frontend/js/app.js`, `frontend/js/artwork.js`.
+
+**Prior release — 2.51.6 — Fix: Accounts page jumped to the top on every action.**
 Any Accounts-page mutation (assign platform account to persona, rename/delete persona, add/rename/enable/delete
 account) scrolled the viewport back to the top. Cause: every handler ended in `this.render()`, and `render()`'s
 first act is `app.innerHTML = <shell with "Loading…">`, which collapses the page height and resets window scroll to
 0 before the re-fetched data refills. Fix: split `render()` — it still builds the shell (on navigation), but the
 data fetch + sub-section fill moved to a new `_refresh()` that updates `personas-card`/`accounts-add`/`accounts-list`
 **in place** (never touches the shell, so scroll is preserved); the 8 post-mutation `this.render()` calls now call
-`this._refresh()`. Frontend only. 300 tests green. **Needs a server deploy.** `frontend/js/accounts.js`.
+`this._refresh()`. Frontend only. 300 tests green. `frontend/js/accounts.js`.
 
 **Prior release — 2.51.5 — Fix: manual Poll/Resync 524 timeout — trigger endpoints are now fire-and-forget.**
 Companion to 2.51.4 (which un-blocked the buttons). Each of the 30 manual poll/full-resync endpoints used to

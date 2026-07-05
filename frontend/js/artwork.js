@@ -152,7 +152,13 @@ window.Artwork = {
         try {
             await API.importArtwork(platform, sid);
             this._toast('success', 'Imported to your library');
-            this.render();   // it becomes a library card and leaves the discovered set
+            /* Re-render so the piece leaves Discovered and becomes a library
+             * card — but preserve scroll. render() rebuilds #app from the top
+             * (loading spinner), which otherwise jumps the viewport to the top
+             * mid-list while importing down a long Discovered grid. (2.51.7) */
+            const scrollY = window.scrollY;
+            await this.render();
+            window.scrollTo(0, scrollY);
         } catch (err) {
             btn.disabled = false; btn.textContent = 'Import';
             this._toast('error', 'Import failed: ' + (err.message || err));

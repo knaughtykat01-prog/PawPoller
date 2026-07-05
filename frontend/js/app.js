@@ -1249,7 +1249,11 @@ const App = {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
             if (window.toast) window.toast.success(`${label}: poll triggered`);
-            setTimeout(() => this.route(), 1500);
+            /* Poll is fire-and-forget (2.51.5) — there's no fresh data 1.5 s
+             * later, and a full this.route() re-render bounced the viewport to
+             * the top of the page (2.51.7). Just reset the button; the 60 s
+             * auto-refresh picks up new counts with scroll preserved. */
+            setTimeout(() => { btn.textContent = 'Poll Now'; btn.disabled = false; }, 2000);
         } catch (err) {
             btn.textContent = 'Error';
             if (window.toast) window.toast.error(`${label}: poll failed — ${err.message || err}`);
@@ -1267,7 +1271,9 @@ const App = {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
             if (window.toast) window.toast.success(`${label}: full resync triggered (may take several minutes)`);
-            setTimeout(() => this.route(), 1500);
+            /* Same as _dashPoll: skip the full re-render (scroll jump, 2.51.7) —
+             * auto-refresh handles freshness. Just reset the button. */
+            setTimeout(() => { btn.textContent = 'Full Resync'; btn.disabled = false; }, 2000);
         } catch (err) {
             btn.textContent = 'Error';
             if (window.toast) window.toast.error(`${label}: resync failed — ${err.message || err}`);

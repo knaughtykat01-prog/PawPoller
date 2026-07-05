@@ -4,6 +4,28 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.51.7] - 2026-07-05 - Fix: two more scroll-jump-to-top spots (dashboard poll/resync, artwork import)
+
+Follow-up to 2.51.6's Accounts fix. Swept the whole frontend for the same pattern — an in-page action that
+triggers a full `#app` rebuild and so drops the viewport to the top — and fixed the two other genuine cases:
+
+- **Dashboard Poll Now / Full Resync** (`app.js` `_dashPoll` / `_dashResync`). On success they ran
+  `setTimeout(() => this.route(), 1500)`, a full page re-dispatch that jumped to the top. Since 2.51.5 made polls
+  fire-and-forget, that re-render showed no fresh data anyway (the cycle runs for minutes) — it only reset the
+  button. Replaced with a plain button reset. Every platform page already runs a 60 s `_startAutoRefresh` that
+  re-renders **with scroll preserved**, so freshness is unaffected.
+- **Artwork → Import discovered** (`artwork.js` `_importDiscovered`). Calling `this.render()` after an import
+  rebuilt the whole page from its loading spinner, jumping to the top mid-list. Wrapped it in the file's existing
+  scroll-restore idiom (`const y = window.scrollY; await this.render(); window.scrollTo(0, y)`).
+
+Audited and deliberately left alone: `submissions.js` / `posts.js` already update sub-sections in place (no bug);
+the account-filter dropdown re-scopes the whole platform view (top-of-page control — starting at the top is
+defensible); and the three `location.reload()` calls (setup-finish, re-run-wizard, restore-backup) are intentional
+full reloads with a user-facing message. Frontend only; `frontend/js/app.js`, `frontend/js/artwork.js`. 300 tests
+green. **Needs a server deploy.**
+
+---
+
 ## [2.51.6] - 2026-07-05 - Fix: Accounts page jumped to the top on every action
 
 Any mutation on the Accounts page — assigning a platform account to a persona, renaming/deleting a persona,
