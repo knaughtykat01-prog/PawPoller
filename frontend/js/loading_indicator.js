@@ -121,7 +121,11 @@
         // next-frame add visible class so the CSS transition runs
         requestAnimationFrame(() => t.classList.add('is-visible'));
         if (timeoutMs === null) {
-            timeoutMs = (kind === 'error' || kind === 'warn') ? 6000 : 4000;
+            // Errors stick until dismissed (2.53.0) — an error toast that
+            // auto-vanishes in a few seconds is easy to miss, and the user
+            // asked for failures to be obvious. Warnings/info still auto-hide.
+            // Pass an explicit timeoutMs (e.g. 4000) to override per call.
+            timeoutMs = kind === 'error' ? 0 : (kind === 'warn' ? 6000 : 4000);
         }
         if (timeoutMs > 0) {
             setTimeout(close, timeoutMs);

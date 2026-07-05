@@ -4,6 +4,36 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.53.0] - 2026-07-05 - Session-expiry checking + app-wide banner + sticky error toasts
+
+Second of the notifications/error-visibility releases (after 2.52 digest concision; 2.54 adds the notification
+centre). This closes the "I never know a cookie died until a post fails" gap.
+
+**Active session checking.** New `polling/session_check.py` validates every credential platform that exposes a
+`validate_session()` probe — AO3, SoFurry, SquidgeWorld, Bluesky, Mastodon, Tumblr, Pixiv, Threads — by building the
+same singleton client the pollers use and calling its real network check. Results (`valid` / `expired` / `error` /
+`unconfigured`) live in a process-local cache. The poll orchestrator runs it **once at startup** (so the UI reflects
+reality within a minute of boot) and then **every ~6 hours**, independent of polling pause — deliberately *not* on
+the 60 s health poll, because these probes are rate-limited (AO3 especially). A confirmed-dead session is `expired`
+(red); a network/exception blip is `error` (amber) so a transient failure doesn't cry wolf.
+
+**Surfacing.**
+- **App-wide banner** (`platform_health.js :: renderGlobalBanner`) — pinned at the top of `#main-col` on *every*
+  page whenever any session is `expired`, with a "Fix in Settings →" deep-link. Persists until the session is valid
+  again. (The pre-existing per-platform-page banner for throttle/poll-error is unchanged.)
+- **Sticky error toasts** — `window.toast.error(...)` no longer auto-hides; error toasts stay until dismissed
+  (warnings/info still auto-hide). Pass an explicit `timeoutMs` to override.
+- **Settings → Platforms → "Session health" card** — per-platform valid/expired/unverified status with last-checked
+  time and a **"Check sessions now"** button that forces an immediate re-validation.
+
+**Wiring.** Session status is folded into `/api/platforms/health` (so the banner + dots ride the existing 60 s
+poll); new `GET /api/platforms/sessions` and `POST /api/platforms/sessions/check` (fire-and-forget via `spawn`).
+`polling/session_check.py` (new), `server.py`, `routes/api.py`, `frontend/js/{platform_health,app,api,loading_indicator}.js`,
+`frontend/css/{loading_indicator,components}.css`, `tests/test_session_check.py` (new). 307 tests green.
+**Needs a server deploy.**
+
+---
+
 ## [2.52.0] - 2026-07-05 - Telegram digest concision: skip platforms with nothing new
 
 First of three releases building out notifications/error-visibility (2.52 digest concision → 2.53 session-expiry

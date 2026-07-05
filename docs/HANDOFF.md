@@ -1,22 +1,35 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-05
-**Current version:** 2.52.0 — **Telegram digest concision (skip platforms with nothing new).**
-First of three releases building notifications/error-visibility: **2.52 digest concision → 2.53 session-expiry
-checks + persistent banner + sticky error toasts + Settings "Check now" → 2.54 notification centre (bell top-right,
-dropdown, unread badge, all event types) + toast policy (failures only) + auth-failure modal.** (User also wants a
-later general UI polish pass — noted, after this batch.) This release: the periodic digest printed every account
-that merely had submissions (full `+0/+0/+0` blocks; empty personas still messaged). `_persona_account_lines()` now
-takes `only_changed`; `send_digest_report()` passes `only_changed=True` to skip zero-delta accounts (an all-quiet
-persona sends nothing). The **weekly** digest stays exempt (`only_changed=False`) as a complete standing report.
-Regression test added. 303 tests green. **Needs a server deploy.** `polling/telegram.py`,
-`tests/test_persona_digests.py`.
+**Current version:** 2.53.0 — **Session-expiry checking + app-wide banner + sticky error toasts + Settings "Check now".**
+Second of three notifications/error-visibility releases (2.52 digest concision → **2.53 session checks** → 2.54
+notification centre). New `polling/session_check.py` validates the 8 platforms with a `validate_session()` probe
+(AO3/SF/SQW/BSKY/MAST/TUM/PIX/THR) by building the pollers' singleton client and calling its real network check;
+results (`valid`/`expired`/`error`/`unconfigured`) cached process-local. Poll orchestrator runs it **at startup** +
+**every ~6h**, independent of pause, NOT on the 60s health poll (rate limits — AO3 especially). `expired` = confirmed
+dead (red); `error` = network blip (amber, no false alarm). Surfacing: **app-wide banner**
+(`platform_health.js::renderGlobalBanner`, pinned top of `#main-col` on every page for any `expired` session, links
+to Settings); **sticky error toasts** (`window.toast.error` no longer auto-hides); **Settings → Platforms → "Session
+health" card** with per-platform status + "Check sessions now". Session status folded into `/api/platforms/health`;
+new `GET /api/platforms/sessions` + `POST /api/platforms/sessions/check` (fire-and-forget). 307 tests green.
+**Needs a server deploy.** `polling/session_check.py` (new), `server.py`, `routes/api.py`,
+`frontend/js/{platform_health,app,api,loading_indicator}.js`, `frontend/css/{loading_indicator,components}.css`,
+`tests/test_session_check.py` (new).
 
-**Design decisions locked for 2.53/2.54 (from the user):** session check = auto every ~6h + manual button; error
-surfacing layered as **centre = everything · toast = heads-up (failures/warnings only, errors sticky) · banner =
-critical ongoing (dead session) · modal = an action you just clicked failing on auth**; notification bell lives
-top-right of the header; the notification feed is backed by the existing `/api/activity/recent` (poll + posting
-events already merged) plus session-expiry events + an unread marker.
+**Still to come — 2.54 notification centre:** bell top-right of the header, dropdown, unread badge, ALL event types
+(upload done/failed, poll done/failed, session expired/restored). Backed by the existing `/api/activity/recent`
+(poll + posting events already merged) + session events + a server-side `notifications_last_read_at` unread marker.
+Toast policy: failures/warnings only (successes stay silent in the centre). Plus the auth-failure **modal** for an
+action you just clicked (post / poll-now) dying on a dead session. Then a general **UI polish pass** the user flagged
+for after this batch. (Design decisions locked with the user: session check = auto 6h + button ✓ done; layered
+surfacing = centre=everything · toast=heads-up(failures only, sticky) · banner=critical ongoing ✓ done · modal=action
+you clicked failing.)
+
+**Prior release — 2.52.0 — Telegram digest concision (skip platforms with nothing new).**
+The periodic digest printed every account that merely had submissions (full `+0/+0/+0` blocks; empty personas still
+messaged). `_persona_account_lines()` now takes `only_changed`; `send_digest_report()` passes `only_changed=True` to
+skip zero-delta accounts (an all-quiet persona sends nothing). The **weekly** digest stays exempt
+(`only_changed=False`) as a complete standing report. `polling/telegram.py`, `tests/test_persona_digests.py`.
 
 **Prior release — 2.51.8 — Fix: "forget publication" 500 (FK constraint) + clearer AO3 expired-session error.**
 Two server-log bugs. (1) `DELETE /api/editor/stories/{story}/publication` threw `FOREIGN KEY constraint failed`:

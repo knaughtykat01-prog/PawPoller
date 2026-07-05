@@ -1240,6 +1240,81 @@ const App = {
         ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr', pix: 'Pixiv', thr: 'Threads',
     },
 
+    /* Settings → Platforms → "Session health" card. Renders the per-platform
+     * active-session status (from /api/platforms/sessions) and wires the
+     * "Check sessions now" button, which fires the server-side re-validation
+     * (fire-and-forget) and reloads the results after it's had time to run. */
+    async _initSessionHealthCard() {
+        const CHECKABLE = ['ao3', 'sf', 'sqw', 'bsky', 'mast', 'tum', 'pix', 'thr'];
+        const LABELS = (window.PlatformHealth && window.PlatformHealth.LABELS) || {};
+        const DOT = { valid: 'connected', expired: 'disconnected', error: 'warn', unconfigured: 'muted' };
+        const WORD = { valid: 'Valid', expired: 'Expired', error: 'Unverified', unconfigured: 'Not configured' };
+
+        const renderList = (sessions) => {
+            const list = document.getElementById('session-status-list');
+            if (!list) return;
+            list.innerHTML = CHECKABLE.map((code) => {
+                const s = sessions[code];
+                const status = (s && s.status) || 'unchecked';
+                const dot = DOT[status] || 'muted';
+                const word = WORD[status] || 'Not checked yet';
+                const when = (s && s.checked_at && window.PlatformHealth)
+                    ? ` · ${window.PlatformHealth.relativePast(s.checked_at)}` : '';
+                const detail = ((status === 'expired' || status === 'error') && s && s.detail)
+                    ? `<div class="ssl-detail">${Utils.escapeHtml(s.detail)}</div>` : '';
+                return `<div class="ssl-row">
+                    <span class="status-dot ${dot}"></span>
+                    <span class="ssl-name">${Utils.escapeHtml(LABELS[code] || code.toUpperCase())}</span>
+                    <span class="ssl-status">${word}${when}</span>
+                    ${detail}
+                </div>`;
+            }).join('');
+            // Summary dot on the accordion header: red if any expired, amber if
+            // any unverified, else green.
+            const dotEl = document.getElementById('session-health-dot');
+            if (dotEl) {
+                const states = CHECKABLE.map((c) => sessions[c] && sessions[c].status);
+                dotEl.className = 'status-dot ' + (states.includes('expired') ? 'disconnected'
+                    : states.includes('error') ? 'warn' : 'connected');
+            }
+        };
+
+        const load = async () => {
+            try {
+                const resp = await API.getPlatformSessions();
+                renderList((resp && resp.sessions) || {});
+            } catch (e) { /* leave the placeholder */ }
+        };
+
+        await load();
+
+        const btn = document.getElementById('session-check-btn');
+        const msg = document.getElementById('session-check-msg');
+        btn?.addEventListener('click', async () => {
+            btn.disabled = true;
+            btn.textContent = 'Checking…';
+            if (msg) msg.textContent = 'Validating every session — a few seconds…';
+            try {
+                await API.triggerSessionCheck();
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = 'Check sessions now';
+                if (msg) msg.textContent = 'Failed: ' + (err.message || err);
+                return;
+            }
+            // Server validates all 8 serially in the background; reload once
+            // partway and once when they've all had time to land.
+            setTimeout(load, 4000);
+            setTimeout(async () => {
+                await load();
+                btn.disabled = false;
+                btn.textContent = 'Check sessions now';
+                if (msg) msg.textContent = 'Updated.';
+                if (window.PlatformHealth) window.PlatformHealth.fetchOnce();
+            }, 9000);
+        });
+    },
+
     async _dashPoll(btn, platform) {
         const label = this._platformLabels[platform] || platform.toUpperCase();
         btn.disabled = true;
@@ -8686,6 +8761,24 @@ const App = {
                 <div class="settings-tab-content" data-tab-content="platforms" ${_settingsTab !== 'platforms' ? 'style="display:none"' : ''}>
 
                 <details class="settings-accordion" open>
+                    <summary><span class="status-dot" id="session-health-dot"></span>Session health <span class="summary-meta">— cookie / token validity</span></summary>
+                    <div class="accordion-body">
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">
+                        PawPoller checks each credential platform's session on startup and every ~6 hours.
+                        <span style="color:#7CFFB0">Green</span> = alive,
+                        <span style="color:#FF8A8A">red</span> = expired (re-enter credentials below),
+                        <span style="color:#FFD66B">amber</span> = couldn't verify (often a temporary network blip).
+                        Force a re-check any time:
+                    </p>
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+                        <button class="btn btn-primary" id="session-check-btn">Check sessions now</button>
+                        <span id="session-check-msg" style="font-size:13px;color:var(--text-muted)"></span>
+                    </div>
+                    <div id="session-status-list" class="session-status-list"></div>
+                    </div>
+                </details>
+
+                <details class="settings-accordion" open>
                     <summary><span class="status-dot ${creds.has_password ? 'connected' : 'disconnected'}"></span>Inkbunny${creds.username ? ` <span class="summary-meta">— ${Utils.escapeHtml(creds.username)}</span>` : ''}</summary>
                     <div class="accordion-body">
                     <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">
@@ -9515,6 +9608,10 @@ const App = {
                     setTimeout(() => this.renderSettings(), 2000);
                 }
             });
+
+            // Session-health card (Settings → Platforms): populate the per-
+            // platform session status list + wire the "Check sessions now" button.
+            this._initSessionHealthCard();
 
             document.getElementById('save-all-settings-btn')?.addEventListener('click', async (e) => {
                 const btn = e.target;

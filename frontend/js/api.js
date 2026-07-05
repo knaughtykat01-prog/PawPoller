@@ -147,6 +147,8 @@ const API = {
     // Per-platform health snapshot (single fetch for sidebar dots,
     // header subtitles, and throttle banners).
     getPlatformsHealth() { return this.get('/api/platforms/health'); },
+    getPlatformSessions() { return this.get('/api/platforms/sessions'); },
+    triggerSessionCheck() { return this.post('/api/platforms/sessions/check', {}); },
     // Unified system-event feed (poll_log + posting_log merged) for
     // the Overview's "Recent System Events" panel.
     getRecentActivity(limit = 30) { return this.get('/api/activity/recent', { limit }); },

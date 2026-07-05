@@ -330,6 +330,51 @@
     border-color: rgba(240, 112, 112, 0.40);
 }
 
+/* App-wide banner (platform_health.js :: renderGlobalBanner) — pinned at the
+ * top of #main-col for CONFIRMED-expired sessions. Distinct from the per-page
+ * .platform-status-banner: it spans the full content width and persists across
+ * navigation until the session is valid again ("you must fix this"). */
+.pp-global-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 18px;
+    background: rgba(240, 112, 112, 0.14);
+    border-bottom: 1px solid rgba(240, 112, 112, 0.45);
+    color: var(--text-primary, #f0edf5);
+    font-size: 13.5px;
+    line-height: 1.4;
+}
+
+.pp-global-banner .pp-gb-icon {
+    flex-shrink: 0;
+    font-size: 17px;
+    line-height: 1;
+    color: #ff8a8a;
+}
+
+.pp-global-banner .pp-gb-text { flex: 1 1 auto; min-width: 0; }
+.pp-global-banner .pp-gb-title { font-weight: 700; }
+
+.pp-global-banner .pp-gb-body {
+    color: var(--text-secondary, #a99fc0);
+    word-break: break-word;
+}
+
+.pp-global-banner .pp-gb-action {
+    flex-shrink: 0;
+    padding: 6px 13px;
+    border-radius: 6px;
+    background: #ff8a8a;
+    color: #2a0e0e;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: opacity 150ms ease;
+}
+
+.pp-global-banner .pp-gb-action:hover { opacity: 0.85; }
+
 /* ── Floating logs panel ────────────────────────────────────────
  * Backed by /js/logs_panel.js + /api/logs/stream (SSE). Toggle
  * button sits above the toast stack; panel expands above-and-to-

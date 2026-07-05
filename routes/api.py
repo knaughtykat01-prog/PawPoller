@@ -326,7 +326,9 @@ def get_platforms_health():
                            (sourced from ao3 client backoff cache)
     """
     from datetime import datetime, timedelta, timezone
+    from polling.session_check import get_session_health
     settings = config.get_settings()
+    sessions = get_session_health()
     fallback_interval = int(settings.get("poll_interval_minutes", 60))
     out: dict = {}
     conn = get_connection()
@@ -365,6 +367,10 @@ def get_platforms_health():
                             pass
             except Exception as e:
                 logger.debug("platforms/health: %s lookup failed: %s", code, e)
+            # Active session-validity (from the periodic session-check cache):
+            # {status: valid|expired|error|unconfigured, detail, checked_at} or
+            # None for platforms with no standalone validate_session() probe.
+            entry["session"] = sessions.get(code)
             out[code] = entry
 
         # AO3 throttle bolt-on. Module-level state in
@@ -384,6 +390,35 @@ def get_platforms_health():
     finally:
         conn.close()
     return out
+
+
+@router.get("/platforms/sessions")
+def get_platform_sessions():
+    """Cached active-session-validity snapshot for the credential platforms.
+
+    Shape per platform code: {status, detail, checked_at} where status is
+    'valid' | 'expired' | 'error' | 'unconfigured'. Empty until the first
+    check runs (startup + every ~6h; see polling/session_check.py). The
+    banner + Settings dots read this; the same data is folded into
+    /platforms/health so the 60s health poll surfaces it without a 2nd fetch.
+    """
+    from polling.session_check import get_session_health, CHECKABLE
+    return {"sessions": get_session_health(), "checkable": list(CHECKABLE)}
+
+
+@router.post("/platforms/sessions/check")
+async def trigger_session_check():
+    """Force an immediate re-validation of every configured session.
+
+    validate_session() makes real network calls (8 platforms, serial), so we
+    fire-and-forget via spawn() — same pattern as the manual poll triggers —
+    and return immediately. The frontend re-fetches /platforms/sessions a few
+    seconds later to pick up the fresh results.
+    """
+    from polling.session_check import check_all
+    from polling.background import spawn
+    spawn(check_all(), "manual-session-check")
+    return {"status": "started"}
 
 
 def _format_poll_summary(log: dict) -> str:

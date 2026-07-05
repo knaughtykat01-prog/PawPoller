@@ -742,6 +742,33 @@ a.stat-card:hover {
 }
 .status-dot.connected { background: var(--success); }
 .status-dot.disconnected { background: var(--text-muted); opacity: 0.5; }
+.status-dot.warn { background: #FFD66B; }
+.status-dot.muted { background: var(--text-muted); opacity: 0.35; }
+
+/* Session-health card list (Settings → Platforms → Session health) */
+.session-status-list { display: flex; flex-direction: column; gap: 2px; }
+.session-status-list .ssl-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 7px 4px;
+    border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+    font-size: 13px;
+}
+.session-status-list .ssl-row:last-child { border-bottom: none; }
+.session-status-list .ssl-name {
+    font-weight: 600;
+    color: var(--text-primary, #f0edf5);
+    min-width: 120px;
+}
+.session-status-list .ssl-status { color: var(--text-muted); margin-left: auto; }
+.session-status-list .ssl-detail {
+    flex-basis: 100%;
+    color: var(--text-secondary, #a99fc0);
+    font-size: 12px;
+    padding-left: 14px;
+}
 
 /* ── Settings Tabs ───────────────────────────────────────── */
 .settings-tabs {

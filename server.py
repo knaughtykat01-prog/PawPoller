@@ -182,6 +182,11 @@ def _start_poll_orchestrator():
     def _digest_due() -> bool:
         return _seconds_until_next("last_digest_sent_at", _get_digest_interval()) <= 60
 
+    def _session_check_due() -> bool:
+        # Re-validate platform sessions ~every 6 h (independent of the digest
+        # and of polling pause). Startup runs an immediate check separately.
+        return _seconds_until_next("last_session_check_at", 6 * 60 * 60) <= 60
+
     def _weekly_digest_due() -> bool:
         settings = config.get_settings()
         if not settings.get("telegram_weekly_digest", True):
@@ -318,6 +323,17 @@ def _start_poll_orchestrator():
         logger.info("Poll orchestrator started (interval: %d min)",
                      poll_interval // 60)
 
+        # Validate platform sessions once, up front, so the dashboard banner +
+        # Settings status dots reflect real cookie/token validity within a
+        # minute of startup — independent of the poll-skip logic below (which
+        # can defer the first poll by hours). 8 serial probes; gentle on limits.
+        try:
+            from polling.session_check import check_all as _check_sessions
+            await _check_sessions()
+            config.save_settings({"last_session_check_at": datetime.now(timezone.utc).isoformat()})
+        except Exception as e:
+            logger.warning("Initial session check failed: %s", e)
+
         # Skip the immediate first poll if the last cycle was recent enough.
         # This prevents hammering platforms on every app restart / deploy.
         secs_until = _seconds_until_next("last_poll_completed_at", poll_interval)
@@ -329,6 +345,17 @@ def _start_poll_orchestrator():
 
         while True:
             paused = config.get_settings().get("polling_paused", False)
+
+            # Session validity is independent of polling — re-check on its own
+            # ~6 h cadence even while polling is paused, so the banner stays
+            # honest about expired cookies.
+            if _session_check_due():
+                try:
+                    from polling.session_check import check_all as _check_sessions
+                    await _check_sessions()
+                    config.save_settings({"last_session_check_at": datetime.now(timezone.utc).isoformat()})
+                except Exception as e:
+                    logger.warning("Session check failed: %s", e)
 
             if not paused:
                 start = _time.time()

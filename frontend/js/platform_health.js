@@ -228,6 +228,46 @@
         banner.querySelector('.banner-body').textContent = content.body;
     }
 
+    /* App-wide banner for CONFIRMED-dead sessions (session.status ===
+     * 'expired', folded into /platforms/health by the periodic session check).
+     * Unlike renderPageBanner (which is scoped to the current platform's own
+     * dashboard header), this is pinned at the top of #main-col so it shows on
+     * EVERY page until the session is valid again — the "you must fix this"
+     * layer. 'error' (uncertain / network blip) is deliberately NOT bannered
+     * here to avoid false alarms; it still shows amber on the Settings dots. */
+    function renderGlobalBanner() {
+        const host = document.getElementById('main-col');
+        if (!host) return;
+        const problems = PLATFORMS
+            .filter((code) => _data[code] && _data[code].session
+                && _data[code].session.status === 'expired')
+            .map((code) => LABELS[code] || code.toUpperCase());
+        let banner = document.getElementById('pp-global-banner');
+        if (!problems.length) {
+            if (banner) banner.remove();
+            return;
+        }
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'pp-global-banner';
+            banner.className = 'pp-global-banner';
+            host.insertBefore(banner, host.firstChild);
+        }
+        const title = problems.length === 1
+            ? `${problems[0]} session expired`
+            : `${problems.length} platform sessions expired`;
+        const body = problems.length === 1
+            ? 'Re-enter your credentials — polling and posting to it will keep failing until you do.'
+            : problems.join(', ');
+        banner.innerHTML = `
+            <span class="pp-gb-icon" aria-hidden="true">⚠</span>
+            <span class="pp-gb-text"><strong class="pp-gb-title"></strong> <span class="pp-gb-body"></span></span>
+            <a class="pp-gb-action" href="#/settings/platforms">Fix in Settings →</a>
+        `;
+        banner.querySelector('.pp-gb-title').textContent = title;
+        banner.querySelector('.pp-gb-body').textContent = body;
+    }
+
     function notify() {
         _listeners.forEach((fn) => {
             try { fn(_data); } catch (e) { console.error('[platform_health] listener', e); }
@@ -241,6 +281,7 @@
             _data = await resp.json();
             renderDots();
             renderPageSubtitle();
+            renderGlobalBanner();
             notify();
         } catch (e) {
             // Auth blips and partial deploys shouldn't spam the
@@ -256,7 +297,7 @@
         // Lighter 30s tick to keep the relative-time display
         // ("3m ago" → "4m ago") fresh between full health refreshes.
         // No HTTP — just re-renders from cached data.
-        setInterval(() => { renderDots(); renderPageSubtitle(); }, 30_000);
+        setInterval(() => { renderDots(); renderPageSubtitle(); renderGlobalBanner(); }, 30_000);
         // Re-inject subtitle whenever the SPA navigates between
         // platform dashboards. The render methods fetch data
         // asynchronously before writing the page-header into #app,
