@@ -141,6 +141,49 @@ def test_digest_skips_when_no_data(conn, monkeypatch):
     assert msgs == []
 
 
+def _run_weekly(monkeypatch):
+    """Capture every send_telegram call from a WEEKLY digest run."""
+    captured = []
+
+    async def _capture(text):
+        captured.append(text)
+        return True
+
+    monkeypatch.setattr(tg, "send_telegram", _capture)
+    asyncio.run(tg.send_weekly_digest_report())
+    return captured
+
+
+def test_periodic_digest_skips_unchanged_but_weekly_keeps_them(conn, monkeypatch):
+    """Concision rule: a persona whose accounts had no new views/faves/comments
+    this window is omitted from the PERIODIC digest, but still shown in the
+    WEEKLY digest (the always-full exception)."""
+    alpha = personas.create_persona(conn, "Alpha")
+    beta = personas.create_persona(conn, "Beta")
+    ib = accounts.create_account(conn, "ib", "IB-Quiet")
+    fa = accounts.create_account(conn, "fa", "FA-Active")
+    personas.assign_account_persona(conn, ib, alpha)
+    personas.assign_account_persona(conn, fa, beta)
+
+    # Alpha/IB: stats UNCHANGED vs a snapshot from well before the window → 0 delta.
+    queries.upsert_submission(conn, {"submission_id": 1, "title": "Quiet", "views": 500, "favorites_count": 20, "comments_count": 3}, ib)
+    queries.insert_snapshot(conn, ib, 1, 500, 20, 3, polled_at="2020-01-01 00:00:00")
+    # Beta/FA: fresh submission, no prior snapshot → full value is the delta (non-zero).
+    fa_queries.upsert_fa_submission(conn, {"submission_id": 9001, "title": "Active", "views": 800, "favorites_count": 40, "comments_count": 5}, fa)
+    conn.commit()
+
+    # Periodic digest: Alpha (unchanged) is skipped; only Beta goes out.
+    msgs = _run_digest(monkeypatch)
+    assert len(msgs) == 1, msgs
+    assert "Beta" in msgs[0] and "FA-Active" in msgs[0]
+    assert not any(("Alpha" in m) or ("IB-Quiet" in m) for m in msgs)
+
+    # Weekly digest: the always-full exception — Alpha reappears despite 0 delta.
+    weekly = _run_weekly(monkeypatch)
+    assert any(("Alpha" in m) and ("IB-Quiet" in m) for m in weekly)
+    assert any("Beta" in m for m in weekly)
+
+
 def test_consolidated_summary_groups_by_persona(conn, monkeypatch):
     """One poll cycle → one message with a 👤 sub-section per persona."""
     alpha, beta, ib, fa, ws = _seed(conn)

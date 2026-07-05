@@ -4,6 +4,26 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.52.0] - 2026-07-05 - Telegram digest concision: skip platforms with nothing new
+
+First of three releases building out notifications/error-visibility (2.52 digest concision → 2.53 session-expiry
+checks + banner → 2.54 notification centre).
+
+The periodic Telegram digest was clogging: it printed every account that merely *had* submissions, even when the
+window brought no new views, faves, or comments — so a quiet platform still showed a full `+0 / +0 / +0` block, and
+a persona with nothing happening still sent a whole message.
+
+**Fix.** `_persona_account_lines()` gains an `only_changed` flag; `send_digest_report()` (the periodic digest) now
+passes `only_changed=True`, which skips any account whose views/faves/comments deltas are all zero. A persona with
+no moving accounts now sends **no message at all** (its `had_data` stays false). The **weekly** digest
+(`send_weekly_digest_report()`) is deliberately exempt — it passes `only_changed=False` and still lists every
+account, changed or not, so the weekly remains a complete standing report. Watchers count as movement where they're
+shown, and the watcher lookup is now fetched once per account instead of twice. Regression test added
+(unchanged account omitted from periodic, present in weekly). `polling/telegram.py`,
+`tests/test_persona_digests.py`. 303 tests green. **Needs a server deploy.**
+
+---
+
 ## [2.51.8] - 2026-07-05 - Fix: "forget publication" 500 (FK constraint); clearer AO3 expired-session error
 
 Two server-log bugs.

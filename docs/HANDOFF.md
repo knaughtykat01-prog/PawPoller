@@ -1,7 +1,24 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-05
-**Current version:** 2.51.8 — **Fix: "forget publication" 500 (FK constraint) + clearer AO3 expired-session error.**
+**Current version:** 2.52.0 — **Telegram digest concision (skip platforms with nothing new).**
+First of three releases building notifications/error-visibility: **2.52 digest concision → 2.53 session-expiry
+checks + persistent banner + sticky error toasts + Settings "Check now" → 2.54 notification centre (bell top-right,
+dropdown, unread badge, all event types) + toast policy (failures only) + auth-failure modal.** (User also wants a
+later general UI polish pass — noted, after this batch.) This release: the periodic digest printed every account
+that merely had submissions (full `+0/+0/+0` blocks; empty personas still messaged). `_persona_account_lines()` now
+takes `only_changed`; `send_digest_report()` passes `only_changed=True` to skip zero-delta accounts (an all-quiet
+persona sends nothing). The **weekly** digest stays exempt (`only_changed=False`) as a complete standing report.
+Regression test added. 303 tests green. **Needs a server deploy.** `polling/telegram.py`,
+`tests/test_persona_digests.py`.
+
+**Design decisions locked for 2.53/2.54 (from the user):** session check = auto every ~6h + manual button; error
+surfacing layered as **centre = everything · toast = heads-up (failures/warnings only, errors sticky) · banner =
+critical ongoing (dead session) · modal = an action you just clicked failing on auth**; notification bell lives
+top-right of the header; the notification feed is backed by the existing `/api/activity/recent` (poll + posting
+events already merged) plus session-expiry events + an unread marker.
+
+**Prior release — 2.51.8 — Fix: "forget publication" 500 (FK constraint) + clearer AO3 expired-session error.**
 Two server-log bugs. (1) `DELETE /api/editor/stories/{story}/publication` threw `FOREIGN KEY constraint failed`:
 `publications.pub_id` is referenced by `posting_queue` and the immutable `posting_log`, and with
 `PRAGMA foreign_keys=ON` a bare `DELETE FROM publications` fails once the row has been posted (a log row references

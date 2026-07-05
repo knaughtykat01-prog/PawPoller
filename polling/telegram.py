@@ -758,7 +758,8 @@ def _ordered_digest_units(conn, hours: int) -> list[tuple[str, list, bool]]:
     return units
 
 
-def _persona_account_lines(conn, accts: list, hours: int, include_watchers: bool = False):
+def _persona_account_lines(conn, accts: list, hours: int, include_watchers: bool = False,
+                           only_changed: bool = False):
     """Build the per-account digest breakdown for one digest unit's accounts.
 
     Returns ``(lines, combined, gainers, had_data)`` where *combined* has delta
@@ -789,6 +790,15 @@ def _persona_account_lines(conn, accts: list, hours: int, include_watchers: bool
             continue
         totals = _get_platform_totals(conn, sub_t, plat, account_id=aid)
         deltas = _get_digest_deltas(conn, snap_t, sub_t, plat, hours, account_id=aid)
+        watcher = _get_watcher_stats(conn, plat, account_id=aid) if include_watchers else None
+        # only_changed (the periodic digest): an account with nothing new this
+        # window is noise — skip it entirely so the digest only lists platforms
+        # that actually moved. Watchers count as movement where they're shown.
+        # The weekly digest passes only_changed=False and always lists every
+        # account, changed or not.
+        if only_changed and not (deltas["views_delta"] or deltas["faves_delta"]
+                                 or deltas["comments_delta"] or (watcher or {}).get("new", 0)):
+            continue
         had_data = True
         emoji = PLATFORM_EMOJI[plat]
         acct_label = a.get("label") or PLATFORM_NAME[plat]
@@ -798,11 +808,9 @@ def _persona_account_lines(conn, accts: list, hours: int, include_watchers: bool
             f"  Faves: {totals['faves']:,} (+{deltas['faves_delta']:,})"
         )
         lines.append(f"  Comments: {totals['comments']:,} (+{deltas['comments_delta']:,})")
-        if include_watchers:
-            watcher = _get_watcher_stats(conn, plat, account_id=aid)
-            if watcher:
-                wlabel = "Followers" if plat == "sf" else "Watchers"
-                lines.append(f"  {wlabel}: {watcher['total']:,} (+{watcher['new']:,})")
+        if watcher:
+            wlabel = "Followers" if plat == "sf" else "Watchers"
+            lines.append(f"  {wlabel}: {watcher['total']:,} (+{watcher['new']:,})")
         combined["views"] += deltas["views_delta"]
         combined["faves"] += deltas["faves_delta"]
         combined["comments"] += deltas["comments_delta"]
@@ -848,7 +856,8 @@ async def send_digest_report() -> None:
     try:
         any_sent = False
         for title, accts, legacy in _ordered_digest_units(conn, digest_hours):
-            body, combined, gainers, had_data = _persona_account_lines(conn, accts, digest_hours)
+            body, combined, gainers, had_data = _persona_account_lines(
+                conn, accts, digest_hours, only_changed=True)
             if not had_data:
                 continue
             header = (f"<b>📊 {title}</b>" if legacy
