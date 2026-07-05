@@ -455,15 +455,12 @@ def _format_post_summary(log: dict) -> str:
     return f"{action} {story}{chap_suffix}"
 
 
-@router.get("/activity/recent")
-def get_recent_activity(limit: int = 30):
+def _collect_activity_events(limit: int = 30) -> list:
     """Unified system-event timeline across all 11 platforms + posting.
 
     Merges every platform's most-recent poll_log entries with recent
-    posting_log entries into one chronological feed. Powers the
-    Overview page's "Recent System Events" panel — answers the
-    "what's the system actually doing?" question without needing to
-    open per-platform poll-log tables.
+    posting_log entries into one chronological feed. Backs both the Overview
+    page's "Recent System Events" panel and the notification centre.
 
     Each entry shape:
         timestamp : ISO datetime — when the event happened
@@ -512,7 +509,72 @@ def get_recent_activity(limit: int = 30):
         conn.close()
 
     out.sort(key=lambda e: e.get("timestamp") or "", reverse=True)
-    return {"events": out[:limit], "limit": limit}
+    return out[:limit]
+
+
+@router.get("/activity/recent")
+def get_recent_activity(limit: int = 30):
+    """Thin wrapper over _collect_activity_events for the Overview panel."""
+    return {"events": _collect_activity_events(limit), "limit": limit}
+
+
+def _norm_ts(s) -> str:
+    """Normalise a timestamp for string comparison. Poll/posting rows store
+    naive-UTC 'YYYY-MM-DD HH:MM:SS'; session + last_read use UTC isoformat with
+    a 'T' and offset. Collapse both to 'YYYY-MM-DD HH:MM:SS' so unread math
+    (a plain string >) is correct across the two formats."""
+    return str(s or "").replace("T", " ")[:19]
+
+
+@router.get("/notifications")
+def get_notifications(limit: int = 40):
+    """Notification-centre feed for the bell dropdown.
+
+    Merges recent poll + posting events with synthetic session-expiry events
+    from the session-check cache, newest first, and flags each item plus a
+    total 'unread' count against the server-side 'notifications_last_read_at'
+    marker (so unread state follows the account across devices). The bell polls
+    this for the badge and renders the list on open; opening the dropdown POSTs
+    /notifications/mark-read to clear the badge.
+    """
+    items = _collect_activity_events(limit)
+    try:
+        from polling.session_check import summarize_problems, get_session_health
+        sess = get_session_health()
+        for prob in summarize_problems(sess):
+            entry = sess.get(prob["code"]) or {}
+            expired = prob["status"] == "expired"
+            items.append({
+                "timestamp": entry.get("checked_at"),
+                "platform": prob["code"],
+                "kind": "session",
+                "status": "error" if expired else "warn",
+                "summary": (f"{prob['label']} session expired" if expired
+                            else f"{prob['label']} session could not be verified"),
+                "detail": prob.get("detail"),
+            })
+    except Exception as e:
+        logger.debug("notifications: session events skipped: %s", e)
+
+    items.sort(key=lambda e: _norm_ts(e.get("timestamp")), reverse=True)
+    items = items[:limit]
+
+    last_read = _norm_ts(config.get_settings().get("notifications_last_read_at"))
+    unread = 0
+    for it in items:
+        it["unread"] = _norm_ts(it.get("timestamp")) > last_read
+        if it["unread"]:
+            unread += 1
+    return {"items": items, "unread": unread, "last_read_at": last_read}
+
+
+@router.post("/notifications/mark-read")
+def mark_notifications_read():
+    """Mark everything up to now as read — clears the bell's unread badge."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    config.save_settings({"notifications_last_read_at": now})
+    return {"ok": True, "last_read_at": now}
 
 
 @router.get("/status")

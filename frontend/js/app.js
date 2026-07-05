@@ -207,6 +207,12 @@ const App = {
         if (window.PlatformHealth) {
             window.PlatformHealth.start();
         }
+        // Notification centre (bell + feed) — same auth gate: /api/notifications
+        // needs a session. Starts after PlatformHealth so it can reuse its
+        // LABELS + relative-time helpers.
+        if (window.NotificationCenter) {
+            window.NotificationCenter.start();
+        }
 
         /* First-run setup wizard — if setup_complete is not set, show
          * the guided wizard instead of the normal dashboard. This check

@@ -14,6 +14,41 @@
 // Debug logging — enable via: localStorage.setItem('pawpoller_debug', '1')
 const _API_DEBUG = localStorage.getItem('pawpoller_debug') === '1';
 
+/* Auth-failure modal escalation (2.54.0). When a POST for an action the user
+ * just triggered (post / publish / upload) fails because a platform session
+ * expired, pop the blocking error modal in addition to the caller's own error
+ * handling. Kept narrow to avoid false positives: only certain statuses, only
+ * action-ish paths, and only messages that clearly name a session/cookie issue
+ * (so the credential-connect flow — which shows its own inline message — and
+ * ordinary validation errors don't trigger it). */
+function _isActionPath(path) {
+    return /\/(post|publish|posting|posts|upload)/i.test(path || '')
+        && !/\/(connect|validate)/i.test(path || '');
+}
+function _looksLikeSessionAuthError(status, text) {
+    if (![401, 403, 502].includes(status)) return false;
+    return /session (expired|invalid)|re-?(copy|paste)[^.]*cookie|cookie validation failed|not (authenticated|logged ?in)|log ?in failed|access token (expired|invalid)/i
+        .test(text || '');
+}
+function _cleanErr(text) {
+    // FastAPI HTTPException bodies are {"detail": "..."}. Show just the detail.
+    try {
+        const j = JSON.parse(text);
+        if (j && typeof j.detail === 'string') return j.detail;
+    } catch (e) { /* not JSON — use as-is */ }
+    return String(text || '').slice(0, 300);
+}
+function _maybeAuthModal(path, status, text) {
+    if (!window.errorModal) return;
+    if (!_isActionPath(path) || !_looksLikeSessionAuthError(status, text)) return;
+    window.errorModal({
+        title: 'Action failed — session expired',
+        message: _cleanErr(text),
+        actionLabel: 'Fix in Settings',
+        actionHref: '#/settings/platforms',
+    });
+}
+
 const API = {
 
     /* ── Core transport: GET ────────────────────────────────────
@@ -66,6 +101,10 @@ const API = {
         if (!resp.ok) {
             const text = await resp.text();
             console.error(`[API] ${resp.status} on POST ${path}:`, text);
+            // If an action the user just triggered (a post / upload) died on an
+            // expired platform session, escalate to a blocking modal — a toast
+            // is too easy to miss for something that needs credentials re-entered.
+            _maybeAuthModal(path, resp.status, text);
             throw new Error(`API ${resp.status}: ${text}`);
         }
         return resp.json();
@@ -149,6 +188,8 @@ const API = {
     getPlatformsHealth() { return this.get('/api/platforms/health'); },
     getPlatformSessions() { return this.get('/api/platforms/sessions'); },
     triggerSessionCheck() { return this.post('/api/platforms/sessions/check', {}); },
+    getNotifications(limit) { return this.get('/api/notifications', limit ? { limit } : {}); },
+    markNotificationsRead() { return this.post('/api/notifications/mark-read', {}); },
     // Unified system-event feed (poll_log + posting_log merged) for
     // the Overview's "Recent System Events" panel.
     getRecentActivity(limit = 30) { return this.get('/api/activity/recent', { limit }); },

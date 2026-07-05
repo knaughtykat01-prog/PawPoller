@@ -1,29 +1,37 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-05
-**Current version:** 2.53.0 — **Session-expiry checking + app-wide banner + sticky error toasts + Settings "Check now".**
-Second of three notifications/error-visibility releases (2.52 digest concision → **2.53 session checks** → 2.54
-notification centre). New `polling/session_check.py` validates the 8 platforms with a `validate_session()` probe
-(AO3/SF/SQW/BSKY/MAST/TUM/PIX/THR) by building the pollers' singleton client and calling its real network check;
-results (`valid`/`expired`/`error`/`unconfigured`) cached process-local. Poll orchestrator runs it **at startup** +
-**every ~6h**, independent of pause, NOT on the 60s health poll (rate limits — AO3 especially). `expired` = confirmed
-dead (red); `error` = network blip (amber, no false alarm). Surfacing: **app-wide banner**
-(`platform_health.js::renderGlobalBanner`, pinned top of `#main-col` on every page for any `expired` session, links
-to Settings); **sticky error toasts** (`window.toast.error` no longer auto-hides); **Settings → Platforms → "Session
-health" card** with per-platform status + "Check sessions now". Session status folded into `/api/platforms/health`;
-new `GET /api/platforms/sessions` + `POST /api/platforms/sessions/check` (fire-and-forget). 307 tests green.
-**Needs a server deploy.** `polling/session_check.py` (new), `server.py`, `routes/api.py`,
-`frontend/js/{platform_health,app,api,loading_indicator}.js`, `frontend/css/{loading_indicator,components}.css`,
-`tests/test_session_check.py` (new).
+**Current version:** 2.54.0 — **Notification centre (bell + feed) + auth-failure modal.**
+Final release of the notifications/error-visibility batch (2.52 digest concision → 2.53 session checks → **2.54
+centre**). Layered model now complete: **centre = everything · toast = heads-up · banner = critical ongoing · modal =
+an action you just clicked failing.** New `frontend/js/notifications_center.js` — self-contained bell widget top-right
++ unread badge + dropdown feed of every event type (poll cycles, posts/uploads done+failed, session expiry). Backed
+by new `GET /api/notifications` (reuses `_collect_activity_events`, refactored out of `/activity/recent`, merged with
+synthetic session-expiry events; per-item + total unread vs server-side `notifications_last_read_at`;
+`POST /api/notifications/mark-read` on open). `_norm_ts` reconciles the two timestamp formats. Toast policy: centre
+logs everything, only NEW failures/warnings toast (errors sticky), successes silent; first-load backlog seeded
+silently. Auth modal: new `window.errorModal(...)`; the API layer escalates to it when a POST for a just-triggered
+post/publish/upload fails on an expired session (narrow detection — status + session/cookie message + action path,
+excluding connect/validate — additive to the caller's own handling). 311 tests green. **Needs a server deploy.**
+`routes/api.py`, `frontend/js/{notifications_center(new),api,loading_indicator,app}.js`, `frontend/index.html`,
+`frontend/css/loading_indicator.css`, `tests/test_notifications.py` (new).
 
-**Still to come — 2.54 notification centre:** bell top-right of the header, dropdown, unread badge, ALL event types
-(upload done/failed, poll done/failed, session expired/restored). Backed by the existing `/api/activity/recent`
-(poll + posting events already merged) + session events + a server-side `notifications_last_read_at` unread marker.
-Toast policy: failures/warnings only (successes stay silent in the centre). Plus the auth-failure **modal** for an
-action you just clicked (post / poll-now) dying on a dead session. Then a general **UI polish pass** the user flagged
-for after this batch. (Design decisions locked with the user: session check = auto 6h + button ✓ done; layered
-surfacing = centre=everything · toast=heads-up(failures only, sticky) · banner=critical ongoing ✓ done · modal=action
-you clicked failing.)
+**NEXT (user-flagged, not started): general UI-polish pass.** The user said "i still think we need work on the UI"
+after this batch. Candidates surfaced while building: notification **bell placement** is a fixed top-right overlay
+(may overlap the platform-page account switcher on the right of the context bar — integrate into the context bar
+instead of `position:fixed`); the per-platform **Settings status dots** still key off `has_credentials` (creds
+exist) not live session validity — only the new "Session health" card + banner reflect real validity, so recolouring
+the 15 dots is unfinished; mobile bell in the bottom nav; banner could also cover polling-paused. Design decisions
+already locked (see 2.53/2.54 entries) — this is styling/placement, not re-architecture.
+
+**Prior release — 2.53.0 — Session-expiry checking + app-wide banner + sticky error toasts + Settings "Check now".**
+`polling/session_check.py` validates the 8 `validate_session()` platforms (AO3/SF/SQW/BSKY/MAST/TUM/PIX/THR) via the
+pollers' singleton client; results cached process-local; orchestrator runs it at startup + every ~6h (not on the 60s
+health poll — rate limits). `expired`=red, `error`=amber. Banner (`platform_health.js::renderGlobalBanner`), sticky
+error toasts, Settings "Session health" card + "Check sessions now". Folded into `/api/platforms/health`; new
+`/api/platforms/sessions` + `.../sessions/check`. `polling/session_check.py`, `server.py`, `routes/api.py`,
+`frontend/js/{platform_health,app,api,loading_indicator}.js`, `frontend/css/{loading_indicator,components}.css`,
+`tests/test_session_check.py`.
 
 **Prior release — 2.52.0 — Telegram digest concision (skip platforms with nothing new).**
 The periodic digest printed every account that merely had submissions (full `+0/+0/+0` blocks; empty personas still

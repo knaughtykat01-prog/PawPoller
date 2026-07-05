@@ -4,6 +4,37 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.54.0] - 2026-07-05 - Notification centre (bell + feed) + auth-failure modal
+
+Third and final release of the notifications/error-visibility batch (2.52 digest concision → 2.53 session checks →
+**2.54 notification centre**). Completes the layered model: **centre = everything · toast = heads-up · banner =
+critical ongoing · modal = an action you just clicked failing.**
+
+**Notification centre.** New `frontend/js/notifications_center.js` — a self-contained bell widget pinned top-right
+with an unread badge and a dropdown feed of every event type: poll cycles, posts/uploads (done + failed), and
+session expiry. Backed by a new `GET /api/notifications`, which reuses the existing `/activity/recent` builder
+(refactored out to `_collect_activity_events`) merged with synthetic session-expiry events, newest-first, each
+flagged read/unread against a server-side `notifications_last_read_at` marker (so unread follows the account across
+devices; `POST /api/notifications/mark-read` clears it when the dropdown opens). `_norm_ts` reconciles the two
+on-disk timestamp formats (naive-UTC `YYYY-MM-DD HH:MM:SS` vs isoformat-with-`T`) so unread math is correct.
+
+**Toast policy.** The centre logs everything, but only **new failures/warnings** also pop a toast (errors sticky
+since 2.53); successes stay silent in the list. The backlog present on first load is seeded silently, so a refresh
+never replays history as toasts.
+
+**Auth-failure modal.** New `window.errorModal(...)` (reusing the `.modal-overlay.open` convention). The API layer
+escalates to it when a POST for an action the user just triggered (post / publish / upload) fails on an expired
+platform session — narrow detection (status 401/403/502 + a session/cookie message + an action-ish path, excluding
+connect/validate) so ordinary validation errors and the credential-connect flow don't trigger it. It's additive —
+the caller's own error handling still runs.
+
+`routes/api.py`, `frontend/js/{notifications_center (new),api,loading_indicator,app}.js`, `frontend/index.html`,
+`frontend/css/loading_indicator.css`, `tests/test_notifications.py` (new). 311 tests green. **Needs a server
+deploy.** (Next: the general UI-polish pass the user flagged for after this batch — bell placement fine-tuning,
+per-platform Settings dots, etc.)
+
+---
+
 ## [2.53.0] - 2026-07-05 - Session-expiry checking + app-wide banner + sticky error toasts
 
 Second of the notifications/error-visibility releases (after 2.52 digest concision; 2.54 adds the notification

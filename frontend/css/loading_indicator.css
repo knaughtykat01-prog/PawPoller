@@ -375,6 +375,141 @@
 
 .pp-global-banner .pp-gb-action:hover { opacity: 0.85; }
 
+/* ── Notification centre (notifications_center.js) ──────────────
+ * Fixed bell top-right of the viewport (reads as the header's top-right,
+ * since the sidebar is on the left) + a dropdown feed panel. */
+.pp-notif-bell {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    z-index: 1400;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+    background: var(--bg-elevated, #1c1826);
+    color: var(--text-primary, #f0edf5);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    line-height: 1;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    transition: background 150ms ease, transform 120ms ease;
+}
+.pp-notif-bell:hover { background: var(--bg-hover, #252031); transform: translateY(-1px); }
+.pp-notif-bell.is-open { background: var(--bg-hover, #252031); }
+.pp-notif-bell.has-unread { border-color: #ff8a8a; }
+
+.pp-notif-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 9px;
+    background: #ff5c5c;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 17px;
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--bg-primary, #13111a);
+}
+
+.pp-notif-panel {
+    position: fixed;
+    top: 58px;
+    right: 16px;
+    z-index: 1399;
+    width: 360px;
+    max-width: calc(100vw - 32px);
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-elevated, #1c1826);
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.pp-notif-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    font-weight: 700;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+    color: var(--text-primary, #f0edf5);
+    flex-shrink: 0;
+}
+.pp-notif-head .pp-notif-all {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent, #9b7dff);
+    text-decoration: none;
+}
+
+.pp-notif-list { overflow-y: auto; }
+
+.pp-notif-item {
+    display: flex;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.05));
+    font-size: 13px;
+}
+.pp-notif-item:last-child { border-bottom: none; }
+.pp-notif-item.is-unread { background: rgba(155, 125, 255, 0.08); }
+
+.pp-notif-item-ico { flex-shrink: 0; width: 18px; text-align: center; line-height: 1.4; }
+.pp-notif-error   .pp-notif-item-ico { color: #ff8a8a; }
+.pp-notif-warn    .pp-notif-item-ico { color: #FFD66B; }
+.pp-notif-success .pp-notif-item-ico { color: #7CFFB0; }
+.pp-notif-info    .pp-notif-item-ico { color: var(--text-muted); }
+
+.pp-notif-item-body { flex: 1 1 auto; min-width: 0; }
+.pp-notif-summary { color: var(--text-primary, #f0edf5); word-break: break-word; }
+.pp-notif-meta { color: var(--text-muted); font-size: 11.5px; margin-top: 1px; }
+.pp-notif-detail {
+    color: var(--text-secondary, #a99fc0);
+    font-size: 12px;
+    margin-top: 3px;
+    word-break: break-word;
+}
+.pp-notif-empty { padding: 26px 14px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+@media (max-width: 560px) {
+    .pp-notif-panel { right: 8px; left: 8px; width: auto; }
+    .pp-notif-bell { top: 8px; right: 10px; }
+}
+
+/* Error modal (loading_indicator.js :: window.errorModal) — inherits the
+ * app's .modal base (background/centering); these tune the box + parts. */
+.pp-error-modal-box { max-width: 440px; width: calc(100vw - 40px); padding: 20px 22px; }
+.pp-error-modal-box .pp-em-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary, #f0edf5);
+    margin-bottom: 10px;
+}
+.pp-error-modal-box .pp-em-ico { color: #ff8a8a; font-size: 20px; }
+.pp-error-modal-box .pp-em-body {
+    color: var(--text-secondary, #a99fc0);
+    font-size: 13.5px;
+    line-height: 1.5;
+    word-break: break-word;
+    margin-bottom: 18px;
+}
+.pp-error-modal-box .pp-em-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
 /* ── Floating logs panel ────────────────────────────────────────
  * Backed by /js/logs_panel.js + /api/logs/stream (SSE). Toggle
  * button sits above the toast stack; panel expands above-and-to-

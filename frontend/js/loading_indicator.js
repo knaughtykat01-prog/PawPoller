@@ -141,6 +141,42 @@
     };
 
     // ─────────────────────────────────────────────────────────────
+    // Error modal — the "you must acknowledge this" layer. Reserved for a
+    // critical failure of an action the user JUST triggered (e.g. a post
+    // dying on an expired session), where a toast is too easy to miss. Reuses
+    // the app's .modal-overlay.open convention. opts: {title, message,
+    // actionLabel, actionHref}.
+    // ─────────────────────────────────────────────────────────────
+    window.errorModal = function errorModal(opts) {
+        const o = opts || {};
+        const existing = document.getElementById('pp-error-modal');
+        if (existing) existing.remove();
+        const overlay = document.createElement('div');
+        overlay.id = 'pp-error-modal';
+        overlay.className = 'modal-overlay open';
+        const actionHTML = o.actionHref
+            ? `<a class="btn btn-primary" id="pp-em-action" href="${o.actionHref}"></a>`
+            : '';
+        overlay.innerHTML =
+            `<div class="modal pp-error-modal-box" role="alertdialog" aria-modal="true">
+                <div class="pp-em-head"><span class="pp-em-ico" aria-hidden="true">⚠</span>
+                    <span class="pp-em-title"></span></div>
+                <div class="pp-em-body"></div>
+                <div class="pp-em-actions">${actionHTML}<button class="btn" id="pp-em-ok">OK</button></div>
+            </div>`;
+        overlay.querySelector('.pp-em-title').textContent = o.title || 'Something went wrong';
+        overlay.querySelector('.pp-em-body').textContent = o.message || '';
+        const action = overlay.querySelector('#pp-em-action');
+        if (action) action.textContent = o.actionLabel || 'Fix it';
+        document.body.appendChild(overlay);
+        const close = () => overlay.remove();
+        overlay.querySelector('#pp-em-ok').addEventListener('click', close);
+        if (action) action.addEventListener('click', close);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+        return { close };
+    };
+
+    // ─────────────────────────────────────────────────────────────
     // Button loading helper — opt-in per call site.
     // Usage:
     //     btn.addEventListener('click', () =>
