@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-08
-**Current version:** 2.54.3 — **Fix: notification panel wouldn't close.**
+**Current version:** 2.55.0 — **Live-publish safety guard on the quick-path posting endpoints.**
+The Story-detail quick path ("Upload to {platform}" / "Update" / "Update All") hit `POST /api/posting/post` +
+`/api/posting/update`, which fire live public posts, yet had **no server-side guard** — only a frontend `confirm()`.
+Added the same guard the editor's matrix uses: both endpoints now 400 unless `confirm_live=true`. The three
+`posting.js` handlers set it after their confirm; the Upload dialog now shows an explicit "⚠ LIVE PUBLISH" warning.
+Retry/scheduler path unaffected (it calls `manager` directly, not the HTTP endpoint). Surfaced by the UI-redesign
+design-rationale review (§7 Q7). `routes/posting_api.py`, `frontend/js/posting.js`, `docs/documentation_guide.md`.
+312 tests green. **Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.54.3 — Fix: notification panel wouldn't close.**
 The dropdown couldn't be dismissed by anything — ✕, bell re-toggle, click-outside, Escape all ran `close()` (sets
 `_panel.hidden = true`), but `.pp-notif-panel`'s `display: flex` beats the UA `[hidden]{display:none}` rule, so the
 attribute was set yet the panel stayed visible. This is why the centre felt half-built — the close paths were wired,

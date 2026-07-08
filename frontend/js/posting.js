@@ -665,9 +665,10 @@ const Posting = {
     },
 
     async _uploadTo(storyName, platform) {
-        if (!confirm(`Upload ${storyName.replace(/_/g, ' ')} to ${PLATFORM_LABELS[platform] || platform}?`)) return;
+        const label = PLATFORM_LABELS[platform] || platform;
+        if (!confirm(`⚠ LIVE PUBLISH\n\nPost "${storyName.replace(/_/g, ' ')}" to ${label} — it will be immediately visible to the public.\n\nContinue?`)) return;
         try {
-            const data = await API.postStory({ story_name: storyName, platforms: [platform] });
+            const data = await API.postStory({ story_name: storyName, platforms: [platform], confirm_live: true });
             const successes = data.successes || 0;
             alert(successes > 0 ? 'Upload complete!' : 'Upload failed — check the log.');
             this.renderStoryDetail(storyName);
@@ -679,7 +680,7 @@ const Posting = {
     async _updateSingle(storyName, platform, chapterIndex) {
         if (!confirm(`Push update for ${storyName.replace(/_/g, ' ')} on ${PLATFORM_LABELS[platform] || platform}?`)) return;
         try {
-            await API.updateStory({ story_name: storyName, platforms: [platform], chapters: [chapterIndex] });
+            await API.updateStory({ story_name: storyName, platforms: [platform], chapters: [chapterIndex], confirm_live: true });
             alert('Update sent!');
             this.renderStoryDetail(storyName);
         } catch (err) {
@@ -690,7 +691,7 @@ const Posting = {
     async _updateAll(storyName) {
         if (!confirm(`Push updates for ALL ${storyName.replace(/_/g, ' ')} publications?`)) return;
         try {
-            await API.updateStory({ story_name: storyName });
+            await API.updateStory({ story_name: storyName, confirm_live: true });
             alert('Updates sent!');
             this.renderStoryDetail(storyName);
         } catch (err) {

@@ -3902,10 +3902,14 @@ Complete list of `/api/posting/*` endpoints (`routes/posting_api.py`):
 {
     "story_name": "Extra_Credit",
     "platforms": ["ib", "sf"],
-    "chapters": [1, 2, 3]
+    "chapters": [1, 2, 3],
+    "confirm_live": true
 }
 ```
-`chapters` is optional — `null` or omitted means all chapters.
+`chapters` is optional — `null` or omitted means all chapters. `confirm_live`
+is **required** (must be `true`): a live-publish safety guard mirroring the
+editor's publish endpoint, so a UI regression can't fire a public post without
+an explicit acknowledgement. `/api/posting/update` requires it identically.
 
 **POST `/api/posting/queue`** body:
 ```json

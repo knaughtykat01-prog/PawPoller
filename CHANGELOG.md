@@ -4,6 +4,25 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.55.0] - 2026-07-08 - Live-publish safety guard on the quick-path posting endpoints
+
+The Story-detail **quick path** ("Upload to {platform}", per-pub "Update", "Update All") reaches `POST
+/api/posting/post` and `/api/posting/update`, which fire a real, publicly-visible post/update. Unlike the editor's
+Publish Check matrix — whose `publish` endpoint 400s any live action lacking `confirm_live=true` — these two
+endpoints had **no server-side guard**; they relied solely on the frontend `confirm()` dialog. A UI regression, an
+errant retry of a stored request, or a hand-crafted call could publish live with nothing stopping it.
+
+Added the same guard the matrix uses: `/api/posting/post` and `/api/posting/update` now 400 unless the body carries
+`confirm_live=true`. The three quick-path handlers in `posting.js` set the flag after their `confirm()`, and the
+Upload dialog copy is upgraded to an explicit "⚠ LIVE PUBLISH — immediately visible to the public" warning
+(matching the matrix's live wording). The retry/scheduler path is unaffected — it calls `manager.post_story` /
+`update_story` directly, not the HTTP endpoint, so the guard sits purely at the API boundary.
+
+Surfaced by the UI-redesign design-rationale review (§7 Q7). `routes/posting_api.py`, `frontend/js/posting.js`,
+`docs/documentation_guide.md`. 312 tests green. **Needs a server deploy** (+ hard-refresh for the new JS).
+
+---
+
 ## [2.54.3] - 2026-07-08 - Fix: notification panel wouldn't close (hidden overridden by display:flex)
 
 The notification dropdown couldn't be dismissed by *anything* — ✕ button, bell re-toggle, click-outside, or Escape.

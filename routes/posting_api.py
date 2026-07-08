@@ -489,6 +489,12 @@ async def post_story(body: dict):
         raise HTTPException(400, detail="story_name is required")
     if not platforms:
         raise HTTPException(400, detail="platforms list is required")
+    # Live-publish safety guard — mirrors the editor's publish endpoint so a UI
+    # regression can't fire a real, publicly-visible post without an explicit
+    # acknowledgement (the front-end sets this after its confirm() dialog).
+    if not body.get("confirm_live"):
+        raise HTTPException(
+            400, detail="post requires confirm_live=true (live-publish safety guard)")
 
     try:
         results = await manager.post_story(story_name, platforms, chapters,
@@ -528,6 +534,11 @@ async def update_story(body: dict):
 
     if not story_name:
         raise HTTPException(400, detail="story_name is required")
+    # Live-publish safety guard (see post_story) — an update pushes to a live,
+    # publicly-visible submission, so it needs the same explicit acknowledgement.
+    if not body.get("confirm_live"):
+        raise HTTPException(
+            400, detail="update requires confirm_live=true (live-publish safety guard)")
 
     try:
         results = await manager.update_story(story_name, platforms, chapters,
