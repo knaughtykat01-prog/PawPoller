@@ -4,6 +4,19 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.54.3] - 2026-07-08 - Fix: notification panel wouldn't close (hidden overridden by display:flex)
+
+The notification dropdown couldn't be dismissed by *anything* — ✕ button, bell re-toggle, click-outside, or Escape.
+All four correctly ran `close()`, which sets `_panel.hidden = true`, but `.pp-notif-panel` carries `display: flex`
+(for its head + scrollable list column layout), and an explicit `display` beats the user-agent `[hidden] {
+display: none }` rule — so the attribute was set but the panel stayed on screen. This is why the centre felt
+"half-built": the close paths were all wired, just visually inert.
+
+One-line CSS fix: `.pp-notif-panel[hidden] { display: none; }` so the attribute wins. No JS change — all the
+existing dismiss paths now work. `frontend/css/loading_indicator.css`. **Needs a server deploy** (+ hard-refresh).
+
+---
+
 ## [2.54.2] - 2026-07-08 - Notification centre: close button + Clear all
 
 Finishing the 2.54.0 notification centre — it shipped with no visible way to dismiss the dropdown or clear the feed

@@ -435,6 +435,10 @@
     border-radius: 12px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }
+/* `display:flex` above beats the UA `[hidden]{display:none}`, so the panel
+ * stayed visible after close() set .hidden — nothing (✕, bell toggle,
+ * outside-click, Escape) could dismiss it. Let the attribute win. */
+.pp-notif-panel[hidden] { display: none; }
 
 .pp-notif-head {
     display: flex;

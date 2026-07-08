@@ -1,14 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-08
-**Current version:** 2.54.2 — **Notification centre: close button + Clear all.**
-Finishes the 2.54.0 centre, which had no visible dismiss and no clear. Added a **✕ close button** to the panel header
-and a **Clear all** action. The feed is server-rebuilt from the activity logs each poll, so clear persists a
-`notifications_cleared_at` watermark (new `POST /api/notifications/clear`, mirrors `mark-read` + resets unread) and
-`get_notifications` drops anything at or before it; a still-broken session resurfaces after the next session check
-(`checked_at` moves past the watermark). Clear is optimistic + re-seeds the toast dedup. `routes/api.py`,
+**Current version:** 2.54.3 — **Fix: notification panel wouldn't close.**
+The dropdown couldn't be dismissed by anything — ✕, bell re-toggle, click-outside, Escape all ran `close()` (sets
+`_panel.hidden = true`), but `.pp-notif-panel`'s `display: flex` beats the UA `[hidden]{display:none}` rule, so the
+attribute was set yet the panel stayed visible. This is why the centre felt half-built — the close paths were wired,
+just inert. One-line CSS fix: `.pp-notif-panel[hidden] { display: none; }`. No JS change.
+`frontend/css/loading_indicator.css`. **Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.54.2 — Notification centre: close button + Clear all.**
+Added a **✕ close button** to the panel header and a **Clear all** action. The feed is server-rebuilt from the
+activity logs each poll, so clear persists a `notifications_cleared_at` watermark (new `POST
+/api/notifications/clear`, mirrors `mark-read` + resets unread) and `get_notifications` drops anything at or before
+it; a still-broken session resurfaces after the next session check. `routes/api.py`,
 `frontend/js/{notifications_center,api}.js`, `frontend/css/loading_indicator.css`, `tests/test_notifications.py`.
-312 tests green. **Needs a server deploy.**
 
 **Prior release — 2.54.1 — Fix spurious "Could not verify SF display name" warning.**
 `SoFurryClient.validate_session()` checked the handle against the retired server-rendered profile HTML (`/gallery`
