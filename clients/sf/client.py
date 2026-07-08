@@ -402,25 +402,50 @@ class SoFurryClient:
             return False
 
     async def validate_session(self) -> str | None:
-        """Login and verify the display name works.
+        """Login and verify the configured handle resolves to a real gallery.
 
-        Returns the display name on success, None on failure.
+        The 2026-06 SoFurry beta rewrite made profile pages client-rendered, so
+        the old ``/u/{handle}`` HTML no longer carries ``/gallery`` or a
+        ``window.handle`` marker — the previous checks always whiffed and logged
+        a spurious "Could not verify SF display name" every cycle. Verify against
+        the SPA-era endpoints instead (both login-free, both reliable):
+          1. ``/api/profile?handle=`` — JSON; the canonical handle comes back in
+             ``user.handle``, so we also normalise a mistyped ``@handle`` here.
+          2. ``/u/{handle}/gallery.data`` — a 200 confirms the gallery route
+             resolves (adult galleries are SFW-filtered but still 200).
+
+        Returns the (normalised) display name on success, None on failure.
         """
         if not await self.ensure_logged_in():
             return None
 
+        # Tolerate a mistyped "@handle" / stray whitespace in settings.
+        handle = (self.display_name or "").lstrip("@").strip()
+        if not handle:
+            logger.warning("SF: no display name configured to verify")
+            return None
+
         try:
-            if self.display_name:
-                resp = await self._http.get(f"{SOFURRY_BASE}/u/{self.display_name}")
-                if resp.status_code == 200 and "/gallery" in resp.text:
+            # 1. Profile JSON API — authoritative; also yields the canonical handle.
+            resp = await self._http.get(
+                f"{SOFURRY_API}/profile",
+                params={"handle": handle},
+                headers={"Accept": "application/json"},
+            )
+            if resp.status_code == 200:
+                user = (resp.json() or {}).get("user") or {}
+                if user.get("id"):
+                    self.display_name = user.get("handle") or handle
                     return self.display_name
 
-            # Try to discover display name from window.handle in gallery JS
-            resp = await self._http.get(f"{SOFURRY_BASE}/u/{self.display_name}/gallery")
-            handle_match = re.search(r'window\.handle\s*=\s*"([^"]+)"', resp.text)
-            if handle_match:
-                self.display_name = handle_match.group(1)
-                return self.display_name
+            # 2. Gallery loader data — a 200 means the route (and handle) exists.
+            resp = await self._http.get(
+                f"{SOFURRY_BASE}/u/{handle}/gallery.data",
+                headers={"Accept": "*/*"},
+            )
+            if resp.status_code == 200:
+                self.display_name = handle
+                return handle
 
             logger.warning("Could not verify SF display name")
             return None

@@ -4,6 +4,22 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.54.1] - 2026-07-08 - Fix spurious "Could not verify SF display name" warning
+
+`SoFurryClient.validate_session()` verified the configured handle by fetching `/u/{handle}` and looking for a
+`/gallery` substring or a `window.handle="..."` marker in the HTML. The 2026-06 SoFurry beta rewrite made profile
+pages client-rendered, so neither marker is in the server HTML anymore — the check *always* failed and logged
+`Could not verify SF display name` on every session-check cycle, even though login and polling were working fine
+(the poll cycle uses the login-free `/s/{id}.data` and `/u/{handle}/gallery.data` loader endpoints, not this).
+
+Rewrote the check against the SPA-era endpoints: `GET /api/profile?handle=` (authoritative — returns `user.id` +
+the canonical `user.handle`), falling back to `GET /u/{handle}/gallery.data` (a 200 confirms the gallery route
+resolves; adult galleries are SFW-filtered but still 200). Also normalises a mistyped `@handle` / stray whitespace
+in the Settings field, and refreshes `display_name` to the canonical handle the API returns. Purely a validation
+fix — no change to login or the poll path. `clients/sf/client.py`. **Needs a server deploy.**
+
+---
+
 ## [2.54.0] - 2026-07-05 - Notification centre (bell + feed) + auth-failure modal
 
 Third and final release of the notifications/error-visibility batch (2.52 digest concision → 2.53 session checks →

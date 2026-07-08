@@ -1,7 +1,15 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-05
-**Current version:** 2.54.0 — **Notification centre (bell + feed) + auth-failure modal.**
+**Last updated:** 2026-07-08
+**Current version:** 2.54.1 — **Fix spurious "Could not verify SF display name" warning.**
+`SoFurryClient.validate_session()` checked the handle against the retired server-rendered profile HTML (`/gallery`
+substring / `window.handle` marker), which the 2026-06 SoFurry SPA rewrite removed — so it logged the warning every
+session-check cycle despite login+polling working. Rewritten to verify via the SPA-era endpoints: `GET
+/api/profile?handle=` (authoritative, returns `user.id`+canonical `user.handle`), fallback `GET
+/u/{handle}/gallery.data` (200 = route resolves). Also normalises a mistyped `@handle` in Settings. Validation-only —
+no login/poll-path change. `clients/sf/client.py`. **Needs a server deploy.**
+
+**Prior release — 2.54.0 — Notification centre (bell + feed) + auth-failure modal.**
 Final release of the notifications/error-visibility batch (2.52 digest concision → 2.53 session checks → **2.54
 centre**). Layered model now complete: **centre = everything · toast = heads-up · banner = critical ongoing · modal =
 an action you just clicked failing.** New `frontend/js/notifications_center.js` — self-contained bell widget top-right
