@@ -103,9 +103,16 @@
             </div>`;
         }).join('') : '<div class="pp-notif-empty">No recent activity.</div>';
 
+        const clearBtn = _items.length
+            ? `<button class="pp-notif-clear" type="button">Clear all</button>` : '';
         _panel.innerHTML =
-            `<div class="pp-notif-head"><span>Notifications</span>`
-            + `<a class="pp-notif-all" href="#/">Overview →</a></div>`
+            `<div class="pp-notif-head">`
+            + `<span class="pp-notif-title">Notifications</span>`
+            + `<div class="pp-notif-actions">`
+            + `<a class="pp-notif-all" href="#/">Overview →</a>`
+            + clearBtn
+            + `<button class="pp-notif-close" type="button" aria-label="Close">✕</button>`
+            + `</div></div>`
             + `<div class="pp-notif-list">${rows}</div>`;
 
         // Fill dynamic text via textContent so scraped summaries/details can't inject.
@@ -115,8 +122,23 @@
             const d = el.querySelector('.pp-notif-detail');
             if (d) d.textContent = (it.detail || '').slice(0, 200);
         });
+        _panel.querySelector('.pp-notif-close')?.addEventListener('click', () => close());
+        _panel.querySelector('.pp-notif-clear')?.addEventListener('click', () => clearAll());
         // Close the dropdown when a link inside it is clicked (SPA navigation).
         _panel.querySelector('.pp-notif-all')?.addEventListener('click', () => close());
+    }
+
+    /* Clear the feed: empty the list optimistically, persist a server-side
+     * watermark so it survives a refresh, and re-seed the toast dedup so the
+     * next poll's (server-filtered) set doesn't replay as toasts. On a network
+     * failure the items simply reappear on the next poll — server is truth. */
+    async function clearAll() {
+        _items = [];
+        _unread = 0;
+        _seeded = false;
+        renderBadge();
+        renderPanel();
+        try { await API.clearNotifications(); } catch (e) { /* reappears next poll */ }
     }
 
     /* Pop a toast for each NEW failure/warning. Successes stay silent (they

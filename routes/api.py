@@ -557,9 +557,18 @@ def get_notifications(limit: int = 40):
         logger.debug("notifications: session events skipped: %s", e)
 
     items.sort(key=lambda e: _norm_ts(e.get("timestamp")), reverse=True)
+
+    settings = config.get_settings()
+    # A "Clear" persists a watermark; drop anything at or before it. The feed is
+    # rebuilt each poll from the activity logs, so this is how a clear survives a
+    # refresh without deleting rows. Applied before the limit so cleared items
+    # don't consume slots.
+    cleared_at = _norm_ts(settings.get("notifications_cleared_at"))
+    if cleared_at:
+        items = [it for it in items if _norm_ts(it.get("timestamp")) > cleared_at]
     items = items[:limit]
 
-    last_read = _norm_ts(config.get_settings().get("notifications_last_read_at"))
+    last_read = _norm_ts(settings.get("notifications_last_read_at"))
     unread = 0
     for it in items:
         it["unread"] = _norm_ts(it.get("timestamp")) > last_read
@@ -575,6 +584,25 @@ def mark_notifications_read():
     now = datetime.now(timezone.utc).isoformat()
     config.save_settings({"notifications_last_read_at": now})
     return {"ok": True, "last_read_at": now}
+
+
+@router.post("/notifications/clear")
+def clear_notifications():
+    """Clear the feed — hide every event up to now and reset the unread badge.
+
+    The feed is rebuilt each poll from the activity logs, so 'clearing' can't
+    delete rows; instead we persist a 'notifications_cleared_at' watermark and
+    get_notifications drops anything at or before it. A still-broken session
+    resurfaces after the next session check (its checked_at moves past the
+    watermark) — a persistent problem should re-nag; a transient one stays gone.
+    """
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    config.save_settings({
+        "notifications_cleared_at": now,
+        "notifications_last_read_at": now,
+    })
+    return {"ok": True, "cleared_at": now}
 
 
 @router.get("/status")

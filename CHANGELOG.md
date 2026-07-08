@@ -4,6 +4,25 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.54.2] - 2026-07-08 - Notification centre: close button + Clear all
+
+Finishing the 2.54.0 notification centre — it shipped with no visible way to dismiss the dropdown or clear the feed
+(you could only close via bell-toggle / outside-click / Escape, and there was no clear at all).
+
+- **Close (✕) button** in the panel header — explicit dismiss alongside the existing outside-click / Escape paths.
+- **Clear all** — empties the feed. Because the list is server-rebuilt from the activity logs each poll, a client-only
+  clear would reappear on refresh, so this persists a `notifications_cleared_at` watermark server-side and the feed
+  drops anything at or before it. New `POST /api/notifications/clear` (mirrors `mark-read`; also resets the unread
+  marker). A still-broken session resurfaces after the next session check (its `checked_at` moves past the watermark)
+  — a persistent problem should re-nag; a transient one stays gone. The Clear button only shows when items exist.
+- Frontend: optimistic clear (empties + re-badges immediately), re-seeds the toast dedup so the next poll's
+  server-filtered set doesn't replay as toasts; on a network failure items simply reappear next poll (server = truth).
+
+`routes/api.py`, `frontend/js/{notifications_center,api}.js`, `frontend/css/loading_indicator.css`,
+`tests/test_notifications.py` (+clear test). 312 tests green. **Needs a server deploy.**
+
+---
+
 ## [2.54.1] - 2026-07-08 - Fix spurious "Could not verify SF display name" warning
 
 `SoFurryClient.validate_session()` verified the configured handle by fetching `/u/{handle}` and looking for a

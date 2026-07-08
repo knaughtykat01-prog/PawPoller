@@ -34,6 +34,15 @@ def test_mark_read_clears_unread():
     assert all(it["unread"] is False for it in r["items"])
 
 
+def test_clear_hides_past_events():
+    # Clearing sets a watermark at 'now'; a quiescent feed (all past events)
+    # then returns nothing and reports zero unread.
+    api.clear_notifications()
+    r = api.get_notifications(10)
+    assert r["items"] == []
+    assert r["unread"] == 0
+
+
 def test_session_expiry_merged_into_feed(monkeypatch):
     from polling import session_check as sc
     monkeypatch.setattr(sc, "_session_health", {

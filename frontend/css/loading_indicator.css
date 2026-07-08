@@ -447,11 +447,41 @@
     color: var(--text-primary, #f0edf5);
     flex-shrink: 0;
 }
+.pp-notif-head .pp-notif-title { margin-right: auto; }
+.pp-notif-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
 .pp-notif-head .pp-notif-all {
     font-size: 12px;
     font-weight: 600;
     color: var(--accent, #9b7dff);
     text-decoration: none;
+}
+.pp-notif-clear {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted, #a49db8);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+}
+.pp-notif-clear:hover { color: var(--text-primary, #f0edf5); }
+.pp-notif-close {
+    font-size: 15px;
+    line-height: 1;
+    color: var(--text-muted, #a49db8);
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    cursor: pointer;
+    border-radius: 6px;
+}
+.pp-notif-close:hover {
+    color: var(--text-primary, #f0edf5);
+    background: var(--border, rgba(255, 255, 255, 0.08));
 }
 
 .pp-notif-list { overflow-y: auto; }
