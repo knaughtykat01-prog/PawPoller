@@ -524,11 +524,67 @@ class BskyClient:
                 logger.warning("BSKY: Rate limited (429) on POST, waiting 30s...")
                 await asyncio.sleep(30)
                 resp = await self._http.post(url, json=json_data, headers=headers)
+            if resp.status_code >= 400:
+                # Surface the PDS's actual reason (e.g. BlobTooLarge) — the bare
+                # httpx status is otherwise opaque.
+                logger.error("BSKY: POST %s -> %s: %s", url, resp.status_code, resp.text[:300])
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPError as e:
             logger.error("BSKY: POST failed for %s: %s", url, e)
             return None
+
+    @staticmethod
+    def _fit_blob(path: str) -> tuple[str, str | None]:
+        """Return an image path within Bluesky's ~1 MB blob cap.
+
+        Bluesky rejects a feed-post image blob over ~976 KB at createRecord time
+        (BlobTooLarge → 400) even though uploadBlob itself accepts it. If the file
+        is already under the cap and a natively-supported type, returns
+        ``(path, None)``; otherwise downscales/re-encodes to JPEG in a temp file
+        and returns ``(temp_path, temp_path)`` so the caller can delete it. Mirrors
+        the stories path's `_prepare_bsky_image` (kept local to avoid a
+        posting→clients import cycle)."""
+        import os
+        _LIMIT = 950_000
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            return path, None
+        ext = os.path.splitext(path)[1].lower()
+        if size <= _LIMIT and ext in (".jpg", ".jpeg", ".png", ".gif"):
+            return path, None
+        try:
+            import tempfile
+            from PIL import Image
+            img = Image.open(path)
+            if img.mode in ("RGBA", "LA", "P"):
+                img = img.convert("RGBA")
+                bg = Image.new("RGB", img.size, (255, 255, 255))
+                bg.paste(img, mask=img.split()[-1])
+                img = bg
+            else:
+                img = img.convert("RGB")
+            fd, tmp = tempfile.mkstemp(suffix=".jpg", prefix="bsky_")
+            os.close(fd)
+            quality, max_dim = 90, 2048
+            while True:
+                work = img
+                if max(work.size) > max_dim:
+                    ratio = max_dim / max(work.size)
+                    work = work.resize((max(1, int(work.size[0] * ratio)),
+                                        max(1, int(work.size[1] * ratio))))
+                work.save(tmp, "JPEG", quality=quality, optimize=True)
+                if os.path.getsize(tmp) <= _LIMIT or (quality <= 40 and max_dim <= 1024):
+                    break
+                if quality > 40:
+                    quality -= 10
+                else:
+                    max_dim = int(max_dim * 0.8)
+            return tmp, tmp
+        except Exception as e:
+            logger.warning("BSKY: image downscale failed (%s); using original", e)
+            return path, None
 
     async def upload_blob(self, file_path: str, mime_type: str = "image/jpeg") -> dict | None:
         """Upload a blob (image/video) and return the blob reference.
@@ -615,12 +671,22 @@ class BskyClient:
         paths = list(image_paths) if image_paths else ([image_path] if image_path else [])
         alts = list(image_alts) if image_alts else ([image_alt] if image_path else [])
         images = []
+        _tmps: list[str] = []
         for i, pth in enumerate(paths[:4]):
+            use_path, tmp = self._fit_blob(pth)   # keep each image under Bluesky's ~1 MB cap
+            if tmp:
+                _tmps.append(tmp)
             import mimetypes
-            mime = mimetypes.guess_type(pth)[0] or "image/jpeg"
-            blob = await self.upload_blob(pth, mime)
+            mime = mimetypes.guess_type(use_path)[0] or "image/jpeg"
+            blob = await self.upload_blob(use_path, mime)
             if blob:
                 images.append({"alt": alts[i] if i < len(alts) else "", "image": blob})
+        for _t in _tmps:
+            try:
+                import os
+                os.remove(_t)
+            except OSError:
+                pass
         if images:
             record["embed"] = {
                 "$type": "app.bsky.embed.images",

@@ -4,6 +4,23 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.58.1] - 2026-07-09 - Fix: Posts images to Bluesky 400'd when over ~1 MB
+
+Live test of 2.58.0 surfaced a Bluesky `createRecord` 400 on an image post. Bluesky rejects a feed-post image
+blob over ~976 KB at record-validation time (`BlobTooLarge`) even though `uploadBlob` accepts it — and the Posts
+path (`clients/bsky/client.py` → `create_post` → `upload_blob`) uploaded the original bytes, while the Posts
+composer allows images up to 25 MB. (The stories/artwork Bluesky path already downscaled via
+`_prepare_bsky_image`; the Posts path didn't.)
+
+Added `BskyClient._fit_blob()` — mirrors the stories path's downscale (re-encode to JPEG, step quality/dimensions
+down until ≤ 950 KB), kept local to avoid a posting→clients import cycle. `create_post` now runs each image
+through it before upload and cleans up the temp files. X and Mastodon keep the original (their caps are far
+higher). Also: `_post_json` now logs the PDS's actual error body on any 4xx/5xx, so a future Bluesky rejection
+isn't opaque. `clients/bsky/client.py`. 314 tests green. **Needs a server deploy** (+ hard-refresh not required —
+backend only).
+
+---
+
 ## [2.58.0] - 2026-07-09 - Posts: X/Twitter image posting + up to 4 images per post
 
 The Posts module now posts **images to X/Twitter**, and every image-capable platform (X, Bluesky, Mastodon)

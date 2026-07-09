@@ -1,7 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-09
-**Current version:** 2.58.0 — **Posts: X/Twitter image posting + up to 4 images per post.**
+**Current version:** 2.58.1 — **Fix: Posts images to Bluesky 400'd when over ~1 MB.**
+Live test of 2.58.0 hit a Bluesky `createRecord` 400 (`BlobTooLarge`): bsky rejects a feed-post image blob over
+~976 KB at record validation, but the Posts path uploaded the original (composer allows 25 MB). Added
+`BskyClient._fit_blob()` (downscale/re-encode to JPEG ≤950 KB, mirroring the stories path's `_prepare_bsky_image`,
+kept local to avoid a posting→clients import cycle); `create_post` runs each image through it + cleans up temps.
+X/Mastodon keep the original (higher caps). `_post_json` now logs the PDS error body on 4xx/5xx.
+`clients/bsky/client.py`. 314 tests green. **Needs a server deploy** (backend only — no hard-refresh needed).
+
+**Prior release — 2.58.0 — Posts: X/Twitter image posting + up to 4 images per post.**
 The Posts module now posts images to **X/Twitter** and lets X/Bluesky/Mastodon carry **up to 4 images**. New
 `post_media` table (`ordinal, path, alt`, auto-created) holds the ordered set; legacy `posts.image_path` still
 mirrors the first image so the feed thumbnail + `/api/posts/image` (now with an `idx` param) keep working.
