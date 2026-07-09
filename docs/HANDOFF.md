@@ -1,7 +1,23 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-09
-**Current version:** 2.56.0 — **Getting-started tour (interactive coach-mark onboarding).**
+**Current version:** 2.57.0 — **Per-page tours: a guided walkthrough for every nav destination.**
+Generalised 2.56.0's single tour into a **registry of named tours** (`window.Tour`): the getting-started shell
+tour plus **13 page tours** (Platforms, Submissions, Stories, Queue, History, Editor, Artwork, Posts, Analytics,
+Groups, Cross-Platform, Accounts, Settings), 5-6 steps each, targeting each page's durable, **empty-state-safe**
+chrome (headers, toolbars, filters, action buttons, list/grid containers — never a data row). The engine now
+**auto-skips any step whose target is missing or hidden** (both directions), so state-exclusive steps
+(`.empty-state` vs a populated `.data-table`/`.story-card-grid`) read correctly on empty *and* populated
+accounts. **Auto-fire is gated**: getting-started once on the overview, then each page tour once on first visit
+*after* getting-started is done (`pp_tour_done__<page>` flags), with a debounce so tours don't chain — via a new
+`Tour.maybeAuto()` hook in `App.route()`. The sidebar **"?"** is now context-aware (`Tour.startHere()` = tour
+for wherever you are). Routing note: the **Submissions** nav link renders the legacy IB analytics view
+(`renderSubmissions`) because its un-prefixed route shadows the unified hub (`Submissions.render`, redesign-
+pending) — the tour targets what actually renders there. `frontend/js/tour.js`, `frontend/js/app.js`,
+`docs/documentation_guide.md`. Display-only, no backend change. 312 tests green.
+**Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.56.0 — Getting-started tour (interactive coach-mark onboarding).**
 New users finished setup and hit a busy 15-platform dashboard with no guidance. Added an interactive spotlight
 **tour**: a dark overlay + moving spotlight (single `box-shadow: 0 0 0 9999px` trick, no canvas) with a popover
 per step (Back/Next/Skip, Esc + arrows). All 10 steps target **persistent sidebar/header chrome** (Platforms →

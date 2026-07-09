@@ -258,11 +258,9 @@ const App = {
         this._statusCheckInterval = setInterval(() => this._updateStatusCheck(), 60000);
         this._initProgressCheckBar();
 
-        /* First-run getting-started tour. We only reach this line past the
-           setup gate above, so setup_complete is guaranteed true here. Fires
-           once per browser (localStorage flag) and only when landing on the
-           overview — never over the #/loading poll-wait or a deep link. */
-        this._maybeStartTour();
+        /* Guided tours auto-fire from route() (see the Tour.maybeAuto hook
+           there): getting-started once on the overview first-run, then each
+           page's own tour once on first visit after getting-started is done. */
 
         /* Hamburger menu — overlay is now in HTML, just query it.
          * (Sidebar hover/focus listeners are bound early in init() above
@@ -347,11 +345,13 @@ const App = {
             this.navigate('/settings/appearance');
         });
 
-        /* Getting-started tour — the sidebar "?" replays it on demand. The
-           first-run auto-fire is handled separately in _maybeStartTour(),
-           called once after the initial route renders. */
+        /* Guided tours — the sidebar "?" runs the tour for wherever you are:
+           the getting-started shell tour on the overview, or that page's own
+           tour elsewhere (Tour.startHere resolves it from the current hash).
+           Auto-firing (getting-started on first run, then each page once) is
+           handled by Tour.maybeAuto(), scheduled from route(). */
         document.getElementById('help-tour-btn')?.addEventListener('click', () => {
-            window.Tour?.start({ auto: false });
+            window.Tour?.startHere({ auto: false });
         });
 
         /* Sidebar version + update check */
@@ -704,6 +704,17 @@ const App = {
 
         /* Destroy old Chart.js instances to free canvas memory */
         Charts.destroyAll();
+
+        /* Guided tours — after the page's renderer runs, give the tour engine
+           a chance to auto-fire. It self-gates: getting-started fires once on
+           the overview; a page's own tour fires once on first visit, but only
+           after getting-started is done. maybeAuto() no-ops cheaply when the
+           relevant flag is already set, so calling it on every route is fine.
+           The captured hash guards against firing for a page you've left. */
+        {
+            const _tourHash = window.location.hash;
+            setTimeout(() => window.Tour?.maybeAuto(_tourHash), 120);
+        }
 
         if (parts[0] === 'dashboard-login') {
             this.renderDashboardLogin();
@@ -12836,25 +12847,6 @@ const App = {
         this._progressCheckTick();
         if (this._progressCheckTimer) clearInterval(this._progressCheckTimer);
         this._progressCheckTimer = setInterval(() => this._progressCheckTick(), 10000);
-    },
-
-    /* Auto-fire the getting-started tour the first time a set-up user lands
-       on the overview. Gated by the per-browser `pp_tour_done` flag Tour
-       writes on completion/dismiss, so it shows once; the sidebar "?" button
-       replays it afterwards regardless of the flag. Skipped on non-overview
-       landings (deep links, the #/loading poll-wait) so it never fires over a
-       screen where the sidebar chrome it points at isn't the focus. */
-    _maybeStartTour() {
-        try {
-            if (!window.Tour || window.Tour.isDone()) return;
-            const hash = (window.location.hash || '').replace(/^#\/?/, '');
-            if (hash && hash !== '/' ) return;   // overview only
-            /* Small delay so the overview paints first; the tour targets
-               static sidebar chrome, so this is polish, not a dependency. */
-            setTimeout(() => {
-                if (window.Tour && !window.Tour.isDone()) window.Tour.start({ auto: true });
-            }, 700);
-        } catch (e) { /* never let onboarding break boot */ }
     },
 
     async _progressCheckTick() {

@@ -5139,28 +5139,40 @@ all hover/popup behaviour in one module:
 - Single delegated `mouseover`/`mouseout` listener at `document.body`,
   so dynamically rendered SPA content gets tooltips for free.
 
-#### `frontend/js/tour.js` (getting-started tour)
+#### `frontend/js/tour.js` (guided tours)
 
-Interactive coach-mark onboarding — `window.Tour` (`{ start({auto}), end(completed), isDone() }`),
-styled by `frontend/css/tour.css`. Introduced 2.56.0.
+Interactive coach-mark onboarding — `window.Tour`
+(`{ start(name,opts), startHere(opts), maybeAuto(hash), end(completed), isDone(name), tourForHash(hash) }`),
+styled by `frontend/css/tour.css`. Introduced 2.56.0 (single getting-started tour); generalised to a
+**registry of named tours** in 2.57.0 (getting-started + one tour per page).
 
-- **Spotlight without canvas/SVG.** `.pp-tour-spot` is a small box positioned over the target;
-  its spread shadow `box-shadow: 0 0 0 9999px rgba(0,0,0,.62)` paints everything *outside* it dark,
-  and a `0 0 0 3px var(--accent)` ring highlights the target. A separate transparent
-  `.pp-tour-blocker` swallows background clicks so only the popover's Next/Back/Skip drive it.
-  Centered (no-target) steps hide the spot and dim the blocker instead.
-- **Targets persistent shell chrome only** — the 10 steps point at `.nav-link[data-page="…"]`
-  items, `#poll-status-mini`, and `#help-tour-btn`, all of which live in the static `index.html`.
-  So the tour never races an async route render and survives page-internal redesigns. `findTarget()`
-  still retries briefly (insurance for any future `step.route` navigation steps).
-- **Sidebar is force-expanded** for the run (`forceSidebarOpen()` drops `.collapsed` / adds `.open`;
-  `restoreSidebar()` puts the user's state back) so the spotlight always lands on a legible rail.
-  `html.pp-tour-active .sidebar { transform:none }` backs this up on mobile.
-- **Trigger model.** Auto-fires once via `App._maybeStartTour()` (called at the end of `init()`,
-  guaranteed past the setup gate), gated by the per-browser `localStorage` flag `pp_tour_done` and
-  only when landing on the overview (`hash === '' | '/'`) — never over `#/loading` or a deep link.
-  The sidebar-footer **"?"** (`#help-tour-btn`) replays it on demand regardless of the flag.
-  `end()` writes the flag on both completion and dismissal, so it shows at most once automatically.
+- **Registry.** `TOURS` maps a tour name → an array of `{ target, title, body }` steps. `getting-started`
+  walks the shell chrome; 13 page tours (`platforms`, `submissions`, `stories`, `queue`, `history`,
+  `editor`, `artwork`, `posts`, `analytics`, `groups`, `cross-platform`, `accounts`, `settings`) each walk
+  one page. `tourForHash()` maps a location hash to a tour name (or null for full-screen / deep / platform
+  sub-routes). Each tour has its own seen-flag: `pp_tour_done` for getting-started, `pp_tour_done__<name>`
+  for pages (`doneKey()`).
+- **Spotlight without canvas/SVG.** `.pp-tour-spot` is a small box over the target; its spread shadow
+  `box-shadow: 0 0 0 9999px rgba(0,0,0,.62)` paints everything *outside* it dark, and a
+  `0 0 0 3px var(--accent)` ring highlights it. A transparent `.pp-tour-blocker` swallows background clicks
+  so only the popover's Next/Back/Skip drive it. Centered (no-target) steps hide the spot and dim the blocker.
+- **Empty-state-safe + auto-skip.** Page steps target durable chrome and containers, never a data row. Where
+  a step targets a state-exclusive element (`.empty-state` exists only when empty; `.data-table` /
+  `.story-card-grid` only when populated), `findTarget()` resolves it to a *visible* element (non-zero rect)
+  and `show()` **skips a missing/hidden step in the current direction** — so each tour reads correctly on both
+  empty and populated accounts. `maybeAuto()` also waits for the first *targeted* element before committing,
+  so it never fires over a half-rendered page.
+- **Sidebar is force-expanded** for the run (`forceSidebarOpen()` / `restoreSidebar()`), so the spotlight
+  lands on a legible rail; `html.pp-tour-active .sidebar { transform:none }` backs this up on mobile.
+- **Trigger model.** `App.route()` schedules `Tour.maybeAuto(hash)` after each dispatch. It self-gates:
+  getting-started auto-fires once on the overview; a page tour auto-fires once on first visit **but only after
+  getting-started is done**, and not within ~1.2s of another tour ending (debounce, so tours don't chain).
+  The sidebar-footer **"?"** (`#help-tour-btn`) calls `Tour.startHere()` — the tour for the current route —
+  replayable regardless of the flags. `end()` writes the current tour's flag on both completion and dismissal.
+- **Submissions caveat.** The `submissions` tour is keyed to `#/submissions`, which the router resolves to the
+  legacy IB analytics view (`renderSubmissions` in app.js) — its un-prefixed route shadows the unified hub
+  (`Submissions.render`). The tour therefore targets the IB view's controls (`#search-input`, `#filter-rating`,
+  `#filter-type`, `.view-toggle`, `#grid-container`), not the hub's. Revisit if route-unification lands.
 
 ### 18.4 Components
 

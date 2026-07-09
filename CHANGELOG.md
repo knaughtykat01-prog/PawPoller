@@ -4,6 +4,39 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.57.0] - 2026-07-09 - Per-page tours: a guided walkthrough for every nav destination
+
+Extends 2.56.0's single getting-started tour into a **tour for each page**. The engine generalised from one
+hard-coded step list into a registry of named tours; the getting-started shell tour is now just one entry
+alongside 13 page tours.
+
+- **13 page tours added** — Platforms, Submissions, Stories, Queue, History, Story Editor, Artwork, Posts,
+  Analytics, Groups, Cross-Platform, Accounts, Settings. Each has 5-6 steps pointing at that page's real
+  controls (header, toolbars, filters, action buttons, list/grid containers). Selectors were mapped per page
+  and chosen to be **empty-state-safe** — they target durable chrome and containers, never a data row that a
+  new user won't have.
+- **Auto-skip missing/hidden targets.** Several steps target state-exclusive elements (`.empty-state` exists
+  only when a page is empty; a `.data-table`/`.story-card-grid` exists only when populated). The engine now
+  resolves each target to a *visible* element and, if it's absent or hidden, skips that step in whichever
+  direction you're moving — so every tour reads correctly on both an empty and a populated account.
+- **Gated auto-fire.** Getting-started still fires once on the overview. Each page tour fires **once on first
+  visit, but only after getting-started is done** (per-page `pp_tour_done__<page>` flags), and never
+  immediately on the heels of another tour (a short debounce), so finishing one tour and navigating doesn't
+  chain a second. Driven by a new `Tour.maybeAuto()` hook in `App.route()`.
+- **The sidebar "?" is now context-aware** — `Tour.startHere()` runs the tour for wherever you are (the shell
+  tour on the overview, that page's tour elsewhere), replayable any time regardless of the seen flags.
+
+Routing note: the sidebar **Submissions** link resolves to the legacy IB analytics view (`renderSubmissions`,
+app.js) because its un-prefixed route shadows the newer unified hub (`Submissions.render`) — a known
+redesign-pending item. The Submissions tour targets what actually renders there (`#search-input`,
+`#filter-rating`, `#filter-type`, `.view-toggle`, `#grid-container`).
+
+`frontend/js/tour.js` (registry + engine), `frontend/js/app.js` (route hook + context-aware "?"),
+`docs/documentation_guide.md`. Display-only, no backend change; 312 tests green. **Needs a server deploy**
+(+ hard-refresh for the new JS).
+
+---
+
 ## [2.56.0] - 2026-07-09 - Getting-started tour (interactive coach-mark onboarding)
 
 New users finished the setup wizard (connect accounts → archive → done) and landed on a busy 15-platform
