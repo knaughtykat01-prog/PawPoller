@@ -4,6 +4,22 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.57.1] - 2026-07-09 - Fix: blank thumbnails on discovered Artwork cards (FA/IB/Pixiv)
+
+The Artwork gallery's **discovered** cards rendered as blank tiles for FurAffinity, Inkbunny and Pixiv items.
+FA/IB/Pixiv thumbnails can't be hotlinked from the browser (CORS + mixed-content), which is why the rest of the
+app routes them through backend relay endpoints (`/api/fa/thumb`, `/api/thumb`, `/api/pix/thumb`) via
+`Utils.faThumbUrl` / `thumbUrl` / `pixThumbUrl`. But `Artwork._discoveredCard` set the cover from the **raw**
+`thumbnail_url` in a CSS `background-image`, bypassing the proxy — so those three platforms' covers silently
+failed to load (a failed `background-image` just shows the dark card). Platforms whose thumbnails load directly
+(and imported library art) were unaffected, which is why the odd card still showed an image.
+
+Added `Artwork._thumbSrc(d)` — routes fa/ib/pix through the matching relay endpoint, passes everything else
+through unchanged — and used it for the discovered cover. `frontend/js/artwork.js`. Display-only; 312 tests
+green. **Needs a server deploy** (+ hard-refresh).
+
+---
+
 ## [2.57.0] - 2026-07-09 - Per-page tours: a guided walkthrough for every nav destination
 
 Extends 2.56.0's single getting-started tour into a **tour for each page**. The engine generalised from one

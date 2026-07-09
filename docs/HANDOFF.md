@@ -1,7 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-09
-**Current version:** 2.57.0 — **Per-page tours: a guided walkthrough for every nav destination.**
+**Current version:** 2.57.1 — **Fix: blank thumbnails on discovered Artwork cards (FA/IB/Pixiv).**
+The Artwork gallery's discovered cards were blank for FurAffinity/Inkbunny/Pixiv: those thumbnails can't be
+hotlinked (CORS + mixed-content), so the app relays them via `/api/fa/thumb` / `/api/thumb` / `/api/pix/thumb`
+(`Utils.faThumbUrl`/`thumbUrl`/`pixThumbUrl`), but `Artwork._discoveredCard` used the raw `thumbnail_url` in a
+CSS `background-image`, bypassing the proxy. Added `Artwork._thumbSrc(d)` (per-platform relay routing) and used
+it for the discovered cover. `frontend/js/artwork.js`. Display-only. 312 tests green.
+**Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.57.0 — Per-page tours: a guided walkthrough for every nav destination.**
 Generalised 2.56.0's single tour into a **registry of named tours** (`window.Tour`): the getting-started shell
 tour plus **13 page tours** (Platforms, Submissions, Stories, Queue, History, Editor, Artwork, Posts, Analytics,
 Groups, Cross-Platform, Accounts, Settings), 5-6 steps each, targeting each page's durable, **empty-state-safe**

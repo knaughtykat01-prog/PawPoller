@@ -121,10 +121,25 @@ window.Artwork = {
             && d.kind !== 'text' && !!d.thumbnail_url;
     },
 
+    /* FA / Inkbunny / Pixiv thumbnails can't be hotlinked from the browser
+       (CORS + mixed-content), so they must go through the backend relay
+       endpoints — same as the submissions tables do via Utils.*ThumbUrl.
+       Other platforms' thumbnails load directly. Without this the discovered
+       cards for those three platforms render as blank tiles. */
+    _thumbSrc(d) {
+        const url = d && d.thumbnail_url;
+        if (!url) return '';
+        if (d.platform === 'fa') return Utils.faThumbUrl(url);
+        if (d.platform === 'ib') return Utils.thumbUrl(url);
+        if (d.platform === 'pix') return Utils.pixThumbUrl(url);
+        return url;
+    },
+
     _discoveredCard(d) {
         const plat = this._plat(d.platform);
-        const cover = d.thumbnail_url
-            ? `<div class="artwork-card-cover" style="background-image:url('${this.esc(d.thumbnail_url)}')"></div>`
+        const src = this._thumbSrc(d);
+        const cover = src
+            ? `<div class="artwork-card-cover" style="background-image:url('${this.esc(src)}')"></div>`
             : `<div class="artwork-card-cover artwork-card-cover--empty">no image</div>`;
         const views = (d.views != null)
             ? `<span class="artwork-disc-stat">${Utils.formatNumber(d.views)} views</span>` : '';
