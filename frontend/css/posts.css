@@ -195,6 +195,27 @@
 }
 .post-cf-actions { display: flex; align-items: center; gap: .5rem; margin-top: .2rem; flex-wrap: wrap; }
 
+/* ── Tag contacts (handle-book manager, #/posts/contacts) ── */
+.pc-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.pc-card-main { min-width: 0; flex: 1; }
+.pc-name { font-weight: 600; margin-bottom: .3rem; }
+.pc-chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.pc-chip {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.pc-actions { display: flex; gap: .4rem; flex-shrink: 0; }
+
 /* ── Feed ── */
 .posts-feed-heading {
     margin: 1.6rem 0 .8rem;

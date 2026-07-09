@@ -4,6 +4,31 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.62.0] - 2026-07-09 - Posts: contacts manager + Bluesky auto-facets a directly-typed @handle
+
+Two follow-ups to 2.61.0's handle-book.
+
+**Contacts manager (`#/posts/contacts`).** A **Tag contacts** button on the Posts header opens a management
+screen: every saved contact as a card (name + per-platform handle chips) with **Edit** (inline prefilled form →
+`PATCH /api/posts/contacts/{id}`) and **Delete** (→ `DELETE`, which also drops any bindings so tagged posts keep
+their text but stop linking), plus **+ New contact**. Until now contacts could only be *created* inline from the
+composer and never fixed/removed. New `Posts.renderContacts`/`_loadContactList`/`_contactCard`/`_openManagerForm`/
+`_saveManagerContact`/`_deleteContact` in `frontend/js/posts.js`; a `#/posts/contacts` route in `app.js`; styles
+in `posts.css`.
+
+**Bluesky auto-facets a directly-typed full handle.** You no longer have to bind an alias for Bluesky to link a
+mention: if you type a full `@handle.tld` (e.g. `@someone.bsky.social`) straight into the body, the client now
+detects it (`BskyClient._detect_handle_mentions` — domain-shaped `@x.y`, so a bare `@alias` still needs a
+handle-book binding, and an email's `@domain` is ignored), resolves it to a DID, and builds the mention facet.
+`_build_facets` was reworked to merge bound + directly-typed handles and to drop any mention/hashtag facet that
+would overlap a URL facet (AT Protocol rejects overlapping ranges). `clients/bsky/client.py`.
+
+Alias binding (2.61.0) is still the way to tag someone with *different* handles across platforms; this just makes
+the single-platform "I already know their Bluesky handle" case one step shorter. 1 new unit test (320 green).
+Live DID resolution stays user-side. **Needs a server deploy + hard-refresh.**
+
+---
+
 ## [2.61.0] - 2026-07-09 - Posts: cross-platform @mentions (handle-book) + Bluesky #tag/@ facets
 
 Tagging people now works properly across networks, and Bluesky hashtags finally link.

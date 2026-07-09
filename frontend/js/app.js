@@ -894,6 +894,8 @@ const App = {
             if (window.Artwork) window.Artwork.renderDetail(parts.slice(2).join('/'));
         } else if (parts[0] === 'artwork' && parts[1] === 'log') {
             if (window.Artwork) window.Artwork.renderLog();
+        } else if (parts[0] === 'posts' && parts[1] === 'contacts') {
+            if (window.Posts) window.Posts.renderContacts();
         } else if (parts[0] === 'posts') {
             if (window.Posts) window.Posts.render();
         } else if (parts[0] === 'submissions' && parts[1] === 'discovered') {

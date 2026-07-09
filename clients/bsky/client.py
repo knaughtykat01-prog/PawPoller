@@ -758,21 +758,50 @@ class BskyClient:
                             mention_handles: list[str] | None = None) -> list[dict]:
         """Assemble link + mention + hashtag facets, non-overlapping, byte-sorted.
 
-        Links and mentions are laid down first; a hashtag facet is dropped if it
-        would overlap one (e.g. a ``#anchor`` inside a URL) since AT Protocol
-        rejects overlapping facet ranges.
+        Mentions cover both the explicitly-bound handles (``mention_handles``,
+        from handle-book contacts) AND any full ``@handle.tld`` typed directly in
+        the text. A later facet that would overlap an earlier one (e.g. a
+        ``#anchor`` or an ``@handle`` sitting inside a URL) is dropped, since AT
+        Protocol rejects overlapping facet ranges.
         """
-        facets = list(self._extract_link_facets(text))
-        if mention_handles:
-            facets += await self._build_mention_facets(text, mention_handles)
+        def _overlaps(s: int, e: int, ranges: list[tuple]) -> bool:
+            return any(not (e <= os or s >= oe) for os, oe in ranges)
+
+        facets = list(self._extract_link_facets(text))   # URLs first
         occupied = [(f["index"]["byteStart"], f["index"]["byteEnd"]) for f in facets]
+
+        handles = list(mention_handles or []) + self._detect_handle_mentions(text)
+        for mf in await self._build_mention_facets(text, handles):
+            s, e = mf["index"]["byteStart"], mf["index"]["byteEnd"]
+            if _overlaps(s, e, occupied):
+                continue
+            facets.append(mf)
+            occupied.append((s, e))
+
         for tf in self._extract_tag_facets(text):
             s, e = tf["index"]["byteStart"], tf["index"]["byteEnd"]
-            if any(not (e <= os or s >= oe) for os, oe in occupied):
+            if _overlaps(s, e, occupied):
                 continue
             facets.append(tf)
+            occupied.append((s, e))
+
         facets.sort(key=lambda f: f["index"]["byteStart"])
         return facets
+
+    @staticmethod
+    def _detect_handle_mentions(text: str) -> list[str]:
+        """Full ``@handle.tld`` strings typed directly in the text — domain-like,
+        so a bare ``@alias`` (which needs a handle-book binding) is ignored, as is
+        an email's ``@domain``. Returned without the leading @; deduped/resolved
+        by ``_build_mention_facets``."""
+        import re as _re
+        out = []
+        for m in _re.finditer(
+                r'(?<![\w@.])@([A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)+)', text):
+            h = m.group(1).rstrip('.')
+            if h:
+                out.append(h)
+        return out
 
     async def _build_mention_facets(self, text: str, handles: list[str]) -> list[dict]:
         """Facets for each ``@handle`` in text whose handle resolves to a DID."""

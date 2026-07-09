@@ -5764,8 +5764,22 @@ the alias into the right handle per network at send time.
   (name + the five handle fields). Bindings ride along in the `mentions` form
   field. Contacts load once per render (`API.getContacts`); tagging is additive —
   if the contacts fetch fails the composer still works, aliases just stay plain.
+- **Contacts manager (2.62.0)** — `#/posts/contacts` (a **Tag contacts** button
+  on the Posts header, route in `app.js`): each contact as a card (name + handle
+  chips) with **Edit** (inline prefilled form → `PATCH /api/posts/contacts/{id}`)
+  / **Delete** (→ `DELETE`, cascades to `post_mentions`) + **New contact**.
+  `Posts.renderContacts`/`_loadContactList`/`_contactCard`/`_openManagerForm`/
+  `_saveManagerContact`/`_deleteContact`; the composer's inline add-form and the
+  manager share the `_MENTION_FIELDS` layout + `.post-cf-*` styles.
+- **Directly-typed handles auto-facet on Bluesky (2.62.0)** — you don't have to
+  bind an alias for a mention Bluesky can already resolve: `_build_facets` merges
+  the bound `mention_handles` with `_detect_handle_mentions(text)` (domain-shaped
+  `@x.y` only — a bare `@alias` still needs a binding, an email's `@domain` is
+  skipped via a lookbehind), so a typed `@name.bsky.social` is resolved+faceted.
+  The rework also drops any mention/hashtag facet overlapping a URL facet (AT
+  Protocol rejects overlapping ranges).
 - **Tests** (`tests/test_posts.py`): `_render_body` per-platform expansion +
   whole-token/unbound safety, `_extract_tag_facets` (byte offsets, `#1` rejected,
-  trailing-punct trim), the contacts↔mentions round-trip + cascade deletes.
-  **Not** unit-tested (network): live DID resolution / a real faceted skeet — a
-  user-side dashboard test.
+  trailing-punct trim), `_detect_handle_mentions` (dotted-handle vs bare-alias vs
+  email), the contacts↔mentions round-trip + cascade deletes. **Not** unit-tested
+  (network): live DID resolution / a real faceted skeet — a user-side test.

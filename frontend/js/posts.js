@@ -57,11 +57,16 @@ window.Posts = {
     async render() {
         const app = document.getElementById('app');
         app.innerHTML = `
-            <div class="page-header">
-                <h1>Posts</h1>
-                <p class="muted">Write a short post once and publish it to your microblog accounts
-                at once. Bluesky, Mastodon and X post text and images (up to 4); Threads and Tumblr
-                are text-only for now.</p>
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+                <div>
+                    <h1>Posts</h1>
+                    <p class="muted">Write a short post once and publish it to your microblog accounts
+                    at once. Bluesky, Mastodon and X post text and images (up to 4); Threads and Tumblr
+                    are text-only for now.</p>
+                </div>
+                <div style="flex-shrink:0;">
+                    <a class="btn" href="#/posts/contacts">Tag contacts</a>
+                </div>
             </div>
             <div id="post-compose"></div>
             <h2 class="posts-feed-heading">Recent posts</h2>
@@ -478,6 +483,132 @@ window.Posts = {
             await API.deletePost(id);
             this._toast('success', 'Deleted');
             await this._loadFeed();
+        } catch (err) {
+            this._toast('error', 'Delete failed: ' + (err.message || err));
+        }
+    },
+
+    /* ── Tag contacts (handle-book manager) — #/posts/contacts ─── */
+
+    async renderContacts() {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+                <div>
+                    <h1>Tag contacts</h1>
+                    <p class="muted"><a href="#/posts">← Back to Posts</a> · Save someone's handle on each
+                    platform once. Then tag them with an <strong>@alias</strong> while composing and every
+                    network gets their right handle.</p>
+                </div>
+                <div style="flex-shrink:0;">
+                    <button class="btn btn-primary" id="pc-add">+ New contact</button>
+                </div>
+            </div>
+            <div id="pc-form-slot"></div>
+            <div id="pc-list"><div class="loading-spinner">Loading…</div></div>`;
+        document.getElementById('pc-add').addEventListener('click', () => this._openManagerForm(null));
+        await this._loadContactList();
+    },
+
+    async _loadContactList() {
+        const list = document.getElementById('pc-list');
+        if (!list) return;
+        let contacts = [];
+        try {
+            const d = await API.getContacts();
+            contacts = (d && d.contacts) || [];
+        } catch (err) {
+            list.innerHTML = `<div class="card error">Failed to load contacts: ${this.esc(err.message)}</div>`;
+            return;
+        }
+        this._contacts = contacts;
+        if (!contacts.length) {
+            list.innerHTML = `<div class="empty-state"><p class="muted">No contacts yet — add someone to tag
+            them across platforms.</p></div>`;
+            return;
+        }
+        list.innerHTML = contacts.map(c => this._contactCard(c)).join('');
+        list.onclick = (e) => {
+            const ed = e.target.closest('.pc-edit');
+            if (ed) { this._openManagerForm(this._contacts.find(x => String(x.id) === ed.dataset.id)); return; }
+            const del = e.target.closest('.pc-del');
+            if (del) this._deleteContact(del.dataset.id);
+        };
+    },
+
+    _contactCard(c) {
+        const chips = this._MENTION_FIELDS
+            .filter(f => (c[f.key] || '').trim())
+            .map(f => `<span class="pc-chip" title="${this.esc(f.label)}">${this._plat(f.code).emoji || ''} @${this.esc(c[f.key])}</span>`)
+            .join('');
+        return `
+            <div class="card pc-card">
+                <div class="pc-card-main">
+                    <div class="pc-name">${this.esc(c.name)}</div>
+                    <div class="pc-chips">${chips || '<span class="muted">no handles yet</span>'}</div>
+                </div>
+                <div class="pc-actions">
+                    <button class="btn btn-sm pc-edit" data-id="${c.id}">Edit</button>
+                    <button class="btn btn-sm btn-danger pc-del" data-id="${c.id}">Delete</button>
+                </div>
+            </div>`;
+    },
+
+    _openManagerForm(contact) {
+        const slot = document.getElementById('pc-form-slot');
+        if (!slot) return;
+        const editing = !!(contact && contact.id);
+        const val = (k) => this.esc((contact && contact[k]) || '');
+        const rows = this._MENTION_FIELDS.map(f =>
+            `<label class="post-cf-field">${this.esc(f.label)}
+                <input type="text" class="post-cf-input pc-input" data-key="${f.key}" value="${val(f.key)}" placeholder="${this.esc(f.ph)}">
+            </label>`).join('');
+        slot.innerHTML = `
+            <div class="post-contact-form" style="margin-bottom:1rem;">
+                <div class="post-cf-head">${editing ? 'Edit contact' : 'New contact'}
+                    <span class="muted">— paste each platform's handle (leave blank to skip that one).</span></div>
+                <label class="post-cf-field">Name / alias
+                    <input type="text" class="post-cf-input pc-input" data-key="name" value="${val('name')}" placeholder="who is this?">
+                </label>
+                ${rows}
+                <div class="post-cf-actions">
+                    <button type="button" class="btn btn-sm btn-primary" id="pc-save">${editing ? 'Save changes' : 'Save contact'}</button>
+                    <button type="button" class="btn btn-sm" id="pc-cancel">Cancel</button>
+                    <span class="muted" id="pc-msg"></span>
+                </div>
+            </div>`;
+        slot.querySelector('#pc-save').addEventListener('click', () => this._saveManagerContact(editing ? contact.id : null));
+        slot.querySelector('#pc-cancel').addEventListener('click', () => { slot.innerHTML = ''; });
+        const nameInput = slot.querySelector('.pc-input[data-key="name"]');
+        if (nameInput) { nameInput.focus(); nameInput.select(); }
+    },
+
+    async _saveManagerContact(id) {
+        const slot = document.getElementById('pc-form-slot');
+        const msg = slot.querySelector('#pc-msg');
+        const payload = {};
+        slot.querySelectorAll('.pc-input').forEach(inp => { payload[inp.dataset.key] = inp.value.trim(); });
+        if (!payload.name) { msg.textContent = 'Give the contact a name.'; return; }
+        const save = slot.querySelector('#pc-save');
+        save.disabled = true; msg.textContent = 'Saving…';
+        try {
+            if (id) await API.updateContact(id, payload);
+            else await API.createContact(payload);
+            slot.innerHTML = '';
+            this._toast('success', 'Saved');
+            await this._loadContactList();
+        } catch (err) {
+            save.disabled = false;
+            msg.textContent = 'Save failed: ' + (err.message || err);
+        }
+    },
+
+    async _deleteContact(id) {
+        if (!confirm('Delete this contact? Posts that tagged them keep their text, but the tag stops linking.')) return;
+        try {
+            await API.deleteContact(id);
+            this._toast('success', 'Deleted');
+            await this._loadContactList();
         } catch (err) {
             this._toast('error', 'Delete failed: ' + (err.message || err));
         }

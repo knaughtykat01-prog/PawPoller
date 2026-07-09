@@ -188,6 +188,14 @@ def test_contacts_and_post_mentions_round_trip(db_conn):
     assert q.get_post(db_conn, pid)["mentions"] == []
 
 
+def test_bsky_detect_handle_mentions():
+    from clients.bsky.client import BskyClient
+    got = BskyClient._detect_handle_mentions(
+        "hi @alice.bsky.social and @bob.com! plus @luna and mail bob@example.com")
+    # Full dotted handles are picked up; a bare @alias and an email's @domain are not.
+    assert got == ["alice.bsky.social", "bob.com"]
+
+
 def test_delete_post_clears_mentions(db_conn):
     cid = q.add_contact(db_conn, name="Rex")
     pid = q.create_post(db_conn, body="yo @rex", now="t0")

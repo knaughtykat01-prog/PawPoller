@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-09
-**Current version:** 2.61.0 — **Posts: cross-platform @mentions (handle-book) + Bluesky #tag/@ facets.**
+**Current version:** 2.62.0 — **Posts: contacts manager + Bluesky auto-facets a directly-typed @handle.**
+Two follow-ups to 2.61.0. (1) **Contacts manager** at `#/posts/contacts` (a **Tag contacts** button on the Posts
+header): each saved contact as a card (name + handle chips) with **Edit** (`PATCH`) / **Delete** (`DELETE`, drops
+bindings) + **New contact** — previously contacts could only be created inline and never fixed/removed.
+`Posts.renderContacts`/`_loadContactList`/`_contactCard`/`_openManagerForm`/`_saveManagerContact`/`_deleteContact`
+in `posts.js`; `#/posts/contacts` route in `app.js`; `posts.css`. (2) **Bluesky auto-facets a directly-typed full
+`@handle.tld`** — no binding needed: `BskyClient._detect_handle_mentions` (domain-shaped only, so a bare `@alias`
+still needs a binding and an email's `@domain` is skipped) → resolve → facet; `_build_facets` reworked to merge
+bound + typed handles and drop mention/tag facets overlapping a URL facet. `clients/bsky/client.py`. 1 new test
+(**320 green**). **Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.61.0 — Posts: cross-platform @mentions (handle-book) + Bluesky #tag/@ facets.**
 Tagging people now works across networks and Bluesky hashtags finally link. Problem: a person's handle differs
 per platform (`@name.bsky.social`/`@xname`/`@user@instance`/`@threadsname`) so one shared post can't share a
 literal `@handle`; and Bluesky needs explicit **rich-text facets** (X/Mastodon/Threads auto-link), so `#tag`/`@`
