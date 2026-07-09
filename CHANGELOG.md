@@ -4,6 +4,44 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.61.0] - 2026-07-09 - Posts: cross-platform @mentions (handle-book) + Bluesky #tag/@ facets
+
+Tagging people now works properly across networks, and Bluesky hashtags finally link.
+
+**The problem.** The same person's handle differs per platform (`@name.bsky.social` vs `@xname` vs
+`@user@instance` vs `@threadsname`), so "compose once, publish to all" can't share one literal `@handle`. And
+Bluesky — unlike X/Mastodon/Threads, which auto-link server-side — needs explicit **rich-text facets**, so a
+`#tag` or `@handle` posted there was dead plain text (not clickable, not searchable, a mention didn't notify).
+
+**The fix — an alias + handle-book.** You tag with a short **alias** (`@luna`) and bind it once to a **contact**
+that stores that person's handle on each platform; the publisher expands the alias into the right handle per
+network at send time.
+
+- **Handle-book store.** New `post_contacts` (name + `handle_bsky/tw/mast/thr/tum`) and `post_mentions`
+  (`post_id, token, contact_id`) tables, auto-created on startup. `posts_queries` gains contacts CRUD +
+  `set/get_post_mentions`; `get_post` attaches `mentions`, `delete_post`/`delete_contact` clean up.
+  `database/posts_schema.sql`, `database/posts_queries.py`.
+- **API.** `GET/POST /api/posts/contacts` + `PATCH/DELETE /api/posts/contacts/{id}` (declared before the
+  `/{post_id}` routes so `/contacts` isn't parsed as an id); `POST /api/posts` takes a `mentions` JSON field
+  (malformed → skipped, never fails the post). `routes/posts_api.py`.
+- **Per-platform render + facets.** `post_publisher._render_body` substitutes each bound `@alias` for the
+  platform's handle (whole-token — `@luna` never touches `@lunar`; no handle for a platform → left plain).
+  Bluesky additionally gets facets: `BskyClient` now builds `#hashtag` facets on **every** post (the dead-tag
+  fix) plus `@mention` facets by resolving each bound handle to a DID (`resolve_handle` →
+  `_build_mention_facets`); overlapping ranges (e.g. a `#anchor` in a URL) are dropped.
+  `posting/post_publisher.py`, `clients/bsky/client.py`.
+- **Composer.** The Posts box detects `@alias` tokens and shows a **Tag** panel binding each to a saved contact
+  (auto-selected when a contact's name matches the alias) or an inline **add-contact** form (name + five handle
+  fields). Contacts load once per render; tagging degrades gracefully if the fetch fails. `frontend/js/posts.js`,
+  `frontend/css/posts.css`, `frontend/js/api.js`.
+
+X/Mastodon/Threads just receive the substituted text and auto-link it. 5 new unit tests (`_render_body`
+per-platform + whole-token safety, `_extract_tag_facets` byte offsets, contacts↔mentions round-trip + cascade
+deletes); **319 tests green**. Live DID resolution / a real faceted skeet is user-side (fires a real post).
+**Needs a server deploy + hard-refresh.**
+
+---
+
 ## [2.60.0] - 2026-07-09 - Artwork: "possible matches" banner nudges the obvious unifies
 
 Follow-up to 2.59.0 (Artwork Unify). The gallery now surfaces a dismissible **Possible matches** banner that

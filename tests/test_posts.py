@@ -130,3 +130,68 @@ def test_publish_post_records_a_publication_row(db_conn):
     assert len(pubs) == 1
     assert pubs[0]["platform"] == "bsky" and pubs[0]["status"] == "failed"
     assert "isn't connected" in pubs[0]["error"]
+
+
+# ── handle-book (@mentions) — 2.61.0 ───────────────────────────────
+
+def test_render_body_expands_bound_aliases_per_platform():
+    mentions = [{
+        "token": "luna",
+        "handle_bsky": "luna.bsky.social", "handle_tw": "lunaX",
+        "handle_mast": "luna@furry.social", "handle_thr": "", "handle_tum": "lunablog",
+    }]
+    body = "hey @luna nice art"
+    assert post_publisher._render_body(body, mentions, "bsky") == "hey @luna.bsky.social nice art"
+    assert post_publisher._render_body(body, mentions, "tw") == "hey @lunaX nice art"
+    assert post_publisher._render_body(body, mentions, "mast") == "hey @luna@furry.social nice art"
+    # No Threads handle for this contact → the alias stays plain text there.
+    assert post_publisher._render_body(body, mentions, "thr") == "hey @luna nice art"
+
+
+def test_render_body_whole_token_and_unbound():
+    mentions = [{"token": "luna", "handle_tw": "lunaX"}]
+    # @lunar must NOT be rewritten by the @luna binding (whole-token only).
+    assert post_publisher._render_body("@luna and @lunar", mentions, "tw") == "@lunaX and @lunar"
+    # An @alias with no binding is left exactly as typed.
+    assert post_publisher._render_body("hi @bob", [], "tw") == "hi @bob"
+
+
+def test_bsky_extract_tag_facets():
+    from clients.bsky.client import BskyClient
+    facets = BskyClient._extract_tag_facets("hi #Fox #1 #b2r!")
+    tags = [f["features"][0]["tag"] for f in facets]
+    assert tags == ["Fox", "b2r"]          # #1 (digit-first) is not a tag
+    f0 = facets[0]
+    assert f0["index"]["byteStart"] == 3 and f0["index"]["byteEnd"] == 7   # spans "#Fox"
+    assert f0["features"][0]["$type"] == "app.bsky.richtext.facet#tag"
+    # Trailing "!" is trimmed from the tag AND excluded from the byte range.
+    assert facets[1]["features"][0]["tag"] == "b2r"
+
+
+def test_contacts_and_post_mentions_round_trip(db_conn):
+    cid = q.add_contact(db_conn, name="Luna", handle_bsky="@luna.bsky.social", handle_tw="lunaX")
+    c = q.get_contact(db_conn, cid)
+    assert c["name"] == "Luna"
+    assert c["handle_bsky"] == "luna.bsky.social"     # leading @ stripped on save
+    assert any(x["id"] == cid for x in q.list_contacts(db_conn))
+
+    pid = q.create_post(db_conn, body="hi @luna", now="t0")
+    q.set_post_mentions(db_conn, pid, [{"token": "@luna", "contact_id": cid}])
+    men = q.get_post(db_conn, pid)["mentions"]
+    assert len(men) == 1
+    assert men[0]["token"] == "luna" and men[0]["contact_id"] == cid
+    assert men[0]["handle_bsky"] == "luna.bsky.social"
+
+    # Deleting the contact drops the binding (the alias reverts to plain text).
+    q.delete_contact(db_conn, cid)
+    assert q.get_contact(db_conn, cid) is None
+    assert q.get_post(db_conn, pid)["mentions"] == []
+
+
+def test_delete_post_clears_mentions(db_conn):
+    cid = q.add_contact(db_conn, name="Rex")
+    pid = q.create_post(db_conn, body="yo @rex", now="t0")
+    q.set_post_mentions(db_conn, pid, [{"token": "rex", "contact_id": cid}])
+    assert len(q.get_post_mentions(db_conn, pid)) == 1
+    q.delete_post(db_conn, pid)
+    assert q.get_post_mentions(db_conn, pid) == []

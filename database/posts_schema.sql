@@ -47,3 +47,30 @@ CREATE TABLE IF NOT EXISTS post_publications (
 );
 
 CREATE INDEX IF NOT EXISTS idx_post_pub_post ON post_publications(post_id);
+
+-- Handle-book (2.61.0): a person you tag, with their per-platform @handle. The
+-- same piece is published once but each network needs that person's OWN handle
+-- (@name.bsky.social vs @xname vs @user@instance vs @threadsname), so a post
+-- stores an alias token and the publisher expands it per platform at send time.
+CREATE TABLE IF NOT EXISTS post_contacts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL DEFAULT '',   -- display name / the @alias you type
+    handle_bsky TEXT NOT NULL DEFAULT '',    -- e.g. name.bsky.social (no leading @)
+    handle_tw   TEXT NOT NULL DEFAULT '',    -- e.g. xname
+    handle_mast TEXT NOT NULL DEFAULT '',    -- e.g. user@instance.social
+    handle_thr  TEXT NOT NULL DEFAULT '',    -- e.g. threadsname
+    handle_tum  TEXT NOT NULL DEFAULT '',    -- e.g. blogname
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- One row per (post, alias token) → the contact it's bound to. The publisher
+-- reads these to expand @alias into each platform's handle (+ build Bluesky
+-- mention facets). Unbound @tokens simply have no row and stay plain text.
+CREATE TABLE IF NOT EXISTS post_mentions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id    INTEGER NOT NULL,
+    token      TEXT NOT NULL DEFAULT '',    -- the @alias as typed, without the @
+    contact_id INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(post_id, token)
+);
+CREATE INDEX IF NOT EXISTS idx_post_mentions_post ON post_mentions(post_id);

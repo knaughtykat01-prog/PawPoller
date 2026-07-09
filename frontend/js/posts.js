@@ -24,6 +24,19 @@ window.Posts = {
     _pendingFiles: [],    // Files awaiting upload (ordered)
     _previewUrls: [],     // object URLs for the compose previews (index-aligned)
 
+    _contacts: [],           // handle-book (loaded once per render)
+    _mentionBindings: {},    // { token: contactId } — @aliases bound in this draft
+    _addForToken: null,      // the @token the open "add contact" form will bind
+
+    /* Per-platform handle fields shown in the add-contact form + why each. */
+    _MENTION_FIELDS: [
+        { code: 'bsky', label: 'Bluesky', key: 'handle_bsky', ph: 'name.bsky.social' },
+        { code: 'tw', label: 'X / Twitter', key: 'handle_tw', ph: 'xhandle' },
+        { code: 'mast', label: 'Mastodon', key: 'handle_mast', ph: 'user@instance.social' },
+        { code: 'thr', label: 'Threads', key: 'handle_thr', ph: 'threadshandle' },
+        { code: 'tum', label: 'Tumblr', key: 'handle_tum', ph: 'blogname' },
+    ],
+
     esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
             { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -54,6 +67,13 @@ window.Posts = {
             <h2 class="posts-feed-heading">Recent posts</h2>
             <div id="post-feed"><div class="loading-spinner">Loading…</div></div>`;
 
+        this._mentionBindings = {};
+        this._addForToken = null;
+        try {
+            const cd = await API.getContacts();
+            this._contacts = (cd && cd.contacts) || [];
+        } catch (e) { this._contacts = []; }   // tagging is additive — degrade to none
+
         this._renderCompose(document.getElementById('post-compose'));
         await this._loadFeed();
     },
@@ -62,7 +82,9 @@ window.Posts = {
         el.innerHTML = `
             <div class="card post-compose">
                 <textarea id="post-body" class="post-body" rows="4"
-                    placeholder="What's happening?"></textarea>
+                    placeholder="What's happening?  Tag someone with @alias."></textarea>
+                <div id="post-mentions" class="post-mentions" hidden></div>
+                <div id="post-contact-form" class="post-contact-form" hidden></div>
                 <div id="post-image-preview" class="post-image-preview" hidden></div>
                 <div class="post-compose-row">
                     <label class="btn btn-sm">📎 Images
@@ -131,8 +153,15 @@ window.Posts = {
             count.classList.toggle('over', bskyOn && n > this._SOFT_LIMIT);
         };
         body.addEventListener('input', updateCount);
+        body.addEventListener('input', () => this._syncMentions());
         document.querySelectorAll('.post-plat-check').forEach(c =>
             c.addEventListener('change', updateCount));
+
+        // Mention panel: a <select> per @alias binds it to a handle-book contact.
+        document.getElementById('post-mentions').addEventListener('change', e => {
+            const sel = e.target.closest('.post-mention-select');
+            if (sel) this._onMentionSelect(sel.dataset.token, sel.value);
+        });
 
         const fileInput = document.getElementById('post-image');
         fileInput.addEventListener('change', () => {
@@ -144,6 +173,139 @@ window.Posts = {
             if (rm) this._removeFileAt(parseInt(rm.dataset.idx, 10));
         });
         document.getElementById('post-submit').addEventListener('click', () => this._submit());
+        this._syncMentions();
+    },
+
+    /* ── @mentions (handle-book) ─────────────────────────────────
+     * You type one alias (@luna); each platform needs that person's OWN handle.
+     * The panel binds each @alias to a saved contact; the backend expands it per
+     * platform at publish (and builds Bluesky's mention facet). Unbound aliases
+     * stay plain text. */
+
+    _mentionTokens(text) {
+        const out = [], seen = new Set();
+        const re = /@(\w+)/g;
+        let m;
+        while ((m = re.exec(text || ''))) {
+            if (!seen.has(m[1])) { seen.add(m[1]); out.push(m[1]); }
+        }
+        return out;
+    },
+
+    _syncMentions() {
+        const body = document.getElementById('post-body');
+        const panel = document.getElementById('post-mentions');
+        if (!body || !panel) return;
+        const tokens = this._mentionTokens(body.value);
+        Object.keys(this._mentionBindings).forEach(t => {
+            if (!tokens.includes(t)) delete this._mentionBindings[t];
+        });
+        if (!tokens.length) { panel.hidden = true; panel.innerHTML = ''; return; }
+        // First time we see an alias, auto-bind it to an exact-name contact.
+        tokens.forEach(t => {
+            if (this._mentionBindings[t] === undefined) {
+                const c = this._contacts.find(x => (x.name || '').toLowerCase() === t.toLowerCase());
+                if (c) this._mentionBindings[t] = c.id;
+            }
+        });
+        panel.hidden = false;
+        panel.innerHTML = `
+            <div class="post-mentions-head">Tag <span class="muted">— pick who each @ is so every platform
+            gets their right handle.</span></div>
+            ${tokens.map(t => this._mentionRow(t)).join('')}`;
+    },
+
+    _mentionRow(token) {
+        const bound = this._mentionBindings[token];
+        const opts = [`<option value="">— don't tag —</option>`]
+            .concat(this._contacts.map(c =>
+                `<option value="${c.id}"${String(bound) === String(c.id) ? ' selected' : ''}>${this.esc(c.name)}</option>`))
+            .concat(`<option value="__new">＋ Add new contact…</option>`)
+            .join('');
+        const c = this._contacts.find(x => String(x.id) === String(bound));
+        return `
+            <div class="post-mention-row">
+                <span class="post-mention-alias">@${this.esc(token)}</span>
+                <select class="post-mention-select" data-token="${this.esc(token)}">${opts}</select>
+                <span class="post-mention-hint muted">${c ? this._contactHint(c) : ''}</span>
+            </div>`;
+    },
+
+    _contactHint(c) {
+        return this._MENTION_FIELDS
+            .filter(f => (c[f.key] || '').trim())
+            .map(f => `${this._plat(f.code).emoji || f.label} @${this.esc(c[f.key])}`)
+            .join('  ');
+    },
+
+    _onMentionSelect(token, value) {
+        if (value === '__new') { this._openContactForm(token); return; }
+        if (value) this._mentionBindings[token] = parseInt(value, 10);
+        else delete this._mentionBindings[token];
+        this._syncMentions();
+    },
+
+    _openContactForm(token) {
+        this._addForToken = token;
+        const form = document.getElementById('post-contact-form');
+        if (!form) return;
+        const rows = this._MENTION_FIELDS.map(f =>
+            `<label class="post-cf-field">${this.esc(f.label)}
+                <input type="text" class="post-cf-input" data-key="${f.key}" placeholder="${this.esc(f.ph)}">
+            </label>`).join('');
+        form.hidden = false;
+        form.innerHTML = `
+            <div class="post-cf-head">New contact for <strong>@${this.esc(token || '')}</strong>
+                <span class="muted">— paste each platform's handle (leave blank to skip that one).</span></div>
+            <label class="post-cf-field">Name / alias
+                <input type="text" class="post-cf-input" data-key="name" value="${this.esc(token || '')}" placeholder="who is this?">
+            </label>
+            ${rows}
+            <div class="post-cf-actions">
+                <button type="button" class="btn btn-sm btn-primary" id="post-cf-save">Save contact</button>
+                <button type="button" class="btn btn-sm" id="post-cf-cancel">Cancel</button>
+                <span class="muted post-cf-msg" id="post-cf-msg"></span>
+            </div>`;
+        form.querySelector('#post-cf-save').addEventListener('click', () => this._saveContact());
+        form.querySelector('#post-cf-cancel').addEventListener('click', () => this._closeContactForm());
+        const nameInput = form.querySelector('.post-cf-input[data-key="name"]');
+        if (nameInput) { nameInput.focus(); nameInput.select(); }
+    },
+
+    async _saveContact() {
+        const form = document.getElementById('post-contact-form');
+        const msg = form.querySelector('#post-cf-msg');
+        const payload = {};
+        form.querySelectorAll('.post-cf-input').forEach(inp => { payload[inp.dataset.key] = inp.value.trim(); });
+        if (!payload.name) { msg.textContent = 'Give the contact a name.'; return; }
+        const save = form.querySelector('#post-cf-save');
+        save.disabled = true; msg.textContent = 'Saving…';
+        try {
+            const r = await API.createContact(payload);
+            const contact = r && r.contact;
+            if (contact) {
+                this._contacts.push(contact);
+                if (this._addForToken) this._mentionBindings[this._addForToken] = contact.id;
+            }
+            this._closeContactForm();
+            this._toast('success', 'Contact saved');
+        } catch (err) {
+            save.disabled = false;
+            msg.textContent = 'Save failed: ' + (err.message || err);
+        }
+    },
+
+    _closeContactForm() {
+        const form = document.getElementById('post-contact-form');
+        if (form) { form.hidden = true; form.innerHTML = ''; }
+        this._addForToken = null;
+        this._syncMentions();
+    },
+
+    _collectMentions() {
+        return this._mentionTokens(document.getElementById('post-body').value)
+            .filter(t => this._mentionBindings[t])
+            .map(t => ({ token: t, contact_id: this._mentionBindings[t] }));
     },
 
     _addFiles(fileList) {
@@ -226,6 +388,8 @@ window.Posts = {
             const fd = new FormData();
             fd.append('body', body);
             fd.append('rating', rating);
+            const mentions = this._collectMentions();
+            if (mentions.length) fd.append('mentions', JSON.stringify(mentions));
             this._pendingFiles.forEach(f => fd.append('files', f));
             const { post_id } = await API.createPost(fd);
 
@@ -244,6 +408,9 @@ window.Posts = {
             // Reset the composer, keep platform selection.
             document.getElementById('post-body').value = '';
             document.getElementById('post-count').textContent = `0/${this._SOFT_LIMIT}`;
+            this._mentionBindings = {};
+            this._closeContactForm();
+            this._syncMentions();
             this._clearFiles();
             await this._loadFeed();
         } catch (err) {

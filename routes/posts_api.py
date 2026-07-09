@@ -11,6 +11,8 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
+import json
+
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import FileResponse
 
@@ -67,6 +69,59 @@ def get_post_image(post_id: int = Query(...), idx: int = Query(0, ge=0)):
     return FileResponse(str(p))
 
 
+# ── Handle-book (contacts) ─────────────────────────────────────────
+# Defined BEFORE the "/{post_id}" routes so "/contacts" isn't captured as a
+# post id. A contact carries a person's per-platform @handle so the composer can
+# tag them with one alias and the publisher expands it per network.
+
+_CONTACT_KEYS = ("name", "handle_bsky", "handle_tw", "handle_mast", "handle_thr", "handle_tum")
+
+
+@posts_router.get("/contacts")
+def list_contacts():
+    conn = get_connection()
+    try:
+        return {"contacts": posts_queries.list_contacts(conn)}
+    finally:
+        conn.close()
+
+
+@posts_router.post("/contacts")
+def create_contact(payload: dict):
+    fields = {k: str(payload.get(k, "") or "") for k in _CONTACT_KEYS}
+    if not fields["name"].strip():
+        raise HTTPException(400, "A contact needs a name")
+    conn = get_connection()
+    try:
+        cid = posts_queries.add_contact(conn, **fields)
+        return {"contact": posts_queries.get_contact(conn, cid)}
+    finally:
+        conn.close()
+
+
+@posts_router.patch("/contacts/{contact_id}")
+def update_contact(contact_id: int, payload: dict):
+    fields = {k: str(payload[k]) for k in _CONTACT_KEYS if k in payload}
+    conn = get_connection()
+    try:
+        if not posts_queries.get_contact(conn, contact_id):
+            raise HTTPException(404, "Contact not found")
+        posts_queries.update_contact(conn, contact_id, **fields)
+        return {"contact": posts_queries.get_contact(conn, contact_id)}
+    finally:
+        conn.close()
+
+
+@posts_router.delete("/contacts/{contact_id}")
+def delete_contact(contact_id: int):
+    conn = get_connection()
+    try:
+        posts_queries.delete_contact(conn, contact_id)
+        return {"status": "deleted"}
+    finally:
+        conn.close()
+
+
 @posts_router.get("/{post_id}")
 def get_post(post_id: int):
     conn = get_connection()
@@ -85,6 +140,7 @@ async def create_post(
     body: str = Form(""),
     rating: str = Form("general"),
     image_alt: str = Form(""),
+    mentions: str = Form(""),   # JSON [{token, contact_id}] — @alias → contact bindings
     files: list[UploadFile] | None = File(None),
     file: UploadFile | None = File(None),   # legacy single-image field, still accepted
 ):
@@ -92,7 +148,9 @@ async def create_post(
 
     Accepts the `files` multi-field (current frontend) or a single legacy `file`.
     The first image is also mirrored into the legacy image_path/image_alt columns
-    so the feed thumbnail and /image?post_id= (idx 0) keep working unchanged."""
+    so the feed thumbnail and /image?post_id= (idx 0) keep working unchanged.
+    `mentions` binds @alias tokens in the body to handle-book contacts so the
+    publisher can expand each alias into the right per-platform handle."""
     body = (body or "").strip()
     rating = rating if rating in _ALLOWED_RATINGS else "general"
     uploads = [f for f in ((files or []) + ([file] if file else [])) if f is not None]
@@ -104,6 +162,16 @@ async def create_post(
     try:
         post_id = posts_queries.create_post(
             conn, body=body, rating=rating, image_alt=image_alt, now=_now())
+        bindings = []
+        if mentions:
+            try:
+                parsed = json.loads(mentions)
+                if isinstance(parsed, list):
+                    bindings = parsed
+            except (ValueError, TypeError):
+                bindings = []   # malformed → just skip tagging, don't fail the post
+        if bindings:
+            posts_queries.set_post_mentions(conn, post_id, bindings)
     finally:
         conn.close()
 

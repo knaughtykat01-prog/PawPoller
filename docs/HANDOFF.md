@@ -1,7 +1,24 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-09
-**Current version:** 2.60.0 — **Artwork: "possible matches" banner nudges the obvious unifies.**
+**Current version:** 2.61.0 — **Posts: cross-platform @mentions (handle-book) + Bluesky #tag/@ facets.**
+Tagging people now works across networks and Bluesky hashtags finally link. Problem: a person's handle differs
+per platform (`@name.bsky.social`/`@xname`/`@user@instance`/`@threadsname`) so one shared post can't share a
+literal `@handle`; and Bluesky needs explicit **rich-text facets** (X/Mastodon/Threads auto-link), so `#tag`/`@`
+were dead plain text there. Fix — an **alias + handle-book**: tag with `@luna`, bind it once to a **contact**
+holding that person's per-platform handles; the publisher expands the alias to the right handle per network at
+send time. New `post_contacts` (name + `handle_bsky/tw/mast/thr/tum`) + `post_mentions` (`post_id, token,
+contact_id`) tables (auto-created); contacts CRUD API (`/api/posts/contacts`, declared before `/{post_id}`);
+`POST /api/posts` takes a `mentions` JSON field. `post_publisher._render_body` does whole-token per-platform
+substitution (no handle → left plain); `BskyClient` builds facets — `#hashtags` on **every** post (the dead-tag
+fix) + `@mentions` via `resolve_handle`→DID (`_build_facets`/`_build_mention_facets`/`_extract_tag_facets`),
+dropping overlapping ranges. Composer: a **Tag** panel binds each `@alias` to a contact or an inline add-contact
+form; contacts load once per render, degrade gracefully. Files: `database/posts_schema.sql`+`posts_queries.py`,
+`routes/posts_api.py`, `posting/post_publisher.py`, `clients/bsky/client.py`, `frontend/js/posts.js`+`api.js`+
+`css/posts.css`, `tests/test_posts.py`. Live DID resolution / a real faceted skeet is user-side (fires a real
+post). **319 tests green. Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.60.0 — Artwork: "possible matches" banner nudges the obvious unifies.**
 Follow-up to 2.59.0. The Artwork gallery surfaces a dismissible **Possible matches** banner proposing likely
 same-piece merges, reusing the existing title-similarity engine (`GET /api/links/suggestions` →
 `auto_suggest_links`, Jaccard ≥ 0.6, already excludes linked pairs) — **no backend change**.

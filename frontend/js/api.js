@@ -688,6 +688,23 @@ const API = {
     },
     postImageUrl(id) { return `/api/posts/image?post_id=${encodeURIComponent(id)}`; },
 
+    /* Handle-book (contacts) for @mentions — a person's per-platform handles. */
+    getContacts() { return this.get('/api/posts/contacts'); },
+    createContact(body) { return this.post('/api/posts/contacts', body); },
+    updateContact(id, body) {
+        return fetch(`/api/posts/contacts/${id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }).then(async r => {
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(j.detail || `Update failed: ${r.status}`);
+            return j;
+        });
+    },
+    deleteContact(id) {
+        return fetch(`/api/posts/contacts/${id}`, { method: 'DELETE' })
+            .then(r => { if (!r.ok) throw new Error(`Delete failed: ${r.status}`); return r.json(); });
+    },
+
     /* FormData upload with optional progress (XHR — fetch lacks upload progress). */
     _upload(path, formData, onProgress) {
         return new Promise((resolve, reject) => {

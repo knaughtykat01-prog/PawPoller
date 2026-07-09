@@ -633,6 +633,7 @@ class BskyClient:
         image_paths: list[str] | None = None,
         image_alts: list[str] | None = None,
         labels: list[str] | None = None,
+        mention_handles: list[str] | None = None,
     ) -> dict | None:
         """Create a new Bluesky post.
 
@@ -644,6 +645,9 @@ class BskyClient:
                 image_path when given.
             image_alts: Per-image alt text, index-aligned to image_paths.
             labels: Content labels (e.g. ["sexual", "nudity"]).
+            mention_handles: Bluesky handles (e.g. ["name.bsky.social"]) present
+                in ``text`` as ``@handle`` that should become clickable mention
+                facets. Each is resolved to a DID; unresolvable ones are skipped.
 
         Returns:
             Dict with 'uri' and 'cid' on success, None on failure.
@@ -661,8 +665,10 @@ class BskyClient:
             "createdAt": now,
         }
 
-        # Detect links and create facets
-        facets = self._extract_link_facets(text)
+        # Rich-text facets: links + #hashtags + @mentions. Bluesky (unlike
+        # X/Mastodon) does NOT auto-link these — without facets a #tag/@handle is
+        # dead plain text — so we build them explicitly with UTF-8 byte offsets.
+        facets = await self._build_facets(text, mention_handles)
         if facets:
             record["facets"] = facets
 
@@ -736,13 +742,71 @@ class BskyClient:
             return True
         return False
 
+    async def resolve_handle(self, handle: str) -> str | None:
+        """Resolve a Bluesky handle to its DID (needed to build a mention facet)."""
+        handle = (handle or "").lstrip("@").strip()
+        if not handle:
+            return None
+        data = await self._get_json(
+            f"{_API_BASE}/com.atproto.identity.resolveHandle", params={"handle": handle})
+        if isinstance(data, dict) and data.get("did"):
+            return data["did"]
+        logger.warning("BSKY: could not resolve handle @%s for a mention facet", handle)
+        return None
+
+    async def _build_facets(self, text: str,
+                            mention_handles: list[str] | None = None) -> list[dict]:
+        """Assemble link + mention + hashtag facets, non-overlapping, byte-sorted.
+
+        Links and mentions are laid down first; a hashtag facet is dropped if it
+        would overlap one (e.g. a ``#anchor`` inside a URL) since AT Protocol
+        rejects overlapping facet ranges.
+        """
+        facets = list(self._extract_link_facets(text))
+        if mention_handles:
+            facets += await self._build_mention_facets(text, mention_handles)
+        occupied = [(f["index"]["byteStart"], f["index"]["byteEnd"]) for f in facets]
+        for tf in self._extract_tag_facets(text):
+            s, e = tf["index"]["byteStart"], tf["index"]["byteEnd"]
+            if any(not (e <= os or s >= oe) for os, oe in occupied):
+                continue
+            facets.append(tf)
+        facets.sort(key=lambda f: f["index"]["byteStart"])
+        return facets
+
+    async def _build_mention_facets(self, text: str, handles: list[str]) -> list[dict]:
+        """Facets for each ``@handle`` in text whose handle resolves to a DID."""
+        facets: list[dict] = []
+        seen: set[str] = set()
+        for h in handles:
+            h = (h or "").lstrip("@").strip()
+            if not h or h in seen:
+                continue
+            seen.add(h)
+            did = await self.resolve_handle(h)
+            if not did:
+                continue
+            needle = "@" + h
+            start = 0
+            while True:
+                idx = text.find(needle, start)
+                if idx < 0:
+                    break
+                start_bytes = len(text[:idx].encode("utf-8"))
+                end_bytes = start_bytes + len(needle.encode("utf-8"))
+                facets.append({
+                    "index": {"byteStart": start_bytes, "byteEnd": end_bytes},
+                    "features": [{"$type": "app.bsky.richtext.facet#mention", "did": did}],
+                })
+                start = idx + len(needle)
+        return facets
+
     @staticmethod
     def _extract_link_facets(text: str) -> list[dict]:
         """Extract URL facets from post text for AT Protocol rich text."""
         import re as _re
         url_pattern = _re.compile(r'https?://\S+')
         facets = []
-        text_bytes = text.encode("utf-8")
         for m in url_pattern.finditer(text):
             url = m.group(0)
             # Calculate byte offsets
@@ -751,5 +815,26 @@ class BskyClient:
             facets.append({
                 "index": {"byteStart": start_bytes, "byteEnd": end_bytes},
                 "features": [{"$type": "app.bsky.richtext.facet#link", "uri": url}],
+            })
+        return facets
+
+    @staticmethod
+    def _extract_tag_facets(text: str) -> list[dict]:
+        """Extract #hashtag facets. A tag starts with a letter (so ``#1`` and a
+        bare ``#`` are ignored) and runs to the next whitespace/#; the facet's
+        ``tag`` value excludes the leading ``#``."""
+        import re as _re
+        facets = []
+        for m in _re.finditer(r'#([A-Za-z][^\s#]*)', text):
+            tag_text = m.group(0)      # includes '#'
+            tag = m.group(1).rstrip('.,!?;:)\'"')   # trim trailing punctuation
+            if not tag:
+                continue
+            start = m.start()
+            start_bytes = len(text[:start].encode("utf-8"))
+            end_bytes = start_bytes + len(("#" + tag).encode("utf-8"))
+            facets.append({
+                "index": {"byteStart": start_bytes, "byteEnd": end_bytes},
+                "features": [{"$type": "app.bsky.richtext.facet#tag", "tag": tag}],
             })
         return facets

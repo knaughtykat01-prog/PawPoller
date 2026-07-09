@@ -12,6 +12,7 @@ and X are recognised but return a clear "not wired yet" error until Phase 3.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -36,6 +37,28 @@ _SENSITIVE_RATINGS = ("mature", "adult")
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _render_body(body: str, mentions: list[dict], platform: str) -> str:
+    """Expand each bound @alias in the body into this platform's handle.
+
+    ``mentions`` are the post's bindings (from ``get_post_mentions``), each a
+    dict with a ``token`` (the alias, no @) and per-platform ``handle_*`` fields.
+    A binding with no handle for this platform (or a deleted contact) is left as
+    the plain ``@alias`` text — so nothing is dropped, it just isn't linked there.
+    Substitution is whole-token (``@luna`` won't touch ``@lunar``).
+    """
+    field = "handle_" + platform
+    out = body or ""
+    for m in (mentions or []):
+        token = (m.get("token") or "").strip()
+        if not token:
+            continue
+        handle = (m.get(field) or "").strip().lstrip("@")
+        if not handle:
+            continue
+        out = re.sub(r"@" + re.escape(token) + r"\b", "@" + handle, out)
+    return out
 
 
 def _resolve_creds(platform: str, account_id: int | None,
@@ -70,6 +93,8 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
         return result
 
     body = post.get("body", "")
+    mentions = post.get("mentions") or []
+    text = _render_body(body, mentions, platform)   # @alias → this platform's handle
     rating = (post.get("rating") or "general").lower()
     media = post.get("media") or []
     if not media and post.get("image_path"):        # legacy-shaped post dict
@@ -94,10 +119,17 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
                 result["error"] = "Bluesky account isn't connected"
                 return result
             client = BskyClient(identifier=ident, app_password=pw)
+            # Bluesky needs explicit rich-text facets to link #tags and @mentions
+            # (unlike X/Mastodon, which auto-link server-side). Pass the bound
+            # contacts' Bluesky handles so the client resolves each to a DID and
+            # builds a mention facet at its position in the rendered text.
+            bsky_mentions = [(m.get("handle_bsky") or "").strip()
+                             for m in mentions if (m.get("handle_bsky") or "").strip()]
             try:
                 r = await client.create_post(
-                    body, image_paths=image_paths, image_alts=image_alts,
+                    text, image_paths=image_paths, image_alts=image_alts,
                     labels=_BSKY_LABELS.get(rating) or None,
+                    mention_handles=bsky_mentions or None,
                 )
             finally:
                 await client.close()
@@ -117,7 +149,7 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
             client = MastClient(instance_url=instance, access_token=token)
             try:
                 r = await client.create_status(
-                    body, image_paths=image_paths, image_alts=image_alts,
+                    text, image_paths=image_paths, image_alts=image_alts,
                     sensitive=(rating in _SENSITIVE_RATINGS),
                     idempotency_key=f"pp-{post.get('post_id')}-mast",
                 )
@@ -138,7 +170,7 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
                 return result
             client = ThrClient(access_token=token, user_id=creds.get("thr_user_id", ""))
             try:
-                r = await client.create_thread(body)
+                r = await client.create_thread(text)
             finally:
                 await client.close()
             if r and r.get("id"):
@@ -165,7 +197,7 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
                                             "(check logs)")
                         return result
                     media_ids.append(mid)
-                r = await client.create_tweet(body, media_ids=media_ids or None)
+                r = await client.create_tweet(text, media_ids=media_ids or None)
             finally:
                 await client.close()
             if r and r.get("id"):
@@ -188,7 +220,7 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
             client = TumClient(api_key=key, blog=blog, consumer_secret=cs,
                                oauth_token=ot, oauth_token_secret=ots)
             try:
-                r = await client.create_text_post(body)
+                r = await client.create_text_post(text)
             finally:
                 await client.close()
             if r and r.get("id"):

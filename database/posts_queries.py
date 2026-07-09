@@ -58,6 +58,7 @@ def get_post(conn: sqlite3.Connection, post_id: int) -> dict | None:
         return None
     post = dict(row)
     post["media"] = _media_or_legacy(post, get_post_media(conn, post_id))
+    post["mentions"] = get_post_mentions(conn, post_id)
     return post
 
 
@@ -109,8 +110,99 @@ def list_posts(conn: sqlite3.Connection, limit: int = 100) -> list[dict]:
 def delete_post(conn: sqlite3.Connection, post_id: int) -> None:
     conn.execute("DELETE FROM post_publications WHERE post_id = ?", (post_id,))
     conn.execute("DELETE FROM post_media WHERE post_id = ?", (post_id,))
+    conn.execute("DELETE FROM post_mentions WHERE post_id = ?", (post_id,))
     conn.execute("DELETE FROM posts WHERE post_id = ?", (post_id,))
     conn.commit()
+
+
+# ── handle-book (contacts) + post mentions ─────────────────────────
+# A "contact" is a person you tag, carrying their handle on each platform.
+# A post's mentions bind the @alias tokens in its body to contacts, so the
+# publisher can expand each alias into the right per-platform handle.
+
+_CONTACT_FIELDS = ("name", "handle_bsky", "handle_tw", "handle_mast", "handle_thr", "handle_tum")
+
+
+def _clean_handle(v: str) -> str:
+    """Store handles without a leading @ (the publisher re-adds it)."""
+    return (v or "").strip().lstrip("@").strip()
+
+
+def list_contacts(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute(
+        "SELECT * FROM post_contacts ORDER BY name COLLATE NOCASE, id"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_contact(conn: sqlite3.Connection, contact_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM post_contacts WHERE id = ?", (contact_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def add_contact(conn: sqlite3.Connection, *, name: str, handle_bsky: str = "",
+                handle_tw: str = "", handle_mast: str = "", handle_thr: str = "",
+                handle_tum: str = "") -> int:
+    cur = conn.execute(
+        "INSERT INTO post_contacts (name, handle_bsky, handle_tw, handle_mast, handle_thr, handle_tum) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (name.strip(), _clean_handle(handle_bsky), _clean_handle(handle_tw),
+         _clean_handle(handle_mast), _clean_handle(handle_thr), _clean_handle(handle_tum)),
+    )
+    conn.commit()
+    return int(cur.lastrowid)
+
+
+def update_contact(conn: sqlite3.Connection, contact_id: int, **fields) -> None:
+    sets, vals = [], []
+    for k, v in fields.items():
+        if k not in _CONTACT_FIELDS:
+            continue
+        sets.append(f"{k} = ?")
+        vals.append(v.strip() if k == "name" else _clean_handle(v))
+    if not sets:
+        return
+    vals.append(contact_id)
+    conn.execute(f"UPDATE post_contacts SET {', '.join(sets)} WHERE id = ?", vals)
+    conn.commit()
+
+
+def delete_contact(conn: sqlite3.Connection, contact_id: int) -> None:
+    conn.execute("DELETE FROM post_contacts WHERE id = ?", (contact_id,))
+    # Drop any bindings that referenced it; those @tokens revert to plain text.
+    conn.execute("DELETE FROM post_mentions WHERE contact_id = ?", (contact_id,))
+    conn.commit()
+
+
+def set_post_mentions(conn: sqlite3.Connection, post_id: int,
+                      bindings: list[dict]) -> None:
+    """Replace a post's alias→contact bindings. Each binding: {token, contact_id}."""
+    conn.execute("DELETE FROM post_mentions WHERE post_id = ?", (post_id,))
+    seen = set()
+    for b in bindings or []:
+        token = (b.get("token") or "").strip().lstrip("@")
+        cid = int(b.get("contact_id") or 0)
+        if not token or not cid or token in seen:
+            continue
+        seen.add(token)
+        conn.execute(
+            "INSERT OR REPLACE INTO post_mentions (post_id, token, contact_id) VALUES (?, ?, ?)",
+            (post_id, token, cid),
+        )
+    conn.commit()
+
+
+def get_post_mentions(conn: sqlite3.Connection, post_id: int) -> list[dict]:
+    """A post's bindings joined to their contact handles (LEFT JOIN so a deleted
+    contact yields no handles → the alias stays plain text at publish)."""
+    rows = conn.execute(
+        "SELECT m.token, m.contact_id, c.name, "
+        "       c.handle_bsky, c.handle_tw, c.handle_mast, c.handle_thr, c.handle_tum "
+        "FROM post_mentions m LEFT JOIN post_contacts c ON c.id = m.contact_id "
+        "WHERE m.post_id = ? ORDER BY m.id",
+        (post_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 # ── post_publications ──────────────────────────────────────────────

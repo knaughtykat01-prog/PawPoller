@@ -132,6 +132,69 @@
     flex-wrap: wrap;
 }
 
+/* ── @mention binding panel + add-contact form ── */
+.post-mentions {
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+    padding: .55rem .7rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-sm);
+}
+.post-mentions[hidden] { display: none; }
+.post-mentions-head { font-size: 13px; font-weight: 600; }
+.post-mentions-head .muted { font-weight: 400; }
+.post-mention-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+.post-mention-alias {
+    font-weight: 600;
+    color: var(--accent);
+    min-width: 3.5rem;
+}
+.post-mention-select {
+    padding: .25rem .4rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 13px;
+}
+.post-mention-hint { font-size: 12px; }
+
+.post-contact-form {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    padding: .7rem .8rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+}
+.post-contact-form[hidden] { display: none; }
+.post-cf-head { font-size: 13px; }
+.post-cf-field {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.post-cf-input {
+    padding: .4rem .5rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 14px;
+}
+.post-cf-actions { display: flex; align-items: center; gap: .5rem; margin-top: .2rem; flex-wrap: wrap; }
+
 /* ── Feed ── */
 .posts-feed-heading {
     margin: 1.6rem 0 .8rem;

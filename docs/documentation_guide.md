@@ -5722,3 +5722,50 @@ toot/skeet/tweet/thread/tumbl landing — those are user-side dashboard tests (a
 would create real posts). Fragility to watch: X's CreateTweet query id/features
 rotate; Threads needs the publish permission; Tumblr/Mastodon need the right
 token scope.
+
+### 21.6 @mentions across platforms — the handle-book (2.61.0)
+
+The problem: the same person's handle **differs per network**
+(`@name.bsky.social` vs `@xname` vs `@user@instance` vs `@threadsname`), so
+"compose once, publish to all" can't share a literal `@handle`. And Bluesky —
+unlike X/Mastodon/Threads, which auto-link server-side — needs explicit
+**rich-text facets** or a `#tag`/`@handle` is dead plain text.
+
+Model: you tag with a short **alias** (`@luna`) and bind it once to a
+**contact** carrying that person's per-platform handles; the publisher expands
+the alias into the right handle per network at send time.
+
+- **Store** — `post_contacts` (name + `handle_bsky/tw/mast/thr/tum`, handles
+  saved without a leading `@`) is the reusable handle-book; `post_mentions`
+  (`post_id, token, contact_id`, `UNIQUE(post_id, token)`) binds a post's alias
+  tokens to contacts. Both auto-create via `posts_schema.sql`. Queries in
+  `posts_queries.py` (`add/list/get/update/delete_contact`, `set_post_mentions`,
+  `get_post_mentions` — a LEFT JOIN so a deleted contact leaves the alias as
+  plain text). `get_post` attaches `post["mentions"]`; `delete_post` clears them.
+- **API** — `posts_api.py`: `GET/POST /api/posts/contacts`,
+  `PATCH/DELETE /api/posts/contacts/{id}` (defined **before** the `/{post_id}`
+  routes so `/contacts` isn't parsed as a post id). `POST /api/posts` gained a
+  `mentions` form field (JSON `[{token, contact_id}]`; malformed → skipped, never
+  fails the post).
+- **Render + facets** — `post_publisher._render_body(body, mentions, platform)`
+  substitutes each bound `@alias` for that platform's handle (whole-token, so
+  `@luna` ≠ `@lunar`; no handle for the platform → left as plain text). For
+  Bluesky the publisher passes the bound contacts' Bluesky handles as
+  `mention_handles` to `BskyClient.create_post`, which now builds facets via
+  `_build_facets` = links (`_extract_link_facets`) + **`#hashtags`**
+  (`_extract_tag_facets`, applies to *every* Bluesky post — fixes the long-
+  standing dead-tag bug) + **`@mentions`** (`_build_mention_facets` →
+  `resolve_handle` per handle → DID). Overlapping ranges are dropped (a `#anchor`
+  inside a URL) and facets are byte-sorted. X/Mastodon/Threads just receive the
+  substituted text and auto-link it.
+- **Composer** — `posts.js` scans the body for `@\w+` aliases and shows a
+  **Tag** panel: a `<select>` per alias binds it to a contact (auto-selected when
+  a contact's name equals the alias) or opens an inline **add-contact** form
+  (name + the five handle fields). Bindings ride along in the `mentions` form
+  field. Contacts load once per render (`API.getContacts`); tagging is additive —
+  if the contacts fetch fails the composer still works, aliases just stay plain.
+- **Tests** (`tests/test_posts.py`): `_render_body` per-platform expansion +
+  whole-token/unbound safety, `_extract_tag_facets` (byte offsets, `#1` rejected,
+  trailing-punct trim), the contacts↔mentions round-trip + cascade deletes.
+  **Not** unit-tested (network): live DID resolution / a real faceted skeet — a
+  user-side dashboard test.
