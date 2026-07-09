@@ -1660,9 +1660,9 @@ window.PublishCheck = (function () {
                     _escape(item.action) + ' — ' + when +
                     ' <span class="schedule-pending-status">(' + _escape(item.status) + ')</span>';
                 // Backend's cancel_queue_item (v2.20.3+) accepts
-                // pending/retrying/processing/failed — surface Cancel
-                // for every status the backend can actually act on.
-                const cancellableStatuses = ['pending', 'retrying', 'processing', 'failed'];
+                // pending/processing/failed — surface Cancel for every
+                // status the backend can actually act on.
+                const cancellableStatuses = ['pending', 'processing', 'failed'];
                 if (cancellableStatuses.includes(item.status)) {
                     html += ' <button class="btn btn-xs btn-outline schedule-cancel-btn" ' +
                         'data-queue-id="' + item.queue_id + '">Cancel</button>';

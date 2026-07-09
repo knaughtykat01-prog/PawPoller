@@ -1846,7 +1846,7 @@ a.stat-card:hover {
 
 /* Change-detection badges */
 .change-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: var(--radius-pill); cursor: help; font-weight: 500; }
-.change-stale { background: rgba(241,196,15,0.18); color: #f1c40f; border: 1px solid rgba(241,196,15,0.4); }
+.change-drift { background: rgba(241,196,15,0.18); color: #f1c40f; border: 1px solid rgba(241,196,15,0.4); }
 .change-missing { background: rgba(231,76,60,0.12); color: var(--danger); }
 .change-unknown { background: rgba(149,165,166,0.15); color: var(--text-muted); }
 

@@ -313,7 +313,7 @@ const Posting = {
                     // default.
                     let changeBadge = '';
                     if (p.change_status === 'changed') {
-                        changeBadge = `<span class="change-badge change-stale" title="Local file has changed since last upload — push an update">⚠ stale</span>`;
+                        changeBadge = `<span class="change-badge change-drift" title="Local file has drifted from the last upload — push an update">⚠ drifted</span>`;
                     } else if (p.change_status === 'file_missing') {
                         changeBadge = `<span class="change-badge change-missing" title="Local format file is missing — can't compare">? missing</span>`;
                     } else if (p.change_status === 'no_hash') {
@@ -357,14 +357,14 @@ const Posting = {
             }
 
             // Smarter "Update All" label: when change detection knows some
-            // publications are stale, surface the count so the button
-            // communicates intent ("Update Stale (3)") rather than hiding
-            // the count behind a generic label.
-            const staleCount = pubs.filter(p => p.change_detected).length;
-            const updateAllLabel = staleCount > 0
-                ? `Update Stale (${staleCount})`
+            // publications have drifted (local file changed since upload),
+            // surface the count so the button communicates intent
+            // ("Update Drifted (3)") rather than hiding it behind a generic label.
+            const driftedCount = pubs.filter(p => p.change_detected).length;
+            const updateAllLabel = driftedCount > 0
+                ? `Update Drifted (${driftedCount})`
                 : 'Update All';
-            const updateAllClass = staleCount > 0
+            const updateAllClass = driftedCount > 0
                 ? 'btn btn-sm btn-primary'
                 : 'btn btn-sm btn-secondary';
 

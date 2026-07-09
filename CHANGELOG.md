@@ -4,6 +4,27 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.55.1] - 2026-07-09 - Cleanup: unify "drift" wording + drop the dead `retrying` queue status
+
+Two small cleanups the UI-redesign design-rationale review surfaced (§4 Q3, §7 Q8):
+
+- **Unified "stale" → "drift".** The same hash-mismatch signal (local file changed since it was posted) was labelled
+  "⚠ stale" / "Update Stale (N)" on the Story-detail Platforms card but "drift"/`posted_drifted` in the publish-check
+  matrix — and "stale" *also* means a different thing there (`posted_stale` = validation now fails). The Story-detail
+  card now says "⚠ drifted" / "Update Drifted (N)", matching the matrix and freeing "stale" to mean only
+  validation-failure. Renamed the `change-stale` CSS class → `change-drift` and the JS `staleCount` → `driftedCount`.
+  `frontend/js/posting.js`, `frontend/css/components.css`.
+- **Dropped the dead `retrying` status.** `posting_queue.retrying` was listed in the two cancel-eligibility filters
+  but was **never written** — the retry path enqueues a fresh `pending` row rather than mutating the old one. Removed
+  it from `cancel_queue_item` / `cancel_all_for` and the frontend `cancellableStatuses` array (no schema/CHECK
+  constraint referenced it, so no migration). `database/posting_queries.py`, `frontend/js/publish_check.js`,
+  `docs/documentation_guide.md`.
+
+No behaviour change (the removed status never occurred; the rename is display-only). 312 tests green. **Needs a
+server deploy** (+ hard-refresh for the new JS/CSS).
+
+---
+
 ## [2.55.0] - 2026-07-08 - Live-publish safety guard on the quick-path posting endpoints
 
 The Story-detail **quick path** ("Upload to {platform}", per-pub "Update", "Update All") reaches `POST

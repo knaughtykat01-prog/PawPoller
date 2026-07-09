@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-08
-**Current version:** 2.55.0 — **Live-publish safety guard on the quick-path posting endpoints.**
+**Last updated:** 2026-07-09
+**Current version:** 2.55.1 — **Cleanup: unify "drift" wording + drop the dead `retrying` queue status.**
+Two design-rationale-review cleanups (§4 Q3, §7 Q8). (1) The Story-detail Platforms card's hash-mismatch badge now
+reads "⚠ drifted" / "Update Drifted (N)" (was "stale") to match the publish-check matrix's `posted_drifted` and stop
+colliding with its `posted_stale` (=validation-fails); `change-stale` CSS→`change-drift`, `staleCount`→`driftedCount`.
+(2) Removed `posting_queue.retrying` — it was in the cancel filters but never written (retries enqueue a fresh
+`pending` row); no schema CHECK referenced it, so no migration. No behaviour change. `frontend/js/posting.js` +
+`components.css`, `database/posting_queries.py`, `frontend/js/publish_check.js`, `docs/documentation_guide.md`. 312
+tests green. **Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.55.0 — Live-publish safety guard on the quick-path posting endpoints.**
 The Story-detail quick path ("Upload to {platform}" / "Update" / "Update All") hit `POST /api/posting/post` +
 `/api/posting/update`, which fire live public posts, yet had **no server-side guard** — only a frontend `confirm()`.
 Added the same guard the editor's matrix uses: both endpoints now 400 unless `confirm_live=true`. The three

@@ -3802,7 +3802,7 @@ The `posting_queue` table holds pending uploads and updates. Items can be:
 **Status enum** (`posting_queue.status`): `pending` → `processing` →
 {`completed` | `failed` | `cancelled`}. The `cancelled` terminal state
 was hardened in v2.20.3: `cancel_queue_item` accepts rows in
-pending/retrying/processing/failed (not just pending), and every
+pending/processing/failed (not just pending), and every
 `UPDATE` in `update_queue_status` carries `AND status != 'cancelled'`
 so the scheduler's failure path can no longer overwrite a cancellation
 back to pending mid-flight.
@@ -4480,7 +4480,7 @@ single (story, chapter, platform) row, never the upstream.
   under the action panel got two fixes in 2.21.0:
   - Per-row Cancel button was hidden client-side for non-`pending`
     rows; backend `cancel_queue_item` has handled
-    pending/retrying/processing/failed since 2.20.3, so the gate was
+    pending/processing/failed since 2.20.3, so the gate was
     widened.
   - When the cell has >1 scheduled item, the header gets a
     "Cancel all (N)" button calling

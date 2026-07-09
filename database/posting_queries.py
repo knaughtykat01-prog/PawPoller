@@ -369,15 +369,16 @@ def update_queue_status(
 def cancel_queue_item(conn: sqlite3.Connection, queue_id: int) -> bool:
     """Cancel a queue item if it's in a cancellable state.
 
-    Cancellable: pending, retrying, failed (rare manual cleanup after
-    a giving-up event). 'processing' rows are mid-flight in the
-    scheduler — cancel marks them, and the scheduler treats
-    'cancelled' as a terminal state when it completes the in-flight
-    work, so the next retry won't fire.
+    Cancellable: pending, failed (rare manual cleanup after a giving-up
+    event). 'processing' rows are mid-flight in the scheduler — cancel
+    marks them, and the scheduler treats 'cancelled' as a terminal state
+    when it completes the in-flight work, so the next retry won't fire.
+    ('retrying' was never actually written — retries enqueue a fresh
+    'pending' row — so it's dropped from the cancellable set.)
     """
     cursor = conn.execute(
         "UPDATE posting_queue SET status = 'cancelled' "
-        "WHERE queue_id = ? AND status IN ('pending', 'retrying', 'processing', 'failed')",
+        "WHERE queue_id = ? AND status IN ('pending', 'processing', 'failed')",
         (queue_id,),
     )
     conn.commit()
@@ -399,7 +400,7 @@ def cancel_all_for(conn: sqlite3.Connection, *, platform: str | None = None,
     """
     sql = (
         "UPDATE posting_queue SET status = 'cancelled' "
-        "WHERE status IN ('pending', 'retrying', 'processing', 'failed')"
+        "WHERE status IN ('pending', 'processing', 'failed')"
     )
     params: list = []
     if platform is not None:
