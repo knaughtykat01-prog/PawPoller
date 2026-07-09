@@ -4,6 +4,32 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.55.2] - 2026-07-09 - Settings polish: drop the redundant Save-Milestones button + surface the dashboard-password setup
+
+Three small Settings-tab items the UI-redesign design-rationale review surfaced (§9 Q2, §10 Q3, §7 verify):
+
+- **Removed the redundant "Save Milestones" button.** The milestone thresholds are already persisted by the header
+  **Save Settings** action (`saveSettings()` writes `milestones` alongside every other field), so the standalone button
+  was a second, narrower save that only ever did a subset of what the main one does — a classic "why are there two
+  saves" confusion. Replaced it with a one-line hint pointing at Save Settings, and removed its now-dead click handler.
+  `frontend/js/app.js`.
+- **Surfaced `#/dashboard-setup`.** The password-setup flow existed as a route but had no discoverable entry point when
+  no dashboard password is set. Settings › Security › Change Password now shows an amber CTA — "No dashboard password is
+  set … Set up a password →" — linking to `#/dashboard-setup`, but only when `_dashboardAuthRequired` is false (i.e. the
+  dashboard is currently open). `frontend/js/app.js`.
+- **Verified Inkbunny doesn't dictate other platforms' login** (no code change). The §10 Q7 concern was that IB might
+  still gate other platforms' auth. Confirmed it doesn't: each platform carries its own independent
+  `{xx}Auth.has_credentials`, and the IB first-run gate (`init()`) only fires for IB-creds-but-no-data on root nav, so a
+  non-IB user is never blocked. Generalising the IB-flavoured `#/login`/`#/loading` screens is a redesign-direction item,
+  not a bug — captured in `prototype/docs/SETTINGS_REDESIGN.md` §4.
+
+Also lands the **Settings redesign spec** (`prototype/docs/SETTINGS_REDESIGN.md`) — the config-vs-runtime split
+(Settings ⟂ Operations) turned into a tab-by-tab target IA + migration notes. Design doc only, no runtime effect.
+
+Display-only + doc changes; 312 tests green. **Needs a server deploy** (+ hard-refresh for the new JS).
+
+---
+
 ## [2.55.1] - 2026-07-09 - Cleanup: unify "drift" wording + drop the dead `retrying` queue status
 
 Two small cleanups the UI-redesign design-rationale review surfaced (§4 Q3, §7 Q8):

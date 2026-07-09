@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-09
-**Current version:** 2.55.1 — **Cleanup: unify "drift" wording + drop the dead `retrying` queue status.**
+**Current version:** 2.55.2 — **Settings polish: drop the redundant Save-Milestones button + surface the dashboard-password setup.**
+Three design-rationale-review Settings items (§9 Q2, §10 Q3, §7 verify). (1) Removed the standalone **Save Milestones**
+button — milestones already persist via the header **Save Settings** (`saveSettings()` writes them alongside everything
+else), so the second save was a redundant subset; replaced with a hint + removed its dead handler. (2) Settings ›
+Security › Change Password now shows an amber **"No dashboard password is set … Set up a password →"** CTA linking
+`#/dashboard-setup`, shown only when `_dashboardAuthRequired` is false. (3) Verified **Inkbunny doesn't dictate other
+platforms' login** (no code change) — each platform has its own `has_credentials`; the IB gate only fires for
+IB-creds-but-no-data on root nav. `frontend/js/app.js`. Also lands the **Settings redesign spec**
+(`prototype/docs/SETTINGS_REDESIGN.md`, config-vs-runtime split → Settings ⟂ Operations). Display-only + docs; 312
+tests green. **Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.55.1 — Cleanup: unify "drift" wording + drop the dead `retrying` queue status.**
 Two design-rationale-review cleanups (§4 Q3, §7 Q8). (1) The Story-detail Platforms card's hash-mismatch badge now
 reads "⚠ drifted" / "Update Drifted (N)" (was "stale") to match the publish-check matrix's `posted_drifted` and stop
 colliding with its `posted_stale` (=validation-fails); `change-stale` CSS→`change-drift`, `staleCount`→`driftedCount`.

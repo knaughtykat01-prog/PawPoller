@@ -8413,10 +8413,7 @@ const App = {
                         <label style="font-size:13px;color:var(--text-muted)">Comment milestones</label>
                         <input type="text" id="pref-milestone-comments" class="search-input" value="${(prefs.milestone_comments || [10,25,50,100,250,500,1000]).join(', ')}" style="max-width:500px">
                     </div>
-                    <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
-                        <button class="btn btn-primary" id="save-milestones-btn">Save Milestones</button>
-                        <span id="milestones-msg" style="font-size:13px"></span>
-                    </div>
+                    <p style="margin-top:12px;font-size:12px;color:var(--text-muted)">Saved with <strong>Save Settings</strong> at the top of the page.</p>
                     </div>
                 </details>
 
@@ -8645,6 +8642,7 @@ const App = {
                 <details class="settings-accordion" open>
                     <summary>Change Password</summary>
                     <div class="accordion-body">
+                    ${!App._dashboardAuthRequired ? `<div style="margin-bottom:12px;padding:10px 12px;border-radius:8px;background:rgba(255,196,0,0.12);border:1px solid rgba(255,196,0,0.35);font-size:13px">No dashboard password is set — the dashboard is open to anyone who can reach it. Recommended if you host on a server. <a href="#/dashboard-setup" style="font-weight:600">Set up a password &rarr;</a></div>` : ''}
                     <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
                         <label style="font-size:13px;color:var(--text-muted)">Current Password</label>
                         <input type="password" id="sec-current-pw" class="search-input" placeholder="Current password" style="max-width:300px" autocomplete="current-password">
@@ -11349,23 +11347,6 @@ const App = {
                     }
                 });
             }
-
-            // Save Milestones
-            document.getElementById('save-milestones-btn')?.addEventListener('click', async () => {
-                const msg = document.getElementById('milestones-msg');
-                const parse = (id) => document.getElementById(id).value.split(',').map(s => parseInt(s.trim())).filter(n => n > 0).sort((a, b) => a - b);
-                try {
-                    const payload = {
-                        milestone_views: parse('pref-milestone-views'),
-                        milestone_faves: parse('pref-milestone-faves'),
-                        milestone_comments: parse('pref-milestone-comments'),
-                    };
-                    await API.savePreferences(payload);
-                    msg.textContent = 'Saved!'; msg.style.color = 'var(--success)';
-                } catch (err) {
-                    msg.textContent = 'Error: ' + err.message; msg.style.color = 'var(--danger)';
-                }
-            });
 
             // Danger zone — Uninstall PawPoller
             document.getElementById('uninstall-btn')?.addEventListener('click', () => {
