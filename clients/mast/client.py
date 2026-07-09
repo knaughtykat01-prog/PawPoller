@@ -379,7 +379,8 @@ class MastClient:
             return None
 
     async def create_status(self, text: str, *, image_path: str | None = None,
-                            image_alt: str = "", sensitive: bool = False,
+                            image_alt: str = "", image_paths: list[str] | None = None,
+                            image_alts: list[str] | None = None, sensitive: bool = False,
                             visibility: str = "public",
                             idempotency_key: str = "") -> dict | None:
         """Publish a status (a "toot"). Returns {id, uri, url} on success.
@@ -391,9 +392,13 @@ class MastClient:
             logger.error("MAST: not logged in, cannot post")
             return None
 
+        # Up to 4 images. Prefer the multi-image params, falling back to the
+        # legacy single image_path/image_alt so older callers still work.
+        paths = list(image_paths) if image_paths else ([image_path] if image_path else [])
+        alts = list(image_alts) if image_alts else ([image_alt] if image_path else [])
         media_ids: list[str] = []
-        if image_path:
-            mid = await self._upload_media(image_path, image_alt)
+        for i, pth in enumerate(paths[:4]):
+            mid = await self._upload_media(pth, alts[i] if i < len(alts) else "")
             if not mid:
                 return None   # image was requested but couldn't be attached
             media_ids.append(mid)

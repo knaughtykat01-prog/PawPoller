@@ -1,7 +1,22 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-09
-**Current version:** 2.57.3 — **Fix: Posts "Remove image" did nothing (hidden overridden by display:flex).**
+**Current version:** 2.58.0 — **Posts: X/Twitter image posting + up to 4 images per post.**
+The Posts module now posts images to **X/Twitter** and lets X/Bluesky/Mastodon carry **up to 4 images**. New
+`post_media` table (`ordinal, path, alt`, auto-created) holds the ordered set; legacy `posts.image_path` still
+mirrors the first image so the feed thumbnail + `/api/posts/image` (now with an `idx` param) keep working.
+`POST /api/posts` takes a `files` multi-field (legacy `file` still accepted); delete cleans up all files. X:
+new `TWClient.upload_media()` (simple v1.1 upload on `upload.x.com`, reusing the poller's cookie/CSRF/bearer
+session) + `create_tweet(media_ids=…)`; publisher uploads then tweets; `tw` dropped from `_TEXT_ONLY`.
+`BskyClient.create_post`/`MastClient.create_status` gained `image_paths`/`image_alts` (single path preserved).
+Compose UI takes multiple images with removable thumbs; X un-badged. Files: `database/posts_schema.sql`+
+`posts_queries.py`, `routes/posts_api.py`, `posting/post_publisher.py`, `clients/{tw,bsky,mast}/client.py`,
+`frontend/js/posts.js`+`css/posts.css`, `tests/test_posts.py`. ⚠️ **X posting is unverified in CI** (needs a
+live session + fires a real tweet) — if the media endpoint moved off `upload.x.com` it errors into the post
+result and needs a one-line domain fix. Threads/Tumblr stay text-only. 314 tests green.
+**Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.57.3 — Fix: Posts "Remove image" did nothing (hidden overridden by display:flex).**
 Same class as the 2.54.3 notif-panel bug: `.post-image-preview { display:flex }` beat the `[hidden]` attribute,
 so `_clearFile()` set `hidden=true` but the box stayed visible (and it showed before a file was even picked).
 One-line CSS fix: `.post-image-preview[hidden] { display:none }`. No JS change. `frontend/css/posts.css`.

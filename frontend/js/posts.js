@@ -8,18 +8,21 @@
  */
 window.Posts = {
 
-    /* Microblog platforms the module can post to. Bluesky + Mastodon post
-     * images too; Threads/Tumblr/X are text-only for now. */
+    /* Microblog platforms the module can post to. Bluesky, Mastodon and X post
+     * images (up to 4); Threads/Tumblr are text-only for now. */
     _PLATFORMS: ['bsky', 'mast', 'thr', 'tum', 'tw'],
     /* Ticked by default — the rest need their posting creds set up first. */
     _DEFAULT_CHECKED: ['bsky', 'mast'],
+    /* Platforms that accept image attachments (the rest keep the "text" badge). */
+    _IMAGE_PLATFORMS: ['bsky', 'mast', 'tw'],
 
     /* Bluesky caps a post at 300 graphemes; Mastodon's default is 500. Warn at
      * the tighter limit so a cross-post to Bluesky won't silently truncate. */
     _SOFT_LIMIT: 300,
+    _MAX_IMAGES: 4,       // X / Bluesky / Mastodon all cap a post at 4 images
 
-    _pendingFile: null,   // File awaiting upload
-    _previewUrl: null,    // object URL for the compose preview
+    _pendingFiles: [],    // Files awaiting upload (ordered)
+    _previewUrls: [],     // object URLs for the compose previews (index-aligned)
 
     esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
@@ -44,7 +47,8 @@ window.Posts = {
             <div class="page-header">
                 <h1>Posts</h1>
                 <p class="muted">Write a short post once and publish it to your microblog accounts
-                at once. Bluesky and Mastodon are live; Threads, Tumblr and X are coming.</p>
+                at once. Bluesky, Mastodon and X post text and images (up to 4); Threads and Tumblr
+                are text-only for now.</p>
             </div>
             <div id="post-compose"></div>
             <h2 class="posts-feed-heading">Recent posts</h2>
@@ -59,13 +63,10 @@ window.Posts = {
             <div class="card post-compose">
                 <textarea id="post-body" class="post-body" rows="4"
                     placeholder="What's happening?"></textarea>
-                <div id="post-image-preview" class="post-image-preview" hidden>
-                    <img id="post-image-img" alt="attachment preview">
-                    <button type="button" class="btn btn-sm" id="post-image-remove">Remove image</button>
-                </div>
+                <div id="post-image-preview" class="post-image-preview" hidden></div>
                 <div class="post-compose-row">
-                    <label class="btn btn-sm">📎 Image
-                        <input type="file" id="post-image" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+                    <label class="btn btn-sm">📎 Images
+                        <input type="file" id="post-image" accept="image/png,image/jpeg,image/gif,image/webp" hidden multiple>
                     </label>
                     <label class="post-inline">Rating
                         <select id="post-rating">
@@ -92,7 +93,7 @@ window.Posts = {
         el.innerHTML = this._PLATFORMS.map(code => {
             const p = this._plat(code);
             const on = this._DEFAULT_CHECKED.includes(code) ? ' checked' : '';
-            const textOnly = !['bsky', 'mast'].includes(code)
+            const textOnly = !this._IMAGE_PLATFORMS.includes(code)
                 ? ' <span class="post-plat-note" title="Text-only for now">text</span>' : '';
             return `
             <label class="post-plat" data-platform="${code}">
@@ -135,30 +136,65 @@ window.Posts = {
 
         const fileInput = document.getElementById('post-image');
         fileInput.addEventListener('change', () => {
-            if (fileInput.files && fileInput.files[0]) this._setFile(fileInput.files[0]);
+            if (fileInput.files && fileInput.files.length) this._addFiles(fileInput.files);
+            fileInput.value = '';   // let the same file be re-picked / more added
         });
-        document.getElementById('post-image-remove').addEventListener('click', () => this._clearFile());
+        document.getElementById('post-image-preview').addEventListener('click', (e) => {
+            const rm = e.target.closest('.post-thumb-remove');
+            if (rm) this._removeFileAt(parseInt(rm.dataset.idx, 10));
+        });
         document.getElementById('post-submit').addEventListener('click', () => this._submit());
     },
 
-    _setFile(file) {
-        if (!/\.(png|jpe?g|gif|webp)$/i.test(file.name)) {
-            this._toast('error', 'Please choose a PNG, JPG, GIF or WebP image.');
-            return;
+    _addFiles(fileList) {
+        for (const file of Array.from(fileList)) {
+            if (this._pendingFiles.length >= this._MAX_IMAGES) {
+                this._toast('error', `Up to ${this._MAX_IMAGES} images per post.`);
+                break;
+            }
+            if (!/\.(png|jpe?g|gif|webp)$/i.test(file.name)) {
+                this._toast('error', 'Please choose PNG, JPG, GIF or WebP images.');
+                continue;
+            }
+            this._pendingFiles.push(file);
+            this._previewUrls.push(URL.createObjectURL(file));
         }
-        this._pendingFile = file;
-        if (this._previewUrl) URL.revokeObjectURL(this._previewUrl);
-        this._previewUrl = URL.createObjectURL(file);
-        document.getElementById('post-image-img').src = this._previewUrl;
-        document.getElementById('post-image-preview').hidden = false;
+        this._renderPreviews();
     },
 
-    _clearFile() {
-        this._pendingFile = null;
-        if (this._previewUrl) { URL.revokeObjectURL(this._previewUrl); this._previewUrl = null; }
+    _renderPreviews() {
+        const box = document.getElementById('post-image-preview');
+        if (!box) return;
+        if (!this._pendingFiles.length) {
+            box.innerHTML = '';
+            box.hidden = true;
+            return;
+        }
+        box.hidden = false;
+        box.innerHTML = this._previewUrls.map((url, i) =>
+            `<figure class="post-thumb">
+                <img src="${url}" alt="attachment preview ${i + 1}">
+                <button type="button" class="post-thumb-remove" data-idx="${i}"
+                    title="Remove image" aria-label="Remove image">✕</button>
+            </figure>`).join('')
+            + `<span class="post-thumb-count muted">${this._pendingFiles.length}/${this._MAX_IMAGES}</span>`;
+    },
+
+    _removeFileAt(i) {
+        if (i < 0 || i >= this._pendingFiles.length) return;
+        URL.revokeObjectURL(this._previewUrls[i]);
+        this._pendingFiles.splice(i, 1);
+        this._previewUrls.splice(i, 1);
+        this._renderPreviews();
+    },
+
+    _clearFiles() {
+        this._previewUrls.forEach(u => URL.revokeObjectURL(u));
+        this._pendingFiles = [];
+        this._previewUrls = [];
         const fi = document.getElementById('post-image');
         if (fi) fi.value = '';
-        document.getElementById('post-image-preview').hidden = true;
+        this._renderPreviews();
     },
 
     _selectedPlatforms() {
@@ -179,7 +215,7 @@ window.Posts = {
         const rating = document.getElementById('post-rating').value;
         const platforms = this._selectedPlatforms();
 
-        if (!body && !this._pendingFile) { msg.textContent = 'Write something or attach an image.'; return; }
+        if (!body && !this._pendingFiles.length) { msg.textContent = 'Write something or attach an image.'; return; }
         if (!platforms.length) { msg.textContent = 'Pick at least one platform.'; return; }
 
         const btn = document.getElementById('post-submit');
@@ -190,7 +226,7 @@ window.Posts = {
             const fd = new FormData();
             fd.append('body', body);
             fd.append('rating', rating);
-            if (this._pendingFile) fd.append('file', this._pendingFile);
+            this._pendingFiles.forEach(f => fd.append('files', f));
             const { post_id } = await API.createPost(fd);
 
             const res = await API.publishPost(post_id, {
@@ -208,7 +244,7 @@ window.Posts = {
             // Reset the composer, keep platform selection.
             document.getElementById('post-body').value = '';
             document.getElementById('post-count').textContent = `0/${this._SOFT_LIMIT}`;
-            this._clearFile();
+            this._clearFiles();
             await this._loadFeed();
         } catch (err) {
             msg.textContent = 'Failed: ' + (err.message || err);

@@ -4,6 +4,40 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.58.0] - 2026-07-09 - Posts: X/Twitter image posting + up to 4 images per post
+
+The Posts module now posts **images to X/Twitter**, and every image-capable platform (X, Bluesky, Mastodon)
+accepts **up to 4 images** per post instead of one.
+
+**Data model.** Posts stored a single `image_path`; they now have a `post_media` table (`ordinal, path, alt`),
+auto-created on startup. `posts.image_path`/`image_alt` are kept and mirror the *first* image, so the feed
+thumbnail and `/api/posts/image?post_id=` (idx 0) keep working unchanged; `get_post`/`list_posts` attach a
+`media` list (synthesised from the legacy column for old posts). `/api/posts/image` gained an `idx` param.
+`database/posts_schema.sql`, `database/posts_queries.py`.
+
+**Upload path.** `POST /api/posts` accepts a `files` multi-field (up to 4; the legacy single `file` field still
+works); each image is stored and added as a `post_media` row. Delete cleans up every attached file.
+`routes/posts_api.py`.
+
+**X image posting.** New `TWClient.upload_media()` does X's simple v1.1 media upload on `upload.x.com` (reusing
+the exact cookie/CSRF/bearer session the poller already holds); `create_tweet()` now attaches the resulting
+`media_ids`. The publisher uploads each image then tweets, and `tw` was dropped from `_TEXT_ONLY`.
+`clients/tw/client.py`, `posting/post_publisher.py`.
+
+**Multi-image on Bluesky + Mastodon.** `BskyClient.create_post` / `MastClient.create_status` gained
+`image_paths`/`image_alts` params (loop up to 4), with the single-image `image_path` path preserved for
+backward compatibility. `clients/bsky/client.py`, `clients/mast/client.py`.
+
+**Compose UI.** The composer takes multiple images (file input `multiple`), shows a removable thumbnail per
+image with a 4-image cap, and X is no longer badged "text". `frontend/js/posts.js`, `frontend/css/posts.css`.
+
+⚠️ **X posting is unverified in CI** — it needs a live X session and fires a real public tweet, so it can't run
+in tests. Threads/Tumblr stay text-only. If X's media endpoint has moved off `upload.x.com`, the upload will
+error into the post result (a failed tweet, not a wrong one) and the domain in `TWClient.upload_media` needs a
+one-line update. 314 tests green (2 new). **Needs a server deploy** (+ hard-refresh for the new JS/CSS).
+
+---
+
 ## [2.57.3] - 2026-07-09 - Fix: Posts "Remove image" did nothing (hidden overridden by display:flex)
 
 The Posts compose "Remove image" button appeared inert, and the preview box showed even before a file was

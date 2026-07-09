@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 # Platforms this module can post to.
 SUPPORTED = ("bsky", "mast", "thr", "tw", "tum")
 
-# These post text only for now (image cross-posting needs per-platform work:
-# Threads wants a public image_url, X the chunked media-upload flow, Tumblr NPF).
-_TEXT_ONLY = ("thr", "tw", "tum")
+# These still post text only (image cross-posting needs per-platform work:
+# Threads wants a public image_url, Tumblr NPF). X gained image posting in 2.58.0.
+_TEXT_ONLY = ("thr", "tum")
 
 # Rating → Bluesky self-labels. General adds none.
 _BSKY_LABELS = {"mature": ["sexual"], "adult": ["porn"]}
@@ -71,12 +71,15 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
 
     body = post.get("body", "")
     rating = (post.get("rating") or "general").lower()
-    image_path = post.get("image_path") or None
-    image_alt = post.get("image_alt", "")
+    media = post.get("media") or []
+    if not media and post.get("image_path"):        # legacy-shaped post dict
+        media = [{"path": post["image_path"], "alt": post.get("image_alt", "")}]
+    image_paths = [m["path"] for m in media if m.get("path")][:4]
+    image_alts = [m.get("alt", "") for m in media if m.get("path")][:4]
 
-    if platform in _TEXT_ONLY and image_path:
+    if platform in _TEXT_ONLY and image_paths:
         result["error"] = (f"{platform} posting is text-only for now — drop the image, "
-                           f"or use Bluesky/Mastodon for image posts")
+                           f"or use Bluesky/Mastodon/X for image posts")
         return result
 
     account_id, creds = _resolve_creds(platform, account_id, settings)
@@ -93,7 +96,7 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
             client = BskyClient(identifier=ident, app_password=pw)
             try:
                 r = await client.create_post(
-                    body, image_path=image_path, image_alt=image_alt,
+                    body, image_paths=image_paths, image_alts=image_alts,
                     labels=_BSKY_LABELS.get(rating) or None,
                 )
             finally:
@@ -114,7 +117,7 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
             client = MastClient(instance_url=instance, access_token=token)
             try:
                 r = await client.create_status(
-                    body, image_path=image_path, image_alt=image_alt,
+                    body, image_paths=image_paths, image_alts=image_alts,
                     sensitive=(rating in _SENSITIVE_RATINGS),
                     idempotency_key=f"pp-{post.get('post_id')}-mast",
                 )
@@ -153,7 +156,16 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
                 return result
             client = TWClient(auth_token=at, ct0=ct0, target_user=creds.get("tw_target_user", ""))
             try:
-                r = await client.create_tweet(body)
+                media_ids: list[str] = []
+                for pth in image_paths:
+                    mid = await client.upload_media(pth)
+                    if not mid:
+                        result["error"] = ("X rejected the image upload — the media endpoint may "
+                                            "have moved or the cookie session lacks upload rights "
+                                            "(check logs)")
+                        return result
+                    media_ids.append(mid)
+                r = await client.create_tweet(body, media_ids=media_ids or None)
             finally:
                 await client.close()
             if r and r.get("id"):

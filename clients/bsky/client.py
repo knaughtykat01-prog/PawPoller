@@ -574,14 +574,19 @@ class BskyClient:
         *,
         image_path: str | None = None,
         image_alt: str = "",
+        image_paths: list[str] | None = None,
+        image_alts: list[str] | None = None,
         labels: list[str] | None = None,
     ) -> dict | None:
         """Create a new Bluesky post.
 
         Args:
             text: Post text (max 300 graphemes).
-            image_path: Optional path to an image to embed.
-            image_alt: Alt text for the image.
+            image_path: Optional path to a single image to embed (legacy).
+            image_alt: Alt text for the single image.
+            image_paths: Up to 4 image paths to embed; takes precedence over
+                image_path when given.
+            image_alts: Per-image alt text, index-aligned to image_paths.
             labels: Content labels (e.g. ["sexual", "nudity"]).
 
         Returns:
@@ -605,19 +610,22 @@ class BskyClient:
         if facets:
             record["facets"] = facets
 
-        # Embed image if provided
-        if image_path:
+        # Embed images (up to 4). Prefer the multi-image params, falling back to
+        # the legacy single image_path/image_alt so older callers still work.
+        paths = list(image_paths) if image_paths else ([image_path] if image_path else [])
+        alts = list(image_alts) if image_alts else ([image_alt] if image_path else [])
+        images = []
+        for i, pth in enumerate(paths[:4]):
             import mimetypes
-            mime = mimetypes.guess_type(image_path)[0] or "image/jpeg"
-            blob = await self.upload_blob(image_path, mime)
+            mime = mimetypes.guess_type(pth)[0] or "image/jpeg"
+            blob = await self.upload_blob(pth, mime)
             if blob:
-                record["embed"] = {
-                    "$type": "app.bsky.embed.images",
-                    "images": [{
-                        "alt": image_alt,
-                        "image": blob,
-                    }],
-                }
+                images.append({"alt": alts[i] if i < len(alts) else "", "image": blob})
+        if images:
+            record["embed"] = {
+                "$type": "app.bsky.embed.images",
+                "images": images,
+            }
 
         # Content labels (NSFW self-labelling)
         if labels:

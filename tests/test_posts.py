@@ -91,12 +91,33 @@ def test_publish_new_platforms_without_creds(db_conn):
 
 
 def test_text_only_platform_rejects_an_attached_image():
-    # Threads/Tumblr/X are text-only for now — an attached image is refused
-    # BEFORE any credential/network work.
+    # Threads/Tumblr are text-only for now — an attached image is refused
+    # BEFORE any credential/network work. (X gained image posting in 2.58.0.)
     post = {"body": "hi", "rating": "general", "post_id": 1, "image_path": "/tmp/x.png"}
-    for plat in ("thr", "tw", "tum"):
+    for plat in ("thr", "tum"):
         res = asyncio.run(post_publisher._publish_one(post, plat, None, {}))
         assert res["success"] is False and "text-only" in res["error"]
+
+
+def test_x_accepts_an_image_now(db_conn):
+    # X is no longer text-only: with an image but no creds it fails on the
+    # connection check, NOT the text-only gate (proves the image path is open).
+    pid = q.create_post(db_conn, body="hi", image_path="/tmp/x.png", now="t0")
+    post = q.get_post(db_conn, pid)
+    res = asyncio.run(post_publisher._publish_one(post, "tw", None, {}))
+    assert res["success"] is False
+    assert "text-only" not in res["error"]
+    assert "connected" in res["error"].lower()
+
+
+def test_post_media_round_trip_and_cascade_delete(db_conn):
+    pid = q.create_post(db_conn, body="hi", now="t0")
+    q.add_post_media(db_conn, post_id=pid, ordinal=0, path="/tmp/a.png", alt="a")
+    q.add_post_media(db_conn, post_id=pid, ordinal=1, path="/tmp/b.png", alt="b")
+    post = q.get_post(db_conn, pid)
+    assert [m["path"] for m in post["media"]] == ["/tmp/a.png", "/tmp/b.png"]
+    q.delete_post(db_conn, pid)
+    assert q.get_post_media(db_conn, pid) == []
 
 
 def test_publish_post_records_a_publication_row(db_conn):

@@ -21,7 +21,8 @@
 
 .post-image-preview {
     display: flex;
-    align-items: flex-start;
+    flex-wrap: wrap;
+    align-items: center;
     gap: .6rem;
 }
 /* The explicit display:flex above beats the [hidden] attribute's
@@ -29,13 +30,41 @@
    file is picked and "Remove image" appears to do nothing. Let the attribute
    win (same fix as the notification panel, 2.54.3). */
 .post-image-preview[hidden] { display: none; }
-.post-image-preview img {
-    max-width: 220px;
-    max-height: 220px;
+/* Each attached image renders as a small square thumb with a ✕ to remove it. */
+.post-thumb {
+    position: relative;
+    width: 96px;
+    height: 96px;
+    margin: 0;
+    flex: 0 0 auto;
+}
+.post-thumb img {
+    width: 100%;
+    height: 100%;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     object-fit: cover;
+    display: block;
 }
+.post-thumb-remove {
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--danger);
+    color: #fff;
+    font-size: 12px;
+    line-height: 20px;
+    text-align: center;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .4);
+}
+.post-thumb-remove:hover { filter: brightness(1.12); }
+.post-thumb-count { align-self: center; font-size: 12px; }
 
 .post-compose-row {
     display: flex;

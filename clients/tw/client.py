@@ -333,20 +333,55 @@ class TWClient:
 
     # -- Posting --------------------------------------------------------------
 
-    async def create_tweet(self, text: str) -> dict | None:
+    async def upload_media(self, image_path: str) -> str | None:
+        """Upload one image to X's media endpoint; return its media_id (or None).
+
+        Uses the simple (non-chunked) v1.1 upload, which handles the small images
+        a tweet carries (X caps tweet images at ~5 MB). Reuses the exact same
+        cookie / x-csrf-token / bearer auth as the GraphQL polling client —
+        ``self._http`` already carries all three. The endpoint is on upload.x.com
+        so the ``.x.com`` cookies are sent; if X moves it back to
+        upload.twitter.com this will 401 and the domain here needs updating.
+        Returns the media_id_string, or None on any failure (logged).
+        """
+        import mimetypes
+        import os
+        if not (self.auth_token and self.ct0):
+            return None
+        mime = mimetypes.guess_type(image_path)[0] or "image/jpeg"
+        try:
+            with open(image_path, "rb") as f:
+                files = {"media": (os.path.basename(image_path), f, mime)}
+                resp = await self._http.post(
+                    "https://upload.x.com/1.1/media/upload.json",
+                    files=files, timeout=120.0,
+                )
+            if resp.status_code != 200:
+                logger.error("TW: media upload failed (%s): %s",
+                             resp.status_code, resp.text[:200])
+                return None
+            return str((resp.json() or {}).get("media_id_string") or "") or None
+        except Exception as e:
+            logger.error("TW: media upload error: %s", e)
+            return None
+
+    async def create_tweet(self, text: str, media_ids: list[str] | None = None) -> dict | None:
         """Post a tweet via the internal CreateTweet GraphQL mutation.
 
-        Text-only, same cookie auth as polling. X's query IDs + feature flags
+        Same cookie auth as polling; attaches up to 4 uploaded ``media_ids``
+        (from :meth:`upload_media`) when given. X's query IDs + feature flags
         rotate and X actively fights automation — if this 404s/errors, refresh
         ``_GRAPHQL_CREATE_TWEET`` / ``_CREATE_TWEET_FEATURES`` from x.com's bundle.
         Returns {id, url} or None.
         """
         if not (self.auth_token and self.ct0):
             return None
+        media_entities = [{"media_id": str(m), "tagged_users": []}
+                          for m in (media_ids or [])]
         variables = {
             "tweet_text": text,
             "dark_request": False,
-            "media": {"media_entities": [], "possibly_sensitive": False},
+            "media": {"media_entities": media_entities, "possibly_sensitive": False},
             "semantic_annotation_ids": [],
         }
         data = await self._post_graphql(

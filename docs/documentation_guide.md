@@ -5569,6 +5569,10 @@ pair of tables (`database/posts_schema.sql`):
 
 - **`posts`** — `post_id`, `body`, `rating` (general|mature|adult), `image_path`
   (optional local media under `DATA_DIR/posts_media/`), `image_alt`, timestamps.
+  `image_path`/`image_alt` now mirror the **first** attached image (backward compat).
+- **`post_media`** (2.58.0) — `ordinal, path, alt` per attached image; a post can
+  carry up to 4 (the X/Bluesky/Mastodon cap). `get_post`/`list_posts` attach a
+  `media` list (synthesised from the legacy `image_path` for old posts).
 - **`post_publications`** — one row per `(post_id, platform, account_id)` publish
   attempt: `status` (pending|posted|failed), `external_id`, `external_url`,
   `error`. `UNIQUE(post_id, platform, account_id)` so a re-publish upserts over a
@@ -5590,22 +5594,30 @@ resolves the account's credentials the same way the pollers do
 constructs a **fresh** client — never the poller singleton — so posting can't
 mutate a client mid-poll (same lesson as the 2.47.0 DA throwaway-client fix).
 Rating maps to Bluesky self-labels (`_BSKY_LABELS`: mature→`sexual`,
-adult→`porn`) and Mastodon `sensitive`. `SUPPORTED = ("bsky", "mast")`; any other
-platform returns `success=False, error="posting to {x} isn't wired yet"`. Never
+adult→`porn`) and Mastodon `sensitive`. `SUPPORTED = ("bsky", "mast", "thr", "tw",
+"tum")`; any other platform returns `success=False, error="… isn't wired yet"`. Never
 raises — every failure comes back as a result dict + a recorded `failed` row.
 
 ### 21.3 Client posting methods
 
-Image support splits: **Bluesky + Mastodon carry images**; **Threads, Tumblr and
-X are text-only** for now (`post_publisher._TEXT_ONLY`) because each needs
-distinct image work — Threads pulls from a public `image_url` (no upload), X uses
-the chunked media-upload flow, Tumblr needs NPF. The publisher refuses an
-attached image on those three *before* any network call.
+Image support (2.58.0): **Bluesky, Mastodon and X carry images — up to 4 each**;
+**Threads and Tumblr stay text-only** (`post_publisher._TEXT_ONLY`) because each
+needs distinct image work — Threads pulls from a public `image_url` (no upload),
+Tumblr needs NPF. The publisher refuses an attached image on those two *before*
+any network call, and builds `image_paths`/`image_alts` from the post's `media`
+list (legacy `image_path` synthesised when absent).
+
+X image posting is **unverified in CI** — it needs a live cookie session and
+fires a real public tweet. `TWClient.upload_media()` does the simple v1.1 upload
+on `upload.x.com` (reusing the client's cookie/CSRF/bearer session) and
+`create_tweet(text, media_ids)` attaches the ids. If X moves the endpoint off
+`upload.x.com` it 401s → a failed (not wrong) tweet, fixable in one line.
 
 - **Bluesky**: reuses `clients/bsky/client.py` `create_post(text, *, image_path,
-  image_alt, labels)` → `{uri, cid, url}`.
+  image_alt, image_paths, image_alts, labels)` → `{uri, cid, url}`. Up to 4 blobs.
 - **Mastodon**: `clients/mast/client.py` `create_status(text, *, image_path,
-  image_alt, sensitive, visibility, idempotency_key)` → `{id, uri, url}`. Images
+  image_alt, image_paths, image_alts, sensitive, visibility, idempotency_key)` →
+  `{id, uri, url}`. Up to 4 media. Images
   via `_upload_media` (`POST /api/v2/media`, id usable even on the 202 reply);
   status posts to `POST /api/v1/statuses` with an `Idempotency-Key`. **Needs a
   write-scope token** — the poll-only `read` token 403s.

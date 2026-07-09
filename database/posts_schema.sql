@@ -18,6 +18,20 @@ CREATE TABLE IF NOT EXISTS posts (
     updated_at   TEXT NOT NULL DEFAULT ''
 );
 
+-- One row per attached image (2.58.0). Posts can carry up to 4 images (the
+-- X/Bluesky/Mastodon cap). The legacy posts.image_path/image_alt columns are
+-- kept and still hold the FIRST image, so anything that reads them (feed
+-- thumbnail, /image?post_id=) keeps working; this table holds the full ordered
+-- set that the publisher fans out per platform.
+CREATE TABLE IF NOT EXISTS post_media (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id  INTEGER NOT NULL,
+    ordinal  INTEGER NOT NULL DEFAULT 0,      -- display / upload order (0-based)
+    path     TEXT NOT NULL DEFAULT '',        -- DATA_DIR/posts_media/…
+    alt      TEXT NOT NULL DEFAULT ''         -- per-image alt text
+);
+CREATE INDEX IF NOT EXISTS idx_post_media_post ON post_media(post_id);
+
 -- One row per (post, platform, account) publish attempt.
 CREATE TABLE IF NOT EXISTS post_publications (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

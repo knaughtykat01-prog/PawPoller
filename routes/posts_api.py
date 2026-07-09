@@ -25,6 +25,7 @@ posts_router = APIRouter(prefix="/api/posts")
 _ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 _ALLOWED_RATINGS = {"general", "mature", "adult"}
 _MAX_IMAGE_BYTES = 25 * 1024 * 1024
+_MAX_IMAGES = 4        # X / Bluesky / Mastodon all cap a post at 4 images
 
 
 def _now() -> str:
@@ -48,16 +49,19 @@ def list_posts(limit: int = Query(100, ge=1, le=500)):
 
 
 @posts_router.get("/image")
-def get_post_image(post_id: int = Query(...)):
-    """Serve a post's attached image (traversal-safe: path is derived from the id)."""
+def get_post_image(post_id: int = Query(...), idx: int = Query(0, ge=0)):
+    """Serve one of a post's attached images (traversal-safe: path derives from
+    the post's own stored media, never from user input). `idx` selects which
+    image (0-based); it defaults to 0 so existing single-image links still work."""
     conn = get_connection()
     try:
         post = posts_queries.get_post(conn, post_id)
     finally:
         conn.close()
-    if not post or not post.get("image_path"):
+    media = (post or {}).get("media") or []
+    if not post or idx >= len(media) or not media[idx].get("path"):
         raise HTTPException(404, "No image for this post")
-    p = Path(post["image_path"]).resolve()
+    p = Path(media[idx]["path"]).resolve()
     if _media_dir().resolve() not in p.parents or not p.is_file():
         raise HTTPException(404, "Image not found")
     return FileResponse(str(p))
@@ -81,12 +85,19 @@ async def create_post(
     body: str = Form(""),
     rating: str = Form("general"),
     image_alt: str = Form(""),
-    file: UploadFile | None = File(None),
+    files: list[UploadFile] | None = File(None),
+    file: UploadFile | None = File(None),   # legacy single-image field, still accepted
 ):
-    """Create a draft post (optionally with a single image)."""
+    """Create a draft post with up to 4 attached images.
+
+    Accepts the `files` multi-field (current frontend) or a single legacy `file`.
+    The first image is also mirrored into the legacy image_path/image_alt columns
+    so the feed thumbnail and /image?post_id= (idx 0) keep working unchanged."""
     body = (body or "").strip()
     rating = rating if rating in _ALLOWED_RATINGS else "general"
-    if not body and not file:
+    uploads = [f for f in ((files or []) + ([file] if file else [])) if f is not None]
+    uploads = uploads[:_MAX_IMAGES]
+    if not body and not uploads:
         raise HTTPException(400, "A post needs text or an image")
 
     conn = get_connection()
@@ -96,20 +107,33 @@ async def create_post(
     finally:
         conn.close()
 
-    if file is not None:
-        ext = Path(file.filename or "").suffix.lower()
+    first_path = ""
+    for idx, up in enumerate(uploads):
+        ext = Path(up.filename or "").suffix.lower()
         if ext not in _ALLOWED_EXT:
             _cleanup(post_id)
-            raise HTTPException(400, "Image must be PNG, JPG, GIF or WebP")
-        data = await file.read()
+            raise HTTPException(400, "Images must be PNG, JPG, GIF or WebP")
+        data = await up.read()
         if len(data) > _MAX_IMAGE_BYTES:
             _cleanup(post_id)
-            raise HTTPException(400, "Image is too large (max 25 MB)")
-        dest = _media_dir() / f"{post_id}{ext}"
+            raise HTTPException(400, "An image is too large (max 25 MB)")
+        dest = _media_dir() / f"{post_id}_{idx}{ext}"
         dest.write_bytes(data)
         conn = get_connection()
         try:
-            posts_queries.update_post(conn, post_id, image_path=str(dest), now=_now())
+            posts_queries.add_post_media(
+                conn, post_id=post_id, ordinal=idx, path=str(dest),
+                alt=image_alt if idx == 0 else "")
+        finally:
+            conn.close()
+        if idx == 0:
+            first_path = str(dest)
+
+    if first_path:
+        conn = get_connection()
+        try:
+            posts_queries.update_post(conn, post_id, image_path=first_path,
+                                      image_alt=image_alt, now=_now())
         finally:
             conn.close()
 
@@ -144,9 +168,12 @@ def delete_post(post_id: int):
         posts_queries.delete_post(conn, post_id)
     finally:
         conn.close()
-    # Best-effort media cleanup.
-    img = post.get("image_path")
-    if img:
+    # Best-effort media cleanup — every attached image, de-duplicated (the
+    # legacy image_path mirrors media[0]).
+    paths = {m.get("path") for m in (post.get("media") or []) if m.get("path")}
+    if post.get("image_path"):
+        paths.add(post["image_path"])
+    for img in paths:
         try:
             p = Path(img).resolve()
             if _media_dir().resolve() in p.parents and p.is_file():
