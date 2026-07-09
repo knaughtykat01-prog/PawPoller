@@ -1,7 +1,13 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-09
-**Current version:** 2.57.2 — **Fix: Posts compose image preview blocked by CSP (blob:).**
+**Current version:** 2.57.3 — **Fix: Posts "Remove image" did nothing (hidden overridden by display:flex).**
+Same class as the 2.54.3 notif-panel bug: `.post-image-preview { display:flex }` beat the `[hidden]` attribute,
+so `_clearFile()` set `hidden=true` but the box stayed visible (and it showed before a file was even picked).
+One-line CSS fix: `.post-image-preview[hidden] { display:none }`. No JS change. `frontend/css/posts.css`.
+312 tests green. **Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.57.2 — Fix: Posts compose image preview blocked by CSP (blob:).**
 The compose "attachment preview" was a broken image: `Posts._setFile` uses a `blob:` object URL, but the main
 CSP (`_build_csp`, `dashboard.py`) was `img-src 'self' https:` — no `blob:`/`data:` — so the browser blocked the
 `<img>`. Added `blob: data:` to the main CSP's `img-src` (matches the epub-viewer CSP). `dashboard.py`.

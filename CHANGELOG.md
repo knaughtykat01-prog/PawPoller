@@ -4,6 +4,18 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.57.3] - 2026-07-09 - Fix: Posts "Remove image" did nothing (hidden overridden by display:flex)
+
+The Posts compose "Remove image" button appeared inert, and the preview box showed even before a file was
+picked. Same root cause as the 2.54.3 notification-panel bug: `.post-image-preview` carries `display: flex`,
+which beats the `[hidden]` attribute's `display: none` — so `_clearFile()` set `hidden = true` but the box
+stayed on screen. One-line CSS fix: `.post-image-preview[hidden] { display: none; }` so the attribute wins.
+No JS change — the existing remove/clear wiring now takes visible effect, and the preview stays hidden until a
+file is chosen. `frontend/css/posts.css`. Display-only; 312 tests green. **Needs a server deploy** (+ hard-refresh
+for the new CSS).
+
+---
+
 ## [2.57.2] - 2026-07-09 - Fix: Posts compose image preview blocked by CSP (blob:)
 
 The Posts compose "attachment preview" rendered as a broken image the moment you picked a file. `Posts._setFile`

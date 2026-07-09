@@ -24,6 +24,11 @@
     align-items: flex-start;
     gap: .6rem;
 }
+/* The explicit display:flex above beats the [hidden] attribute's
+   display:none, so without this the preview never hides — it shows before a
+   file is picked and "Remove image" appears to do nothing. Let the attribute
+   win (same fix as the notification panel, 2.54.3). */
+.post-image-preview[hidden] { display: none; }
 .post-image-preview img {
     max-width: 220px;
     max-height: 220px;
