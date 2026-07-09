@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-09
-**Current version:** 2.59.0 — **Artwork: unify the same piece across sites into one master.**
+**Current version:** 2.60.0 — **Artwork: "possible matches" banner nudges the obvious unifies.**
+Follow-up to 2.59.0. The Artwork gallery surfaces a dismissible **Possible matches** banner proposing likely
+same-piece merges, reusing the existing title-similarity engine (`GET /api/links/suggestions` →
+`auto_suggest_links`, Jaccard ≥ 0.6, already excludes linked pairs) — **no backend change**.
+`Artwork._loadSuggestions` fetches it **lazily after the grid paints** (the O(N·M) scan never delays first
+paint); `_artSuggestions` keeps only pairs whose members are **both standalone art tiles in this gallery** (so
+story matches / already-mastered pieces never show). Each pair → a card (platform emojis + shared title) with
+one-click **Unify** (same `POST /api/links` path) and **✕ Dismiss** (persisted in `localStorage`
+`pp_artunify_dismissed`). Frontend only: `frontend/js/artwork.js`, `frontend/css/artwork.css`. Completes
+`prototype/docs/ARTWORK_UNIFY.md` §6.5. 314 tests green. **Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.59.0 — Artwork: unify the same piece across sites into one master.**
 The Artwork gallery can now coalesce the same artwork posted to several sites (each with its own per-site
 submission id) into one **master tile with pooled stats** — like cross-posted stories already pool. **No new
 backend:** a master *is* a generic cross-platform link, and discovered art tiles already carry the
@@ -12,7 +23,7 @@ platform emojis, pooled views, expand → per-member rows + **Split**); a link b
 its members are art tiles in the gallery, so story/unrelated links fall through (`_foldMasters`). Write path: a
 **Select** toggle → tick 2+ discovered tiles → **Unify selected** (`POST /api/links`) → they collapse into a
 master. Frontend only: `frontend/js/artwork.js`, `frontend/css/artwork.css`. Spec:
-`prototype/docs/ARTWORK_UNIFY.md` (§6.2 read + §6.3 write shipped; suggestions banner + cover/title management
+`prototype/docs/ARTWORK_UNIFY.md` (§6.2 read + §6.3 write + §6.5 suggestions shipped; cover/title management
 deferred). 314 tests green (backend unchanged). **Needs a server deploy + hard-refresh.**
 
 **Prior release — 2.58.1 — Fix: Posts images to Bluesky 400'd when over ~1 MB.**

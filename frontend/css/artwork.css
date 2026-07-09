@@ -335,6 +335,29 @@
     color: #fff;
 }
 
+/* "Possible matches" banner (title-similarity suggestions) */
+.artwork-suggest-banner {
+    margin: 0 0 1rem;
+    padding: .6rem .8rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+}
+.artwork-suggest-head { font-weight: 600; margin-bottom: .5rem; }
+.artwork-suggest-head .muted { font-weight: 400; font-size: 12px; }
+.artwork-suggest-card {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .4rem 0;
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+.artwork-suggest-plats { font-size: 15px; white-space: nowrap; }
+.artwork-suggest-text { flex: 1; min-width: 140px; font-size: 13px; }
+.artwork-suggest-card .art-suggest-dismiss { padding-left: .5rem; padding-right: .5rem; }
+
 /* Stack on narrow viewports */
 @media (max-width: 760px) {
     .artwork-upload, .artwork-detail { grid-template-columns: 1fr; }

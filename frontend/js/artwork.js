@@ -20,6 +20,7 @@ window.Artwork = {
 
     _selectMode: false,    // gallery "Select to unify" mode active
     _selected: new Set(),  // keys ("platform:submission_id") of ticked discovered tiles
+    _suggestions: [],      // filtered title-match pairs for the "possible matches" banner
 
     esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
@@ -81,6 +82,7 @@ window.Artwork = {
                 <span class="muted artwork-select-hint">Tick 2 or more posts of the same piece, then Unify
                 to merge them into one master with pooled stats.</span>
             </div>
+            <div id="art-suggest-slot"></div>
             <div id="artwork-grid"><div class="loading-spinner">Loading…</div></div>`;
 
         const grid = document.getElementById('artwork-grid');
@@ -160,6 +162,17 @@ window.Artwork = {
             .addEventListener('click', () => this._exitSelect());
         document.getElementById('art-unify-btn')
             .addEventListener('click', () => this._unifySelected());
+
+        // "Possible matches" banner: delegated once on the (fresh) slot element;
+        // its contents arrive later via _loadSuggestions so the grid never waits.
+        const slot = document.getElementById('art-suggest-slot');
+        slot.addEventListener('click', e => {
+            const u = e.target.closest('.art-suggest-unify');
+            if (u) { e.preventDefault(); this._unifySuggestion(parseInt(u.dataset.idx, 10)); return; }
+            const d = e.target.closest('.art-suggest-dismiss');
+            if (d) { e.preventDefault(); this._dismissSuggestion(parseInt(d.dataset.idx, 10)); }
+        });
+        this._loadSuggestions(standalone);
     },
 
     /* ── Masters (unify) ────────────────────────────────────────
@@ -337,6 +350,112 @@ window.Artwork = {
             this._toast('error', 'Unify failed: ' + (err.message || err));
             btn.disabled = false; btn.textContent = 'Unify selected';
         }
+    },
+
+    /* ── "Possible matches" banner ──────────────────────────────
+     *
+     * Reuses the existing title-similarity engine (`/api/links/suggestions` →
+     * auto_suggest_links) to nudge the obvious merges. Loaded lazily after the
+     * grid paints; filtered to pairs whose members are BOTH standalone art tiles
+     * in this gallery (so story matches never show here), minus any the user has
+     * dismissed. auto_suggest_links already excludes already-linked pairs.
+     */
+
+    async _loadSuggestions(standalone) {
+        let suggestions = [];
+        try {
+            const sd = await API.getLinkSuggestions();
+            suggestions = (sd && sd.suggestions) || [];
+        } catch (e) { return; }   // additive — silent on failure
+        this._suggestions = this._artSuggestions(suggestions, standalone);
+        const slot = document.getElementById('art-suggest-slot');
+        if (slot) slot.innerHTML = this._suggestBanner();
+    },
+
+    _pairKey(keys) { return [...keys].sort().join('|'); },
+
+    _dismissedSet() {
+        try { return new Set(JSON.parse(localStorage.getItem('pp_artunify_dismissed') || '[]')); }
+        catch (e) { return new Set(); }
+    },
+
+    _dismiss(pairKey) {
+        const s = this._dismissedSet();
+        s.add(pairKey);
+        try { localStorage.setItem('pp_artunify_dismissed', JSON.stringify([...s])); } catch (e) { /* quota */ }
+    },
+
+    _artSuggestions(suggestions, standalone) {
+        const byKey = new Map(standalone.map(d => [this._key(d.platform, d.submission_id), d]));
+        const dismissed = this._dismissedSet();
+        const seen = new Set();
+        const out = [];
+        for (const s of (suggestions || [])) {
+            const subs = s.submissions || [];
+            if (subs.length < 2) continue;
+            const keys = subs.map(m => this._key(m.platform, m.submission_id));
+            if (!keys.every(k => byKey.has(k))) continue;   // both must be standalone art tiles here
+            const pk = this._pairKey(keys);
+            if (dismissed.has(pk) || seen.has(pk)) continue;
+            seen.add(pk);
+            out.push({
+                pairKey: pk,
+                members: subs.map(m => ({ platform: m.platform, submission_id: String(m.submission_id) })),
+                tiles: keys.map(k => byKey.get(k)),
+            });
+        }
+        return out.slice(0, 5);
+    },
+
+    _suggestBanner() {
+        const items = this._suggestions || [];
+        if (!items.length) return '';
+        const cards = items.map((o, i) => {
+            const emojis = o.tiles.map(d => {
+                const p = this._plat(d.platform);
+                return `<span class="artwork-plat" title="${this.esc(p.label)}">${p.emoji || this.esc(p.label)}</span>`;
+            }).join(' ');
+            const t = o.tiles.find(d => d && d.title);
+            const title = this.esc((t && t.title) || 'these pieces');
+            return `
+                <div class="artwork-suggest-card" data-idx="${i}">
+                    <span class="artwork-suggest-plats">${emojis}</span>
+                    <span class="artwork-suggest-text">“${title}” looks like the same piece across ${o.members.length} sites.</span>
+                    <button type="button" class="btn btn-sm btn-primary art-suggest-unify" data-idx="${i}">Unify</button>
+                    <button type="button" class="btn btn-sm art-suggest-dismiss" data-idx="${i}" title="Dismiss">✕</button>
+                </div>`;
+        }).join('');
+        return `
+            <div class="artwork-suggest-banner">
+                <div class="artwork-suggest-head">Possible matches
+                    <span class="muted">— art with near-identical titles the pollers found across sites.</span>
+                </div>
+                ${cards}
+            </div>`;
+    },
+
+    async _unifySuggestion(idx) {
+        const o = (this._suggestions || [])[idx];
+        if (!o) return;
+        try {
+            await API.createLink({ members: o.members });
+            this._toast('success', 'Unified into one master');
+            const y = window.scrollY;
+            await this.render();
+            window.scrollTo(0, y);
+        } catch (err) {
+            this._toast('error', 'Unify failed: ' + (err.message || err));
+        }
+    },
+
+    _dismissSuggestion(idx) {
+        const o = (this._suggestions || [])[idx];
+        if (!o) return;
+        this._dismiss(o.pairKey);
+        const card = document.querySelector(`.artwork-suggest-card[data-idx="${idx}"]`);
+        if (card) card.remove();
+        const slot = document.getElementById('art-suggest-slot');
+        if (slot && !slot.querySelector('.artwork-suggest-card')) slot.innerHTML = '';
     },
 
     /* Keep only art-capable, visual (non-text), thumbnailed discovered items. */

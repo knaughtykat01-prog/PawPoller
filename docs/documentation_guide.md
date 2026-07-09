@@ -5546,13 +5546,25 @@ endpoints — `GET /api/links` (read), `POST /api/links` (unify), `DELETE
   navigation/import; `_toggleSelect` tracks ticked keys; **Unify selected**
   (`_unifySelected`) posts the ticked `(platform, submission_id)` members to
   `POST /api/links` and re-renders so they collapse into a master.
+- *Suggestions banner (2.60.0)* — a dismissible **Possible matches** banner
+  nudges the obvious merges, reusing the title-similarity engine
+  (`GET /api/links/suggestions` → `auto_suggest_links`). `_loadSuggestions` fetches
+  it **lazily after the grid paints** (into `#art-suggest-slot`, whose click
+  handler is delegated once in `render()`), so the O(N·M) scan never delays first
+  paint. `_artSuggestions(suggestions, standalone)` keeps only pairs whose members
+  are **both standalone art tiles present here** (via the `standalone` set → no
+  story matches, no already-mastered pieces) minus `localStorage`-dismissed pairs
+  (`pp_artunify_dismissed`, keyed by the sorted member pair). Each card offers
+  one-click **Unify** (`_unifySuggestion` → same `POST /api/links`) and **✕**
+  (`_dismissSuggestion`). Caveat: `auto_suggest_links` scans the fiction-ish set
+  (ib/fa/ws/sf/sqw/ao3/da/wp/ik), so bsky/pixiv art isn't proposed (still unifies
+  manually).
 - *Scope* — unify operates on the orphan **discovered** tiles (library uploads
   are already "one work → N publications"; cross-type merges are out). Deferred
-  (see `prototype/docs/ARTWORK_UNIFY.md` §6.4–6.5): a suggestions banner reusing
-  `auto_suggest_links`, and per-master cover/title management (would want the
-  optional `title`/`cover_*` columns from the spec's §3). Styling:
-  `.artwork-card--master`, `.artwork-master-*`, `.artwork-select-*` in
-  `artwork.css`.
+  (see `prototype/docs/ARTWORK_UNIFY.md` §6.4): per-master cover/title management
+  (would want the optional `title`/`cover_*` columns from the spec's §3). Styling:
+  `.artwork-card--master`, `.artwork-master-*`, `.artwork-select-*`,
+  `.artwork-suggest-*` in `artwork.css`.
 
 ### 20.4 Per-platform image posting
 

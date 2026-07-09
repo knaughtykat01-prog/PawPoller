@@ -4,6 +4,28 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.60.0] - 2026-07-09 - Artwork: "possible matches" banner nudges the obvious unifies
+
+Follow-up to 2.59.0 (Artwork Unify). The gallery now surfaces a dismissible **Possible matches** banner that
+proposes likely same-piece merges, so you don't have to hunt for them by eye.
+
+It reuses the existing title-similarity engine — `GET /api/links/suggestions` → `auto_suggest_links` (Jaccard
+word-overlap ≥ 0.6, already excludes pairs that are linked) — with **no backend change**. `Artwork._loadSuggestions`
+fetches it **lazily after the grid paints** (the O(N·M) scan never delays first paint), then
+`_artSuggestions` keeps only pairs whose members are **both standalone art tiles present in this gallery** — so
+story matches and pieces already folded into a master never appear here. Each surviving pair renders as a banner
+card (platform emojis + shared title) with one-click **Unify** (same `POST /api/links` path as manual unify →
+collapses into a master) and **✕ Dismiss**. Dismissals persist in `localStorage` (`pp_artunify_dismissed`, keyed
+by the sorted member pair) so a rejected suggestion stays gone.
+
+Frontend only: `frontend/js/artwork.js` (`_loadSuggestions`/`_artSuggestions`/`_suggestBanner`/`_unifySuggestion`/
+`_dismissSuggestion`), `frontend/css/artwork.css` (`.artwork-suggest-*`). Completes `prototype/docs/ARTWORK_UNIFY.md`
+§6.5. (Note: `auto_suggest_links` scans the fiction-ish platform set — ib/fa/ws/sf/sqw/ao3/da/wp/ik — so art on
+those sites is suggested; bsky/pixiv art isn't proposed and still unifies manually.) 314 tests green (backend
+unchanged). **Needs a server deploy + hard-refresh.**
+
+---
+
 ## [2.59.0] - 2026-07-09 - Artwork: unify the same piece across sites into one master
 
 The Artwork gallery can now **coalesce the same artwork posted to several sites** — each with its own per-site
