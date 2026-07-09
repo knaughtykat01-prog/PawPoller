@@ -4,6 +4,26 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.57.2] - 2026-07-09 - Fix: Posts compose image preview blocked by CSP (blob:)
+
+The Posts compose "attachment preview" rendered as a broken image the moment you picked a file. `Posts._setFile`
+sets the preview from `URL.createObjectURL(file)` — a `blob:` URL — but the app's main Content-Security-Policy
+(`_build_csp` in `dashboard.py`) allowed `img-src 'self' https:` only, with **no `blob:` and no `data:`**, so the
+browser blocked the preview `<img>`. (The relaxed epub-viewer CSP already allowed both — the main policy just
+hadn't been updated when the Posts image feature landed.)
+
+Added `blob:` and `data:` to the main CSP's `img-src` (`img-src 'self' blob: data: https:`), matching the
+epub-viewer policy. The preview now shows for every platform. `dashboard.py`. Display-only; 312 tests green.
+**Needs a server deploy** (the CSP is a response header, so a hard-refresh alone isn't enough — the container
+must restart to send the new policy).
+
+Not changed: **X/Twitter image posting.** X *text* posting already works (`post_publisher.py` → `create_tweet`).
+Image cross-posting to X/Threads/Tumblr is still gated off (`_TEXT_ONLY`) — X specifically needs the chunked
+media-upload flow, which can't be verified without live X credentials (and would fire a real public tweet), so
+it's deliberately left for a live-tested pass rather than shipped blind.
+
+---
+
 ## [2.57.1] - 2026-07-09 - Fix: blank thumbnails on discovered Artwork cards (FA/IB/Pixiv)
 
 The Artwork gallery's **discovered** cards rendered as blank tiles for FurAffinity, Inkbunny and Pixiv items.

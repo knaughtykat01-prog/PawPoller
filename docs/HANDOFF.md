@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-09
-**Current version:** 2.57.1 — **Fix: blank thumbnails on discovered Artwork cards (FA/IB/Pixiv).**
+**Current version:** 2.57.2 — **Fix: Posts compose image preview blocked by CSP (blob:).**
+The compose "attachment preview" was a broken image: `Posts._setFile` uses a `blob:` object URL, but the main
+CSP (`_build_csp`, `dashboard.py`) was `img-src 'self' https:` — no `blob:`/`data:` — so the browser blocked the
+`<img>`. Added `blob: data:` to the main CSP's `img-src` (matches the epub-viewer CSP). `dashboard.py`.
+CSP is a response header → **needs a container restart/deploy**, not just a hard-refresh. 312 tests green.
+Not changed: **X/Twitter image posting** — X *text* posting already works (`post_publisher.py`→`create_tweet`);
+image cross-posting to X/Threads/Tumblr stays gated (`_TEXT_ONLY`). X needs the chunked media-upload flow, which
+can't be verified without live X creds (would fire a real public tweet), so it's left for a live-tested pass.
+
+**Prior release — 2.57.1 — Fix: blank thumbnails on discovered Artwork cards (FA/IB/Pixiv).**
 The Artwork gallery's discovered cards were blank for FurAffinity/Inkbunny/Pixiv: those thumbnails can't be
 hotlinked (CORS + mixed-content), so the app relays them via `/api/fa/thumb` / `/api/thumb` / `/api/pix/thumb`
 (`Utils.faThumbUrl`/`thumbUrl`/`pixThumbUrl`), but `Artwork._discoveredCard` used the raw `thumbnail_url` in a

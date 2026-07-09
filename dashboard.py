@@ -175,7 +175,11 @@ def _build_csp() -> str:
         f"script-src 'self' {theme_inline_hash}{cf}; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
-        "img-src 'self' https:; "
+        # blob: — the Posts compose image preview uses URL.createObjectURL();
+        # data: — inline data-URI images. Both are needed or the <img> is
+        # CSP-blocked (renders as a broken "attachment preview"). Matches the
+        # relaxed epub-viewer CSP, which already allows them.
+        "img-src 'self' blob: data: https:; "
         "connect-src 'self'; "
         f"{frame_src}"
         "frame-ancestors 'none'"
