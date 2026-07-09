@@ -4,6 +4,30 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.56.0] - 2026-07-09 - Getting-started tour (interactive coach-mark onboarding)
+
+New users finished the setup wizard (connect accounts → archive → done) and landed on a busy 15-platform
+dashboard with no guide to what anything *does*. Added an interactive **getting-started tour** — a spotlight
+overlay that walks through the essentials by pointing at the real UI.
+
+- **Coach-mark spotlight engine** (`frontend/js/tour.js`, `frontend/css/tour.css`). A dark overlay with a
+  moving spotlight highlights each element while a popover explains it (Back / Next / Skip, step counter,
+  Esc + arrow-key nav). The dim + hole is a single box-shadow trick (`0 0 0 9999px`), no canvas/SVG; a
+  transparent click-blocker keeps the tour driving navigation. Fully theme-token styled (dark/light/sepia).
+- **Targets persistent shell chrome, not page content.** All 10 steps point at the always-present sidebar nav
+  (Platforms → Submissions → Stories → Editor → Analytics → Settings), the poll-status badge, and the new
+  help button — so the tour never races an async route render and won't break when a screen's internals change.
+  The sidebar is force-expanded (and restored) for the duration so the spotlight always lands on a legible rail.
+- **Auto-fires once, replayable forever.** Runs automatically the first time a set-up user lands on the overview
+  (per-browser `pp_tour_done` flag; only past the setup gate, never over the `#/loading` poll-wait or a deep
+  link). A new sidebar-footer **"?"** button replays it on demand any time. `frontend/js/app.js`
+  (`_maybeStartTour()` + help-button wiring), `frontend/index.html` (link/script/button).
+
+Note: existing users who never had a tour will see it auto-fire once on their next load — dismissible, one time.
+Additive only, no backend change; 312 tests green. **Needs a server deploy** (+ hard-refresh for the new JS/CSS).
+
+---
+
 ## [2.55.2] - 2026-07-09 - Settings polish: drop the redundant Save-Milestones button + surface the dashboard-password setup
 
 Three small Settings-tab items the UI-redesign design-rationale review surfaced (§9 Q2, §10 Q3, §7 verify):

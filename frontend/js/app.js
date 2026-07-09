@@ -258,6 +258,12 @@ const App = {
         this._statusCheckInterval = setInterval(() => this._updateStatusCheck(), 60000);
         this._initProgressCheckBar();
 
+        /* First-run getting-started tour. We only reach this line past the
+           setup gate above, so setup_complete is guaranteed true here. Fires
+           once per browser (localStorage flag) and only when landing on the
+           overview — never over the #/loading poll-wait or a deep link. */
+        this._maybeStartTour();
+
         /* Hamburger menu — overlay is now in HTML, just query it.
          * (Sidebar hover/focus listeners are bound early in init() above
          * so they survive the auth-gate early-returns.) */
@@ -339,6 +345,13 @@ const App = {
            binary toggle. */
         document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
             this.navigate('/settings/appearance');
+        });
+
+        /* Getting-started tour — the sidebar "?" replays it on demand. The
+           first-run auto-fire is handled separately in _maybeStartTour(),
+           called once after the initial route renders. */
+        document.getElementById('help-tour-btn')?.addEventListener('click', () => {
+            window.Tour?.start({ auto: false });
         });
 
         /* Sidebar version + update check */
@@ -12823,6 +12836,25 @@ const App = {
         this._progressCheckTick();
         if (this._progressCheckTimer) clearInterval(this._progressCheckTimer);
         this._progressCheckTimer = setInterval(() => this._progressCheckTick(), 10000);
+    },
+
+    /* Auto-fire the getting-started tour the first time a set-up user lands
+       on the overview. Gated by the per-browser `pp_tour_done` flag Tour
+       writes on completion/dismiss, so it shows once; the sidebar "?" button
+       replays it afterwards regardless of the flag. Skipped on non-overview
+       landings (deep links, the #/loading poll-wait) so it never fires over a
+       screen where the sidebar chrome it points at isn't the focus. */
+    _maybeStartTour() {
+        try {
+            if (!window.Tour || window.Tour.isDone()) return;
+            const hash = (window.location.hash || '').replace(/^#\/?/, '');
+            if (hash && hash !== '/' ) return;   // overview only
+            /* Small delay so the overview paints first; the tour targets
+               static sidebar chrome, so this is polish, not a dependency. */
+            setTimeout(() => {
+                if (window.Tour && !window.Tour.isDone()) window.Tour.start({ auto: true });
+            }, 700);
+        } catch (e) { /* never let onboarding break boot */ }
     },
 
     async _progressCheckTick() {

@@ -1,7 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-09
-**Current version:** 2.55.2 — **Settings polish: drop the redundant Save-Milestones button + surface the dashboard-password setup.**
+**Current version:** 2.56.0 — **Getting-started tour (interactive coach-mark onboarding).**
+New users finished setup and hit a busy 15-platform dashboard with no guidance. Added an interactive spotlight
+**tour**: a dark overlay + moving spotlight (single `box-shadow: 0 0 0 9999px` trick, no canvas) with a popover
+per step (Back/Next/Skip, Esc + arrows). All 10 steps target **persistent sidebar/header chrome** (Platforms →
+Submissions → Stories → Editor → Analytics → Settings, the poll badge, the new "?" button) so it never races a
+route render. **Auto-fires once** the first time a set-up user lands on overview (per-browser `pp_tour_done`;
+never over `#/loading` or a deep link) and **replays** from a new sidebar-footer **"?"** button. New files
+`frontend/js/tour.js` + `frontend/css/tour.css`; wired via `frontend/index.html` (link/script/footer button) +
+`frontend/js/app.js` (`_maybeStartTour()` in `init()` + help-button handler). Note: existing users see it
+auto-fire once on next load (dismissible). Additive, no backend change. 312 tests green.
+**Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.55.2 — Settings polish: drop the redundant Save-Milestones button + surface the dashboard-password setup.**
 Three design-rationale-review Settings items (§9 Q2, §10 Q3, §7 verify). (1) Removed the standalone **Save Milestones**
 button — milestones already persist via the header **Save Settings** (`saveSettings()` writes them alongside everything
 else), so the second save was a redundant subset; replaced with a hint + removed its dead handler. (2) Settings ›

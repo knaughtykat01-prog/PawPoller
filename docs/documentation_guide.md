@@ -5139,6 +5139,29 @@ all hover/popup behaviour in one module:
 - Single delegated `mouseover`/`mouseout` listener at `document.body`,
   so dynamically rendered SPA content gets tooltips for free.
 
+#### `frontend/js/tour.js` (getting-started tour)
+
+Interactive coach-mark onboarding — `window.Tour` (`{ start({auto}), end(completed), isDone() }`),
+styled by `frontend/css/tour.css`. Introduced 2.56.0.
+
+- **Spotlight without canvas/SVG.** `.pp-tour-spot` is a small box positioned over the target;
+  its spread shadow `box-shadow: 0 0 0 9999px rgba(0,0,0,.62)` paints everything *outside* it dark,
+  and a `0 0 0 3px var(--accent)` ring highlights the target. A separate transparent
+  `.pp-tour-blocker` swallows background clicks so only the popover's Next/Back/Skip drive it.
+  Centered (no-target) steps hide the spot and dim the blocker instead.
+- **Targets persistent shell chrome only** — the 10 steps point at `.nav-link[data-page="…"]`
+  items, `#poll-status-mini`, and `#help-tour-btn`, all of which live in the static `index.html`.
+  So the tour never races an async route render and survives page-internal redesigns. `findTarget()`
+  still retries briefly (insurance for any future `step.route` navigation steps).
+- **Sidebar is force-expanded** for the run (`forceSidebarOpen()` drops `.collapsed` / adds `.open`;
+  `restoreSidebar()` puts the user's state back) so the spotlight always lands on a legible rail.
+  `html.pp-tour-active .sidebar { transform:none }` backs this up on mobile.
+- **Trigger model.** Auto-fires once via `App._maybeStartTour()` (called at the end of `init()`,
+  guaranteed past the setup gate), gated by the per-browser `localStorage` flag `pp_tour_done` and
+  only when landing on the overview (`hash === '' | '/'`) — never over `#/loading` or a deep link.
+  The sidebar-footer **"?"** (`#help-tour-btn`) replays it on demand regardless of the flag.
+  `end()` writes the flag on both completion and dismissal, so it shows at most once automatically.
+
 ### 18.4 Components
 
 `frontend/js/components.js` gained two helpers that the page renderers
