@@ -4,6 +4,36 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.59.0] - 2026-07-09 - Artwork: unify the same piece across sites into one master
+
+The Artwork gallery can now **coalesce the same artwork posted to several sites** — each with its own per-site
+submission id — into **one master tile with pooled stats**, mirroring how cross-posted stories already pool on
+the Cross-Platform page. (Rhys: *"this art is on so many sites but each has its own submission id … I'll select
+all of that same artwork, say unify it, and it brings multiple art uploads into one."*)
+
+**No new backend.** A master *is* a generic cross-platform link — the existing `submission_links` /
+`submission_link_members` tables key on `(platform, submission_id)`, which is exactly the identity discovered
+artwork tiles already carry (both come from the same `*_submissions` poller tables). So the whole feature reuses
+`POST /api/links`, `DELETE /api/links/{id}`, and `GET /api/links` — zero schema changes, zero new endpoints.
+
+**Read path.** `Artwork.render()` now fetches `/api/links` and folds discovered art tiles that share a link into
+a single **master card**: a "N sites" badge, the members' platform emojis, pooled views, and a click-to-expand
+panel listing each member (each still opens its own post) with a **Split** action (deletes the link → tiles
+return to standalone). A link only becomes a master when 2+ of its members are art tiles present in the gallery,
+so story links and unrelated links fall through untouched (`_foldMasters`).
+
+**Write path.** A **Select** toggle in the gallery header turns discovered tiles into checkable cards; ticking
+2+ and pressing **Unify selected** creates the link (`POST /api/links`) and the tiles collapse into a master.
+Library uploads (already "one work → N publications") and cross-type merges are out of scope for v1 — unify
+operates on the orphan discovered tiles, which is exactly what it's for.
+
+Frontend only: `frontend/js/artwork.js` (`_foldMasters`/`_masterCard`/`_toggleMaster`/`_splitMaster` +
+select-mode helpers), `frontend/css/artwork.css`. Spec: `prototype/docs/ARTWORK_UNIFY.md` (§6.1 id-space
+confirmed = best case; §6.2 read path + §6.3 write path shipped; suggestions banner + cover/title management
+deferred). 314 tests green (backend unchanged). **Needs a server deploy + hard-refresh.**
+
+---
+
 ## [2.58.1] - 2026-07-09 - Fix: Posts images to Bluesky 400'd when over ~1 MB
 
 Live test of 2.58.0 surfaced a Bluesky `createRecord` 400 on an image post. Bluesky rejects a feed-post image

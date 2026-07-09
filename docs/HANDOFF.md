@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-09
-**Current version:** 2.58.1 — **Fix: Posts images to Bluesky 400'd when over ~1 MB.**
+**Current version:** 2.59.0 — **Artwork: unify the same piece across sites into one master.**
+The Artwork gallery can now coalesce the same artwork posted to several sites (each with its own per-site
+submission id) into one **master tile with pooled stats** — like cross-posted stories already pool. **No new
+backend:** a master *is* a generic cross-platform link, and discovered art tiles already carry the
+`(platform, submission_id)` identity `submission_links`/`submission_link_members` key on, so it reuses
+`POST /api/links` / `DELETE /api/links/{id}` / `GET /api/links` (zero schema, zero new endpoints). Read path:
+`Artwork.render()` fetches `/api/links` and folds tiles sharing a link into a master card ("N sites" badge,
+platform emojis, pooled views, expand → per-member rows + **Split**); a link becomes a master only when 2+ of
+its members are art tiles in the gallery, so story/unrelated links fall through (`_foldMasters`). Write path: a
+**Select** toggle → tick 2+ discovered tiles → **Unify selected** (`POST /api/links`) → they collapse into a
+master. Frontend only: `frontend/js/artwork.js`, `frontend/css/artwork.css`. Spec:
+`prototype/docs/ARTWORK_UNIFY.md` (§6.2 read + §6.3 write shipped; suggestions banner + cover/title management
+deferred). 314 tests green (backend unchanged). **Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.58.1 — Fix: Posts images to Bluesky 400'd when over ~1 MB.**
 Live test of 2.58.0 hit a Bluesky `createRecord` 400 (`BlobTooLarge`): bsky rejects a feed-post image blob over
 ~976 KB at record validation, but the Posts path uploaded the original (composer allows 25 MB). Added
 `BskyClient._fit_blob()` (downscale/re-encode to JPEG ≤950 KB, mirroring the stories path's `_prepare_bsky_image`,

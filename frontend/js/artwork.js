@@ -18,6 +18,9 @@ window.Artwork = {
     _pendingPath: null,    // desktop local path awaiting copy
     _previewUrl: null,     // object URL for the live preview (revoked on re-pick)
 
+    _selectMode: false,    // gallery "Select to unify" mode active
+    _selected: new Set(),  // keys ("platform:submission_id") of ticked discovered tiles
+
     esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
             { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -53,6 +56,9 @@ window.Artwork = {
      *                  the backend `kind` tag + the art-capable platform set.
      */
     async render() {
+        this._selectMode = false;
+        this._selected.clear();
+
         const app = document.getElementById('app');
         app.innerHTML = `
             <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
@@ -63,9 +69,17 @@ window.Artwork = {
                     multiple art sites at once.</p>
                 </div>
                 <div style="display:flex;gap:.5rem;flex-shrink:0;">
+                    <button class="btn" id="art-select-toggle">Select</button>
                     <a class="btn" href="#/artwork/log">History</a>
                     <a class="btn btn-primary" href="#/artwork/new">+ New artwork</a>
                 </div>
+            </div>
+            <div id="art-select-bar" class="artwork-select-bar" hidden>
+                <span id="art-select-count">0 selected</span>
+                <button class="btn btn-primary btn-sm" id="art-unify-btn" disabled>Unify selected</button>
+                <button class="btn btn-sm" id="art-select-cancel">Cancel</button>
+                <span class="muted artwork-select-hint">Tick 2 or more posts of the same piece, then Unify
+                to merge them into one master with pooled stats.</span>
             </div>
             <div id="artwork-grid"><div class="loading-spinner">Loading…</div></div>`;
 
@@ -86,7 +100,18 @@ window.Artwork = {
             discovered = ((dd && dd.discovered) || []).filter(d => this._isArt(d));
         } catch (e) { /* show the library regardless of discovered errors */ }
 
-        if (!library.length && !discovered.length) {
+        // Cross-platform links fold same-piece discovered tiles into one master.
+        // A master IS a generic submission_link whose members happen to be art
+        // tiles — additive and best-effort, so plain tiles show if links fail.
+        let links = [];
+        try {
+            const ld = await API.getLinks();
+            links = (ld && ld.links) || [];
+        } catch (e) { /* masters are additive; fall back to ungrouped tiles */ }
+
+        const { masters, standalone } = this._foldMasters(discovered, links);
+
+        if (!library.length && !masters.length && !standalone.length) {
             grid.className = '';
             grid.innerHTML = `
                 <div class="empty-state">
@@ -99,20 +124,219 @@ window.Artwork = {
         }
 
         // Merge into one grid, newest first. Library cards link to their detail;
-        // discovered cards carry View ↗ + Import.
+        // master cards pool a linked set; discovered cards carry View ↗ + Import.
         const merged = [
             ...library.map(a => ({ _src: 'lib', _date: a.created_at || '', a })),
-            ...discovered.map(d => ({ _src: 'disc', _date: d.posted_at || '', d })),
+            ...masters.map(m => ({ _src: 'master', _date: m._date || '', m })),
+            ...standalone.map(d => ({ _src: 'disc', _date: d.posted_at || '', d })),
         ].sort((x, y) => (y._date || '').localeCompare(x._date || ''));
 
         grid.className = 'artwork-grid';
         grid.innerHTML = merged.map(m =>
-            m._src === 'lib' ? this._card(m.a) : this._discoveredCard(m.d)).join('');
+            m._src === 'lib' ? this._card(m.a)
+                : m._src === 'master' ? this._masterCard(m.m)
+                    : this._discoveredCard(m.d)).join('');
 
         grid.addEventListener('click', e => {
-            const btn = e.target.closest('.art-import-btn');
-            if (btn) { e.preventDefault(); this._importDiscovered(btn); }
+            // Master controls stay live in and out of select mode.
+            const split = e.target.closest('.art-master-split');
+            if (split) { e.preventDefault(); this._splitMaster(split.dataset.linkId); return; }
+            const tog = e.target.closest('.art-master-toggle');
+            if (tog) { e.preventDefault(); this._toggleMaster(tog); return; }
+            // While selecting, a tap on a selectable tile toggles its tick and
+            // swallows the tile's own navigation / import.
+            if (this._selectMode) {
+                const card = e.target.closest('.artwork-card--selectable');
+                if (card) { e.preventDefault(); this._toggleSelect(card); }
+                return;
+            }
+            const imp = e.target.closest('.art-import-btn');
+            if (imp) { e.preventDefault(); this._importDiscovered(imp); }
         });
+
+        document.getElementById('art-select-toggle')
+            .addEventListener('click', () => this._enterSelect());
+        document.getElementById('art-select-cancel')
+            .addEventListener('click', () => this._exitSelect());
+        document.getElementById('art-unify-btn')
+            .addEventListener('click', () => this._unifySelected());
+    },
+
+    /* ── Masters (unify) ────────────────────────────────────────
+     *
+     * A "master" coalesces the same artwork posted to several sites — each with
+     * its own per-site submission id — into one tile with pooled stats. It reuses
+     * the generic cross-platform link tables (submission_links /
+     * submission_link_members): an artwork master is simply a link whose members
+     * are art tiles. See prototype/docs/ARTWORK_UNIFY.md.
+     */
+
+    _key(platform, sid) { return String(platform) + ':' + String(sid); },
+    _unkey(k) {
+        const i = k.indexOf(':');
+        return { platform: k.slice(0, i), submission_id: k.slice(i + 1) };
+    },
+
+    /* Group discovered art tiles that share a submission_link into masters,
+       returning the masters plus the still-standalone tiles. A link becomes a
+       master only when 2+ of its members are art tiles present in this gallery,
+       so story links (and links with a single art member here) fall through and
+       their members stay as plain tiles. */
+    _foldMasters(discovered, links) {
+        const byKey = new Map();
+        discovered.forEach(d => byKey.set(this._key(d.platform, d.submission_id), d));
+        const claimed = new Set();
+        const masters = [];
+        (links || []).forEach(link => {
+            const members = (link.members || [])
+                .map(m => byKey.get(this._key(m.platform, m.submission_id)))
+                .filter(Boolean);
+            if (members.length < 2) return;
+            members.forEach(d => claimed.add(this._key(d.platform, d.submission_id)));
+            const _date = members.map(d => d.posted_at || '').sort().pop() || '';
+            masters.push({ link_id: link.link_id, members, _date });
+        });
+        const standalone = discovered.filter(
+            d => !claimed.has(this._key(d.platform, d.submission_id)));
+        return { masters, standalone };
+    },
+
+    _masterCover(members) {
+        const withThumb = members.find(d => this._thumbSrc(d));
+        const src = withThumb ? this._thumbSrc(withThumb) : '';
+        return src
+            ? `<div class="artwork-card-cover" style="background-image:url('${this.esc(src)}')"></div>`
+            : `<div class="artwork-card-cover artwork-card-cover--empty">no image</div>`;
+    },
+
+    _masterTitle(members) {
+        const m = members.find(d => d.title);
+        return (m && m.title) || ('#' + members[0].submission_id);
+    },
+
+    _masterCard(m) {
+        const members = m.members;
+        const cover = this._masterCover(members);
+        const totalViews = members.reduce((s, d) => s + (Number(d.views) || 0), 0);
+        const emojis = members.map(d => {
+            const p = this._plat(d.platform);
+            return `<span class="artwork-plat" title="${this.esc(p.label)}">${p.emoji || this.esc(p.label)}</span>`;
+        }).join('');
+        const rows = members.map(d => {
+            const p = this._plat(d.platform);
+            const v = (d.views != null)
+                ? `<span class="artwork-master-member-stat">${Utils.formatNumber(d.views)} views</span>` : '';
+            return `
+                <div class="artwork-master-member">
+                    <span class="artwork-plat" title="${this.esc(p.label)}">${p.emoji || this.esc(p.label)}</span>
+                    <span class="artwork-master-member-title">${this.esc(d.title || ('#' + d.submission_id))}</span>
+                    ${v}
+                    <a class="btn btn-sm" href="${this.esc(d.url)}" target="_blank" rel="noopener">View ↗</a>
+                </div>`;
+        }).join('');
+        return `
+            <div class="artwork-card artwork-card--master" data-link-id="${this.esc(m.link_id)}">
+                <button type="button" class="art-master-toggle" data-link-id="${this.esc(m.link_id)}"
+                    title="Expand this master">
+                    ${cover}
+                    <span class="artwork-disc-badge artwork-master-badge">${members.length} sites</span>
+                </button>
+                <div class="artwork-card-body">
+                    <div class="artwork-card-title">${this.esc(this._masterTitle(members))}</div>
+                    <div class="artwork-card-meta">
+                        <span class="artwork-plats">${emojis}</span>
+                        <span class="artwork-disc-stat" style="margin-left:auto;">${Utils.formatNumber(totalViews)} views</span>
+                    </div>
+                    <div class="artwork-master-panel">
+                        ${rows}
+                        <div class="artwork-master-panel-actions">
+                            <button type="button" class="btn btn-sm btn-danger art-master-split"
+                                data-link-id="${this.esc(m.link_id)}">Split</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+    },
+
+    _toggleMaster(btn) {
+        const card = btn.closest('.artwork-card--master');
+        if (card) card.classList.toggle('expanded');
+    },
+
+    async _splitMaster(linkId) {
+        if (!confirm('Split this master? The pieces go back to separate tiles — nothing is deleted from any site.')) return;
+        try {
+            await API.deleteLink(linkId);
+            this._toast('success', 'Split');
+            const y = window.scrollY;
+            await this.render();
+            window.scrollTo(0, y);
+        } catch (err) {
+            this._toast('error', 'Split failed: ' + (err.message || err));
+        }
+    },
+
+    /* ── Select-to-unify mode ── */
+
+    _enterSelect() {
+        this._selectMode = true;
+        this._selected.clear();
+        const grid = document.getElementById('artwork-grid');
+        if (grid) grid.classList.add('selecting');
+        const bar = document.getElementById('art-select-bar');
+        if (bar) bar.hidden = false;
+        const t = document.getElementById('art-select-toggle');
+        if (t) t.hidden = true;
+        this._updateSelectBar();
+    },
+
+    _exitSelect() {
+        this._selectMode = false;
+        this._selected.clear();
+        const grid = document.getElementById('artwork-grid');
+        if (grid) {
+            grid.classList.remove('selecting');
+            grid.querySelectorAll('.artwork-card.selected').forEach(c => c.classList.remove('selected'));
+        }
+        const bar = document.getElementById('art-select-bar');
+        if (bar) bar.hidden = true;
+        const t = document.getElementById('art-select-toggle');
+        if (t) t.hidden = false;
+    },
+
+    _toggleSelect(card) {
+        const key = card.dataset.key;
+        if (!key) return;
+        if (this._selected.has(key)) { this._selected.delete(key); card.classList.remove('selected'); }
+        else { this._selected.add(key); card.classList.add('selected'); }
+        this._updateSelectBar();
+    },
+
+    _updateSelectBar() {
+        const n = this._selected.size;
+        const countEl = document.getElementById('art-select-count');
+        if (countEl) countEl.textContent = `${n} selected`;
+        const unify = document.getElementById('art-unify-btn');
+        if (unify) unify.disabled = n < 2;
+    },
+
+    async _unifySelected() {
+        const keys = [...this._selected];
+        if (keys.length < 2) return;
+        const members = keys.map(k => this._unkey(k));
+        const btn = document.getElementById('art-unify-btn');
+        btn.disabled = true; btn.textContent = 'Unifying…';
+        try {
+            await API.createLink({ members });
+            this._toast('success', `Unified ${members.length} pieces into one master`);
+            this._exitSelect();
+            const y = window.scrollY;
+            await this.render();
+            window.scrollTo(0, y);
+        } catch (err) {
+            this._toast('error', 'Unify failed: ' + (err.message || err));
+            btn.disabled = false; btn.textContent = 'Unify selected';
+        }
     },
 
     /* Keep only art-capable, visual (non-text), thumbnailed discovered items. */
@@ -143,8 +367,10 @@ window.Artwork = {
             : `<div class="artwork-card-cover artwork-card-cover--empty">no image</div>`;
         const views = (d.views != null)
             ? `<span class="artwork-disc-stat">${Utils.formatNumber(d.views)} views</span>` : '';
+        const key = this._key(d.platform, d.submission_id);
         return `
-            <div class="artwork-card artwork-card--disc">
+            <div class="artwork-card artwork-card--disc artwork-card--selectable" data-key="${this.esc(key)}">
+                <span class="artwork-select-check" aria-hidden="true">✓</span>
                 <a href="${this.esc(d.url)}" target="_blank" rel="noopener" class="artwork-card-coverlink">
                     ${cover}
                     <span class="artwork-disc-badge" title="Found on ${this.esc(plat.label)}">${plat.emoji || this.esc(plat.label)}</span>

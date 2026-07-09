@@ -5521,6 +5521,39 @@ discovered-fetch error is swallowed so the library grid still shows. No schema
 change, no new endpoint. Styling: `frontend/css/artwork.css` `.artwork-card--disc`
 + `.artwork-disc-*` (reuses the global `.btn-sm`).
 
+**Masters — unify the same piece across sites (2.59.0).** The gallery folds the
+same artwork posted to several sites into **one master tile with pooled stats**.
+The key realisation: a master *is* a generic **cross-platform link** — the
+`submission_links` / `submission_link_members` tables (see §"Cross-Platform
+Tables") key on `(platform, submission_id)`, which is exactly the identity a
+discovered art tile already carries (both come from the same `*_submissions`
+poller tables). So the feature is **frontend-only** and reuses the existing link
+endpoints — `GET /api/links` (read), `POST /api/links` (unify), `DELETE
+/api/links/{id}` (split); **no schema change, no new endpoint.**
+- *Read path* — `render()` also fetches `/api/links`; `_foldMasters(discovered,
+  links)` groups discovered tiles sharing a link into masters and returns the
+  still-standalone tiles. A link becomes a master **only when 2+ of its members
+  are art tiles present in this gallery**, so story links (and links whose art
+  members were imported to the library and thus left the discovered set) fall
+  through untouched — no server-side art-vs-story classification needed.
+  `_masterCard` renders a "N sites" badge, the members' platform emojis, summed
+  views, and a click-to-expand (`.art-master-toggle` → `_toggleMaster` toggles
+  `.expanded`) panel of per-member rows (each still opens its own post) with a
+  **Split** button (`_splitMaster` → `DELETE /api/links/{id}` → re-render).
+- *Write path* — a **Select** toggle in the header (`_enterSelect`/`_exitSelect`)
+  adds `.selecting` to the grid, revealing a checkbox overlay on each
+  `.artwork-card--selectable` (discovered) tile and swallowing its normal
+  navigation/import; `_toggleSelect` tracks ticked keys; **Unify selected**
+  (`_unifySelected`) posts the ticked `(platform, submission_id)` members to
+  `POST /api/links` and re-renders so they collapse into a master.
+- *Scope* — unify operates on the orphan **discovered** tiles (library uploads
+  are already "one work → N publications"; cross-type merges are out). Deferred
+  (see `prototype/docs/ARTWORK_UNIFY.md` §6.4–6.5): a suggestions banner reusing
+  `auto_suggest_links`, and per-master cover/title management (would want the
+  optional `title`/`cover_*` columns from the spec's §3). Styling:
+  `.artwork-card--master`, `.artwork-master-*`, `.artwork-select-*` in
+  `artwork.css`.
+
 ### 20.4 Per-platform image posting
 
 The 7 image-capable platforms (the 4 fiction-only sites — ao3, sqw, wp — plus tw,
