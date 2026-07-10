@@ -4,6 +4,41 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.68.0] - 2026-07-10 - Submissions is its own all-platform page + desktop multi-account polling
+
+Two changes.
+
+### Submissions hub is now the real `#/submissions` (no longer defaults to Inkbunny)
+
+The **Submissions** nav item now opens the **cross-platform works hub** (every story + artwork across all platforms,
+grouped per work, served by `/api/works`) instead of the legacy Inkbunny-only analytics table. The hub shipped back in
+2.33–2.36 but a router-ordering bug shadowed it: `#/submissions` matched the IB branch first, so the unified hub at the
+later `else if` was unreachable. Clicking "Submissions" always showed Inkbunny.
+
+**The fix — Inkbunny loses its legacy special-casing and joins the uniform routing.** Every platform (Inkbunny
+included) now uses `#/{code}`, `#/{code}/submissions`, `#/{code}/compare`, `#/{code}/submission/{id}`. Inkbunny's
+table/detail/compare moved from the un-prefixed `#/submissions` / `#/submission/{id}` / `#/compare` to
+`#/ib/submissions` / `#/ib/submission/{id}` / `#/ib/compare`, which frees the bare `#/submissions` to fall through to
+the hub. Touched: `platformRoute` (dropped the `ib` special case), the router branches, the `isPlatformRoute` /
+page-tint logic, the context-bar sub-view resolver, the nav-active rule (keeps "Submissions" lit on hub sub-routes),
+IB's own links (dashboard stat-card, card-grid `detailRoute`, detail back-link), and `Components.submissionsTable`'s
+row link. Files: `frontend/js/app.js`, `frontend/js/platforms.js`, `frontend/js/components.js`.
+
+### Desktop app now polls ALL accounts per platform, not just the default
+
+Previously `main.py`'s background poller threads called every `run_<code>_poll_cycle()` with no `account_id`, so a
+desktop install only ever polled each platform's **default** account (the server already loops all enabled accounts via
+`_poll_accounts`). New shared helper **`_poll_platform_accounts(platform, run_cycle)`** in `main.py` mirrors the server:
+it seeds + enumerates the platform's enabled account rows and runs the cycle once per account (passing `account_id`,
+per-account credential check, isolated failures), falling back to a single default poll if the accounts table is empty
+or unreadable. All 16 desktop scheduled-poll call sites now route through it. Desktop-runtime only (no server behaviour
+change). File: `main.py`.
+
+**335 tests green** (frontend + desktop-glue changes; no new backend surface). **Needs a server deploy** (frontend) **+
+a desktop rebuild** (multi-account polling).
+
+---
+
 ## [2.67.0] - 2026-07-10 - Instagram posting from the desktop app (image relay)
 
 Instagram posting is no longer server-only. A **paired desktop** instance can now post to Instagram by borrowing its

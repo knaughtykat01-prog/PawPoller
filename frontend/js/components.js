@@ -155,7 +155,7 @@ const Components = {
      * Full IB submissions table with sortable headers, thumbnails, deltas, and links
      * to detail pages. Thumbnails are proxied via Utils.thumbUrl() to avoid CORS issues.
      * Sortable column headers use data-sort attributes; sorting logic is handled in app.js.
-     * Each row shows: thumbnail, title (links to #/submission/:id), type, rating,
+     * Each row shows: thumbnail, title (links to #/ib/submission/:id), type, rating,
      * views + delta, faves + delta, comments + delta, and creation date.
      * @param {Array} submissions - Array of IB submission objects
      * @returns {string} HTML string for the full data-table with id="submissions-table"
@@ -167,7 +167,7 @@ const Components = {
         const rows = submissions.map(s => `
             <tr>
                 <td class="mobile-hide" data-label="">${s.thumb_url ? `<img src="${Utils.thumbUrl(s.thumb_url)}" class="thumb-cell" loading="eager">` : ''}</td>
-                <td data-label="Title"><a href="#/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Title"><a href="#/ib/submission/${s.submission_id}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
                 <td data-label="Type">${Utils.escapeHtml(s.type_name || '--')}</td>
                 <td data-label="Rating">${Utils.escapeHtml(s.rating_name || '--')}</td>
                 <td data-label="Views">${Utils.formatNumber(s.views)} ${Utils.formatDelta(s.views_delta)}</td>

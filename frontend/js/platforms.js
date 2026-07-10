@@ -38,18 +38,15 @@
 
     /* platformRoute(code, sub) — hash route for a platform sub-view.
      *
-     * Inkbunny is the legacy "default" platform: its dashboard is `#/ib`, but
-     * its submissions/compare/detail live at UN-prefixed routes
-     * (`#/submissions`, `#/compare`, `#/submission/{id}`). Every other platform
-     * is `#/{code}`, `#/{code}/submissions`, `#/{code}/compare`. The router
-     * (app.js route()) special-cases IB the same way, so this helper is the one
-     * place that knowledge is encoded for the nav/switcher/sub-tabs.
+     * Every platform (including Inkbunny, as of 2.68.0) is uniform:
+     * `#/{code}`, `#/{code}/submissions`, `#/{code}/compare`,
+     * `#/{code}/submission/{id}`. The top-level `#/submissions` is now the
+     * cross-platform Submissions hub, not IB's table.
      *
      *   sub: undefined → dashboard, 'submissions', or 'compare'
      */
     function platformRoute(code, sub) {
         if (!sub) return '#/' + code;
-        if (code === 'ib') return '#/' + sub;
         return '#/' + code + '/' + sub;
     }
 

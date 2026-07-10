@@ -649,22 +649,20 @@ const App = {
         if (mainCol) mainCol.style.marginLeft = isFullScreen ? '0' : '';
         if (bottomNav) bottomNav.style.display = isFullScreen ? 'none' : '';
 
-        /* A "platform route" is the hub, any platform code, or Inkbunny's
-           legacy un-prefixed sub-views (#/submissions, #/compare,
-           #/submission/{id}). On any of these the "Platforms" nav item is
-           the active one. */
+        /* A "platform route" is the Platforms hub or any platform code
+           (#/{code}, #/{code}/submissions, …). On these the "Platforms" nav
+           item is the active one. The top-level #/submissions is NOT a platform
+           route — it's the cross-platform Submissions hub. */
         const platformCodes = (window.PLATFORMS || []).map(p => p.code);
         const isPlatformRoute = parts[0] === 'platforms'
-            || platformCodes.includes(parts[0])
-            || ['submissions', 'submission', 'compare'].includes(parts[0]);
+            || platformCodes.includes(parts[0]);
 
         /* Tint the platform detail page-header with that platform's brand
            colour (light bold-pass). #main-col survives #app re-renders, so
            setting the attribute + var here lets redesign.css style the
-           eventually-rendered .page-header without touching the 11 per-platform
+           eventually-rendered .page-header without touching the per-platform
            render functions. The hub (#/platforms) is not a single platform. */
-        const _pcode = platformCodes.includes(parts[0]) ? parts[0]
-            : ['submissions', 'submission', 'compare'].includes(parts[0]) ? 'ib' : null;
+        const _pcode = platformCodes.includes(parts[0]) ? parts[0] : null;
         if (mainCol) {
             if (_pcode) {
                 mainCol.dataset.platform = _pcode;
@@ -687,6 +685,8 @@ const App = {
                 && parts[1] !== 'log' && href === '#/posting') active = true;
             /* Artwork sub-routes (#/artwork/new, #/artwork/image/...) keep "Artwork" lit. */
             if (!active && parts[0] === 'artwork' && href === '#/artwork') active = true;
+            /* Submissions hub sub-routes (#/submissions/discovered, /work/...) keep "Submissions" lit. */
+            if (!active && parts[0] === 'submissions' && href === '#/submissions') active = true;
             link.classList.toggle('active', active);
         });
 
@@ -740,11 +740,11 @@ const App = {
             this.renderPlatformsHub();
         } else if (parts[0] === 'ib' && !parts[1]) {
             this.renderDashboard();
-        } else if (parts[0] === 'submissions' && !parts[1]) {
+        } else if (parts[0] === 'ib' && parts[1] === 'submissions' && !parts[2]) {
             this.renderSubmissions();
-        } else if (parts[0] === 'submission' && parts[1]) {
-            this.renderDetail(parseInt(parts[1]));
-        } else if (parts[0] === 'compare') {
+        } else if (parts[0] === 'ib' && parts[1] === 'submission' && parts[2]) {
+            this.renderDetail(parseInt(parts[2]));
+        } else if (parts[0] === 'ib' && parts[1] === 'compare') {
             this.renderCompare();
         } else if (parts[0] === 'fa' && (!parts[1] || parts[1] === '')) {
             this.renderFADashboard();
@@ -933,19 +933,14 @@ const App = {
         const p0 = parts[0] || '';
         const codes = (window.PLATFORMS || []).map(p => p.code);
 
-        /* Resolve platform + sub-view. Inkbunny is special: its dashboard is
-           #/ib but its sub-views are un-prefixed (#/submissions, #/compare,
-           #/submission/{id}). */
+        /* Resolve platform + sub-view. All platforms (incl. Inkbunny, 2.68.0)
+           use prefixed routes: #/{code}, #/{code}/submissions, etc. */
         let platform = null, sub = 'dash';
         if (codes.includes(p0)) {
             platform = p0;
             if (parts[1] === 'submissions') sub = 'subs';
             else if (parts[1] === 'compare') sub = 'compare';
             else if (parts[1] === 'submission') sub = 'detail';
-        } else if (p0 === 'submissions' || p0 === 'submission') {
-            platform = 'ib'; sub = (p0 === 'submission') ? 'detail' : 'subs';
-        } else if (p0 === 'compare') {
-            platform = 'ib'; sub = 'compare';
         }
 
         if (platform) {
@@ -2792,7 +2787,7 @@ const App = {
                 ${ibGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(ibGoals)}</div>` : ''}
 
                 <div class="stats-grid">
-                    ${Components.statCard('Total Submissions', summary.total_submissions, null, '#/submissions')}
+                    ${Components.statCard('Total Submissions', summary.total_submissions, null, '#/ib/submissions')}
                     ${Components.statCard('Total Views', summary.total_views)}
                     ${Components.statCard('Total Favorites', summary.total_favorites)}
                     ${Components.statCard('Total Comments', summary.total_comments)}
@@ -2887,7 +2882,7 @@ const App = {
             // — so typing in the search box appeared to do nothing.
             const ibGridRenderer = (subs) => Components.submissionCardGrid(subs, {
                 idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumb_url',
-                detailRoute: '/submission', dateKey: 'create_datetime',
+                detailRoute: '/ib/submission', dateKey: 'create_datetime',
                 stats: [
                     { key: 'views', deltaKey: 'views_delta', label: 'views' },
                     { key: 'favorites_count', deltaKey: 'faves_delta', label: 'faves' },
@@ -2951,7 +2946,7 @@ const App = {
 
             const html = `
                 ${this._refreshIndicatorHtml()}
-                <a href="#/submissions" class="back-link">&larr; Back to Submissions</a>
+                <a href="#/ib/submissions" class="back-link">&larr; Back to Submissions</a>
                 <div class="detail-header">
                     ${sub.thumb_url ? `<img src="${Utils.thumbUrl(sub.thumb_url)}" class="detail-thumb">` : ''}
                     <div class="detail-info">

@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version:** 2.67.0 — **Instagram posting from the desktop app (image relay).**
+**Current version:** 2.68.0 — **Submissions is its own all-platform page + desktop multi-account polling.**
+Two changes. **(1) Submissions hub** — the **Submissions** nav (`#/submissions`) now opens the cross-platform works
+hub (`/api/works`, every story+artwork grouped per work) instead of the legacy Inkbunny-only table. The hub shipped in
+2.33–2.36 but a router-ordering bug shadowed it (the IB `#/submissions` branch matched first). Fix: **Inkbunny loses its
+legacy un-prefixed routing** and joins the uniform `#/{code}/…` scheme — IB's table/detail/compare moved to
+`#/ib/submissions` / `#/ib/submission/{id}` / `#/ib/compare`, freeing bare `#/submissions` for the hub. Touched
+`platformRoute`, the router branches, `isPlatformRoute`/page-tint, the context-bar resolver, the nav-active rule, IB's
+own links, and `Components.submissionsTable`. **(2) Desktop multi-account polling** — `main.py`'s poller threads called
+`run_<code>_poll_cycle()` with no `account_id` (default account only); new shared `_poll_platform_accounts(platform,
+run_cycle)` mirrors the server's `_poll_accounts` (enumerate enabled accounts → poll each with its `account_id`, fall
+back to default), wired into all 16 desktop scheduled polls. Desktop-runtime only. **335 tests green. Needs a server
+deploy (frontend) + a desktop rebuild (multi-account polling).** Files: `frontend/js/app.js`,
+`frontend/js/platforms.js`, `frontend/js/components.js`, `main.py`, `config.py`.
+
+**Prior release — 2.67.0 — Instagram posting from the desktop app (image relay).**
 IG posting is no longer server-only. A **paired desktop** instance posts to Instagram by borrowing its server as the
 image host — reusing the existing `posting_server_url` + `posting_server_api_key` pairing (no new settings/UI). New
 authenticated **`POST /api/ig/pubmedia`** (`routes/ig_api.py`) accepts an uploaded image, stashes it via `ig_media`

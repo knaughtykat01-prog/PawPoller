@@ -76,6 +76,62 @@ logger = logging.getLogger("main")
 #    and silently skips if none are configured (the user might not have set
 #    up that platform yet).
 
+
+async def _poll_platform_accounts(platform, run_cycle):
+    """Poll every ENABLED account for one platform, in sequence.
+
+    Desktop mirror of the server orchestrator's per-account loop
+    (`server.py._poll_accounts`): enumerate this platform's enabled account rows
+    and run the poll cycle once per account, passing its ``account_id`` — so a
+    desktop install polls ALL configured accounts, not just the default. Falls
+    back to a single default-account poll if the accounts table can't be read or
+    has no rows yet. Each account is isolated: one failure won't abort the rest.
+    """
+    from database.db import get_connection
+    from database import accounts as accounts_db
+
+    settings = config.get_settings()
+    try:
+        conn = get_connection()
+        try:
+            accounts_db.seed_default_accounts(conn, settings)
+            accts = [a for a in accounts_db.list_accounts(conn, enabled_only=True)
+                     if a["platform"] == platform]
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("%s: account enumeration failed (%s) — polling default account only",
+                       platform, e)
+        await run_cycle()
+        return
+
+    if not accts:
+        # No account rows (creds present but unseeded, or none configured) —
+        # the legacy single default poll; the cycle self-skips if uncredentialed.
+        await run_cycle()
+        return
+
+    check = accounts_db.DEFAULT_CRED_CHECKS.get(platform, lambda s: True)
+    try:
+        from polling.notifications import current_alert_account
+    except Exception:
+        current_alert_account = None
+
+    for a in accts:
+        creds = config.resolve_account_credentials(
+            platform, a["account_id"], bool(a["is_default"]), settings)
+        if not check(creds):
+            continue  # this account has no usable credentials — skip it
+        if current_alert_account is not None:
+            # Label per-cycle alerts with the account/persona they belong to.
+            current_alert_account.set((platform, a["account_id"]))
+        try:
+            await run_cycle(a["account_id"])
+        except Exception as e:  # one account must not kill the whole cycle
+            logger.error("%s account %s (%s) poll failed: %s",
+                         platform, a["account_id"], a.get("label") or "", e)
+
+
 def _start_poller():
     """Run IB poller in its own daemon thread with a dynamic interval from settings."""
     import asyncio
@@ -89,7 +145,7 @@ def _start_poller():
             logger.info("Scheduled IB poll skipped — no credentials configured")
             return
         try:
-            await run_poll_cycle()
+            await _poll_platform_accounts("ib", run_poll_cycle)
         except Exception as e:
             logger.error("Scheduled IB poll failed: %s", e)
 
@@ -131,7 +187,7 @@ def _start_fa_poller():
             logger.info("Scheduled FA poll skipped — no FA credentials configured")
             return
         try:
-            await run_fa_poll_cycle()
+            await _poll_platform_accounts("fa", run_fa_poll_cycle)
         except Exception as e:
             logger.error("Scheduled FA poll failed: %s", e)
 
@@ -169,7 +225,7 @@ def _start_ws_poller():
             logger.info("Scheduled WS poll skipped — no Weasyl API key configured")
             return
         try:
-            await run_ws_poll_cycle()
+            await _poll_platform_accounts("ws", run_ws_poll_cycle)
         except Exception as e:
             logger.error("Scheduled WS poll failed: %s", e)
 
@@ -207,7 +263,7 @@ def _start_sf_poller():
             logger.info("Scheduled SF poll skipped — no SoFurry credentials configured")
             return
         try:
-            await run_sf_poll_cycle()
+            await _poll_platform_accounts("sf", run_sf_poll_cycle)
         except Exception as e:
             logger.error("Scheduled SF poll failed: %s", e)
 
@@ -245,7 +301,7 @@ def _start_sqw_poller():
             logger.info("Scheduled SqW poll skipped — no SquidgeWorld credentials configured")
             return
         try:
-            await run_sqw_poll_cycle()
+            await _poll_platform_accounts("sqw", run_sqw_poll_cycle)
         except Exception as e:
             logger.error("Scheduled SqW poll failed: %s", e)
 
@@ -283,7 +339,7 @@ def _start_ao3_poller():
             logger.info("Scheduled AO3 poll skipped — no AO3 credentials configured")
             return
         try:
-            await run_ao3_poll_cycle()
+            await _poll_platform_accounts("ao3", run_ao3_poll_cycle)
         except Exception as e:
             logger.error("Scheduled AO3 poll failed: %s", e)
 
@@ -321,7 +377,7 @@ def _start_da_poller():
             logger.info("Scheduled DA poll skipped — no DeviantArt credentials configured")
             return
         try:
-            await run_da_poll_cycle()
+            await _poll_platform_accounts("da", run_da_poll_cycle)
         except Exception as e:
             logger.error("Scheduled DA poll failed: %s", e)
 
@@ -359,7 +415,7 @@ def _start_wp_poller():
             logger.info("Scheduled WP poll skipped — no Wattpad username configured")
             return
         try:
-            await run_wp_poll_cycle()
+            await _poll_platform_accounts("wp", run_wp_poll_cycle)
         except Exception as e:
             logger.error("Scheduled WP poll failed: %s", e)
 
@@ -397,7 +453,7 @@ def _start_ik_poller():
             logger.info("Scheduled IK poll skipped — no Itaku username configured")
             return
         try:
-            await run_ik_poll_cycle()
+            await _poll_platform_accounts("ik", run_ik_poll_cycle)
         except Exception as e:
             logger.error("Scheduled IK poll failed: %s", e)
 
@@ -435,7 +491,7 @@ def _start_bsky_poller():
             logger.info("Scheduled BSKY poll skipped — no Bluesky credentials configured")
             return
         try:
-            await run_bsky_poll_cycle()
+            await _poll_platform_accounts("bsky", run_bsky_poll_cycle)
         except Exception as e:
             logger.error("Scheduled BSKY poll failed: %s", e)
 
@@ -473,7 +529,7 @@ def _start_tw_poller():
             logger.info("Scheduled TW poll skipped — no X/Twitter credentials configured")
             return
         try:
-            await run_tw_poll_cycle()
+            await _poll_platform_accounts("tw", run_tw_poll_cycle)
         except Exception as e:
             logger.error("Scheduled TW poll failed: %s", e)
 
@@ -511,7 +567,7 @@ def _start_mast_poller():
             logger.info("Scheduled MAST poll skipped — no Mastodon credentials configured")
             return
         try:
-            await run_mast_poll_cycle()
+            await _poll_platform_accounts("mast", run_mast_poll_cycle)
         except Exception as e:
             logger.error("Scheduled MAST poll failed: %s", e)
 
@@ -549,7 +605,7 @@ def _start_tum_poller():
             logger.info("Scheduled TUM poll skipped — no Tumblr credentials configured")
             return
         try:
-            await run_tum_poll_cycle()
+            await _poll_platform_accounts("tum", run_tum_poll_cycle)
         except Exception as e:
             logger.error("Scheduled TUM poll failed: %s", e)
 
@@ -587,7 +643,7 @@ def _start_pix_poller():
             logger.info("Scheduled PIX poll skipped — no Pixiv credentials configured")
             return
         try:
-            await run_pix_poll_cycle()
+            await _poll_platform_accounts("pix", run_pix_poll_cycle)
         except Exception as e:
             logger.error("Scheduled PIX poll failed: %s", e)
 
@@ -625,7 +681,7 @@ def _start_thr_poller():
             logger.info("Scheduled THR poll skipped — no Threads credentials configured")
             return
         try:
-            await run_thr_poll_cycle()
+            await _poll_platform_accounts("thr", run_thr_poll_cycle)
         except Exception as e:
             logger.error("Scheduled THR poll failed: %s", e)
 
@@ -663,7 +719,7 @@ def _start_ig_poller():
             logger.info("Scheduled IG poll skipped — no Instagram credentials configured")
             return
         try:
-            await run_ig_poll_cycle()
+            await _poll_platform_accounts("ig", run_ig_poll_cycle)
         except Exception as e:
             logger.error("Scheduled IG poll failed: %s", e)
 

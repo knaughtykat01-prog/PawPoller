@@ -501,7 +501,7 @@ When polling is delegated to a remote server (`polling_owner == "remote"`), the 
 
 ### Per-Platform Thread Pattern (`main.py` only)
 
-In the desktop 15-thread model, every poller function (`_start_poller()`, `_start_fa_poller()`, etc.) follows the exact same pattern:
+In the desktop 15-thread model, every poller function (`_start_poller()`, `_start_fa_poller()`, etc.) follows the exact same pattern. **As of 2.68.0** the poll step goes through the shared `_poll_platform_accounts(platform, run_cycle)` helper (module scope in `main.py`), which mirrors the server orchestrator's `_poll_accounts`: it seeds + enumerates the platform's enabled account rows and runs the cycle once per account (passing `account_id`, per-account credential check, isolated failures), falling back to a single default poll if the accounts table is empty/unreadable. So the desktop now polls **all** configured accounts per platform, not just the default. The flat credential gate (step 1) stays as a cheap "is this platform configured at all" early-out:
 
 ```python
 def _start_XX_poller():
@@ -516,7 +516,7 @@ def _start_XX_poller():
             return
         # 2. Execute poll cycle with error catching
         try:
-            await run_XX_poll_cycle()
+            await _poll_platform_accounts("XX", run_XX_poll_cycle)
         except Exception as e:
             logger.error("Scheduled XX poll failed: %s", e)
 
@@ -1600,9 +1600,11 @@ The frontend is a Single Page Application with hash-based routing:
 > - **Type/theme** (`css/tokens.css`): adds `--font-display` (Bricolage Grotesque) and switches
 >   `--font-sans` to Hanken Grotesk. The 8 `[data-theme]` blocks are unchanged.
 > - **Canonical platform list** (`frontend/js/platforms.js`, loaded first): exports
->   `window.PLATFORMS` + `platformByCode()` + `platformRoute()` — the single place the 11-platform
->   list and Inkbunny's un-prefixed-route quirk live (`#/ib` dashboard but `#/submissions` /
->   `#/compare` / `#/submission/{id}`). `command_palette.js` consumes it.
+>   `window.PLATFORMS` + `platformByCode()` + `platformRoute()` — the single place the platform list
+>   and route scheme live. As of 2.68.0 routing is **uniform for all platforms** (Inkbunny included):
+>   `#/{code}`, `#/{code}/submissions`, `#/{code}/compare`, `#/{code}/submission/{id}`. The bare
+>   `#/submissions` is the cross-platform Submissions hub (`window.Submissions` / `/api/works`), NOT
+>   Inkbunny — IB's legacy un-prefixed routes moved under `#/ib/…`. `command_palette.js` consumes it.
 > - **Shell** (`index.html`, `css/layout.css`): a persistent **labeled sidebar** (collapse via
 >   `#sidebar-collapse` → `.collapsed` + `body.sidebar-collapsed`, persisted to
 >   `localStorage['pawpoller-sidebar-collapsed']`) replaces the hover-to-expand rail. `#main-col`
