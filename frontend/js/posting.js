@@ -18,11 +18,12 @@ function formatFileSize(bytes) {
     return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
-/* Comparison chart palette — picked to be distinct on a dark background.
- * One colour per pub; cycles via modulo if there are more pubs than entries
- * (which shouldn't happen — at most 11 pubs, one per platform). */
+/* Comparison chart palette — distinct categorical hues that read on both the
+ * light (Quill) and dark themes. The PRIMARY series (index 0) is drawn from the
+ * live `--accent` token at render time (see below) so it always matches the
+ * active theme; these are the secondary hues, cycled via modulo. */
 const PUB_CHART_COLORS = [
-    '#9b7dff', '#5ae0a0', '#f0a050', '#70a0ff', '#f07070',
+    '#c9822f', '#5ae0a0', '#f0a050', '#70a0ff', '#f07070',
     '#fbc050', '#a880ff', '#5ac0e0', '#f580a0', '#80e070', '#e0a0ff',
 ];
 
@@ -604,8 +605,10 @@ const Posting = {
             try { canvas._ppChart.destroy(); } catch (e) {}
         }
 
+        const _pubAccent = (getComputedStyle(document.documentElement)
+            .getPropertyValue('--accent') || '').trim() || '#9a5b34';
         const datasets = pubsWithData.map((p, i) => {
-            const color = PUB_CHART_COLORS[i % PUB_CHART_COLORS.length];
+            const color = i === 0 ? _pubAccent : PUB_CHART_COLORS[i % PUB_CHART_COLORS.length];
             const platLabel = (PLATFORM_LABELS[p.platform] || p.platform).replace(/^.+\s/, '');
             return {
                 label: platLabel,

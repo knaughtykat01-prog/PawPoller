@@ -125,6 +125,25 @@
     --color-success:    var(--success);
     --color-warning:    var(--warning);
     --color-error:      var(--danger);
+    /* More legacy names found during the reskin — editor.css, loading_indicator.css,
+       components.css, diagnostics.css referenced these without ever defining them,
+       so var() fell through to hardcoded dark/violet fallbacks (the notification
+       bell rendered as a dark circle on Quill, etc.). Aliasing here makes them all
+       theme-aware in one place. (Runtime per-element vars like --pc/--page-accent
+       are intentionally left alone.) */
+    --accent-color:      var(--accent);
+    --accent-hover:      var(--accent-dim);
+    --color-accent:      var(--accent);
+    --primary:           var(--accent);
+    --bg-elevated:       var(--bg-card);
+    --border-color:      var(--border);
+    --border-secondary:  var(--card-border-inner);
+    --input-bg:          var(--bg-tertiary);
+    --surface-base:      var(--bg-primary);
+    --surface-secondary: var(--bg-secondary);
+    --surface-hover:     var(--bg-hover);
+    --text:              var(--text-primary);
+    --text-tertiary:     var(--text-muted);
 }
 
 /* ── Quill (redesign default — warm paper, sienna quill accent) ──

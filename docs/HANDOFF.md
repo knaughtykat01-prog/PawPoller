@@ -1,27 +1,56 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version (live/master):** 2.70.1 — **Hotfix: self-computing CSP hash for the no-flash boot script.**
-2.70.0 edited the inline boot `<script>` but not its hardcoded SHA-256 in `dashboard.py`, so browsers silently blocked
-it since 2.70.0 (pre-paint theme + mobile-mode resolution broken app-wide). `dashboard.py` now computes the hash from
-the HTML at runtime (`_theme_inline_hash()`, hashing index.html + epub-viewer.html, deduped) so it self-heals. This was
-**cherry-picked to master ahead of the reskin** — the full UI reskin lives on the **`reskin` branch** (2.71.0 →
-**2.72.0 top-nav bar**, NOT yet deployed; it carries the same CSP fix). Deploy the reskin later via merge `reskin` →
-`master`.
+**Current version (live/master):** 2.73.0 — **reskin concept Slice A: the Bookshelf (Library + editorial work detail).**
+A new top-level **Library** (`#/library`, peer to Overview): a cover-forward shelf of works (gilt "N live"/"published"
+ribbons, quiet Draft markers) + a rich work-detail (`#/library/work/{name}`: big cover, marginalia stats, per-platform
+"Published to" list with live counts, and a **chapter × platform reach** card that flags **incomplete** chapters).
+New `frontend/js/bookshelf.js` + `frontend/css/bookshelf.css`; reuses `/api/works` + `/api/posting/stories/{name}`,
+**no backend added** (Path A). Verified in-browser (shelf + populated work-detail via mock data — per-platform counts,
+chapter dots, incomplete flags all correct). Follows **`docs/RESKIN_BUILD_PLAN.md`** — the approved staged plan for the
+reskin's **concept layers** (A Bookshelf ✅ → B Modes pane → C Laurels → D Ledger → E Health strip/Workbench), each
+reusing real APIs, previewed locally, **deployed after each slice**. Earlier: 2.72.1 fixed the top-nav dropdown
+close-behaviour (one delegated handler: toggle on label; close on outside-click/Escape/item-select/re-click).
+**DEPLOY NOTE:** Slice A is the reskin's live debut — deploying it merges `reskin`→`master` (bringing Quill + top nav +
+Bookshelf live at once). **After that first merge, subsequent slices (B–E) develop directly on `master`** (the
+"keep-off-live" reason is gone), build→verify→deploy each. Path A holds (reskin the
+real `frontend/` in place, keep all logic;
+`prototype/` is the design reference — `styles.css` is the porting source, and the approved look is also in the
+published artifacts: *Site Storyboard*, *UI Directions III (Synthesis)*, *App Atlas*).
+**2.72.0 — the shell change.** The classic left sidebar becomes a **horizontal top bar** by default
+(`data-navmode="top"`), the three nav groups (Publishing / Create / Insights & Tools) collapsing into
+**hover / `:focus-within` dropdowns**; a new **Settings → Appearance → Navigation** picker (`#nav-mode-picker`,
+`App.applyNavMode()`, localStorage `pawpoller-nav`) flips back to the classic **left side rail**. Desktop-only —
+phones keep the bottom nav + drawer. DOM unchanged; a `@media (min-width:769px)` block in `layout.css` (gated on
+`html[data-navmode="top"]:not([data-mobile="1"])`) restyles the sidebar into a 58px top bar, the nav groups wrapped
+as `.nav-group > button.nav-group-label + ul.nav-sub` with CSP-safe dropdowns (`:hover`/`:focus-within`/`.expanded`,
+no inline handlers, + an invisible hover-bridge). The no-flash boot `<script>` (index.html + epub-viewer.html) now
+resolves `data-navmode` synchronously too; the CSP hash self-computes (2.71.0) so no hash edit is needed.
+**Gotcha fixed:** the attribute was first `data-nav`, which collided with the app's document-level `[data-nav]`
+click-delegation (every click matched `<html>` → navigated to `#top`); renamed to `data-navmode` everywhere.
+**Polish:** `posting.js` comparison chart's primary series now reads the live `--accent` (was a hardcoded violet).
+Verified live in-browser: top bar + dropdowns, side-rail toggle, mobile bottom nav, command palette, editor 4-pane,
+Analytics — all coherent Quill. Files: `frontend/css/{layout,tokens}.css`, `frontend/{index,epub-viewer}.html` (via
+`frontend/`), `frontend/js/{app,posting}.js`, `config.py`.
 
-*(Prior current-version note, for context — 2.70.0:)*
-**Current version:** 2.70.0 — **UI reskin slice 1: "Quill" redesign palette.**
-The redesign is proceeding as **Path A — reskin the real `frontend/` in place** (apply the prototype's design language,
-keep all logic; the `prototype/` stays a reference, we do NOT rebuild from it). Slice 1 = the **palette foundation**:
-two new themes (**Quill** warm-paper-light + **Quill Dark**) in `tokens.css` + the `THEMES` registry, mapping the
-prototype's warm-paper / sienna-quill palette onto the existing token names (`--bg-*`/`--accent`/`--text-*`/`--border`/
-`--shadow*`) — so every screen retones with no component CSS change, fully reversible. **Quill is now the default**
-(`'dark'`→`'quill'` in the boot script + app.js fallbacks); saved themes are preserved (pick Quill in Settings →
-Appearance). **Reskin slice sequence:** 1 ✅ palette → 2 typography (serif display) → 3 shell & chrome (sidebar/context
-bar/headers) → 4 card & primitive components → 5 screen-by-screen. The redesign map is `prototype/docs/APP_ATLAS.md`
-(refreshed for all 16 platforms) + `DESIGN_RATIONALE.md` (the "why" + agreed redesign decisions). **338 tests green.
-Frontend-only — needs a server deploy + hard-refresh.** Files: `frontend/css/tokens.css`, `frontend/js/app.js`,
-`frontend/index.html`, `config.py`.
+**Reskin context (2.70.0–2.71.0).** Slice 1 (2.70.0) put Quill on the token layer; **2.71.0 made it global** —
+components/editor/charts hardcoded the dark theme's exact values so the theme couldn't reach them: **154 CSS
+literal→token replacements** (`components.css`, `editor.css`, `loading_indicator.css`, `redesign.css`) + **charts.js**
+reads `--accent` for the primary series + **editor.css** metadata/e621 pills made theme-adaptive via `color-mix` +
+`accounts.js` persona default. **Kept invariant:** platform-brand hexes, theme swatches, EPUB reader themes,
+diagnostics console + CodeMirror One-Dark editor panes, Platforms-hub health LEDs (on saturated tiles). 2.71.0 also
+**fixed a live CSP regression** from 2.70.0 — the SHA-256-pinned no-flash boot `<script>` in `dashboard.py` was edited
+without updating the hash (browsers silently blocked it); the hash is now **computed from the file at runtime**
+(`_theme_inline_hash()`) so it self-heals.
+**Reskin leak sweep (2.72.0): clean** — a full CSS/JS grep for the violet family + old dark-surface hexes found only
+intentional survivors (SquidgeWorld brand tint, theme-preview swatches, now-defined `--bg-elevated` dead fallbacks,
+secondary categorical chart hues). No unaddressed leaks remain.
+**Optional future:** the structural IA follow-ups from `DESIGN_RATIONALE.md` (Submissions-as-hub, unified
+Accounts+Connect, Settings config/runtime split) remain separate work beyond the visual reskin.
+**DEPLOYED:** Slice A merged `reskin` → `master` and shipped live as 2.73.0 — Quill + the top-nav bar + the Bookshelf
+are now on `pawpoller.syncopates.app` (the reskin's live debut). The version bump cache-busts all `?v=` CSS/JS.
+**Slices B–E now develop directly on `master`** (the "keep-off-live" reason is gone). The local-only `/skeleton`
+preview mount was dropped from the working tree; the `prototype/` design reference still lives on disk.
 
 **Prior release — 2.69.0 — Import discovered art from any platform → managed works.**
 The Submissions hub shows *managed* works, so polled ("discovered") art only appears once imported — and art from six

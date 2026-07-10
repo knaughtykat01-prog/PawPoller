@@ -313,13 +313,56 @@ const App = {
         /* Chart expand modal — click any chart to view full-size */
         Charts.bindExpandHandlers();
 
-        /* Accordion nav groups — toggle .expanded on click (mobile).
-           On desktop the groups are always visible via CSS. */
-        document.querySelectorAll('[data-nav-toggle]').forEach(toggle => {
-            toggle.addEventListener('click', () => {
-                const group = toggle.closest('.nav-group');
-                if (group) group.classList.toggle('expanded');
+        /* Nav-group dropdowns (top-bar mode) / accordion (mobile drawer).
+           One delegated document handler so a dropdown can never get stuck
+           open (2.72.1 — the first cut only toggled .expanded on the label and
+           nothing cleared it, so click-outside left it pinned open):
+             - click a group label → toggle just that group, close siblings
+             - click anything else (a dropdown item, page content, outside) → close all
+             - Escape → close all
+           On close we also blur() the label so CSS :focus-within can't keep the
+           panel open after .expanded is removed. In side-rail mode the .nav-sub
+           lists are always shown via CSS, so toggling .expanded there is a
+           harmless no-op. */
+        const _closeNavGroups = (except) => {
+            let changed = false;
+            document.querySelectorAll('.nav-group.expanded').forEach(g => {
+                if (g === except) return;
+                g.classList.remove('expanded');
+                g.querySelector('[data-nav-toggle]')?.setAttribute('aria-expanded', 'false');
+                changed = true;
             });
+            const active = document.activeElement;
+            if (active && active.classList && active.classList.contains('nav-group-label')
+                && (!except || active.closest('.nav-group') !== except)) {
+                active.blur();
+            }
+            return changed;
+        };
+        document.addEventListener('click', (e) => {
+            const toggle = e.target.closest('.nav-group-label[data-nav-toggle]');
+            if (toggle) {
+                const group = toggle.closest('.nav-group');
+                const willOpen = group && !group.classList.contains('expanded');
+                _closeNavGroups(group);                 // collapse any sibling group
+                if (group) {
+                    if (willOpen) {
+                        group.classList.add('expanded');
+                        toggle.setAttribute('aria-expanded', 'true');
+                    } else {
+                        group.classList.remove('expanded');
+                        toggle.setAttribute('aria-expanded', 'false');
+                        toggle.blur();                  // let :focus-within release it
+                    }
+                }
+                return;
+            }
+            /* Any other click — a dropdown item, page content, outside — closes
+               everything that's pinned open. */
+            _closeNavGroups(null);
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') _closeNavGroups(null);
         });
 
         /* 2.16.10 introduced a master collapse for the 11 platform
@@ -527,6 +570,46 @@ const App = {
         try { API.savePreferences({ mobile_mode: m }); } catch (e) { /* ignore */ }
     },
 
+    /* ── Nav placement (top bar vs side rail) ────────────────
+       Single source of truth: `<html data-nav="top|side">`, set by the inline
+       boot script before CSS paints (no flash). Default is 'top' — the redesign
+       shell. Persisted to localStorage for synchronous boot; per-device for now
+       (unlike theme/mobile it isn't synced to settings.json — the top-nav CSS is
+       desktop-only anyway, gated to non-mobile so phones keep their bottom nav).
+       Picked in Settings → Appearance. */
+    NAV_MODES: ['top', 'side'],
+
+    getNavModeOverride() {
+        return document.documentElement.dataset.navmode
+            || localStorage.getItem('pawpoller-nav') || 'top';
+    },
+
+    applyNavMode(mode) {
+        const m = this.NAV_MODES.includes(mode) ? mode : 'top';
+        localStorage.setItem('pawpoller-nav', m);
+        document.documentElement.dataset.navmode = m;
+        // Re-paint the picker cards in place (same idiom as the mobile-mode picker).
+        document.querySelectorAll('#nav-mode-picker .mobile-mode-card').forEach(card => {
+            const isActive = card.dataset.navId === m;
+            card.classList.toggle('active', isActive);
+            const pill = card.querySelector('.active-pill');
+            if (isActive && !pill) {
+                const span = document.createElement('span');
+                span.className = 'active-pill';
+                span.textContent = 'Active';
+                card.appendChild(span);
+            } else if (!isActive && pill) {
+                pill.remove();
+            }
+        });
+        // Side rail vs full-width top bar changes the content column width, so
+        // charts must re-measure. Skip the re-route on the editor (unsaved CM state).
+        if (typeof Charts !== 'undefined' && Charts.destroyAll) {
+            Charts.destroyAll();
+            if (this.route && !location.hash.startsWith('#/editor/')) this.route();
+        }
+    },
+
     /* Called once at boot from init(). Watches the viewport so `auto`
        mode tracks viewport changes (rotation, window resize) without
        a page reload. No-op when the override is forced on/off. */
@@ -691,6 +774,8 @@ const App = {
             if (!active && parts[0] === 'artwork' && href === '#/artwork') active = true;
             /* Submissions hub sub-routes (#/submissions/discovered, /work/...) keep "Submissions" lit. */
             if (!active && parts[0] === 'submissions' && href === '#/submissions') active = true;
+            /* Library (Bookshelf) work sub-routes (#/library/work/...) keep "Library" lit. */
+            if (!active && parts[0] === 'library' && href === '#/library') active = true;
             link.classList.toggle('active', active);
         });
 
@@ -917,6 +1002,11 @@ const App = {
             if (window.Submissions) window.Submissions.renderDiscovered();
         } else if (parts[0] === 'submissions') {
             if (window.Submissions) window.Submissions.render();
+        } else if (parts[0] === 'library' && parts[1] === 'work' && parts[2]) {
+            // Work name may contain slashes — rejoin the tail.
+            if (window.Bookshelf) window.Bookshelf.renderWork(parts.slice(2).join('/'));
+        } else if (parts[0] === 'library') {
+            if (window.Bookshelf) window.Bookshelf.render();
         } else if (parts[0] === 'getting-started') {
             if (window.Guides) window.Guides.renderHub();
         } else {
@@ -965,8 +1055,8 @@ const App = {
         /* Non-platform pages: a simple breadcrumb for orientation. */
         const labels = {
             '': 'Overview', overview: 'Overview', platforms: 'Platforms',
-            posting: 'Stories', editor: 'Story Editor', analytics: 'Analytics',
-            groups: 'Groups', 'cross-platform': 'Cross-Platform',
+            library: 'Library', posting: 'Stories', editor: 'Story Editor',
+            analytics: 'Analytics', groups: 'Groups', 'cross-platform': 'Cross-Platform',
             accounts: 'Accounts', settings: 'Settings',
         };
         let crumb;
@@ -976,6 +1066,8 @@ const App = {
             crumb = '<a href="#/posting">Stories</a> <span class="sep">›</span> <span class="here">History</span>';
         } else if (p0 === 'posting' && parts[1] === 'story') {
             crumb = '<a href="#/posting">Stories</a> <span class="sep">›</span> <span class="here">Story</span>';
+        } else if (p0 === 'library' && parts[1] === 'work') {
+            crumb = '<a href="#/library">Library</a> <span class="sep">›</span> <span class="here">Work</span>';
         } else if (p0 === 'editor' && parts[1]) {
             crumb = '<a href="#/editor">Story Editor</a> <span class="sep">›</span> <span class="here">Editing</span>';
         } else if (p0 === 'group' && parts[1]) {
@@ -8301,6 +8393,28 @@ const App = {
                 </div>
 
                 <div class="settings-section">
+                    <h3>Navigation</h3>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
+                        Where the main navigation lives. <strong>Top bar</strong> is the redesigned shell &mdash; a horizontal bar with the Publishing / Insights groups as dropdowns. <strong>Side rail</strong> is the classic left sidebar. Applies on desktop; phones keep the bottom nav either way.
+                    </p>
+                    <div class="mobile-mode-picker" id="nav-mode-picker">
+                        ${[
+                            { id: 'top',  name: 'Top bar',  desc: 'Horizontal nav across the top (redesign)' },
+                            { id: 'side', name: 'Side rail', desc: 'Classic labelled left sidebar' },
+                        ].map(opt => {
+                            const isActive = opt.id === this.getNavModeOverride();
+                            return `
+                              <div class="mobile-mode-card ${isActive ? 'active' : ''}" data-nav-id="${opt.id}" role="button" tabindex="0">
+                                <div class="mobile-mode-name">${opt.name}</div>
+                                <div class="mobile-mode-desc">${opt.desc}</div>
+                                ${isActive ? '<span class="active-pill">Active</span>' : ''}
+                              </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h3>Mobile Layout</h3>
                     <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
                         Auto-detect uses the mobile interface on screens 768px wide or less (rotates with the viewport). Force on uses it everywhere — handy for testing or if you'd rather have the touch-first layout on a tablet. Force off keeps the desktop UX even on a phone (best-effort: some legacy responsive rules still fire on small screens).
@@ -9978,6 +10092,23 @@ const App = {
                     if (!card) return;
                     e.preventDefault();
                     this.applyMobileMode(card.dataset.mmId);
+                });
+            }
+
+            // ── Nav-mode picker (Appearance tab) — top bar vs side rail ──
+            const navPicker = document.getElementById('nav-mode-picker');
+            if (navPicker) {
+                navPicker.addEventListener('click', (e) => {
+                    const card = e.target.closest('.mobile-mode-card');
+                    if (!card) return;
+                    this.applyNavMode(card.dataset.navId);
+                });
+                navPicker.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    const card = e.target.closest('.mobile-mode-card');
+                    if (!card) return;
+                    e.preventDefault();
+                    this.applyNavMode(card.dataset.navId);
                 });
             }
 

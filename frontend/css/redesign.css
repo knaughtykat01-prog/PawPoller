@@ -104,7 +104,7 @@
 .hub-tile .pp-health-healthy { background: #7CFFB0; box-shadow: 0 0 8px #7CFFB0, 0 0 0 3px rgba(255, 255, 255, .15); }
 .hub-tile .pp-health-running { background: #8ec5ff; box-shadow: 0 0 8px #8ec5ff, 0 0 0 3px rgba(255, 255, 255, .15); }
 .hub-tile .pp-health-stale,
-.hub-tile .pp-health-throttled { background: #FFD66B; box-shadow: 0 0 8px #FFD66B, 0 0 0 3px rgba(255, 255, 255, .15); }
+.hub-tile .pp-health-throttled { background: var(--warning); box-shadow: 0 0 8px var(--warning), 0 0 0 3px rgba(255, 255, 255, .15); }
 .hub-tile .pp-health-error { background: #FF8A8A; box-shadow: 0 0 8px #FF8A8A, 0 0 0 3px rgba(255, 255, 255, .15); }
 .hub-tile .pp-health-unconfigured,
 .hub-tile .pp-health-unknown { background: rgba(255, 255, 255, .45); box-shadow: 0 0 0 3px rgba(255, 255, 255, .12); }

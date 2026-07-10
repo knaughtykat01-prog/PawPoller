@@ -76,7 +76,7 @@
 
 .anchor-tooltip .anchor-tooltip-label {
     font-weight: 600;
-    color: var(--color-accent, #9b7dff);
+    color: var(--color-accent, var(--accent));
     margin-bottom: 4px;
 }
 
@@ -220,9 +220,9 @@
 }
 .format-tab:hover { background: var(--surface-hover, var(--surface-secondary)); }
 .format-tab.active {
-    background: var(--accent, #4f8ff7);
+    background: var(--accent, var(--info));
     color: #fff;
-    border-color: var(--accent, #4f8ff7);
+    border-color: var(--accent, var(--info));
 }
 
 /* 4-panel quad layout */
@@ -804,7 +804,7 @@
 .metadata-field select:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(155, 125, 255, 0.20);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .metadata-field textarea {
@@ -1007,7 +1007,7 @@
 
 .metadata-pill-input:focus-within {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(155, 125, 255, 0.20);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .metadata-pill-list {
@@ -1018,7 +1018,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: var(--bg-glass, rgba(155, 125, 255, 0.12));
+    background: var(--bg-glass, color-mix(in srgb, var(--accent) 12%, transparent));
     border: 1px solid var(--border);
     color: var(--text-primary);
     border-radius: 999px;
@@ -1291,12 +1291,15 @@
     border: 1px solid var(--border);
 }
 
-.metadata-tag-cat-physical { background: #2a3a55; color: #a8c5ff; border-color: #3a5080; }
-.metadata-tag-cat-acts     { background: #4a2a40; color: #ffa8d5; border-color: #80405a; }
-.metadata-tag-cat-kink     { background: #4a3a1a; color: #f5c078; border-color: #805c28; }
-.metadata-tag-cat-meta     { background: #2a4a3a; color: #a5e5c0; border-color: #3a7058; }
-.metadata-tag-cat-image    { background: #3a3a4a; color: #c0c0d8; border-color: #555575; }
-.metadata-tag-cat-user     { background: #4a3a2a; color: #f0d0a8; border-color: #7a5a3a; }
+/* Tag-category pills — theme-adaptive: each category's hue is mixed with the
+   active theme's surface/text/border, so it reads as a light tint on Quill
+   (light) and a dark tint on the dark themes, instead of fixed dark chips. */
+.metadata-tag-cat-physical { background: color-mix(in srgb, #5b7fd8 18%, var(--bg-card)); color: color-mix(in srgb, #5b7fd8 62%, var(--text-primary)); border-color: color-mix(in srgb, #5b7fd8 38%, var(--border)); }
+.metadata-tag-cat-acts     { background: color-mix(in srgb, #d85b9a 18%, var(--bg-card)); color: color-mix(in srgb, #d85b9a 62%, var(--text-primary)); border-color: color-mix(in srgb, #d85b9a 38%, var(--border)); }
+.metadata-tag-cat-kink     { background: color-mix(in srgb, #c8912e 20%, var(--bg-card)); color: color-mix(in srgb, #c8912e 66%, var(--text-primary)); border-color: color-mix(in srgb, #c8912e 40%, var(--border)); }
+.metadata-tag-cat-meta     { background: color-mix(in srgb, #3fa06b 18%, var(--bg-card)); color: color-mix(in srgb, #3fa06b 62%, var(--text-primary)); border-color: color-mix(in srgb, #3fa06b 38%, var(--border)); }
+.metadata-tag-cat-image    { background: color-mix(in srgb, #7878a0 18%, var(--bg-card)); color: color-mix(in srgb, #7878a0 62%, var(--text-primary)); border-color: color-mix(in srgb, #7878a0 38%, var(--border)); }
+.metadata-tag-cat-user     { background: color-mix(in srgb, #c0894a 18%, var(--bg-card)); color: color-mix(in srgb, #c0894a 64%, var(--text-primary)); border-color: color-mix(in srgb, #c0894a 38%, var(--border)); }
 
 .metadata-tag-result-alias {
     font-size: 11px;
@@ -1481,7 +1484,7 @@
 .tag-browser-search:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(155, 125, 255, 0.18);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .tag-browser-search::placeholder {
@@ -1618,13 +1621,13 @@
     font-size: 9px;
     padding: 1px 5px;
     border-radius: 3px;
-    background: rgba(155, 125, 255, 0.12);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
     color: var(--text-secondary);
     letter-spacing: 0.02em;
 }
 
 .tag-browser-plat-badge-active {
-    background: rgba(155, 125, 255, 0.25);
+    background: color-mix(in srgb, var(--accent) 25%, transparent);
     color: var(--accent);
     font-weight: 600;
 }
@@ -1632,7 +1635,7 @@
 .tag-browser-e621-divider {
     margin: 24px 0 8px;
     padding: 8px 12px;
-    background: rgba(155, 125, 255, 0.08);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
     border-left: 3px solid var(--accent);
     border-radius: 4px;
     font-size: 13px;
@@ -1649,8 +1652,8 @@
 }
 
 .tag-browser-card-e621 {
-    border-color: rgba(155, 125, 255, 0.4);
-    background: rgba(155, 125, 255, 0.04);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+    background: color-mix(in srgb, var(--accent) 4%, transparent);
 }
 
 .tag-browser-card-meta {
@@ -1694,7 +1697,7 @@
 .tag-browser-card-added {
     border-color: var(--accent);
     box-shadow: inset 0 0 0 1px var(--accent);
-    background: rgba(155, 125, 255, 0.08);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .tag-browser-card-head {
@@ -1761,7 +1764,7 @@
 }
 
 .tag-browser-card-btn-added:hover {
-    background: rgba(155, 125, 255, 0.12);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
     color: var(--accent);
 }
 
@@ -2157,9 +2160,9 @@
 
 /* Category chip for e621 suggestions — distinct from local categories. */
 .metadata-tag-cat-e621 {
-    background: #3a2a4a;
-    color: #d8b8f0;
-    border-color: #5a3a80;
+    background: color-mix(in srgb, var(--accent) 14%, var(--bg-card));
+    color: color-mix(in srgb, var(--accent) 70%, var(--text-primary));
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
 }
 
 .metadata-tag-result-count {
@@ -2319,12 +2322,12 @@
     margin-top: 4px;
 }
 
-.publish-check-subtitle .stat-ready { color: #4a9; }
-.publish-check-subtitle .stat-posted { color: #69c; }
-.publish-check-subtitle .stat-blocked { color: #c66; }
-.publish-check-subtitle .stat-drifted { color: #b8d; }
-.publish-check-subtitle .stat-deleted { color: #d88; }
-.publish-check-subtitle .stat-draft { color: #d9a; }
+.publish-check-subtitle .stat-ready { color: var(--info); }
+.publish-check-subtitle .stat-posted { color: var(--success); }
+.publish-check-subtitle .stat-blocked { color: var(--danger); }
+.publish-check-subtitle .stat-drifted { color: var(--warning); }
+.publish-check-subtitle .stat-deleted { color: var(--text-muted); }
+.publish-check-subtitle .stat-draft { color: var(--text-secondary); }
 
 .publish-check-stale-banner {
     background: rgba(220, 170, 40, 0.18);
@@ -3160,7 +3163,7 @@
 }
 
 .create-story-input:focus {
-    border-color: var(--accent, #4f8ff7);
+    border-color: var(--accent, var(--info));
 }
 
 .create-story-hint {
@@ -4629,8 +4632,8 @@ html[data-mobile="1"] .sidebar.open .nav-group-label {
 .drift-preview-panel {
     margin-top: 12px;
     padding: 12px;
-    background: var(--bg-tertiary, #2d2840);
-    border: 1px solid var(--border, #3d3556);
+    background: var(--bg-tertiary, var(--bg-tertiary));
+    border: 1px solid var(--border, var(--border));
     border-radius: 6px;
     font-size: 12px;
     line-height: 1.45;
@@ -4640,26 +4643,26 @@ html[data-mobile="1"] .sidebar.open .nav-group-label {
 .drift-preview-error {
     padding: 8px;
     text-align: center;
-    color: var(--text-secondary, #a99fc0);
+    color: var(--text-secondary, var(--text-secondary));
 }
 
 .drift-preview-error {
-    color: var(--danger, #f07070);
+    color: var(--danger, var(--danger));
 }
 
 .drift-preview-header {
     margin-bottom: 10px;
     padding-bottom: 10px;
-    border-bottom: 1px solid var(--border, #3d3556);
+    border-bottom: 1px solid var(--border, var(--border));
 }
 
 .drift-preview-meta div {
     margin: 2px 0;
-    color: var(--text-secondary, #a99fc0);
+    color: var(--text-secondary, var(--text-secondary));
 }
 
 .drift-preview-meta strong {
-    color: var(--text-primary, #f0edf5);
+    color: var(--text-primary, var(--text-primary));
     font-weight: 600;
 }
 
@@ -4674,29 +4677,29 @@ html[data-mobile="1"] .sidebar.open .nav-group-label {
 
 .drift-badge-drifted {
     background: rgba(240, 160, 80, 0.18);
-    color: var(--accent-warm, #f0a050);
+    color: var(--accent-warm, var(--accent-warm));
 }
 
 .drift-badge-clean {
     background: rgba(90, 224, 160, 0.16);
-    color: var(--success, #5ae0a0);
+    color: var(--success, var(--success));
 }
 
 .drift-badge-unposted {
     background: rgba(110, 100, 136, 0.20);
-    color: var(--text-muted, #6e6488);
+    color: var(--text-muted, var(--text-muted));
 }
 
 .drift-preview-excerpt {
     margin: 0;
     padding: 8px 10px;
-    background: var(--bg-primary, #13111a);
-    border: 1px solid var(--border, #3d3556);
+    background: var(--bg-primary, var(--bg-primary));
+    border: 1px solid var(--border, var(--border));
     border-radius: 4px;
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 11px;
     line-height: 1.45;
-    color: var(--text-primary, #f0edf5);
+    color: var(--text-primary, var(--text-primary));
     max-height: 320px;
     overflow: auto;
     white-space: pre;
@@ -4705,6 +4708,6 @@ html[data-mobile="1"] .sidebar.open .nav-group-label {
 .drift-preview-note {
     margin-top: 6px;
     font-size: 11px;
-    color: var(--text-muted, #6e6488);
+    color: var(--text-muted, var(--text-muted));
     text-align: right;
 }

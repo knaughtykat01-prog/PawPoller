@@ -89,7 +89,7 @@ window.Accounts = {
                 <label class="acct-field"><span>New persona</span>
                     <input class="acct-input" id="persona-name" type="text" placeholder="e.g. KitheTiger"></label>
                 <label class="acct-field"><span>Colour</span>
-                    <input class="acct-color" id="persona-color" type="color" value="#9b7dff"></label>
+                    <input class="acct-color" id="persona-color" type="color" value="#9a5b34"></label>
                 <button id="persona-create-btn" class="btn btn-primary">Create persona</button>
                 <span id="persona-msg" class="muted"></span>
             </div>`;

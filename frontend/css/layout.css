@@ -656,3 +656,109 @@ body.sidebar-collapsed .poll-progress-bar { left: var(--sidebar-w-collapsed); }
     /* Platform grid: 2 columns still */
     .platform-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Grouped nav + top-nav mode  (reskin — Settings → Appearance → Navigation)
+   The Publishing / Create / Insights groups are wrapped in
+   .nav-group > button.nav-group-label + ul.nav-sub. In the SIDE rail they
+   render flat + identical to the old markup; in TOP mode each group becomes a
+   dropdown and the whole rail becomes a horizontal top bar. Top mode is desktop
+   only (gated to non-mobile) so phones keep their drawer + bottom nav.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Base (side rail): keep the new wrappers visually flat ─────────────────── */
+.nav-group { list-style: none; display: flex; flex-direction: column; }
+.nav-sub { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+/* the group heading is now a <button>; strip button chrome so it matches the old
+   .nav-group-label heading (which still sets size/weight/uppercase/padding). */
+button.nav-group-label {
+    width: 100%;
+    font-family: inherit;
+    background: none;
+    border: none;
+    cursor: default;
+    display: flex;
+    align-items: center;
+}
+.nav-caret { display: none; }   /* dropdown affordance — only shown in top mode */
+
+/* ── Top-nav mode (desktop only) ──────────────────────────────────────────── */
+@media (min-width: 769px) {
+  html[data-navmode="top"]:not([data-mobile="1"]) .sidebar {
+    flex-direction: row;
+    align-items: center;
+    width: auto;
+    height: 58px;
+    right: 0;
+    bottom: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--card-border-inner);
+    /* right padding reserves room for the fixed notification bell (top-right) */
+    padding: 0 66px 0 clamp(14px, 2.5vw, 26px);
+    gap: 4px;
+  }
+
+  /* brand */
+  html[data-navmode="top"]:not([data-mobile="1"]) .sidebar-header { order: 0; padding: 0; min-height: 0; margin-right: 6px; flex-shrink: 0; }
+  html[data-navmode="top"]:not([data-mobile="1"]) .sidebar-collapse { display: none; }
+
+  /* nav row — pushes search + controls to the right */
+  html[data-navmode="top"]:not([data-mobile="1"]) .nav-links {
+    order: 1; flex: 0 1 auto; flex-direction: row; align-items: center;
+    overflow: visible; padding: 0; gap: 2px; margin-right: auto; min-height: 0;
+  }
+  html[data-navmode="top"]:not([data-mobile="1"]) .nav-spacer { display: none; }
+
+  /* top-level links: compact, text-only (icons return inside dropdowns) */
+  html[data-navmode="top"]:not([data-mobile="1"]) .nav-links > li > .nav-link,
+  html[data-navmode="top"]:not([data-mobile="1"]) button.nav-group-label {
+    padding: 7px 11px; border-radius: 9px; font-size: 13.5px; white-space: nowrap;
+  }
+  html[data-navmode="top"]:not([data-mobile="1"]) .nav-links > li > .nav-link .nav-icon { display: none; }
+  html[data-navmode="top"]:not([data-mobile="1"]) .nav-link.active {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent); box-shadow: none;
+  }
+
+  /* group heading → dropdown trigger */
+  html[data-navmode="top"]:not([data-mobile="1"]) .nav-group { position: relative; flex-direction: row; }
+  html[data-navmode="top"]:not([data-mobile="1"]) button.nav-group-label {
+    width: auto; text-transform: none; letter-spacing: 0; font-weight: 600;
+    color: var(--text-secondary); cursor: pointer; gap: 5px;
+  }
+  html[data-navmode="top"]:not([data-mobile="1"]) button.nav-group-label:hover { color: var(--text-primary); background: var(--bg-hover); }
+  html[data-navmode="top"]:not([data-mobile="1"]) .nav-caret { display: inline; font-size: 8px; opacity: .65; }
+
+  /* dropdown panel */
+  html[data-navmode="top"]:not([data-mobile="1"]) .nav-sub {
+    position: absolute; top: calc(100% + 7px); left: 0; min-width: 210px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 14px; box-shadow: var(--shadow-strong); padding: 6px; gap: 2px;
+    z-index: 30; opacity: 0; visibility: hidden; transform: translateY(-4px);
+    transition: opacity .14s ease, transform .14s ease, visibility .14s;
+  }
+  html[data-navmode="top"]:not([data-mobile="1"]) .nav-group:hover > .nav-sub,
+  html[data-navmode="top"]:not([data-mobile="1"]) .nav-group:focus-within > .nav-sub,
+  html[data-navmode="top"]:not([data-mobile="1"]) .nav-group.expanded > .nav-sub {
+    opacity: 1; visibility: visible; transform: translateY(0);
+  }
+  /* invisible hover bridge across the trigger→panel gap */
+  html[data-navmode="top"]:not([data-mobile="1"]) .nav-group::after {
+    content: ""; position: absolute; top: 100%; left: 0; right: 0; height: 9px;
+  }
+  html[data-navmode="top"]:not([data-mobile="1"]) .nav-sub .nav-link .nav-icon { display: inline; }
+
+  /* search → compact icon button on the right */
+  html[data-navmode="top"]:not([data-mobile="1"]) .sidebar-search { order: 2; width: auto; margin: 0 2px 0 0; padding: 8px 10px; flex: 0 0 auto; }
+  html[data-navmode="top"]:not([data-mobile="1"]) .sidebar-search .search-text,
+  html[data-navmode="top"]:not([data-mobile="1"]) .sidebar-search .kbd { display: none; }
+
+  /* footer controls → inline right cluster */
+  html[data-navmode="top"]:not([data-mobile="1"]) .sidebar-footer { order: 3; border-top: none; padding: 0; flex-wrap: nowrap; flex-shrink: 0; gap: 8px; }
+  html[data-navmode="top"]:not([data-mobile="1"]) .poll-badge,
+  html[data-navmode="top"]:not([data-mobile="1"]) .sidebar-version { display: none; }
+
+  /* content clears the fixed top bar instead of the left rail */
+  html[data-navmode="top"]:not([data-mobile="1"]) .main-col { margin-left: 0; margin-top: 58px; }
+  html[data-navmode="top"]:not([data-mobile="1"]) .poll-progress-bar { left: 0; }
+}

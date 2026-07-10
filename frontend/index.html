@@ -20,6 +20,8 @@
       (function () {
         var t = localStorage.getItem('pawpoller-theme') || 'quill';
         document.documentElement.dataset.theme = t;
+        var nv = localStorage.getItem('pawpoller-nav') || 'top';
+        document.documentElement.dataset.navmode = nv;
         var m = localStorage.getItem('pawpoller-mobile-mode') || 'auto';
         var resolved;
         if (m === 'on') resolved = '1';
@@ -45,6 +47,7 @@
     <link rel="stylesheet" href="/css/posts.css?v=__APP_VERSION__">
     <link rel="stylesheet" href="/css/guides.css?v=__APP_VERSION__">
     <link rel="stylesheet" href="/css/accounts.css?v=__APP_VERSION__">
+    <link rel="stylesheet" href="/css/bookshelf.css?v=__APP_VERSION__">
     <link rel="stylesheet" href="/css/loading_indicator.css?v=__APP_VERSION__">
     <link rel="stylesheet" href="/css/tour.css?v=__APP_VERSION__">
     <script src="/js/vendor/chart.umd.min.js"></script>
@@ -87,42 +90,61 @@
             <li><a href="#/platforms" class="nav-link" data-page="platforms">
                 <span class="nav-icon">&#128062;</span><span class="nav-label">Platforms</span>
             </a></li>
-
-            <li class="nav-group-label">Publishing</li>
-            <li><a href="#/submissions" class="nav-link" data-page="submissions">
-                <span class="nav-icon">&#128218;</span><span class="nav-label">Submissions</span>
-            </a></li>
-            <li><a href="#/posting" class="nav-link" data-page="posting">
-                <span class="nav-icon">&#128228;</span><span class="nav-label">Stories</span>
-            </a></li>
-            <li><a href="#/artwork" class="nav-link" data-page="artwork">
-                <span class="nav-icon">&#128444;</span><span class="nav-label">Artwork</span>
-            </a></li>
-            <li><a href="#/posts" class="nav-link" data-page="posts">
-                <span class="nav-icon">&#128172;</span><span class="nav-label">Posts</span>
-            </a></li>
-            <li><a href="#/posting/queue" class="nav-link" data-page="posting-queue">
-                <span class="nav-icon">&#9203;</span><span class="nav-label">Queue</span>
-            </a></li>
-            <li><a href="#/posting/log" class="nav-link" data-page="posting-log">
-                <span class="nav-icon">&#128220;</span><span class="nav-label">History</span>
+            <li><a href="#/library" class="nav-link" data-page="library">
+                <span class="nav-icon">&#128366;</span><span class="nav-label">Library</span>
             </a></li>
 
-            <li class="nav-group-label">Create</li>
-            <li><a href="#/editor" class="nav-link" data-page="editor">
-                <span class="nav-icon">&#9998;</span><span class="nav-label">Story Editor</span>
-            </a></li>
+            <!-- Grouped so the top-nav mode (Settings → Appearance) can turn each
+                 group into a dropdown. In the side rail the .nav-sub is always
+                 shown (flat, identical to before); in top mode it's a hover/
+                 focus/click dropdown panel. -->
+            <li class="nav-group">
+              <button class="nav-group-label" data-nav-toggle type="button" aria-expanded="false">Publishing<span class="nav-caret" aria-hidden="true">&#9662;</span></button>
+              <ul class="nav-sub">
+                <li><a href="#/submissions" class="nav-link" data-page="submissions">
+                    <span class="nav-icon">&#128218;</span><span class="nav-label">Submissions</span>
+                </a></li>
+                <li><a href="#/posting" class="nav-link" data-page="posting">
+                    <span class="nav-icon">&#128228;</span><span class="nav-label">Stories</span>
+                </a></li>
+                <li><a href="#/artwork" class="nav-link" data-page="artwork">
+                    <span class="nav-icon">&#128444;</span><span class="nav-label">Artwork</span>
+                </a></li>
+                <li><a href="#/posts" class="nav-link" data-page="posts">
+                    <span class="nav-icon">&#128172;</span><span class="nav-label">Posts</span>
+                </a></li>
+                <li><a href="#/posting/queue" class="nav-link" data-page="posting-queue">
+                    <span class="nav-icon">&#9203;</span><span class="nav-label">Queue</span>
+                </a></li>
+                <li><a href="#/posting/log" class="nav-link" data-page="posting-log">
+                    <span class="nav-icon">&#128220;</span><span class="nav-label">History</span>
+                </a></li>
+              </ul>
+            </li>
 
-            <li class="nav-group-label">Insights &amp; Tools</li>
-            <li><a href="#/analytics" class="nav-link" data-page="analytics">
-                <span class="nav-icon">&#128200;</span><span class="nav-label">Analytics</span>
-            </a></li>
-            <li><a href="#/groups" class="nav-link" data-page="groups">
-                <span class="nav-icon">&#128193;</span><span class="nav-label">Groups</span>
-            </a></li>
-            <li><a href="#/cross-platform" class="nav-link" data-page="cross-platform">
-                <span class="nav-icon">&#128279;</span><span class="nav-label">Cross-Platform</span>
-            </a></li>
+            <li class="nav-group">
+              <button class="nav-group-label" data-nav-toggle type="button" aria-expanded="false">Create<span class="nav-caret" aria-hidden="true">&#9662;</span></button>
+              <ul class="nav-sub">
+                <li><a href="#/editor" class="nav-link" data-page="editor">
+                    <span class="nav-icon">&#9998;</span><span class="nav-label">Story Editor</span>
+                </a></li>
+              </ul>
+            </li>
+
+            <li class="nav-group">
+              <button class="nav-group-label" data-nav-toggle type="button" aria-expanded="false">Insights &amp; Tools<span class="nav-caret" aria-hidden="true">&#9662;</span></button>
+              <ul class="nav-sub">
+                <li><a href="#/analytics" class="nav-link" data-page="analytics">
+                    <span class="nav-icon">&#128200;</span><span class="nav-label">Analytics</span>
+                </a></li>
+                <li><a href="#/groups" class="nav-link" data-page="groups">
+                    <span class="nav-icon">&#128193;</span><span class="nav-label">Groups</span>
+                </a></li>
+                <li><a href="#/cross-platform" class="nav-link" data-page="cross-platform">
+                    <span class="nav-icon">&#128279;</span><span class="nav-label">Cross-Platform</span>
+                </a></li>
+              </ul>
+            </li>
 
             <li class="nav-spacer"></li>
 
@@ -241,6 +263,7 @@
     <script src="/js/artwork.js?v=__APP_VERSION__"></script>
     <script src="/js/posts.js?v=__APP_VERSION__"></script>
     <script src="/js/platform_guides.js?v=__APP_VERSION__"></script>
+    <script src="/js/bookshelf.js?v=__APP_VERSION__"></script>
     <script src="/js/app.js?v=__APP_VERSION__"></script>
 </body>
 </html>

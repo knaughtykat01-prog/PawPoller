@@ -4,6 +4,119 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.73.0] - 2026-07-10 - Reskin concept Slice A: the Bookshelf (Library + editorial work detail)
+
+First **concept layer** of the reskin (see `docs/RESKIN_BUILD_PLAN.md`), from the "Atelier"
+direction. A new top-level **Library** destination (`#/library`), peer to Overview — a
+cover-forward, editorial take on your works, plus the rich per-work detail page. Reuses the real
+APIs, adds **no backend** (Path A): the list from `/api/works`, story detail from
+`/api/posting/stories/{name}`.
+
+- **Library home (`#/library`)** — a shelf of covers with Crimson-Pro serif titles, All/Stories/
+  Artwork + persona + search + sort filters. Each cover "tells the truth": a gilt **"N live"**
+  ribbon when a work is published (falls back to **"published"** when it has publications but no
+  posted-status platforms), a quiet **Draft** marker otherwise. Coverless works get an elegant
+  serif-initial placeholder.
+- **Work detail (`#/library/work/{name}`)** — big cover, serif title + byline + summary, a
+  marginalia stat column (total views/faves/comments/platforms), a **"Published to"** list (one
+  row per platform with live view/fave/comment counts + an open-in-new link, and a "Not yet on:
+  …" line), and a **Chapters** card showing **chapter × platform reach** — each chapter lights
+  the platforms it reached, dims the ones it didn't, and flags **incomplete** where a
+  multi-chapter platform is missing a chapter (the "Ch.4 didn't reach AO3" truth).
+- New files: `frontend/js/bookshelf.js`, `frontend/css/bookshelf.css` (theme-aware via the Quill
+  tokens — warm paper in Quill, dark in the dark themes). Wired: a "Library" nav peer, the
+  `#/library` + `#/library/work/…` routes, active-nav + breadcrumb. Stories open the new detail;
+  artwork keeps its existing detail route. The Submissions hub (`#/submissions`) is unchanged.
+
+## [2.72.1] - 2026-07-10 - Fix: top-nav dropdowns wouldn't close + concept-layer build plan
+
+**Bug fix (top-nav dropdowns).** The 2.72.0 top-bar dropdowns opened on click but wouldn't
+close: the click handler only toggled `.expanded` on the label and nothing ever cleared it, so
+clicking elsewhere left the panel pinned open (and CSS `:focus-within` could silently re-hold
+it). Replaced the per-label handler with **one delegated document handler**: click a group
+label toggles just that group (siblings close); clicking anything else — a dropdown item, page
+content, outside — closes all open groups; **Escape** closes all; on close the label is
+`blur()`-ed so `:focus-within` can't keep it open. Hover behaviour is unchanged. Verified
+in-browser (outside-click, Escape, item-select, re-click all close).
+
+**Also:** `docs/RESKIN_BUILD_PLAN.md` — the approved staged plan for the reskin's **concept
+layers** (Bookshelf → Modes → Laurels → Ledger → Health strip/Workbench), derived from the
+Vol. III synthesis + storyboard. Foundation (Quill + top/side nav) stays; slices layer on,
+reuse the real APIs, preview locally, and deploy after each is approved.
+
+## [2.72.0] - 2026-07-10 - UI reskin: top navigation bar (default) + a side-rail toggle
+
+The reskin's shell change. The classic left sidebar becomes a **horizontal top bar** as the new default, with the
+three nav groups (Publishing / Create / Insights & Tools) collapsing into **hover / focus dropdowns**; a new
+**Settings → Appearance → Navigation** picker switches back to the classic **left side rail** for anyone who prefers
+it. Desktop-only — phones keep the bottom nav and slide-in drawer either way. Still on the **`reskin` branch, not
+deployed** (the whole reskin ships in one deploy).
+
+### Top navigation bar
+- **New default shell (`data-navmode="top"`).** The sidebar's DOM is unchanged; a `@media (min-width: 769px)` block in
+  `layout.css` (gated on `html[data-navmode="top"]:not([data-mobile="1"])`) restyles it into a 58px horizontal bar —
+  brand · nav · search · footer laid out in a row, content shifted to `margin-top:58px`, full-width.
+- **Grouped dropdowns, CSP-safe.** The nav groups are wrapped as `.nav-group > button.nav-group-label + ul.nav-sub`;
+  in top mode each `.nav-sub` is an absolutely-positioned dropdown panel revealed on `:hover`, `:focus-within`, or a
+  `.expanded` class — no inline handlers, so the strict CSP is untouched. An invisible hover-bridge spans the
+  trigger→panel gap so the dropdown doesn't drop while the cursor crosses it.
+- **Side-rail toggle.** A "Navigation" section on Settings → Appearance (`#nav-mode-picker`, mirroring the mobile-mode
+  picker) flips between **Top bar** and **Side rail**; `App.applyNavMode()` persists the choice
+  (localStorage `pawpoller-nav`) and repaints without a reload. In side mode the nav is byte-identical to the classic
+  rail (groups shown flat).
+- **No-flash boot.** The inline bootstrap `<script>` (index.html + epub-viewer.html) now also resolves
+  `data-navmode` synchronously from localStorage before first paint, so the shell never flips layout on load. The CSP
+  hash self-computes from the file (2.71.0), so the added line is covered automatically — no hash to update.
+
+### Fix
+- **`data-nav` → `data-navmode` collision.** The nav-mode attribute was first named `data-nav` on `<html>`, which
+  collided with the app's existing document-level `[data-nav]` click-delegation — every click matched `<html>` and
+  navigated to `#top`, breaking clicks app-wide. Renamed the attribute throughout (boot scripts, `layout.css`,
+  `app.js`) so the two never overlap.
+
+### Polish
+- **`posting.js` comparison chart.** The multi-series publication chart led with a hardcoded violet; its **primary
+  series now reads the live `--accent`** (sienna under Quill, per the `charts.js` pattern), and the leading violet in
+  the fallback palette was swapped for a warm amber so it stays on-theme even on wrap-around.
+
+### Notes
+- Frontend only (`layout.css`, `tokens.css`, `index.html`, `epub-viewer.html`, `app.js`, `posting.js`) + the
+  `config.py` bump. Part of the reskin — verified live in-browser (top bar + dropdowns, side-rail toggle, mobile
+  bottom nav, command palette, editor 4-pane, Analytics) before commit. Not deployed.
+
+## [2.71.0] - 2026-07-10 - UI reskin slices 2-4: de-hardcode the whole frontend to Quill + fix a CSP regression
+
+Slice 1 (2.70.0) laid the **Quill** palette on the token layer, but much of the app still read violet-glass because
+component CSS and chart JS **hardcoded the dark theme's exact values** (`#241f30`, `#9b7dff`, `#3d3556`, glass glows,
+flat-UI status colors) instead of the tokens — so the quill theme couldn't reach them. This release makes the reskin
+**global**: everything now flows from tokens, so every screen and component reads as warm-paper Quill (and every other
+theme is cleaner too). Verified screen-by-screen in a live browser (Overview, Story Editor, Settings, Appearance,
+Analytics, Platforms, Posts, Accounts, first-run).
+
+**Fixes a live regression from 2.70.0 (important).** The CSP pins the inline no-flash bootstrap `<script>` by SHA-256
+hash. Slice 1 edited that script (`'dark'`→`'quill'`) but not the hardcoded hash, so browsers have been **silently
+blocking the boot script** on 2.70.0 — breaking synchronous theme apply *and* mobile-mode resolution app-wide. The
+hash is now **computed from the file at runtime** (`dashboard.py::_theme_inline_hash`), so it can never drift again;
+the default-Quill + no-flash + `data-mobile` boot now actually works.
+
+### De-hardcode pass (tokens now drive everything)
+- **CSS (154 literal→token replacements across `components.css`, `editor.css`, `loading_indicator.css`,
+  `redesign.css`):** dark-theme token hexes → their token; violet accent/glow literals → `--accent` / warm
+  `color-mix`; flat-UI status colors (`#f1c40f`, `#3498db`, `rgba(46,204,113…)`…) → semantic tokens; `rgba(0,0,0,.06)`
+  hairlines → `--card-border-inner`; the command-palette's cold black shadow → `--shadow-strong`.
+- **Charts (`charts.js`):** the hardcoded violet `#9b7dff` primary/"views" series colour now reads the live `--accent`
+  token via `Charts._accent()` (sienna under Quill, violet under the dark themes); rebuilt on theme change.
+- **Editor sub-surfaces (`editor.css`):** metadata tag-category pills + the e621 chip are now **theme-adaptive**
+  (`color-mix` of each category hue with the active surface/text/border — light tints on Quill, dark on the dark
+  themes, instead of fixed dark chips); publish-check subtitle stats → semantic tokens.
+- **`accounts.js`:** default new-persona colour → Quill sienna.
+- **Left intentionally invariant:** platform-brand hexes, per-theme preview swatches, the EPUB reader's own reading
+  themes, the diagnostics console palette, and the Platforms-hub health LEDs (they read on saturated brand tiles).
+
+### Notes
+- Frontend + one backend file (`dashboard.py` CSP). Needs a server deploy + hard-refresh. Bumping the version
+  cache-busts all `?v=` CSS/JS so the changes actually load.
+
 ## [2.70.1] - 2026-07-10 - Hotfix: self-computing CSP hash for the no-flash boot script
 
 **Fixes a live regression introduced by 2.70.0.** The Content-Security-Policy pins the inline no-flash bootstrap

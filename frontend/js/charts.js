@@ -91,6 +91,18 @@ const Charts = {
     },
 
     /**
+     * Themed brand accent (the primary series / "views" line colour), read
+     * live from the --accent token so charts follow the active theme — sienna
+     * under Quill, violet under the dark themes. Charts are destroyed + rebuilt
+     * on theme change (App calls Charts.destroyAll), so reading at build time
+     * is sufficient. Fallback is the Quill sienna (kept free of the old violet
+     * literal so the reskin's literal-swap can't recurse into this getter).
+     */
+    _accent() {
+        return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#9a5b34';
+    },
+
+    /**
      * Scans sequential snapshots to find the first moment a metric crossed
      * each configured threshold. Compares adjacent snapshot pairs (prev, curr)
      * and records a milestone when prev < threshold <= curr.
@@ -133,7 +145,7 @@ const Charts = {
      */
     _milestoneAnnotations(snapshots, metrics) {
         const prefixes = { views: 'V', favorites_count: 'F', comments_count: 'C', reads: 'R', votes: 'Vo', num_lists: 'L', likes: 'Lk', reshares: 'Rs', kudos_count: 'K', hits: 'H', bookmarks_count: 'B' };
-        const colors = { views: '#9b7dff', favorites_count: '#f0a050', comments_count: '#5ae0a0', reads: '#9b7dff', votes: '#f0a050', num_lists: '#fbc050', likes: '#9b7dff', reshares: '#fbc050', kudos_count: '#f0a050', hits: '#9b7dff', bookmarks_count: '#fbc050' };
+        const colors = { views: Charts._accent(), favorites_count: '#f0a050', comments_count: '#5ae0a0', reads: Charts._accent(), votes: '#f0a050', num_lists: '#fbc050', likes: Charts._accent(), reshares: '#fbc050', kudos_count: '#f0a050', hits: Charts._accent(), bookmarks_count: '#fbc050' };
         const annotations = {};
         let idx = 0;
         for (const metric of metrics) {
@@ -144,14 +156,14 @@ const Charts = {
                     type: 'line',
                     xMin: _toDate(m.timestamp),
                     xMax: _toDate(m.timestamp),
-                    borderColor: colors[metric] || '#9b7dff',
+                    borderColor: colors[metric] || Charts._accent(),
                     borderWidth: 1,
                     borderDash: [6, 4],
                     label: {
                         display: true,
                         content: `${prefixes[metric]}:${m.threshold >= 1000 ? (m.threshold / 1000) + 'K' : m.threshold}`,
                         position: 'start',
-                        backgroundColor: colors[metric] || '#9b7dff',
+                        backgroundColor: colors[metric] || Charts._accent(),
                         color: '#fff',
                         font: { size: 9, weight: 'bold' },
                         padding: { top: 2, bottom: 2, left: 4, right: 4 },
@@ -285,7 +297,7 @@ const Charts = {
 
         // Metric-to-colour mapping (consistent across all chart types)
         const colors = {
-            views: '#9b7dff',            // blue
+            views: Charts._accent(),            // blue
             favorites_count: '#f0a050',  // red
             comments_count: '#5ae0a0',   // green
             followers: '#e0679a',        // magenta (follower growth)
@@ -302,7 +314,7 @@ const Charts = {
         const datasets = [];
         metrics.forEach(m => {
             const data = snapshots.map(s => ({ x: _toDate(s.polled_at), y: s[m] }));
-            const color = colors[m] || '#9b7dff';
+            const color = colors[m] || Charts._accent();
             datasets.push({
                 label: labels[m] || m,
                 data,
@@ -364,22 +376,22 @@ const Charts = {
 
         // Metric configuration: first metric goes on left Y axis, rest on right
         const metricConfig = {
-            views:           { label: 'Views',      color: '#9b7dff' },
+            views:           { label: 'Views',      color: Charts._accent() },
             favorites_count: { label: 'Favorites',  color: '#f0a050' },
             comments_count:  { label: 'Comments',   color: '#5ae0a0' },
-            reads:           { label: 'Reads',      color: '#9b7dff' },
+            reads:           { label: 'Reads',      color: Charts._accent() },
             votes:           { label: 'Votes',      color: '#f0a050' },
             num_lists:       { label: 'Lists',      color: '#fbc050' },
-            likes:           { label: 'Likes',      color: '#9b7dff' },
+            likes:           { label: 'Likes',      color: Charts._accent() },
             reshares:        { label: 'Reshares',   color: '#fbc050' },
             kudos_count:     { label: 'Kudos',      color: '#f0a050' },
-            hits:            { label: 'Hits',       color: '#9b7dff' },
+            hits:            { label: 'Hits',       color: Charts._accent() },
             bookmarks_count: { label: 'Bookmarks',  color: '#fbc050' },
         };
 
         const leftMetric = metrics[0];
         const rightMetrics = metrics.slice(1);
-        const leftCfg = metricConfig[leftMetric] || { label: leftMetric, color: '#9b7dff' };
+        const leftCfg = metricConfig[leftMetric] || { label: leftMetric, color: Charts._accent() };
         const rightLabel = rightMetrics.map(m => (metricConfig[m] || { label: m }).label).join(' / ');
         const rightColor = (metricConfig[rightMetrics[0]] || { color: '#f0a050' }).color;
 
@@ -412,7 +424,7 @@ const Charts = {
         // Build datasets: first metric on left axis, rest on right, plus trendlines
         const datasets = [];
         metrics.forEach((m, i) => {
-            const cfg = metricConfig[m] || { label: m, color: '#9b7dff' };
+            const cfg = metricConfig[m] || { label: m, color: Charts._accent() };
             const data = snapshots.map(s => ({ x: _toDate(s.polled_at), y: s[m] }));
             const axisID = i === 0 ? 'y' : 'y1';
             datasets.push({
@@ -481,8 +493,8 @@ const Charts = {
                 labels,
                 datasets: [{
                     data: values,
-                    backgroundColor: '#9b7dff40', // purple at 25% opacity for bar fill
-                    borderColor: '#9b7dff',       // solid purple border
+                    backgroundColor: (Charts._accent() + '40'), // purple at 25% opacity for bar fill
+                    borderColor: Charts._accent(),       // solid purple border
                     borderWidth: 1,
                 }]
             },
@@ -513,7 +525,7 @@ const Charts = {
         if (!ctx) return;
 
         // 10-colour palette -- wraps via modulo for >10 submissions
-        const palette = ['#9b7dff', '#f0a050', '#5ae0a0', '#fbc050', '#a78bfa', '#e879f9', '#70d4c0', '#d08030', '#70a0ff', '#c07dff'];
+        const palette = [Charts._accent(), '#f0a050', '#5ae0a0', '#fbc050', '#a78bfa', '#e879f9', '#70d4c0', '#d08030', '#70a0ff', '#c07dff'];
 
         // Build one dataset per submission, each assigned a palette colour
         const datasets = Object.entries(seriesData).map(([id, snaps], i) => ({
@@ -591,7 +603,7 @@ const Charts = {
             data: {
                 labels,
                 datasets: [
-                    { label: 'Views', data: weeklyData.map(w => w.views_delta), backgroundColor: '#9b7dff80', borderColor: '#9b7dff', borderWidth: 1 },
+                    { label: 'Views', data: weeklyData.map(w => w.views_delta), backgroundColor: (Charts._accent() + '80'), borderColor: Charts._accent(), borderWidth: 1 },
                     { label: 'Faves', data: weeklyData.map(w => w.faves_delta), backgroundColor: '#f0a05080', borderColor: '#f0a050', borderWidth: 1 },
                     { label: 'Comments', data: weeklyData.map(w => w.comments_delta), backgroundColor: '#5ae0a080', borderColor: '#5ae0a0', borderWidth: 1 },
                 ],
