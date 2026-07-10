@@ -43,6 +43,34 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+async def _relay_stash_image(server_url: str, api_key: str, path: str) -> str:
+    """Upload an image to a paired PawPoller server's IG image host; return the
+    public URL Meta will fetch.
+
+    Used from a desktop instance, which has no public address of its own: it
+    borrows the server as the image host (the same pairing — ``posting_server_url``
+    + ``posting_server_api_key`` — used for story/artwork sync). Raises on any
+    failure so the publish surfaces a clear error instead of a broken post.
+    """
+    import httpx
+    from pathlib import Path
+    data = Path(path).read_bytes()
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    url = server_url.rstrip("/") + "/api/ig/pubmedia"
+    async with httpx.AsyncClient(timeout=90.0) as http:
+        resp = await http.post(
+            url,
+            files={"file": (Path(path).name, data, "application/octet-stream")},
+            headers=headers,
+        )
+    if resp.status_code != 200:
+        raise RuntimeError(f"image relay to {url} failed ({resp.status_code}): {resp.text[:200]}")
+    public = (resp.json() or {}).get("url")
+    if not public:
+        raise RuntimeError("image relay returned no URL")
+    return public
+
+
 def _render_body(body: str, mentions: list[dict], platform: str) -> str:
     """Expand each bound @alias in the body into this platform's handle.
 
@@ -242,20 +270,37 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
             if not token:
                 result["error"] = "Instagram account isn't connected"
                 return result
-            base = (settings or config.get_settings()).get("ig_public_base_url", "").strip()
-            if not base:
+            # Instagram fetches the image from a public URL (it never accepts
+            # bytes). Two ways to give it one:
+            #  • Server:  IG_PUBLIC_BASE_URL is set → stash locally + serve it.
+            #  • Desktop: no public address, but paired with a server → relay each
+            #    image to that server's /api/ig/pubmedia and use the URL it returns.
+            s = settings or config.get_settings()
+            local_base = s.get("ig_public_base_url", "").strip()
+            relay_url = s.get("posting_server_url", "").strip()
+            relay_key = s.get("posting_server_api_key", "").strip()
+            if not local_base and not relay_url:
                 result["error"] = ("Instagram posting needs a public address for Meta to fetch the "
-                                   "image — set IG_PUBLIC_BASE_URL (your server's public URL) in the "
-                                   "server .env")
+                                   "image. On the server, set IG_PUBLIC_BASE_URL. On the desktop app, "
+                                   "pair it with your server (Settings → Posting: server URL + API "
+                                   "key) so it can hand the image to the server for hosting.")
                 return result
             from posting import ig_media
             from clients.ig.client import IgClient
-            stashed: list[str] = []
+            stashed: list[str] = []      # only LOCAL stashes are cleaned up here
             try:
-                # Stash each image publicly (Meta cURLs image_url during publish).
-                for pth in image_paths:
-                    stashed.append(ig_media.stash_image(pth))
-                image_urls = [ig_media.public_url(base, t) for t in stashed]
+                image_urls: list[str] = []
+                if local_base:
+                    # Stash each image publicly on this server (Meta cURLs it).
+                    for pth in image_paths:
+                        t = ig_media.stash_image(pth)
+                        stashed.append(t)
+                        image_urls.append(ig_media.public_url(local_base, t))
+                else:
+                    # Desktop: relay each image to the paired server (it TTL-sweeps
+                    # its own stashes, so nothing to clean up from here).
+                    for pth in image_paths:
+                        image_urls.append(await _relay_stash_image(relay_url, relay_key, pth))
                 client = IgClient(access_token=token, user_id=creds.get("ig_user_id", ""))
                 try:
                     r = await client.create_post(text, image_urls)

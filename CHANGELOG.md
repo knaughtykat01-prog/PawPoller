@@ -4,6 +4,37 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.67.0] - 2026-07-10 - Instagram posting from the desktop app (image relay)
+
+Instagram posting is no longer server-only. A **paired desktop** instance can now post to Instagram by borrowing its
+server as the image host — no new settings, it reuses the existing desktop↔server pairing (`posting_server_url` +
+`posting_server_api_key`, the same one used for story/artwork sync).
+
+**Why it was server-only.** Instagram's Content Publishing API never accepts image bytes for photos — you pass a
+public `image_url` and Meta cURLs it. The desktop app binds to `localhost`, which Meta can't reach, so publishing
+failed there.
+
+**The relay.** New authenticated endpoint **`POST /api/ig/pubmedia`** (`routes/ig_api.py`): accepts an uploaded
+image, stashes it via the existing `ig_media` public-hosting path (converts + downscales to a web-safe JPEG, uuid4
+token, 15-min TTL), and returns `{token, url}` — a public URL on the server. It sits next to the existing
+unauthenticated `GET /api/ig/pubmedia/{token}` but **requires auth** (the POST path has no trailing slash, so it
+isn't covered by the `/api/ig/pubmedia/` auth-exempt prefix); the desktop authenticates with the same Bearer API
+key it already uses for sync.
+
+**Publish flow.** `post_publisher`'s `ig` branch now picks its image host: if `ig_public_base_url` is set (server),
+it stashes locally and serves its own URL as before; otherwise, if paired (`posting_server_url` +
+`posting_server_api_key`), it relays each image to the server's `/api/ig/pubmedia` and uses the returned URL (new
+`_relay_stash_image` helper — multipart upload via httpx, Bearer auth, raises on failure). If neither is
+configured, a clear error explains both options. The server manages its own relayed-image TTL, so the desktop has
+nothing to clean up.
+
+Also: `ig_media` gains `stash_bytes(data)` (the raw-bytes sibling of `stash_image`, sharing a `_stash` core); the
+Instagram setup guide's "server-only" note now documents the desktop-pairing path. **3 new tests (335 green).**
+Files: `posting/ig_media.py`, `routes/ig_api.py`, `posting/post_publisher.py`, `frontend/js/platform_guides.js`,
+`config.py`, `tests/test_ig_posting.py`.
+
+---
+
 ## [2.66.0] - 2026-07-10 - "Setup guide" button on un-set-up platform tiles
 
 The **Platforms hub** (`#/platforms`) now nudges onboarding directly. Any platform tile whose credentials aren't

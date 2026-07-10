@@ -5610,11 +5610,25 @@ uniquely, needs the image at a public URL because Meta cURLs it rather than
 accepting an upload. That public-image mechanism lives in `posting/ig_media.py`:
 a JPEG copy is stashed on the data volume and served unauthenticated at
 `GET /api/ig/pubmedia/{token}` (auth-exempt prefix in `dashboard.py`; uuid4 token
-+ path-traversal guard + 15-min TTL, deleted after publish), so IG posting is
-**server-only** and needs `ig_public_base_url` (`IG_PUBLIC_BASE_URL` in `.env`)
-set to the server's public address. `IgClient.create_post` does the two-step
++ path-traversal guard + 15-min TTL, deleted after publish), so on the server IG
+posting needs `ig_public_base_url` (`IG_PUBLIC_BASE_URL` in `.env`) set to the
+server's public address. `IgClient.create_post` does the two-step
 container→`media_publish` flow (with 2–10 photo carousels). IG posting needs the
 `instagram_business_content_publish` scope + a Business/Creator account.
+
+**Desktop posting via image relay (2.67.0).** The desktop app binds to
+`localhost`, which Meta can't reach — so a **paired desktop** instead borrows its
+server as the image host. New authenticated endpoint **`POST /api/ig/pubmedia`**
+(`routes/ig_api.py`) accepts an uploaded image, stashes it via
+`ig_media.stash_bytes` (the raw-bytes sibling of `stash_image`), and returns
+`{token, url}`. It shares the path prefix with the open GET but **requires auth**:
+the POST has no trailing slash, so it falls outside the `/api/ig/pubmedia/`
+auth-exempt prefix, and the desktop authenticates with the same Bearer API key it
+already uses for story/artwork sync. `post_publisher`'s `ig` branch chooses its
+host at publish time — `ig_public_base_url` set → stash locally (server); else
+`posting_server_url` + `posting_server_api_key` set → relay each image to the
+server (`_relay_stash_image`, multipart httpx upload); else a clear error naming
+both options. No new settings — it reuses the existing desktop↔server pairing.
 
 ### 21.1 Why a separate store (not the publications registry)
 

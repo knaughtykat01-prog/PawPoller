@@ -11,7 +11,7 @@ import io
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse, FileResponse
 
 from database.db import get_connection
@@ -101,6 +101,33 @@ def ig_pubmedia(token: str):
     if not p:
         raise HTTPException(404, "Not found")
     return FileResponse(str(p), media_type="image/jpeg")
+
+
+@ig_router.post("/pubmedia")
+async def ig_stash_pubmedia(file: UploadFile = File(...)):
+    """Stash an uploaded image and return the public URL Meta will fetch.
+
+    Authenticated (unlike the GET above, which must be open for Meta). This lets a
+    **paired desktop** instance — which has no public address of its own — borrow
+    this public server as the image host for an Instagram post: the desktop uploads
+    the image here, gets back a public URL on this server, then creates the IG
+    container itself. Auth is the same Bearer API key the desktop already uses for
+    story/artwork sync, so no extra credentials are needed.
+    """
+    base = config.get_settings().get("ig_public_base_url", "").strip()
+    if not base:
+        raise HTTPException(503, "This server has no IG_PUBLIC_BASE_URL configured, so it can't host Instagram images.")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty image upload")
+    if len(data) > 12 * 1024 * 1024:
+        raise HTTPException(413, "Image too large (max 12 MB)")
+    from posting import ig_media
+    try:
+        token = ig_media.stash_bytes(data)
+    except Exception as e:
+        raise HTTPException(400, f"Could not process image: {e}")
+    return {"token": token, "url": ig_media.public_url(base, token)}
 
 
 # -- IG Polling ---------------------------------------------------------------

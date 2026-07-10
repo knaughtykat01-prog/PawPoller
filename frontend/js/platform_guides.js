@@ -308,7 +308,7 @@
       renew: { when: 'Long-lived tokens last ~60 days', how: 'PawPoller auto-refreshes it while polling. If it lapses, generate a fresh token in the Meta dashboard and paste it back in.' },
       notes: [
         'Stats need <code>instagram_business_manage_insights</code>; <b>posting</b> needs <code>instagram_business_content_publish</code> — re-generate the token if you add a scope later.',
-        'Posting is <b>server-only</b> (Instagram fetches the image from your server\'s public address) and every Instagram post <b>requires a photo</b> — there are no text-only posts.',
+        'Every Instagram post <b>requires a photo</b> — there are no text-only posts. Instagram fetches the image from a public address: on the server that\'s <code>IG_PUBLIC_BASE_URL</code>; on the desktop app, pair it with your server (Settings → Posting) and it hands the image to the server automatically.',
         'Development mode + your own account needs no App Review; a public app for other users would need review + would likely be rejected for adult content.',
       ],
     },

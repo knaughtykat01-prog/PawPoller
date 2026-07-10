@@ -43,15 +43,12 @@ def sweep() -> None:
             pass
 
 
-def stash_image(source_path: str) -> str:
-    """Convert *source_path* to a web-safe JPEG, stash it, return its hex token.
+def _stash(img) -> str:
+    """Normalise a PIL image to a web-safe JPEG, stash it, return its hex token.
 
     Instagram only accepts JPEG, so PNG/WebP/etc. are converted; oversized images
     are downscaled to ``_MAX_EDGE`` on the long edge to stay under IG's 8 MB limit.
     """
-    from PIL import Image
-    sweep()
-    img = Image.open(source_path)
     if img.mode != "RGB":
         img = img.convert("RGB")
     w, h = img.size
@@ -63,6 +60,25 @@ def stash_image(source_path: str) -> str:
     token = uuid.uuid4().hex
     (_dir() / f"{token}.jpg").write_bytes(buf.getvalue())
     return token
+
+
+def stash_image(source_path: str) -> str:
+    """Convert a file at *source_path* to a stashed web-safe JPEG; return its token."""
+    from PIL import Image
+    sweep()
+    return _stash(Image.open(source_path))
+
+
+def stash_bytes(data: bytes) -> str:
+    """Convert raw image *data* to a stashed web-safe JPEG; return its token.
+
+    Used by the authenticated ``POST /api/ig/pubmedia`` relay endpoint, so a
+    paired desktop instance (no public address of its own) can hand an image to
+    this public server to host during an Instagram publish.
+    """
+    from PIL import Image
+    sweep()
+    return _stash(Image.open(io.BytesIO(data)))
 
 
 def path_for(token: str) -> Path | None:

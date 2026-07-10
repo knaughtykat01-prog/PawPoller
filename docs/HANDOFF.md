@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version:** 2.66.0 — **"Setup guide" button on un-set-up platform tiles.**
+**Current version:** 2.67.0 — **Instagram posting from the desktop app (image relay).**
+IG posting is no longer server-only. A **paired desktop** instance posts to Instagram by borrowing its server as the
+image host — reusing the existing `posting_server_url` + `posting_server_api_key` pairing (no new settings/UI). New
+authenticated **`POST /api/ig/pubmedia`** (`routes/ig_api.py`) accepts an uploaded image, stashes it via `ig_media`
+(new `stash_bytes`), returns `{token, url}`; it requires auth (the POST has no trailing slash, so it's outside the
+`/api/ig/pubmedia/` auth-exempt prefix — the desktop uses its sync Bearer key). `post_publisher`'s `ig` branch now
+chooses its host: `ig_public_base_url` set → stash locally (server, unchanged); else paired → relay each image to
+the server (`_relay_stash_image`, multipart via httpx); else a clear error. Instagram inherently needs a public
+`image_url` (Meta cURLs it — never accepts bytes), which is why the relay exists. **3 new tests (335 green). Needs a
+server deploy** (the server gains the relay endpoint) **+ a desktop rebuild for desktop posting.** Files:
+`posting/ig_media.py`, `routes/ig_api.py`, `posting/post_publisher.py`, `frontend/js/platform_guides.js`,
+`config.py`, `tests/test_ig_posting.py`.
+
+**Prior release — 2.66.0 — "Setup guide" button on un-set-up platform tiles.**
 The **Platforms hub** (`#/platforms`) now surfaces onboarding: any tile whose credentials aren't configured shows
 **"Not set up yet"** + a **"📖 Setup guide"** button that opens that platform's 2.65.0 guide modal.
 `renderPlatformsHub` fetches `/api/platforms/health` in parallel with the summaries and reads each platform's
