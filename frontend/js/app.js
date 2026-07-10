@@ -82,6 +82,9 @@ const App = {
     _thrSortState: { field: 'views', order: 'desc' },
     _thrCompareIds: new Set(),
     _thrCompareMetric: 'views',
+    _igSortState: { field: 'views', order: 'desc' },
+    _igCompareIds: new Set(),
+    _igCompareMetric: 'views',
     _twSortState: { field: 'views', order: 'desc' },
     _twCompareIds: new Set(),
     _twCompareMetric: 'views',
@@ -847,6 +850,14 @@ const App = {
             this.renderTHRDetail(parts[2]);
         } else if (parts[0] === 'thr' && parts[1] === 'compare') {
             this.renderTHRCompare();
+        } else if (parts[0] === 'ig' && (!parts[1] || parts[1] === '')) {
+            this.renderIGDashboard();
+        } else if (parts[0] === 'ig' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderIGSubmissions();
+        } else if (parts[0] === 'ig' && parts[1] === 'submission' && parts[2]) {
+            this.renderIGDetail(parts[2]);
+        } else if (parts[0] === 'ig' && parts[1] === 'compare') {
+            this.renderIGCompare();
         } else if (parts[0] === 'tw' && (!parts[1] || parts[1] === '')) {
             this.renderTWDashboard();
         } else if (parts[0] === 'tw' && parts[1] === 'submissions' && !parts[2]) {
@@ -1123,6 +1134,7 @@ const App = {
             { key: 'tum',  name: 'Tumblr' },
             { key: 'pix',  name: 'Pixiv' },
             { key: 'thr',  name: 'Threads' },
+            { key: 'ig',   name: 'Instagram' },
         ];
         try {
             const prefs = await API.getPreferences();
@@ -1187,6 +1199,7 @@ const App = {
                 { key: 'tum', auth: auth.tumAuth?.has_credentials, name: 'Tumblr', statusFn: 'getTUMStatus', logFn: 'getTUMPollLog', tableFn: 'tumPollLogTable' },
                 { key: 'pix', auth: auth.pixAuth?.has_credentials, name: 'Pixiv', statusFn: 'getPIXStatus', logFn: 'getPIXPollLog', tableFn: 'pixPollLogTable' },
                 { key: 'thr', auth: auth.thrAuth?.has_credentials, name: 'Threads', statusFn: 'getTHRStatus', logFn: 'getTHRPollLog', tableFn: 'thrPollLogTable' },
+                { key: 'ig', auth: auth.igAuth?.has_credentials, name: 'Instagram', statusFn: 'getIGStatus', logFn: 'getIGPollLog', tableFn: 'igPollLogTable' },
                 { key: 'tw', auth: auth.twAuth?.has_credentials, name: 'Twitter', statusFn: 'getTWStatus', logFn: 'getTWPollLog', tableFn: 'twPollLogTable' },
             ];
             const connected = platforms.filter(p => p.auth);
@@ -1269,7 +1282,7 @@ const App = {
     _platformLabels: {
         ib: 'Inkbunny', fa: 'FurAffinity', ws: 'Weasyl', sf: 'SoFurry',
         sqw: 'SquidgeWorld', ao3: 'AO3', da: 'DeviantArt', wp: 'Wattpad',
-        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr', pix: 'Pixiv', thr: 'Threads',
+        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr', pix: 'Pixiv', thr: 'Threads', ig: 'Instagram',
     },
 
     /* Settings → Platforms → "Session health" card. Renders the per-platform
@@ -1277,7 +1290,7 @@ const App = {
      * "Check sessions now" button, which fires the server-side re-validation
      * (fire-and-forget) and reloads the results after it's had time to run. */
     async _initSessionHealthCard() {
-        const CHECKABLE = ['ao3', 'sf', 'sqw', 'bsky', 'mast', 'tum', 'pix', 'thr'];
+        const CHECKABLE = ['ao3', 'sf', 'sqw', 'bsky', 'mast', 'tum', 'pix', 'thr', 'ig'];
         const LABELS = (window.PlatformHealth && window.PlatformHealth.LABELS) || {};
         const DOT = { valid: 'connected', expired: 'disconnected', error: 'warn', unconfigured: 'muted' };
         const WORD = { valid: 'Valid', expired: 'Expired', error: 'Unverified', unconfigured: 'Not configured' };
@@ -1351,7 +1364,7 @@ const App = {
         const label = this._platformLabels[platform] || platform.toUpperCase();
         btn.disabled = true;
         btn.textContent = 'Polling...';
-        const fns = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll', sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll', wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll', mast: 'triggerMASTPoll', tum: 'triggerTUMPoll', pix: 'triggerPIXPoll', thr: 'triggerTHRPoll' };
+        const fns = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll', sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll', wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll', mast: 'triggerMASTPoll', tum: 'triggerTUMPoll', pix: 'triggerPIXPoll', thr: 'triggerTHRPoll', ig: 'triggerIGPoll' };
         try {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
@@ -1373,7 +1386,7 @@ const App = {
         if (!confirm(`Full resync re-fetches every ${label} submission from scratch. This can take several minutes and will hit ${label}'s rate limits hard. Continue?`)) return;
         btn.disabled = true;
         btn.textContent = 'Syncing...';
-        const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync', mast: 'fullMASTResync', tum: 'fullTUMResync', pix: 'fullPIXResync', thr: 'fullTHRResync' };
+        const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync', mast: 'fullMASTResync', tum: 'fullTUMResync', pix: 'fullPIXResync', thr: 'fullTHRResync', ig: 'fullIGResync' };
         try {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
@@ -1697,6 +1710,7 @@ const App = {
             { key: 'tum', name: 'Tumblr', emoji: '&#128216;', color: 'var(--platform-tum)', url: 'https://www.tumblr.com/oauth/apps' },
             { key: 'pix', name: 'Pixiv', emoji: '&#128396;', color: 'var(--platform-pix)', url: 'https://www.pixiv.net/' },
             { key: 'thr', name: 'Threads', emoji: '&#129525;', color: 'var(--platform-thr)', url: 'https://www.threads.net/' },
+            { key: 'ig', name: 'Instagram', emoji: '&#128248;', color: 'var(--platform-ig)', url: 'https://www.instagram.com/' },
         ];
 
         /* Detect runtime and pre-load existing state so the wizard can
@@ -1715,7 +1729,7 @@ const App = {
         /* Per-platform connection status (used in the platforms step) */
         const authStatus = {};
         try {
-            const [ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw, mast, tum, pix, thr] = await Promise.all([
+            const [ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw, mast, tum, pix, thr, ig] = await Promise.all([
                 API.getAuthStatus().catch(() => ({})),
                 API.getFAAuthStatus().catch(() => ({})),
                 API.getWSAuthStatus().catch(() => ({})),
@@ -1731,6 +1745,7 @@ const App = {
                 API.getTUMAuthStatus().catch(() => ({})),
                 API.getPIXAuthStatus().catch(() => ({})),
                 API.getTHRAuthStatus().catch(() => ({})),
+                API.getIGAuthStatus().catch(() => ({})),
             ]);
             authStatus.ib = ib.has_credentials;
             authStatus.fa = fa.has_cookies;
@@ -1747,6 +1762,7 @@ const App = {
             authStatus.tum = tum.has_credentials;
             authStatus.pix = pix.has_credentials;
             authStatus.thr = thr.has_credentials;
+            authStatus.ig = ig.has_credentials;
         } catch { /* ignore — all default to undefined/false */ }
 
         /* Wizard state */
@@ -2256,7 +2272,7 @@ const App = {
             da: () => API.getDASummary(), wp: () => API.getWPSummary(), ik: () => API.getIKSummary(),
             bsky: () => API.getBSKYSummary(), tw: () => API.getTWSummary(),
             mast: () => API.getMASTSummary(), tum: () => API.getTUMSummary(),
-            pix: () => API.getPIXSummary(), thr: () => API.getTHRSummary(),
+            pix: () => API.getPIXSummary(), thr: () => API.getTHRSummary(), ig: () => API.getIGSummary(),
         };
         const results = await Promise.all(plats.map(p =>
             (fetchers[p.code] ? fetchers[p.code]() : Promise.resolve(null)).catch(() => null)
@@ -2306,7 +2322,7 @@ const App = {
         this._loading();
         try {
             /* Fetch all platform data in parallel; .catch() fallbacks prevent one failure from blocking all */
-            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, bskySummary, twSummary, mastSummary, tumSummary, pixSummary, thrSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, bskyAgg, twAgg, mastAgg, tumAgg, pixAgg, thrAgg, topFans, trending] = await Promise.all([
+            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, bskySummary, twSummary, mastSummary, tumSummary, pixSummary, thrSummary, igSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, bskyAgg, twAgg, mastAgg, tumAgg, pixAgg, thrAgg, igAgg, topFans, trending] = await Promise.all([
                 API.getSummary().catch(() => null),
                 API.getFASummary().catch(() => null),
                 API.getWSSummary().catch(() => null),
@@ -2322,6 +2338,7 @@ const App = {
                 API.getTUMSummary().catch(() => null),
                 API.getPIXSummary().catch(() => null),
                 API.getTHRSummary().catch(() => null),
+                API.getIGSummary().catch(() => null),
                 API.getAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getFAAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getWSAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
@@ -2337,6 +2354,7 @@ const App = {
                 API.getTUMAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getPIXAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getTHRAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
+                API.getIGAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getTopFans(10).catch(() => ({ fans: [] })),
                 API.getTrending({ hours: 24, threshold: 2.0 }).catch(() => ({ trending: [] })),
             ]);
@@ -2360,19 +2378,20 @@ const App = {
             const tum = tumSummary || {};
             const pix = pixSummary || {};
             const thr = thrSummary || {};
+            const ig = igSummary || {};
 
             /* Sum totals across all platforms for the top-level stat cards.
              * Wattpad uses 'reads' instead of 'views' and 'votes' instead of 'favorites',
              * so we map them into the unified totals here.
              * Itaku has NO views — only likes (mapped to favorites), comments, and reshares. */
-            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0) + (bsky.total_submissions || 0) + (tw.total_submissions || 0) + (mast.total_submissions || 0) + (tum.total_submissions || 0) + (pix.total_submissions || 0) + (thr.total_submissions || 0);
-            const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0) + (sqw.total_views || 0) + (ao3.total_views || 0) + (da.total_views || 0) + (wp.total_reads || wp.total_views || 0) + (tw.total_views || 0) + (pix.total_views || 0) + (thr.total_views || 0);
-            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0) + (bsky.total_likes || 0) + (tw.total_likes || 0) + (mast.total_likes || 0) + (tum.total_notes || 0) + (pix.total_favorites || 0) + (thr.total_likes || 0);
-            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0) + (ao3.total_comments || 0) + (da.total_comments || 0) + (wp.total_comments || 0) + (ik.total_comments || 0) + (bsky.total_comments || 0) + (tw.total_comments || 0) + (mast.total_comments || mast.total_replies || 0) + (pix.total_comments || 0) + (thr.total_replies || 0);
+            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0) + (bsky.total_submissions || 0) + (tw.total_submissions || 0) + (mast.total_submissions || 0) + (tum.total_submissions || 0) + (pix.total_submissions || 0) + (thr.total_submissions || 0) + (ig.total_submissions || 0);
+            const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0) + (sqw.total_views || 0) + (ao3.total_views || 0) + (da.total_views || 0) + (wp.total_reads || wp.total_views || 0) + (tw.total_views || 0) + (pix.total_views || 0) + (thr.total_views || 0) + (ig.total_views || 0);
+            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0) + (bsky.total_likes || 0) + (tw.total_likes || 0) + (mast.total_likes || 0) + (tum.total_notes || 0) + (pix.total_favorites || 0) + (thr.total_likes || 0) + (ig.total_likes || 0);
+            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0) + (ao3.total_comments || 0) + (da.total_comments || 0) + (wp.total_comments || 0) + (ik.total_comments || 0) + (bsky.total_comments || 0) + (tw.total_comments || 0) + (mast.total_comments || mast.total_replies || 0) + (pix.total_comments || 0) + (thr.total_replies || 0) + (ig.total_comments || 0);
             const totalDownloads = (da.total_downloads || 0);
 
             /* Merge top lists across platforms: tag each with _platform, sort desc, take top 10 */
-            const mergeTop = (ibList, faList, wsList, sfList, sqwList, ao3List, daList, wpList, ikList, bskyList, twList, mastList, tumList, pixList, thrList, key) => {
+            const mergeTop = (ibList, faList, wsList, sfList, sqwList, ao3List, daList, wpList, ikList, bskyList, twList, mastList, tumList, pixList, thrList, igList, key) => {
                 const merged = [];
                 (ibList || []).forEach(item => merged.push({ ...item, _platform: 'ib' }));
                 (faList || []).forEach(item => merged.push({ ...item, _platform: 'fa' }));
@@ -2397,12 +2416,14 @@ const App = {
                 (pixList || []).forEach(item => merged.push({ ...item, _platform: 'pix' }));
                 /* Threads has views; map likes to favorites_count for unified merging */
                 (thrList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'thr' }));
+                /* Instagram has views; map likes to favorites_count for unified merging */
+                (igList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'ig' }));
                 merged.sort((a, b) => (b[key] || 0) - (a[key] || 0));
                 return merged.slice(0, 10);
             };
 
-            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, ao3.top_viewed, da.top_viewed, wp.top_viewed || wp.top_read, null, null, tw.top_viewed, null, null, pix.top_viewed, thr.top_viewed, 'views');
-            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, ao3.top_faved, da.top_faved, wp.top_faved || wp.top_voted, ik.top_liked || ik.top_faved, bsky.top_liked || bsky.top_faved, tw.top_liked || tw.top_faved, mast.top_liked || mast.top_faved, tum.top_noted, pix.top_faved, thr.top_liked, 'favorites_count');
+            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, ao3.top_viewed, da.top_viewed, wp.top_viewed || wp.top_read, null, null, tw.top_viewed, null, null, pix.top_viewed, thr.top_viewed, ig.top_viewed, 'views');
+            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, ao3.top_faved, da.top_faved, wp.top_faved || wp.top_voted, ik.top_liked || ik.top_faved, bsky.top_liked || bsky.top_faved, tw.top_liked || tw.top_faved, mast.top_liked || mast.top_faved, tum.top_noted, pix.top_faved, thr.top_liked, ig.top_liked, 'favorites_count');
 
             /* Merge recent faves + comments into a unified timeline, sorted newest first */
             const recentActivity = [];
@@ -2435,6 +2456,8 @@ const App = {
             (pix.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'pix', _type: 'comment' }));
             (thr.recent_faves || thr.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'thr', _type: 'fave' }));
             (thr.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'thr', _type: 'comment' }));
+            (ig.recent_faves || ig.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'ig', _type: 'fave' }));
+            (ig.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'ig', _type: 'comment' }));
             recentActivity.sort((a, b) => new Date(b.first_seen_at || 0) - new Date(a.first_seen_at || 0));
 
             /* Per-platform mini stat card showing views, faves, subs with a coloured badge */
@@ -2468,6 +2491,7 @@ const App = {
                 platformCard('<span class="platform-badge tum">\u{1F4D8} TUM</span>', 'Tumblr', { total_views: 0, total_favorites: tum.total_notes || 0, total_submissions: tum.total_submissions || 0 }, 'tum'),
                 platformCard('<span class="platform-badge pix">\u{1F58C} PIX</span>', 'Pixiv', { total_views: pix.total_views || 0, total_favorites: pix.total_favorites || 0, total_submissions: pix.total_submissions || 0 }, 'pix'),
                 platformCard('<span class="platform-badge thr">\u{1F9F5} THR</span>', 'Threads', { total_views: thr.total_views || 0, total_favorites: thr.total_likes || 0, total_submissions: thr.total_submissions || 0 }, 'thr'),
+                platformCard('<span class="platform-badge ig">\u{1F4F8} IG</span>', 'Instagram', { total_views: ig.total_views || 0, total_favorites: ig.total_likes || 0, total_submissions: ig.total_submissions || 0 }, 'ig'),
             ].join('');
 
             /* Per-platform aggregate view charts — only those with history. */
@@ -2487,6 +2511,7 @@ const App = {
                 { id: 'chart-tum-notes', title: 'Tumblr Notes', snapshots: tumAgg?.snapshots, keys: ['notes'] },
                 { id: 'chart-pix-views', title: 'Pixiv Views', snapshots: pixAgg?.snapshots, keys: ['views'] },
                 { id: 'chart-thr-views', title: 'Threads Views', snapshots: thrAgg?.snapshots, keys: ['views'] },
+                { id: 'chart-ig-views', title: 'Instagram Views', snapshots: igAgg?.snapshots, keys: ['views'] },
             ].filter(c => c.snapshots && c.snapshots.length > 0);
             const chartsHtml = chartSpecs.length
                 ? chartSpecs.map(c => `<div class="chart-container"><h3>${c.title}</h3><div class="chart-wrap"><canvas id="${c.id}"></canvas></div></div>`).join('')
@@ -7122,6 +7147,305 @@ const App = {
         }
     },
 
+    // ── IG Dashboard ─────────────────────────────────────────
+    // Instagram dashboard with Views, Likes, Reach, Comments (+ Shares).
+
+    async renderIGDashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getIGSummary({ account_id: this._acctId('ig') }),
+                API.getIGAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('ig') }),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const igPins = (pins.pins || []).filter(p => p.platform === 'ig');
+            const igGoals = (goals.goals || []).filter(g => g.platform === 'ig' || g.platform === 'all');
+
+            const igHealth = window.PlatformHealth && window.PlatformHealth.get('ig');
+            const isUnconfigured = igHealth && igHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>Instagram Dashboard</h2></div>
+                    ${Components.platformEmptyState('ig', isUnconfigured ? {} : { reason: 'Instagram is configured but no posts have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Instagram Dashboard</h2>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" data-poll="ig">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="ig">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="ig">Export CSV</button>
+                    </div>
+                </div>
+
+                ${igPins.length ? Components.pinnedSubmissions(igPins, 'ig') : ''}
+                ${igGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(igGoals)}</div>` : ''}
+
+                <div class="stats-grid">
+                    ${Components.statCard('Total Posts', summary.total_submissions, null, '#/ig/submissions')}
+                    ${Components.statCard('Total Views', summary.total_views || 0)}
+                    ${Components.statCard('Total Likes', summary.total_likes || 0)}
+                    ${Components.statCard('Total Reach', summary.total_reach || 0)}
+                    ${Components.statCard('Total Comments', summary.total_comments || 0)}
+                </div>
+
+                ${summary.growth_rates ? Components.growthRateCards(summary.growth_rates, { views: 'views/day', faves: 'likes/day', comments: 'comments/day' }) : ''}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Views Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-views"></canvas></div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Viewed</h3>
+                        ${Components.igTopList(summary.top_viewed, 'views', 'title', 'submission_id')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Top Liked</h3>
+                        ${Components.igTopList(summary.top_liked, 'likes', 'title', 'submission_id')}
+                    </div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Fastest Growing (24h)</h3>
+                        ${Components.igTopList(summary.fastest_growing, 'views_gained', 'title', 'submission_id')}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-views', agg.snapshots, ['views']);
+            }
+
+            this._bindDateRange(() => this.renderIGDashboard());
+            this._bindPinAndGoalActions(() => this.renderIGDashboard());
+            this._startAutoRefresh(() => this.renderIGDashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading IG dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── IG Submissions ─────────────────────────────────────────
+
+    async renderIGSubmissions() {
+        this._loading();
+        try {
+            const data = await API.getIGSubmissions({
+                sort_by: this._igSortState.field,
+                order: this._igSortState.order,
+                account_id: this._acctId('ig'),
+            });
+
+            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
+            const igGridRenderer = (subs) => Components.submissionCardGrid(
+                subs,
+                {
+                    idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumbnail_url', proxyThumb: false,
+                    typeKey: 'content_type', typeLabels: Components.IG_TYPE_LABELS,
+                    detailRoute: '/ig/submission', dateKey: 'posted_at',
+                    stats: [
+                        { key: 'views', deltaKey: 'views_delta', label: 'views' },
+                        { key: 'likes', deltaKey: 'likes_delta', label: 'likes' },
+                        { key: 'comments', deltaKey: 'comments_delta', label: 'comments' },
+                    ],
+                }
+            );
+            const gridHtml = igGridRenderer(data.submissions);
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>Instagram Posts</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search posts...">
+                    <div class="view-toggle">
+                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
+                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
+                    </div>
+                </div>
+                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
+                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                    ${Components.igSubmissionsTable(data.submissions)}
+                </div>
+            `;
+
+            this._setContent(html);
+            this._bindViewToggle();
+            this._bindIGTableSort();
+            this._bindIGSearch(data.submissions, igGridRenderer);
+            this._startAutoRefresh(() => this.renderIGSubmissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading IG submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── IG Submission Detail ───────────────────────────────────
+
+    async renderIGDetail(postId) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getIGSubmission(postId),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const fullId = sub.submission_id;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'ig' && String(p.submission_id) === String(fullId));
+            const currentTags = sub.tags || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/ig/submissions" class="back-link">&larr; Back to Instagram Posts</a>
+                <div class="detail-header">
+                    ${sub.thumbnail_url ? `<img class="detail-thumb" src="${Utils.escapeHtml(sub.thumbnail_url)}" alt="" style="max-width:160px;border-radius:8px;margin-right:16px">` : ''}
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.IG_TYPE_LABELS[sub.content_type] || sub.content_type || 'Text')}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Instagram</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.views || 0)} <span class="lbl">views</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.likes || 0)} <span class="lbl">likes</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.reach || 0)} <span class="lbl">reach</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.comments || 0)} <span class="lbl">comments</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.shares || 0)} <span class="lbl">shares</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="ig" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="ig" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+
+                ${Components.growthRateCards(data.growth_rates, { views: 'views/day', faves: 'likes/day', comments: 'comments/day' })}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Stats Over Time</h3>
+                    <div class="chart-wrap"><canvas id="chart-detail"></canvas></div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots, ['views', 'likes', 'reach', 'comments']);
+            }
+
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getIGSnapshots(postId, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots, ['views', 'likes', 'reach', 'comments']);
+            });
+
+            this._bindDetailPinTag('ig', fullId, allTags.tags || [], () => this.renderIGDetail(postId));
+            this._startAutoRefresh(() => this.renderIGDetail(postId));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading IG post</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── IG Compare ─────────────────────────────────────────────
+
+    async renderIGCompare() {
+        this._loading();
+        try {
+            const data = await API.getIGSubmissions({ sort_by: 'views', order: 'desc', account_id: this._acctId('ig') });
+            const subs = data.submissions;
+
+            const chips = subs.map(s => `
+                <label class="compare-chip ${this._igCompareIds.has(String(s.submission_id)) ? 'selected' : ''}" data-id="${Utils.escapeHtml(String(s.submission_id))}">
+                    <input type="checkbox" ${this._igCompareIds.has(String(s.submission_id)) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>
+            `).join('');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Compare Instagram Posts</h2>
+                    <div>
+                        <select class="filter-select" id="compare-metric">
+                            <option value="views" ${this._igCompareMetric === 'views' ? 'selected' : ''}>Views</option>
+                            <option value="likes" ${this._igCompareMetric === 'likes' ? 'selected' : ''}>Likes</option>
+                            <option value="reach" ${this._igCompareMetric === 'reach' ? 'selected' : ''}>Reach</option>
+                            <option value="comments" ${this._igCompareMetric === 'comments' ? 'selected' : ''}>Comments</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 Instagram posts to compare their trends over time.</p>
+                <div class="compare-select">${chips}</div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container" id="compare-chart-container" style="${this._igCompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3>
+                    <div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._igCompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 posts above to see their trends compared.</p></div>' : ''}
+            `;
+
+            this._setContent(html);
+
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = chip.dataset.id;
+                    if (this._igCompareIds.has(id)) {
+                        this._igCompareIds.delete(id);
+                    } else if (this._igCompareIds.size < 5) {
+                        this._igCompareIds.add(id);
+                    }
+                    this.renderIGCompare();
+                });
+            });
+
+            const metricSelect = document.getElementById('compare-metric');
+            if (metricSelect) {
+                metricSelect.addEventListener('change', () => {
+                    this._igCompareMetric = metricSelect.value;
+                    this._loadIGComparisonChart();
+                });
+            }
+
+            this._bindDateRange(() => this._loadIGComparisonChart());
+
+            if (this._igCompareIds.size >= 2) {
+                await this._loadIGComparisonChart();
+            }
+
+            this._startAutoRefresh(() => this.renderIGCompare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadIGComparisonChart() {
+        try {
+            if (this._igCompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getIGComparison([...this._igCompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, this._igCompareMetric);
+        } catch (e) {
+            console.error('Failed to load IG comparison chart:', e);
+        }
+    },
+
     // ── TW Dashboard ─────────────────────────────────────────
     // X/Twitter dashboard with Views, Likes, Retweets, Replies, Quotes, Bookmarks.
 
@@ -7510,7 +7834,7 @@ const App = {
                 // Determine platform badge colour and the correct hash route prefix
                 const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[m.platform] || badgeMap.ib;
-                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', pix: '/pix/submission/', thr: '/thr/submission/', ib: '/submission/' };
+                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', pix: '/pix/submission/', thr: '/thr/submission/', ig: '/ig/submission/', ib: '/submission/' };
                 const prefix = prefixMap[m.platform] || prefixMap.ib;
                 return `
                     <tr>
@@ -7853,7 +8177,7 @@ const App = {
         try {
             // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
             // Polling tab data is loaded lazily when the user clicks into it.
-            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, updateInfo, postingSettings, browserLoginInfo, setupStatus] = await Promise.all([
+            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, updateInfo, postingSettings, browserLoginInfo, setupStatus] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
@@ -7873,6 +8197,7 @@ const App = {
                 API.getTUMAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getPIXAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getTHRAuthStatus().catch(() => ({ has_credentials: false })),
+                API.getIGAuthStatus().catch(() => ({ has_credentials: false })),
                 API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' })),
                 API.getPostingSettings().catch(() => ({ posting_enabled: false, posting_default_platforms: [], posting_default_rating: 'adult', posting_server_url: '', posting_server_api_key: '', posting_story_archive_path: '' })),
                 API.getBrowserLoginPlatforms().catch(() => ({ available: false, platforms: [] })),
@@ -7890,7 +8215,7 @@ const App = {
             const _pollingOwner = setupStatus.polling_owner || (_isServer ? 'local' : (_isPaired ? 'server' : 'local'));
 
             // Store auth state for lazy-loaded polling tab
-            this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth };
+            this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth };
 
             // Store browser login availability for platform connect forms
             const _browserLoginAvailable = browserLoginInfo.available;
@@ -8332,6 +8657,23 @@ const App = {
                     </div>
                     <div class="settings-row">
                         <div>
+                            <span class="settings-label">IG poll interval</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">How often to check for new Instagram data</div>
+                        </div>
+                        <select class="filter-select" id="pref-ig-poll-interval" style="width:auto">
+                            <option value="15" ${prefs.ig_poll_interval_minutes === 15 ? 'selected' : ''}>15 min</option>
+                            <option value="30" ${prefs.ig_poll_interval_minutes === 30 ? 'selected' : ''}>30 min</option>
+                            <option value="60" ${prefs.ig_poll_interval_minutes === 60 || !prefs.ig_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
+                            <option value="120" ${prefs.ig_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
+                            <option value="240" ${prefs.ig_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.ig_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.ig_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.ig_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.ig_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
+                        </select>
+                    </div>
+                    <div class="settings-row">
+                        <div>
                             <span class="settings-label">Display timezone</span>
                             <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Timezone for Telegram messages and timestamps</div>
                         </div>
@@ -8484,6 +8826,7 @@ const App = {
                         <button class="btn btn-secondary" data-export="tum">Export TUM</button>
                         <button class="btn btn-secondary" data-export="pix">Export PIX</button>
                         <button class="btn btn-secondary" data-export="thr">Export THR</button>
+                        <button class="btn btn-secondary" data-export="ig">Export IG</button>
                     </div>
                 </div>
 
@@ -9391,6 +9734,46 @@ const App = {
                 </details>
 
                 <details class="settings-accordion">
+                    <summary><span class="status-dot ${igAuth.has_credentials ? 'connected' : 'disconnected'}"></span>Instagram${igAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(igAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
+                    ${igAuth.has_credentials ? `
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Status</span>
+                        </div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(igAuth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">IG desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for Instagram activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-ig-notifications" ${prefs.ig_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="ig-poll-btn">IG Poll Now</button>
+                        <button class="btn btn-secondary" id="ig-resync-btn">IG Full Resync</button>
+                        <button class="btn btn-danger" id="ig-disconnect-btn">Disconnect</button>
+                        <span id="ig-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to Instagram with a <strong>long-lived Instagram user token</strong> from a Meta app that has the <code>instagram_business_basic</code> + <code>instagram_business_manage_insights</code> scopes, generated for a <strong>Business or Creator</strong> account. User ID is optional (defaults to your own account).</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="password" id="ig-access-token" class="search-input" placeholder="Long-lived access token">
+                        <input type="text" id="ig-user-id" class="search-input" placeholder="User ID (optional)">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="ig-connect-btn">Connect</button>
+                        <span id="ig-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                    </div>
+                </details>
+
+                <details class="settings-accordion">
                     <summary><span class="status-dot ${twAuth.has_credentials ? 'connected' : 'disconnected'}"></span>X / Twitter${twAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(twAuth.username || '')}</span>` : ''}</summary>
                     <div class="accordion-body">
                     ${twAuth.has_credentials ? `
@@ -9678,6 +10061,7 @@ const App = {
                     prefs.tum_poll_interval_minutes = parseInt(val('pref-tum-poll-interval')) || 60;
                     prefs.pix_poll_interval_minutes = parseInt(val('pref-pix-poll-interval')) || 60;
                     prefs.thr_poll_interval_minutes = parseInt(val('pref-thr-poll-interval')) || 60;
+                    prefs.ig_poll_interval_minutes = parseInt(val('pref-ig-poll-interval')) || 60;
 
                     // Timezone
                     if (val('pref-timezone')) prefs.display_timezone = val('pref-timezone');
@@ -9712,6 +10096,7 @@ const App = {
                     if (document.getElementById('pref-tum-notifications')) prefs.tum_notifications_enabled = !!chk('pref-tum-notifications');
                     if (document.getElementById('pref-pix-notifications')) prefs.pix_notifications_enabled = !!chk('pref-pix-notifications');
                     if (document.getElementById('pref-thr-notifications')) prefs.thr_notifications_enabled = !!chk('pref-thr-notifications');
+                    if (document.getElementById('pref-ig-notifications')) prefs.ig_notifications_enabled = !!chk('pref-ig-notifications');
 
                     await API.savePreferences(prefs);
 
@@ -9761,6 +10146,7 @@ const App = {
                     if (auth.tumAuth?.has_credentials) triggers.push(API.triggerTUMPoll());
                     if (auth.pixAuth?.has_credentials) triggers.push(API.triggerPIXPoll());
                     if (auth.thrAuth?.has_credentials) triggers.push(API.triggerTHRPoll());
+                    if (auth.igAuth?.has_credentials) triggers.push(API.triggerIGPoll());
                     const results = await Promise.allSettled(triggers);
                     const failed = results.filter(r => r.status === 'rejected');
                     btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';
@@ -9803,6 +10189,7 @@ const App = {
                     if (auth.tumAuth?.has_credentials) resyncs.push(API.fullTUMResync());
                     if (auth.pixAuth?.has_credentials) resyncs.push(API.fullPIXResync());
                     if (auth.thrAuth?.has_credentials) resyncs.push(API.fullTHRResync());
+                    if (auth.igAuth?.has_credentials) resyncs.push(API.fullIGResync());
                     const results = await Promise.allSettled(resyncs);
                     const failed = results.filter(r => r.status === 'rejected');
                     btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';
@@ -10479,6 +10866,15 @@ const App = {
             document.getElementById('pref-thr-poll-interval')?.addEventListener('change', async (e) => {
                 try {
                     await API.savePreferences({ thr_poll_interval_minutes: parseInt(e.target.value) });
+                } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
+            // IG poll interval dropdown
+            document.getElementById('pref-ig-poll-interval')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ ig_poll_interval_minutes: parseInt(e.target.value) });
                 } catch (err) {
                     alert('Failed to save: ' + err.message);
                 }
@@ -11294,6 +11690,78 @@ const App = {
                 thrNotifToggle.addEventListener('change', async (e) => {
                     try {
                         await API.savePreferences({ thr_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
+            // IG Connect: sends access_token + optional user_id
+            const igConnectBtn = document.getElementById('ig-connect-btn');
+            if (igConnectBtn) {
+                igConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('ig-msg');
+                    const access_token = document.getElementById('ig-access-token').value.trim();
+                    const user_id = document.getElementById('ig-user-id').value.trim();
+                    if (!access_token) {
+                        msg.textContent = 'Access token is required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    igConnectBtn.disabled = true;
+                    igConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.igConnect({ access_token, user_id });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        igConnectBtn.textContent = 'Connect';
+                        igConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            // IG Disconnect
+            const igDisconnectBtn = document.getElementById('ig-disconnect-btn');
+            if (igDisconnectBtn) {
+                igDisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect Instagram? This clears your credentials.')) return;
+                    try {
+                        await API.igDisconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+
+            // IG Poll Now / Full Resync
+            const igPollBtn = document.getElementById('ig-poll-btn');
+            if (igPollBtn) {
+                igPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: igPollBtn, msgId: 'ig-msg', platform: 'ig', apiMethod: 'triggerIGPoll',
+                }));
+            }
+            const igResyncBtn = document.getElementById('ig-resync-btn');
+            if (igResyncBtn) {
+                igResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: igResyncBtn, msgId: 'ig-msg', platform: 'ig', apiMethod: 'fullIGResync',
+                }));
+            }
+
+            // IG: Notifications toggle
+            const igNotifToggle = document.getElementById('pref-ig-notifications');
+            if (igNotifToggle) {
+                igNotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ ig_notifications_enabled: e.target.checked });
                     } catch (err) {
                         e.target.checked = !e.target.checked;
                         alert('Failed to save preference: ' + err.message);
@@ -12536,6 +13004,45 @@ const App = {
             if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
             document.getElementById('table-container').innerHTML = Components.thrSubmissionsTable(filtered);
             this._bindTHRTableSort();
+        };
+
+        input?.addEventListener('input', doFilter);
+    },
+
+    // IG table sort binding.
+    _bindIGTableSort() {
+        document.querySelectorAll('#ig-submissions-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (this._igSortState.field === field) {
+                    this._igSortState.order = this._igSortState.order === 'desc' ? 'asc' : 'desc';
+                } else {
+                    this._igSortState.field = field;
+                    this._igSortState.order = 'desc';
+                }
+                this.renderIGSubmissions();
+            });
+        });
+    },
+
+    // IG variant of _bindSearch(). Filters by text (title only).
+    _bindIGSearch(allSubmissions, gridRenderer) {
+        const input = document.getElementById('search-input');
+
+        const doFilter = () => {
+            const q = (input?.value || '').toLowerCase();
+
+            let filtered = allSubmissions;
+            if (q) {
+                filtered = filtered.filter(s =>
+                    (s.title || '').toLowerCase().includes(q)
+                );
+            }
+
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
+            document.getElementById('table-container').innerHTML = Components.igSubmissionsTable(filtered);
+            this._bindIGTableSort();
         };
 
         input?.addEventListener('input', doFilter);

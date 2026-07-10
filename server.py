@@ -80,6 +80,8 @@ _ENV_TO_SETTINGS = {
     "PIX_USER_ID":        "pix_user_id",
     "THR_ACCESS_TOKEN":   "thr_access_token",
     "THR_USER_ID":        "thr_user_id",
+    "IG_ACCESS_TOKEN":    "ig_access_token",
+    "IG_USER_ID":         "ig_user_id",
     "TELEGRAM_BOT_TOKEN": "telegram_bot_token",
     "TELEGRAM_CHAT_ID":   "telegram_chat_id",
     "TELEGRAM_ENABLED":   "telegram_enabled",
@@ -214,6 +216,7 @@ def _start_poll_orchestrator():
         from polling.tum_poller import run_tum_poll_cycle
         from polling.pix_poller import run_pix_poll_cycle
         from polling.thr_poller import run_thr_poll_cycle
+        from polling.ig_poller import run_ig_poll_cycle
 
         settings = config.get_settings()
         from polling.notifications import describe_error
@@ -231,7 +234,7 @@ def _start_poll_orchestrator():
                          "sf": run_sf_poll_cycle, "sqw": run_sqw_poll_cycle,
                          "ao3": run_ao3_poll_cycle, "mast": run_mast_poll_cycle,
                          "tum": run_tum_poll_cycle, "pix": run_pix_poll_cycle,
-                         "thr": run_thr_poll_cycle}
+                         "thr": run_thr_poll_cycle, "ig": run_ig_poll_cycle}
 
         # Ensure every configured platform has its default account row (covers
         # creds added since the last startup migration), then read enabled ones.

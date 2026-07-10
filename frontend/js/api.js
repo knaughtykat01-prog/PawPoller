@@ -445,6 +445,24 @@ const API = {
     triggerTHRPoll() { return this.post('/api/thr/poll/trigger'); },
     fullTHRResync() { return this.post('/api/thr/poll/full-resync'); },
     getTHRPollProgress() { return this.get('/api/thr/poll/progress'); },
+    /* ── IG (Instagram) convenience methods ───────────────────────
+     * Official Graph API (OAuth long-lived token). Posts identified by media ids.
+     * Metrics: views, reach, likes, comments, saved, shares.
+     */
+    getIGAuthStatus() { return this.get('/api/ig/auth/status'); },
+    igConnect(data) { return this.post('/api/ig/auth/connect', data); },
+    igDisconnect() { return this.post('/api/ig/auth/disconnect'); },
+    getIGStatus() { return this.get('/api/ig/status'); },
+    getIGSummary(params) { return this.get('/api/ig/summary', params); },
+    getIGSubmissions(params) { return this.get('/api/ig/submissions', params); },
+    getIGSubmission(id) { return this.get(`/api/ig/submissions/${encodeURIComponent(id)}`); },
+    getIGSnapshots(id, params) { return this.get(`/api/ig/submissions/${encodeURIComponent(id)}/snapshots`, params); },
+    getIGAggregate(params) { return this.get('/api/ig/aggregate', params); },
+    getIGComparison(ids, params) { return this.get('/api/ig/comparison', { ids: ids.join(','), ...params }); },
+    getIGPollLog(limit) { return this.get('/api/ig/poll_log', { limit }); },
+    triggerIGPoll() { return this.post('/api/ig/poll/trigger'); },
+    fullIGResync() { return this.post('/api/ig/poll/full-resync'); },
+    getIGPollProgress() { return this.get('/api/ig/poll/progress'); },
     /* ── TW (X/Twitter) convenience methods ───────────────────────
      * Cookie-based GraphQL API. Tweets identified by numeric ID strings.
      * Tracks views, likes, retweets, replies, quotes, bookmarks.

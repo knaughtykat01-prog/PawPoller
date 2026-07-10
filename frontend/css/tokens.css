@@ -109,6 +109,7 @@
     --platform-tum:  #36465d;
     --platform-pix:  #0096fa;
     --platform-thr:  #555555;  /* Threads is monochrome — mid-grey reads on light + dark themes */
+    --platform-ig:   #E1306C;  /* Instagram magenta */
 
     /* ── Legacy token aliases ────────────────────────────── */
     /* Older CSS (editor.css, diagnostics.css, components.css) was

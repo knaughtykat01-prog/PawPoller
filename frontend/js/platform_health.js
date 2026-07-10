@@ -19,11 +19,11 @@
 
 (function () {
     const POLL_INTERVAL_MS = 60_000;
-    const PLATFORMS = ['ib', 'fa', 'ws', 'sf', 'sqw', 'ao3', 'da', 'wp', 'ik', 'bsky', 'tw', 'mast', 'tum', 'pix', 'thr'];
+    const PLATFORMS = ['ib', 'fa', 'ws', 'sf', 'sqw', 'ao3', 'da', 'wp', 'ik', 'bsky', 'tw', 'mast', 'tum', 'pix', 'thr', 'ig'];
     const LABELS = {
         ib: 'Inkbunny', fa: 'FurAffinity', ws: 'Weasyl', sf: 'SoFurry',
         sqw: 'SquidgeWorld', ao3: 'AO3', da: 'DeviantArt', wp: 'Wattpad',
-        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr', pix: 'Pixiv', thr: 'Threads',
+        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr', pix: 'Pixiv', thr: 'Threads', ig: 'Instagram',
     };
 
     let _data = {};

@@ -20,6 +20,8 @@ def test_configured_gates():
     assert sc._configured("pix", {"pix_refresh_token": "t"}) is True
     assert sc._configured("thr", {"thr_access_token": "t"}) is True
     assert sc._configured("thr", {}) is False
+    assert sc._configured("ig", {"ig_access_token": "t"}) is True
+    assert sc._configured("ig", {}) is False
 
 
 def test_check_platform_unconfigured_skips_network():

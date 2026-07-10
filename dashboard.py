@@ -33,6 +33,7 @@ from routes.mast_api import mast_router
 from routes.tum_api import tum_router
 from routes.pix_api import pix_router
 from routes.thr_api import thr_router
+from routes.ig_api import ig_router
 from routes.posting_api import posting_router
 from routes.artwork_api import artwork_router
 from routes.posts_api import posts_router
@@ -346,6 +347,7 @@ app.include_router(mast_router)  # Mastodon routes (/api/mast/*)
 app.include_router(tum_router)   # Tumblr routes (/api/tum/*)
 app.include_router(pix_router)   # Pixiv routes (/api/pix/*)
 app.include_router(thr_router)   # Threads routes (/api/thr/*)
+app.include_router(ig_router)    # Instagram routes (/api/ig/*)
 app.include_router(posting_router)  # Posting module routes (/api/posting/*)
 app.include_router(artwork_router)  # Artwork hub routes (/api/artwork/*)
 app.include_router(posts_router)    # Posts (microblog) module routes (/api/posts/*)

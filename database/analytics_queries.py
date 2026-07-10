@@ -153,6 +153,7 @@ def get_trending_submissions(conn: sqlite3.Connection, hours: int = 24, z_thresh
         ("tum", "tum_submissions", "tum_snapshots"),
         ("pix", "pix_submissions", "pix_snapshots"),
         ("thr", "thr_submissions", "thr_snapshots"),
+        ("ig", "ig_submissions", "ig_snapshots"),
     ]:
         try:
             _find_spikes(conn, platform, sub_table, snap_table, hours, z_threshold, trending)
@@ -210,6 +211,7 @@ def _find_spikes(conn: sqlite3.Connection, platform: str, sub_table: str, snap_t
         "tum": ["notes"],  # Single engagement metric
         "pix": ["views", "favorites_count", "comments_count"],  # Gallery shape
         "thr": ["views", "likes", "reposts", "replies"],
+        "ig":  ["views", "reach", "likes", "comments"],
     }
     metric_cols = _platform_cols.get(platform, ["views", "favorites_count", "comments_count"])
 
@@ -395,7 +397,7 @@ def get_link_combined_stats(conn: sqlite3.Connection, link_id: int) -> dict:
     total_comments = 0
     subs = []
 
-    _table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions", "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions"}
+    _table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions", "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions", "ig": "ig_submissions"}
     _metrics = {
         "ib": ("views", "favorites_count", "comments_count"),
         "fa": ("views", "favorites_count", "comments_count"),
@@ -412,6 +414,7 @@ def get_link_combined_stats(conn: sqlite3.Connection, link_id: int) -> dict:
         "tum": (None, "notes", None),
         "pix": ("views", "favorites_count", "comments_count"),
         "thr": ("views", "likes", "replies"),
+        "ig": ("views", "likes", "comments"),
     }
 
     for m in members:
@@ -466,7 +469,7 @@ def get_link_combined_snapshots(conn: sqlite3.Connection, link_id: int) -> list[
     # have a snapshot at that exact time.
     time_data: dict[str, dict] = {}
 
-    _snap_map = {"ib": "snapshots", "fa": "fa_snapshots", "ws": "ws_snapshots", "sf": "sf_snapshots", "sqw": "sqw_snapshots", "ao3": "ao3_snapshots", "da": "da_snapshots", "wp": "wp_snapshots", "ik": "ik_snapshots", "bsky": "bsky_snapshots", "tw": "tw_snapshots", "mast": "mast_snapshots", "tum": "tum_snapshots", "pix": "pix_snapshots", "thr": "thr_snapshots"}
+    _snap_map = {"ib": "snapshots", "fa": "fa_snapshots", "ws": "ws_snapshots", "sf": "sf_snapshots", "sqw": "sqw_snapshots", "ao3": "ao3_snapshots", "da": "da_snapshots", "wp": "wp_snapshots", "ik": "ik_snapshots", "bsky": "bsky_snapshots", "tw": "tw_snapshots", "mast": "mast_snapshots", "tum": "tum_snapshots", "pix": "pix_snapshots", "thr": "thr_snapshots", "ig": "ig_snapshots"}
     _metrics = {
         "ib": ("views", "favorites_count", "comments_count"),
         "fa": ("views", "favorites_count", "comments_count"),
@@ -483,6 +486,7 @@ def get_link_combined_snapshots(conn: sqlite3.Connection, link_id: int) -> list[
         "tum": (None, "notes", None),
         "pix": ("views", "favorites_count", "comments_count"),
         "thr": ("views", "likes", "replies"),
+        "ig": ("views", "likes", "comments"),
     }
 
     for m in members:

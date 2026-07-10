@@ -116,7 +116,7 @@ PawPoller/
 ├── updater.py               # Auto-update (desktop only); per-OS asset matching + apply path
 ├── auto_sync.py             # Settings auto-sync: debounced push + 5-min pull thread (desktop ↔ server)
 │
-├── clients/                 # Per-platform HTTP clients (all 15 platforms in one place — 2.14.3)
+├── clients/                 # Per-platform HTTP clients (all 16 platforms in one place — 2.14.3)
 │   ├── ib/                  #   Inkbunny — InkbunnyClient with SID caching
 │   ├── fa/                  #   FurAffinity — FAClient with dual HTTP transports
 │   ├── weasyl/              #   Weasyl — WeasylClient with cursor pagination
@@ -329,7 +329,7 @@ init_db()  # Creates tables/schema if the DB file does not exist yet
 **Step 2: Launch up to 16 daemon threads (see §3 for the full table)**
 All threads are `daemon=True` so they terminate automatically when the main thread (pywebview) exits. No explicit shutdown signalling is needed. Each thread is named for debugging (`threading.Thread(name="FA poller")`).
 
-Thread launch order when `polling_owner == "local"`: Uvicorn → IB poller → FA poller → WS poller → SF poller → SqW poller → AO3 poller → DA poller → WP poller → IK poller → BSKY poller → TW poller → MAST poller → TUM poller → PIX poller → THR poller → Telegram digest → Telegram bot → Posting scheduler → pystray tray. When `polling_owner == "remote"`, the 15 platform pollers are skipped.
+Thread launch order when `polling_owner == "local"`: Uvicorn → IB poller → FA poller → WS poller → SF poller → SqW poller → AO3 poller → DA poller → WP poller → IK poller → BSKY poller → TW poller → MAST poller → TUM poller → PIX poller → THR poller → IG poller → Telegram digest → Telegram bot → Posting scheduler → pystray tray. When `polling_owner == "remote"`, the 16 platform pollers are skipped.
 
 **Step 3: System tray icon**
 ```python
@@ -410,7 +410,7 @@ for name, target in threads:
 ```
 
 The **poll orchestrator** (`_start_poll_orchestrator()`) runs a single loop that each cycle:
-1. **Polls all configured platforms concurrently** via `asyncio.gather()` — all 15 platform poll functions run in parallel within one async event loop
+1. **Polls all configured platforms concurrently** via `asyncio.gather()` — all 16 platform poll functions run in parallel within one async event loop
 2. **Sends one consolidated Telegram summary** covering all platform results (individual per-platform notifications are suppressed via `orchestrated_poll_active` flag)
 3. **Checks if the regular digest is due** — fires `send_digest_report()` when the elapsed time since `last_digest_sent_at` exceeds `telegram_digest_interval_hours`
 4. **Checks if the weekly digest is due** — fires `send_weekly_digest_report()` when 7 days have elapsed since `last_weekly_digest_sent_at`
@@ -486,7 +486,7 @@ Launchers:
 | Posting scheduler | Processes posting_queue table | Fixed 60 seconds | — | always |
 | Pystray tray | System tray icon + context menu | N/A (event-driven) | — | always |
 
-When polling is delegated to a remote server (`polling_owner == "remote"`), the 15 platform pollers stay idle and the local instance acts as a thin UI + posting + bot client; total thread count drops to 5.
+When polling is delegated to a remote server (`polling_owner == "remote"`), the 16 platform pollers stay idle and the local instance acts as a thin UI + posting + bot client; total thread count drops to 5.
 
 ### `server.py` — 4-Thread Model (Headless/Docker)
 
@@ -5357,7 +5357,7 @@ old shape, then the migration immediately upgrades it (cheap on empty tables).
 
 ### 19.6 Pending / known gaps
 
-- **Polling** is account-aware for **all 15 platforms** — the orchestrator
+- **Polling** is account-aware for **all 16 platforms** — the orchestrator
   enumerates each platform's enabled accounts; there is no legacy single-account
   path left.
 - **Posting** data layer is account-aware end to end (`/api/posting/post`

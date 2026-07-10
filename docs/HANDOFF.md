@@ -1,7 +1,24 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-09
-**Current version:** 2.62.0 — **Posts: contacts manager + Bluesky auto-facets a directly-typed @handle.**
+**Last updated:** 2026-07-10
+**Current version:** 2.63.0 — **Instagram: the 16th platform (analytics).**
+PawPoller now tracks **Instagram** (code `ig`), poll-only (analytics, no posting). Polls your media for **views,
+reach, likes, comments, saved, shares** over time with the full dashboard/detail/compare/CSV/trending/session-dot/
+notification treatment. Built on the official **Instagram Graph API** (`graph.instagram.com`, "Instagram API with
+Instagram Login" — no Facebook Page), cloned from the Threads (`thr`) sibling. Auth = a long-lived Instagram
+**user access token** (~60 days, auto-refreshed) from a Meta app with `instagram_business_basic` +
+`instagram_business_manage_insights`, on a **Business/Creator** account. `likes`/`comments` off the media object;
+`views`/`reach`/`saved`/`shares` from a per-media `/insights` call (one per post; `impressions`→`views` post
+2024-07-02). New: `clients/ig/client.py`, `polling/ig_poller.py`, `database/ig_schema.sql`+`ig_queries.py`,
+`routes/ig_api.py` (`/api/ig/*`), full registry + frontend wiring (`ig.svg`, `--platform-ig`). **Limitations:**
+insights 400 the whole call if one metric is invalid for a media type (client degrades to zeros; likes/comments
+always captured); connecting is the same heavy Meta dance as Threads **plus** a Business/Creator account; Meta
+gates + removes adult content, so it may be unusable for some accounts. **Connect needs a per-account token.**
+New tests `test_ig_parse.py`(5)+`test_scope_ig.py`(1) + an `ig` gate in `test_session_check.py`. **326 tests
+green. Needs a server deploy + hard-refresh.** Posting to IG is feasible later (container→publish, public image
+URL + `instagram_business_content_publish`) but out of scope here.
+
+**Prior release — 2.62.0 — Posts: contacts manager + Bluesky auto-facets a directly-typed @handle.**
 Two follow-ups to 2.61.0. (1) **Contacts manager** at `#/posts/contacts` (a **Tag contacts** button on the Posts
 header): each saved contact as a card (name + handle chips) with **Edit** (`PATCH`) / **Delete** (`DELETE`, drops
 bindings) + **New contact** — previously contacts could only be created inline and never fixed/removed.

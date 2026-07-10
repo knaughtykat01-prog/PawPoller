@@ -4,6 +4,42 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.63.0] - 2026-07-10 - Instagram: the 16th platform (analytics)
+
+PawPoller now tracks **Instagram** (code `ig`) — the 16th platform, poll-only (analytics, no posting).
+
+**What it does.** Polls your Instagram media and records **views, reach, likes, comments, saved, shares** per
+post over time — the same dashboard, submissions table, per-post detail + growth charts, comparison, CSV export,
+trending/spike detection, session-health dot, and Telegram/toast activity notifications every other platform has.
+
+**How it's built.** Official **Instagram Graph API** (`graph.instagram.com` — the "Instagram API with Instagram
+Login" flow, no Facebook Page required), cloned from the Threads (`thr`) sibling we proved end-to-end. Auth is a
+long-lived Instagram **user access token** (~60 days, auto-refreshed on connect via `ig_refresh_token`) from a
+Meta app with the `instagram_business_basic` + `instagram_business_manage_insights` scopes, generated for a
+**Business/Creator** account. `likes`/`comments` come straight off the media object; `views`/`reach`/`saved`/
+`shares` come from a per-media `/insights` call (one call per post — Instagram has no batch insights). `impressions`
+was deprecated for media created after 2024-07-02, so we track `views` (its replacement). New files:
+`clients/ig/client.py`, `polling/ig_poller.py`, `database/ig_schema.sql`, `database/ig_queries.py`,
+`routes/ig_api.py` (`/api/ig/*`), wired into every registry (router mount, `db.py` schema + account_id migration,
+`accounts.py`/`cli`/`session_check`/`analytics_queries` maps, `config` constants + credential fields, `server.py`
+env-seed + poll dispatch, `main.py` poller thread, `routes/api.py` progress/health/tag-stats/thumbnail maps) and
+the frontend (dashboard card, submissions/detail/compare views, Settings connect panel, `api.js` methods,
+`platforms.js`/`platform_health.js` registries, `--platform-ig` token, `ig.svg` logo).
+
+**Known limitations.** (1) Media insights 400 the *entire* call if one requested metric is invalid for a given
+media type — the client degrades to zeros for the insight metrics on error, but likes/comments (off the media
+object) are always captured. (2) Connecting is the same heavy Meta setup as Threads (a Meta app + tester role +
+token generator) **plus** the account must be a Business/Creator account — irreducible friction imposed by Meta.
+(3) Meta gates this behind app review and removes adult content, so it may be unusable for some accounts. The
+client is built to the documented API; live behaviour depends on the user's Meta app + token.
+
+New tests: `tests/test_ig_parse.py` (5) + `tests/test_scope_ig.py` (1), plus an `ig` gate assertion in
+`test_session_check.py`. **326 tests green.** Posting to Instagram (container → publish, needs a public image URL
++ `instagram_business_content_publish`, same shape as Threads) is feasible as a future add but out of scope here.
+**Needs a server deploy + hard-refresh.**
+
+---
+
 ## [2.62.0] - 2026-07-09 - Posts: contacts manager + Bluesky auto-facets a directly-typed @handle
 
 Two follow-ups to 2.61.0's handle-book.

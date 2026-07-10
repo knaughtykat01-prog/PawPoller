@@ -649,6 +649,44 @@ def _start_thr_poller():
         logger.debug("THR poller thread exiting: %s", e)  # Daemon teardown
 
 
+# ── Background IG poller ──────────────────────────────────────
+# Instagram uses an OAuth long-lived access token + optional target user id.
+
+def _start_ig_poller():
+    """Run Instagram poller in its own daemon thread with a dynamic interval from settings."""
+    import asyncio
+    from polling.ig_poller import run_ig_poll_cycle
+
+    async def _scheduled_ig_poll():
+        settings = config.get_settings()
+        if not settings.get("ig_access_token"):
+            logger.info("Scheduled IG poll skipped — no Instagram credentials configured")
+            return
+        try:
+            await run_ig_poll_cycle()
+        except Exception as e:
+            logger.error("Scheduled IG poll failed: %s", e)
+
+    async def _run():
+        logger.info("IG poller loop started")
+        while True:
+            settings = config.get_settings()
+            interval = settings.get("ig_poll_interval_minutes", 60)
+            logger.info("Next IG poll in %d minutes", interval)
+            await asyncio.sleep(interval * 60)
+            if config.get_settings().get("polling_paused"):
+                logger.info("IG poll skipped -- polling is paused")
+                continue
+            await _scheduled_ig_poll()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run())
+    except Exception as e:
+        logger.debug("IG poller thread exiting: %s", e)  # Daemon teardown
+
+
 # ── 6-Hourly Telegram Digest ─────────────────────────────────
 # Sends a cross-platform stats digest every 6 hours via Telegram.
 # Uses its own asyncio event loop like the pollers.
@@ -1003,6 +1041,10 @@ def main():
         logger.info("Starting THR background poller...")
         thr_poller_thread = threading.Thread(target=_start_thr_poller, daemon=True)
         thr_poller_thread.start()
+
+        logger.info("Starting IG background poller...")
+        ig_poller_thread = threading.Thread(target=_start_ig_poller, daemon=True)
+        ig_poller_thread.start()
 
         logger.info("Starting Telegram digest scheduler...")
         digest_thread = threading.Thread(target=_start_digest_scheduler, daemon=True)
