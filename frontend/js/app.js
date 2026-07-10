@@ -2276,9 +2276,12 @@ const App = {
             mast: () => API.getMASTSummary(), tum: () => API.getTUMSummary(),
             pix: () => API.getPIXSummary(), thr: () => API.getTHRSummary(), ig: () => API.getIGSummary(),
         };
-        const results = await Promise.all(plats.map(p =>
-            (fetchers[p.code] ? fetchers[p.code]() : Promise.resolve(null)).catch(() => null)
-        ));
+        const [results, health] = await Promise.all([
+            Promise.all(plats.map(p =>
+                (fetchers[p.code] ? fetchers[p.code]() : Promise.resolve(null)).catch(() => null)
+            )),
+            API.getPlatformsHealth().catch(() => ({})),
+        ]);
 
         const fmt = (n) => Utils.formatCompact(n || 0);
         const tiles = plats.map((p, i) => {
@@ -2289,8 +2292,19 @@ const App = {
             const primary = views > 0 ? views : faves;
             const primaryLabel = views > 0 ? 'views' : 'faves';
             const route = window.platformRoute ? window.platformRoute(p.code) : '#/' + p.code;
+            // No credentials for this platform yet → nudge onboarding with a
+            // "Setup guide" button (data-guide is handled by the Guides delegate;
+            // it preventDefaults so it opens the guide instead of following the tile).
+            const configured = !!(health[p.code] && health[p.code].configured);
+            const body = configured
+                ? `<div class="hub-tile-num">${fmt(primary)}</div>
+                   <div class="hub-tile-sub">${primaryLabel} · ${subs} works</div>`
+                : `<div class="hub-tile-sub hub-tile-notset">Not set up yet</div>
+                   ${window.PlatformGuides && window.PlatformGuides.has(p.code)
+                       ? `<span class="hub-tile-guide" role="button" tabindex="0" data-guide="${p.code}">&#128214; Setup guide</span>`
+                       : ''}`;
             return `
-                <a href="${route}" class="hub-tile" data-platform="${p.code}" style="--pc:${p.color}">
+                <a href="${route}" class="hub-tile${configured ? '' : ' hub-tile--unset'}" data-platform="${p.code}" style="--pc:${p.color}">
                     <span class="hub-tile-wm">${p.emoji}</span>
                     ${p.pollOnly ? '<span class="hub-tile-pill">poll only</span>' : ''}
                     <div class="hub-tile-top">
@@ -2298,8 +2312,7 @@ const App = {
                         <span class="platform-grid-status pp-health-dot" id="pg-status-${p.code}" data-tooltip=""></span>
                     </div>
                     <div class="hub-tile-name">${p.label}</div>
-                    <div class="hub-tile-num">${fmt(primary)}</div>
-                    <div class="hub-tile-sub">${primaryLabel} · ${subs} works</div>
+                    ${body}
                 </a>`;
         }).join('');
 

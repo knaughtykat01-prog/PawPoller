@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version:** 2.65.0 — **"How to get started" guides for every platform.**
+**Current version:** 2.66.0 — **"Setup guide" button on un-set-up platform tiles.**
+The **Platforms hub** (`#/platforms`) now surfaces onboarding: any tile whose credentials aren't configured shows
+**"Not set up yet"** + a **"📖 Setup guide"** button that opens that platform's 2.65.0 guide modal.
+`renderPlatformsHub` fetches `/api/platforms/health` in parallel with the summaries and reads each platform's
+`configured` flag — configured tiles keep the stat number, un-configured ones swap to the CTA (only when a guide
+exists, `PlatformGuides.has(code)`). The button is a `role="button"` span inside the tile `<a>`; the delegated
+`[data-guide]` handler `preventDefault()`s so it opens the modal not the link, plus a new Enter/Space keydown
+delegate. Frontend-only, theme-aware (`.hub-tile-guide`/`.hub-tile-notset` from tokens). **332 tests green. Needs a
+server deploy + hard-refresh.** Files: `frontend/js/app.js` (`renderPlatformsHub`), `frontend/js/platform_guides.js`
+(keydown delegate), `frontend/css/guides.css`.
+
+**Prior release — 2.65.0 — "How to get started" guides for every platform.**
 All 16 platforms now have a step-by-step setup guide (nothing → connected) + a "keeping it alive" renewal section
 (cookies for FA/DA/X, ~60-day Meta tokens for Threads/IG, app-passwords/API-keys that don't expire, etc.). One
 structured dataset in `frontend/js/platform_guides.js` (`window.PlatformGuides` + `window.Guides` controller),
@@ -11,8 +22,7 @@ surfaced two ways: (1) a **"📖 Setup guide"** button injected onto every platf
 item) with a card per platform. One delegated `[data-guide]` click handler powers both. Theme-aware
 `frontend/css/guides.css` (design tokens, all 8 themes). Frontend-only — no backend change. Files:
 `frontend/js/platform_guides.js` (new), `frontend/css/guides.css` (new), `frontend/index.html` (script + css +
-nav), `frontend/js/app.js` (router `getting-started` branch + injector call in `renderSettings`). **332 tests
-green. Needs a server deploy + hard-refresh.**
+nav), `frontend/js/app.js` (router `getting-started` branch + injector call in `renderSettings`).
 
 **Prior release — 2.64.0 — Instagram posting (Posts module).**
 Instagram joins the Posts module as a publish target (photo + caption), alongside bsky/mast/thr/tum/tw. Two

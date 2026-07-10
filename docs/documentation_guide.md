@@ -5824,6 +5824,15 @@ frontend, no backend.
   router branch calls `Guides.renderHub()`, which iterates `window.PLATFORMS` into
   a card grid (emoji/name/kind/summary/difficulty); a card's `data-guide` opens the
   same modal.
+- **Surface 3 — Platforms hub tiles (2.66.0).** `App.renderPlatformsHub()` fetches
+  `/api/platforms/health` in parallel with the per-platform summaries and reads each
+  platform's `configured` flag. A configured tile is unchanged (stat + "N works"); an
+  un-configured tile shows **"Not set up yet"** plus a `.hub-tile-guide`
+  `<span role="button" tabindex="0" data-guide="{code}">` (only when
+  `PlatformGuides.has(code)`). The span sits inside the tile's `<a>`, so the delegated
+  `[data-guide]` click handler's `preventDefault()` opens the modal instead of
+  following the tile link; a sibling Enter/Space `keydown` delegate covers keyboard
+  (the hub cards in Surface 2 are real `<button>`s and need no keydown).
 - **Styling** — `frontend/css/guides.css`, entirely design-token based, so it
   retones across all 8 themes. Loaded in `index.html` after `posts.css`;
   `platform_guides.js` loads after `platforms.js`/`components.js` and before

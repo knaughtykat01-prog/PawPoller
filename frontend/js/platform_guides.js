@@ -454,6 +454,13 @@
       const t = e.target.closest && e.target.closest('[data-guide]');
       if (t && t.dataset.guide) { e.preventDefault(); openModal(t.dataset.guide); }
     });
+    // Enter/Space on a role="button" span trigger (e.g. the Platforms-hub
+    // "Setup guide" chip, which lives inside an <a> so it isn't a real button).
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const t = e.target.closest && e.target.closest('[data-guide][role="button"]');
+      if (t && t.dataset.guide) { e.preventDefault(); openModal(t.dataset.guide); }
+    });
   }
   _init();
 

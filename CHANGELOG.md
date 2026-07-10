@@ -4,6 +4,27 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.66.0] - 2026-07-10 - "Setup guide" button on un-set-up platform tiles
+
+The **Platforms hub** (`#/platforms`) now nudges onboarding directly. Any platform tile whose credentials aren't
+configured yet shows **"Not set up yet"** in place of the stats and a **"📖 Setup guide"** button that opens that
+platform's guide modal (the same 2.65.0 guide dataset) — so an empty platform points you at exactly how to fill it.
+
+**How it knows.** `renderPlatformsHub` now fetches `/api/platforms/health` alongside the per-platform summaries
+(one extra call, run in parallel via `Promise.all`) and reads each platform's `configured` boolean. Configured
+tiles are unchanged (stat number + "N works"); un-configured tiles swap to the CTA. The button only renders when a
+guide exists for that code (`window.PlatformGuides.has(code)`).
+
+**Wiring.** The button is a `<span role="button" tabindex="0" data-guide="{code}">` inside the tile's `<a>`; the
+existing delegated `[data-guide]` handler `preventDefault()`s so it opens the modal instead of following the tile
+link. Added an Enter/Space `keydown` delegate for the span (real `<button>` hub cards already handle keys natively).
+
+Frontend-only, theme-aware (`.hub-tile-guide` / `.hub-tile-notset` use design tokens). No backend change. **332
+tests green.** Files: `frontend/js/app.js` (`renderPlatformsHub`), `frontend/js/platform_guides.js` (keydown
+delegate), `frontend/css/guides.css` (`.hub-tile-guide`).
+
+---
+
 ## [2.65.0] - 2026-07-10 - "How to get started" guides for every platform
 
 Each of the 16 platforms now has a **step-by-step setup guide** — how to go from nothing to a working, connected

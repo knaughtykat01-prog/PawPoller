@@ -157,6 +157,27 @@
 }
 .guide-trigger:hover { background: var(--bg-hover); color: var(--accent); border-color: var(--accent); }
 
+/* ── "Setup guide" CTA on un-set-up Platforms-hub tiles ──── */
+.hub-tile-notset { color: var(--text-muted); font-style: italic; }
+.hub-tile-guide {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.4rem;
+    align-self: flex-start;
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+    border: 1px solid transparent;
+    border-radius: var(--radius-pill);
+    padding: 0.25rem 0.7rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.hub-tile-guide:hover { background: var(--accent); color: #fff; }
+.hub-tile-guide:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* ── Getting Started hub ─────────────────────────────────── */
 .guide-hub-head { margin-bottom: 0.5rem; }
 .guide-hub-title {
