@@ -4,6 +4,37 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.77.0] - 2026-07-10 - Reskin concept Slice E: Health strip + Workbench (Observatory + Bento)
+
+Fifth and final **concept layer** of the reskin (see `docs/RESKIN_BUILD_PLAN.md`) — extends the
+Overview's existing customisable widget board (which already does drag / resize / add / remove /
+server-persist). Path A, **no backend added**.
+
+- **Platform-health strip (Observatory)** — a new **`health`** widget: a compact, live **16-platform
+  status strip** (a coloured dot + name per platform) with an at-a-glance summary ("N healthy · N need
+  attention · N not set up"). Reads the shared **`PlatformHealth`** cache and `subscribe()`s for live
+  updates — **no new fetch** (PlatformHealth already polls `/api/platforms/health`). States are
+  theme-aware (`--success/--info/--warning/--danger/--text-muted`); trouble tints its chip. Added to the
+  default layout (top) and to the "Add widget" catalog, so it fully participates in the board
+  (drag/resize/remove/persist).
+- **Graph settings (Bento)** — the charts widget gains a **Line / Bar toggle**, persisted **per-widget**
+  via a new `cfg` field on the layout entry (`{id, span, cfg:{chartType}}`). `Charts.aggregateLine` took
+  a backward-compatible `type` param (bar = solid fill, no trendlines); the `dashboard_layout` loader now
+  **preserves `cfg`** through validation. This is the "adjust settings of graphs" idea — the "size of
+  widgets" half already shipped as the board's resize.
+- **The Workbench was already built** — the edit mode (⚙ Customize → drag-reorder, ⤢ resize, × remove,
+  + add from a catalog, saved to the `dashboard_layout` preference) predates this slice; Slice E extends
+  it with the health widget + per-widget graph config rather than rebuilding it.
+- New `frontend/css/workbench.css` (health strip + toggle, theme-aware, Brut coverage). Touched
+  `app.js` (`_dashWidgetMeta`/`_dashDefaultLayout`/`_dashWidgetHtml`/`_dashWidgetMount` gain the widget +
+  a `w` arg; loader preserves `cfg`; `_renderDashboard` binds the toggle; new `_healthStripHtml` /
+  `_mountHealthStrip` / `_healthSummaryText`) and `charts.js` (`aggregateLine` `type` param).
+- Frontend only + the `config.py` bump. Verified in-browser: health strip renders all 16 with the AO3
+  poll-error ringing red + the summary count; the Line/Bar toggle switches + **persists across reload**;
+  the health widget drags/resizes/removes in edit mode; zero console errors. Developed directly on
+  `master`. Needs a server deploy + hard-refresh. **This completes the reskin concept-layer plan
+  (A Bookshelf → B Modes → C Laurels → D Ledger → E Health/Workbench).**
+
 ## [2.76.0] - 2026-07-10 - Reskin concept Slice D: the Ledger (dated timelines)
 
 Fourth **concept layer** of the reskin (see `docs/RESKIN_BUILD_PLAN.md`), from the "Almanac"

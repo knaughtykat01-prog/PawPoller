@@ -1,7 +1,22 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version (live/master):** 2.76.0 — **reskin concept Slice D: the Ledger (dated timelines).**
+**Current version (live/master):** 2.77.0 — **reskin concept Slice E: Health strip + Workbench (final slice).**
+Extends the Overview's existing customisable widget board (which already does drag/resize/add/remove/persist).
+**Observatory:** a new **`health`** widget — a compact live 16-platform status strip (dot+name per platform +
+"N healthy · N need attention · N not set up" summary), reading the shared `PlatformHealth` cache via
+`subscribe()` (no new fetch); theme-aware states; added to the default layout + catalog. **Bento:** the charts
+widget gains a **Line/Bar toggle** persisted **per-widget** via a new `cfg` field on the layout entry
+(`{id,span,cfg:{chartType}}`) — `Charts.aggregateLine` took a backward-compat `type` param, and the
+`dashboard_layout` loader now preserves `cfg`. The full edit-mode "Workbench" (⚙ Customize → drag/resize/remove/
+add-catalog, saved to the `dashboard_layout` pref) **predated this slice** — Slice E extends it, doesn't rebuild.
+New `frontend/css/workbench.css`; touched `app.js` (widget registry + `w` arg + loader cfg + toggle handler +
+`_healthStripHtml`/`_mountHealthStrip`) and `charts.js`. Verified in-browser (16-platform strip with AO3 ringing
+red, Line/Bar toggle persists across reload, health widget drags/resizes in edit mode; zero console errors).
+Developed directly on `master`. Needs a server deploy + hard-refresh. **This COMPLETES the reskin concept-layer
+plan — all 5 slices (A Bookshelf → B Modes → C Laurels → D Ledger → E Health/Workbench) are shipped live.**
+
+**Prior — 2.76.0 — reskin concept Slice D: the Ledger (dated timelines).**
 A dated spine of typed events, two scopes / one renderer (`window.Ledger`), Path A, **no backend added**.
 **Work timeline** = a "Timeline" tab on the Bookshelf work-detail (`#/library/work/{name}`), built from
 the publications already fetched (each `first_posted_at` → "Posted to X" node, chapter-labelled;

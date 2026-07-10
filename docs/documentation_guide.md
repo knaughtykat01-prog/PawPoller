@@ -4229,6 +4229,24 @@ Files:
     as that account's history). **Design note:** the Ledger is only ever a **tab / destination, never the
     home** — a time-ordered list buries "is everything OK right now", which is Overview's job. Router
     branch + breadcrumb in `app.js`; Brut squares the node dots + rail (`.led-dot`/`.led-day-nodes`).
+  - **2.77.0 — Health strip + Workbench** (reskin concept Slice E, final; `docs/RESKIN_BUILD_PLAN.md`):
+    extends the **existing** Overview widget board (the "Workbench" — `_renderDashboard` at ~app.js:2770,
+    edit mode with drag `_wireDashDrag` / resize `[data-wsz]` / remove `[data-wrm]` / add `_openDashCatalog`,
+    persisted to the `dashboard_layout` preference via `_saveDashLayout`; this all predates the slice). Two
+    additions: **(1) Observatory** — a new `health` widget (`_dashWidgetMeta`/`_dashDefaultLayout`; rendered by
+    `_healthStripHtml`, mounted by `_mountHealthStrip`): a compact 16-platform status strip that reads the
+    shared `window.PlatformHealth` cache and `subscribe()`s for live updates (**no new fetch** — PlatformHealth
+    already polls `/api/platforms/health`), colouring a dot per platform by `PlatformHealth.classify(code)`
+    (`healthy/running/stale/throttled/error/unconfigured/unknown`) with a summary count. The subscriber
+    self-unsubscribes when the strip leaves the DOM and is re-bound cleanly each render (`this._healthUnsub`).
+    **(2) Bento** — the `charts` widget gains a **Line/Bar toggle** persisted **per-widget**: layout entries
+    now carry an optional `cfg` object (`{id, span, cfg:{chartType}}`), the loader (~app.js:2679) preserves
+    `cfg` through validation, `_dashWidgetHtml`/`_dashWidgetMount` take the entry `w` as a 3rd arg and read
+    `w.cfg.chartType`, and `Charts.aggregateLine` gained a backward-compatible `type` param (`'bar'` = solid
+    fill, no trendlines). Styles in new `frontend/css/workbench.css` (health strip states via semantic tokens
+    `--success/--info/--warning/--danger`; Brut coverage). To add another configurable widget, follow the same
+    pattern: register it, render/mount with the `w` entry, store settings on `w.cfg` (the loader keeps it).
+    **This completes the 5-slice reskin concept-layer plan.**
   - Phase 2 (2.34.0) adds `GET /api/works/discovered` (poller-found submissions
     with no publication link, normalized via `build_discovered` over
     `posting.sync.PLATFORM_TABLES`) and `POST /api/works/link` (links one to a

@@ -290,10 +290,11 @@ const Charts = {
      *                             with polled_at timestamps and metric values.
      * @param {Array}  metrics   - Metric keys to plot (defaults to all three).
      */
-    aggregateLine(canvasId, snapshots, metrics = ['views', 'favorites_count', 'comments_count']) {
+    aggregateLine(canvasId, snapshots, metrics = ['views', 'favorites_count', 'comments_count'], type = 'line') {
         this.destroy(canvasId);
         const ctx = document.getElementById(canvasId);
         if (!ctx) return;
+        const isBar = type === 'bar';
 
         // Metric-to-colour mapping (consistent across all chart types)
         const colors = {
@@ -319,24 +320,27 @@ const Charts = {
                 label: labels[m] || m,
                 data,
                 borderColor: color,
-                backgroundColor: color + '20',
-                borderWidth: 2,
-                pointRadius: snapshots.length > 50 ? 0 : 3,
+                backgroundColor: isBar ? color + 'cc' : color + '20',
+                borderWidth: isBar ? 0 : 2,
+                pointRadius: isBar ? 0 : (snapshots.length > 50 ? 0 : 3),
                 tension: 0.3,
-                fill: false,
+                fill: !isBar ? false : true,
             });
-            const trend = _trendline(data);
-            if (trend) {
-                datasets.push({
-                    label: (labels[m] || m) + ' Trend',
-                    data: trend,
-                    borderColor: color + '80',  // 50% opacity
-                    borderWidth: 1.5,
-                    borderDash: [6, 4],
-                    pointRadius: 0,
-                    tension: 0,
-                    fill: false,
-                });
+            // Trendlines only make sense on the line view.
+            if (!isBar) {
+                const trend = _trendline(data);
+                if (trend) {
+                    datasets.push({
+                        label: (labels[m] || m) + ' Trend',
+                        data: trend,
+                        borderColor: color + '80',  // 50% opacity
+                        borderWidth: 1.5,
+                        borderDash: [6, 4],
+                        pointRadius: 0,
+                        tension: 0,
+                        fill: false,
+                    });
+                }
             }
         });
 
@@ -344,10 +348,11 @@ const Charts = {
         opts.scales.x = this._timeXAxis();
         opts.scales.y.beginAtZero = false;
 
-        const chartCfg = { type: 'line', data: { datasets }, datasets, options: opts };
+        const chartType = isBar ? 'bar' : 'line';
+        const chartCfg = { type: chartType, data: { datasets }, datasets, options: opts };
         this._configs[canvasId] = chartCfg;
         this._instances[canvasId] = new Chart(ctx, {
-            type: 'line',
+            type: chartType,
             data: { datasets },
             options: opts,
         });

@@ -2676,7 +2676,12 @@ const App = {
             const saved = Array.isArray(prefs.dashboard_layout) ? prefs.dashboard_layout : null;
             let layout = (saved && saved.length ? saved : this._dashDefaultLayout())
                 .filter(w => w && validIds.has(w.id))
-                .map(w => ({ id: w.id, span: [1, 2, 4].includes(w.span) ? w.span : 1 }));
+                .map(w => {
+                    const e = { id: w.id, span: [1, 2, 4].includes(w.span) ? w.span : 1 };
+                    // Preserve per-widget config (e.g. the charts widget's chartType).
+                    if (w.cfg && typeof w.cfg === 'object') e.cfg = w.cfg;
+                    return e;
+                });
             if (!layout.length) layout = this._dashDefaultLayout();
             this._dashboardLayout = layout;
             if (this._dashEdit === undefined) this._dashEdit = false;
@@ -2710,6 +2715,7 @@ const App = {
 
     _dashDefaultLayout() {
         return [
+            { id: 'health', span: 4 },
             { id: 'stat-subs', span: 1 }, { id: 'stat-views', span: 1 },
             { id: 'stat-faves', span: 1 }, { id: 'stat-comments', span: 1 },
             { id: 'charts', span: 4 }, { id: 'platforms', span: 4 },
@@ -2720,6 +2726,7 @@ const App = {
 
     _dashWidgetMeta() {
         return [
+            { id: 'health', title: 'Platform health', icon: '\u{1FA7A}', desc: 'Live status of all 16 platforms', spans: [4] },
             { id: 'stat-subs', title: 'Submissions', icon: '\u{1F4E6}', desc: 'Total works tracked', spans: [1, 2] },
             { id: 'stat-views', title: 'Total views', icon: '\u{1F441}', desc: 'Aggregate views', spans: [1, 2] },
             { id: 'stat-faves', title: 'Favourites', icon: '★', desc: 'Aggregate favourites', spans: [1, 2] },
@@ -2736,7 +2743,7 @@ const App = {
         ];
     },
 
-    _dashWidgetHtml(id, ctx) {
+    _dashWidgetHtml(id, ctx, w) {
         const stat = (label, value) => `<div class="wtitle">${label}</div><div class="w-num">${Utils.formatCompact(value || 0)}</div>`;
         switch (id) {
             case 'stat-subs': return stat('Submissions', ctx.totals.subs);
@@ -2744,8 +2751,15 @@ const App = {
             case 'stat-faves': return stat('Favourites', ctx.totals.faves);
             case 'stat-comments': return stat('Comments', ctx.totals.comments);
             case 'stat-downloads': return stat('Downloads', ctx.totals.downloads);
+            case 'health': return this._healthStripHtml();
             case 'platforms': return `<div class="wtitle">Platform breakdown</div><div class="dash-platgrid">${ctx.platformsHtml}</div>`;
-            case 'charts': return `<div class="wtitle">Views over time</div>${ctx.chartsHtml}`;
+            case 'charts': {
+                const ct = (w && w.cfg && w.cfg.chartType === 'bar') ? 'bar' : 'line';
+                const toggle = `<span class="wb-charttype" role="group" aria-label="Chart type">`
+                    + `<button type="button" class="wb-ct${ct === 'line' ? ' is-active' : ''}" data-chart-type="line">Line</button>`
+                    + `<button type="button" class="wb-ct${ct === 'bar' ? ' is-active' : ''}" data-chart-type="bar">Bar</button></span>`;
+                return `<div class="wtitle">Views over time${toggle}</div>${ctx.chartsHtml}`;
+            }
             case 'trending': return `<div class="wtitle">Trending now</div>${ctx.trending.length ? `<div class="stats-grid" style="margin:0">${Components.trendingCards(ctx.trending)}</div>` : '<div class="dash-empty">Nothing trending right now.</div>'}`;
             case 'topviewed': return `<div class="wtitle">Top viewed</div>${Components.overviewTopList(ctx.topViewed, 'views')}`;
             case 'topfaved': return `<div class="wtitle">Top faved</div>${Components.overviewTopList(ctx.topFaved, 'favorites_count')}`;
@@ -2756,12 +2770,77 @@ const App = {
         }
     },
 
-    _dashWidgetMount(id, ctx) {
+    _dashWidgetMount(id, ctx, w) {
         if (id === 'charts') {
+            const type = (w && w.cfg && w.cfg.chartType === 'bar') ? 'bar' : 'line';
             ctx.charts.forEach(c => {
-                try { Charts.aggregateLine(c.id, c.snapshots, c.keys); } catch (e) { /* canvas may be absent */ }
+                try { Charts.aggregateLine(c.id, c.snapshots, c.keys, type); } catch (e) { /* canvas may be absent */ }
             });
+        } else if (id === 'health') {
+            this._mountHealthStrip();
         }
+    },
+
+    /* ── Platform health strip (Overview widget · "Observatory") ──
+     * A compact, live 16-platform status strip. Reads the shared
+     * PlatformHealth cache + subscribes for updates (no new fetch of its
+     * own — PlatformHealth already polls /api/platforms/health). */
+    _healthStripHtml() {
+        const PH = window.PlatformHealth;
+        const codes = (window.PLATFORMS && window.PLATFORMS.length)
+            ? window.PLATFORMS.map(p => p.code)
+            : ['ib', 'fa', 'ws', 'sf', 'sqw', 'ao3', 'da', 'wp', 'ik', 'bsky', 'tw', 'mast', 'tum', 'pix', 'thr', 'ig'];
+        const label = c => (PH && PH.LABELS && PH.LABELS[c]) || c;
+        const emoji = c => { const p = (window.PLATFORMS || []).find(x => x.code === c); return p && p.emoji ? p.emoji : ''; };
+        const chips = codes.map(c => {
+            const st = PH ? PH.classify(c) : 'unknown';
+            return `<span class="hs-chip" data-hs="${c}" title="${Utils.escapeHtml(label(c))}">`
+                + `<span class="hs-dot pp-health-${st}"></span>`
+                + `<span class="hs-label">${emoji(c)} ${Utils.escapeHtml(label(c))}</span></span>`;
+        }).join('');
+        return `<div class="wtitle">Platform health <span class="hs-summary" id="hs-summary"></span></div>`
+            + `<div class="health-strip" id="health-strip">${chips}</div>`;
+    },
+
+    _healthSummaryText(counts) {
+        const healthy = counts.healthy || 0;
+        const attention = (counts.error || 0) + (counts.stale || 0) + (counts.throttled || 0);
+        const off = (counts.unconfigured || 0) + (counts.unknown || 0);
+        const parts = [];
+        if (healthy) parts.push(`${healthy} healthy`);
+        if (attention) parts.push(`${attention} need${attention === 1 ? 's' : ''} attention`);
+        if (off) parts.push(`${off} not set up`);
+        return parts.join(' · ');
+    },
+
+    _mountHealthStrip() {
+        const PH = window.PlatformHealth;
+        if (!PH) return;
+        const paint = () => {
+            const strip = document.getElementById('health-strip');
+            if (!strip) return true;   // widget gone → signal unsubscribe
+            const counts = {};
+            strip.querySelectorAll('.hs-chip').forEach(chip => {
+                const c = chip.getAttribute('data-hs');
+                const st = PH.classify(c);
+                counts[st] = (counts[st] || 0) + 1;
+                const dot = chip.querySelector('.hs-dot');
+                if (dot) dot.className = 'hs-dot pp-health-' + st;
+                const entry = PH.get(c);
+                const last = entry && entry.last_poll_at ? ` · polled ${PH.relativePast(entry.last_poll_at)}` : '';
+                chip.title = `${(PH.LABELS && PH.LABELS[c]) || c}: ${st}${last}`;
+            });
+            const sum = document.getElementById('hs-summary');
+            if (sum) sum.textContent = this._healthSummaryText(counts);
+            return false;
+        };
+        paint();
+        // Re-subscribe cleanly on every re-render (avoid stacking subscribers).
+        if (this._healthUnsub) { this._healthUnsub(); this._healthUnsub = null; }
+        this._healthUnsub = PH.subscribe(() => {
+            if (paint() && this._healthUnsub) { this._healthUnsub(); this._healthUnsub = null; }
+        });
+        if (PH.fetchOnce) PH.fetchOnce();
     },
 
     /* _renderDashboard() — (re)build the Home widget grid from this._dashCtx +
@@ -2783,7 +2862,7 @@ const App = {
             const ctl = edit
                 ? `<div class="dash-wctl"><button class="dash-wsize" data-wsz="${w.id}" title="Resize">⤢</button><button class="dash-wrm" data-wrm="${w.id}" title="Remove">×</button></div>`
                 : '';
-            return `<div class="dash-w" data-span="${w.span}" data-wid="${w.id}"${edit ? ' draggable="true"' : ''}>${ctl}${this._dashWidgetHtml(w.id, ctx)}</div>`;
+            return `<div class="dash-w" data-span="${w.span}" data-wid="${w.id}"${edit ? ' draggable="true"' : ''}>${ctl}${this._dashWidgetHtml(w.id, ctx, w)}</div>`;
         }).join('');
         const addTile = edit ? '<button class="dash-addw" id="dash-addw"><span class="dash-addw-plus">+</span>Add widget</button>' : '';
 
@@ -2794,7 +2873,18 @@ const App = {
         Charts.destroyAll();
         this._setContent(html);
 
-        layout.forEach(w => this._dashWidgetMount(w.id, ctx));
+        layout.forEach(w => this._dashWidgetMount(w.id, ctx, w));
+
+        // Chart-type toggle (Workbench · Bento) — persists per-widget cfg.
+        document.querySelectorAll('[data-chart-type]').forEach(b => b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const t = b.getAttribute('data-chart-type') === 'bar' ? 'bar' : 'line';
+            const cw = (this._dashboardLayout || []).find(x => x.id === 'charts');
+            if (!cw) return;
+            cw.cfg = Object.assign({}, cw.cfg, { chartType: t });
+            this._saveDashLayout();
+            this._renderDashboard();
+        }));
 
         document.getElementById('dash-customize')?.addEventListener('click', () => {
             this._dashEdit = !this._dashEdit;
