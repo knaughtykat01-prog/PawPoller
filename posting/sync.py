@@ -89,6 +89,47 @@ PLATFORM_TABLES = {
         "title_col": "title",
         "url_template": "https://itaku.ee/images/{id}",
     },
+    # Newer platforms (2.69.0): registered so their polled submissions are
+    # discoverable + importable too. Each stores a `link` permalink (preferred
+    # for the external URL) + a `thumbnail_url` image. Pixiv & Instagram are
+    # image-first; the microblogs carry images on some posts. url_template is a
+    # best-effort fallback only (the stored `link` wins in build_discovered).
+    "mast": {
+        "table": "mast_submissions",
+        "id_col": "submission_id",
+        "title_col": "title",
+        "url_template": "https://mastodon.social/web/statuses/{id}",
+    },
+    "tum": {
+        "table": "tum_submissions",
+        "id_col": "submission_id",
+        "title_col": "title",
+        "url_template": "https://www.tumblr.com/blog/view/_/{id}",
+    },
+    "pix": {
+        "table": "pix_submissions",
+        "id_col": "submission_id",
+        "title_col": "title",
+        "url_template": "https://www.pixiv.net/artworks/{id}",
+    },
+    "thr": {
+        "table": "thr_submissions",
+        "id_col": "submission_id",
+        "title_col": "title",
+        "url_template": "https://www.threads.net/t/{id}",
+    },
+    "ig": {
+        "table": "ig_submissions",
+        "id_col": "submission_id",
+        "title_col": "title",
+        "url_template": "https://www.instagram.com/p/{id}/",
+    },
+    "tw": {
+        "table": "tw_submissions",
+        "id_col": "submission_id",
+        "title_col": "title",
+        "url_template": "https://twitter.com/i/status/{id}",
+    },
 }
 
 # Word-to-number mapping for "Part One", "Part Two" etc.

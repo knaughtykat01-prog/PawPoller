@@ -657,6 +657,7 @@ const API = {
         return this.post(`/api/artwork/import/${platform}/${encodeURIComponent(submissionId)}`);
     },
     importBulk(platform) { return this.post(`/api/artwork/import/bulk/${platform}`); },
+    importDiscoveredArt() { return this.post('/api/artwork/import/discovered-art'); },
 
     /* ── Artwork Hub ──────────────────────────────────────────── */
     getArtworks() { return this.get('/api/artwork/images'); },

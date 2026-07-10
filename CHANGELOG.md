@@ -4,6 +4,40 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.69.0] - 2026-07-10 - Import discovered art from any platform → managed works
+
+The Submissions hub shows *managed* works, so polled ("discovered") art only appeared once imported — and, it turned
+out, art from six platforms couldn't be imported **at all**.
+
+**Root cause: six platforms were never registered for discovery/import.** `posting/sync.py`'s `PLATFORM_TABLES` — the
+per-platform submission-table registry that powers discovered-detection + artwork import — only listed 10 platforms.
+The six newest (`mast, tum, pix, thr, ig, tw`), **including image-first Pixiv and Instagram**, were missing, so their
+polled posts never showed in the Discovered bucket and couldn't be imported. Added all six (each stores a `link`
+permalink + a `thumbnail_url`); **`PLATFORM_TABLES` now covers all 16.**
+
+**Image-aware classification.** `classify_kind` gained a `has_image` tie-breaker: an inconclusive post that carries an
+image is classified **art** (importable), so discovered art from any platform is caught instead of stuck as "unknown".
+Pixiv + Instagram are added to the image-first set (always art). `build_discovered` now passes image presence and
+prefers each row's stored **`link`** for the external URL (the old `url_template` is a fallback — it can't be right for
+instance-scoped Mastodon/Tumblr URLs). The importer uses `link` for the linked publication's URL too.
+
+**One-click "Import all art".** New endpoint **`POST /api/artwork/import/discovered-art`** imports every discovered
+art-kind item with a downloadable image, across all platforms (downloads image → creates a managed artwork → links the
+publication). Per-item failures are collected, not fatal (FA's full-res CDN refuses datacenter IPs, so FA art imported
+from the server lands in `failed` — run those from the desktop app).
+
+**Surfaced in the Submissions hub.** A suggestion banner appears when discovered art exists — *"N discovered art
+pieces from your polling aren't in your library yet"* with **Import all art** + **Review →**. The **Discovered** link
+now shows a count, and the **Artwork** segment's empty state points to Discovered when there's art waiting.
+
+Import quality by platform: Weasyl/Inkbunny full-res (server-side OK); FA full-res but desktop-only; DA/Itaku and the
+new Pixiv/Instagram/Threads/Mastodon/Tumblr/X come in at the stored thumbnail resolution; SoFurry art import
+unsupported. **3 new tests (338 green).** Files: `posting/sync.py`, `routes/submissions_api.py`,
+`posting/artwork_importer.py`, `routes/artwork_api.py`, `frontend/js/api.js`, `frontend/js/submissions.js`,
+`frontend/css/components.css`, `config.py`, `tests/test_works.py`.
+
+---
+
 ## [2.68.0] - 2026-07-10 - Submissions is its own all-platform page + desktop multi-account polling
 
 Two changes.

@@ -46,8 +46,9 @@ window.Submissions = {
                     <p class="muted">Everything you've made — stories and artwork — in one place.
                     Filter by type or persona, then open any work for its full per-platform detail.</p>
                 </div>
-                <a class="btn" href="#/submissions/discovered" style="flex-shrink:0;">Discovered &rarr;</a>
+                <a class="btn" id="subs-disc-link" href="#/submissions/discovered" style="flex-shrink:0;">Discovered &rarr;</a>
             </div>
+            <div id="subs-suggest"></div>
             <div id="subs-controls"></div>
             <div id="subs-grid"><div class="loading-spinner">Loading…</div></div>`;
 
@@ -61,8 +62,57 @@ window.Submissions = {
         }
         this._works = (data && data.works) || [];
         this._personas = (data && data.personas) || [];
+        // Discovered (polled-but-unmanaged) posts — used for the "import art"
+        // suggestion + the Discovered link count. Best-effort; never blocks.
+        try {
+            const disc = await API.getDiscovered();
+            this._discovered = (disc && disc.discovered) || [];
+        } catch { this._discovered = []; }
+        this._discoveredArt = this._discovered.filter(d => d.kind === 'art' && d.thumbnail_url);
+        const dl = document.getElementById('subs-disc-link');
+        if (dl && this._discovered.length) dl.textContent = `Discovered (${this._discovered.length}) →`;
+        this._renderSuggest();
         this._renderControls();
         this._paint();
+    },
+
+    /* Suggestion banner: offer a one-click import of all discovered art so
+       polled pieces become managed works (and show up in this grid). */
+    _renderSuggest() {
+        const el = document.getElementById('subs-suggest');
+        if (!el) return;
+        const n = (this._discoveredArt || []).length;
+        if (!n) { el.innerHTML = ''; return; }
+        const one = n === 1;
+        el.innerHTML = `
+            <div class="subs-suggest-banner">
+                <div><strong>${n} discovered art piece${one ? '' : 's'}</strong> from your polling
+                ${one ? "isn't" : "aren't"} in your library yet — import ${one ? 'it' : 'them'}
+                to manage ${one ? 'it' : 'them'} here.</div>
+                <div style="display:flex;gap:.5rem;flex-shrink:0;">
+                    <button class="btn btn-primary" id="subs-import-art">Import all art</button>
+                    <a class="btn" href="#/submissions/discovered">Review &rarr;</a>
+                </div>
+            </div>`;
+        const b = document.getElementById('subs-import-art');
+        if (b) b.addEventListener('click', () => this._importAllArt());
+    },
+
+    async _importAllArt() {
+        const b = document.getElementById('subs-import-art');
+        if (b) { b.disabled = true; b.textContent = 'Importing…'; }
+        try {
+            const res = await API.importDiscoveredArt();
+            const bits = [`imported ${res.imported}`];
+            if (res.skipped) bits.push(`skipped ${res.skipped}`);
+            if (res.failed) bits.push(`${res.failed} failed (FA art needs the desktop app)`);
+            this._toast(res.imported ? 'success' : (res.failed ? 'warn' : 'info'),
+                `Discovered art: ${bits.join(', ')}`);
+            await this.render();   // reload works + refresh the suggestion
+        } catch (err) {
+            this._toast('error', `Import failed: ${this.esc(err.message)}`);
+            if (b) { b.disabled = false; b.textContent = 'Import all art'; }
+        }
     },
 
     _renderControls() {
@@ -128,8 +178,17 @@ window.Submissions = {
         const list = this._filtered();
         if (!list.length) {
             grid.className = '';
-            grid.innerHTML = `<div class="empty-state"><h3>Nothing here yet</h3>
-                <p class="muted">No works match this filter.</p></div>`;
+            const nArt = (this._discoveredArt || []).length;
+            if (this._type === 'artwork' && nArt) {
+                const one = nArt === 1;
+                grid.innerHTML = `<div class="empty-state"><h3>No imported artwork yet</h3>
+                    <p class="muted">${nArt} discovered art piece${one ? '' : 's'} from polling
+                    ${one ? 'is' : 'are'} waiting.
+                    <a href="#/submissions/discovered">Import ${one ? 'it' : 'them'} &rarr;</a></p></div>`;
+            } else {
+                grid.innerHTML = `<div class="empty-state"><h3>Nothing here yet</h3>
+                    <p class="muted">No works match this filter.</p></div>`;
+            }
             return;
         }
         grid.className = 'story-card-grid';

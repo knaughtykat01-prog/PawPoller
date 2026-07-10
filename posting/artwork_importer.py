@@ -211,7 +211,9 @@ def import_artwork(platform: str, submission_id: str) -> dict:
     title = d.get(cfg["title_col"]) or f"{platform}_{submission_id}"
     tags = parse_tags(d.get("keywords"))
     rating = norm_rating(d.get("rating") or d.get("rating_name"))
-    external_url = cfg["url_template"].format(id=submission_id)
+    # Prefer the poller-stored permalink; url_template is a fallback (and can't
+    # be right for instance-scoped mast/tum URLs built from the id alone).
+    external_url = d.get("link") or cfg["url_template"].format(id=submission_id)
 
     name = artwork_reader.create_artwork(
         title=title,

@@ -148,3 +148,37 @@ def test_build_discovered_tags_kind():
     out = {d["submission_id"]: d for d in build_discovered([("fa", CFG_FA, rows_fa)], set())}
     assert out["1"]["kind"] == "art"
     assert out["2"]["kind"] == "text"
+
+
+# ── 2.69.0: image-first platforms + image-aware classification ─────
+
+CFG_MAST = {"id_col": "submission_id", "title_col": "title",
+            "url_template": "https://mastodon.social/web/statuses/{id}"}
+
+
+def test_classify_kind_image_first_platforms():
+    # Pixiv + Instagram are image-first → art regardless of the type string.
+    assert classify_kind("pix", "") == "art"
+    assert classify_kind("ig", "") == "art"
+
+
+def test_classify_kind_has_image_breaks_tie():
+    # An inconclusive microblog post is classified by image presence.
+    assert classify_kind("mast", "", has_image=True) == "art"
+    assert classify_kind("mast", "", has_image=False) == "text"
+    # No has_image signal → legacy "unknown" (backward compatible).
+    assert classify_kind("mast", "") == "unknown"
+
+
+def test_build_discovered_image_post_is_art_and_prefers_link():
+    rows = [
+        {"submission_id": 9, "title": "Toot pic", "thumbnail_url": "http://t/9.jpg",
+         "link": "https://mastodon.social/@me/9", "posted_at": "2026-05-05"},
+        {"submission_id": 10, "title": "Text toot", "posted_at": "2026-05-06"},
+    ]
+    out = {d["submission_id"]: d for d in build_discovered([("mast", CFG_MAST, rows)], set())}
+    assert out["9"]["kind"] == "art"                          # image-bearing → art
+    assert out["9"]["url"] == "https://mastodon.social/@me/9"  # stored link wins
+    assert out["10"]["kind"] == "text"                        # no image → text
+    # Falls back to url_template when no link is stored.
+    assert out["10"]["url"] == "https://mastodon.social/web/statuses/10"

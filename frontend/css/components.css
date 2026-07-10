@@ -1372,6 +1372,22 @@ a.stat-card:hover {
 .platform-badge.thr { background: #55555525; color: var(--platform-thr); }
 .platform-badge.ig { background: #E1306C25; color: var(--platform-ig); }
 
+/* ── Submissions: discovered-art import suggestion banner ──── */
+.subs-suggest-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    border-radius: var(--radius);
+    padding: 0.8rem 1rem;
+    margin-bottom: 1.25rem;
+    color: var(--text-secondary);
+}
+.subs-suggest-banner strong { color: var(--text-primary); }
+
 /* ── FA Metadata ─────────────────────────────────────────── */
 .fa-metadata {
     display: grid;

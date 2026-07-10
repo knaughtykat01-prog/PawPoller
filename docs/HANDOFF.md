@@ -1,7 +1,22 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version:** 2.68.0 — **Submissions is its own all-platform page + desktop multi-account polling.**
+**Current version:** 2.69.0 — **Import discovered art from any platform → managed works.**
+The Submissions hub shows *managed* works, so polled ("discovered") art only appears once imported — and art from six
+platforms couldn't be imported at all. Root cause: `posting/sync.py`'s `PLATFORM_TABLES` (the submission-table registry
+behind discovery + artwork import) listed only 10 platforms; the six newest (`mast,tum,pix,thr,ig,tw`, **incl.
+image-first Pixiv & Instagram**) were missing. Added all six (each has a `link` permalink + `thumbnail_url`) →
+**covers all 16**. `classify_kind` gained a `has_image` tie-breaker (image-bearing inconclusive post → art), pix/ig are
+image-first, and `build_discovered`/importer prefer the stored `link` for URLs. New **`POST
+/api/artwork/import/discovered-art`** imports every discovered art item across platforms (download → create managed
+artwork → link publication; per-item failures collected — FA needs desktop). Submissions hub gained a suggestion
+banner (**Import all art** / **Review →**), a count on the Discovered link, and a smart Artwork-segment empty state.
+Import quality: Weasyl/IB full-res; FA desktop-only; DA/Itaku/pix/ig/thr/mast/tum/tw thumbnail-res; SF unsupported.
+**3 new tests (338 green). Needs a server deploy + hard-refresh.** Files: `posting/sync.py`,
+`routes/submissions_api.py`, `posting/artwork_importer.py`, `routes/artwork_api.py`, `frontend/js/api.js`,
+`frontend/js/submissions.js`, `frontend/css/components.css`, `config.py`, `tests/test_works.py`.
+
+**Prior release — 2.68.0 — Submissions is its own all-platform page + desktop multi-account polling.**
 Two changes. **(1) Submissions hub** — the **Submissions** nav (`#/submissions`) now opens the cross-platform works
 hub (`/api/works`, every story+artwork grouped per work) instead of the legacy Inkbunny-only table. The hub shipped in
 2.33–2.36 but a router-ordering bug shadowed it (the IB `#/submissions` branch matched first). Fix: **Inkbunny loses its

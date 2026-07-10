@@ -3839,6 +3839,8 @@ The `/claim` command scans each platform's existing submissions table in PawPoll
 | SF | `sf_submissions` | `https://sofurry.com/s/{id}` |
 | SqW | `sqw_submissions` | `https://squidgeworld.org/works/{id}` |
 
+_(abbreviated — as of 2.69.0 the dict covers **all 16 platforms**, each `{code}_submissions` with `submission_id`/`title` and, for the newer ones, a `link` permalink preferred over the template. Adding a platform here is what makes its polled submissions discoverable + importable as artwork.)_
+
 ### Change Detection
 
 After initial posting, stories are often revised. The change detection system compares the current state of local files against what was recorded in the publications table at the time of posting.
@@ -4169,6 +4171,24 @@ Files:
     (`_resolve_ib_full_url` → `files[].file_url_full`, reusing the poller's cached
     SID) instead of the thumbnail. SoFurry full-res isn't feasible (the `.data`
     reader exposes no image URL); DA/Itaku remain thumbnail-only.
+  - **2.69.0 — discovery/import for all 16 platforms + one-click "import all art".**
+    `posting.sync.PLATFORM_TABLES` previously listed only 10 platforms, so the six
+    newest (`mast, tum, pix, thr, ig, tw` — **incl. image-first Pixiv & Instagram**)
+    were invisible to both discovery and import. All six are now registered (each
+    stores a `link` permalink + `thumbnail_url`), so `PLATFORM_TABLES` covers all 16.
+    `classify_kind(platform, type_str, has_image=None)` gained an image-presence
+    tie-breaker — an inconclusive post that carries an image is classified **art**
+    (importable), catching discovered art from any platform instead of leaving it
+    "unknown"; pix/ig join the image-first `_ART_ONLY_PLATFORMS`. `build_discovered`
+    passes image presence and prefers each row's stored `link` for the external URL
+    (the `url_template` is a fallback — wrong for instance-scoped mast/tum URLs);
+    `import_artwork` uses `link` for the linked publication too. New
+    `POST /api/artwork/import/discovered-art` imports every discovered art item with
+    a downloadable image across all platforms (per-item failures collected — FA's
+    datacenter-IP block lands FA art in `failed`). Frontend (`submissions.js`): a
+    suggestion banner (**Import all art** / **Review →**), a count on the Discovered
+    link, and a smart Artwork-segment empty state. New platforms import at the stored
+    thumbnail resolution (like DA/Itaku).
 - `@app.get("/epub-viewer.html")` route reads the file and substitutes
   `__APP_VERSION__` for cache busting on `tokens.css` + the viewer JS
 - Path-scoped `_build_epub_viewer_csp()` relaxation (see Security

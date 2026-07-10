@@ -178,8 +178,8 @@ def list_works(
 # a mixed platform's feed). Two platforms are content-pure for this app; the
 # rest are classified from the per-platform type string (category / subtype /
 # content_type) the poller already stored.
-_ART_ONLY_PLATFORMS = frozenset({"da", "ik"})          # image-only here
-_TEXT_ONLY_PLATFORMS = frozenset({"ao3", "sqw", "wp"})  # literature-only
+_ART_ONLY_PLATFORMS = frozenset({"da", "ik", "pix", "ig"})  # image-first platforms
+_TEXT_ONLY_PLATFORMS = frozenset({"ao3", "sqw", "wp"})      # literature-only
 # Substrings that mark a type string as prose vs visual. Order matters only in
 # that a text hint wins over an art hint (a "story illustration" is still text).
 _TEXT_TYPE_HINTS = (
@@ -191,12 +191,16 @@ _ART_TYPE_HINTS = (
 )
 
 
-def classify_kind(platform: str, type_str: str) -> str:
+def classify_kind(platform: str, type_str: str, has_image: bool | None = None) -> str:
     """Classify a discovered submission as 'art', 'text', or 'unknown'.
 
     Pure/unit-testable. Content-pure platforms short-circuit; mixed platforms
-    (fa/sf/ib/ws/bsky) are read from their stored type string. Text hints win
-    over art hints so a "Story illustration" stays text.
+    (fa/sf/ib/ws/bsky/mast/thr/tw/tum) are read from their stored type string,
+    text hints winning over art hints so a "Story illustration" stays text.
+    When the type string is inconclusive, ``has_image`` breaks the tie: an
+    image-bearing post is importable as art — this is what lets discovered art
+    from ANY polled platform be caught, not just the classic art platforms.
+    ``has_image=None`` (unknown) preserves the legacy "unknown" result.
     """
     if platform in _ART_ONLY_PLATFORMS:
         return "art"
@@ -207,6 +211,10 @@ def classify_kind(platform: str, type_str: str) -> str:
         return "text"
     if any(h in t for h in _ART_TYPE_HINTS):
         return "art"
+    if has_image is True:
+        return "art"      # inconclusive type but has an image → importable as art
+    if has_image is False:
+        return "text"     # inconclusive type, no image → nothing to import
     return "unknown"
 
 
@@ -226,14 +234,18 @@ def build_discovered(platform_rows: list[tuple], linked: set) -> list[dict]:
                 continue
             stype = (d.get("category") or d.get("content_type") or d.get("subtype")
                      or d.get("type_name") or "")
+            thumb = (d.get("thumbnail_url") or d.get("thumb_url") or d.get("download_url")
+                     or d.get("media_url") or d.get("file_url") or "")
             out.append({
                 "platform": platform,
                 "submission_id": sid,
                 "title": d.get(title_col) or f"#{sid}",
                 "thumbnail_url": d.get("thumbnail_url") or d.get("thumb_url") or "",
                 "type": stype,
-                "kind": classify_kind(platform, stype),
-                "url": cfg["url_template"].format(id=sid),
+                "kind": classify_kind(platform, stype, has_image=bool(thumb)),
+                # Prefer the poller-stored permalink; the url_template is only a
+                # fallback (and can't be right for instance-scoped mast/tum URLs).
+                "url": d.get("link") or cfg["url_template"].format(id=sid),
                 "views": d.get("views"),
                 "favorites": d.get("favorites_count") or d.get("favorites"),
                 "comments": d.get("comments_count") or d.get("comments"),

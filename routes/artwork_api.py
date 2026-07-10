@@ -291,6 +291,46 @@ def import_all_for_platform(platform: str):
     }
 
 
+@artwork_router.post("/import/discovered-art")
+def import_all_discovered_art():
+    """Import every discovered submission classified as ART, across all platforms.
+
+    One-click "bring my polled art into the library": enumerates the discovered
+    bucket, keeps art-kind items that carry a downloadable image, and imports
+    each (downloads image + creates a managed artwork + links the publication).
+    Per-item failures are collected, not fatal — notably FA's full-res CDN
+    refuses datacenter IPs, so FA art imported from a server lands in ``failed``
+    (run those from the desktop app).
+    """
+    from posting import artwork_importer
+    from routes.submissions_api import get_discovered_unlinked
+
+    conn = get_connection()
+    try:
+        items = [it for it in get_discovered_unlinked(conn)
+                 if it.get("kind") == "art" and it.get("thumbnail_url")]
+    finally:
+        conn.close()
+
+    imported, skipped, failed = [], [], []
+    for it in items:
+        plat, sid = it["platform"], it["submission_id"]
+        try:
+            res = artwork_importer.import_artwork(plat, sid)
+            (imported if res.get("status") == "imported" else skipped).append(
+                {"platform": plat, "submission_id": sid, "name": res.get("name")})
+        except Exception as e:  # one bad item must not abort the batch
+            failed.append({"platform": plat, "submission_id": sid,
+                           "title": it.get("title"), "error": str(e)[:160]})
+    return {
+        "total_art": len(items),
+        "imported": len(imported),
+        "skipped": len(skipped),
+        "failed": len(failed),
+        "failures": failed[:25],
+    }
+
+
 # ── Publish ───────────────────────────────────────────────────
 
 @artwork_router.post("/publish")
