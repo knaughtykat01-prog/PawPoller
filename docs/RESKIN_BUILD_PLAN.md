@@ -1,8 +1,10 @@
 # PawPoller Reskin — Concept-Layer Build Plan
 
-**Status:** **APPROVED 2026-07-10** — building **Slice A (Bookshelf)** first. Branch: `reskin`.
-Each slice is **previewable locally** (`python server.py` → `localhost:8420`) and **ships to
-live after you've previewed it and are happy** (deploy-after-each-slice, locked below).
+**Status:** ✅ **COMPLETE 2026-07-10** — all 5 slices shipped live (prod **2.77.0**):
+**A Bookshelf 2.73.0 · B Modes/Brut 2.74.0 · C Laurels 2.75.0 · D Ledger 2.76.0 · E Health/Workbench
+2.77.0.** Slice A was the reskin's live debut (merged `reskin`→`master`, retiring the branch); B–E were
+built directly on `master`, each previewed locally then deployed. Per-slice detail is in `CHANGELOG.md`,
+`docs/HANDOFF.md`, and `docs/documentation_guide.md`.
 
 ## Where we are
 The **foundation** is done and matches the Vol. III synthesis' "house style":
