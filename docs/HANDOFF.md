@@ -1,15 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version:** 2.72.1 — **top-nav dropdown close-behaviour fix + the approved concept-layer build plan.**
-2.72.1 replaces the top-bar dropdown handler with one delegated document handler so a panel can't get pinned open
-(toggle on label; close on outside-click / Escape / item-select / re-click; blur so `:focus-within` can't re-hold it).
-It also lands **`docs/RESKIN_BUILD_PLAN.md`** — the APPROVED staged plan for the reskin's **concept layers**
-(A Bookshelf → B Modes pane → C Laurels → D Ledger → E Health strip/Workbench), each reusing the real APIs, previewed
-locally, and **deployed after each slice** (the user changed the cadence from "build everything then one deploy" to
-per-slice; **Slice A Bookshelf is being built now**, Bookshelf = a peer "Library" destination, Overview stays default).
-Being built on the **`reskin` git branch**. Foundation (Quill + top/side nav) is done; NOT yet deployed (the first
-concept-slice deploy will merge `reskin`→`master` and bring the whole reskin live at once). Path A holds (reskin the
+**Current version:** 2.73.0 — **reskin concept Slice A: the Bookshelf (Library + editorial work detail).**
+A new top-level **Library** (`#/library`, peer to Overview): a cover-forward shelf of works (gilt "N live"/"published"
+ribbons, quiet Draft markers) + a rich work-detail (`#/library/work/{name}`: big cover, marginalia stats, per-platform
+"Published to" list with live counts, and a **chapter × platform reach** card that flags **incomplete** chapters).
+New `frontend/js/bookshelf.js` + `frontend/css/bookshelf.css`; reuses `/api/works` + `/api/posting/stories/{name}`,
+**no backend added** (Path A). Verified in-browser (shelf + populated work-detail via mock data — per-platform counts,
+chapter dots, incomplete flags all correct). Follows **`docs/RESKIN_BUILD_PLAN.md`** — the approved staged plan for the
+reskin's **concept layers** (A Bookshelf ✅ → B Modes pane → C Laurels → D Ledger → E Health strip/Workbench), each
+reusing real APIs, previewed locally, **deployed after each slice**. Earlier: 2.72.1 fixed the top-nav dropdown
+close-behaviour (one delegated handler: toggle on label; close on outside-click/Escape/item-select/re-click).
+**DEPLOY NOTE:** Slice A is the reskin's live debut — deploying it merges `reskin`→`master` (bringing Quill + top nav +
+Bookshelf live at once). **After that first merge, subsequent slices (B–E) develop directly on `master`** (the
+"keep-off-live" reason is gone), build→verify→deploy each. Path A holds (reskin the
 real `frontend/` in place, keep all logic;
 `prototype/` is the design reference — `styles.css` is the porting source, and the approved look is also in the
 published artifacts: *Site Storyboard*, *UI Directions III (Synthesis)*, *App Atlas*).

@@ -4155,6 +4155,19 @@ Files:
   built by the pure, unit-tested `assemble_works()` helper. Frontend:
   `frontend/js/submissions.js`, route `#/submissions`, sidebar item above
   Stories/Artwork. Phase 1 of `docs/specs/submissions-hub.md`.
+  - **2.73.0 — the Bookshelf / Library** (reskin concept Slice A, `docs/RESKIN_BUILD_PLAN.md`):
+    a second, editorial view of the same works over the SAME endpoints — no backend added.
+    `frontend/js/bookshelf.js` (`window.Bookshelf`) + `frontend/css/bookshelf.css`, a new
+    **top-level** route `#/library` (peer to Overview, distinct from the Publishing-group
+    Submissions hub). `render()` is a cover-forward shelf over `/api/works` (gilt "N live" /
+    "published" ribbon from `platforms`/`publication_count`; quiet Draft otherwise; serif-initial
+    placeholder for coverless works). `renderWork(name)` (`#/library/work/{name}`) fetches
+    `/api/posting/stories/{name}` and renders the "Atelier" detail: marginalia stats, a per-platform
+    **Published to** list (views summed, faves/comments maxed across a platform's `publications[]`
+    rows), and a **chapter × platform reach** card (lights each chapter's platforms from
+    `publications[].chapter_index`; flags **incomplete** where a multi-chapter platform is missing a
+    chapter). Stories open here; artwork keeps `#/artwork/image/{name}`. Router branches +
+    active-nav keep-lit + breadcrumb are in `app.js`.
   - Phase 2 (2.34.0) adds `GET /api/works/discovered` (poller-found submissions
     with no publication link, normalized via `build_discovered` over
     `posting.sync.PLATFORM_TABLES`) and `POST /api/works/link` (links one to a

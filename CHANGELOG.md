@@ -4,6 +4,30 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.73.0] - 2026-07-10 - Reskin concept Slice A: the Bookshelf (Library + editorial work detail)
+
+First **concept layer** of the reskin (see `docs/RESKIN_BUILD_PLAN.md`), from the "Atelier"
+direction. A new top-level **Library** destination (`#/library`), peer to Overview — a
+cover-forward, editorial take on your works, plus the rich per-work detail page. Reuses the real
+APIs, adds **no backend** (Path A): the list from `/api/works`, story detail from
+`/api/posting/stories/{name}`.
+
+- **Library home (`#/library`)** — a shelf of covers with Crimson-Pro serif titles, All/Stories/
+  Artwork + persona + search + sort filters. Each cover "tells the truth": a gilt **"N live"**
+  ribbon when a work is published (falls back to **"published"** when it has publications but no
+  posted-status platforms), a quiet **Draft** marker otherwise. Coverless works get an elegant
+  serif-initial placeholder.
+- **Work detail (`#/library/work/{name}`)** — big cover, serif title + byline + summary, a
+  marginalia stat column (total views/faves/comments/platforms), a **"Published to"** list (one
+  row per platform with live view/fave/comment counts + an open-in-new link, and a "Not yet on:
+  …" line), and a **Chapters** card showing **chapter × platform reach** — each chapter lights
+  the platforms it reached, dims the ones it didn't, and flags **incomplete** where a
+  multi-chapter platform is missing a chapter (the "Ch.4 didn't reach AO3" truth).
+- New files: `frontend/js/bookshelf.js`, `frontend/css/bookshelf.css` (theme-aware via the Quill
+  tokens — warm paper in Quill, dark in the dark themes). Wired: a "Library" nav peer, the
+  `#/library` + `#/library/work/…` routes, active-nav + breadcrumb. Stories open the new detail;
+  artwork keeps its existing detail route. The Submissions hub (`#/submissions`) is unchanged.
+
 ## [2.72.1] - 2026-07-10 - Fix: top-nav dropdowns wouldn't close + concept-layer build plan
 
 **Bug fix (top-nav dropdowns).** The 2.72.0 top-bar dropdowns opened on click but wouldn't

@@ -774,6 +774,8 @@ const App = {
             if (!active && parts[0] === 'artwork' && href === '#/artwork') active = true;
             /* Submissions hub sub-routes (#/submissions/discovered, /work/...) keep "Submissions" lit. */
             if (!active && parts[0] === 'submissions' && href === '#/submissions') active = true;
+            /* Library (Bookshelf) work sub-routes (#/library/work/...) keep "Library" lit. */
+            if (!active && parts[0] === 'library' && href === '#/library') active = true;
             link.classList.toggle('active', active);
         });
 
@@ -1000,6 +1002,11 @@ const App = {
             if (window.Submissions) window.Submissions.renderDiscovered();
         } else if (parts[0] === 'submissions') {
             if (window.Submissions) window.Submissions.render();
+        } else if (parts[0] === 'library' && parts[1] === 'work' && parts[2]) {
+            // Work name may contain slashes — rejoin the tail.
+            if (window.Bookshelf) window.Bookshelf.renderWork(parts.slice(2).join('/'));
+        } else if (parts[0] === 'library') {
+            if (window.Bookshelf) window.Bookshelf.render();
         } else if (parts[0] === 'getting-started') {
             if (window.Guides) window.Guides.renderHub();
         } else {
@@ -1048,8 +1055,8 @@ const App = {
         /* Non-platform pages: a simple breadcrumb for orientation. */
         const labels = {
             '': 'Overview', overview: 'Overview', platforms: 'Platforms',
-            posting: 'Stories', editor: 'Story Editor', analytics: 'Analytics',
-            groups: 'Groups', 'cross-platform': 'Cross-Platform',
+            library: 'Library', posting: 'Stories', editor: 'Story Editor',
+            analytics: 'Analytics', groups: 'Groups', 'cross-platform': 'Cross-Platform',
             accounts: 'Accounts', settings: 'Settings',
         };
         let crumb;
@@ -1059,6 +1066,8 @@ const App = {
             crumb = '<a href="#/posting">Stories</a> <span class="sep">›</span> <span class="here">History</span>';
         } else if (p0 === 'posting' && parts[1] === 'story') {
             crumb = '<a href="#/posting">Stories</a> <span class="sep">›</span> <span class="here">Story</span>';
+        } else if (p0 === 'library' && parts[1] === 'work') {
+            crumb = '<a href="#/library">Library</a> <span class="sep">›</span> <span class="here">Work</span>';
         } else if (p0 === 'editor' && parts[1]) {
             crumb = '<a href="#/editor">Story Editor</a> <span class="sep">›</span> <span class="here">Editing</span>';
         } else if (p0 === 'group' && parts[1]) {
