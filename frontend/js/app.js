@@ -415,6 +415,10 @@ const App = {
        accent-warm, text — used by the picker card to render a live
        miniature without re-applying the full token block. */
     THEMES: [
+        { id: 'quill',          name: 'Quill',          desc: 'Warm paper + sienna quill — the redesign',
+          swatch: ['#f4f0e8', '#fffdf8', '#9a5b34', '#c07d3a', '#241d17'] },
+        { id: 'quill_dark',     name: 'Quill Dark',     desc: 'Warm dark + sienna quill',
+          swatch: ['#161310', '#211b15', '#d99a63', '#d0a35a', '#efe6d9'] },
         { id: 'dark',           name: 'Default Dark',   desc: 'Charcoal + violet, the original',
           swatch: ['#13111a', '#241f30', '#9b7dff', '#f0a050', '#f0edf5'] },
         { id: 'light',          name: 'Default Light',  desc: 'Bright neutral for daytime',
@@ -435,7 +439,7 @@ const App = {
 
     applyTheme(themeId) {
         const valid = this.THEMES.some(t => t.id === themeId);
-        const id = valid ? themeId : 'dark';
+        const id = valid ? themeId : 'quill';
         document.documentElement.dataset.theme = id;
         localStorage.setItem('pawpoller-theme', id);
         // Best-effort sync to settings.json so the choice follows the user
@@ -449,7 +453,7 @@ const App = {
     },
 
     getCurrentTheme() {
-        return document.documentElement.dataset.theme || 'dark';
+        return document.documentElement.dataset.theme || 'quill';
     },
 
     /* ── Mobile mode ─────────────────────────────────────────
@@ -1504,7 +1508,7 @@ const App = {
             window._ppTurnstileReady = () => {
                 turnstileWidgetId = window.turnstile.render('#dash-turnstile-container', {
                     sitekey: turnstileSiteKey,
-                    theme: document.documentElement.dataset.theme || 'dark',
+                    theme: document.documentElement.dataset.theme || 'quill',
                 });
             };
             // Avoid injecting duplicate script tags on repeat visits

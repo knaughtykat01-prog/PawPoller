@@ -4,6 +4,26 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.70.0] - 2026-07-10 - UI reskin slice 1: "Quill" redesign palette
+
+First slice of the **reskin-in-place** redesign (Path A: apply the prototype's design language to the real
+`frontend/`, keep all logic — the prototype stays a reference, we don't rebuild). This slice is the **palette
+foundation**: the prototype's warm-paper / sienna-"quill" look, mapped onto the real token names so it retones every
+screen at once, at zero logic risk and fully reversible.
+
+Two new themes in `tokens.css` + the `THEMES` registry: **Quill** (warm paper ground `#f4f0e8`, sienna accent
+`#9a5b34`, soft shadows) and **Quill Dark** (warm dark `#161310`, `#d99a63`). Both map the prototype's exact palette
+onto the existing token contract (`--bg-*`, `--accent`, `--text-*`, `--border`, `--shadow*`, `--bg-glow-*`), so no
+component CSS changes were needed for the retone. **Quill is now the default theme** (boot-script + app.js fallbacks
+`'dark'` → `'quill'`); anyone with a saved theme keeps it — pick **Quill** / **Quill Dark** in Settings → Appearance
+to switch. The other 7 themes are untouched.
+
+Next reskin slices (not in this release): typography (serif display), shell & chrome (sidebar / context bar / page
+headers), then card & primitive component treatment, then screen-by-screen polish. Frontend-only, no backend change,
+**338 tests green.** Files: `frontend/css/tokens.css`, `frontend/js/app.js`, `frontend/index.html`, `config.py`.
+
+---
+
 ## [2.69.0] - 2026-07-10 - Import discovered art from any platform → managed works
 
 The Submissions hub shows *managed* works, so polled ("discovered") art only appeared once imported — and, it turned

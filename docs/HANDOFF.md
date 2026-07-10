@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version:** 2.69.0 — **Import discovered art from any platform → managed works.**
+**Current version:** 2.70.0 — **UI reskin slice 1: "Quill" redesign palette.**
+The redesign is proceeding as **Path A — reskin the real `frontend/` in place** (apply the prototype's design language,
+keep all logic; the `prototype/` stays a reference, we do NOT rebuild from it). Slice 1 = the **palette foundation**:
+two new themes (**Quill** warm-paper-light + **Quill Dark**) in `tokens.css` + the `THEMES` registry, mapping the
+prototype's warm-paper / sienna-quill palette onto the existing token names (`--bg-*`/`--accent`/`--text-*`/`--border`/
+`--shadow*`) — so every screen retones with no component CSS change, fully reversible. **Quill is now the default**
+(`'dark'`→`'quill'` in the boot script + app.js fallbacks); saved themes are preserved (pick Quill in Settings →
+Appearance). **Reskin slice sequence:** 1 ✅ palette → 2 typography (serif display) → 3 shell & chrome (sidebar/context
+bar/headers) → 4 card & primitive components → 5 screen-by-screen. The redesign map is `prototype/docs/APP_ATLAS.md`
+(refreshed for all 16 platforms) + `DESIGN_RATIONALE.md` (the "why" + agreed redesign decisions). **338 tests green.
+Frontend-only — needs a server deploy + hard-refresh.** Files: `frontend/css/tokens.css`, `frontend/js/app.js`,
+`frontend/index.html`, `config.py`.
+
+**Prior release — 2.69.0 — Import discovered art from any platform → managed works.**
 The Submissions hub shows *managed* works, so polled ("discovered") art only appears once imported — and art from six
 platforms couldn't be imported at all. Root cause: `posting/sync.py`'s `PLATFORM_TABLES` (the submission-table registry
 behind discovery + artwork import) listed only 10 platforms; the six newest (`mast,tum,pix,thr,ig,tw`, **incl.

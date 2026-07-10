@@ -199,7 +199,7 @@ PawPoller/
 │   ├── index.html           # SPA shell (collapsible nav groups, bottom nav bar, sidebar overlay)
 │   ├── epub-viewer.html     # In-app EPUB reader (2.17.6+) — opened in new tab from editor Downloads dropdown
 │   ├── css/
-│   │   ├── tokens.css      # Design tokens (8 themes via [data-theme=...] custom properties)
+│   │   ├── tokens.css      # Design tokens (10 themes via [data-theme=...]; default "quill" = redesign palette)
 │   │   ├── components.css  # UI components (cards, buttons, tables, accordions, charts)
 │   │   ├── editor.css      # Editor + drawer + matrix + downloads dropdown styles
 │   │   └── layout.css      # Page layout, sidebar, responsive breakpoints, bottom nav

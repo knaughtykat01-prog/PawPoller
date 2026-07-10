@@ -127,6 +127,65 @@
     --color-error:      var(--danger);
 }
 
+/* ── Quill (redesign default — warm paper, sienna quill accent) ──
+   The prototype's design palette, mapped onto the real token names. This is
+   the reskin's foundation layer: retones every screen at once. Typography +
+   component treatment follow in later reskin slices. */
+[data-theme="quill"] {
+    --bg-primary:    #f4f0e8;   /* warm paper ground */
+    --bg-secondary:  #faf7f1;
+    --bg-card:       #fffdf8;
+    --bg-tertiary:   #efe9dd;
+    --bg-hover:      #e9e2d3;
+    --bg-glass:      rgba(255, 253, 248, 0.80);
+    --border:             #e6ddcd;
+    --card-border-inner:  rgba(36, 29, 23, 0.07);
+    --overlay-backdrop:   rgba(40, 24, 20, 0.30);
+    --text-primary:  #241d17;
+    --text-secondary:#8a7f70;
+    --text-muted:    #b3a996;
+    --accent:        #9a5b34;   /* quill sienna — the one brand accent */
+    --accent-dim:    #7d4827;
+    --accent-warm:   #c07d3a;
+    --success:       #2f8f5b;
+    --warning:       #b7791f;
+    --danger:        #c0453b;
+    --info:          #4d6b8a;
+    --shadow:         0 10px 26px -14px rgba(40, 24, 20, 0.20);
+    --shadow-strong:  0 16px 40px -12px rgba(40, 24, 20, 0.26);
+    --shadow-glass:   0 8px 32px rgba(120, 90, 50, 0.10);
+    --bg-glow-warm:   rgba(192, 125, 58, 0.06);
+    --bg-glow-cool:   rgba(125, 154, 122, 0.03);
+}
+
+/* ── Quill Dark (redesign — warm dark, sienna accent) ── */
+[data-theme="quill_dark"] {
+    --bg-primary:    #161310;
+    --bg-secondary:  #1c1712;
+    --bg-card:       #211b15;
+    --bg-tertiary:   #29221a;
+    --bg-hover:      #322a20;
+    --bg-glass:      rgba(33, 27, 21, 0.72);
+    --border:             #332a21;
+    --card-border-inner:  rgba(239, 230, 217, 0.07);
+    --overlay-backdrop:   rgba(0, 0, 0, 0.55);
+    --text-primary:  #efe6d9;
+    --text-secondary:#a89a88;
+    --text-muted:    #7c7061;
+    --accent:        #d99a63;
+    --accent-dim:    #b9762c;
+    --accent-warm:   #d0a35a;
+    --success:       #4ecb83;
+    --warning:       #e0a94a;
+    --danger:        #e5695e;
+    --info:          #70a0ff;
+    --shadow:         0 14px 30px -16px rgba(0, 0, 0, 0.50);
+    --shadow-strong:  0 16px 44px -12px rgba(0, 0, 0, 0.60);
+    --shadow-glass:   0 8px 32px rgba(0, 0, 0, 0.45);
+    --bg-glow-warm:   rgba(217, 154, 99, 0.05);
+    --bg-glow-cool:   rgba(125, 154, 122, 0.03);
+}
+
 /* ── Light ───────────────────────────────────────────────── */
 [data-theme="light"] {
     --bg-primary:    #f8f6fb;
