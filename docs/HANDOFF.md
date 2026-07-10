@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version:** 2.64.0 — **Instagram posting (Posts module).**
+**Current version:** 2.65.0 — **"How to get started" guides for every platform.**
+All 16 platforms now have a step-by-step setup guide (nothing → connected) + a "keeping it alive" renewal section
+(cookies for FA/DA/X, ~60-day Meta tokens for Threads/IG, app-passwords/API-keys that don't expire, etc.). One
+structured dataset in `frontend/js/platform_guides.js` (`window.PlatformGuides` + `window.Guides` controller),
+surfaced two ways: (1) a **"📖 Setup guide"** button injected onto every platform's Settings connect card
+(`Guides.injectSettingsButtons` runs at the end of `renderSettings`; finds `{code}-connect/disconnect-btn` +
+`save-creds-btn`→ib) → opens a **modal**; (2) a **Getting Started hub** at `#/getting-started` (new sidebar nav
+item) with a card per platform. One delegated `[data-guide]` click handler powers both. Theme-aware
+`frontend/css/guides.css` (design tokens, all 8 themes). Frontend-only — no backend change. Files:
+`frontend/js/platform_guides.js` (new), `frontend/css/guides.css` (new), `frontend/index.html` (script + css +
+nav), `frontend/js/app.js` (router `getting-started` branch + injector call in `renderSettings`). **332 tests
+green. Needs a server deploy + hard-refresh.**
+
+**Prior release — 2.64.0 — Instagram posting (Posts module).**
 Instagram joins the Posts module as a publish target (photo + caption), alongside bsky/mast/thr/tum/tw. Two
 IG-specific problems solved: (1) **every IG post requires media** (no text-only) → new `_IMAGE_REQUIRED` guard
 refuses a caption-only IG post; (2) **Instagram cURLs a public `image_url`** (no byte upload) → new

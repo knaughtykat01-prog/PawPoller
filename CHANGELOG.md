@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.65.0] - 2026-07-10 - "How to get started" guides for every platform
+
+Each of the 16 platforms now has a **step-by-step setup guide** — how to go from nothing to a working, connected
+credential, plus how to **keep it alive** when a cookie or token expires.
+
+**One dataset, two surfaces.** `frontend/js/platform_guides.js` holds a structured guide per platform code
+(`kind`, `difficulty`, `summary`, `need`, ordered `steps` with external links, `paste` = where the credential goes
+in PawPoller, `renew` = "keeping it alive", `notes` = gotchas). It's surfaced two ways:
+- **A "📖 Setup guide" button on every platform's Settings connect card** — a small delegated injector
+  (`Guides.injectSettingsButtons`, called at the end of `renderSettings`) drops the button next to each
+  `{code}-connect/disconnect-btn` (and Inkbunny's `save-creds-btn`); clicking it opens a **modal** with that
+  platform's full guide.
+- **A "Getting Started" hub** at `#/getting-started` (new sidebar entry) — a card per platform (emoji, name,
+  what-it-does, difficulty); click any card for the same guide.
+
+**The content.** Accurate per-platform walk-throughs including the renewal story each one needs: cookie platforms
+(FA/DA/X) explain how to re-grab `a`/`b`, the DA cookie, `auth_token`/`ct0`; the Meta platforms (Threads/Instagram)
+cover the app + tester + token-generator flow and note the ~60-day long-lived token auto-refreshes; app-password /
+API-key / token platforms (Bluesky/Weasyl/Mastodon/Tumblr/Pixiv) note they don't expire unless revoked; and the
+IG guide flags posting's `content_publish` scope + server-only + photo-required specifics. Doubles as onboarding
+for the self-host / public-readiness goal.
+
+Frontend-only, theme-aware (all colours from design tokens, works across all 8 themes), one delegated click
+handler powers every `[data-guide]` trigger. New: `frontend/js/platform_guides.js`, `frontend/css/guides.css`;
+touched `frontend/index.html` (script + stylesheet + nav item) and `frontend/js/app.js` (router branch + injector
+call). No backend change. **332 tests green. Needs a server deploy + hard-refresh.**
+
+---
+
 ## [2.64.0] - 2026-07-10 - Instagram posting (Posts module)
 
 Instagram joins the **Posts** module as a publish target — you can now post a photo + caption to Instagram

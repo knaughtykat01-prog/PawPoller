@@ -5793,3 +5793,38 @@ the alias into the right handle per network at send time.
   trailing-punct trim), `_detect_handle_mentions` (dotted-handle vs bare-alias vs
   email), the contacts↔mentions round-trip + cascade deletes. **Not** unit-tested
   (network): live DID resolution / a real faceted skeet — a user-side test.
+
+
+## 22. Platform setup guides ("How to get started", 2.65.0)
+
+Every platform ships an in-app **setup guide** — how to go from nothing to a
+connected credential, plus how to renew it when a cookie/token expires. Pure
+frontend, no backend.
+
+- **Content** — `frontend/js/platform_guides.js` exposes `window.PlatformGuides`
+  with a `GUIDES` object keyed by platform code. Each entry: `kind`
+  (Analytics | Analytics + posting), `difficulty`, `summary`, `need[]`
+  (prerequisites), `steps[]` (`{t, b, link?}` — ordered, `b` may hold simple HTML,
+  `link` is an external `{label, url}`), `paste` (where the credential goes in
+  PawPoller), `renew` (`{when, how}` — the "keeping it alive" story), `notes[]`
+  (gotchas). `renderBody(code)` turns one entry into the guide HTML shared by both
+  surfaces below.
+- **Controller** — the same file exposes `window.Guides`: `openModal(code)` (builds
+  a self-contained `.guide-modal` overlay with backdrop-click + Escape close),
+  `renderHub()` (the Getting Started page), and `injectSettingsButtons()`. A single
+  delegated `document` click handler on `[data-guide]` powers every trigger, so
+  nothing needs re-binding after a re-render.
+- **Surface 1 — connect cards.** `injectSettingsButtons()` runs at the end of
+  `App.renderSettings()`. It scans the `data-tab-content="platforms"` pane for
+  `[id$="-connect-btn"], [id$="-disconnect-btn"], #save-creds-btn` (the Inkbunny
+  save button → `ib`; `telegram` skipped), derives the platform code, and inserts a
+  `.guide-trigger` ("📖 Setup guide") after each. Idempotent — safe on every
+  settings re-render (and there are many, after each connect/disconnect).
+- **Surface 2 — Getting Started hub.** Sidebar entry → `#/getting-started` →
+  router branch calls `Guides.renderHub()`, which iterates `window.PLATFORMS` into
+  a card grid (emoji/name/kind/summary/difficulty); a card's `data-guide` opens the
+  same modal.
+- **Styling** — `frontend/css/guides.css`, entirely design-token based, so it
+  retones across all 8 themes. Loaded in `index.html` after `posts.css`;
+  `platform_guides.js` loads after `platforms.js`/`components.js` and before
+  `app.js` (it needs `window.PLATFORMS`/`window.platformByCode`).

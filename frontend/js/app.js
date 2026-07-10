@@ -913,6 +913,8 @@ const App = {
             if (window.Submissions) window.Submissions.renderDiscovered();
         } else if (parts[0] === 'submissions') {
             if (window.Submissions) window.Submissions.render();
+        } else if (parts[0] === 'getting-started') {
+            if (window.Guides) window.Guides.renderHub();
         } else {
             this._setContent('<div class="empty-state"><h3>Page not found</h3></div>');
         }
@@ -12115,6 +12117,9 @@ const App = {
         } catch (err) {
             this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
         }
+        // Attach a "Setup guide" button to each platform's connect card
+        // (idempotent — safe on every settings re-render).
+        if (window.Guides) window.Guides.injectSettingsButtons();
     },
 
     /* ── Security Tab Helpers ─────────────────────────────────
