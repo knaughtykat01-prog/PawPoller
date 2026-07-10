@@ -128,22 +128,22 @@ window.Laurels = {
         const pF = this._progress(totals.favorites, ladderF);
         const pC = this._progress(totals.comments, ladderC);
 
+        // ── Publishing rhythm + tracking days (also feed the medals) ─
+        const logRows = Array.isArray(postLog) ? postLog
+            : (postLog.log || postLog.entries || postLog.publications || []);
+        const rhythm = this._rhythm(logRows);
+        const days = new Set((agg.snapshots || []).map(s => String(s.polled_at || '').slice(0, 10)).filter(Boolean));
+        const trackingDays = days.size;
+
         // ── Medals ──────────────────────────────────────────────────
         const medals = this._buildMedals({
             totals, pV, pF, pC, ladderV, ladderF, ladderC,
             stories, artworks, works, allPlats, maxPlatsOnWork, totalPlatforms,
             breakoutViews, breakoutTitle: topViewed ? topViewed.title : '', watchers,
+            trackingDays, streak: rhythm.streak,
         });
         const earned = medals.filter(m => m.earned);
         const locked = medals.filter(m => !m.earned);
-
-        // ── Publishing rhythm (last 12 ISO weeks with a publish) ─────
-        const logRows = Array.isArray(postLog) ? postLog
-            : (postLog.log || postLog.entries || postLog.publications || []);
-        const rhythm = this._rhythm(logRows);
-        // Tracking-active days from distinct snapshot dates
-        const days = new Set((agg.snapshots || []).map(s => String(s.polled_at || '').slice(0, 10)).filter(Boolean));
-        const trackingDays = days.size;
 
         body.innerHTML = `
             ${this._heroCard(totals, pV, pF, pC)}
@@ -182,6 +182,131 @@ window.Laurels = {
 
             <p class="lr-foot">Milestones reflect your <strong>all-time</strong> totals as each platform
             currently reports them — you keep credit for everything you've earned.</p>`;
+
+        // Animate the hero number + progress bars in, then celebrate anything
+        // newly earned since the last visit.
+        this._animateIn(totals.views);
+        this._celebrateNew(earned);
+    },
+
+    /* ── Count-up + progress-fill entrance animation ─────────────── */
+    _animateIn(target) {
+        // Fill every progress bar from 0 → its data-pct (CSS transitions width).
+        requestAnimationFrame(() => {
+            document.querySelectorAll('.lr-hero-fill[data-pct], .lr-mini-fill[data-pct]').forEach(el => {
+                el.style.width = (Number(el.dataset.pct) || 0) + '%';
+            });
+        });
+        const el = document.querySelector('.lr-hero-count');
+        if (!el || !target || target < 50) return;
+        const dur = 1100;
+        let start = null;
+        const tick = (now) => {
+            if (start == null) start = now;
+            const t = Math.min(1, (now - start) / dur);
+            const eased = 1 - Math.pow(1 - t, 3);   // ease-out cubic
+            el.textContent = this._num(Math.round(target * eased));
+            if (t < 1) requestAnimationFrame(tick);
+            else el.textContent = this._num(target);
+        };
+        requestAnimationFrame(tick);
+    },
+
+    /* ── New-achievement celebration ─────────────────────────────
+     * Diffs the currently-earned medal ids against a localStorage baseline.
+     * The FIRST ever check just records the baseline silently (so a returning
+     * user isn't buried in confetti); after that, only genuinely new medals
+     * pop. Fires when the Laurels page is opened. */
+    _SEEN_KEY: 'pp_laurels_seen',
+    _celebrateNew(earned) {
+        const ids = earned.map(x => x.id).filter(Boolean);
+        let seen = null;
+        try { seen = JSON.parse(localStorage.getItem(this._SEEN_KEY) || 'null'); } catch (e) { seen = null; }
+        if (!Array.isArray(seen)) {
+            try { localStorage.setItem(this._SEEN_KEY, JSON.stringify(ids)); } catch (e) { /* ignore */ }
+            return;
+        }
+        const seenSet = new Set(seen);
+        const fresh = earned.filter(x => x.id && !seenSet.has(x.id));
+        if (!fresh.length) return;
+        try { localStorage.setItem(this._SEEN_KEY, JSON.stringify([...new Set([...seen, ...ids])])); } catch (e) { /* ignore */ }
+        fresh.forEach(m => this._enqueueCeleb(m));
+    },
+
+    _enqueueCeleb(medal) {
+        (this._celebQ = this._celebQ || []).push(medal);
+        this._drainCeleb();
+    },
+    _drainCeleb() {
+        if (this._celebBusy) return;
+        const medal = (this._celebQ || []).shift();
+        if (!medal) return;
+        this._celebBusy = true;
+
+        const cols = ['#c9822f', '#9a5b34', '#2f8f5b', '#4d6b8a', '#b7791f', '#c0453b'];
+        const conf = Array.from({ length: 28 }, (_, i) => {
+            const c = cols[i % cols.length];
+            const left = Math.round(Math.random() * 100);
+            const delay = (Math.random() * 0.3).toFixed(2);
+            const dur = (0.9 + Math.random() * 0.8).toFixed(2);
+            return `<span class="lr-conf" style="left:${left}%;background:${c};animation-delay:${delay}s;animation-duration:${dur}s"></span>`;
+        }).join('');
+
+        const el = document.createElement('div');
+        el.className = 'lr-celebrate';
+        el.innerHTML = `
+            <div class="lr-celebrate-conf" aria-hidden="true">${conf}</div>
+            <div class="lr-celebrate-card" role="alert" aria-live="assertive">
+                <div class="lr-celebrate-rays" aria-hidden="true"></div>
+                <div class="lr-celebrate-ico">${medal.icon || '🏅'}</div>
+                <div class="lr-celebrate-label">Achievement unlocked</div>
+                <div class="lr-celebrate-name">${this.esc(medal.name)}</div>
+                <div class="lr-celebrate-desc">${this.esc(medal.desc || '')}</div>
+                <div class="lr-celebrate-dismiss">tap to dismiss</div>
+            </div>`;
+        document.body.appendChild(el);
+        requestAnimationFrame(() => el.classList.add('show'));
+
+        const close = () => {
+            if (this._celebTimer) { clearTimeout(this._celebTimer); this._celebTimer = null; }
+            el.classList.remove('show');
+            setTimeout(() => {
+                el.remove();
+                this._celebBusy = false;
+                this._drainCeleb();   // next in the queue, if any
+            }, 350);
+        };
+        el.addEventListener('click', close);
+        this._celebTimer = setTimeout(close, 4600);
+    },
+
+    /* ── Per-work achievements (used by the Bookshelf work detail) ──
+     * Pure function over one work's aggregate stats — returns the same medal
+     * shape as the account page so it can share the renderer. */
+    workMedals(w) {
+        w = w || {};
+        const views = Number(w.views) || 0, faves = Number(w.faves) || 0, comments = Number(w.comments) || 0;
+        const plats = (w.platforms || []).length;
+        const chapters = Number(w.chapters) || 0;
+        const words = Number(w.words) || 0;
+        const gaps = Number(w.incompleteChapters) || 0;
+        const m = [];
+        const badge = (id, cond, icon, name, desc, sub) => m.push({ id, icon, name, desc, earned: !!cond, sub });
+
+        badge('w-published', plats >= 1, '🌱', 'Published', 'Live on at least one platform.');
+        badge('w-crossposted', plats >= 3, '🔗', 'Cross-Posted', 'Live on 3 or more platforms.', plats >= 3 ? '' : `${plats}/3`);
+        badge('w-wide', plats >= 8, '🌐', 'Wide Reach', 'Live on 8 or more platforms.', plats >= 8 ? '' : `${plats}/8`);
+        // View tier — surface the highest reached, else the first as a target.
+        const vTiers = [[1000, '1K Views', '👁'], [5000, '5K Club', '🔥'], [10000, '10K Club', '💥']];
+        const vHit = [...vTiers].reverse().find(t => views >= t[0]);
+        if (vHit) badge(`w-views-${vHit[0]}`, true, vHit[2], vHit[1], `Over ${this._num(vHit[0])} views on this work.`);
+        else badge('w-views-1000', false, '👁', '1K Views', 'Reach 1,000 views on this work.', `${this._num(views)}/1,000`);
+        badge('w-beloved', faves >= 100, '❤', 'Beloved', '100+ favourites on this work.', faves >= 100 ? '' : `${this._num(faves)}/100`);
+        badge('w-discussed', comments >= 25, '💬', 'Discussed', '25+ comments on this work.', comments >= 25 ? '' : `${this._num(comments)}/25`);
+        if (chapters >= 1) badge('w-epic', chapters >= 10, '📕', 'Epic', 'A work of 10+ chapters.', chapters >= 10 ? '' : `${chapters}/10 ch`);
+        if (words) badge('w-wordsmith', words >= 40000, '✍', 'Novel Length', '40,000+ words.', words >= 40000 ? '' : `${this._num(words)}/40k`);
+        if (chapters > 1 && plats >= 1) badge('w-complete', gaps === 0, '✅', 'Complete Run', 'Every chapter reached every platform it should.', gaps === 0 ? '' : `${gaps} gap${gaps === 1 ? '' : 's'}`);
+        return m;
     },
 
     /* ── Hero milestone card ─────────────────────────────────────── */
@@ -193,9 +318,9 @@ window.Laurels = {
             <div class="lr-hero">
                 <div class="lr-hero-main">
                     <div class="lr-hero-eyebrow">Your den has been visited</div>
-                    <div class="lr-hero-num">${this._num(totals.views)}<span class="lr-hero-unit">times</span></div>
+                    <div class="lr-hero-num"><span class="lr-hero-count" data-count="${totals.views}">${this._num(totals.views)}</span><span class="lr-hero-unit">times</span></div>
                     <div class="lr-hero-bar">
-                        <div class="lr-hero-fill" style="width:${pV.pct}%"></div>
+                        <div class="lr-hero-fill" data-pct="${pV.pct}" style="width:0"></div>
                         ${pV.prev ? `<span class="lr-hero-prev">${this._num(pV.prev)}</span>` : ''}
                         ${pV.next ? `<span class="lr-hero-next">${this._num(pV.next)}</span>` : ''}
                     </div>
@@ -214,7 +339,7 @@ window.Laurels = {
                 <div class="lr-mini-top"><span class="lr-mini-ico" aria-hidden="true">${icon}</span>
                     <span class="lr-mini-val">${this._num(total)}</span>
                     <span class="lr-mini-label">${label}</span></div>
-                <div class="lr-mini-bar"><div class="lr-mini-fill" style="width:${p.pct}%"></div></div>
+                <div class="lr-mini-bar"><div class="lr-mini-fill" data-pct="${p.pct}" style="width:0"></div></div>
                 <div class="lr-mini-cap">${p.next ? `${this._num(p.next)} next` : 'maxed'}</div>
             </div>`;
     },
@@ -223,40 +348,60 @@ window.Laurels = {
     _buildMedals(d) {
         const m = [];
         // Metric-tier medals — one per metric at the highest rung reached, plus
-        // the next rung as a "locked, in progress" badge.
-        const tierMedal = (crossed, next, kind, icon, total) => {
+        // the next rung as a "locked, in progress" badge. Stable ids (metric+rung)
+        // let the celebration diff detect a newly-crossed milestone.
+        const tierMedal = (crossed, next, kind, key, icon, total) => {
             if (crossed.length) {
                 const top = crossed[crossed.length - 1];
-                m.push({ icon, name: `${this._num(top)} ${kind}`, desc: `You've passed ${this._num(top)} total ${kind.toLowerCase()}.`, earned: true, tier: crossed.length });
+                m.push({ id: `${key}-${top}`, icon, name: `${this._num(top)} ${kind}`, desc: `You've passed ${this._num(top)} total ${kind.toLowerCase()}.`, earned: true });
             }
             if (next) {
-                m.push({ icon, name: `${this._num(next)} ${kind}`, desc: `${this._num(next - total)} more ${kind.toLowerCase()} to earn this.`, earned: false });
+                m.push({ id: `${key}-${next}`, icon, name: `${this._num(next)} ${kind}`, desc: `${this._num(next - total)} more ${kind.toLowerCase()} to earn this.`, earned: false });
             }
         };
-        tierMedal(d.pV.crossed, d.pV.next, 'Views', '👁', d.totals.views);
-        tierMedal(d.pF.crossed, d.pF.next, 'Favourites', '⭐', d.totals.favorites);
-        tierMedal(d.pC.crossed, d.pC.next, 'Comments', '💬', d.totals.comments);
+        tierMedal(d.pV.crossed, d.pV.next, 'Views', 'views', '👁', d.totals.views);
+        tierMedal(d.pF.crossed, d.pF.next, 'Favourites', 'faves', '⭐', d.totals.favorites);
+        tierMedal(d.pC.crossed, d.pC.next, 'Comments', 'comments', '💬', d.totals.comments);
 
-        // Catalogue + special medals
-        const badge = (cond, icon, name, desc, sub) => m.push({ icon, name, desc, earned: !!cond, sub });
-        badge(d.stories.length >= 1, '📖', 'First Words', 'Publish your first story.');
-        badge(d.artworks.length >= 1, '🎨', 'First Canvas', 'Add your first piece of artwork.');
-        badge(d.works.length >= 10, '📚', 'Shelf of Ten', 'Have 10 works in your library.',
+        // Catalogue + special medals (id kept stable so it can be celebrated once)
+        const badge = (id, cond, icon, name, desc, sub) => m.push({ id, icon, name, desc, earned: !!cond, sub });
+        badge('first-words', d.stories.length >= 1, '📖', 'First Words', 'Publish your first story.');
+        badge('first-canvas', d.artworks.length >= 1, '🎨', 'First Canvas', 'Add your first piece of artwork.');
+        badge('storyteller', d.stories.length >= 5, '✍', 'Storyteller', 'Have 5 stories in your library.',
+            d.stories.length >= 5 ? '' : `${d.stories.length}/5`);
+        badge('gallery', d.artworks.length >= 5, '🖼', 'Gallery', 'Have 5 pieces of artwork.',
+            d.artworks.length >= 5 ? '' : `${d.artworks.length}/5`);
+        badge('shelf-of-ten', d.works.length >= 10, '📚', 'Shelf of Ten', 'Have 10 works in your library.',
             d.works.length >= 10 ? '' : `${d.works.length}/10`);
-        badge(d.works.length >= 25, '🗂', 'Prolific', 'Have 25 works in your library.',
+        badge('prolific', d.works.length >= 25, '🗂', 'Prolific', 'Have 25 works in your library.',
             d.works.length >= 25 ? '' : `${d.works.length}/25`);
-        badge(d.maxPlatsOnWork >= 5, '🔗', 'Cross-Poster', 'Publish a single work to 5+ platforms.',
+        badge('century', d.works.length >= 100, '🏛', 'Century', 'Have 100 works in your library.',
+            d.works.length >= 100 ? '' : `${d.works.length}/100`);
+        badge('cross-poster', d.maxPlatsOnWork >= 5, '🔗', 'Cross-Poster', 'Publish a single work to 5+ platforms.',
             d.maxPlatsOnWork >= 5 ? '' : `best ${d.maxPlatsOnWork}/5`);
-        badge(d.allPlats.size >= 10, '🌐', 'Wide Reach', 'Publish across 10+ different platforms.',
+        badge('wide-reach', d.allPlats.size >= 10, '🌐', 'Wide Reach', 'Publish across 10+ different platforms.',
             d.allPlats.size >= 10 ? '' : `${d.allPlats.size}/10`);
-        badge(d.allPlats.size >= d.totalPlatforms, '🏆', 'Full Spread', `Publish to all ${d.totalPlatforms} platforms.`,
+        badge('full-spread', d.allPlats.size >= d.totalPlatforms, '🏆', 'Full Spread', `Publish to all ${d.totalPlatforms} platforms.`,
             d.allPlats.size >= d.totalPlatforms ? '' : `${d.allPlats.size}/${d.totalPlatforms}`);
-        badge(d.breakoutViews >= 5000, '🚀', 'Breakout', 'Land a single work over 5,000 views.',
+        badge('breakout', d.breakoutViews >= 5000, '🚀', 'Breakout', 'Land a single work over 5,000 views.',
             d.breakoutViews >= 5000 ? (d.breakoutTitle || '') : `best ${this._num(d.breakoutViews)}`);
-        if (d.watchers >= 100 || d.watchers > 0) {
-            badge(d.watchers >= 100, '👥', 'Following of 100', 'Gather 100 watchers across platforms.',
+        badge('viral-hit', d.breakoutViews >= 10000, '💥', 'Viral Hit', 'Land a single work over 10,000 views.',
+            d.breakoutViews >= 10000 ? (d.breakoutTitle || '') : `best ${this._num(d.breakoutViews)}`);
+        if (d.watchers > 0) {
+            badge('following-100', d.watchers >= 100, '👥', 'Following of 100', 'Gather 100 watchers across platforms.',
                 d.watchers >= 100 ? '' : `${this._num(d.watchers)}/100`);
+            if (d.watchers >= 100)
+                badge('following-500', d.watchers >= 500, '👑', 'Devoted Following', 'Gather 500 watchers across platforms.',
+                    d.watchers >= 500 ? '' : `${this._num(d.watchers)}/500`);
         }
+        badge('on-a-roll', d.streak >= 4, '🔥', 'On a Roll', 'Publish in 4 weeks running.',
+            d.streak >= 4 ? '' : `${d.streak || 0}/4 weeks`);
+        badge('dedicated', (d.trackingDays || 0) >= 365, '📅', 'Dedicated', 'Track your work for a full year.',
+            (d.trackingDays || 0) >= 365 ? '' : `${d.trackingDays || 0}/365 days`);
+        // Meta: earn a chunk of the others.
+        const earnedSoFar = m.filter(x => x.earned).length;
+        badge('decorated', earnedSoFar >= 15, '🎖', 'Decorated', 'Earn 15 achievements.',
+            earnedSoFar >= 15 ? '' : `${earnedSoFar}/15`);
         return m;
     },
 

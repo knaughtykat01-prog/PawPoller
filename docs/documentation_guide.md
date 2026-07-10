@@ -4247,6 +4247,41 @@ Files:
     `--success/--info/--warning/--danger`; Brut coverage). To add another configurable widget, follow the same
     pattern: register it, render/mount with the `w` entry, store settings on `w.cfg` (the loader keeps it).
     **This completes the 5-slice reskin concept-layer plan.**
+  - **2.78.0 — Gamification expansion** (builds on Slice-C Laurels; Path A, **no backend added**). Four
+    threads, all in existing files (`laurels.js`, `bookshelf.js`, `laurels.css`, `bookshelf.css` — no new
+    files, no new routes): **(1) Account medals 9 → 23** — `Laurels._buildMedals(d)` now emits a **stable
+    `id`** on every medal (the celebration engine diffs on it), and `render()` computes `rhythm`/`trackingDays`
+    **before** calling `_buildMedals` so streak (`On a Roll`, `id:on-a-roll`) and days-tracked (`Dedicated`,
+    `id:dedicated`) medals can exist. New medals: `first-words`/`first-canvas`, `storyteller` (5 stories),
+    `gallery` (5 artworks), `shelf-of-ten`/`prolific` (25)/`century` (100 works), `cross-poster`/`wide-reach`
+    (8+ platforms on one work)/`full-spread` (all 16), `breakout` (5k on one work)/`viral-hit` (10k),
+    `following-100`/`following-500` (👑, only if watchers≥100), and `decorated` (🎖 earn 15 — computed from an
+    `earnedSoFar` count of the others). Tier + per-work-derived medals carry a **source** field (the work title,
+    e.g. Breakout ← "Chosen") shown as a sub-badge. **(2) Per-work achievements** — a **pure** engine
+    `Laurels.workMedals(w)` (input `{views,faves,comments,platforms:[],chapters,words,incompleteChapters}`,
+    returns `[{id,icon,name,sub,earned}]`): `w-published`, `w-crossposted` (3+ platforms), `w-wide` (8+), a
+    single view tier (highest of 1K/5K/10K), `w-beloved` (100 faves), `w-discussed` (25 comments), `w-epic`
+    (10 ch), `w-wordsmith` (40k words), `w-complete` (no chapter gaps — only when chapters>1 && published≥1).
+    `bookshelf.js` `_paintWork` calls it with the **same per-work stats it already aggregates** (views summed,
+    faves/comments max-across-a-platform's-rows via the existing `byPlat` logic; `incompleteChapters` from the
+    chapter-gap reduce) and renders an **"Achievements — N of M earned"** `.work-card` (via `_wMedal(x)` →
+    `.wm.is-earned`/`.is-locked` chips) between "Published to" and the chapter card. NOTE: managed/imported works
+    with empty `publications` still get view/fave stats from linked discovered submissions, so their per-work
+    medals populate even though their *timeline* (2.76.0) is empty. **(3) Library → Laurels button** — `_paintWork`'s
+    library header is wrapped in a `.shelf-topbar` (flex space-between) with a `🏅 Laurels` `<a href="#/laurels">`
+    (`.shelf-laurels`); the view is now reachable from the Library, not only the Insights nav group. **(4) Animated
+    celebration** — `render()` ends with `_animateIn(totals.views)` + `_celebrateNew(earned)`. `_animateIn` drives
+    the **hero count-up** (ease-out cubic ~1.1s, only if target≥50) and fills `.lr-hero-fill`/`.lr-mini-fill`
+    `[data-pct]` bars from `width:0` (CSS transition). `_celebrateNew(earned)` diffs the earned-medal `id`s against
+    `localStorage['pp_laurels_seen']`: **first run with no key records a silent baseline** (no popups — existing
+    users aren't spammed with their whole medal history), otherwise any id not in the seen set is `_enqueueCeleb`'d
+    and the set is updated. `_drainCeleb` builds a fixed **`.lr-celebrate`** overlay (z-9999 backdrop) with a
+    scale-in **`.lr-celebrate-card`** (🏆 icon / "Achievement unlocked" eyebrow / medal name+desc / "tap to dismiss")
+    and **28 `.lr-conf` confetti** (randomised left/delay/duration via `Math.random`), auto-closing after 4600ms or
+    on click, one-at-a-time via a `_celebBusy` queue. **Reduced-motion:** a `@media (prefers-reduced-motion: reduce)`
+    block disables the count-up/bar-fill/confetti/card-pop. **Brut:** squares the popup card + `.wm` chips (hard
+    border/offset shadow). The count-up/bars use `requestAnimationFrame` + `performance.now()` (both available in the
+    browser; only unavailable in the Workflow sandbox).
   - Phase 2 (2.34.0) adds `GET /api/works/discovered` (poller-found submissions
     with no publication link, normalized via `build_discovered` over
     `posting.sync.PLATFORM_TABLES`) and `POST /api/works/link` (links one to a

@@ -56,11 +56,16 @@ window.Bookshelf = {
     async render() {
         const app = document.getElementById('app');
         app.innerHTML = `
-            <div class="shelf-head">
-                <div class="shelf-eyebrow">Your works</div>
-                <h1 class="shelf-title">Library</h1>
-                <p class="shelf-sub">Every story and piece you've made, on the shelf — each cover
-                carries its own truth: where it's live, and where it isn't yet.</p>
+            <div class="shelf-topbar">
+                <div class="shelf-head">
+                    <div class="shelf-eyebrow">Your works</div>
+                    <h1 class="shelf-title">Library</h1>
+                    <p class="shelf-sub">Every story and piece you've made, on the shelf — each cover
+                    carries its own truth: where it's live, and where it isn't yet.</p>
+                </div>
+                <a class="btn btn-secondary shelf-laurels" href="#/laurels" title="Your milestones, medals and trophies">
+                    <span aria-hidden="true">🏅</span> Laurels
+                </a>
             </div>
             <div id="shelf-controls"></div>
             <div id="shelf-grid"><div class="loading-spinner">Loading your shelf…</div></div>`;
@@ -297,6 +302,25 @@ window.Bookshelf = {
                 <div class="chapter-list">${chapterRows}</div>
             </section>` : '';
 
+        // ── Per-work achievements (Slice · Laurels-for-works) ──
+        // Count chapters that never reached a multi-chapter platform (the same
+        // gap logic the chapter grid uses) → feeds the "Complete Run" medal.
+        const incompleteCount = chapters.reduce((n, ch) => {
+            const gaps = multiChapPlats.filter(code => !(reach[ch.index] && reach[ch.index].has(code)));
+            return n + (gaps.length ? 1 : 0);
+        }, 0);
+        const wMedals = (window.Laurels && window.Laurels.workMedals) ? window.Laurels.workMedals({
+            views: totalViews, faves: totalFaves, comments: totalComments,
+            platforms: published, chapters: chapters.length, words: d.total_words,
+            incompleteChapters: incompleteCount,
+        }) : [];
+        const wmEarned = wMedals.filter(x => x.earned);
+        const achCard = wMedals.length ? `
+            <section class="work-card">
+                <h2 class="work-h2">Achievements <span class="work-h2-note">${wmEarned.length} of ${wMedals.length} earned</span></h2>
+                <div class="wm-grid">${wMedals.map(x => this._wMedal(x)).join('')}</div>
+            </section>` : '';
+
         body.innerHTML = `
             <article class="work-hero">
                 ${coverEl}
@@ -321,6 +345,8 @@ window.Bookshelf = {
                     ${notYetLine}
                 </section>
 
+                ${achCard}
+
                 ${chapterCard}
             </div>
             <div class="work-pane" data-pane="timeline" hidden>
@@ -344,5 +370,13 @@ window.Bookshelf = {
                 }
             });
         }
+    },
+
+    /* Per-work achievement chip (shape from Laurels.workMedals). */
+    _wMedal(x) {
+        return `<div class="wm ${x.earned ? 'is-earned' : 'is-locked'}" title="${this.esc(x.desc || '')}">`
+            + `<span class="wm-ico" aria-hidden="true">${x.icon}</span>`
+            + `<span class="wm-name">${this.esc(x.name)}</span>`
+            + `${x.sub ? `<span class="wm-sub">${this.esc(x.sub)}</span>` : ''}</div>`;
     },
 };

@@ -1,7 +1,26 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version (live/master):** 2.77.0 — **reskin concept Slice E: Health strip + Workbench (final slice).**
+**Current version (live/master):** 2.78.0 — **Gamification expansion (per-work achievements + more medals + animated popups).**
+Builds on the Slice-C Laurels (2.75.0). Path A, **frontend only, no backend added.** (1) **Account medals grown
+9 → 23** (`Laurels._buildMedals`), each now with a **stable id**: First Words/Canvas, Storyteller, Gallery,
+Shelf of Ten/Prolific/Century, Cross-Poster/Wide Reach/Full Spread, Breakout/Viral Hit, Following of 100/500 👑,
+On a Roll 🔥 (4-week streak), Dedicated 📅 (year tracked), Decorated 🎖 (earn 15). Tier + per-work-derived medals
+show a **source badge** (the work that earned them). (2) **Per-work achievements** — new pure engine
+**`Laurels.workMedals(w)`** scores one work from its own numbers; the **Bookshelf work-detail** now renders an
+**"Achievements — N of M earned"** card (lit/dimmed chips w/ live gaps) between "Published to" and "Chapters".
+(3) **Library → Laurels button** (🏅 in `.shelf-topbar`). (4) **Animated laurel popup** — a new medal fires a
+scale-in **celebration overlay** (🏆, "Achievement unlocked", name+desc, 28 confetti, 4.6s auto-close, queued);
+**first visit records a silent baseline** (`localStorage pp_laurels_seen`) so existing users aren't spammed —
+only medals earned *after* baseline celebrate (`_celebrateNew`/`_drainCeleb`). (5) **Hero entry animations** —
+the view count **counts up** and progress bars **fill from 0** (`_animateIn`). **Reduced-motion** disables all of
+it; **Brut** squares the popup + chips. All in **existing files** — `laurels.js`, `bookshelf.js`, `laurels.css`,
+`bookshelf.css` (no new files, no new routes). Verified in-browser (populated mock): 23 medals w/ correct
+earned/locked + source badges, count-up caught mid-flight + bars fill, work-detail "5 of 9 earned" w/ real
+chapter-gap data, 🏅 button routes to `#/laurels`, the celebration pops (28 confetti) and stays silent on first
+visit; zero console errors. Developed directly on `master`. Needs a server deploy + hard-refresh.
+
+**Prior — 2.77.0 — reskin concept Slice E: Health strip + Workbench (final reskin slice).**
 Extends the Overview's existing customisable widget board (which already does drag/resize/add/remove/persist).
 **Observatory:** a new **`health`** widget — a compact live 16-platform status strip (dot+name per platform +
 "N healthy · N need attention · N not set up" summary), reading the shared `PlatformHealth` cache via
@@ -13,7 +32,7 @@ add-catalog, saved to the `dashboard_layout` pref) **predated this slice** — S
 New `frontend/css/workbench.css`; touched `app.js` (widget registry + `w` arg + loader cfg + toggle handler +
 `_healthStripHtml`/`_mountHealthStrip`) and `charts.js`. Verified in-browser (16-platform strip with AO3 ringing
 red, Line/Bar toggle persists across reload, health widget drags/resizes in edit mode; zero console errors).
-Developed directly on `master`. Needs a server deploy + hard-refresh. **This COMPLETES the reskin concept-layer
+Developed directly on `master`. **This COMPLETED the reskin concept-layer
 plan — all 5 slices (A Bookshelf → B Modes → C Laurels → D Ledger → E Health/Workbench) are shipped live.**
 
 **Prior — 2.76.0 — reskin concept Slice D: the Ledger (dated timelines).**

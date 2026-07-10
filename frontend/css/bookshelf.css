@@ -4,7 +4,13 @@
  * for titles/summary; the sienna --accent is the "gilt". */
 
 /* ── Library header ── */
-.shelf-head { margin: 0 0 1.6rem; max-width: 62ch; }
+.shelf-topbar {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap; margin: 0 0 1.6rem;
+}
+.shelf-head { max-width: 62ch; }
+.shelf-topbar .shelf-head { margin: 0; }
+.shelf-laurels { flex-shrink: 0; white-space: nowrap; }
 .shelf-eyebrow {
     font-family: var(--font-sans);
     font-size: .72rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;

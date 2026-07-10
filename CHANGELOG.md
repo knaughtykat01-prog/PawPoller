@@ -4,6 +4,48 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.78.0] - 2026-07-10 - Gamification expansion: per-work achievements, more medals, animated laurel popups
+
+Follows the Slice-C **Laurels** concept (2.75.0) — the user asked to "expand the medal set with more
+achievements, including individual achievements for individual works", reach Laurels from the Library
+via a button, show each work its own achievements, and add "an animation popup of a new laurel achieved".
+Path A, **frontend only, no backend added.**
+
+- **Account medal set grown 9 → 23** (`Laurels._buildMedals`) — every medal now has a **stable id** (so
+  the celebration engine can diff earned-vs-seen). New rungs: First Words / First Canvas, Storyteller (5
+  stories), Gallery (5 artworks), Shelf of Ten / Prolific (25) / Century (100 works), Cross-Poster / Wide
+  Reach (8+ platforms on one work) / Full Spread (all 16), Breakout (5k views on one work) / Viral Hit
+  (10k), Following of 100 / 500 (👑), On a Roll (🔥 4-week publish streak), Dedicated (📅 a year tracked),
+  Decorated (🎖 earn 15 medals — self-referential, counts the others). Tier + per-work-derived medals show
+  a **source badge** (the work that earned it, e.g. "Chosen").
+- **Per-work achievements** — new pure engine **`Laurels.workMedals(w)`** scores a single work from its own
+  numbers `{views, faves, comments, platforms, chapters, words, incompleteChapters}`: Published, Cross-Posted
+  (3+), Wide Reach (8+), a view tier (1K/5K/10K), Beloved (100 faves), Discussed (25 comments), Epic (10 ch),
+  Wordsmith (40k words), Complete Run (no chapter gaps). The **Bookshelf work-detail** (`#/library/work/{name}`)
+  now renders an **"Achievements — N of M earned"** card (lit chips for earned, dimmed with the live gap for
+  locked), between "Published to" and "Chapters".
+- **Library → Laurels button** — a **🏅 Laurels** button in the Library header (`.shelf-topbar`), so the
+  motivational view is reachable from where the works live (previously only the Insights nav group).
+- **Animated laurel popup** — earning a new medal now fires a **celebration overlay**: a scale-in card
+  (🏆 icon, "Achievement unlocked", medal name + description, tap-to-dismiss) with **28 falling confetti**,
+  auto-closing after 4.6s, queued one-at-a-time if several land together. **First visit records a silent
+  baseline** (`localStorage pp_laurels_seen`) so existing users aren't spammed with their whole history — only
+  medals earned *after* that baseline celebrate. Diff-detected in `_celebrateNew`, drained via `_drainCeleb`.
+- **Entry animations** on the Laurels hero — the big view count **counts up** (ease-out, ~1.1s) and the
+  milestone **progress bars fill from 0** to their percentage on load (`_animateIn`).
+- **Reduced-motion respected** — `@media (prefers-reduced-motion: reduce)` disables the count-up, bar fills,
+  confetti and card pop (instant states). **Brut** mode squares the popup card + work chips (hard border/shadow).
+- All in **existing files** — `frontend/js/laurels.js` (medals + `workMedals` + `_animateIn` + celebration),
+  `frontend/js/bookshelf.js` (Laurels button + achievements card + `_wMedal`), `frontend/css/laurels.css`
+  (chips, overlay, confetti, keyframes, reduced-motion, Brut), `frontend/css/bookshelf.css` (`.shelf-topbar`).
+  No new JS/CSS files, no new routes. Frontend only + the `config.py` bump.
+- Verified in-browser (localhost, populated mock): 23 medals render with correct earned/locked + progress
+  sublabels + source badges; hero count-up caught mid-flight (30,227 → 49,100) and bars fill; the work-detail
+  Achievements card shows "5 of 9 earned" with real chapter-gap data; the Library 🏅 button routes to
+  `#/laurels`; the celebration overlay pops (28 confetti, correct icon/name/desc), first visit stays silent,
+  and only a genuinely-new medal fires it; zero console errors. Developed directly on `master`. Needs a
+  server deploy + hard-refresh.
+
 ## [2.77.0] - 2026-07-10 - Reskin concept Slice E: Health strip + Workbench (Observatory + Bento)
 
 Fifth and final **concept layer** of the reskin (see `docs/RESKIN_BUILD_PLAN.md`) — extends the
