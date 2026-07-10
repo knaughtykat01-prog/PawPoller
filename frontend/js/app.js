@@ -1050,6 +1050,8 @@ const App = {
             if (window.Bookshelf) window.Bookshelf.renderWork(parts.slice(2).join('/'));
         } else if (parts[0] === 'library') {
             if (window.Bookshelf) window.Bookshelf.render();
+        } else if (parts[0] === 'laurels') {
+            if (window.Laurels) window.Laurels.render();
         } else if (parts[0] === 'getting-started') {
             if (window.Guides) window.Guides.renderHub();
         } else {
@@ -1099,7 +1101,7 @@ const App = {
         const labels = {
             '': 'Overview', overview: 'Overview', platforms: 'Platforms',
             library: 'Library', posting: 'Stories', editor: 'Story Editor',
-            analytics: 'Analytics', groups: 'Groups', 'cross-platform': 'Cross-Platform',
+            analytics: 'Analytics', laurels: 'Laurels', groups: 'Groups', 'cross-platform': 'Cross-Platform',
             accounts: 'Accounts', settings: 'Settings',
         };
         let crumb;

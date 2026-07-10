@@ -4190,6 +4190,26 @@ Files:
     surface** (where you shell in for `docker`/logs), not the end-user dashboard — so only Default +
     Brut are offered as display modes. If a terminal skin is ever built, it attaches to the headless
     context, keyed the same way (`data-mode="term"`), never surfaced as a dashboard option here.
+  - **2.75.0 — Laurels** (reskin concept Slice C, `docs/RESKIN_BUILD_PLAN.md`): a motivational
+    achievements view at top-level route `#/laurels` (Insights & Tools group). `frontend/js/laurels.js`
+    (`window.Laurels`) + `frontend/css/laurels.css`; **no backend added** (Path A). `render()` fans out
+    `getPersonas` + `getPreferences` + `getWorks` + `getSummary` + `getAggregate` + `getPostingLog` in
+    one `Promise.all` (each `.catch`-guarded), then aggregates client-side. Grand totals come from the
+    **normalized** persona stats (`personas[].stats.combined.{views,favorites,comments,submissions}` +
+    any `unassigned[].stats`) — this sidesteps the per-platform summary-key divergence (views vs
+    likes/notes/reads). The **medal rungs reuse the app's own milestone ladders**
+    (`/api/settings/preferences` `milestone_views/faves/comments`, falling back to hardcoded defaults
+    that mirror `routes/api.py`), so a Laurels medal == a Telegram milestone alert. Medals are all
+    derived (metric-tier at the highest rung reached + next rung in-progress; catalogue medals from
+    `getWorks` counts + platform-spread; Breakout from `summary.top_viewed[0].views`; watchers from
+    `summary.total_watchers`). Per-persona **trophy cards** show a metal tier (Bronze→Diamond by views)
+    + level (rungs cleared). **Rhythm** buckets posting-log `created_at` into ISO weeks (last 12) for a
+    weeks-with-a-publish streak, plus distinct `aggregate.snapshots[].polled_at` days for "days
+    tracked". **Design decision (the deferred open question):** milestones read each platform's CURRENT
+    cumulative totals — i.e. **all-time**, credit for everything earned — stated in a page footnote (a
+    "from-now-on" mode was considered and rejected as less motivating and harder to explain). Router
+    branch + breadcrumb label in `app.js`; nav item in the Insights group; Brut mode covers `.lr-*`
+    cards.
   - Phase 2 (2.34.0) adds `GET /api/works/discovered` (poller-found submissions
     with no publication link, normalized via `build_discovered` over
     `posting.sync.PLATFORM_TABLES`) and `POST /api/works/link` (links one to a

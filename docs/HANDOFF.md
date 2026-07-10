@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version (live/master):** 2.74.0 — **reskin concept Slice B: the Modes pane + Brut display mode.**
+**Current version (live/master):** 2.75.0 — **reskin concept Slice C: Laurels (achievements & milestones).**
+A new top-level **Laurels** (`#/laurels`, Insights & Tools group) — the motivational "Den" view. A
+milestone **hero** (all-time total views + progress bar to the next rung, using the app's own
+`milestone_views/faves/comments` ladders from `/api/settings/preferences` — the same rungs the Telegram
+alerts use), a **medals** grid (metric-tier + catalogue/special: First Words, Cross-Poster, Full Spread,
+Breakout, Following of 100 — locked ones show the real gap), **persona trophy cards** (metal tier
+Bronze→Diamond + level, from the normalized `stats.combined` in `/api/personas`), and a **rhythm** strip
+(weeks-with-a-publish over 12 + days tracked). Path A — reuses `getPersonas`/`getPreferences`/`getWorks`/
+`getSummary`/`getAggregate`/`getPostingLog`, **no backend added**. **Open Slice-C decision resolved:**
+milestones use each platform's **current cumulative** (all-time) totals — credit for everything earned;
+stated in a footnote. New `frontend/js/laurels.js` + `frontend/css/laurels.css`; Brut covers its cards.
+Verified in-browser (real sparse data + populated mock — hero/progress, 9 medals, Gold/Silver tiers,
+3-week streak; zero console errors). Developed directly on `master`. Needs a server deploy + hard-refresh.
+
+**Prior — 2.74.0 — reskin concept Slice B: the Modes pane + Brut display mode.**
 A new **Display mode** picker in Settings → Appearance (sits with Theme + Navigation as the look-and-feel controls):
 **Default** (soft editorial) vs **Brut** (neo-brutalist). Brut = `html[data-mode="brut"]`, a *character* layer that
 keeps the active theme's colours and only changes the hand — thick ink borders, hard `4px 4px 0` offset shadows,

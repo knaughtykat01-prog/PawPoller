@@ -42,7 +42,11 @@ html[data-mode="brut"] .hub-tile,
 html[data-mode="brut"] .theme-card,
 html[data-mode="brut"] .mobile-mode-card,
 html[data-mode="brut"] .work-card,
-html[data-mode="brut"] .modal-panel {
+html[data-mode="brut"] .modal-panel,
+html[data-mode="brut"] .lr-hero,
+html[data-mode="brut"] .lr-medal,
+html[data-mode="brut"] .lr-persona,
+html[data-mode="brut"] .lr-rhythm-card {
     border: 2px solid var(--brut-line);
     box-shadow: 4px 4px 0 var(--brut-shadow);
     backdrop-filter: none;

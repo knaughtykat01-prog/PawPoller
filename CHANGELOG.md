@@ -4,6 +4,37 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.75.0] - 2026-07-10 - Reskin concept Slice C: Laurels (achievements & milestones)
+
+Third **concept layer** of the reskin (see `docs/RESKIN_BUILD_PLAN.md`), from the "Den" direction —
+the *motivational* view, the reward side of the numbers. A new top-level **Laurels** destination
+(`#/laurels`, in the Insights & Tools group). Path A: reuses the real endpoints, adds **no backend**.
+
+- **Milestone hero** — your all-time total views as a headline ("your den has been visited N times")
+  with a **progress bar to the next rung**, plus **Favourites** and **Comments** mini-trackers. The
+  rungs are the app's own **existing milestone ladders** (`GET /api/settings/preferences`
+  `milestone_views/faves/comments`, the same thresholds that drive the Telegram milestone alerts) —
+  so a medal earned here means the same thing an alert does.
+- **Medals** — a grid of earned + locked achievements, all derived (no fake data): metric-tier medals
+  at the highest rung reached (+ the next rung as an in-progress badge), and catalogue/special medals
+  (First Words, First Canvas, Shelf of Ten, Prolific, Cross-Poster, Wide Reach, Full Spread across all
+  16, Breakout = a single work over 5k views, Following of 100). Locked medals show the real gap
+  ("15/25", "6/16").
+- **Personas** — a **trophy card per persona** (your "account medals"): combined views/faves/comments
+  + a **metal tier** (Bronze→Diamond by views) and a **level** (rungs cleared). Reads the normalized
+  cross-platform `stats.combined` from `GET /api/personas`.
+- **Rhythm** — a light momentum strip: **weeks-with-a-publish over the last 12** (from the posting log)
+  with the current streak, and **days tracked** (distinct poll dates from `/api/aggregate`).
+- **Data (Path A):** `getPersonas` (normalized totals + per-persona), `getPreferences` (rungs),
+  `getWorks` (catalogue medals), `getSummary` (breakout + watchers), `getAggregate` + `getPostingLog`
+  (rhythm). **Design decision (was the open Slice-C question):** milestones use each platform's
+  **current cumulative** totals, i.e. **all-time** — you keep credit for everything earned; stated in
+  a page footnote. New files `frontend/js/laurels.js` (`window.Laurels`) + `frontend/css/laurels.css`;
+  wired: a Laurels nav item, the `#/laurels` route, breadcrumb, and Brut-mode coverage for its cards.
+- Frontend only + the `config.py` bump. Verified in-browser (real sparse data + a populated mock —
+  hero/progress, 9 earned medals, Gold/Silver persona tiers, 3-week rhythm streak all correct; zero
+  console errors). Developed directly on `master`. Needs a server deploy + hard-refresh.
+
 ## [2.74.0] - 2026-07-10 - Reskin concept Slice B: the Modes pane + Brut display mode
 
 Second **concept layer** of the reskin (see `docs/RESKIN_BUILD_PLAN.md`), from the "Brut" +
