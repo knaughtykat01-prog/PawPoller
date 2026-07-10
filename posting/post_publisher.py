@@ -24,11 +24,15 @@ from database import posts_queries
 logger = logging.getLogger(__name__)
 
 # Platforms this module can post to.
-SUPPORTED = ("bsky", "mast", "thr", "tw", "tum")
+SUPPORTED = ("bsky", "mast", "thr", "tw", "tum", "ig")
 
 # These still post text only (image cross-posting needs per-platform work:
 # Threads wants a public image_url, Tumblr NPF). X gained image posting in 2.58.0.
 _TEXT_ONLY = ("thr", "tum")
+
+# The inverse of _TEXT_ONLY: platforms that REQUIRE an image — Instagram has no
+# text-only feed post, so a caption alone can't be published.
+_IMAGE_REQUIRED = ("ig",)
 
 # Rating → Bluesky self-labels. General adds none.
 _BSKY_LABELS = {"mature": ["sexual"], "adult": ["porn"]}
@@ -105,6 +109,11 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
     if platform in _TEXT_ONLY and image_paths:
         result["error"] = (f"{platform} posting is text-only for now — drop the image, "
                            f"or use Bluesky/Mastodon/X for image posts")
+        return result
+
+    if platform in _IMAGE_REQUIRED and not image_paths:
+        result["error"] = ("Instagram requires a photo — attach an image "
+                           "(Instagram has no text-only posts)")
         return result
 
     account_id, creds = _resolve_creds(platform, account_id, settings)
@@ -227,6 +236,38 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
                 result.update(success=True, external_id=r["id"], external_url=r.get("url", ""))
             else:
                 result["error"] = "Tumblr rejected the post (check the OAuth1 tokens / logs)"
+
+        elif platform == "ig":
+            token = creds.get("ig_access_token", "")
+            if not token:
+                result["error"] = "Instagram account isn't connected"
+                return result
+            base = (settings or config.get_settings()).get("ig_public_base_url", "").strip()
+            if not base:
+                result["error"] = ("Instagram posting needs a public address for Meta to fetch the "
+                                   "image — set IG_PUBLIC_BASE_URL (your server's public URL) in the "
+                                   "server .env")
+                return result
+            from posting import ig_media
+            from clients.ig.client import IgClient
+            stashed: list[str] = []
+            try:
+                # Stash each image publicly (Meta cURLs image_url during publish).
+                for pth in image_paths:
+                    stashed.append(ig_media.stash_image(pth))
+                image_urls = [ig_media.public_url(base, t) for t in stashed]
+                client = IgClient(access_token=token, user_id=creds.get("ig_user_id", ""))
+                try:
+                    r = await client.create_post(text, image_urls)
+                finally:
+                    await client.close()
+                if r and r.get("id"):
+                    result.update(success=True, external_id=r["id"], external_url=r.get("url", ""))
+                else:
+                    result["error"] = "Instagram rejected the post (check the token / logs)"
+            finally:
+                for t in stashed:
+                    ig_media.cleanup(t)
     except Exception as e:
         logger.error("Post publish to %s failed: %s", platform, e, exc_info=True)
         result["error"] = str(e)

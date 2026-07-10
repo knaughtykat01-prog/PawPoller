@@ -1,7 +1,23 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version:** 2.63.0 — **Instagram: the 16th platform (analytics).**
+**Current version:** 2.64.0 — **Instagram posting (Posts module).**
+Instagram joins the Posts module as a publish target (photo + caption), alongside bsky/mast/thr/tum/tw. Two
+IG-specific problems solved: (1) **every IG post requires media** (no text-only) → new `_IMAGE_REQUIRED` guard
+refuses a caption-only IG post; (2) **Instagram cURLs a public `image_url`** (no byte upload) → new
+`posting/ig_media.py` stashes a JPEG (converts + downscales to 1440px) and serves it **unauthenticated** at
+`GET /api/ig/pubmedia/{token}` (auth-exempt in `dashboard.py`; uuid4 token + path-traversal guard + 15-min TTL,
+deleted after publish). `IgClient` gains `_create_container`→`_wait_container_ready`→`_publish_container` +
+carousel (2–10). `post_publisher` `ig` branch stashes→posts→cleans up; caption via `_render_body`. Needs
+`instagram_business_content_publish` scope + Business/Creator (dev-mode/Standard Access OK for own account, no App
+Review). **Server-only** (image must be publicly reachable): set `IG_PUBLIC_BASE_URL` in `.env`
+(→ `ig_public_base_url`), e.g. `https://pawpoller.syncopates.app`. Composer shows IG with a **"photo"** badge.
+6 new tests (**332 green**). **Live-verify = a real public IG post; Meta must reach the pubmedia URL through
+Cloudflare.** Files: `posting/ig_media.py`, `clients/ig/client.py`, `routes/ig_api.py`, `dashboard.py`,
+`posting/post_publisher.py`, `config.py`, `server.py`, `frontend/js/posts.js`, `tests/test_ig_posting.py`.
+**Needs a server deploy + `IG_PUBLIC_BASE_URL` in `.env` + hard-refresh.**
+
+**Prior release — 2.63.0 — Instagram: the 16th platform (analytics).**
 PawPoller now tracks **Instagram** (code `ig`), poll-only (analytics, no posting). Polls your media for **views,
 reach, likes, comments, saved, shares** over time with the full dashboard/detail/compare/CSV/trending/session-dot/
 notification treatment. Built on the official **Instagram Graph API** (`graph.instagram.com`, "Instagram API with

@@ -82,6 +82,7 @@ _ENV_TO_SETTINGS = {
     "THR_USER_ID":        "thr_user_id",
     "IG_ACCESS_TOKEN":    "ig_access_token",
     "IG_USER_ID":         "ig_user_id",
+    "IG_PUBLIC_BASE_URL": "ig_public_base_url",
     "TELEGRAM_BOT_TOKEN": "telegram_bot_token",
     "TELEGRAM_CHAT_ID":   "telegram_chat_id",
     "TELEGRAM_ENABLED":   "telegram_enabled",

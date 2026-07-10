@@ -12,7 +12,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Query, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 
 from database.db import get_connection
 from database import ig_queries
@@ -86,6 +86,21 @@ def ig_disconnect():
     config.delete_settings_keys(["ig_access_token", "ig_user_id", "ig_username"])
     config.save_settings({"ig_notifications_enabled": False})
     return {"status": "success", "message": "Instagram disconnected"}
+
+
+# -- IG Public post-image hosting (for the Posts module) ----------------------
+# Instagram's Content Publishing API makes Meta cURL a public image_url, so a
+# to-be-posted image is stashed and served here, unauthenticated, for the few
+# seconds of an active publish. This path is auth-exempt (dashboard.py) and the
+# token is an unguessable uuid4 hex with a strict format check + short TTL.
+
+@ig_router.get("/pubmedia/{token}")
+def ig_pubmedia(token: str):
+    from posting import ig_media
+    p = ig_media.path_for(token)
+    if not p:
+        raise HTTPException(404, "Not found")
+    return FileResponse(str(p), media_type="image/jpeg")
 
 
 # -- IG Polling ---------------------------------------------------------------

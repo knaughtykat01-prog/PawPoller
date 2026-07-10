@@ -9,12 +9,15 @@
 window.Posts = {
 
     /* Microblog platforms the module can post to. Bluesky, Mastodon and X post
-     * images (up to 4); Threads/Tumblr are text-only for now. */
-    _PLATFORMS: ['bsky', 'mast', 'thr', 'tum', 'tw'],
+     * images (up to 4); Threads/Tumblr are text-only for now; Instagram is the
+     * opposite — it REQUIRES a photo (no text-only IG post). */
+    _PLATFORMS: ['bsky', 'mast', 'thr', 'tum', 'tw', 'ig'],
     /* Ticked by default — the rest need their posting creds set up first. */
     _DEFAULT_CHECKED: ['bsky', 'mast'],
     /* Platforms that accept image attachments (the rest keep the "text" badge). */
-    _IMAGE_PLATFORMS: ['bsky', 'mast', 'tw'],
+    _IMAGE_PLATFORMS: ['bsky', 'mast', 'tw', 'ig'],
+    /* Platforms that REQUIRE an image — Instagram has no text-only feed post. */
+    _IMAGE_REQUIRED: ['ig'],
 
     /* Bluesky caps a post at 300 graphemes; Mastodon's default is 500. Warn at
      * the tighter limit so a cross-post to Bluesky won't silently truncate. */
@@ -120,13 +123,17 @@ window.Posts = {
         el.innerHTML = this._PLATFORMS.map(code => {
             const p = this._plat(code);
             const on = this._DEFAULT_CHECKED.includes(code) ? ' checked' : '';
-            const textOnly = !this._IMAGE_PLATFORMS.includes(code)
-                ? ' <span class="post-plat-note" title="Text-only for now">text</span>' : '';
+            let note = '';
+            if (this._IMAGE_REQUIRED.includes(code)) {
+                note = ' <span class="post-plat-note" title="Instagram requires a photo">photo</span>';
+            } else if (!this._IMAGE_PLATFORMS.includes(code)) {
+                note = ' <span class="post-plat-note" title="Text-only for now">text</span>';
+            }
             return `
             <label class="post-plat" data-platform="${code}">
                 <input type="checkbox" class="post-plat-check" value="${code}"${on}>
                 <span class="post-plat-emoji">${p.emoji || ''}</span>
-                <span>${this.esc(p.label)}</span>${textOnly}
+                <span>${this.esc(p.label)}</span>${note}
                 <span class="post-acct-slot" data-platform="${code}"></span>
             </label>`;
         }).join('');

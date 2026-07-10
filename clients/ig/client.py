@@ -298,3 +298,106 @@ class IgClient:
             "views": 0, "reach": 0, "likes": 0, "comments": 0, "saved": 0, "shares": 0,
             "has_media": 0, "embed_type": "",
         }
+
+    # -- Posting (Content Publishing) -----------------------------------------
+    #
+    # Instagram publishes in two steps: create a media *container* (Meta cURLs
+    # the public image_url and processes it) then publish the container. A
+    # carousel wraps 2-10 child containers. Every post REQUIRES media — there is
+    # no text-only Instagram post. Needs the instagram_business_content_publish
+    # scope + a Business/Creator account.
+
+    async def _post_json(self, url: str, data: dict) -> dict | None:
+        """POST form-encoded params, raising a RuntimeError with Meta's own error
+        message on failure (so the publisher can surface it to the user)."""
+        payload = dict(data)
+        payload.setdefault("access_token", self.access_token)
+        try:
+            resp = await self._http.post(url, data=payload)
+            if resp.status_code == 429:
+                logger.warning("IG: Rate limited (429) on POST, waiting 30s...")
+                await asyncio.sleep(30)
+                resp = await self._http.post(url, data=payload)
+            if resp.status_code >= 400:
+                try:
+                    err = (resp.json() or {}).get("error", {})
+                    msg = err.get("error_user_msg") or err.get("message") or resp.text[:200]
+                except Exception:
+                    msg = resp.text[:200]
+                logger.error("IG: POST %s error (%s): %s", url, resp.status_code, msg)
+                raise RuntimeError(f"Instagram API error ({resp.status_code}): {msg}")
+            return resp.json()
+        except httpx.HTTPError as e:
+            raise RuntimeError(f"Instagram request failed: {e}")
+
+    async def _create_container(self, caption: str | None = None, image_url: str | None = None,
+                                is_carousel_item: bool = False, media_type: str | None = None,
+                                children: list[str] | None = None) -> str:
+        data: dict[str, str] = {}
+        if image_url:
+            data["image_url"] = image_url
+        if caption is not None:
+            data["caption"] = caption
+        if is_carousel_item:
+            data["is_carousel_item"] = "true"
+        if media_type:
+            data["media_type"] = media_type
+        if children:
+            data["children"] = ",".join(children)
+        res = await self._post_json(f"{_API_BASE}/{self.user_id}/media", data)
+        cid = str((res or {}).get("id", ""))
+        if not cid:
+            raise RuntimeError("Instagram did not return a media container id")
+        return cid
+
+    async def _wait_container_ready(self, container_id: str, tries: int = 6) -> None:
+        """Poll the container's status_code until FINISHED (images are usually
+        instant; videos/carousels take a moment). ERROR/EXPIRED raises."""
+        for _ in range(tries):
+            data = await self._get_json(f"{_API_BASE}/{container_id}", {"fields": "status_code"})
+            status = (data or {}).get("status_code", "")
+            if status in ("FINISHED", "PUBLISHED"):
+                return
+            if status in ("ERROR", "EXPIRED"):
+                raise RuntimeError(f"Instagram media container {status.lower()} (image rejected?)")
+            await asyncio.sleep(config.IG_REQUEST_DELAY_SECONDS * 2)
+        # Not FINISHED after the wait — publish will surface any real problem.
+
+    async def _publish_container(self, creation_id: str) -> dict:
+        res = await self._post_json(f"{_API_BASE}/{self.user_id}/media_publish",
+                                    {"creation_id": creation_id})
+        media_id = str((res or {}).get("id", ""))
+        if not media_id:
+            raise RuntimeError("Instagram publish did not return a media id")
+        permalink = ""
+        try:
+            d = await self._get_json(f"{_API_BASE}/{media_id}", {"fields": "permalink"})
+            permalink = (d or {}).get("permalink", "")
+        except Exception:
+            pass
+        return {"id": media_id, "url": permalink}
+
+    async def create_post(self, caption: str, image_urls: list[str]) -> dict:
+        """Publish a photo (or 2-10 photo carousel) with a caption. Returns
+        {id, url}. Raises RuntimeError with a user-facing message on failure."""
+        if not await self.ensure_logged_in():
+            raise RuntimeError("Instagram auth failed — reconnect the account")
+        urls = [u for u in (image_urls or []) if u]
+        if not urls:
+            raise RuntimeError("Instagram requires at least one image")
+
+        if len(urls) == 1:
+            container = await self._create_container(caption=caption, image_url=urls[0])
+            await self._wait_container_ready(container)
+            return await self._publish_container(container)
+
+        # Carousel: create each child, wait, then wrap + publish.
+        child_ids: list[str] = []
+        for u in urls[:10]:
+            child_ids.append(await self._create_container(image_url=u, is_carousel_item=True))
+        for cid in child_ids:
+            await self._wait_container_ready(cid)
+        carousel = await self._create_container(caption=caption, media_type="CAROUSEL",
+                                                children=child_ids)
+        await self._wait_container_ready(carousel)
+        return await self._publish_container(carousel)

@@ -259,7 +259,7 @@ _AUTH_EXEMPT_PATHS = frozenset({
     # context on every page, producing console error noise.
     "/favicon.ico",
 })
-_AUTH_EXEMPT_PREFIXES = ("/css/", "/js/", "/vendor/", "/img/")
+_AUTH_EXEMPT_PREFIXES = ("/css/", "/js/", "/vendor/", "/img/", "/api/ig/pubmedia/")
 
 # Endpoints that return stored credentials / full data backups or perform
 # destructive actions. On an UNCONFIGURED (no-password) instance these must

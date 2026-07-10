@@ -4,6 +4,43 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.64.0] - 2026-07-10 - Instagram posting (Posts module)
+
+Instagram joins the **Posts** module as a publish target — you can now post a photo + caption to Instagram
+alongside Bluesky/Mastodon/Threads/Tumblr/X.
+
+**The Instagram-shaped problem.** Instagram's Content Publishing API is unlike the others in two ways: (1) **every
+post requires media** — there is no text-only Instagram feed post; and (2) **you can't upload image bytes** — you
+pass a public `image_url` and *Meta's servers cURL it*. So posting a photo needs PawPoller to serve the image at a
+public address for the duration of the publish.
+
+**How it works.** A new `posting/ig_media.py` stashes a web-safe **JPEG** copy of the image (converts non-JPEG,
+downscales the long edge to 1440px) under the data volume and serves it, **unauthenticated**, at
+`GET /api/ig/pubmedia/{token}` (auth-exempt in `dashboard.py`; token is an unguessable uuid4 hex with a strict
+format check + path-traversal guard + 15-min TTL, deleted the moment the publish finishes). `IgClient` gains the
+two-step flow — `_create_container` (Meta fetches `image_url`) → `_wait_container_ready` (polls `status_code`) →
+`_publish_container` (`media_publish`) — with **carousel** support (2–10 photos) and Meta's own error message
+surfaced on failure. `post_publisher` adds an `ig` branch: image is **mandatory** (a caption-only IG post is
+refused up front via the new `_IMAGE_REQUIRED`), the caption runs through `_render_body` like every platform, each
+image is stashed → posted → cleaned up. Needs the **`instagram_business_content_publish`** scope + a
+Business/Creator account (dev-mode / Standard Access is fine for your own account — no App Review).
+
+**Config.** IG posting is **server-only** (the image URL must be publicly reachable) and needs
+`ig_public_base_url` set to the server's public address (`IG_PUBLIC_BASE_URL` in `.env` → e.g.
+`https://pawpoller.syncopates.app`); without it the `ig` branch returns a clear error instead of half-posting.
+
+**Composer.** Instagram now appears in the Posts platform picker with a **"photo"** badge (it's the inverse of the
+"text" badge — image required, not text-only). `frontend/js/posts.js`.
+
+6 new unit tests (single-image + carousel flows, require-image guard, container-error handling, token-validation /
+path-traversal guard). **332 tests green.** New/changed: `posting/ig_media.py`, `clients/ig/client.py`,
+`routes/ig_api.py`, `dashboard.py`, `posting/post_publisher.py`, `config.py`, `server.py`, `frontend/js/posts.js`,
+`tests/test_ig_posting.py`. **Live-verify:** posting fires a real public Instagram post, so it's user-verified —
+and Meta must be able to reach the pubmedia URL through Cloudflare (if a bot-fight rule blocks the fetch, allow it).
+**Needs a server deploy + `IG_PUBLIC_BASE_URL` in `.env` + hard-refresh.**
+
+---
+
 ## [2.63.0] - 2026-07-10 - Instagram: the 16th platform (analytics)
 
 PawPoller now tracks **Instagram** (code `ig`) — the 16th platform, poll-only (analytics, no posting).

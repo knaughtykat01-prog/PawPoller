@@ -5602,9 +5602,19 @@ desktop and the server).
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)
 
 The third publishing hub beside Stories and Artwork, for short-form posts to
-microblog platforms. Compose once → publish to Bluesky + Mastodon at once (Phase
-2); Threads/Tumblr/X are recognised but return a clear "not wired yet" until
-Phase 3 wires their OAuth posting.
+microblog platforms. Compose once → publish to **Bluesky, Mastodon, Threads,
+Tumblr, X and Instagram** (`post_publisher.SUPPORTED`). Bluesky/Mastodon/X carry
+images (up to 4); Threads/Tumblr are text-only (`_TEXT_ONLY`); **Instagram is the
+inverse — it REQUIRES a photo** (`_IMAGE_REQUIRED`; no text-only IG post) and,
+uniquely, needs the image at a public URL because Meta cURLs it rather than
+accepting an upload. That public-image mechanism lives in `posting/ig_media.py`:
+a JPEG copy is stashed on the data volume and served unauthenticated at
+`GET /api/ig/pubmedia/{token}` (auth-exempt prefix in `dashboard.py`; uuid4 token
++ path-traversal guard + 15-min TTL, deleted after publish), so IG posting is
+**server-only** and needs `ig_public_base_url` (`IG_PUBLIC_BASE_URL` in `.env`)
+set to the server's public address. `IgClient.create_post` does the two-step
+container→`media_publish` flow (with 2–10 photo carousels). IG posting needs the
+`instagram_business_content_publish` scope + a Business/Creator account.
 
 ### 21.1 Why a separate store (not the publications registry)
 
