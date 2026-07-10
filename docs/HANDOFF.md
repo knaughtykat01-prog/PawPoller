@@ -1,6 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
+**Current version (live/master):** 2.70.1 — **Hotfix: self-computing CSP hash for the no-flash boot script.**
+2.70.0 edited the inline boot `<script>` but not its hardcoded SHA-256 in `dashboard.py`, so browsers silently blocked
+it since 2.70.0 (pre-paint theme + mobile-mode resolution broken app-wide). `dashboard.py` now computes the hash from
+the HTML at runtime (`_theme_inline_hash()`, hashing index.html + epub-viewer.html, deduped) so it self-heals. This was
+**cherry-picked to master ahead of the reskin** — the full UI reskin lives on the **`reskin` branch** (2.71.0 →
+**2.72.0 top-nav bar**, NOT yet deployed; it carries the same CSP fix). Deploy the reskin later via merge `reskin` →
+`master`.
+
+*(Prior current-version note, for context — 2.70.0:)*
 **Current version:** 2.70.0 — **UI reskin slice 1: "Quill" redesign palette.**
 The redesign is proceeding as **Path A — reskin the real `frontend/` in place** (apply the prototype's design language,
 keep all logic; the `prototype/` stays a reference, we do NOT rebuild from it). Slice 1 = the **palette foundation**:

@@ -4,6 +4,23 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.70.1] - 2026-07-10 - Hotfix: self-computing CSP hash for the no-flash boot script
+
+**Fixes a live regression introduced by 2.70.0.** The Content-Security-Policy pins the inline no-flash bootstrap
+`<script>` (the one that applies the saved theme + resolves mobile-mode synchronously, before first paint) by SHA-256
+hash, so it can run without opening the policy to `'unsafe-inline'`. 2.70.0 edited that script (default theme
+`'dark'`→`'quill'`) but **left the old hardcoded hash in `dashboard.py`** — so every browser has been **silently
+blocking the boot script** since 2.70.0, breaking synchronous theme apply *and* mobile-mode resolution app-wide (the
+theme still applies a beat later from JS, but the pre-paint pass is dropped).
+
+- **`dashboard.py`:** the CSP `script-src` hash is now **computed from the HTML files at runtime**
+  (`_theme_inline_hash()`, cached) instead of a hardcoded constant — so editing the boot script can never again leave a
+  stale hash that blocks it. The helper hashes both `index.html` and `epub-viewer.html` (deduped), so changing one
+  without the other can't block either. Both `_build_csp()` and `_build_epub_viewer_csp()` use it.
+
+Backend only (one file) + the version bump. This is a **targeted hotfix cherry-picked ahead of the in-progress
+`reskin` branch** (which carries the same fix); the branch's larger frontend reskin is deliberately *not* included.
+
 ## [2.70.0] - 2026-07-10 - UI reskin slice 1: "Quill" redesign palette
 
 First slice of the **reskin-in-place** redesign (Path A: apply the prototype's design language to the real
