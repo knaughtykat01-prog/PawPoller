@@ -4282,6 +4282,27 @@ Files:
     block disables the count-up/bar-fill/confetti/card-pop. **Brut:** squares the popup card + `.wm` chips (hard
     border/offset shadow). The count-up/bars use `requestAnimationFrame` + `performance.now()` (both available in the
     browser; only unavailable in the Workflow sandbox).
+  - **2.79.0 — App-wide milestone celebrations.** The 2.78.0 celebration only fired when the Laurels page was
+    open (`render()` → `_celebrateNew`). 2.79.0 makes it fire on **any** screen the moment a poll crosses a
+    milestone, via a background watcher — still Path A, **no backend / new files / new endpoints**. Two parts, both
+    in `frontend/js/laurels.js` plus a one-line start in `app.js`: **(1) `_load()` extraction** — the
+    fetch(6 endpoints)+aggregate+`_buildMedals` block that was inline in `render()` is pulled into a shared
+    `async _load()` returning the full model `{personas, totals, ladderV, rhythm, trackingDays, pV, pF, pC, medals,
+    empty}`. `render()` now calls `_load()` then paints (behaviour identical). The watcher calls the SAME `_load()`,
+    so both compute identical medal ids and share the one `pp_laurels_seen` baseline → each crossing is celebrated
+    exactly once regardless of which path detects it. **(2) `startAchievementWatch()`** — called once from
+    `App.init()` right after `PlatformHealth.start()` / `NotificationCenter.start()` (same auth gate; guarded by
+    `this._watching`). It schedules a silent catch-up `_achCheck()` ~4s after login (covers milestones crossed while
+    the app was closed — first-ever run just baselines silently) and `PlatformHealth.subscribe()`s to detect poll
+    completion: `_newestPoll(data)` returns the max `Date.parse(last_poll_at)` across platforms; when it advances past
+    the last-seen value, `_achCheck()` runs. `_achCheck()` (guarded by `this._achBusy`, try/caught so a transient
+    fetch failure just waits for the next poll) does `_load()` → `_celebrateNew(earned)`, reusing the 2.78.0 overlay /
+    queue / reduced-motion / Brut untouched. **Why PlatformHealth for the trigger:** it already polls
+    `/api/platforms/health` every 60s and exposes `last_poll_at` + `subscribe()`, so the watcher needs **no trigger
+    fetch of its own** and only does the 6-endpoint `_load()` when a poll actually landed (~hourly), not every tick.
+    NOTE: milestone crossings are otherwise invisible in-app (the server-side `check_milestones` in
+    `polling/telegram.py` only sends Telegram, persists nothing), so this celebration is the only in-dashboard
+    surfacing of a crossing.
   - Phase 2 (2.34.0) adds `GET /api/works/discovered` (poller-found submissions
     with no publication link, normalized via `build_discovered` over
     `posting.sync.PLATFORM_TABLES`) and `POST /api/works/link` (links one to a

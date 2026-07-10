@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.79.0] - 2026-07-11 - App-wide milestone celebrations (fires on poll, any screen)
+
+Follows 2.78.0 — the user asked for the recommended next animation: fire the achievement
+celebration **the moment a poll crosses a milestone, on whatever screen you're on**, instead of
+only when the Laurels page is open. Path A, **frontend only, no backend added.**
+
+- **Background achievement watcher** (`Laurels.startAchievementWatch`) — started once from
+  `App.init()`, behind the **same auth gate** as PlatformHealth / the notification centre. It does a
+  **silent catch-up check ~4s after login** (covers milestones crossed while the app was closed), then
+  **re-checks every time a poll completes** — detected by subscribing to **`PlatformHealth`** and
+  watching the newest `last_poll_at` across platforms advance (no new fetch of its own for the trigger;
+  PlatformHealth already polls `/api/platforms/health` every 60s, and the watcher only does real work when
+  a poll actually landed). On a crossing it pops the **same celebration overlay** (2.78.0) — so passing
+  500 faves now celebrates on the Overview, Analytics, wherever you are.
+- **One source of truth, celebrated once** — the fetch+aggregate+medal-compute that was inline in
+  `Laurels.render()` is extracted to a shared **`Laurels._load()`** (returns the full model: totals,
+  ladders, rhythm, the complete medal set). Both the page and the watcher call it, so they compute the
+  **exact same medal ids** and share the **same `pp_laurels_seen` baseline** — a crossing is celebrated
+  exactly once, whether the watcher catches it or you open the page. First-ever run still records a
+  **silent baseline** (no confetti dump for medals you already had).
+- **Reuses everything** — no new files, no new endpoints, no new celebration UI. Just the watcher +
+  the `_load()` extraction in `frontend/js/laurels.js`, and a one-line start call in `frontend/js/app.js`.
+  Reduced-motion and Brut coverage carry over from 2.78.0.
+- Verified in-browser (localhost): the watcher auto-starts at boot and records a poll baseline from
+  PlatformHealth; a simulated poll-advance with a freshly-crossed medal pops the "500 Favourites"
+  celebration **while on the Overview page** (not Laurels) and records it so it won't re-fire; the
+  refactored Laurels page still renders + animates (count-up 26,342 → 42,800, bars fill, personas);
+  zero console errors. Developed directly on `master`. Needs a server deploy + hard-refresh.
+
 ## [2.78.0] - 2026-07-10 - Gamification expansion: per-work achievements, more medals, animated laurel popups
 
 Follows the Slice-C **Laurels** concept (2.75.0) — the user asked to "expand the medal set with more

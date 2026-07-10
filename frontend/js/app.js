@@ -216,6 +216,13 @@ const App = {
         if (window.NotificationCenter) {
             window.NotificationCenter.start();
         }
+        // App-wide achievement watcher — pops the Laurels celebration the moment
+        // a poll crosses a milestone, on whatever screen you're on (not just the
+        // Laurels page). Subscribes to PlatformHealth to detect poll completion;
+        // shares its seen-baseline with the page, so each crossing fires once.
+        if (window.Laurels && window.Laurels.startAchievementWatch) {
+            window.Laurels.startAchievementWatch();
+        }
 
         /* First-run setup wizard — if setup_complete is not set, show
          * the guided wizard instead of the normal dashboard. This check

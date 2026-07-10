@@ -52,17 +52,12 @@ window.Laurels = {
         return { name: 'Bronze', cls: 'is-bronze' };
     },
 
-    async render() {
-        const app = document.getElementById('app');
-        app.innerHTML = `
-            <div class="lr-head">
-                <div class="lr-eyebrow">Your den</div>
-                <h1 class="lr-title">Laurels</h1>
-                <p class="lr-sub">Every view, fave and comment you've ever earned — turned into
-                milestones and medals. The reward side of the numbers.</p>
-            </div>
-            <div id="lr-body"><div class="loading-spinner">Tallying your laurels…</div></div>`;
-
+    /* ── Data load + medal computation ───────────────────────────
+     * Fetches the 6 read-only endpoints and derives the full model the page
+     * renders from — totals, ladders, rhythm and the complete medal set.
+     * SHARED by render() and the app-wide achievement watcher so both compute
+     * the exact same medal ids from one code path (no drift, one seen-baseline). */
+    async _load() {
         const safe = (p, fallback) => p.then(r => r).catch(() => fallback);
         const [personasResp, prefs, worksResp, summary, agg, postLog] = await Promise.all([
             safe(API.getPersonas(), { personas: [], unassigned: [] }),
@@ -72,9 +67,6 @@ window.Laurels = {
             safe(API.getAggregate(), { snapshots: [] }),
             safe(API.getPostingLog({ limit: 250, content_type: null }), { log: [] }),
         ]);
-
-        const body = document.getElementById('lr-body');
-        if (!body) return;  // navigated away
 
         // ── Aggregate the grand totals from the normalized persona stats ──
         const personas = personasResp.personas || [];
@@ -109,20 +101,8 @@ window.Laurels = {
 
         const topViewed = (summary.top_viewed && summary.top_viewed[0]) || null;
         const breakoutViews = topViewed ? (Number(topViewed.views) || 0) : 0;
+        const breakoutTitle = topViewed ? topViewed.title : '';
         const watchers = Number(summary.total_watchers) || 0;
-
-        // Empty state — nothing published yet
-        if (!works.length && totals.views === 0 && totals.favorites === 0) {
-            body.innerHTML = `
-                <div class="lr-empty">
-                    <div class="lr-empty-emoji">🌱</div>
-                    <h2>No laurels yet — but that's where everyone starts.</h2>
-                    <p>Publish and connect your accounts, and this page fills with milestones,
-                    medals and per-persona trophies as the views come in.</p>
-                    <a class="btn btn-primary" href="#/library">Go to your Library</a>
-                </div>`;
-            return;
-        }
 
         const pV = this._progress(totals.views, ladderV);
         const pF = this._progress(totals.favorites, ladderF);
@@ -135,13 +115,47 @@ window.Laurels = {
         const days = new Set((agg.snapshots || []).map(s => String(s.polled_at || '').slice(0, 10)).filter(Boolean));
         const trackingDays = days.size;
 
-        // ── Medals ──────────────────────────────────────────────────
         const medals = this._buildMedals({
             totals, pV, pF, pC, ladderV, ladderF, ladderC,
             stories, artworks, works, allPlats, maxPlatsOnWork, totalPlatforms,
-            breakoutViews, breakoutTitle: topViewed ? topViewed.title : '', watchers,
+            breakoutViews, breakoutTitle, watchers,
             trackingDays, streak: rhythm.streak,
         });
+
+        const empty = (!works.length && totals.views === 0 && totals.favorites === 0);
+        return { personas, totals, ladderV, rhythm, trackingDays, pV, pF, pC, medals, empty };
+    },
+
+    async render() {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="lr-head">
+                <div class="lr-eyebrow">Your den</div>
+                <h1 class="lr-title">Laurels</h1>
+                <p class="lr-sub">Every view, fave and comment you've ever earned — turned into
+                milestones and medals. The reward side of the numbers.</p>
+            </div>
+            <div id="lr-body"><div class="loading-spinner">Tallying your laurels…</div></div>`;
+
+        const model = await this._load();
+
+        const body = document.getElementById('lr-body');
+        if (!body) return;  // navigated away
+
+        // Empty state — nothing published yet
+        if (model.empty) {
+            body.innerHTML = `
+                <div class="lr-empty">
+                    <div class="lr-empty-emoji">🌱</div>
+                    <h2>No laurels yet — but that's where everyone starts.</h2>
+                    <p>Publish and connect your accounts, and this page fills with milestones,
+                    medals and per-persona trophies as the views come in.</p>
+                    <a class="btn btn-primary" href="#/library">Go to your Library</a>
+                </div>`;
+            return;
+        }
+
+        const { personas, totals, ladderV, rhythm, trackingDays, pV, pF, pC, medals } = model;
         const earned = medals.filter(m => m.earned);
         const locked = medals.filter(m => !m.earned);
 
@@ -231,6 +245,53 @@ window.Laurels = {
         if (!fresh.length) return;
         try { localStorage.setItem(this._SEEN_KEY, JSON.stringify([...new Set([...seen, ...ids])])); } catch (e) { /* ignore */ }
         fresh.forEach(m => this._enqueueCeleb(m));
+    },
+
+    /* ── App-wide achievement watcher ────────────────────────────
+     * The page only celebrates when it's open. This runs on every screen:
+     * a silent catch-up shortly after login, then a re-check each time a poll
+     * completes — so the moment a poll pushes you past 500 faves (or any medal),
+     * the celebration pops wherever you are. It reuses _load() + _celebrateNew(),
+     * sharing the same `pp_laurels_seen` baseline as the page, so any crossing
+     * is celebrated exactly once. Started from App.init() behind the auth gate. */
+    startAchievementWatch() {
+        if (this._watching) return;
+        this._watching = true;
+        // Catch-up once the dashboard has painted (covers milestones crossed
+        // while the app was closed). First-ever run just records the baseline.
+        setTimeout(() => this._achCheck(), 4000);
+        // Re-check whenever a poll finishes — detected by the newest
+        // last_poll_at across platforms advancing (PlatformHealth ticks 60s;
+        // this only fires real work when a poll actually landed).
+        if (window.PlatformHealth && PlatformHealth.subscribe) {
+            this._achUnsub = PlatformHealth.subscribe((data) => {
+                const newest = this._newestPoll(data);
+                if (!newest) return;
+                if (this._lastPollSeen == null) { this._lastPollSeen = newest; return; }
+                if (newest > this._lastPollSeen) {
+                    this._lastPollSeen = newest;
+                    this._achCheck();
+                }
+            });
+        }
+    },
+    _newestPoll(data) {
+        let max = 0;
+        Object.keys(data || {}).forEach(k => {
+            const e = data[k];
+            const t = (e && e.last_poll_at) ? Date.parse(e.last_poll_at) : 0;
+            if (t && t > max) max = t;
+        });
+        return max || null;
+    },
+    async _achCheck() {
+        if (this._achBusy) return;
+        this._achBusy = true;
+        try {
+            const model = await this._load();
+            if (model) this._celebrateNew(model.medals.filter(m => m.earned));
+        } catch (e) { /* transient — the next poll re-checks */ }
+        finally { this._achBusy = false; }
     },
 
     _enqueueCeleb(medal) {

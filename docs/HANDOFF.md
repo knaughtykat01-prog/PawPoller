@@ -1,7 +1,22 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-10
-**Current version (live/master):** 2.78.0 — **Gamification expansion (per-work achievements + more medals + animated popups).**
+**Last updated:** 2026-07-11
+**Current version (live/master):** 2.79.0 — **App-wide milestone celebrations (fires on poll, any screen).**
+Follows 2.78.0. The achievement celebration used to fire only when the Laurels page was open; now a
+background **`Laurels.startAchievementWatch`** (started once from `App.init()`, behind the same auth gate as
+PlatformHealth) pops it **wherever you are** the moment a poll crosses a milestone. It does a silent catch-up
+~4s after login, then re-checks whenever a poll completes — detected by subscribing to **`PlatformHealth`** and
+watching the newest `last_poll_at` advance (no new trigger fetch). The fetch+aggregate+medal-compute that was
+inline in `render()` is extracted to a shared **`Laurels._load()`**, so the page and the watcher compute the
+**same medal ids** against the **same `pp_laurels_seen` baseline** — each crossing celebrates exactly once
+(first run still silently baselines). **Frontend only, no backend/new files/new endpoints** — the watcher +
+`_load()` extraction in `laurels.js` and a one-line start in `app.js`; reduced-motion + Brut carry over from
+2.78.0. Verified in-browser: watcher auto-starts + records a poll baseline; a simulated poll-advance pops
+"500 Favourites" **on the Overview** (not Laurels) and records it; the refactored Laurels page still renders +
+animates (count-up 26,342→42,800, bars fill); zero console errors. Developed directly on `master`. Needs a
+server deploy + hard-refresh.
+
+**Prior — 2.78.0 — Gamification expansion (per-work achievements + more medals + animated popups).**
 Builds on the Slice-C Laurels (2.75.0). Path A, **frontend only, no backend added.** (1) **Account medals grown
 9 → 23** (`Laurels._buildMedals`), each now with a **stable id**: First Words/Canvas, Storyteller, Gallery,
 Shelf of Ten/Prolific/Century, Cross-Poster/Wide Reach/Full Spread, Breakout/Viral Hit, Following of 100/500 👑,
