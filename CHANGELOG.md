@@ -4,6 +4,22 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.72.1] - 2026-07-10 - Fix: top-nav dropdowns wouldn't close + concept-layer build plan
+
+**Bug fix (top-nav dropdowns).** The 2.72.0 top-bar dropdowns opened on click but wouldn't
+close: the click handler only toggled `.expanded` on the label and nothing ever cleared it, so
+clicking elsewhere left the panel pinned open (and CSS `:focus-within` could silently re-hold
+it). Replaced the per-label handler with **one delegated document handler**: click a group
+label toggles just that group (siblings close); clicking anything else — a dropdown item, page
+content, outside — closes all open groups; **Escape** closes all; on close the label is
+`blur()`-ed so `:focus-within` can't keep it open. Hover behaviour is unchanged. Verified
+in-browser (outside-click, Escape, item-select, re-click all close).
+
+**Also:** `docs/RESKIN_BUILD_PLAN.md` — the approved staged plan for the reskin's **concept
+layers** (Bookshelf → Modes → Laurels → Ledger → Health strip/Workbench), derived from the
+Vol. III synthesis + storyboard. Foundation (Quill + top/side nav) stays; slices layer on,
+reuse the real APIs, preview locally, and deploy after each is approved.
+
 ## [2.72.0] - 2026-07-10 - UI reskin: top navigation bar (default) + a side-rail toggle
 
 The reskin's shell change. The classic left sidebar becomes a **horizontal top bar** as the new default, with the

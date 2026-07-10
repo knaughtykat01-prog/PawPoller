@@ -1,9 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version:** 2.72.0 — **UI reskin: top navigation bar (new default) + a side-rail toggle.**
-Being built on the **`reskin` git branch** — the user wants the ENTIRE reskinned frontend done before ONE deploy to
-live (no incremental deploys). NOT yet deployed. Path A holds (reskin the real `frontend/` in place, keep all logic;
+**Current version:** 2.72.1 — **top-nav dropdown close-behaviour fix + the approved concept-layer build plan.**
+2.72.1 replaces the top-bar dropdown handler with one delegated document handler so a panel can't get pinned open
+(toggle on label; close on outside-click / Escape / item-select / re-click; blur so `:focus-within` can't re-hold it).
+It also lands **`docs/RESKIN_BUILD_PLAN.md`** — the APPROVED staged plan for the reskin's **concept layers**
+(A Bookshelf → B Modes pane → C Laurels → D Ledger → E Health strip/Workbench), each reusing the real APIs, previewed
+locally, and **deployed after each slice** (the user changed the cadence from "build everything then one deploy" to
+per-slice; **Slice A Bookshelf is being built now**, Bookshelf = a peer "Library" destination, Overview stays default).
+Being built on the **`reskin` git branch**. Foundation (Quill + top/side nav) is done; NOT yet deployed (the first
+concept-slice deploy will merge `reskin`→`master` and bring the whole reskin live at once). Path A holds (reskin the
+real `frontend/` in place, keep all logic;
 `prototype/` is the design reference — `styles.css` is the porting source, and the approved look is also in the
 published artifacts: *Site Storyboard*, *UI Directions III (Synthesis)*, *App Atlas*).
 **2.72.0 — the shell change.** The classic left sidebar becomes a **horizontal top bar** by default

@@ -313,16 +313,56 @@ const App = {
         /* Chart expand modal — click any chart to view full-size */
         Charts.bindExpandHandlers();
 
-        /* Accordion nav groups — toggle .expanded on click (mobile).
-           On desktop the groups are always visible via CSS. */
-        document.querySelectorAll('[data-nav-toggle]').forEach(toggle => {
-            toggle.addEventListener('click', () => {
-                const group = toggle.closest('.nav-group');
-                if (group) {
-                    const open = group.classList.toggle('expanded');
-                    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-                }
+        /* Nav-group dropdowns (top-bar mode) / accordion (mobile drawer).
+           One delegated document handler so a dropdown can never get stuck
+           open (2.72.1 — the first cut only toggled .expanded on the label and
+           nothing cleared it, so click-outside left it pinned open):
+             - click a group label → toggle just that group, close siblings
+             - click anything else (a dropdown item, page content, outside) → close all
+             - Escape → close all
+           On close we also blur() the label so CSS :focus-within can't keep the
+           panel open after .expanded is removed. In side-rail mode the .nav-sub
+           lists are always shown via CSS, so toggling .expanded there is a
+           harmless no-op. */
+        const _closeNavGroups = (except) => {
+            let changed = false;
+            document.querySelectorAll('.nav-group.expanded').forEach(g => {
+                if (g === except) return;
+                g.classList.remove('expanded');
+                g.querySelector('[data-nav-toggle]')?.setAttribute('aria-expanded', 'false');
+                changed = true;
             });
+            const active = document.activeElement;
+            if (active && active.classList && active.classList.contains('nav-group-label')
+                && (!except || active.closest('.nav-group') !== except)) {
+                active.blur();
+            }
+            return changed;
+        };
+        document.addEventListener('click', (e) => {
+            const toggle = e.target.closest('.nav-group-label[data-nav-toggle]');
+            if (toggle) {
+                const group = toggle.closest('.nav-group');
+                const willOpen = group && !group.classList.contains('expanded');
+                _closeNavGroups(group);                 // collapse any sibling group
+                if (group) {
+                    if (willOpen) {
+                        group.classList.add('expanded');
+                        toggle.setAttribute('aria-expanded', 'true');
+                    } else {
+                        group.classList.remove('expanded');
+                        toggle.setAttribute('aria-expanded', 'false');
+                        toggle.blur();                  // let :focus-within release it
+                    }
+                }
+                return;
+            }
+            /* Any other click — a dropdown item, page content, outside — closes
+               everything that's pinned open. */
+            _closeNavGroups(null);
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') _closeNavGroups(null);
         });
 
         /* 2.16.10 introduced a master collapse for the 11 platform
