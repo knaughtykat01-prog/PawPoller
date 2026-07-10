@@ -126,6 +126,49 @@ _cached_csp: str | None = None
 _cached_epub_viewer_csp: str | None = None
 
 
+_cached_theme_hash: str | None = None
+
+
+def _theme_inline_hash() -> str:
+    """CSP ``script-src`` source token(s) for the inline no-flash bootstrap
+    ``<script>``, computed from the HTML files themselves so they can never drift.
+
+    That one small script applies the persisted theme + resolves mobile-mode
+    synchronously (before CSS paints) without opening the policy to
+    'unsafe-inline'. Its SHA-256 must be whitelisted — and a STALE hardcoded hash
+    silently blocks the whole script, breaking theme AND mobile-mode resolution
+    app-wide (exactly the regression that shipped in 2.70.0, when index.html's
+    script was edited but the pinned constant wasn't). index.html and
+    epub-viewer.html carry the same boot script and are *meant* to stay
+    byte-identical; we hash each independently anyway (deduped) so editing one
+    without the other can never block it. Cached after first read.
+    """
+    global _cached_theme_hash
+    if _cached_theme_hash is not None:
+        return _cached_theme_hash
+    import hashlib
+    import base64
+    import re
+
+    frontend = config.resource_path("frontend")
+    tokens: list[str] = []
+    for name in ("index.html", "epub-viewer.html"):
+        path = frontend / name
+        if not path.exists():
+            continue
+        # The browser hashes the exact text between the tags of the first
+        # attribute-less <script> (the boot IIFE); later ones are <script src=…>.
+        match = re.search(r"<script>(.*?)</script>", path.read_text(encoding="utf-8"), re.DOTALL)
+        if not match:
+            continue
+        digest = hashlib.sha256(match.group(1).encode("utf-8")).digest()
+        token = "'sha256-" + base64.b64encode(digest).decode() + "'"
+        if token not in tokens:
+            tokens.append(token)
+    _cached_theme_hash = " ".join(tokens)
+    return _cached_theme_hash
+
+
 def _build_epub_viewer_csp() -> str:
     """Relaxed CSP for the in-app EPUB viewer (/epub-viewer.html only).
 
@@ -139,7 +182,7 @@ def _build_epub_viewer_csp() -> str:
     global _cached_epub_viewer_csp
     if _cached_epub_viewer_csp is not None:
         return _cached_epub_viewer_csp
-    theme_inline_hash = "'sha256-WudoxBejEmzS4SXsQBia7rsNZctlaFiey3RvF0r8SzA='"
+    theme_inline_hash = _theme_inline_hash()
     _cached_epub_viewer_csp = (
         "default-src 'self'; "
         f"script-src 'self' {theme_inline_hash}; "
@@ -165,12 +208,10 @@ def _build_csp() -> str:
     has_turnstile = bool(settings.get("turnstile_site_key"))
     cf = " https://challenges.cloudflare.com" if has_turnstile else ""
     frame_src = f"frame-src 'self'{cf}; " if has_turnstile else ""
-    # Hash of the inline theme-apply script in frontend/index.html.
-    # Lets us keep that one no-flash bootstrap inline without opening up
-    # the policy with 'unsafe-inline'. If the inline script changes, the
-    # browser will print the new expected hash in the console and this
-    # constant must be updated to match.
-    theme_inline_hash = "'sha256-WudoxBejEmzS4SXsQBia7rsNZctlaFiey3RvF0r8SzA='"
+    # Hash of the inline theme-apply script in frontend/index.html, derived
+    # from the file by _theme_inline_hash() so editing that script never leaves
+    # a stale hash silently blocking it (see that helper's docstring).
+    theme_inline_hash = _theme_inline_hash()
     _cached_csp = (
         "default-src 'self'; "
         f"script-src 'self' {theme_inline_hash}{cf}; "

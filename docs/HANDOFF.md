@@ -1,18 +1,29 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version:** 2.70.0 — **UI reskin slice 1: "Quill" redesign palette.**
-The redesign is proceeding as **Path A — reskin the real `frontend/` in place** (apply the prototype's design language,
-keep all logic; the `prototype/` stays a reference, we do NOT rebuild from it). Slice 1 = the **palette foundation**:
-two new themes (**Quill** warm-paper-light + **Quill Dark**) in `tokens.css` + the `THEMES` registry, mapping the
-prototype's warm-paper / sienna-quill palette onto the existing token names (`--bg-*`/`--accent`/`--text-*`/`--border`/
-`--shadow*`) — so every screen retones with no component CSS change, fully reversible. **Quill is now the default**
-(`'dark'`→`'quill'` in the boot script + app.js fallbacks); saved themes are preserved (pick Quill in Settings →
-Appearance). **Reskin slice sequence:** 1 ✅ palette → 2 typography (serif display) → 3 shell & chrome (sidebar/context
-bar/headers) → 4 card & primitive components → 5 screen-by-screen. The redesign map is `prototype/docs/APP_ATLAS.md`
-(refreshed for all 16 platforms) + `DESIGN_RATIONALE.md` (the "why" + agreed redesign decisions). **338 tests green.
-Frontend-only — needs a server deploy + hard-refresh.** Files: `frontend/css/tokens.css`, `frontend/js/app.js`,
-`frontend/index.html`, `config.py`.
+**Current version:** 2.71.0 — **UI reskin slices 2-4: the whole frontend de-hardcoded to Quill (+ a CSP regression fix).**
+Being built on the **`reskin` git branch** — the user wants the ENTIRE reskinned frontend done before ONE deploy to
+live (no incremental deploys). NOT yet deployed. Path A holds (reskin the real `frontend/` in place, keep all logic;
+`prototype/` is the design reference — `styles.css` is the porting source, and the approved look is also in the
+published artifacts: *Site Storyboard*, *UI Directions III (Synthesis)*, *App Atlas*).
+Slice 1 (2.70.0) put Quill on the token layer; **2.71.0 makes it global** — components/editor/charts hardcoded the dark
+theme's exact values so the theme couldn't reach them. **154 CSS literal→token replacements** (`components.css`,
+`editor.css`, `loading_indicator.css`, `redesign.css`) + **charts.js** now reads `--accent` for the primary series +
+**editor.css** metadata/e621 pills made theme-adaptive via `color-mix` + `accounts.js` persona default. **Kept invariant:**
+platform-brand hexes, theme swatches, EPUB reader themes, diagnostics console, Platforms-hub health LEDs (on saturated
+tiles). Verified live in-browser across 9 screens — all read as coherent warm-paper Quill.
+**CRITICAL FIX:** 2.70.0 shipped a **live CSP regression** — the inline no-flash boot `<script>` is pinned by SHA-256 in
+`dashboard.py`; slice 1 edited the script but not the hash, so browsers have been **silently blocking it** since 2.70.0
+(theme-flash + `data-mobile` both broken app-wide). The hash is now **computed from the file at runtime**
+(`_theme_inline_hash()`), so it self-heals — default-Quill + no-flash + mobile-mode boot now actually work.
+**Not yet done / optional next:** exhaustive per-screen eyeball of the remaining inheriting screens (Submissions,
+Stories, Artwork, Queue, History, Groups, Cross-Platform, Getting Started, editor 4-pane workspace, command palette,
+notifications, login); `posting.js` `PUB_CHART_COLORS` still leads with violet (secondary chart). Structural IA
+follow-ups from `DESIGN_RATIONALE.md` (Submissions-as-hub, unified Accounts+Connect, Settings config/runtime split)
+remain separate future work.
+**Deploy when ready:** merge `reskin` → `master`, then the normal build→commit→push→deploy. Bumping to 2.71.0
+cache-busts all `?v=` CSS/JS. Files: `dashboard.py`, `frontend/css/{components,editor,loading_indicator,redesign}.css`,
+`frontend/js/{charts,accounts}.js`, `config.py`.
 
 **Prior release — 2.69.0 — Import discovered art from any platform → managed works.**
 The Submissions hub shows *managed* works, so polled ("discovered") art only appears once imported — and art from six

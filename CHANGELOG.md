@@ -4,6 +4,39 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.71.0] - 2026-07-10 - UI reskin slices 2-4: de-hardcode the whole frontend to Quill + fix a CSP regression
+
+Slice 1 (2.70.0) laid the **Quill** palette on the token layer, but much of the app still read violet-glass because
+component CSS and chart JS **hardcoded the dark theme's exact values** (`#241f30`, `#9b7dff`, `#3d3556`, glass glows,
+flat-UI status colors) instead of the tokens — so the quill theme couldn't reach them. This release makes the reskin
+**global**: everything now flows from tokens, so every screen and component reads as warm-paper Quill (and every other
+theme is cleaner too). Verified screen-by-screen in a live browser (Overview, Story Editor, Settings, Appearance,
+Analytics, Platforms, Posts, Accounts, first-run).
+
+**Fixes a live regression from 2.70.0 (important).** The CSP pins the inline no-flash bootstrap `<script>` by SHA-256
+hash. Slice 1 edited that script (`'dark'`→`'quill'`) but not the hardcoded hash, so browsers have been **silently
+blocking the boot script** on 2.70.0 — breaking synchronous theme apply *and* mobile-mode resolution app-wide. The
+hash is now **computed from the file at runtime** (`dashboard.py::_theme_inline_hash`), so it can never drift again;
+the default-Quill + no-flash + `data-mobile` boot now actually works.
+
+### De-hardcode pass (tokens now drive everything)
+- **CSS (154 literal→token replacements across `components.css`, `editor.css`, `loading_indicator.css`,
+  `redesign.css`):** dark-theme token hexes → their token; violet accent/glow literals → `--accent` / warm
+  `color-mix`; flat-UI status colors (`#f1c40f`, `#3498db`, `rgba(46,204,113…)`…) → semantic tokens; `rgba(0,0,0,.06)`
+  hairlines → `--card-border-inner`; the command-palette's cold black shadow → `--shadow-strong`.
+- **Charts (`charts.js`):** the hardcoded violet `#9b7dff` primary/"views" series colour now reads the live `--accent`
+  token via `Charts._accent()` (sienna under Quill, violet under the dark themes); rebuilt on theme change.
+- **Editor sub-surfaces (`editor.css`):** metadata tag-category pills + the e621 chip are now **theme-adaptive**
+  (`color-mix` of each category hue with the active surface/text/border — light tints on Quill, dark on the dark
+  themes, instead of fixed dark chips); publish-check subtitle stats → semantic tokens.
+- **`accounts.js`:** default new-persona colour → Quill sienna.
+- **Left intentionally invariant:** platform-brand hexes, per-theme preview swatches, the EPUB reader's own reading
+  themes, the diagnostics console palette, and the Platforms-hub health LEDs (they read on saturated brand tiles).
+
+### Notes
+- Frontend + one backend file (`dashboard.py` CSP). Needs a server deploy + hard-refresh. Bumping the version
+  cache-busts all `?v=` CSS/JS so the changes actually load.
+
 ## [2.70.0] - 2026-07-10 - UI reskin slice 1: "Quill" redesign palette
 
 First slice of the **reskin-in-place** redesign (Path A: apply the prototype's design language to the real
