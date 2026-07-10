@@ -4,6 +4,46 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.72.0] - 2026-07-10 - UI reskin: top navigation bar (default) + a side-rail toggle
+
+The reskin's shell change. The classic left sidebar becomes a **horizontal top bar** as the new default, with the
+three nav groups (Publishing / Create / Insights & Tools) collapsing into **hover / focus dropdowns**; a new
+**Settings → Appearance → Navigation** picker switches back to the classic **left side rail** for anyone who prefers
+it. Desktop-only — phones keep the bottom nav and slide-in drawer either way. Still on the **`reskin` branch, not
+deployed** (the whole reskin ships in one deploy).
+
+### Top navigation bar
+- **New default shell (`data-navmode="top"`).** The sidebar's DOM is unchanged; a `@media (min-width: 769px)` block in
+  `layout.css` (gated on `html[data-navmode="top"]:not([data-mobile="1"])`) restyles it into a 58px horizontal bar —
+  brand · nav · search · footer laid out in a row, content shifted to `margin-top:58px`, full-width.
+- **Grouped dropdowns, CSP-safe.** The nav groups are wrapped as `.nav-group > button.nav-group-label + ul.nav-sub`;
+  in top mode each `.nav-sub` is an absolutely-positioned dropdown panel revealed on `:hover`, `:focus-within`, or a
+  `.expanded` class — no inline handlers, so the strict CSP is untouched. An invisible hover-bridge spans the
+  trigger→panel gap so the dropdown doesn't drop while the cursor crosses it.
+- **Side-rail toggle.** A "Navigation" section on Settings → Appearance (`#nav-mode-picker`, mirroring the mobile-mode
+  picker) flips between **Top bar** and **Side rail**; `App.applyNavMode()` persists the choice
+  (localStorage `pawpoller-nav`) and repaints without a reload. In side mode the nav is byte-identical to the classic
+  rail (groups shown flat).
+- **No-flash boot.** The inline bootstrap `<script>` (index.html + epub-viewer.html) now also resolves
+  `data-navmode` synchronously from localStorage before first paint, so the shell never flips layout on load. The CSP
+  hash self-computes from the file (2.71.0), so the added line is covered automatically — no hash to update.
+
+### Fix
+- **`data-nav` → `data-navmode` collision.** The nav-mode attribute was first named `data-nav` on `<html>`, which
+  collided with the app's existing document-level `[data-nav]` click-delegation — every click matched `<html>` and
+  navigated to `#top`, breaking clicks app-wide. Renamed the attribute throughout (boot scripts, `layout.css`,
+  `app.js`) so the two never overlap.
+
+### Polish
+- **`posting.js` comparison chart.** The multi-series publication chart led with a hardcoded violet; its **primary
+  series now reads the live `--accent`** (sienna under Quill, per the `charts.js` pattern), and the leading violet in
+  the fallback palette was swapped for a warm amber so it stays on-theme even on wrap-around.
+
+### Notes
+- Frontend only (`layout.css`, `tokens.css`, `index.html`, `epub-viewer.html`, `app.js`, `posting.js`) + the
+  `config.py` bump. Part of the reskin — verified live in-browser (top bar + dropdowns, side-rail toggle, mobile
+  bottom nav, command palette, editor 4-pane, Analytics) before commit. Not deployed.
+
 ## [2.71.0] - 2026-07-10 - UI reskin slices 2-4: de-hardcode the whole frontend to Quill + fix a CSP regression
 
 Slice 1 (2.70.0) laid the **Quill** palette on the token layer, but much of the app still read violet-glass because

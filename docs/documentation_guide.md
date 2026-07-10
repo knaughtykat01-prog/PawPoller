@@ -196,7 +196,7 @@ PawPoller/
 │   └── posting_api.py       # Posting endpoints (publish-check matrix, publish, dry-run, verify, scheduling, retry queue, bulk actions)
 │
 ├── frontend/
-│   ├── index.html           # SPA shell (collapsible nav groups, bottom nav bar, sidebar overlay)
+│   ├── index.html           # SPA shell (grouped nav: top-bar/side-rail modes, bottom nav bar, sidebar overlay)
 │   ├── epub-viewer.html     # In-app EPUB reader (2.17.6+) — opened in new tab from editor Downloads dropdown
 │   ├── css/
 │   │   ├── tokens.css      # Design tokens (10 themes via [data-theme=...]; default "quill" = redesign palette)
@@ -1682,20 +1682,24 @@ The dashboard is fully responsive with a mobile-first overhaul targeting phone a
 ```
 `viewport-fit=cover` extends content into notched device areas (iPhone etc.). CSS `env(safe-area-inset-*)` values then provide padding where needed.
 
-**Collapsible sidebar navigation** — Platform sections are wrapped in `<li class="nav-group">` elements containing a `<div class="nav-section" data-nav-toggle>` header and a `<ul class="nav-group-links">` sub-list:
+**Grouped navigation** — the nav groups (Publishing / Create / Insights & Tools) are wrapped in `<li class="nav-group">` elements containing a `<button class="nav-group-label" data-nav-toggle>` header and a `<ul class="nav-sub">` sub-list:
 ```html
 <li class="nav-group">
-    <div class="nav-section" data-nav-toggle>Inkbunny <span class="nav-chevron">&#8250;</span></div>
-    <ul class="nav-group-links">
-        <li><a href="#/" class="nav-link" data-page="dashboard">Dashboard</a></li>
-        <li><a href="#/submissions" class="nav-link" data-page="submissions">Submissions</a></li>
-        <li><a href="#/compare" class="nav-link" data-page="compare">Compare</a></li>
+    <button class="nav-group-label" data-nav-toggle type="button" aria-expanded="false">Publishing<span class="nav-caret" aria-hidden="true">&#9662;</span></button>
+    <ul class="nav-sub">
+        <li><a href="#/submissions" class="nav-link" data-page="submissions">📚 Submissions</a></li>
+        <li><a href="#/posting" class="nav-link" data-page="posting">📤 Stories</a></li>
+        <li><a href="#/artwork" class="nav-link" data-page="artwork">🖼 Artwork</a></li>
     </ul>
 </li>
 ```
-On mobile (<=768px), `.nav-group-links` uses `max-height: 0` with `overflow: hidden` and transitions to `max-height: 200px` when the parent has `.expanded`. On desktop, groups are always expanded. The accordion toggle is CSS-only with JS adding/removing `.expanded` on the parent `.nav-group`.
+The `[data-nav-toggle]` handler (bound once in `App.init()`) toggles `.expanded` on the parent `.nav-group`; `aria-expanded` tracks it. Adding/removing state is the only JS — showing/hiding is pure CSS, so the strict CSP is untouched.
 
-The `route()` function auto-expands the nav-group containing the active link so the user always sees their current location in the sidebar.
+**Nav mode — top bar vs side rail (2.72.0).** The shell defaults to a **horizontal top bar** (`data-navmode="top"` on `<html>`, resolved synchronously by the no-flash boot `<script>` from `localStorage['pawpoller-nav']`, default `'top'`). Settings → Appearance → Navigation (`#nav-mode-picker`) flips to the classic **left side rail** (`'side'`); `App.applyNavMode()` persists the choice and repaints without a reload. Both modes are **desktop-only** — the whole top-bar block is gated on `@media (min-width: 769px)` and `html[data-navmode="top"]:not([data-mobile="1"])`, so phones always get the bottom nav + drawer regardless.
+- **Side rail** (`layout.css` base): the `.nav-sub` lists render flat (always visible, labelled) exactly like the pre-2.72.0 sidebar — no dropdowns.
+- **Top bar** (`layout.css` `@media` block): the sidebar becomes a 58px horizontal row (brand · nav · search · footer), `#main-col` shifts to `margin-top:58px`, and each `.nav-sub` becomes an **absolutely-positioned dropdown** revealed on `:hover`, `:focus-within`, or `.nav-group.expanded`. An invisible `.nav-group::after` hover-bridge spans the trigger→panel gap so the panel doesn't drop while the cursor crosses it. (Note: the attribute is `data-navmode`, deliberately *not* `data-nav` — the latter would collide with the app's document-level `[data-nav]` click-delegation and hijack every click.)
+
+The `route()` function marks the active `.nav-link` so the user always sees their current location.
 
 **Bottom navigation bar** — A fixed `<nav class="bottom-nav">` at the bottom of the viewport (hidden on desktop via `display: none`, `display: flex` at <=768px):
 ```html
@@ -2040,7 +2044,7 @@ The following security measures are applied in `dashboard.py` and across the cod
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | Limit referrer leakage |
 | `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'sha256-<computed>'; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src 'self' fonts.gstatic.com; img-src 'self' https:; connect-src 'self'; frame-ancestors 'none'` | Restrict resource loading |
 
-CSP rationale: All JS loaded via `<script src=...>` *except* one tiny inline boot script in `index.html` (and byte-identical in `epub-viewer.html`) that sets `data-theme` + `data-mobile` synchronously to avoid a flash of default-dark. That script's SHA-256 hash is allowlisted; everything else inline is dropped. **The hash is computed at runtime from the HTML files** (`_theme_inline_hash()`, cached) rather than hardcoded — 2.70.0 shipped a regression where the boot script was edited but a hardcoded hash wasn't, silently blocking the script and breaking theme + mobile-mode boot; deriving it from the file self-heals. The helper hashes both `index.html` and `epub-viewer.html` (deduped), so editing one without the other can't block it. Inline `style=` attributes require `'unsafe-inline'`. Google Fonts CSS + woff2 binaries get explicit allowlist origins. Platform CDN thumbnails need `https:`. All API calls are same-origin. When Cloudflare Turnstile is configured, `script-src` and `frame-src` automatically include `https://challenges.cloudflare.com`.
+CSP rationale: All JS loaded via `<script src=...>` *except* one tiny inline boot script in `index.html` (and byte-identical in `epub-viewer.html`) that sets `data-theme` + `data-mobile` + `data-navmode` synchronously to avoid a flash of default-dark / wrong-shell. That script's SHA-256 hash is allowlisted; everything else inline is dropped. **The hash is computed at runtime from the HTML files** (`_theme_inline_hash()`, cached) rather than hardcoded — 2.70.0 shipped a regression where the boot script was edited but a hardcoded hash wasn't, silently blocking the script and breaking theme + mobile-mode boot; deriving it from the file self-heals. The helper hashes both `index.html` and `epub-viewer.html` (deduped), so editing one without the other can't block it. Inline `style=` attributes require `'unsafe-inline'`. Google Fonts CSS + woff2 binaries get explicit allowlist origins. Platform CDN thumbnails need `https:`. All API calls are same-origin. When Cloudflare Turnstile is configured, `script-src` and `frame-src` automatically include `https://challenges.cloudflare.com`.
 
 **Path-scoped CSP relaxation for `/epub-viewer.html`** — `_build_epub_viewer_csp()` returns a separate policy that allows `blob:` in `style-src`, `img-src`, `font-src`, `connect-src`, and `frame-src`. epub.js extracts the EPUB's stylesheets, fonts, and inline images into Blob URLs and references them from the rendered iframe; under the strict default the iframe loads chapter HTML with no styling. The middleware swaps to the relaxed CSP only when `request.url.path == "/epub-viewer.html"` so every other route keeps the strict default. Both CSPs get the inline-boot-script hash from the same `_theme_inline_hash()`, so editing that script in either HTML file no longer needs a manual hash update — the value is recomputed from the files.
 

@@ -1,29 +1,44 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version:** 2.71.0 — **UI reskin slices 2-4: the whole frontend de-hardcoded to Quill (+ a CSP regression fix).**
+**Current version:** 2.72.0 — **UI reskin: top navigation bar (new default) + a side-rail toggle.**
 Being built on the **`reskin` git branch** — the user wants the ENTIRE reskinned frontend done before ONE deploy to
 live (no incremental deploys). NOT yet deployed. Path A holds (reskin the real `frontend/` in place, keep all logic;
 `prototype/` is the design reference — `styles.css` is the porting source, and the approved look is also in the
 published artifacts: *Site Storyboard*, *UI Directions III (Synthesis)*, *App Atlas*).
-Slice 1 (2.70.0) put Quill on the token layer; **2.71.0 makes it global** — components/editor/charts hardcoded the dark
-theme's exact values so the theme couldn't reach them. **154 CSS literal→token replacements** (`components.css`,
-`editor.css`, `loading_indicator.css`, `redesign.css`) + **charts.js** now reads `--accent` for the primary series +
-**editor.css** metadata/e621 pills made theme-adaptive via `color-mix` + `accounts.js` persona default. **Kept invariant:**
-platform-brand hexes, theme swatches, EPUB reader themes, diagnostics console, Platforms-hub health LEDs (on saturated
-tiles). Verified live in-browser across 9 screens — all read as coherent warm-paper Quill.
-**CRITICAL FIX:** 2.70.0 shipped a **live CSP regression** — the inline no-flash boot `<script>` is pinned by SHA-256 in
-`dashboard.py`; slice 1 edited the script but not the hash, so browsers have been **silently blocking it** since 2.70.0
-(theme-flash + `data-mobile` both broken app-wide). The hash is now **computed from the file at runtime**
-(`_theme_inline_hash()`), so it self-heals — default-Quill + no-flash + mobile-mode boot now actually work.
-**Not yet done / optional next:** exhaustive per-screen eyeball of the remaining inheriting screens (Submissions,
-Stories, Artwork, Queue, History, Groups, Cross-Platform, Getting Started, editor 4-pane workspace, command palette,
-notifications, login); `posting.js` `PUB_CHART_COLORS` still leads with violet (secondary chart). Structural IA
-follow-ups from `DESIGN_RATIONALE.md` (Submissions-as-hub, unified Accounts+Connect, Settings config/runtime split)
-remain separate future work.
-**Deploy when ready:** merge `reskin` → `master`, then the normal build→commit→push→deploy. Bumping to 2.71.0
-cache-busts all `?v=` CSS/JS. Files: `dashboard.py`, `frontend/css/{components,editor,loading_indicator,redesign}.css`,
-`frontend/js/{charts,accounts}.js`, `config.py`.
+**2.72.0 — the shell change.** The classic left sidebar becomes a **horizontal top bar** by default
+(`data-navmode="top"`), the three nav groups (Publishing / Create / Insights & Tools) collapsing into
+**hover / `:focus-within` dropdowns**; a new **Settings → Appearance → Navigation** picker (`#nav-mode-picker`,
+`App.applyNavMode()`, localStorage `pawpoller-nav`) flips back to the classic **left side rail**. Desktop-only —
+phones keep the bottom nav + drawer. DOM unchanged; a `@media (min-width:769px)` block in `layout.css` (gated on
+`html[data-navmode="top"]:not([data-mobile="1"])`) restyles the sidebar into a 58px top bar, the nav groups wrapped
+as `.nav-group > button.nav-group-label + ul.nav-sub` with CSP-safe dropdowns (`:hover`/`:focus-within`/`.expanded`,
+no inline handlers, + an invisible hover-bridge). The no-flash boot `<script>` (index.html + epub-viewer.html) now
+resolves `data-navmode` synchronously too; the CSP hash self-computes (2.71.0) so no hash edit is needed.
+**Gotcha fixed:** the attribute was first `data-nav`, which collided with the app's document-level `[data-nav]`
+click-delegation (every click matched `<html>` → navigated to `#top`); renamed to `data-navmode` everywhere.
+**Polish:** `posting.js` comparison chart's primary series now reads the live `--accent` (was a hardcoded violet).
+Verified live in-browser: top bar + dropdowns, side-rail toggle, mobile bottom nav, command palette, editor 4-pane,
+Analytics — all coherent Quill. Files: `frontend/css/{layout,tokens}.css`, `frontend/{index,epub-viewer}.html` (via
+`frontend/`), `frontend/js/{app,posting}.js`, `config.py`.
+
+**Reskin context (2.70.0–2.71.0).** Slice 1 (2.70.0) put Quill on the token layer; **2.71.0 made it global** —
+components/editor/charts hardcoded the dark theme's exact values so the theme couldn't reach them: **154 CSS
+literal→token replacements** (`components.css`, `editor.css`, `loading_indicator.css`, `redesign.css`) + **charts.js**
+reads `--accent` for the primary series + **editor.css** metadata/e621 pills made theme-adaptive via `color-mix` +
+`accounts.js` persona default. **Kept invariant:** platform-brand hexes, theme swatches, EPUB reader themes,
+diagnostics console + CodeMirror One-Dark editor panes, Platforms-hub health LEDs (on saturated tiles). 2.71.0 also
+**fixed a live CSP regression** from 2.70.0 — the SHA-256-pinned no-flash boot `<script>` in `dashboard.py` was edited
+without updating the hash (browsers silently blocked it); the hash is now **computed from the file at runtime**
+(`_theme_inline_hash()`) so it self-heals.
+**Reskin leak sweep (2.72.0): clean** — a full CSS/JS grep for the violet family + old dark-surface hexes found only
+intentional survivors (SquidgeWorld brand tint, theme-preview swatches, now-defined `--bg-elevated` dead fallbacks,
+secondary categorical chart hues). No unaddressed leaks remain.
+**Optional future:** the structural IA follow-ups from `DESIGN_RATIONALE.md` (Submissions-as-hub, unified
+Accounts+Connect, Settings config/runtime split) remain separate work beyond the visual reskin.
+**Deploy when ready:** merge `reskin` → `master`, then the normal build→commit→push→deploy. The version bump
+cache-busts all `?v=` CSS/JS. (`dashboard.py` carries an uncommitted local-only `/skeleton` preview mount in the
+working tree — do NOT commit it.)
 
 **Prior release — 2.69.0 — Import discovered art from any platform → managed works.**
 The Submissions hub shows *managed* works, so polled ("discovered") art only appears once imported — and art from six

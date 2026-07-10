@@ -318,7 +318,10 @@ const App = {
         document.querySelectorAll('[data-nav-toggle]').forEach(toggle => {
             toggle.addEventListener('click', () => {
                 const group = toggle.closest('.nav-group');
-                if (group) group.classList.toggle('expanded');
+                if (group) {
+                    const open = group.classList.toggle('expanded');
+                    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+                }
             });
         });
 
@@ -525,6 +528,46 @@ const App = {
             }
         }
         try { API.savePreferences({ mobile_mode: m }); } catch (e) { /* ignore */ }
+    },
+
+    /* ── Nav placement (top bar vs side rail) ────────────────
+       Single source of truth: `<html data-nav="top|side">`, set by the inline
+       boot script before CSS paints (no flash). Default is 'top' — the redesign
+       shell. Persisted to localStorage for synchronous boot; per-device for now
+       (unlike theme/mobile it isn't synced to settings.json — the top-nav CSS is
+       desktop-only anyway, gated to non-mobile so phones keep their bottom nav).
+       Picked in Settings → Appearance. */
+    NAV_MODES: ['top', 'side'],
+
+    getNavModeOverride() {
+        return document.documentElement.dataset.navmode
+            || localStorage.getItem('pawpoller-nav') || 'top';
+    },
+
+    applyNavMode(mode) {
+        const m = this.NAV_MODES.includes(mode) ? mode : 'top';
+        localStorage.setItem('pawpoller-nav', m);
+        document.documentElement.dataset.navmode = m;
+        // Re-paint the picker cards in place (same idiom as the mobile-mode picker).
+        document.querySelectorAll('#nav-mode-picker .mobile-mode-card').forEach(card => {
+            const isActive = card.dataset.navId === m;
+            card.classList.toggle('active', isActive);
+            const pill = card.querySelector('.active-pill');
+            if (isActive && !pill) {
+                const span = document.createElement('span');
+                span.className = 'active-pill';
+                span.textContent = 'Active';
+                card.appendChild(span);
+            } else if (!isActive && pill) {
+                pill.remove();
+            }
+        });
+        // Side rail vs full-width top bar changes the content column width, so
+        // charts must re-measure. Skip the re-route on the editor (unsaved CM state).
+        if (typeof Charts !== 'undefined' && Charts.destroyAll) {
+            Charts.destroyAll();
+            if (this.route && !location.hash.startsWith('#/editor/')) this.route();
+        }
     },
 
     /* Called once at boot from init(). Watches the viewport so `auto`
@@ -8301,6 +8344,28 @@ const App = {
                 </div>
 
                 <div class="settings-section">
+                    <h3>Navigation</h3>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
+                        Where the main navigation lives. <strong>Top bar</strong> is the redesigned shell &mdash; a horizontal bar with the Publishing / Insights groups as dropdowns. <strong>Side rail</strong> is the classic left sidebar. Applies on desktop; phones keep the bottom nav either way.
+                    </p>
+                    <div class="mobile-mode-picker" id="nav-mode-picker">
+                        ${[
+                            { id: 'top',  name: 'Top bar',  desc: 'Horizontal nav across the top (redesign)' },
+                            { id: 'side', name: 'Side rail', desc: 'Classic labelled left sidebar' },
+                        ].map(opt => {
+                            const isActive = opt.id === this.getNavModeOverride();
+                            return `
+                              <div class="mobile-mode-card ${isActive ? 'active' : ''}" data-nav-id="${opt.id}" role="button" tabindex="0">
+                                <div class="mobile-mode-name">${opt.name}</div>
+                                <div class="mobile-mode-desc">${opt.desc}</div>
+                                ${isActive ? '<span class="active-pill">Active</span>' : ''}
+                              </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h3>Mobile Layout</h3>
                     <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
                         Auto-detect uses the mobile interface on screens 768px wide or less (rotates with the viewport). Force on uses it everywhere — handy for testing or if you'd rather have the touch-first layout on a tablet. Force off keeps the desktop UX even on a phone (best-effort: some legacy responsive rules still fire on small screens).
@@ -9978,6 +10043,23 @@ const App = {
                     if (!card) return;
                     e.preventDefault();
                     this.applyMobileMode(card.dataset.mmId);
+                });
+            }
+
+            // ── Nav-mode picker (Appearance tab) — top bar vs side rail ──
+            const navPicker = document.getElementById('nav-mode-picker');
+            if (navPicker) {
+                navPicker.addEventListener('click', (e) => {
+                    const card = e.target.closest('.mobile-mode-card');
+                    if (!card) return;
+                    this.applyNavMode(card.dataset.navId);
+                });
+                navPicker.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    const card = e.target.closest('.mobile-mode-card');
+                    if (!card) return;
+                    e.preventDefault();
+                    this.applyNavMode(card.dataset.navId);
                 });
             }
 
