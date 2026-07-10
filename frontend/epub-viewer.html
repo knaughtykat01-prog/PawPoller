@@ -15,6 +15,8 @@
         document.documentElement.dataset.theme = t;
         var nv = localStorage.getItem('pawpoller-nav') || 'top';
         document.documentElement.dataset.navmode = nv;
+        var dm = localStorage.getItem('pawpoller-mode') || 'default';
+        if (dm !== 'default') document.documentElement.dataset.mode = dm;
         var m = localStorage.getItem('pawpoller-mobile-mode') || 'auto';
         var resolved;
         if (m === 'on') resolved = '1';

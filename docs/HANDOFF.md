@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version (live/master):** 2.73.0 — **reskin concept Slice A: the Bookshelf (Library + editorial work detail).**
+**Current version (live/master):** 2.74.0 — **reskin concept Slice B: the Modes pane + Brut display mode.**
+A new **Display mode** picker in Settings → Appearance (sits with Theme + Navigation as the look-and-feel controls):
+**Default** (soft editorial) vs **Brut** (neo-brutalist). Brut = `html[data-mode="brut"]`, a *character* layer that
+keeps the active theme's colours and only changes the hand — thick ink borders, hard `4px 4px 0` offset shadows,
+squared corners (overrides `--radius*` app-wide), bold-sans headings (overrides the Vibe-Pack serif), press-down
+buttons. **Theme-aware** (shadow/border = the theme's ink `--text-primary`, so it reads on paper *and* dark themes).
+New `frontend/css/brut.css` targeting the real primitives; `App.applyMode()`/`getModeOverride()`/`DISPLAY_MODES`
+mirror the nav-mode idiom (attribute absent = Default); the no-flash boot `<script>` resolves `data-mode` pre-paint
+(hash self-computes, no CSP edit). **Terminal/Console is deliberately NOT a dashboard skin** — that green-on-black
+operator aesthetic belongs to the headless/Docker surface (recorded as a design decision in `documentation_guide.md`);
+only Default + Brut ship. Verified in-browser (Brut on Settings + Library, no-flash reload, clean toggle-back, zero
+console errors). **Developed directly on `master`** — the `reskin` branch is retired now Slice A is live. Needs a
+server deploy + hard-refresh.
+
+**Prior — 2.73.0 — reskin concept Slice A: the Bookshelf (Library + editorial work detail).**
 A new top-level **Library** (`#/library`, peer to Overview): a cover-forward shelf of works (gilt "N live"/"published"
 ribbons, quiet Draft markers) + a rich work-detail (`#/library/work/{name}`: big cover, marginalia stats, per-platform
 "Published to" list with live counts, and a **chapter × platform reach** card that flags **incomplete** chapters).

@@ -4168,6 +4168,28 @@ Files:
     `publications[].chapter_index`; flags **incomplete** where a multi-chapter platform is missing a
     chapter). Stories open here; artwork keeps `#/artwork/image/{name}`. Router branches +
     active-nav keep-lit + breadcrumb are in `app.js`.
+  - **2.74.0 — Modes pane + Brut display mode** (reskin concept Slice B, `docs/RESKIN_BUILD_PLAN.md`):
+    a **Display mode** picker joins Theme + Navigation in **Settings → Appearance** as the
+    look-and-feel controls. Two skins: **Default** and **Brut**. Brut is a *character* layer
+    (`html[data-mode="brut"]`), NOT a theme — it keeps the active theme's colours and only changes
+    the "hand": thick ink borders, hard `4px 4px 0` offset shadows, **squared corners via an
+    app-wide `--radius*` token override**, bold-sans headings (overrides the Vibe-Pack serif rule in
+    `tokens.css` by specificity + load order), press-down buttons. It's **theme-aware** because the
+    border/shadow colour is the active theme's ink (`--text-primary`) — dark on paper, light on the
+    dark themes; both read brutalist. Mechanism mirrors nav mode exactly: single source of truth is
+    the `data-mode` attribute on `<html>` (ABSENT = Default), set pre-paint by the no-flash boot
+    `<script>` (index.html + epub-viewer.html, both kept byte-identical) from localStorage
+    `pawpoller-mode`; `App.applyMode()` / `getModeOverride()` / `DISPLAY_MODES` in `app.js`; the CSP
+    boot hash self-computes (`_theme_inline_hash`) so no hash edit. Styles live in a new
+    `frontend/css/brut.css` (linked after `bookshelf.css`), targeting the real primitives (`.card`,
+    `.stat-card`, `.settings-section`, `.btn*`, `.form-control`, `.sidebar`, `.nav-link.active`,
+    `.nav-sub`, `.book-cover`, `.work-card`, `.chip`, headings). Brut swaps borders/shadows/type but
+    **not layout**, so charts don't re-measure and there's no re-route (no lost editor state).
+    **Design decision — Terminal/Console is intentionally not a dashboard skin.** The green-on-black
+    operator/CLI aesthetic (the "Console" concept) belongs to the **headless / Docker operator
+    surface** (where you shell in for `docker`/logs), not the end-user dashboard — so only Default +
+    Brut are offered as display modes. If a terminal skin is ever built, it attaches to the headless
+    context, keyed the same way (`data-mode="term"`), never surfaced as a dashboard option here.
   - Phase 2 (2.34.0) adds `GET /api/works/discovered` (poller-found submissions
     with no publication link, normalized via `build_discovered` over
     `posting.sync.PLATFORM_TABLES`) and `POST /api/works/link` (links one to a

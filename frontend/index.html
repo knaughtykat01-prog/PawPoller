@@ -22,6 +22,8 @@
         document.documentElement.dataset.theme = t;
         var nv = localStorage.getItem('pawpoller-nav') || 'top';
         document.documentElement.dataset.navmode = nv;
+        var dm = localStorage.getItem('pawpoller-mode') || 'default';
+        if (dm !== 'default') document.documentElement.dataset.mode = dm;
         var m = localStorage.getItem('pawpoller-mobile-mode') || 'auto';
         var resolved;
         if (m === 'on') resolved = '1';
@@ -48,6 +50,7 @@
     <link rel="stylesheet" href="/css/guides.css?v=__APP_VERSION__">
     <link rel="stylesheet" href="/css/accounts.css?v=__APP_VERSION__">
     <link rel="stylesheet" href="/css/bookshelf.css?v=__APP_VERSION__">
+    <link rel="stylesheet" href="/css/brut.css?v=__APP_VERSION__">
     <link rel="stylesheet" href="/css/loading_indicator.css?v=__APP_VERSION__">
     <link rel="stylesheet" href="/css/tour.css?v=__APP_VERSION__">
     <script src="/js/vendor/chart.umd.min.js"></script>

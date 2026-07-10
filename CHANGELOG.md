@@ -4,6 +4,37 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.74.0] - 2026-07-10 - Reskin concept Slice B: the Modes pane + Brut display mode
+
+Second **concept layer** of the reskin (see `docs/RESKIN_BUILD_PLAN.md`), from the "Brut" +
+"Console" directions. Consolidates the app's look-and-feel controls into one coherent **Modes**
+surface in Settings → Appearance, and ports the prototype's **Brut** skin into the real app as a
+first-class, user-selectable **display mode** (your note: *"wow just wow… could be its own mode"*).
+
+- **New "Display mode" picker (Settings → Appearance)** — sits with Theme + Navigation as the
+  look-and-feel controls. **Default** (soft editorial) vs **Brut** (neo-brutalist). Same card idiom
+  as the theme / nav / mobile pickers; persists per-device (localStorage `pawpoller-mode`).
+- **Brut display mode (`html[data-mode="brut"]`)** — a *character* layer, not a theme: it keeps
+  the active theme's colours and only changes the "hand" — thick **ink borders**, hard **offset
+  drop-shadows** (`4px 4px 0`), **squared corners** (overrides the `--radius*` tokens app-wide so
+  everything squares in one swap), **bold-sans headings** (overrides the Vibe-Pack serif), and
+  **press-down buttons**. Theme-aware: the shadow/border is the active theme's ink (`--text-primary`),
+  so it reads on warm paper *and* every dark theme. New file `frontend/css/brut.css` targeting the
+  real primitives (cards, buttons, inputs, shell, nav, covers, chips, the Bookshelf).
+- **No-flash boot.** The inline bootstrap `<script>` (index.html + epub-viewer.html) now resolves
+  `data-mode` synchronously from localStorage before first paint, alongside theme + navmode + mobile
+  — so Brut never flashes Default on load. The CSP hash self-computes (2.71.0), so no hash edit needed.
+- **`App.applyMode()` / `getModeOverride()` / `DISPLAY_MODES`** mirror the nav-mode idiom (attribute
+  absent = Default). Brut swaps borders/shadows/type but not layout, so no chart re-measure / re-route.
+- **Terminal / Console is deliberately NOT a dashboard skin.** Per your note (*"integrate into the
+  headless mode for access to the docker"*), the green-on-black operator aesthetic belongs to the
+  **headless/Docker operator surface**, not the main dashboard — the picker says as much, and it's
+  recorded as a design decision in `docs/documentation_guide.md`. Only Default + Brut ship as skins.
+- Frontend only (`frontend/css/brut.css` [new], `frontend/index.html`, `frontend/epub-viewer.html`,
+  `frontend/js/app.js`) + the `config.py` bump. Verified in-browser (Brut on Settings + Library,
+  no-flash reload, clean toggle-back, zero console errors). **Developed directly on `master`** (the
+  reskin branch is retired now that Slice A is live). Needs a server deploy + hard-refresh.
+
 ## [2.73.0] - 2026-07-10 - Reskin concept Slice A: the Bookshelf (Library + editorial work detail)
 
 First **concept layer** of the reskin (see `docs/RESKIN_BUILD_PLAN.md`), from the "Atelier"

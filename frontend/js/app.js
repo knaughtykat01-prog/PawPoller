@@ -610,6 +610,49 @@ const App = {
         }
     },
 
+    /* ── Display mode (visual skin: Default / Brut) ──────────
+       Single source of truth: `<html data-mode="brut">` (attribute ABSENT =
+       Default), set by the inline boot script before CSS paints (no flash).
+       A display mode is a token + component-character swap layered on top of
+       the active theme — it's theme-aware, so Brut reads correctly under Quill
+       and every dark theme. Only the character changes (thick ink borders, hard
+       offset shadows, bold-sans headings, squared avatars, press-down buttons);
+       layout is untouched, so charts don't need to re-measure.
+       Terminal/Console is deliberately NOT a dashboard skin — that green-on-black
+       operator aesthetic belongs to the headless/Docker surface, not here (see
+       docs/documentation_guide.md). Persisted to localStorage for synchronous
+       boot; per-device (like nav mode — it's a look, not account data). */
+    DISPLAY_MODES: ['default', 'brut'],
+
+    getModeOverride() {
+        return document.documentElement.dataset.mode
+            || localStorage.getItem('pawpoller-mode') || 'default';
+    },
+
+    applyMode(mode) {
+        const m = this.DISPLAY_MODES.includes(mode) ? mode : 'default';
+        localStorage.setItem('pawpoller-mode', m);
+        // Attribute ABSENT means Default (keeps the selector surface minimal).
+        if (m === 'default') delete document.documentElement.dataset.mode;
+        else document.documentElement.dataset.mode = m;
+        // Re-paint the picker cards in place (same idiom as the nav-mode picker).
+        document.querySelectorAll('#display-mode-picker .mobile-mode-card').forEach(card => {
+            const isActive = card.dataset.modeId === m;
+            card.classList.toggle('active', isActive);
+            const pill = card.querySelector('.active-pill');
+            if (isActive && !pill) {
+                const span = document.createElement('span');
+                span.className = 'active-pill';
+                span.textContent = 'Active';
+                card.appendChild(span);
+            } else if (!isActive && pill) {
+                pill.remove();
+            }
+        });
+        // Brut swaps borders/shadows/type but not layout — the CSS reads
+        // data-mode directly, so no re-route (and no lost editor state).
+    },
+
     /* Called once at boot from init(). Watches the viewport so `auto`
        mode tracks viewport changes (rotation, window resize) without
        a page reload. No-op when the override is forced on/off. */
@@ -8393,6 +8436,28 @@ const App = {
                 </div>
 
                 <div class="settings-section">
+                    <h3>Display mode</h3>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
+                        A character layer on top of your theme. <strong>Default</strong> is the soft editorial look. <strong>Brut</strong> is neo-brutalist &mdash; thick ink borders, hard drop-shadows, bold-sans headings. It keeps your current theme's colours, so it works in warm paper or any dark theme. <span style="opacity:.75">(A green-on-black <em>Terminal</em> mode lives in the headless operator surface, not here.)</span>
+                    </p>
+                    <div class="mobile-mode-picker" id="display-mode-picker">
+                        ${[
+                            { id: 'default', name: 'Default', desc: 'Soft editorial — rounded cards, quiet shadows' },
+                            { id: 'brut',    name: 'Brut', desc: 'Neo-brutalist — ink borders, hard shadows, bold sans' },
+                        ].map(opt => {
+                            const isActive = opt.id === this.getModeOverride();
+                            return `
+                              <div class="mobile-mode-card ${isActive ? 'active' : ''}" data-mode-id="${opt.id}" role="button" tabindex="0">
+                                <div class="mobile-mode-name">${opt.name}</div>
+                                <div class="mobile-mode-desc">${opt.desc}</div>
+                                ${isActive ? '<span class="active-pill">Active</span>' : ''}
+                              </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h3>Navigation</h3>
                     <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
                         Where the main navigation lives. <strong>Top bar</strong> is the redesigned shell &mdash; a horizontal bar with the Publishing / Insights groups as dropdowns. <strong>Side rail</strong> is the classic left sidebar. Applies on desktop; phones keep the bottom nav either way.
@@ -10109,6 +10174,23 @@ const App = {
                     if (!card) return;
                     e.preventDefault();
                     this.applyNavMode(card.dataset.navId);
+                });
+            }
+
+            // ── Display-mode picker (Appearance tab) — Default vs Brut ──
+            const modePicker = document.getElementById('display-mode-picker');
+            if (modePicker) {
+                modePicker.addEventListener('click', (e) => {
+                    const card = e.target.closest('.mobile-mode-card');
+                    if (!card) return;
+                    this.applyMode(card.dataset.modeId);
+                });
+                modePicker.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    const card = e.target.closest('.mobile-mode-card');
+                    if (!card) return;
+                    e.preventDefault();
+                    this.applyMode(card.dataset.modeId);
                 });
             }
 
