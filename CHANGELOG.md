@@ -4,6 +4,34 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.76.0] - 2026-07-10 - Reskin concept Slice D: the Ledger (dated timelines)
+
+Fourth **concept layer** of the reskin (see `docs/RESKIN_BUILD_PLAN.md`), from the "Almanac"
+direction — a **dated spine of typed events**. Two scopes, one renderer (`window.Ledger`), Path A,
+**no backend added**:
+
+- **Work timeline** — a **"Timeline" tab** on the Bookshelf work-detail (`#/library/work/{name}`,
+  beside "Overview"). Built from the publications **already fetched** for that page (no extra request):
+  each platform's `first_posted_at` → a "Posted to X" node (chapter-labelled for multi-chapter
+  platforms), `last_updated_at` (when `update_count > 0`) → an "Updated on X" node. Renders newest-first,
+  grouped by day. Lazily rendered on first tab open.
+- **Activity ledger** — a new destination `#/ledger` (**Activity**, Insights & Tools group) over the
+  ready-made **`/api/activity/recent`** typed event feed (polls, posts, edits across all platforms).
+  Dated spine with **status-coloured nodes** (errors ring red, warnings amber), **filter segments**
+  (All / Posts / Polls / Issues), and a **platform dropdown** — filtering to one platform reads as that
+  account's history (the "account timeline" the concept asked for). Client-side filtering, no refetch.
+- **Deliberately not the home.** Time-order buries "is everything OK right now", so the Ledger is only
+  ever a tab / destination, never the landing screen (Overview stays home).
+- New files `frontend/js/ledger.js` (`window.Ledger`) + `frontend/css/ledger.css` (dated spine, sticky
+  day labels, typed node dots — theme-aware; Brut squares the dots + rail). Wired: an Activity nav item,
+  the `#/ledger` route + breadcrumb, and the work-detail tab bar in `bookshelf.js`. Reuses
+  `getRecentActivity` + the work's `getPostingStory` publications (schema-confirmed `first_posted_at` /
+  `last_updated_at` / `update_count` / `chapter_index`).
+- Frontend only + the `config.py` bump. Verified in-browser: the Activity ledger against **real** local
+  poll history (14 events, AO3 failures ring red, filters + platform select work) and the work timeline
+  via a realistic mock (5 dated post/update nodes, chapter labels, tab toggle both ways); zero console
+  errors. Developed directly on `master`. Needs a server deploy + hard-refresh.
+
 ## [2.75.0] - 2026-07-10 - Reskin concept Slice C: Laurels (achievements & milestones)
 
 Third **concept layer** of the reskin (see `docs/RESKIN_BUILD_PLAN.md`), from the "Den" direction —

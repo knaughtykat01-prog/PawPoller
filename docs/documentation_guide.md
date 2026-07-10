@@ -4210,6 +4210,25 @@ Files:
     "from-now-on" mode was considered and rejected as less motivating and harder to explain). Router
     branch + breadcrumb label in `app.js`; nav item in the Insights group; Brut mode covers `.lr-*`
     cards.
+  - **2.76.0 — Ledger / dated timelines** (reskin concept Slice D, `docs/RESKIN_BUILD_PLAN.md`): a
+    reusable `window.Ledger` (in `frontend/js/ledger.js` + `frontend/css/ledger.css`) rendering a dated
+    spine (day-grouped, newest-first, typed node dots with status colours), used in two places, **no
+    backend added**. (1) **Work timeline** — a "Timeline" tab on the Bookshelf work-detail; `bookshelf.js`
+    `_paintWork` now wraps the existing cards in a `.work-pane[data-pane="overview"]` and adds a
+    `.work-pane[data-pane="timeline"]` that `Ledger.renderWorkTimeline(pane, name, d)` fills **lazily on
+    first open, reusing the already-fetched `d`** (no extra request). `Ledger.workEvents` derives nodes
+    from `d.publications[]`: `first_posted_at` → "Posted to {platform}" (chapter-labelled when
+    `chapter_index > 0`), `last_updated_at` (when `update_count > 0` and ≠ first_posted) → "Updated on
+    {platform}". NOTE: managed works that were never *posted through PawPoller's posting module* have
+    empty `publications` (their `/api/works` count comes from linked discovered submissions), so their
+    timeline is empty — expected. (2) **Activity ledger** — route `#/ledger` (nav "Activity", Insights
+    group) over `GET /api/activity/recent` (`API.getRecentActivity`), the unified poll+post event feed
+    (`{events:[{timestamp,platform,kind,status,summary,detail}]}`). `Ledger.render()` maps those to nodes
+    (kind→type, status→colour: `err/fail`→red, `partial/warn`→amber), then `_paint()` applies **client-side
+    filters** — segments All/Posts/Polls/Issues + a platform `<select>` (filtering to one platform reads
+    as that account's history). **Design note:** the Ledger is only ever a **tab / destination, never the
+    home** — a time-ordered list buries "is everything OK right now", which is Overview's job. Router
+    branch + breadcrumb in `app.js`; Brut squares the node dots + rail (`.led-dot`/`.led-day-nodes`).
   - Phase 2 (2.34.0) adds `GET /api/works/discovered` (poller-found submissions
     with no publication link, normalized via `build_discovered` over
     `posting.sync.PLATFORM_TABLES`) and `POST /api/works/link` (links one to a

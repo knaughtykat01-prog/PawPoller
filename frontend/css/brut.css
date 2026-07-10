@@ -140,6 +140,11 @@ html[data-mode="brut"] .nav-sub {
     border-radius: 4px;
 }
 
+/* ── Ledger (Slice D) — squared node dots + hard rail ────────────────────── */
+html[data-mode="brut"] .led-dot { border-width: 2px; border-radius: 4px; }
+html[data-mode="brut"] .led-day-nodes { border-left-width: 2px; border-left-color: var(--brut-line); }
+html[data-mode="brut"] .work-tab.is-active { border-bottom-width: 3px; }
+
 /* ── Chips / badges ──────────────────────────────────────────────────────── */
 html[data-mode="brut"] .chip {
     border: 2px solid var(--brut-line);

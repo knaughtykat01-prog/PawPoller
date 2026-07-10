@@ -309,12 +309,40 @@ window.Bookshelf = {
                 ${margin}
             </article>
 
-            <section class="work-card">
-                <h2 class="work-h2">Published to <span class="work-h2-note">live counts across your platforms</span></h2>
-                <div class="pub-list">${pubRows || '<div class="muted">Not published anywhere yet.</div>'}</div>
-                ${notYetLine}
-            </section>
+            <div class="work-tabs" id="work-tabs">
+                <button class="work-tab is-active" data-work-tab="overview">Overview</button>
+                <button class="work-tab" data-work-tab="timeline">Timeline</button>
+            </div>
 
-            ${chapterCard}`;
+            <div class="work-pane" data-pane="overview">
+                <section class="work-card">
+                    <h2 class="work-h2">Published to <span class="work-h2-note">live counts across your platforms</span></h2>
+                    <div class="pub-list">${pubRows || '<div class="muted">Not published anywhere yet.</div>'}</div>
+                    ${notYetLine}
+                </section>
+
+                ${chapterCard}
+            </div>
+            <div class="work-pane" data-pane="timeline" hidden>
+                <div class="loading-spinner">Tracing this work's history…</div>
+            </div>`;
+
+        // Tab switch — lazily render the Ledger timeline on first open, reusing
+        // the already-fetched `d` (no extra request). Slice D · "Almanac".
+        const tabs = document.getElementById('work-tabs');
+        let timelineDone = false;
+        if (tabs) {
+            tabs.addEventListener('click', (e) => {
+                const btn = e.target.closest('.work-tab');
+                if (!btn) return;
+                const which = btn.dataset.workTab;
+                tabs.querySelectorAll('.work-tab').forEach(b => b.classList.toggle('is-active', b === btn));
+                body.querySelectorAll('.work-pane').forEach(p => { p.hidden = (p.dataset.pane !== which); });
+                if (which === 'timeline' && !timelineDone && window.Ledger) {
+                    timelineDone = true;
+                    window.Ledger.renderWorkTimeline(body.querySelector('.work-pane[data-pane="timeline"]'), name, d);
+                }
+            });
+        }
     },
 };

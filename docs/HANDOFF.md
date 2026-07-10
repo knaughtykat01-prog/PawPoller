@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-10
-**Current version (live/master):** 2.75.0 — **reskin concept Slice C: Laurels (achievements & milestones).**
+**Current version (live/master):** 2.76.0 — **reskin concept Slice D: the Ledger (dated timelines).**
+A dated spine of typed events, two scopes / one renderer (`window.Ledger`), Path A, **no backend added**.
+**Work timeline** = a "Timeline" tab on the Bookshelf work-detail (`#/library/work/{name}`), built from
+the publications already fetched (each `first_posted_at` → "Posted to X" node, chapter-labelled;
+`last_updated_at` w/ `update_count>0` → "Updated on X"); lazy-rendered on first open. **Activity ledger**
+= a new `#/ledger` destination (**Activity**, Insights group) over the ready-made `/api/activity/recent`
+typed feed — status-coloured nodes (errors ring red), filter segments (All/Posts/Polls/Issues) + a
+platform dropdown (filter to one platform = that account's history). **Deliberately not the home**
+(time-order buries "is everything OK now"). New `frontend/js/ledger.js` + `frontend/css/ledger.css`; wired
+an Activity nav item, `#/ledger` route + breadcrumb, and the work-detail tab bar in `bookshelf.js`; Brut
+covers it. Verified in-browser (Activity vs real local poll history — AO3 failures ring red, filters work;
+work timeline via mock — 5 dated nodes, tab toggle both ways; zero console errors). Developed directly on
+`master`. Needs a server deploy + hard-refresh.
+
+**Prior — 2.75.0 — reskin concept Slice C: Laurels (achievements & milestones).**
 A new top-level **Laurels** (`#/laurels`, Insights & Tools group) — the motivational "Den" view. A
 milestone **hero** (all-time total views + progress bar to the next rung, using the app's own
 `milestone_views/faves/comments` ladders from `/api/settings/preferences` — the same rungs the Telegram
