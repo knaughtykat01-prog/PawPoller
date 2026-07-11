@@ -4,6 +4,31 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.86.0] - 2026-07-11 - Quick Reconnect: paste a fresh token from the alert, no digging through Settings
+
+When a platform's session goes expired/error (a dead cookie, an invalidated token — e.g. the Meta code-190
+Instagram case), you can now fix it in place: a **Reconnect** button on the alert opens a small modal to paste
+fresh credentials, which validates + re-saves + re-syncs in one go. Frontend-only — reuses the existing
+per-platform connect + poll + session-check endpoints; no backend change.
+
+- **Modal** — new `frontend/js/reconnect.js` (`window.Reconnect`) + `frontend/css/reconnect.css`. A per-platform
+  field spec (mirrors each `/auth/connect` body) renders the right inputs for the 9 session-checkable platforms —
+  a single paste for the token/key ones (Threads, Instagram, Pixiv, Mastodon, Bluesky, Tumblr) and the full field
+  set for the login ones (AO3, SoFurry, SquidgeWorld). Posts to the **same** `POST /api/{code}/auth/connect`,
+  which validates the credentials live before saving, so a success means the session is genuinely fixed.
+- **...and sync** — on success it fires `POST /api/{code}/poll/trigger` (fresh poll) + `POST
+  /api/platforms/sessions/check` (re-validate → clears the banner/dot), toasts, closes, and refreshes the
+  notification feed. On failure it shows the endpoint's real error inline (e.g. "the access token is invalid or
+  lacks the … scopes") and re-enables the button — the modal stays open so you can fix and retry.
+- **Two entry points, driven off the live session state:** a **Reconnect** button beside Mute on each
+  session-health notification in the bell feed, and a **Reconnect →** action on the app-wide "session expired"
+  banner (when a single expired platform is quick-reconnectable; otherwise it still links to Settings).
+- CSP-safe (external script/style, no inline handlers); mirrors the guide-modal shell for a consistent look.
+  Verified live-in-browser: modal opens with correct fields, required-field validation, a bogus token surfaces
+  the server's real error and recovers, and both entry points open the right platform's modal.
+
+Developed on `master`; needs deploy.
+
 ## [2.85.0] - 2026-07-11 - Laurels: 100+ achievements, grouped & filterable
 
 Big expansion of the Laurels gamification page — from ~23 account medals to a **104-medal catalogue**,

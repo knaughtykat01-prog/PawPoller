@@ -93,11 +93,17 @@
             const label = LABELS[it.platform] || (it.platform || '').toUpperCase();
             const meta = escapeText([label, relTime(it.timestamp)].filter(Boolean).join(' · '));
             const detail = (it.detail && isFailure(it)) ? '<div class="pp-notif-detail"></div>' : '';
-            // Session-health alerts get a Mute/Unmute control (auto-clears on
-            // recovery, server-side) — the "I know, stop nagging" affordance.
-            const mute = it.kind === 'session'
-                ? `<button class="pp-notif-mute" type="button" data-idx="${i}">${it.muted ? 'Unmute' : 'Mute'}</button>`
-                : '';
+            // Session-health alerts get quick actions: Reconnect (paste fresh
+            // creds, for platforms with a reconnect spec) + Mute/Unmute (auto-
+            // clears on recovery, server-side — the "I know, stop nagging" one).
+            let actions = '';
+            if (it.kind === 'session') {
+                const canRc = window.Reconnect && Reconnect.canReconnect(it.platform);
+                actions = `<div class="pp-notif-actions-col">`
+                    + (canRc ? `<button class="pp-notif-reconnect" type="button" data-idx="${i}">Reconnect</button>` : '')
+                    + `<button class="pp-notif-mute" type="button" data-idx="${i}">${it.muted ? 'Unmute' : 'Mute'}</button>`
+                    + `</div>`;
+            }
             return `<div class="pp-notif-item ${it.unread ? 'is-unread' : ''} ${it.muted ? 'is-muted' : ''} pp-notif-${statusClass(it)}">
                 <span class="pp-notif-item-ico" aria-hidden="true">${statusIcon(it)}</span>
                 <div class="pp-notif-item-body">
@@ -105,7 +111,7 @@
                     <div class="pp-notif-meta">${meta}</div>
                     ${detail}
                 </div>
-                ${mute}
+                ${actions}
             </div>`;
         }).join('') : '<div class="pp-notif-empty">No recent activity.</div>';
 
@@ -142,6 +148,14 @@
                 try { await API.muteSessionAlert(it.platform, !it.muted); }
                 catch (err) { btn.disabled = false; return; }
                 await poll();                 // re-render from server truth (badge + list)
+            });
+        });
+        // Reconnect — open the quick paste-a-token modal for this platform.
+        _panel.querySelectorAll('.pp-notif-reconnect').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const it = _items[Number(btn.dataset.idx)];
+                if (it && it.platform && window.Reconnect) { close(); Reconnect.open(it.platform); }
             });
         });
     }

@@ -238,12 +238,11 @@
     function renderGlobalBanner() {
         const host = document.getElementById('main-col');
         if (!host) return;
-        const problems = PLATFORMS
-            .filter((code) => _data[code] && _data[code].session
-                && _data[code].session.status === 'expired')
-            .map((code) => LABELS[code] || code.toUpperCase());
+        const codes = PLATFORMS.filter((code) => _data[code] && _data[code].session
+            && _data[code].session.status === 'expired');
+        const labels = codes.map((code) => LABELS[code] || code.toUpperCase());
         let banner = document.getElementById('pp-global-banner');
-        if (!problems.length) {
+        if (!codes.length) {
             if (banner) banner.remove();
             return;
         }
@@ -253,19 +252,29 @@
             banner.className = 'pp-global-banner';
             host.insertBefore(banner, host.firstChild);
         }
-        const title = problems.length === 1
-            ? `${problems[0]} session expired`
-            : `${problems.length} platform sessions expired`;
-        const body = problems.length === 1
+        const title = codes.length === 1
+            ? `${labels[0]} session expired`
+            : `${codes.length} platform sessions expired`;
+        const body = codes.length === 1
             ? 'Re-enter your credentials — polling and posting to it will keep failing until you do.'
-            : problems.join(', ');
+            : labels.join(', ');
+        // A single expired platform we can quick-reconnect → a Reconnect button
+        // that opens the paste-a-token modal; otherwise link to Settings (also
+        // the multi-platform case).
+        const one = codes.length === 1 ? codes[0] : null;
+        const canRc = one && window.Reconnect && Reconnect.canReconnect(one);
+        const action = canRc
+            ? `<button class="pp-gb-action" type="button" data-reconnect="${one}">Reconnect →</button>`
+            : `<a class="pp-gb-action" href="#/settings/platforms">Fix in Settings →</a>`;
         banner.innerHTML = `
             <span class="pp-gb-icon" aria-hidden="true">⚠</span>
             <span class="pp-gb-text"><strong class="pp-gb-title"></strong> <span class="pp-gb-body"></span></span>
-            <a class="pp-gb-action" href="#/settings/platforms">Fix in Settings →</a>
+            ${action}
         `;
         banner.querySelector('.pp-gb-title').textContent = title;
         banner.querySelector('.pp-gb-body').textContent = body;
+        const rcBtn = banner.querySelector('[data-reconnect]');
+        if (rcBtn) rcBtn.addEventListener('click', () => Reconnect.open(rcBtn.dataset.reconnect));
     }
 
     function notify() {

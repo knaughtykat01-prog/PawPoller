@@ -501,22 +501,37 @@
 .pp-notif-item.is-unread { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 /* Muted session alert — visible but quiet (dimmed, not nagging). */
 .pp-notif-item.is-muted { opacity: 0.55; }
-.pp-notif-mute {
+/* Session-item action stack (Reconnect + Mute), pinned to the right. */
+.pp-notif-actions-col {
     flex-shrink: 0;
     align-self: flex-start;
     margin-left: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.pp-notif-mute, .pp-notif-reconnect {
     font-size: 11px;
     font-weight: 600;
-    color: var(--text-muted, #a49db8);
-    background: none;
-    border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
     border-radius: var(--radius-sm, 5px);
     padding: 2px 8px;
     cursor: pointer;
     white-space: nowrap;
+    text-align: center;
+}
+.pp-notif-mute {
+    color: var(--text-muted, #a49db8);
+    background: none;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
 }
 .pp-notif-mute:hover { color: var(--text-primary, var(--text-primary)); border-color: var(--accent); }
-.pp-notif-mute:disabled { opacity: 0.5; cursor: default; }
+.pp-notif-reconnect {
+    color: #fff;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+}
+.pp-notif-reconnect:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.pp-notif-mute:disabled, .pp-notif-reconnect:disabled { opacity: 0.5; cursor: default; }
 
 .pp-notif-item-ico { flex-shrink: 0; width: 18px; text-align: center; line-height: 1.4; }
 .pp-notif-error   .pp-notif-item-ico { color: #ff8a8a; }

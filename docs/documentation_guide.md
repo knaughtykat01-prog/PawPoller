@@ -1386,6 +1386,30 @@ failure:
   `check_all` pass don't clobber each other's clear). So a mute means "until it's fixed", never "forever" — a
   brand-new failure after recovery re-alerts normally.
 
+#### Quick Reconnect (2.86.0)
+
+The counterpart to Mute: instead of silencing the alert, **fix it in place**. `frontend/js/reconnect.js`
+(`window.Reconnect`, styled by `reconnect.css`) is a small modal that lets the user paste fresh credentials
+straight from the alert rather than navigating to Settings → Platforms.
+
+- **Field spec, not a per-platform form.** `SPEC[code]` maps each of the 9 session-checkable platforms to its
+  reconnect fields (mirroring that platform's `/auth/connect` body): a single paste for the token/key ones
+  (thr/ig `access_token`, pix `refresh_token`, mast `instance_url`+`access_token`, bsky `identifier`+
+  `app_password`, tum `blog`+`api_key`) and the full set for the login ones (ao3/sf/sqw). `canReconnect(code)`
+  gates the entry points. `open(code)` renders the inputs; `submit()` collects non-empty values, enforces
+  required fields, and POSTs to the **same** `POST /api/{code}/auth/connect` — which validates the credential
+  live (`validate_session()`/`validate_*()`) before saving, so a `200` means the session is genuinely fixed.
+- **"...and sync."** On success it fires `POST /api/{code}/poll/trigger` (fresh poll) + `triggerSessionCheck()`
+  (re-validate → clears the dot/banner within seconds), toasts, closes, and re-polls the notification feed.
+  On failure it parses the endpoint's error (`API {status}: {json.detail}` → the raw detail) and shows it inline
+  (e.g. Meta's "the access token is invalid or lacks the … scopes"), re-enabling the button so the user can retry.
+- **Entry points, driven off the live session status** (`_data[code].session.status`): a **Reconnect** button
+  beside Mute on every `kind:"session"` notification (`notifications_center.js`, gated on `Reconnect.
+  canReconnect`), and a **Reconnect →** action on the app-wide expired banner (`platform_health.js::
+  renderGlobalBanner`) when there's exactly one expired platform and it's reconnectable — otherwise the banner
+  keeps its Settings link (also the multi-platform case). CSP-safe (external script/style, no inline handlers;
+  reuses the `.guide-modal` shell). Registered in `index.html` after `platform_guides.js` / `guides.css`.
+
 ### N+1 Query Batching
 
 Four pollers switched from per-item INSERT loops to `executemany` + `INSERT OR IGNORE` for fan/interaction data:

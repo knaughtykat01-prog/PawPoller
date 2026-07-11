@@ -1,7 +1,23 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.85.0 — **Laurels: 100+ achievements, grouped & filterable.**
+**Current version (live/master):** 2.86.0 — **Quick Reconnect: paste a fresh token from the alert.**
+When a platform's session goes expired/error (dead cookie / invalidated token — e.g. Meta code 190), a
+**Reconnect** button on the alert opens a small modal to paste fresh credentials → validates + re-saves +
+re-syncs in one go, without digging through Settings. Frontend-only; reuses the existing per-platform connect +
+poll + session-check endpoints, no backend change. NEW `frontend/js/reconnect.js` (`window.Reconnect.open(code)`)
++ `reconnect.css`: a per-platform field spec (mirrors each `/auth/connect` body) renders the right inputs for the
+9 session-checkable platforms (single paste for thr/ig/pix/mast/bsky/tum token/key; full field set for
+ao3/sf/sqw login), POSTs to the SAME `POST /api/{code}/auth/connect` (validates live before saving). On success:
+`POST /api/{code}/poll/trigger` + `POST /api/platforms/sessions/check` + toast + close + refresh feed; on failure
+shows the endpoint's real error inline and re-enables. Two entry points off the live session state: a Reconnect
+button beside Mute on each `kind:"session"` notification (`notifications_center.js`), and a **Reconnect →** action
+on the app-wide expired banner (`platform_health.js`) when a single expired platform is quick-reconnectable
+(else the Settings link). CSP-safe (external script/style, mirrors the guide-modal shell). Registered in
+`index.html`. Verified live-in-browser (fields, required validation, bogus-token error path, both entry points).
+Developed on `master`; needs deploy.
+
+**Prior — 2.85.0 — Laurels: 100+ achievements, grouped & filterable.**
 Big expansion of the Laurels gamification page — ~23 account medals → a **104-medal catalogue**. Frontend-only
 (`laurels.js`+`laurels.css`), same read-only endpoints, no backend. Each engagement metric is now a full
 **ladder** (a medal per rung, earned when the total passes it) instead of one "top+next" badge — Views (13 rungs
