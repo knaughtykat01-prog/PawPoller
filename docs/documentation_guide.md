@@ -4303,6 +4303,35 @@ Files:
     NOTE: milestone crossings are otherwise invisible in-app (the server-side `check_milestones` in
     `polling/telegram.py` only sends Telegram, persists nothing), so this celebration is the only in-dashboard
     surfacing of a crossing.
+  - **2.80.0 — Mobile polish + iOS safe-area fixes** for the reskin/gamification pages (CSS-only, no
+    logic/DOM change). Context: mobile mode is width-driven — the boot script sets `data-mobile="1"` at
+    `≤768px` (index.html), the sidebar becomes a slide-in drawer, and a **fixed hamburger** (`.hamburger-btn`,
+    top-left) + **fixed bell** (`.pp-notif-bell`, top-right) + **fixed `.bottom-nav`** float over the content.
+    The core mobile chrome was already `env(safe-area-inset-*)`-aware (index.html has `viewport-fit=cover`; the
+    hamburger uses `env(top/left)+12px`, `.main-content` reserves `bottom-nav-h + env(bottom)`), but the **new
+    reskin pages weren't**. Five fixes: **(1)** the top-left page header on Bookshelf/Laurels/work-detail
+    (`.shelf-topbar`/`.lr-head`/`.work-back`) started at `left:16` and hid under the hamburger → added mobile
+    `padding-top: calc(env(safe-area-inset-top,0px)+44px)`. **(2)** `.lr-medals` used `minmax(180px,1fr)`+gap,
+    which fits only ONE column at ~360px (22 medals stacked) → mobile override `repeat(2,1fr)`. **(3)** the bell
+    was a flat `top:8px` (loading_indicator.css `@media(max-width:560px)`) with no top inset, so it sat under the
+    iPhone status bar / Dynamic Island → `top: calc(env(safe-area-inset-top,0px)+8px)` (matches the hamburger).
+    **(4)** the work-hero kept `120px 1fr` on mobile, cramming a long summary into the narrow column beside an
+    empty gap under the cover → mobile single-column (`grid-template-columns:1fr`) with a capped `.work-cover{
+    width:128px}`. **(5)** `.bottom-nav` padded `env(safe-area-inset-bottom)` but with `box-sizing:border-box`
+    + fixed `height:var(--bottom-nav-h)` the 34px inset squeezed the 50px items into the home-indicator zone →
+    `height: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom,0px))` so the nav grows and the item row
+    lifts clear of the swipe-up bar. Touched `frontend/css/{bookshelf,laurels,loading_indicator,layout}.css`.
+    **Chrome caveat:** `env(safe-area-inset-*)` resolves to 0 in desktop Chrome / device emulation, so #3/#5
+    are verified by asserting the CSS rule is present + a manual inset simulation (override with iPhone 15 Pro
+    values 59px/34px), not by real env resolution — a real-device pass is the final confirmation.
+    **Native-app reach:** the native **desktop** app (`main.py` → pywebview `create_window(url=http://127.0.0.1:
+    8420)`) loads these exact `frontend/` files, so the fix is shared in source — but it runs at desktop window
+    width (`data-mobile="0"`), so these `@media(max-width:768px)` rules don't apply at normal size, and the
+    shipped PyInstaller EXE only picks up the CSS on a `build.bat` rebuild (the server git-pull+docker deploy
+    doesn't touch it). There is **no native iOS/Android app**, and the web app is **not yet a PWA** (no
+    `manifest` / `apple-mobile-web-app-capable` meta — only `apple-touch-icon`), so "Add to Home Screen" opens
+    normal Safari, not a standalone app; the `env()` safe-area work would pay off most if a PWA/standalone mode
+    is added later.
   - Phase 2 (2.34.0) adds `GET /api/works/discovered` (poller-found submissions
     with no publication link, normalized via `build_discovered` over
     `posting.sync.PLATFORM_TABLES`) and `POST /api/works/link` (links one to a

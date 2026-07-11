@@ -4,6 +4,40 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.80.0] - 2026-07-11 - Mobile polish for the reskin pages + iOS safe-area fixes
+
+A vigilant mobile/iOS audit (emulated iPhone 15 Pro, 393×852) of the reskin + gamification work
+surfaced five layout issues; all fixed here. **CSS-only, no logic/DOM/backend change.** No horizontal
+scroll was found on any screen, and the celebration overlay, per-work achievements, KPI cards, and book
+grid already reflowed correctly — these are the gaps.
+
+- **Page headers no longer hide under the mobile hamburger** — on the new Bookshelf / Laurels / work-detail
+  pages, the top-left header (eyebrow "Your works" / "Your den", title, and the work "← Library" back-link)
+  started at `left:16` and was partly occluded by the fixed hamburger button (which floats top-left). Added
+  `padding-top: calc(env(safe-area-inset-top,0px) + 44px)` on `.shelf-topbar` / `.lr-head` / `.work-back`
+  (mobile only) so the header drops clear of the hamburger; `env()` keeps it aligned on notched iPhones.
+- **Laurels medals are a 2-up grid on phones** — `.lr-medals` used `minmax(180px,1fr)` + gap, which at
+  ~360px only fit **one** column, stacking all 22 medals into a very long single-column list. The mobile
+  media block now forces `grid-template-columns: repeat(2, 1fr)`.
+- **Notification bell clears the iOS status bar / Dynamic Island** — the bell was `position:fixed; top:8px`
+  with no top inset (unlike the hamburger), so on a notched iPhone it sat under the status bar. Now
+  `top: calc(env(safe-area-inset-top,0px) + 8px)`.
+- **Work-detail hero stacks on mobile** — it kept a `120px 1fr` two-column layout, cramming a long summary
+  into a ~213px column beside a tall empty gap under the cover. Mobile now single-column: a capped 128px
+  cover on top, the head (title / tags / summary) full-width below.
+- **Bottom nav clears the home indicator (swipe-up bar)** — it padded `env(safe-area-inset-bottom)` but with
+  `border-box` + a fixed `height:60px`, the 34px inset squeezed the 50px tap targets into the safe area. The
+  height now grows by the inset (`calc(var(--bottom-nav-h) + env(safe-area-inset-bottom,0px))`), so the item
+  row stays full-size and lifts clear of the iOS home indicator.
+- Touched `frontend/css/{bookshelf,laurels,loading_indicator,layout}.css` + the `config.py` bump. Verified on
+  the emulated iPhone: all five fixed (header clears the hamburger, medals render 2×, bell drops to 67px clear
+  of the Island, hero stacks with a full-width summary, nav items sit above the home indicator at 818px), no
+  horizontal scroll, zero console errors. iOS safe-area (`env()`) behaviour reasoned from CSS + a rendered
+  status-bar/home-indicator simulation — a real-device pass is still worth a glance. Developed directly on
+  `master`. Needs a server deploy + hard-refresh. **The native desktop app (pywebview) shares these files but
+  is desktop-width, so it's unaffected at normal window size; it only needs a `build.bat` rebuild to bundle
+  the change. There is no native iOS/Android app — mobile is the responsive web app (not yet a PWA).**
+
 ## [2.79.0] - 2026-07-11 - App-wide milestone celebrations (fires on poll, any screen)
 
 Follows 2.78.0 — the user asked for the recommended next animation: fire the achievement

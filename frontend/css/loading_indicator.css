@@ -519,7 +519,9 @@
 
 @media (max-width: 560px) {
     .pp-notif-panel { right: 8px; left: 8px; width: auto; }
-    .pp-notif-bell { top: 8px; right: 10px; }
+    /* env() clears the iPhone status bar / Dynamic Island so the bell doesn't
+       sit under it (matches the hamburger, which uses the same inset). */
+    .pp-notif-bell { top: calc(env(safe-area-inset-top, 0px) + 8px); right: 10px; }
 }
 
 /* Error modal (loading_indicator.js :: window.errorModal) — inherits the

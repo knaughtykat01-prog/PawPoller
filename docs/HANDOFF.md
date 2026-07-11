@@ -1,7 +1,26 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.79.0 — **App-wide milestone celebrations (fires on poll, any screen).**
+**Current version (live/master):** 2.80.0 — **Mobile polish for the reskin pages + iOS safe-area fixes.**
+A vigilant emulated-iPhone (393×852) audit of the reskin + gamification pages found five layout issues, all
+fixed here — **CSS-only, no logic/DOM/backend change** (no horizontal scroll anywhere; the celebration overlay,
+achievements card, KPI cards + book grid already reflowed fine). (1) **Header no longer hidden under the mobile
+hamburger** — `.shelf-topbar`/`.lr-head`/`.work-back` get `padding-top: calc(env(safe-area-inset-top,0px)+44px)`
+on mobile so the top-left eyebrow/title/back-link clears the fixed hamburger. (2) **Laurels medals → 2-up grid**
+on phones (`.lr-medals` was stuck at 1 column because `minmax(180px)+gap` doesn't fit two at ~360px → 22 stacked
+cards). (3) **Bell clears the iOS status bar / Dynamic Island** (`top: calc(env(safe-area-inset-top,0px)+8px)` —
+it was a flat `top:8px`). (4) **Work-hero stacks on mobile** (capped 128px cover on top, head full-width below —
+was a cramped `120px 1fr` with a long summary in the narrow column). (5) **Bottom nav clears the home indicator /
+swipe-up bar** (`height: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom,0px))` — border-box + fixed height
++ padding was squeezing the 50px tap targets into the inset). Touched `frontend/css/{bookshelf,laurels,
+loading_indicator,layout}.css`. Verified on emulated iPhone (all five fixed, bell drops to 67px clear of the
+Island, nav items sit above the 818px home-indicator line, no h-scroll, zero console errors); iOS `env()`
+reasoned from CSS + a rendered safe-area simulation, real-device glance still worth it. Developed on `master`;
+needs deploy + hard-refresh. **Native desktop app (pywebview) shares these files but is desktop-width → unaffected
+at normal size; needs a `build.bat` rebuild to bundle it. No native iOS/Android app — mobile is the responsive
+web app, not yet a PWA (no manifest / `apple-mobile-web-app-capable`).**
+
+**Prior — 2.79.0 — App-wide milestone celebrations (fires on poll, any screen).**
 Follows 2.78.0. The achievement celebration used to fire only when the Laurels page was open; now a
 background **`Laurels.startAchievementWatch`** (started once from `App.init()`, behind the same auth gate as
 PlatformHealth) pops it **wherever you are** the moment a poll crosses a milestone. It does a silent catch-up

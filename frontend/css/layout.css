@@ -381,7 +381,11 @@ body.sidebar-collapsed .poll-progress-bar { left: var(--sidebar-w-collapsed); }
     bottom: 0;
     left: 0;
     right: 0;
-    height: var(--bottom-nav-h);
+    /* Grow by the home-indicator inset (not just pad it): with border-box, a
+       fixed height + padding-bottom would squeeze the 50px tap targets into the
+       safe area. Adding the inset to the height keeps the item row full-size and
+       lifts it clear of the iOS home indicator / swipe-up bar. */
+    height: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
     background: var(--bg-glass);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
