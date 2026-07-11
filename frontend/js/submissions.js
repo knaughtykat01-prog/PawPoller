@@ -206,6 +206,12 @@ window.Submissions = {
         const persona = (w.persona_names && w.persona_names.length)
             ? `<div class="muted" style="font-size:.78rem;margin-top:.3rem;">${this.esc(w.persona_names.join(', '))}</div>` : '';
         const meta = w.meta ? `<div class="story-card-stats">${this.esc(w.meta)}</div>` : '';
+        // "Add to Collection" — a role=button span (interactive content can't be a
+        // real <button> inside the card's <a>); the global Collections delegated
+        // handler catches [data-add-collection] and preventDefaults the nav.
+        const addColl = `<span class="btn btn-sm coll-add-btn" role="button" tabindex="0"
+            data-add-collection data-mtype="work" data-mref="${this.esc(w.content_type + ':' + w.name)}"
+            data-label="${this.esc(w.title || w.name)}" title="Add to a collection">＋ Collection</span>`;
         return `
             <a class="story-card" href="${w.detail_route}">
                 ${cover}
@@ -215,6 +221,7 @@ window.Submissions = {
                     ${meta}
                     <div class="story-card-platforms" style="margin-top:.4rem;">${plats}</div>
                     ${persona}
+                    <div style="margin-top:.5rem;">${addColl}</div>
                 </div>
             </a>`;
     },

@@ -1065,6 +1065,10 @@ const App = {
             if (window.Submissions) window.Submissions.renderDiscovered();
         } else if (parts[0] === 'submissions') {
             if (window.Submissions) window.Submissions.render();
+        } else if (parts[0] === 'collections' && parts[1]) {
+            if (window.Collections) window.Collections.renderDetail(parts[1]);
+        } else if (parts[0] === 'collections') {
+            if (window.Collections) window.Collections.render();
         } else if (parts[0] === 'library' && parts[1] === 'work' && parts[2]) {
             // Work name may contain slashes — rejoin the tail.
             if (window.Bookshelf) window.Bookshelf.renderWork(parts.slice(2).join('/'));

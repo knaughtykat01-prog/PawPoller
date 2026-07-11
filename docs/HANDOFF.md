@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-12
-**Current version (live/master):** 2.96.0 — **Fix: imported works attributed to the wrong account/persona (+ one-time backfill).**
+**Current version (live/master):** 2.97.0 — **Collections: one master container per piece (gallery + microblog + companion story).**
+New **Collections** hub — a user-curated master folder per piece bundling every place it lives (gallery works +
+microblog submissions) with pooled analytics, all links, merged tags, and an optional companion story. Phases 1–3 +
+companion story of `docs/specs/collections.md` (Phase 0 = 2.96.0). **Backend:** `collections` +
+`collection_members` tables (`collections_schema.sql`, loaded in `db.py`); `database/collections_queries.py`
+(CRUD + `rollup_collection()` — polymorphic members `work`/`submission`/`post` resolved live into per-platform
+locations, pooled totals reusing the unify-master stat map, merged tags, personas, companion story);
+`routes/collections_api.py` (`/api/collections` list/create/get/patch/delete + members), registered in
+`dashboard.py`. **Frontend:** `frontend/js/collections.js` + `collections.css` — nav entry, hub (`#/collections`)
++ detail (`#/collections/:id`); curation via "＋ Collection" on Submissions-hub work cards + a browse-to-add on the
+detail page. CSP-safe. `tests/test_collections.py`. Verified live end-to-end (create → add work from hub → detail
+rollup pools 102 views + tags; zero console errors). **Deferred:** unify-engine auto-suggestions (spec §7 Phase 4).
+_(Built autonomously overnight with the user's full permission; local dev server restarted as `python server.py`.)_
+
+**Prior — 2.96.0 — Fix: imported works attributed to the wrong account/persona (+ one-time backfill).**
 Phase 0 of the Collections plan (`docs/specs/collections.md`), shippable alone. Persona filtering "lumped" content
 under the wrong persona (Hustlestick FA + KiiKinar X all showed as KnaughtyKat) because **imports/links dropped the
 account**: `artwork_importer.import_artwork()` + `POST /api/works/link` called `upsert_publication()` without

@@ -1,6 +1,13 @@
 # Collections — Design Plan
 
-**Status:** draft / not yet built · **Author:** Rhys + Claude · **Date:** 2026-07-12
+**Status:** Phases 0–3 + companion story **BUILT & shipped 2.97.0** (auto-suggestions §7 Phase 4 deferred) · **Author:** Rhys + Claude · **Date:** 2026-07-12
+
+> **Built (2.96.0 / 2.97.0):** Phase 0 attribution fix + backfill (2.96.0). Phase 1 `collections`/`collection_members`
+> tables + `database/collections_queries.py` (CRUD + `rollup_collection`) + `routes/collections_api.py` + tests.
+> Phase 2 `frontend/js/collections.js` hub (`#/collections`) + detail (`#/collections/:id`) + `collections.css` +
+> nav entry. Phase 3 curation: "Add to Collection" on Submissions-hub work cards + a browse-to-add on the detail
+> page. Companion story = a work member of type `story` (surfaced as `story` in the rollup). **Deferred:** the
+> unify-engine auto-suggestions (§7 Phase 4, second half).
 
 ## 1. The vision
 

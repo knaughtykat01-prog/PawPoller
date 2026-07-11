@@ -154,6 +154,17 @@ const API = {
         return this.post(`/api/accounts/${accountId}/persona`, { persona_id: personaId });
     },
 
+    /* ── Collections (master container per piece) ─────────────── */
+    getCollections() { return this.get('/api/collections'); },
+    getCollection(id) { return this.get(`/api/collections/${id}`); },
+    createCollection(body) { return this.post('/api/collections', body); },
+    updateCollection(id, body) { return this.patch(`/api/collections/${id}`, body); },
+    deleteCollection(id) { return this.del(`/api/collections/${id}`); },
+    addCollectionMember(id, body) { return this.post(`/api/collections/${id}/members`, body); },
+    removeCollectionMember(id, memberType, memberRef) {
+        return this.del(`/api/collections/${id}/members?member_type=${encodeURIComponent(memberType)}&member_ref=${encodeURIComponent(memberRef)}`);
+    },
+
     /* ── IB (Inkbunny) convenience methods ─────────────────────
      * General status, submission CRUD, snapshot history, aggregation,
      * comparison, polling control, session management, authentication,

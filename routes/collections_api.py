@@ -1,0 +1,123 @@
+"""Collections API — a user-curated master container for one piece across every
+platform it lives on (+ optional companion story). See docs/specs/collections.md.
+
+Members are polymorphic references ('work' | 'submission' | 'post'); the detail
+endpoint resolves them live into pooled analytics / locations / tags / personas.
+"""
+import logging
+
+from fastapi import APIRouter, HTTPException
+
+from database.db import get_connection
+from database import collections_queries as cq
+
+logger = logging.getLogger(__name__)
+
+collections_router = APIRouter(prefix="/api/collections", tags=["collections"])
+
+_MEMBER_TYPES = {"work", "submission", "post"}
+
+
+@collections_router.get("")
+def list_collections():
+    """All collections + a light rollup (totals / platforms / personas) for the grid."""
+    conn = get_connection()
+    try:
+        return {"collections": cq.list_collections_with_summary(conn)}
+    finally:
+        conn.close()
+
+
+@collections_router.post("")
+def create_collection(body: dict):
+    """Create a collection. Body: {name, cover_kind?, cover_ref?, notes?, members?}.
+
+    `members` (optional) is a list of {member_type, member_ref, role?} added atomically.
+    """
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, detail="name is required")
+    conn = get_connection()
+    try:
+        cid = cq.create_collection(
+            conn, name=name, cover_kind=body.get("cover_kind", ""),
+            cover_ref=body.get("cover_ref", ""), notes=body.get("notes", ""))
+        for m in (body.get("members") or []):
+            mt = m.get("member_type")
+            mr = m.get("member_ref")
+            if mt in _MEMBER_TYPES and mr:
+                cq.add_member(conn, cid, mt, str(mr), m.get("role", ""))
+        conn.commit()
+        return {"status": "created", "id": cid}
+    finally:
+        conn.close()
+
+
+@collections_router.get("/{cid}")
+def get_collection(cid: int):
+    """Full detail: metadata + resolved locations + pooled totals + tags + personas + story."""
+    conn = get_connection()
+    try:
+        roll = cq.rollup_collection(conn, cid)
+        if not roll:
+            raise HTTPException(404, detail="Collection not found")
+        return roll
+    finally:
+        conn.close()
+
+
+@collections_router.patch("/{cid}")
+def update_collection(cid: int, body: dict):
+    """Update name / cover_kind / cover_ref / notes."""
+    conn = get_connection()
+    try:
+        if not cq.get_collection(conn, cid):
+            raise HTTPException(404, detail="Collection not found")
+        cq.update_collection(
+            conn, cid, name=body.get("name"), cover_kind=body.get("cover_kind"),
+            cover_ref=body.get("cover_ref"), notes=body.get("notes"))
+        conn.commit()
+        return {"status": "updated"}
+    finally:
+        conn.close()
+
+
+@collections_router.delete("/{cid}")
+def delete_collection(cid: int):
+    conn = get_connection()
+    try:
+        cq.delete_collection(conn, cid)
+        conn.commit()
+        return {"status": "deleted"}
+    finally:
+        conn.close()
+
+
+@collections_router.post("/{cid}/members")
+def add_member(cid: int, body: dict):
+    """Add a member. Body: {member_type: work|submission|post, member_ref, role?}."""
+    mt = body.get("member_type")
+    mr = body.get("member_ref")
+    if mt not in _MEMBER_TYPES or not mr:
+        raise HTTPException(400, detail="member_type (work|submission|post) and member_ref are required")
+    conn = get_connection()
+    try:
+        if not cq.get_collection(conn, cid):
+            raise HTTPException(404, detail="Collection not found")
+        cq.add_member(conn, cid, mt, str(mr), body.get("role", ""))
+        conn.commit()
+        return {"status": "added"}
+    finally:
+        conn.close()
+
+
+@collections_router.delete("/{cid}/members")
+def remove_member(cid: int, member_type: str, member_ref: str):
+    """Remove a member (query params: member_type, member_ref)."""
+    conn = get_connection()
+    try:
+        cq.remove_member(conn, cid, member_type, member_ref)
+        conn.commit()
+        return {"status": "removed"}
+    finally:
+        conn.close()

@@ -45,6 +45,7 @@ _THR_SCHEMA_PATH = config.resource_path("database/thr_schema.sql")    # Threads 
 _IG_SCHEMA_PATH = config.resource_path("database/ig_schema.sql")      # Instagram tables
 _POSTING_SCHEMA_PATH = config.resource_path("database/posting_schema.sql")  # Posting module tables
 _POSTS_SCHEMA_PATH = config.resource_path("database/posts_schema.sql")      # Posts (microblog) module tables
+_COLLECTIONS_SCHEMA_PATH = config.resource_path("database/collections_schema.sql")  # Collections (master container) tables
 
 
 def get_connection() -> sqlite3.Connection:
@@ -120,6 +121,8 @@ def init_db() -> None:
         conn.executescript(posting_schema_sql)
         posts_schema_sql = _POSTS_SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(posts_schema_sql)
+        collections_schema_sql = _COLLECTIONS_SCHEMA_PATH.read_text(encoding="utf-8")
+        conn.executescript(collections_schema_sql)
         # Apply any migrations for tables added after the original schema release.
         _run_migrations(conn)
         conn.commit()

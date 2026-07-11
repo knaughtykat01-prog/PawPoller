@@ -5974,6 +5974,37 @@ re-uploading bytes. The browser upload path is the universal fallback (works on
 desktop and the server).
 
 
+## 20.9 Collections — one master container per piece (2.97.0)
+
+A **Collection** is a user-curated master folder for a single *piece* across every place it lives — gallery works
++ microblog submissions + an optional companion story — with pooled analytics, all locations/links and merged
+tags. Full design + rationale: `docs/specs/collections.md`. (Phase 0 — the account-attribution fix that makes the
+persona/analytics rollup correct — shipped in 2.96.0; see that changelog entry.)
+
+- **Model** — `collections` + `collection_members` (`database/collections_schema.sql`, loaded in `db.py` via
+  `CREATE TABLE IF NOT EXISTS`). Members are **polymorphic references**, not copies: `member_type` ∈
+  `work` (`artwork:Name` / `story:Name`) | `submission` (`platform:submission_id`) | `post`, resolved live so
+  analytics stay current. `ON DELETE CASCADE` on the FK; `INSERT OR IGNORE` makes add-member idempotent.
+- **Rollup** — `database/collections_queries.py::rollup_collection(conn, cid)` resolves each member into
+  per-platform **locations** `{platform, account_id, url, title, stats:{views,favorites,comments}, keywords}`.
+  A `submission` member → its `{platform}_submissions` row; a `work` member → its publications (via
+  `get_publications`), each publication resolved to its submission. Stats are normalised with the SAME
+  `_TABLE_MAP`/`_METRICS` per-platform column mapping as `analytics_queries.get_link_combined_stats` (the unify
+  master pooling), so Collections and Masters pool identically. Output pools totals, merges the tag set, collects
+  the persona(s) spanned (each location's `account_id` → persona), and surfaces the first `story` work member as
+  `story`. `list_collections_with_summary()` gives the hub grid a light rollup.
+- **API** — `routes/collections_api.py` (`/api/collections`, registered in `dashboard.py`): `GET` (list) /
+  `POST` (create, optional `members[]`) / `GET /{id}` (detail rollup) / `PATCH /{id}` / `DELETE /{id}` /
+  `POST /{id}/members` / `DELETE /{id}/members?member_type=&member_ref=`.
+- **Frontend** — `frontend/js/collections.js` (`window.Collections`) + `collections.css`, a **Collections** nav
+  entry, routes `#/collections` (`render()` grid) and `#/collections/:id` (`renderDetail()`). CSP-safe: one
+  delegated click listener keyed on `data-coll-*` / `data-add-collection`, no inline handlers; modals reuse the
+  `.guide-modal` shell. **Curation:** `Collections.pickAndAdd(memberType, memberRef, label)` powers a "＋ Collection"
+  `role="button"` span on every Submissions-hub work card (`submissions.js`), and the detail page has a
+  browse-to-add member picker (`_addMemberBrowser`, over `/api/works` + `/api/works/discovered`).
+- **Deferred** — the unify-engine auto-*suggestions* that propose collections (spec §7 Phase 4, second half).
+
+
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)
 
 The third publishing hub beside Stories and Artwork, for short-form posts to

@@ -4,6 +4,36 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.97.0] - 2026-07-12 - Collections: one master container per piece (gallery + microblog + companion story)
+
+New **Collections** hub — a user-curated master folder per *piece* that bundles every place it lives (gallery
+works + microblog submissions) with **pooled analytics**, all locations/links, merged tags, and an optional
+companion story. Phases 1–3 + companion story of `docs/specs/collections.md` (Phase 0 shipped in 2.96.0).
+
+**Backend.**
+- New `collections` + `collection_members` tables (`database/collections_schema.sql`, loaded in `db.py`
+  via `CREATE TABLE IF NOT EXISTS`). Members are **polymorphic references** — `work` (`artwork:Name`/`story:Name`),
+  `submission` (`platform:submission_id`), or `post` — resolved live so analytics stay current.
+- `database/collections_queries.py` — CRUD + `rollup_collection()`: resolves every member into per-platform
+  **locations** (link + normalised views/faves/comments, reusing the unify-master stat mapping), pools the totals,
+  merges tags, collects the persona(s) spanned, and surfaces the companion story. `list_collections_with_summary()`
+  feeds the grid.
+- `routes/collections_api.py` (`/api/collections`): list / create / get(detail rollup) / patch / delete +
+  add/remove member. Registered in `dashboard.py`.
+
+**Frontend.**
+- `frontend/js/collections.js` + `collections.css` — a **Collections** nav entry, hub grid (`#/collections`; cover,
+  platforms, pooled stats, persona chips) and detail page (`#/collections/:id`; pooled stat cards, a Locations
+  table, merged tags, the companion story, and the member list). CSP-safe (delegated handlers, no inline JS).
+- **Curation:** "＋ Collection" on every Submissions-hub work card opens a picker (existing collection or new);
+  the detail page has a browse-to-add member picker. Create / edit / delete / remove-member all wired.
+
+**Tests:** `tests/test_collections.py` (CRUD, member dedup, and the rollup pooling across a work + a submission →
+totals, merged tags, personas, companion story). Verified live end-to-end (create → add work from the hub →
+detail rollup shows pooled 102 views + tags; zero console errors).
+
+**Deferred:** the unify-engine auto-*suggestions* that propose collections (spec §7 Phase 4, second half).
+
 ## [2.96.0] - 2026-07-12 - Fix: imported works attributed to the wrong account/persona (+ one-time backfill)
 
 Bug fix for persona filtering "lumping" content under the wrong persona — e.g. Hustlestick's FA images and
