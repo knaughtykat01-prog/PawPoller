@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.91.0 — **Multi-image import: a Bluesky post's whole image set, not just the first.**
+**Current version (live/master):** 2.92.0 — **Fix: Wattpad story-list polling hit a dead v3 endpoint (400 every cycle).**
+Recurring `[ERROR] clients.wp.client: … 400` on `/api/v3/users/{u}/stories/published`. Wattpad's API is **split by
+endpoint**: `users/{u}` (validate/followers) + `stories/{id}` (detail) are **v3**, but the story-*list*
+`users/{u}/stories/published` moved to **v4** (v3 now returns `400 InvalidEndpoint`). `get_all_story_ids` called v3
+first (→ 400, logged ERROR) then fell back to v4 — so polling kept working but logged an error + wasted a request
+each cycle. Fix: **v4 first** for the story list, v3 as legacy fallback; the other two calls already used the right
+version. Verified live (one v4 request, 200, no error, story returned). `clients/wp/client.py` only. Developed on
+`master`; needs deploy.  ·  **Next up (tracked):** extend 2.91.0's multi-image import to **X** and **Instagram**
+carousels (2.93.0).
+
+**Prior — 2.91.0 — Multi-image import: a Bluesky post's whole image set, not just the first.**
 A multi-image post (e.g. a 4-image skeet) now imports as **one artwork per image** (titled `Title (i/N)`, each
 independently publishable) instead of silently keeping only the first — the single-image artwork model is
 unchanged (N artworks, not a gallery). Only the **post's own** images, never comment/reply media. **Bluesky

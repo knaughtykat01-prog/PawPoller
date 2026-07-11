@@ -109,22 +109,29 @@ class WPClient:
     # -- Story Discovery ---------------------------------------------------
 
     async def get_all_story_ids(self) -> list[dict]:
-        """Fetch all stories for the target user."""
+        """Fetch all stories for the target user.
+
+        Wattpad's API is split by endpoint: the per-user published-stories list
+        lives on **v4**, while the old v3 path
+        (``api/v3/users/{u}/stories/published``) now returns 400
+        ``InvalidEndpoint``. So we call v4 first (the happy path logs nothing)
+        and only fall back to v3 if v4 ever goes away.
+        """
         all_stories: list[dict] = []
         offset = 0
         limit = 50
 
         for _page_safety in range(1000):
             data = await self._get_json(
-                f"{_API_BASE}/api/v3/users/{self.target_user}/stories/published",
-                params={"offset": str(offset), "limit": str(limit), "fields": "stories(id,title)"},
+                f"{_API_BASE}/v4/users/{self.target_user}/stories/published",
+                params={"offset": str(offset), "limit": str(limit)},
             )
 
             if not data:
-                # Try alternative endpoint
+                # Legacy fallback, in case Wattpad flips the v3/v4 split again.
                 data = await self._get_json(
-                    f"{_API_BASE}/v4/users/{self.target_user}/stories/published",
-                    params={"offset": str(offset), "limit": str(limit)},
+                    f"{_API_BASE}/api/v3/users/{self.target_user}/stories/published",
+                    params={"offset": str(offset), "limit": str(limit), "fields": "stories(id,title)"},
                 )
 
             if not data:

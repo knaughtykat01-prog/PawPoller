@@ -4,6 +4,24 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.92.0] - 2026-07-11 - Fix: Wattpad story-list polling hit a dead v3 endpoint (400 every cycle)
+
+Bug fix for a recurring `[ERROR] clients.wp.client: … 400 Bad Request` on `/api/v3/users/{u}/stories/published`.
+
+Wattpad's API is **split by endpoint** between v3 and v4, and the story-list path moved to v4:
+
+| Call | Works on |
+| --- | --- |
+| `users/{u}` (validate, follower count) | **v3** (`/api/v3/…`) |
+| `users/{u}/stories/published` (story list) | **v4** (`/v4/…`) — v3 now returns `400 InvalidEndpoint` |
+| `stories/{id}` (detail) | **v3** |
+
+`get_all_story_ids` called **v3 first** (→ 400, logged as ERROR) and only then fell back to v4, so polling
+actually kept working but logged an error and burned a request every cycle. Fix: **call v4 first** for the story
+list, with v3 as the legacy fallback (in case Wattpad flips the split again). The other two calls already use the
+right version, so they're untouched. Verified live against the real API: one v4 request, `200 OK`, no error, story
+list returned. Touches `clients/wp/client.py` only. Developed on `master`; needs deploy.
+
 ## [2.91.0] - 2026-07-11 - Multi-image import: a Bluesky post's whole image set, not just the first
 
 A multi-image post (e.g. a 4-image Bluesky skeet) now imports as **one artwork per image**, instead of
