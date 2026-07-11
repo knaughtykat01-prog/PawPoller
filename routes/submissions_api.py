@@ -25,6 +25,24 @@ logger = logging.getLogger(__name__)
 works_router = APIRouter(prefix="/api")
 
 
+def _submission_account_id(conn, platform: str, submission_id: str):
+    """The account_id that owns a polled submission (from {platform}_submissions),
+    or None. Lets imports/links attribute the publication to the right account."""
+    from posting.sync import PLATFORM_TABLES
+    cfg = PLATFORM_TABLES.get(platform)
+    if not cfg:
+        return None
+    try:
+        row = conn.execute(
+            f"SELECT account_id FROM {cfg['table']} WHERE {cfg['id_col']} = ?",
+            (str(submission_id),),
+        ).fetchone()
+        aid = row[0] if row else None
+        return aid if aid else None
+    except Exception:
+        return None
+
+
 def _persona_maps(conn):
     """Return (account_id -> persona_id, persona_id -> persona dict)."""
     personas = {p["persona_id"]: p for p in personas_db.list_personas(conn)}
@@ -310,11 +328,16 @@ def link_submission(body: dict):
     try:
         conn = get_connection()
         try:
+            # Attribute the publication to the account that actually owns the
+            # submission (from its {platform}_submissions row), not the platform
+            # default — so persona/account scoping is correct.
+            acct_id = _submission_account_id(conn, platform, submission_id)
             pub_id = posting_queries.upsert_publication(
                 conn,
                 story_name=name,
                 chapter_index=0,
                 platform=platform,
+                account_id=acct_id,
                 content_type=content_type,
                 external_id=submission_id,
                 external_url=url,

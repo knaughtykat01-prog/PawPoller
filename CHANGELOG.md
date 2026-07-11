@@ -4,6 +4,31 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.96.0] - 2026-07-12 - Fix: imported works attributed to the wrong account/persona (+ one-time backfill)
+
+Bug fix for persona filtering "lumping" content under the wrong persona — e.g. Hustlestick's FA images and
+KiiKinar's X posts all showing as KnaughtyKat. This is Phase 0 of the Collections plan
+(`docs/specs/collections.md`), shippable on its own.
+
+**Root cause.** Polling records each submission's owning `account_id` correctly, but the **import/link paths dropped
+it**: `artwork_importer.import_artwork()` and `POST /api/works/link` called `upsert_publication()` without
+`account_id`, so every imported/linked work landed on the platform's **default** account. The Submissions-hub
+persona filter derives a work's persona from its publications' `account_id`, so all FA works read as KnaughtyKat
+(account 2), burying Hustlestick (10) and KiiTheTiger (15); same for X (12 vs 13/14).
+
+**Fix.**
+- `import_artwork` now passes `account_id=d.get("account_id")` (the source submission's account).
+- `POST /api/works/link` looks it up via new `_submission_account_id(conn, platform, submission_id)` and passes it.
+- **One-time backfill migration** (`db.py`, guarded by a `pp_meta` flag so a later manual re-attribution isn't
+  reverted): re-points existing `publications.account_id` to the account that owns the matching
+  `{platform}_submissions` row (join across INTEGER↔TEXT ids). Dry-run against prod: **58 publications** corrected
+  (32 FA → accounts 10/15, 26 X → accounts 13/14).
+
+After this, the Submissions-hub persona filter buckets works by the correct persona. Tests:
+`tests/test_publication_account_backfill.py` (backfill re-points + idempotent flag + `_submission_account_id`
+lookup). Touches `posting/artwork_importer.py`, `routes/submissions_api.py`, `database/db.py`. Developed on
+`master`; needs deploy (migration runs on container startup).
+
 ## [2.95.0] - 2026-07-12 - Button audit: fix a CSP-dead "Link" button + stop Poll/Resync silently skipping platforms
 
 Two fixes from a static button audit (every interactive control → handler → endpoint cross-referenced; the

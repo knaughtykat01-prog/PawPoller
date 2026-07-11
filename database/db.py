@@ -851,6 +851,41 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
                 if "duplicate column" not in str(e).lower():
                     raise
 
+    # Migration (2.96.0): ONE-TIME backfill of publications.account_id from the
+    # source submission. Imports/links used to drop the account, so every work
+    # landed on the platform's default account (e.g. all FA works → KnaughtyKat,
+    # burying Hustlestick/KiiTheTiger). Re-point each publication to the account
+    # that owns its matching {platform}_submissions row. Guarded by a meta flag
+    # so a later manual re-attribution isn't reverted on the next boot.
+    if "publications" in tables:
+        conn.execute("CREATE TABLE IF NOT EXISTS pp_meta (key TEXT PRIMARY KEY, value TEXT)")
+        _done = conn.execute(
+            "SELECT 1 FROM pp_meta WHERE key = 'pub_account_backfill_v1'").fetchone()
+        if not _done:
+            from posting.sync import PLATFORM_TABLES
+            for _code, _cfg in PLATFORM_TABLES.items():
+                _tbl, _idc = _cfg["table"], _cfg["id_col"]
+                if _tbl not in tables:
+                    continue
+                try:
+                    conn.execute(
+                        f"""UPDATE publications SET account_id = (
+                                SELECT s.account_id FROM {_tbl} s
+                                WHERE s.{_idc} = publications.external_id
+                            )
+                            WHERE platform = ? AND external_id != '' AND EXISTS (
+                                SELECT 1 FROM {_tbl} s
+                                WHERE s.{_idc} = publications.external_id
+                                  AND s.account_id IS NOT NULL AND s.account_id > 0
+                            )""",
+                        (_code,),
+                    )
+                except sqlite3.OperationalError:
+                    pass  # table/column missing on this install — skip
+            conn.execute(
+                "INSERT OR REPLACE INTO pp_meta (key, value) VALUES "
+                "('pub_account_backfill_v1', datetime('now'))")
+
     # Migration: Personas (cross-platform account grouping). A persona bundles
     # accounts across platforms into one logical identity for scoped views +
     # per-persona digests. accounts.persona_id is a SOFT reference (no SQL FK):

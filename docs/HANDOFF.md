@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-12
-**Current version (live/master):** 2.95.0 — **Button audit: fix a CSP-dead "Link" button + stop Poll/Resync silently skipping platforms.**
+**Current version (live/master):** 2.96.0 — **Fix: imported works attributed to the wrong account/persona (+ one-time backfill).**
+Phase 0 of the Collections plan (`docs/specs/collections.md`), shippable alone. Persona filtering "lumped" content
+under the wrong persona (Hustlestick FA + KiiKinar X all showed as KnaughtyKat) because **imports/links dropped the
+account**: `artwork_importer.import_artwork()` + `POST /api/works/link` called `upsert_publication()` without
+`account_id`, so every imported work landed on the platform default account (the hub derives a work's persona from
+its publications' `account_id`). Fix: `import_artwork` passes the source submission's `account_id`; `works/link`
+resolves it via new `_submission_account_id()`; **one-time backfill migration** (`db.py`, `pp_meta`-flag-guarded)
+re-points existing `publications.account_id` from the matching `{platform}_submissions` row (INTEGER↔TEXT join).
+Dry-run on prod: **58 pubs** corrected (32 FA→10/15, 26 X→13/14). `tests/test_publication_account_backfill.py`.
+Touches `posting/artwork_importer.py` + `routes/submissions_api.py` + `database/db.py`. Deploy runs the migration.
+**In progress (autonomous, user asleep, full permission given):** the rest of the **Collections** feature
+(`docs/specs/collections.md`, Phases 1–4) → will ship as 2.97.0.
+
+**Prior — 2.95.0 — Button audit: fix a CSP-dead "Link" button + stop Poll/Resync silently skipping platforms.**
 Two fixes from a static button audit (every control → handler → endpoint cross-referenced; wiring otherwise clean —
 all 337 `api.js` calls + editor/settings fetches resolve to real routes, every action `data-*` trigger has a
 handler). Frontend-only. (1) **Dead "Link" button:** the link-*suggestions* "Link" button (`Components.linkSuggestions`)

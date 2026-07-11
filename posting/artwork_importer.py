@@ -285,6 +285,10 @@ def import_artwork(platform: str, submission_id: str) -> dict:
             story_name=created[0],
             chapter_index=0,
             platform=platform,
+            # Carry the source submission's account so the work is attributed to
+            # the RIGHT account/persona (else every import lands on the platform's
+            # default account — the "Hustlestick lumped into KnaughtyKat" bug).
+            account_id=d.get("account_id") or None,
             content_type="artwork",
             external_id=str(submission_id),
             external_url=external_url,
