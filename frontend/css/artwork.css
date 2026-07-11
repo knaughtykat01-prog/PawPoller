@@ -248,19 +248,44 @@
  */
 .artwork-card--selectable { position: relative; }
 
+/* Select-to-unify action bar. Hidden until select mode (a bare [hidden]
+   attribute is overridden by an author display value, so visibility is driven
+   by the .is-active class instead). Floats: fixed to the bottom-centre of the
+   viewport so it stays in reach while you scroll the gallery ticking pieces. */
 .artwork-select-bar {
-    display: flex;
+    display: none;
     align-items: center;
+    justify-content: center;
     gap: .6rem;
     flex-wrap: wrap;
-    margin: 0 0 1rem;
-    padding: .55rem .8rem;
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 900;
+    width: max-content;
+    max-width: min(620px, calc(100vw - 24px));
+    margin: 0;
+    padding: .6rem .9rem;
     background: var(--bg-secondary);
     border: 1px solid var(--accent);
-    border-radius: var(--radius);
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .28);
+}
+.artwork-select-bar.is-active {
+    display: flex;
+    animation: art-selbar-in .18s ease;
+}
+@keyframes art-selbar-in {
+    from { opacity: 0; transform: translate(-50%, 12px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
 }
 .artwork-select-bar #art-select-count { font-weight: 600; }
-.artwork-select-hint { font-size: 12px; }
+/* Hint sits on its own line above the controls (centred, muted). */
+.artwork-select-hint { font-size: 12px; flex-basis: 100%; text-align: center; order: -1; color: var(--text-muted); }
+#art-select-toggle.is-hidden { display: none; }
+/* Clear the floating bar so the last gallery row isn't hidden behind it. */
+.artwork-grid.selecting { padding-bottom: 128px; }
 
 /* Master tile */
 .artwork-card--master { position: relative; border-color: var(--accent); }

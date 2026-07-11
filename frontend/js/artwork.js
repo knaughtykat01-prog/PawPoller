@@ -296,10 +296,12 @@ window.Artwork = {
         this._selected.clear();
         const grid = document.getElementById('artwork-grid');
         if (grid) grid.classList.add('selecting');
+        // Visibility via classes: [hidden] alone is overridden by the bar's own
+        // display value and the toggle's .btn display, so they'd leak visible.
         const bar = document.getElementById('art-select-bar');
-        if (bar) bar.hidden = false;
+        if (bar) { bar.classList.add('is-active'); bar.hidden = false; }
         const t = document.getElementById('art-select-toggle');
-        if (t) t.hidden = true;
+        if (t) t.classList.add('is-hidden');
         this._updateSelectBar();
     },
 
@@ -312,9 +314,9 @@ window.Artwork = {
             grid.querySelectorAll('.artwork-card.selected').forEach(c => c.classList.remove('selected'));
         }
         const bar = document.getElementById('art-select-bar');
-        if (bar) bar.hidden = true;
+        if (bar) { bar.classList.remove('is-active'); bar.hidden = true; }
         const t = document.getElementById('art-select-toggle');
-        if (t) t.hidden = false;
+        if (t) t.classList.remove('is-hidden');
     },
 
     _toggleSelect(card) {

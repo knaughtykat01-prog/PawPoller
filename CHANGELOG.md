@@ -4,6 +4,27 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.89.0] - 2026-07-11 - Artwork unify: floating select bar (+ fix the bar leaking visible)
+
+Two fixes to the Artwork → "Select to unify" flow. Frontend-only.
+
+- **Bug: the select bar was always visible.** `#art-select-bar` is emitted with the `hidden` attribute, but
+  its `.artwork-select-bar { display:flex }` rule overrides `[hidden]` in the cascade — so the
+  "0 selected · Unify selected · Cancel · Tick 2 or more…" bar sat on the Artwork page permanently, even
+  outside select mode (and the "Select" toggle similarly failed to hide *in* select mode, since `.btn`'s
+  display overrides `[hidden]` too). Visibility is now driven by explicit state classes: `_enterSelect` adds
+  `.is-active` to the bar and `.is-hidden` to the toggle; `_exitSelect` removes them. The bar's base rule is
+  `display:none`.
+- **Floating select bar.** The bar now floats — `position:fixed` at the bottom-centre of the viewport (rounded
+  card, drop shadow, subtle slide-up) — so the count + **Unify selected** + **Cancel** stay in reach while you
+  scroll a long gallery ticking pieces, instead of scrolling away at the top. The hint sits on its own line
+  above the controls. `.artwork-grid.selecting` gets bottom padding so the last row isn't hidden behind it.
+
+Touches `frontend/js/artwork.js` (`_enterSelect`/`_exitSelect` class toggles) and `frontend/css/artwork.css`
+(`.artwork-select-bar` float + `.is-active`/`#art-select-toggle.is-hidden`). Verified live-in-browser: bar hidden
+by default, floats bottom-centre on Select, toggle hides, Cancel restores everything, zero console errors.
+Developed on `master`; needs deploy.
+
 ## [2.88.0] - 2026-07-11 - Settings → Platforms: uniform logos, true-centred titles, accounts link + logo disclaimer
 
 Follow-up polish to 2.87.0. Frontend-only.

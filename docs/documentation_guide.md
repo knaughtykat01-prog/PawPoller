@@ -5882,6 +5882,15 @@ endpoints — `GET /api/links` (read), `POST /api/links` (unify), `DELETE
   navigation/import; `_toggleSelect` tracks ticked keys; **Unify selected**
   (`_unifySelected`) posts the ticked `(platform, submission_id)` members to
   `POST /api/links` and re-renders so they collapse into a master.
+- *Action bar (2.89.0)* — `#art-select-bar` is a **floating** card fixed to the
+  bottom-centre of the viewport (`position:fixed`), so the count + Unify + Cancel
+  stay in reach while you scroll a long gallery ticking pieces. Visibility is
+  driven by an **`.is-active` class**, not the `[hidden]` attribute: the bar's own
+  `display` value (and the toggle's `.btn` display) override a bare `[hidden]`, so
+  before 2.89.0 the bar leaked visible on the Artwork page at all times.
+  `_enterSelect` adds `.is-active` to the bar + `.is-hidden` to the toggle;
+  `_exitSelect` removes both. `.artwork-grid.selecting` gets bottom padding so the
+  last row clears the floating bar.
 - *Suggestions banner (2.60.0)* — a dismissible **Possible matches** banner
   nudges the obvious merges, reusing the title-similarity engine
   (`GET /api/links/suggestions` → `auto_suggest_links`). `_loadSuggestions` fetches

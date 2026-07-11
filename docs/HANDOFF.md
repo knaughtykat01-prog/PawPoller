@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.88.0 — **Settings → Platforms: uniform logos, true-centred titles, accounts link + logo disclaimer.**
+**Current version (live/master):** 2.89.0 — **Artwork unify: floating select bar (+ fix the bar leaking visible).**
+Two fixes to the Artwork → "Select to unify" flow. Frontend-only. (1) **Bug:** `#art-select-bar` carries the
+`hidden` attribute, but its `.artwork-select-bar { display:flex }` rule overrides `[hidden]` in the cascade, so the
+"0 selected · Unify selected · Cancel · Tick 2 or more…" bar sat on the Artwork page **permanently** (and the
+"Select" toggle likewise failed to hide in select mode, since `.btn` display overrides `[hidden]`). Visibility is now
+driven by explicit state classes — `_enterSelect` adds `.is-active` to the bar + `.is-hidden` to the toggle,
+`_exitSelect` removes them; base rule is `display:none`. (2) **Floating bar:** `#art-select-bar` now floats
+(`position:fixed`, bottom-centre, rounded card + shadow + slide-up), so the count + **Unify selected** + **Cancel**
+stay in reach while you scroll a long gallery ticking pieces (hint on its own line above the controls;
+`.artwork-grid.selecting` gets bottom padding to clear it). Touches `frontend/js/artwork.js`
+(`_enterSelect`/`_exitSelect`) + `frontend/css/artwork.css`. Verified live-in-browser (hidden by default, floats on
+Select, toggle hides, Cancel restores, zero console errors). Developed on `master`; needs deploy.
+
+**Prior — 2.88.0 — Settings → Platforms: uniform logos, true-centred titles, accounts link + logo disclaimer.**
 Follow-up polish to 2.87.0. Frontend-only. (1) **Tiny logo:** the X/Twitter mark (`img/platforms/tw.png`) filled
 only 50% of its 64px canvas (transparent padding), so it rendered half-size — trimmed to its content bbox +
 re-padded to ~89% fill, matching the rest; all 16 logos now render a uniform 20×20 (bumped 18→20px). (2)
