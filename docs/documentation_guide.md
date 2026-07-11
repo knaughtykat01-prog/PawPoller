@@ -1346,6 +1346,27 @@ Three pollers now recover from expired sessions instead of crashing the poll cyc
 - **FA**: validates cookies before gallery fetch with a clear error message on failure.
 - **TW**: empty credential check + clearer expired-cookie error message.
 
+#### Meta (Threads + Instagram): app-block ≠ expired token (2.83.0)
+
+`polling/session_check` classifies a platform as `expired` (red, "re-enter credentials") whenever its
+`validate_session()` returns falsy, and `error` (amber, "couldn't verify") when it *raises*. For the two
+Meta-Graph platforms that distinction matters, because Meta returns several very different failures as an
+`OAuthException` with a numeric `code`:
+
+- **code 190** — the access token is genuinely expired/invalid. Here re-entering the token is the right
+  advice, so `validate_session()` returns `None` (its historical "not alive" contract) → red "expired".
+- **code 200 "API access blocked"** (an *app-level* block on the user's Meta app), other permission errors,
+  rate limits, network errors — the token itself may be perfectly fine. Reporting these as "expired" sends
+  the user chasing the wrong fix. So `clients/{thr,ig}/client.py::validate_session()` **raises**
+  `ThrAuthError` / `IgAuthError` with the real Meta message, and `check_platform`'s existing `except` branch
+  turns that into amber "couldn't verify" carrying the actual reason.
+
+To see the `code` at all, `validate_session()` issues the `/me` probe with a raw `self._http.get(...)` rather
+than `_get_json()` (which collapses every non-200 to `None`, discarding the error body). Both platforms share
+one Meta app, so an app-block trips *both* at once — a useful tell in the logs (`THR/IG: non-expiry auth
+failure (code 200)`). The fix only changes *classification/reporting*; a real expiry (code 190) behaves
+exactly as before, and the posting path (`create_thread`/`create_post`) never calls `validate_session()`.
+
 ### N+1 Query Batching
 
 Four pollers switched from per-item INSERT loops to `executemany` + `INSERT OR IGNORE` for fan/interaction data:

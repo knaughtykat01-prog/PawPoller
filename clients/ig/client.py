@@ -73,6 +73,22 @@ def _safe_int(val: Any) -> int:
         return 0
 
 
+class IgAuthError(Exception):
+    """An Instagram auth failure that is NOT a plainly expired/invalid token.
+
+    Meta's Graph API returns an OAuthException ``code`` for auth problems:
+      - **190** = the access token is expired/invalid → the user really does
+        need to re-enter it. ``validate_session()`` signals that by returning
+        ``None`` (its historical "not alive" contract).
+      - **200 "API access blocked"**, other permission errors, and rate limits
+        are *app-level / transient* — the token itself may be perfectly fine.
+        Reporting those as "expired — re-enter credentials" sends the user
+        chasing the wrong fix, so ``validate_session()`` raises THIS instead.
+        ``polling/session_check`` turns a raise into an amber "couldn't verify"
+        state (with this message), distinct from a red "expired".
+    """
+
+
 class IgClient:
     """Async client for the official Instagram Graph API (analytics only)."""
 
@@ -132,20 +148,59 @@ class IgClient:
             logger.debug("IG: token refresh skipped", exc_info=True)
 
     async def validate_session(self) -> str | None:
-        """Resolve the account (and refresh the token). Returns the username."""
+        """Resolve the account (and refresh the token).
+
+        Returns the username on a live token; returns ``None`` ONLY for a
+        genuinely expired/invalid token (Meta OAuthException code 190). For any
+        OTHER auth failure — most importantly code 200 "API access blocked" (an
+        app-level block on the user's Meta app, not a dead token) or a rate
+        limit — it raises :class:`IgAuthError` so the caller can report the real
+        reason instead of falsely telling the user to re-enter a perfectly good
+        access token. (Uses a raw request rather than ``_get_json`` so it can
+        see the Meta error ``code`` that ``_get_json`` swallows.)"""
         if not self.access_token:
             return None
         await self._try_refresh()
-        data = await self._get_json(f"{_API_BASE}/me", {"fields": "user_id,username"})
-        if data and isinstance(data, dict):
-            uid = data.get("user_id") or data.get("id")
-            if uid:
-                if not self.user_id:
-                    self.user_id = str(uid)
-                self._username = data.get("username", "") or self._username
-                self._logged_in = True
-                return self._username or self.user_id
-        return None
+        try:
+            resp = await self._http.get(f"{_API_BASE}/me", params={
+                "fields": "user_id,username",
+                "access_token": self.access_token,
+            })
+        except httpx.HTTPError as e:
+            raise IgAuthError(f"Network error contacting Instagram: {e}") from e
+
+        if resp.status_code == 200:
+            data = resp.json() if resp.content else {}
+            if isinstance(data, dict):
+                uid = data.get("user_id") or data.get("id")
+                if uid:
+                    if not self.user_id:
+                        self.user_id = str(uid)
+                    self._username = data.get("username", "") or self._username
+                    self._logged_in = True
+                    return self._username or self.user_id
+            return None
+
+        # Non-200 → classify the Meta OAuthException code.
+        err = {}
+        try:
+            err = (resp.json() or {}).get("error", {}) or {}
+        except Exception:
+            pass
+        code = err.get("code")
+        msg = err.get("message") or f"HTTP {resp.status_code}"
+        if code == 190:
+            # Genuinely expired / invalidated token → "re-enter credentials"
+            # is the right advice; signal it the historical way (None).
+            logger.info("IG: access token expired/invalid (code 190): %s", msg)
+            return None
+        # code 200 "API access blocked", other permission errors, rate limits:
+        # NOT an expired token — surface the real reason.
+        logger.error("IG: non-expiry auth failure (code %s): %s", code, msg)
+        raise IgAuthError(
+            f"Meta blocked Instagram API access (code {code}: {msg}). This is "
+            f"an app-level block, not an expired token — check your Meta app's "
+            f"status and permissions rather than re-entering the token.")
 
     async def ensure_logged_in(self) -> bool:
         if self._logged_in and self.user_id:

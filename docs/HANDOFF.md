@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.82.0 — **Guided tours: server-backed "seen" state.**
+**Current version (live/master):** 2.83.0 — **Threads/Instagram: distinguish a Meta app-block from an expired token.**
+Bug fix for a user-reported false "session expired — re-enter credentials" notification on **fresh** Threads +
+Instagram tokens. Live logs showed Meta returning `OAuthException code 200 "API access blocked"` for both (they
+share one Meta app) — an **app-level block, not an expired token** — but `polling/session_check` mislabels any
+failed `validate_session()` as "expired". Fix: `clients/{thr,ig}/client.py` `validate_session()` now inspects the
+Meta error `code` (issues the `/me` probe directly, not via `_get_json` which swallowed the code): **code 190**
+(real expiry) → returns `None` → red "expired — re-enter" (unchanged); **code 200 / permission / rate-limit /
+network** → raises new `ThrAuthError`/`IgAuthError` with the real Meta message → session_check's existing exception
+branch renders amber "couldn't verify" with that detail. Blast radius checked: posting calls `create_*` directly
+(never `validate_session`); pollers + `/auth/*/connect` already treat a raise as failure. New
+`tests/test_meta_auth_classification.py` (6 cases). Does NOT un-block the Meta app (Meta-side: check app status/
+permissions in the Meta Developer dashboard, regenerate the token once restored) — it just makes PawPoller report
+the cause honestly. Developed on `master`; needs deploy.
+
+**Prior — 2.82.0 — Guided tours: server-backed "seen" state.**
 Resolves the user-reported reappearing-guides bug (and the 2.81.0 iOS-PWA tour caveat). The onboarding
 tours (`frontend/js/tour.js`) recorded "seen" only in per-browser `localStorage`, so a dismissal didn't
 follow the user — a different browser, a cleared/Private store, or the installed PWA (iOS gives it storage

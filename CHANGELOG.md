@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.83.0] - 2026-07-11 - Threads/Instagram: stop mislabelling a Meta app-block as "expired credentials"
+
+**Bug fix.** A user with **fresh** Threads + Instagram tokens was getting repeated "session expired —
+re-enter credentials" notifications for both. The live logs showed the real cause: Meta was returning
+`OAuthException code 200 "API access blocked"` — an *app-level* block on the user's Meta app (both
+platforms share one Meta app, which is why they failed identically), **not** an expired token. But
+`polling/session_check` treats *any* failed `validate_session()` as "expired", so it cried wolf and
+pointed the user at the wrong fix (the token was fine; the Meta app's API access was blocked).
+
+- **`clients/thr/client.py` + `clients/ig/client.py`** — `validate_session()` now inspects the Meta
+  error `code` (it issues the `/me` probe directly instead of via `_get_json`, which swallowed the code):
+  - **code 190** (genuinely expired/invalid token) → returns `None`, exactly as before → the session
+    checker renders the red **"expired — re-enter credentials"** (still correct for a real expiry).
+  - **code 200 "API access blocked"**, other permission errors, rate limits, network errors → raises a
+    new `ThrAuthError` / `IgAuthError` with the real Meta message. `polling/session_check` already maps
+    an exception to the amber **"couldn't verify"** state (distinct from red "expired"), so the user now
+    sees the *actual* reason ("Meta blocked … API access … app-level block, not an expired token — check
+    your Meta app's status") instead of being sent to re-enter a perfectly good token.
+- **Blast radius checked:** the posting path calls `create_thread`/`create_post` directly (never
+  `validate_session`); the pollers and the `/auth/*/connect` routes already treat a raise as a failure
+  (they now surface a clearer message). No behaviour change for a genuine expiry.
+- **Tests:** new `tests/test_meta_auth_classification.py` (6 cases) — code 200 raises, code 190 returns
+  `None`, a 200-OK returns the username, for both clients. Existing session-check/notification suites
+  still green.
+
+This does **not** un-block the Meta app (that's a Meta-side action — check the app's status/permissions
+in the Meta Developer dashboard and regenerate the token once access is restored); it makes PawPoller
+report the problem honestly instead of blaming the credentials. Developed on `master`; needs deploy.
+
 ## [2.82.0] - 2026-07-11 - Guided tours: server-backed "seen" state (stop the reappearing pop-ups)
 
 The onboarding **guided tours** (`frontend/js/tour.js`) recorded "seen" only in per-browser
