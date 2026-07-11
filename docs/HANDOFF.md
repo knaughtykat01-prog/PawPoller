@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.87.0 — **Settings → Platforms: fix Inkbunny auto-open, alphabetise, logos + centred titles.**
+**Current version (live/master):** 2.88.0 — **Settings → Platforms: uniform logos, true-centred titles, accounts link + logo disclaimer.**
+Follow-up polish to 2.87.0. Frontend-only. (1) **Tiny logo:** the X/Twitter mark (`img/platforms/tw.png`) filled
+only 50% of its 64px canvas (transparent padding), so it rendered half-size — trimmed to its content bbox +
+re-padded to ~89% fill, matching the rest; all 16 logos now render a uniform 20×20 (bumped 18→20px). (2)
+**True-centred titles ("justified but centred"):** the connected-account meta (e.g. "— KnaughtyKat") sat *inside*
+the centred group, shoving titles on connected rows off-centre vs account-less rows — now pinned right (absolute,
+muted, ellipsised) and out of the centring flow, so every title lands on the same centre. (3) **Accounts pointer:**
+a footer note ("Managing more than one account? … your **primary** account …") + a **Manage accounts →** button to
+`#/accounts`, via new `App._appendPlatformsFooter()` (idempotent, re-appended last each paint). (4) **Logo-usage
+disclaimer:** a centred trademark line at the bottom (names/logos are trademarks of their owners, identification
+only, PawPoller not affiliated). Touches `frontend/js/app.js`, `frontend/css/components.css`, `frontend/img/platforms/tw.png`.
+Verified live-in-browser (X logo full size, 16 uniform + centred, meta pinned right, footer + button + disclaimer,
+zero console errors). Developed on `master`; needs deploy.
+
+**Prior — 2.87.0 — Settings → Platforms: fix Inkbunny auto-open, alphabetise, logos + centred titles.**
 Polish for the Settings → Platforms accordion list. Frontend-only. (1) **Bug:** the Inkbunny accordion had a
 hardcoded `open` attribute in `app.js`, so it was expanded every time Settings → Platforms opened — removed, now
 collapsed like the rest. (2) **Alphabetical:** a post-render pass `App._enhancePlatformSettings()` (idempotent,
@@ -12,7 +26,7 @@ brand logo from `window.PLATFORMS[].logo` (`/img/platforms/{code}.{png,svg}`) wi
 right. Touches `frontend/js/app.js` (+3 helpers `_enhancePlatformSettings`/`_accordionName`/`_decoratePlatformSummary`,
 call site after the platforms lazy-tab load, `open`-removal) and `frontend/css/components.css` (`.pset-summary`/
 `.pset-logo`/`.pset-emoji`). Verified live-in-browser (Inkbunny collapsed, all 16 alphabetical, 16 logos, all
-centred, zero console errors). Developed on `master`; needs deploy.
+centred, zero console errors). Superseded by 2.88.0.
 
 **Prior — 2.86.0 — Quick Reconnect: paste a fresh token from the alert.**
 When a platform's session goes expired/error (dead cookie / invalidated token — e.g. Meta code 190), a

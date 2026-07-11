@@ -8455,7 +8455,33 @@ const App = {
                 pane.appendChild(o.el);                // re-append in sorted order (after Session health)
                 this._decoratePlatformSummary(o.summary, o.p);
             });
+            this._appendPlatformsFooter(pane);         // accounts link + trademark note, always last
         } catch (e) { /* cosmetic — never break Settings */ }
+    },
+
+    /* Footer under the platform accordions: a pointer to the Accounts page for
+     * multi-account users (these creds = the primary account) + a trademark
+     * disclaimer for the brand logos. Idempotent — re-appended last each paint. */
+    _appendPlatformsFooter(pane) {
+        let foot = pane.querySelector('#pset-platforms-footer');
+        if (!foot) {
+            foot = document.createElement('div');
+            foot.id = 'pset-platforms-footer';
+            foot.className = 'pset-footer';
+            foot.innerHTML =
+                '<div class="pset-accounts-note">' +
+                    '<div class="pset-accounts-text">' +
+                        '<strong>Managing more than one account?</strong> ' +
+                        'The credentials configured above are treated as your <strong>primary</strong> account ' +
+                        'for each platform. Add extra accounts and switch between them on the Accounts page.' +
+                    '</div>' +
+                    '<a class="btn btn-secondary pset-accounts-btn" href="#/accounts">Manage accounts →</a>' +
+                '</div>' +
+                '<p class="pset-trademark">Platform names and logos are trademarks of their respective owners, ' +
+                'shown here for identification only. PawPoller is not affiliated with, endorsed by, or sponsored ' +
+                'by any of these platforms.</p>';
+        }
+        pane.appendChild(foot);                        // keep after the re-appended accordions
     },
 
     /* The platform name from an accordion summary (drops the dot / meta / logo). */

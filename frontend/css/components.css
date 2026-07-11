@@ -773,14 +773,52 @@ a.stat-card:hover {
 .settings-accordion[open] summary.pset-summary::after {
     transform: translateY(-50%) rotate(90deg);
 }
+/* The connected-account meta is pinned right (muted) so it stays OUT of the
+   centred group — every platform title then lands on the true centre whether
+   or not an account is connected. */
+.settings-accordion summary.pset-summary .summary-meta {
+    position: absolute;
+    right: 46px;
+    top: 50%;
+    transform: translateY(-50%);
+    margin: 0;
+    max-width: 40%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted);
+}
 .pset-logo {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     object-fit: contain;
     border-radius: 4px;
     flex-shrink: 0;
 }
-.pset-emoji { font-size: 16px; line-height: 1; flex-shrink: 0; }
+.pset-emoji { font-size: 18px; line-height: 1; flex-shrink: 0; }
+
+/* Footer under the platform accordions (App._appendPlatformsFooter). */
+.pset-footer { margin-top: 18px; }
+.pset-accounts-note {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-2, var(--surface));
+}
+.pset-accounts-text { font-size: 0.9rem; line-height: 1.45; color: var(--text); flex: 1 1 260px; }
+.pset-accounts-btn { flex: 0 0 auto; white-space: nowrap; }
+.pset-trademark {
+    margin: 12px 4px 0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+    text-align: center;
+}
 
 /* Session-health card list (Settings → Platforms → Session health) */
 .session-status-list { display: flex; flex-direction: column; gap: 2px; }

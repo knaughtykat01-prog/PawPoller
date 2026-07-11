@@ -4,6 +4,33 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.88.0] - 2026-07-11 - Settings → Platforms: uniform logos, true-centred titles, accounts link + logo disclaimer
+
+Follow-up polish to 2.87.0. Frontend-only.
+
+- **Tiny logo fixed.** The X / Twitter mark (`img/platforms/tw.png`) filled only 50% of its 64px canvas
+  (16px of transparent padding all round), so it rendered at half the size of every other logo. Trimmed to
+  the content bounding box and re-padded to a uniform ~89% fill, matching the rest. All 16 logos now render
+  at a consistent 20×20.
+- **True-centred titles ("justified but centred").** The connected-account meta (e.g. "— KnaughtyKat") was
+  *inside* the centred flex group, so a row with an account had its title shoved left of centre while
+  account-less rows sat dead-centre — the list read as ragged. The meta is now pinned right (absolute, muted,
+  ellipsised) and out of the centring flow, so every platform title lands on the exact same centre whether or
+  not an account is connected.
+- **Logos bumped** 18→20px for a bit more presence now that they're uniform.
+- **Accounts pointer.** A footer note under the accordions — *"Managing more than one account? The credentials
+  configured above are treated as your primary account for each platform."* — with a **Manage accounts →**
+  button linking to `#/accounts`. Built by `App._appendPlatformsFooter()` (idempotent, re-appended last each
+  paint).
+- **Logo-usage disclaimer.** A centred trademark line at the very bottom: *"Platform names and logos are
+  trademarks of their respective owners, shown here for identification only. PawPoller is not affiliated with,
+  endorsed by, or sponsored by any of these platforms."*
+
+Touches `frontend/js/app.js` (footer builder + call), `frontend/css/components.css` (meta-pin, logo size,
+footer styles) and `frontend/img/platforms/tw.png` (trimmed). Verified live-in-browser: X logo now full size,
+all 16 uniform + centred, meta pinned right, footer + accounts button + disclaimer present, zero console errors.
+Developed on `master`; needs deploy.
+
 ## [2.87.0] - 2026-07-11 - Settings → Platforms: fix Inkbunny auto-open, alphabetise, add logos + centred titles
 
 Polish for the Settings → Platforms accordion list. Frontend-only.

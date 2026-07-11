@@ -6212,3 +6212,23 @@ decorates the already-rendered accordions:
 - **Centring** — `.pset-summary` CSS (`components.css`) centres the logo + name row; the status dot
   is `position:absolute; left` and the expand caret `::after` is `position:absolute; right`, so the
   title reads centred regardless of dot/caret width.
+
+Refinements in **2.88.0**:
+
+- **Uniform logo size.** One source asset (`img/platforms/tw.png`, the X mark) had ~50% transparent
+  padding, so it rendered at half the size of the others. It was trimmed to its alpha bounding box and
+  re-padded to a ~89% fill so it matches. `.pset-logo` is now 20×20 (was 18). If you add a new platform
+  logo, trim its transparent border so the mark fills ~85-95% of the canvas, or it'll look tiny next to
+  the rest.
+- **True-centred titles.** The connected-account meta (`.summary-meta`, e.g. "— KnaughtyKat") used to sit
+  inside the centred flex group, so a row *with* an account had its title pushed off-centre relative to
+  account-less rows. `.pset-summary .summary-meta` is now `position:absolute; right:46px` (muted,
+  ellipsised) — out of the centring flow — so every title lands on the same centre. (The Session-health
+  header row is excluded from `.pset-summary`, so its inline meta is unaffected.)
+- **Footer — `App._appendPlatformsFooter(pane)`** (called at the end of `_enhancePlatformSettings`,
+  idempotent, re-appended last each paint so it stays below the re-ordered accordions). Emits
+  `#pset-platforms-footer` with two blocks: (1) a `.pset-accounts-note` pointing multi-account users at
+  the Accounts page — the creds set here are the *primary* account per platform — with a
+  `<a class="btn btn-secondary" href="#/accounts">Manage accounts →</a>` (plain hash link, no JS handler);
+  (2) a `.pset-trademark` line stating the platform names/logos are trademarks of their owners, shown for
+  identification only, PawPoller unaffiliated. Styles in `components.css` under the `.pset-footer` block.
