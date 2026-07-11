@@ -1,7 +1,29 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.80.0 — **Mobile polish for the reskin pages + iOS safe-area fixes.**
+**Current version (live/master):** 2.81.0 — **PWA: installable to the home screen (standalone).**
+Builds on the 2.80.0 mobile work — PawPoller now installs to the phone home screen and launches as a
+standalone app (no Safari chrome). **Frontend + a few `dashboard.py` routes; no polling/auth logic changed.**
+New `frontend/manifest.webmanifest` (served at `/manifest.webmanifest`, `application/manifest+json`):
+`display:standalone`, `orientation:portrait`, warm-paper colours, 3 icons (192/512/512-maskable = the sienna
+quill on paper, `frontend/img/pwa-*.png`). `index.html` gains the iOS metas (`apple-mobile-web-app-capable`,
+`-status-bar-style=default`, `-title`, `mobile-web-app-capable`, `theme-color`) — iOS keeps using the paw
+`apple-touch-icon` for the icon and now launches full-screen. **Service worker** `frontend/sw.js` (served
+root-scoped at `/sw.js`, `no-cache`, `__APP_VERSION__` spliced into the cache name) written safely for a live
+dashboard: **NEVER caches `/api/*`**, non-GET, or cross-origin; network-first for navigations (offline shell as
+fallback); cache-first ONLY for `?v=`-versioned static assets. `frontend/js/pwa.js` (external → covered by CSP
+`script-src 'self'`) registers the worker + syncs `theme-color` to the active theme's `--bg-primary`. `dashboard.py`:
+routes for both files, both added to `_AUTH_EXEMPT_PATHS`, CSP gains `worker-src 'self'` + `manifest-src 'self'`;
+the PyInstaller spec already bundles `frontend/` so the desktop build ships it. Verified locally: manifest parses,
+SW registers + controls at root scope, **0 `/api` entries cached** (58 static assets), theme-color syncs, zero
+console/CSP errors. Needs a secure context (live HTTPS is fine). **Caveat:** iOS gives a home-screen web app its
+own storage, so the installed app may re-show the getting-started tour once — planned follow-up backs tour-seen
+with server preferences. **KNOWN ITEM (user-reported):** onboarding **tour** (`tour.js`, keys `pp_tour_done` /
+`pp_tour_done__<page>`) can reappear — investigated: dismissal is NOT version-coupled (updates don't reset it in
+code); reappearance = localStorage not persisting or a different origin (desktop-app localhost vs live site have
+separate storage). Fix = server-backed tour-seen (pending). Developed on `master`; needs deploy.
+
+**Prior — 2.80.0 — Mobile polish for the reskin pages + iOS safe-area fixes.**
 A vigilant emulated-iPhone (393×852) audit of the reskin + gamification pages found five layout issues, all
 fixed here — **CSS-only, no logic/DOM/backend change** (no horizontal scroll anywhere; the celebration overlay,
 achievements card, KPI cards + book grid already reflowed fine). (1) **Header no longer hidden under the mobile

@@ -7,6 +7,17 @@
     <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
     <link rel="icon" type="image/png" href="/img/favicon.png?v=__APP_VERSION__">
     <link rel="apple-touch-icon" href="/img/apple-touch-icon.png?v=__APP_VERSION__">
+    <!-- PWA: installable to the home screen (standalone). iOS uses these
+         apple-* metas + the apple-touch-icon above; Android/Chrome use the
+         manifest. theme-color tints the status bar and is re-synced to the
+         active theme by js/pwa.js. -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#f4f0e8">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="PawPoller">
+    <script defer src="/js/pwa.js?v=__APP_VERSION__"></script>
     <!-- Apply persisted theme BEFORE CSS evaluates so the page never flashes
          the default-dark palette before swapping. localStorage is used so
          the theme is available synchronously without an API roundtrip.

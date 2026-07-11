@@ -223,6 +223,10 @@ def _build_csp() -> str:
         # relaxed epub-viewer CSP, which already allows them.
         "img-src 'self' blob: data: https:; "
         "connect-src 'self'; "
+        # PWA: the service worker (worker-src) and web app manifest (manifest-src)
+        # are same-origin. Explicit so registration isn't left to fallback ambiguity.
+        "worker-src 'self'; "
+        "manifest-src 'self'; "
         f"{frame_src}"
         "frame-ancestors 'none'"
     )
@@ -299,6 +303,12 @@ _AUTH_EXEMPT_PATHS = frozenset({
     # didn't exempt it. Browsers fetch /favicon.ico without auth
     # context on every page, producing console error noise.
     "/favicon.ico",
+    # PWA: the browser fetches the manifest and (re)registers the service
+    # worker outside the page's auth context — these must answer without a
+    # session or install / offline support silently breaks. Neither exposes
+    # any private data (static manifest + a cache-only worker script).
+    "/manifest.webmanifest",
+    "/sw.js",
 })
 _AUTH_EXEMPT_PREFIXES = ("/css/", "/js/", "/vendor/", "/img/", "/api/ig/pubmedia/")
 
@@ -418,6 +428,33 @@ app.mount("/img", StaticFiles(directory=str(frontend_dir / "img")), name="img")
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return FileResponse(str(frontend_dir / "img" / "favicon.ico"))
+
+
+# ── PWA (installable to the home screen) ─────────────────────────────
+# The manifest describes the installed app (name/icons/standalone display).
+@app.get("/manifest.webmanifest", include_in_schema=False)
+async def serve_manifest():
+    return FileResponse(
+        str(frontend_dir / "manifest.webmanifest"),
+        media_type="application/manifest+json",
+    )
+
+
+# The service worker MUST be served from the document root so its scope covers
+# the whole app ("/"); a worker under /js/ could only control /js/. APP_VERSION
+# is spliced into its cache name (same __APP_VERSION__ substitution as index),
+# so every release changes the file's bytes → the browser installs the new
+# worker and its activate() purges older caches. `no-cache` makes the browser
+# revalidate the worker on each load so a new version is picked up promptly.
+@app.get("/sw.js", include_in_schema=False)
+async def serve_service_worker():
+    raw = (frontend_dir / "sw.js").read_text(encoding="utf-8")
+    rendered = raw.replace("__APP_VERSION__", config.APP_VERSION)
+    return Response(
+        content=rendered,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 # SPA (Single Page Application) serving pattern. The root route serves index.html,

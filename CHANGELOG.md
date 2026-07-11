@@ -4,6 +4,44 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.81.0] - 2026-07-11 - PWA: installable to the home screen (standalone)
+
+PawPoller can now be **installed to the phone home screen and launched as a standalone app**
+(no Safari chrome), building on the 2.80.0 mobile/safe-area work. **Frontend + a few dashboard.py
+routes; no polling/auth logic changed.**
+
+- **Web app manifest** (`frontend/manifest.webmanifest`, served at `/manifest.webmanifest`) —
+  `display: standalone`, `orientation: portrait` (the mobile layout is portrait-first),
+  `start_url: /`, warm-paper `background_color`/`theme_color`, and three icons (192, 512, and a
+  512 **maskable**). New icons `frontend/img/pwa-{192,512,maskable-512}.png` = the sienna quill
+  logo on warm paper.
+- **iOS install support** — `index.html` gains `apple-mobile-web-app-capable`,
+  `apple-mobile-web-app-status-bar-style=default`, `apple-mobile-web-app-title`,
+  `mobile-web-app-capable`, and a `theme-color` meta. iOS uses the existing `apple-touch-icon`
+  (the paw badge) for the home-screen icon; the app now launches full-screen from it.
+- **Service worker** (`frontend/sw.js`, served root-scoped at `/sw.js`) — makes it a real
+  installable PWA + gives an offline shell, written **conservatively for a live auth'd dashboard**:
+  it **never caches `/api/*`** (polling data + auth always hit the network), never caches non-GET or
+  cross-origin, network-firsts app navigations (server decides login vs app; cached shell only as an
+  offline fallback), and cache-firsts **only** versioned static assets (the `?v=APP_VERSION` query
+  means a new release requests new URLs, so stale is impossible). The cache name embeds `APP_VERSION`
+  (spliced in when `/sw.js` is served), so every deploy installs a fresh worker and purges old caches.
+- **Registration + status-bar tint** — new `frontend/js/pwa.js` (external, so it's covered by the
+  strict CSP's `script-src 'self'`) registers the worker and keeps `<meta name="theme-color">` synced
+  to the active theme's `--bg-primary`, so the status bar matches quill/dark/etc.
+- **Server bits** (`dashboard.py`) — routes for `/manifest.webmanifest` (`application/manifest+json`)
+  and `/sw.js` (root scope, `Cache-Control: no-cache`, `__APP_VERSION__` spliced); both added to
+  `_AUTH_EXEMPT_PATHS` (the browser fetches them outside the page's auth context and neither exposes
+  private data); CSP gains explicit `worker-src 'self'` + `manifest-src 'self'`. The PyInstaller spec
+  already bundles the whole `frontend/` dir, so the desktop build ships these automatically.
+- Verified locally: manifest parses (standalone, 3 icons), the service worker registers + **controls**
+  the page at root scope, **0 `/api` entries in the cache** (58 static assets cached), theme-color
+  syncs, and zero console/CSP errors. Requires a secure context (HTTPS/localhost) — the live site is
+  HTTPS so it works there. **Caveat:** on iOS a home-screen web app gets its own storage separate from
+  Safari, so first launch of the installed app may re-show the getting-started tour once (the tour's
+  "seen" flag is browser-local) — a follow-up will back the tour-seen state with server preferences so
+  dismissals stick across Safari, the installed app, and updates. Developed on `master`; needs deploy.
+
 ## [2.80.0] - 2026-07-11 - Mobile polish for the reskin pages + iOS safe-area fixes
 
 A vigilant mobile/iOS audit (emulated iPhone 15 Pro, 393×852) of the reskin + gamification work

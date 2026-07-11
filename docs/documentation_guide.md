@@ -4332,6 +4332,38 @@ Files:
     `manifest` / `apple-mobile-web-app-capable` meta — only `apple-touch-icon`), so "Add to Home Screen" opens
     normal Safari, not a standalone app; the `env()` safe-area work would pay off most if a PWA/standalone mode
     is added later.
+  - **2.81.0 — PWA (installable, standalone).** Turns the app into an installable home-screen PWA (the
+    follow-up the 2.80.0 note foreshadowed). Pieces: **manifest** `frontend/manifest.webmanifest` served at
+    `/manifest.webmanifest` (`application/manifest+json`) — `display:standalone`, `orientation:portrait`,
+    `start_url`/`scope` `/`, `background_color`/`theme_color` `#f4f0e8`, icons 192/512/512-maskable
+    (`frontend/img/pwa-*.png`, the sienna quill on paper). **iOS metas** in `index.html`
+    (`apple-mobile-web-app-capable=yes`, `-status-bar-style=default`, `-title=PawPoller`,
+    `mobile-web-app-capable`, `theme-color`) + `<link rel="manifest">` + `<script defer src="/js/pwa.js">` —
+    added after the `apple-touch-icon` link, NOT touching the inline theme-boot `<script>`, so its CSP hash is
+    unchanged. iOS keeps using `apple-touch-icon` (the paw badge) as the icon; `-status-bar-style=default` means
+    the standalone content sits BELOW an opaque status bar, so `env(safe-area-inset-top)` is ~0 there and the
+    2.80.0 bell/header insets resolve to their base offsets (no double gap); the bottom `env(safe-area-inset-
+    bottom)` still applies for the home indicator. **Service worker** `frontend/sw.js` served ROOT-scoped at
+    `/sw.js` (a worker under `/js/` could only control `/js/`) with `Cache-Control: no-cache` and
+    `__APP_VERSION__` spliced into `CACHE = 'pawpoller-shell-<version>'` — so each deploy changes the worker's
+    bytes → browser installs the new worker → `activate()` purges older caches (Cache API only; it never touches
+    `localStorage`). **SW safety invariants (critical for a live auth'd dashboard):** early-returns (no
+    `respondWith`) for non-GET, cross-origin, and **any `/api/*`** so live polling data + auth ALWAYS hit the
+    network and are never cached; navigations are network-first (server decides login vs app) with the cached
+    shell only as an offline fallback; static assets are cache-first ONLY because the `?v=APP_VERSION` query
+    guarantees a new release requests new URLs (stale impossible). **Registration** `frontend/js/pwa.js`
+    (external → `script-src 'self'`, no inline hash) registers `/sw.js` on `load` (guarded/silent on failure)
+    and keeps `<meta name=theme-color>` synced to the resolved theme's `--bg-primary` via a `data-theme`
+    MutationObserver. **`dashboard.py`:** `serve_manifest` + `serve_service_worker` routes (the latter does the
+    same `__APP_VERSION__` substitution as `_render_index_html`); both paths added to `_AUTH_EXEMPT_PATHS`
+    (the browser fetches them outside the page auth context; neither leaks private data); `_build_csp()` gains
+    `worker-src 'self'` + `manifest-src 'self'` (explicit, not fallback). The PyInstaller spec already bundles
+    `frontend/` (`('frontend','frontend')`), so the desktop build ships manifest + sw.js + icons with no spec
+    change. Verified: manifest parses, SW registers + controls at root scope, **0 `/api` entries in the cache**
+    (58 static assets), theme-color syncs, zero console/CSP errors. Requires a secure context (HTTPS or
+    localhost). **iOS storage caveat:** a home-screen web app gets storage separate from Safari, so first launch
+    of the installed app can re-show the getting-started tour once (tour-seen is `localStorage`-local, see the
+    tour note) — the planned fix is to persist tour-seen in server preferences.
   - Phase 2 (2.34.0) adds `GET /api/works/discovered` (poller-found submissions
     with no publication link, normalized via `build_discovered` over
     `posting.sync.PLATFORM_TABLES`) and `POST /api/works/link` (links one to a
