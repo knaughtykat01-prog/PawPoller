@@ -4,6 +4,24 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.94.0] - 2026-07-12 - Test isolation: per-test database (no more shared-DB bleed / 30s stalls)
+
+Test-infrastructure only — **no runtime change**. Fixes intermittent full-suite failures and a pathological runtime.
+
+The suite shared **one** temp SQLite DB across every test, isolating only by per-test `DELETE`s that swallowed
+`OperationalError` (`except: pass`). Two consequences when hundreds of tests ran in one process:
+- **Bleed** — a failed/partial wipe left rows behind, so `test_personas` + `test_scope_bsky` intermittently
+  failed on wrong counts (they pass in isolation).
+- **Stalls** — a single leaked connection on the shared WAL file made other tests block up to the 30s
+  `busy_timeout`, so the suite took ~15 min.
+
+Fix: an `autouse` fixture in `tests/conftest.py` points `config.DB_PATH` (+ `SETTINGS_PATH`) at a **fresh per-test
+file** and runs `init_db()` before each test — `get_connection()` reads the path fresh each call, and `monkeypatch`
+auto-reverts. Every test now starts from a clean, fully-migrated DB with zero cross-test contention.
+
+Result: **348 passed in 2m44s** (was `3 failed / 124 passed / 2 errors`, and ~15 min for even a filtered subset).
+Touches `tests/conftest.py` only. Developed on `master`.
+
 ## [2.93.0] - 2026-07-11 - Multi-image import: now X photos + Instagram carousels too
 
 Extends 2.91.0's all-images artwork import from Bluesky to **X** and **Instagram**. Same design: a multi-image

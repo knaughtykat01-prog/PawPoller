@@ -19,6 +19,28 @@ config.SETTINGS_PATH = Path(_tmpdir) / "test_settings.json"
 config.SETTINGS_PATH.write_text("{}", encoding="utf-8")
 
 
+@pytest.fixture(autouse=True)
+def _isolated_db(tmp_path, monkeypatch):
+    """Give every test its own fresh, fully-initialised database + settings file.
+
+    The suite used to share ONE temp DB across all tests, isolating only by
+    per-test `DELETE`s (which swallowed OperationalErrors, so a stale row or a
+    leaked WAL lock bled into later tests → the intermittent assertion failures
+    in test_personas / test_scope_bsky). A shared WAL file also meant any leaked
+    connection stalled other tests for up to `busy_timeout` (30s) — the whole
+    suite took ~15 min. Pointing `config.DB_PATH` at a per-test file (get_connection
+    reads it fresh each call) removes both the bleed and the contention. `monkeypatch`
+    auto-reverts after each test. Runs before other DB fixtures (autouse, deps only
+    on builtins), so their init_db()/wipes operate on this clean file.
+    """
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "test.db")
+    monkeypatch.setattr(config, "SETTINGS_PATH", tmp_path / "test_settings.json")
+    config.SETTINGS_PATH.write_text("{}", encoding="utf-8")
+    from database.db import init_db
+    init_db()
+    yield
+
+
 @pytest.fixture(autouse=False)
 def db_conn():
     """Fresh database connection with posting tables wiped between tests."""

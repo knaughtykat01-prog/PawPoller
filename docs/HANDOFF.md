@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-11
-**Current version (live/master):** 2.93.0 — **Multi-image import: now X photos + Instagram carousels too.**
+**Last updated:** 2026-07-12
+**Current version (live/master):** 2.94.0 — **Test isolation: per-test database (no more shared-DB bleed / 30s stalls).**
+Test-infrastructure only — **no runtime change**. The suite shared ONE temp SQLite DB, isolating only by per-test
+`DELETE`s that swallowed `OperationalError` — so partial wipes bled rows into later tests (`test_personas` +
+`test_scope_bsky` failed intermittently on wrong counts) and a single leaked connection stalled others up to the 30s
+`busy_timeout` (~15 min suite). Fix: an `autouse` fixture in `tests/conftest.py` points `config.DB_PATH`+`SETTINGS_PATH`
+at a **fresh per-test file** and `init_db()`s before each test (`get_connection` reads the path fresh; `monkeypatch`
+auto-reverts). **348 passed in 2m44s** (was 3 failed/124 passed/2 errors, ~15 min filtered). `tests/conftest.py` only.
+**Readiness note (2026-07-12):** verified the public-readiness posture still holds (loopback-default bind, auth-gated
+creds, vault-at-rest, `deploy/make_public.py`, LICENSE) — **shippable for a small private alpha**; open items = a
+short ToS/disclaimer (only a LICENSE exists) + first-run UX polish (audit §3). See [[project_pawpoller_public_readiness]].
+
+**Prior — 2.93.0 — Multi-image import: now X photos + Instagram carousels too.**
 Extends 2.91.0's all-images artwork import from Bluesky to **X** and **Instagram** — a multi-image post imports as
 **one artwork per image** (`Title (i/N)`). The importer is platform-agnostic (reads the `media_urls` column via
 `media_url_list`), so only per-platform capture + storage changed. **X** (`clients/tw/client.py`): every
