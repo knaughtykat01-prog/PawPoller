@@ -1,7 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.92.0 — **Fix: Wattpad story-list polling hit a dead v3 endpoint (400 every cycle).**
+**Current version (live/master):** 2.93.0 — **Multi-image import: now X photos + Instagram carousels too.**
+Extends 2.91.0's all-images artwork import from Bluesky to **X** and **Instagram** — a multi-image post imports as
+**one artwork per image** (`Title (i/N)`). The importer is platform-agnostic (reads the `media_urls` column via
+`media_url_list`), so only per-platform capture + storage changed. **X** (`clients/tw/client.py`): every
+`type=="photo"` `media_url_https` from `extended_entities.media` (videos/GIFs skipped; quoted-tweet photos as
+fallback). **Instagram** (`clients/ig/client.py`): `_MEDIA_FIELDS` now requests `children{media_url,media_type}`;
+a `CAROUSEL_ALBUM` collects each IMAGE child's `media_url` (single-media posts unchanged). New `media_urls` column
+on `tw_submissions`+`ig_submissions` (schemas + the shared `db.py` migration loop over bsky/tw/ig; upserts persist
+JSON). Only the **post's own** media. **Backfill:** existing X/IG posts stay single until re-polled — run a **Full
+Resync**. Verified end-to-end (migration + 3-photo tweet→3, 2-img carousel→2, single-row fallback); suites green.
+Bluesky + X + Instagram now covered. Developed on `master`; needs deploy.
+
+**Prior — 2.92.0 — Fix: Wattpad story-list polling hit a dead v3 endpoint (400 every cycle).**
 Recurring `[ERROR] clients.wp.client: … 400` on `/api/v3/users/{u}/stories/published`. Wattpad's API is **split by
 endpoint**: `users/{u}` (validate/followers) + `stories/{id}` (detail) are **v3**, but the story-*list*
 `users/{u}/stories/published` moved to **v4** (v3 now returns `400 InvalidEndpoint`). `get_all_story_ids` called v3

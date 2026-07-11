@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS ig_submissions (
     keywords        TEXT DEFAULT '',
     link            TEXT DEFAULT '',
     thumbnail_url   TEXT DEFAULT '',
+    media_urls      TEXT DEFAULT '',
     views           INTEGER DEFAULT 0,
     reach           INTEGER DEFAULT 0,
     likes           INTEGER DEFAULT 0,

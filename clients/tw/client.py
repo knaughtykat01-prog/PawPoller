@@ -594,17 +594,21 @@ class TWClient:
         quotes = _safe_int(legacy.get("quote_count", 0))
         bookmarks = _safe_int(legacy.get("bookmark_count", 0))
 
-        # Thumbnail from attached media. extended_entities covers videos and
-        # multi-image tweets (its media_url_https is the still preview for video);
-        # entities.media is the older single-image fallback.
+        # Thumbnail (first item) + the full set of PHOTO urls. extended_entities
+        # covers multi-image tweets (up to 4); entities.media is the older single
+        # fallback. `media_urls` keeps every photo so the artwork importer can
+        # bring them all in — videos/GIFs are skipped (their media_url_https is a
+        # still preview, not an importable image).
         thumbnail_url = ""
         media = ((legacy.get("extended_entities") or {}).get("media")
                  or (legacy.get("entities") or {}).get("media") or [])
+        media_urls = [m.get("media_url_https", "") for m in media
+                      if m.get("type") == "photo" and m.get("media_url_https")]
         if media:
             thumbnail_url = media[0].get("media_url_https", "")
         # Quote tweets usually carry no media of their own — the image lives in
         # the QUOTED post (e.g. quoting someone's art). Fall back to it so the
-        # quoted image still shows.
+        # quoted image still shows (and imports).
         if not thumbnail_url:
             quoted = ((result.get("quoted_status_result") or {}).get("result") or {})
             if quoted.get("__typename") == "TweetWithVisibilityResults":
@@ -614,6 +618,9 @@ class TWClient:
                        or (q_legacy.get("entities") or {}).get("media") or [])
             if q_media:
                 thumbnail_url = q_media[0].get("media_url_https", "")
+            if not media_urls:
+                media_urls = [m.get("media_url_https", "") for m in q_media
+                              if m.get("type") == "photo" and m.get("media_url_https")]
 
         # Posted at — derive from the Snowflake id (X no longer reliably fills
         # legacy.created_at in the timeline); fall back to created_at if needed.
@@ -637,6 +644,7 @@ class TWClient:
             "keywords": keywords,
             "link": link,
             "thumbnail_url": thumbnail_url,
+            "media_urls": media_urls,
             "views": views,
             "likes": likes,
             "retweets": retweets,
@@ -658,6 +666,7 @@ class TWClient:
             "keywords": [],
             "link": f"https://x.com/{self.target_user}/status/{tweet_id}",
             "thumbnail_url": "",
+            "media_urls": [],
             "views": 0,
             "likes": 0,
             "retweets": 0,

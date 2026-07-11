@@ -4,6 +4,31 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.93.0] - 2026-07-11 - Multi-image import: now X photos + Instagram carousels too
+
+Extends 2.91.0's all-images artwork import from Bluesky to **X** and **Instagram**. Same design: a multi-image
+post imports as **one artwork per image** (`Title (i/N)`). The importer is platform-agnostic (it just reads the
+`media_urls` column via `media_url_list`), so only per-platform **capture + storage** changed — no importer edits.
+
+- **X** (`clients/tw/client.py`) — collects every `type=="photo"` `media_url_https` from
+  `extended_entities.media` (a tweet's up-to-4 images). Videos/GIFs are skipped (their `media_url_https` is a
+  still preview, not an importable image). Quoted-tweet photos are used as the fallback, mirroring the existing
+  thumbnail logic (quoting someone's art).
+- **Instagram** (`clients/ig/client.py`) — `_MEDIA_FIELDS` now requests `children{media_url,media_type}`, and a
+  `CAROUSEL_ALBUM` collects each **IMAGE** child's `media_url`. Single-media posts have no `children`, so they
+  fall back to the one `media_url`/thumbnail (unchanged).
+- **Storage** — new `media_urls` column on `tw_submissions` + `ig_submissions` (both `*_schema.sql` + the shared
+  `db.py` migration, now a loop over `bsky`/`tw`/`ig`). `tw_queries`/`ig_queries` upserts persist it as a JSON
+  array. Only the **post's own** media, never comment/reply images.
+
+**Backfill:** existing X/IG posts stay single-image until re-polled — run a **Full Resync** to pull the extra
+images for posts already in the DB (same as Bluesky).
+
+Verified end-to-end on a throwaway DB: migration adds both columns; a 3-photo tweet → 3 URLs, a 2-image carousel
+→ 2 URLs, and older single-image rows fall back to the thumbnail. Pollers already pass the full detail to the
+upsert. tw/ig/bsky/artwork/import suites green. Touches `clients/{tw,ig}/client.py`,
+`database/{tw_schema.sql,ig_schema.sql,tw_queries.py,ig_queries.py,db.py}`. Developed on `master`; needs deploy.
+
 ## [2.92.0] - 2026-07-11 - Fix: Wattpad story-list polling hit a dead v3 endpoint (400 every cycle)
 
 Bug fix for a recurring `[ERROR] clients.wp.client: … 400 Bad Request` on `/api/v3/users/{u}/stories/published`.

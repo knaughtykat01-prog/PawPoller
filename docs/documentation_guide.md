@@ -4483,8 +4483,18 @@ Files:
     carries the publication (`external_id = submission_id`) that clears the
     Discovered bucket, and per-image download failures are collected, not fatal.
     `create_artwork` is still single-image, so this is N artworks, not a gallery.
-    Only Bluesky captures `media_urls` so far — X/Instagram carousels still import
-    their first image until their clients are extended the same way.
+  - **2.93.0 — multi-image for X + Instagram.** Same `media_urls` pattern extended
+    to two more platforms (the importer is platform-agnostic — it just reads the
+    column — so only capture + storage changed). **X** (`clients/tw/client.py`):
+    collect every `type=="photo"` `media_url_https` from `extended_entities.media`
+    (videos/GIFs skipped; quoted-tweet photos used as the fallback, mirroring the
+    thumbnail). **Instagram** (`clients/ig/client.py`): `_MEDIA_FIELDS` now requests
+    `children{media_url,media_type}`, and a `CAROUSEL_ALBUM` collects each IMAGE
+    child's `media_url` (single-media posts have no `children`, so they fall back to
+    the one `media_url`/thumbnail unchanged). New `media_urls` column on
+    `tw_submissions` + `ig_submissions` (schemas + the shared `db.py` migration loop;
+    `tw_queries`/`ig_queries` upserts persist it). Backfill via **Full Resync** as
+    with Bluesky. That's Bluesky + X + Instagram covered.
   - 2.37.0: Inkbunny imports now re-fetch the **original** file via the API
     (`_resolve_ib_full_url` → `files[].file_url_full`, reusing the poller's cached
     SID) instead of the thumbnail. SoFurry full-res isn't feasible (the `.data`

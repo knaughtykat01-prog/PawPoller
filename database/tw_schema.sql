@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS tw_submissions (
     keywords        TEXT DEFAULT '',
     link            TEXT DEFAULT '',
     thumbnail_url   TEXT DEFAULT '',
+    media_urls      TEXT DEFAULT '',
     views           INTEGER DEFAULT 0,
     likes           INTEGER DEFAULT 0,
     retweets        INTEGER DEFAULT 0,

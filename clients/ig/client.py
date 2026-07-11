@@ -58,7 +58,10 @@ _INSIGHT_METRICS = "views,reach,saved,shares"
 
 _MEDIA_FIELDS = (
     "id,caption,media_type,media_product_type,permalink,timestamp,"
-    "thumbnail_url,media_url,like_count,comments_count,username"
+    "thumbnail_url,media_url,like_count,comments_count,username,"
+    # Carousel children — each image/video in an album — so all-images import
+    # can bring in the whole set (field is simply absent for single-media posts).
+    "children{media_url,media_type}"
 )
 
 
@@ -323,6 +326,17 @@ class IgClient:
             content_type = _MEDIA_TYPE_MAP.get(media_type, "image")
         thumbnail_url = post.get("thumbnail_url", "") or post.get("media_url", "") or ""
 
+        # Full image set: a carousel album exposes its children — collect every
+        # IMAGE child's media_url so the artwork importer brings them all in
+        # (video children are skipped; not importable images). A single-media
+        # post has no `children`, so media_urls stays empty and the importer
+        # falls back to the one media_url/thumbnail (unchanged behaviour).
+        media_urls: list[str] = []
+        children = ((post.get("children") or {}).get("data")) or []
+        if children:
+            media_urls = [c.get("media_url", "") for c in children
+                          if (c.get("media_type") or "").upper() == "IMAGE" and c.get("media_url")]
+
         return {
             "post_uri": uri,
             "title": caption[:80] + ("..." if len(caption) > 80 else "") if caption else "(no caption)",
@@ -335,6 +349,7 @@ class IgClient:
             "keywords": [],
             "link": post.get("permalink", ""),
             "thumbnail_url": thumbnail_url,
+            "media_urls": media_urls,
             "views": _safe_int(insights.get("views", 0)),
             "reach": _safe_int(insights.get("reach", 0)),
             "likes": _safe_int(post.get("like_count", 0)),
@@ -349,7 +364,7 @@ class IgClient:
         return {
             "post_uri": uri, "title": "", "full_text": "", "username": self._username,
             "posted_at": "", "content_type": "image", "rating": "General",
-            "description": "", "keywords": [], "link": "", "thumbnail_url": "",
+            "description": "", "keywords": [], "link": "", "thumbnail_url": "", "media_urls": [],
             "views": 0, "reach": 0, "likes": 0, "comments": 0, "saved": 0, "shares": 0,
             "has_media": 0, "embed_type": "",
         }

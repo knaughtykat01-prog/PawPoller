@@ -838,16 +838,18 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             if "duplicate column" not in str(e).lower():
                 raise
 
-    # Migration (2.91.0): 'media_urls' on bsky_submissions — a JSON array of the
-    # full-res URL for every image in a multi-image post, so the artwork importer
-    # can bring in all of them (one artwork per image), not just the first.
-    # Existing rows stay '' until re-polled (a Full Resync backfills them).
-    if "bsky_submissions" in tables:
-        try:
-            conn.execute("ALTER TABLE bsky_submissions ADD COLUMN media_urls TEXT DEFAULT ''")
-        except sqlite3.OperationalError as e:
-            if "duplicate column" not in str(e).lower():
-                raise
+    # Migration (2.91.0 bsky / 2.93.0 tw+ig): 'media_urls' — a JSON array of the
+    # full-res URL for every image in a multi-image post (Bluesky images, X photos,
+    # Instagram carousel children), so the artwork importer can bring in all of
+    # them (one artwork per image), not just the first. Existing rows stay '' until
+    # re-polled (a Full Resync backfills them).
+    for _mt in ("bsky_submissions", "tw_submissions", "ig_submissions"):
+        if _mt in tables:
+            try:
+                conn.execute(f"ALTER TABLE {_mt} ADD COLUMN media_urls TEXT DEFAULT ''")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
 
     # Migration: Personas (cross-platform account grouping). A persona bundles
     # accounts across platforms into one logical identity for scoped views +

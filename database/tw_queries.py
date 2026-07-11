@@ -24,18 +24,22 @@ from typing import Any
 def upsert_tw_submission(conn: sqlite3.Connection, sub: dict, account_id: int) -> None:
     """Insert or update a tweet's metadata and latest stats."""
     keywords_json = json.dumps(sub.get("keywords", []))
+    # Full-res URL for every attached photo (multi-image tweets) as a JSON array;
+    # '' when none. Powers all-images artwork import.
+    media_urls_json = json.dumps(sub.get("media_urls", []) or [])
     # account_id set on INSERT only; the ON CONFLICT UPDATE leaves it alone.
     conn.execute(
         """INSERT INTO tw_submissions
            (submission_id, account_id, title, username, posted_at, content_type, rating,
-            description, keywords, link, thumbnail_url,
+            description, keywords, link, thumbnail_url, media_urls,
             views, likes, retweets, replies, quotes, bookmarks, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
            ON CONFLICT(submission_id) DO UPDATE SET
             title=excluded.title, username=excluded.username,
             content_type=excluded.content_type, rating=excluded.rating,
             description=excluded.description, keywords=excluded.keywords,
             link=excluded.link, thumbnail_url=excluded.thumbnail_url,
+            media_urls=excluded.media_urls,
             views=excluded.views, likes=excluded.likes,
             retweets=excluded.retweets, replies=excluded.replies,
             quotes=excluded.quotes, bookmarks=excluded.bookmarks,
@@ -46,7 +50,7 @@ def upsert_tw_submission(conn: sqlite3.Connection, sub: dict, account_id: int) -
             sub.get("posted_at"), sub.get("content_type", "tweet"),
             sub.get("rating", ""), sub.get("description", ""),
             keywords_json, sub.get("link", ""),
-            sub.get("thumbnail_url", ""),
+            sub.get("thumbnail_url", ""), media_urls_json,
             sub.get("views", 0), sub.get("likes", 0),
             sub.get("retweets", 0), sub.get("replies", 0),
             sub.get("quotes", 0), sub.get("bookmarks", 0),
