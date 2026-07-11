@@ -131,6 +131,15 @@ async def check_platform(code: str, s: dict | None = None) -> dict:
         logger.warning("session check: %s failed: %s", code, e)
         entry = {"status": "error", "detail": str(e)[:200], "checked_at": now}
     _session_health[code] = entry
+    # A user can mute a platform's session alert while they fix an external
+    # problem (e.g. a Meta app-block). Auto-clear that mute the moment the
+    # session validates again, so a *future* failure re-alerts — "mute until
+    # fixed", never "mute forever". Re-read settings fresh (not the possibly
+    # stale snapshot) so concurrent per-platform clears don't clobber.
+    if entry["status"] == "valid" and code in (s.get("muted_session_codes") or []):
+        fresh = config.get_settings().get("muted_session_codes") or []
+        if code in fresh:
+            config.save_settings({"muted_session_codes": [c for c in fresh if c != code]})
     return entry
 
 

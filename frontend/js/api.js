@@ -188,6 +188,8 @@ const API = {
     getPlatformsHealth() { return this.get('/api/platforms/health'); },
     getPlatformSessions() { return this.get('/api/platforms/sessions'); },
     triggerSessionCheck() { return this.post('/api/platforms/sessions/check', {}); },
+    // Mute/unmute a platform's session-health alert (auto-clears on recovery).
+    muteSessionAlert(code, muted) { return this.post('/api/platforms/sessions/mute', { code, muted }); },
     getNotifications(limit) { return this.get('/api/notifications', limit ? { limit } : {}); },
     markNotificationsRead() { return this.post('/api/notifications/mark-read', {}); },
     clearNotifications() { return this.post('/api/notifications/clear', {}); },

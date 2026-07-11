@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.83.0 — **Threads/Instagram: distinguish a Meta app-block from an expired token.**
+**Current version (live/master):** 2.84.0 — **Mute a platform's session alert (per-platform, auto-clears on recovery).**
+Follow-up to 2.83.0. A per-platform **Mute** control on session-health notifications lets the user silence a
+repeated alert they're handling externally (e.g. a Meta app-block) without disabling notifications wholesale or
+hiding a *future* failure. Mute = quiet-but-visible: the item stays in the feed (dimmed, with an **Unmute**
+button) but stops toasting and stops counting toward the unread badge; the health dot is untouched. It
+**auto-clears** the moment the platform's session validates again (`session_check.check_platform` re-reads
+settings fresh so concurrent clears don't clobber) — "mute until fixed", not forever. Backend: new
+`POST /api/platforms/sessions/mute {code,muted}` (additive; checkable platforms only; unknown→400);
+`get_notifications` marks session items `muted` from `settings.json muted_session_codes` and drops muted from
+the unread count. Frontend: `notifications_center.js` Mute/Unmute button on `kind:"session"` items + toast-skip
++ dim (`loading_indicator.css`); `api.js muteSessionAlert()`. Tests: endpoint add/remove/reject, quiet-filter,
+auto-clear. Verified live-in-browser (Mute→Unmute flip, stays visible, no badge, zero console errors).
+Developed on `master`; needs deploy.
+
+**Prior — 2.83.0 — Threads/Instagram: distinguish a Meta app-block from an expired token.**
 Bug fix for a user-reported false "session expired — re-enter credentials" notification on **fresh** Threads +
 Instagram tokens. Live logs showed Meta returning `OAuthException code 200 "API access blocked"` for both (they
 share one Meta app) — an **app-level block, not an expired token** — but `polling/session_check` mislabels any

@@ -423,6 +423,33 @@ async def trigger_session_check():
     return {"status": "started"}
 
 
+@router.post("/platforms/sessions/mute")
+def mute_session_alert(body: dict):
+    """Mute (or unmute) a platform's session-health alert.
+
+    A muted alert stays visible in the notification feed but stops popping a
+    toast and stops counting toward the unread badge — the "quiet, I already
+    know" state for a problem the user is handling externally (e.g. a Meta
+    app-block they're fixing in the Meta dashboard). It is NOT a fix: the mute
+    auto-clears the next time that platform's session validates (see
+    polling/session_check.check_platform), so a genuinely new failure later
+    re-alerts. Body: {code, muted}. Only the checkable (session-validated)
+    platforms have a mutable alert.
+    """
+    from polling.session_check import CHECKABLE
+    code = str(body.get("code", "")).strip().lower()
+    if code not in CHECKABLE:
+        raise HTTPException(400, f"'{code}' has no mutable session alert")
+    muted = bool(body.get("muted", True))
+    cur = list(config.get_settings().get("muted_session_codes", []) or [])
+    if muted and code not in cur:
+        cur.append(code)
+    elif not muted:
+        cur = [c for c in cur if c != code]
+    config.save_settings({"muted_session_codes": cur})
+    return {"status": "success", "muted_session_codes": cur}
+
+
 def _format_poll_summary(log: dict) -> str:
     """Compose a single-line summary like '+2 faves, +1 comment' from
     a poll_log row's delta counters. Returns 'no changes' when nothing
@@ -543,6 +570,7 @@ def get_notifications(limit: int = 40):
     try:
         from polling.session_check import summarize_problems, get_session_health
         sess = get_session_health()
+        muted_codes = set(config.get_settings().get("muted_session_codes", []) or [])
         for prob in summarize_problems(sess):
             entry = sess.get(prob["code"]) or {}
             expired = prob["status"] == "expired"
@@ -550,6 +578,9 @@ def get_notifications(limit: int = 40):
                 "timestamp": entry.get("checked_at"),
                 "platform": prob["code"],
                 "kind": "session",
+                # A muted alert stays in the feed but goes quiet (no toast, no
+                # unread) — the frontend renders an Unmute control for it.
+                "muted": prob["code"] in muted_codes,
                 "status": "error" if expired else "warn",
                 "summary": (f"{prob['label']} session expired" if expired
                             else f"{prob['label']} session could not be verified"),
@@ -573,7 +604,8 @@ def get_notifications(limit: int = 40):
     last_read = _norm_ts(settings.get("notifications_last_read_at"))
     unread = 0
     for it in items:
-        it["unread"] = _norm_ts(it.get("timestamp")) > last_read
+        # Muted session alerts never count toward the unread badge.
+        it["unread"] = (not it.get("muted")) and _norm_ts(it.get("timestamp")) > last_read
         if it["unread"]:
             unread += 1
     return {"items": items, "unread": unread, "last_read_at": last_read}

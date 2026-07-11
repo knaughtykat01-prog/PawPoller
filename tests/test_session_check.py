@@ -53,3 +53,23 @@ def test_all_checkable_have_configured_gates():
     # Every CHECKABLE platform must return a bool from _configured (no KeyError).
     for code in sc.CHECKABLE:
         assert sc._configured(code, {}) is False
+
+
+def test_valid_check_autoclears_a_mute(monkeypatch):
+    # A muted platform that validates again has its mute auto-cleared, so a
+    # future failure re-alerts ("mute until fixed", not "forever"). Only the
+    # recovered platform is cleared — others stay muted.
+    import config
+
+    async def _fake_validate(code, s):
+        return "someuser"                      # truthy → 'valid'
+    monkeypatch.setattr(sc, "_validate", _fake_validate)
+
+    config.save_settings({"muted_session_codes": ["bsky", "thr"]})
+    s = {"bsky_identifier": "x", "bsky_app_password": "y",
+         "muted_session_codes": ["bsky", "thr"]}
+    entry = asyncio.run(sc.check_platform("bsky", s))
+    assert entry["status"] == "valid"
+    remaining = config.get_settings().get("muted_session_codes") or []
+    assert "bsky" not in remaining and "thr" in remaining
+    config.save_settings({"muted_session_codes": []})   # cleanup

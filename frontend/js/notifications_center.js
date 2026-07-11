@@ -89,17 +89,23 @@
 
     function renderPanel() {
         if (!_panel) return;
-        const rows = _items.length ? _items.map((it) => {
+        const rows = _items.length ? _items.map((it, i) => {
             const label = LABELS[it.platform] || (it.platform || '').toUpperCase();
             const meta = escapeText([label, relTime(it.timestamp)].filter(Boolean).join(' · '));
             const detail = (it.detail && isFailure(it)) ? '<div class="pp-notif-detail"></div>' : '';
-            return `<div class="pp-notif-item ${it.unread ? 'is-unread' : ''} pp-notif-${statusClass(it)}">
+            // Session-health alerts get a Mute/Unmute control (auto-clears on
+            // recovery, server-side) — the "I know, stop nagging" affordance.
+            const mute = it.kind === 'session'
+                ? `<button class="pp-notif-mute" type="button" data-idx="${i}">${it.muted ? 'Unmute' : 'Mute'}</button>`
+                : '';
+            return `<div class="pp-notif-item ${it.unread ? 'is-unread' : ''} ${it.muted ? 'is-muted' : ''} pp-notif-${statusClass(it)}">
                 <span class="pp-notif-item-ico" aria-hidden="true">${statusIcon(it)}</span>
                 <div class="pp-notif-item-body">
                     <div class="pp-notif-summary"></div>
                     <div class="pp-notif-meta">${meta}</div>
                     ${detail}
                 </div>
+                ${mute}
             </div>`;
         }).join('') : '<div class="pp-notif-empty">No recent activity.</div>';
 
@@ -126,6 +132,18 @@
         _panel.querySelector('.pp-notif-clear')?.addEventListener('click', () => clearAll());
         // Close the dropdown when a link inside it is clicked (SPA navigation).
         _panel.querySelector('.pp-notif-all')?.addEventListener('click', () => close());
+        // Mute / unmute a session-health alert (keeps the panel open).
+        _panel.querySelectorAll('.pp-notif-mute').forEach((btn) => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const it = _items[Number(btn.dataset.idx)];
+                if (!it || !it.platform) return;
+                btn.disabled = true;
+                try { await API.muteSessionAlert(it.platform, !it.muted); }
+                catch (err) { btn.disabled = false; return; }
+                await poll();                 // re-render from server truth (badge + list)
+            });
+        });
     }
 
     /* Clear the feed: empty the list optimistically, persist a server-side
@@ -154,6 +172,7 @@
         // Oldest → newest so the newest toast ends up on top of the stack.
         fresh.slice().reverse().forEach((it) => {
             _seen.add(key(it));
+            if (it.muted) return;                                                      // muted → quiet, no toast
             if (!window.toast) return;
             if (isFailure(it)) window.toast.error(it.summary || 'Something failed');   // sticky
             else if (it.status === 'warn') window.toast.warn(it.summary || 'Warning');

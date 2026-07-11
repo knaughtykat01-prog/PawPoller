@@ -56,3 +56,46 @@ def test_session_expiry_merged_into_feed(monkeypatch):
     assert len(session_items) == 1
     assert "AO3" in session_items[0]["summary"] and "expired" in session_items[0]["summary"]
     assert session_items[0]["status"] == "error"
+
+
+def test_muted_session_alert_is_quiet(monkeypatch):
+    """A muted session alert stays in the feed but reports muted=True and never
+    counts toward unread; unmuting makes it count again."""
+    import config
+    from polling import session_check as sc
+    monkeypatch.setattr(sc, "_session_health", {
+        "thr": {"status": "error", "detail": "Meta blocked API access",
+                "checked_at": "2099-01-01T00:00:00+00:00"},
+    })
+    # last_read in the past so the (future-dated) alert would be unread if unmuted.
+    config.save_settings({"muted_session_codes": [],
+                          "notifications_last_read_at": "2000-01-01T00:00:00+00:00"})
+
+    def _thr(resp):
+        return [it for it in resp["items"] if it.get("kind") == "session" and it["platform"] == "thr"]
+
+    r = api.get_notifications(30)
+    assert len(_thr(r)) == 1 and _thr(r)[0]["muted"] is False and _thr(r)[0]["unread"] is True
+
+    config.save_settings({"muted_session_codes": ["thr"]})
+    r2 = api.get_notifications(30)
+    assert len(_thr(r2)) == 1                      # still visible in the feed
+    assert _thr(r2)[0]["muted"] is True
+    assert _thr(r2)[0]["unread"] is False          # muted → quiet, no unread
+    config.save_settings({"muted_session_codes": []})   # cleanup
+
+
+def test_mute_endpoint_add_remove_and_reject_unknown():
+    import config
+    import pytest
+    from fastapi import HTTPException
+    config.save_settings({"muted_session_codes": []})
+    r = api.mute_session_alert({"code": "ig", "muted": True})
+    assert "ig" in r["muted_session_codes"]
+    r = api.mute_session_alert({"code": "ig", "muted": True})          # idempotent add
+    assert r["muted_session_codes"].count("ig") == 1
+    r = api.mute_session_alert({"code": "ig", "muted": False})
+    assert "ig" not in r["muted_session_codes"]
+    with pytest.raises(HTTPException):
+        api.mute_session_alert({"code": "not-a-platform", "muted": True})
+    config.save_settings({"muted_session_codes": []})   # cleanup

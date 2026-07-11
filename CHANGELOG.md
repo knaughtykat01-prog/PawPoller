@@ -4,6 +4,30 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.84.0] - 2026-07-11 - Mute a platform's session alert (per-platform, auto-clears on recovery)
+
+Follow-up to 2.83.0. Adds a per-platform **Mute** control on session-health notifications, so a user who's
+handling a problem externally (e.g. a Meta app-block they're fixing in the Meta dashboard) can silence the
+repeated alert without disabling notifications wholesale — and without it hiding a *future*, different failure.
+
+- **Mute = quiet, not gone.** A muted session alert stays visible in the notification feed but stops popping a
+  toast and stops counting toward the unread badge; it renders dimmed with an **Unmute** button. It is not a
+  fix and doesn't touch the platform's health dot.
+- **Auto-clears on recovery.** `polling/session_check.check_platform` drops a platform from the mute set the
+  moment its session validates again (re-reading settings fresh so concurrent per-platform clears don't
+  clobber), so a genuinely new failure later re-alerts — "mute until fixed", never "mute forever".
+- **Backend** (`routes/api.py`) — new `POST /api/platforms/sessions/mute {code, muted}` (additive; only the
+  session-checkable platforms are mutable; unknown codes 400). `get_notifications` marks each session item
+  `muted` from the stored set and excludes muted items from the unread count. Mute set persists in
+  `settings.json` (`muted_session_codes`).
+- **Frontend** — `notifications_center.js` renders the Mute/Unmute button on `kind:"session"` items, skips
+  toasts for muted items, and greys them (`loading_indicator.css`); `api.js` gains `muteSessionAlert()`.
+- **Tests** — mute endpoint (add/idempotent/remove/reject-unknown), the quiet-filter (muted item stays in the
+  feed but `unread:false`), and the auto-clear-on-valid path. Verified live-in-browser: Mute→Unmute flip, item
+  greys but stays, no unread badge, zero console errors.
+
+Developed on `master`; needs deploy.
+
 ## [2.83.0] - 2026-07-11 - Threads/Instagram: stop mislabelling a Meta app-block as "expired credentials"
 
 **Bug fix.** A user with **fresh** Threads + Instagram tokens was getting repeated "session expired —

@@ -1367,6 +1367,25 @@ one Meta app, so an app-block trips *both* at once — a useful tell in the logs
 failure (code 200)`). The fix only changes *classification/reporting*; a real expiry (code 190) behaves
 exactly as before, and the posting path (`create_thread`/`create_post`) never calls `validate_session()`.
 
+#### Muting a session-health alert (2.84.0)
+
+The session problems `summarize_problems()` surfaces are merged into the notification feed
+(`routes/api.py::get_notifications`, `kind:"session"`) and, for a fresh one, pop a toast. A user handling a
+problem externally (a Meta app-block they're fixing in the Meta dashboard) can **mute** a specific platform's
+alert so it stops nagging — without turning off notifications wholesale and without hiding a *later, different*
+failure:
+
+- **Store:** `settings.json` `muted_session_codes` (list). Mutated only via `POST /api/platforms/sessions/mute
+  {code, muted}` — additive/idempotent, restricted to `session_check.CHECKABLE` codes (unknown → 400).
+- **Quiet, not gone:** `get_notifications` tags each session item `muted` from that set; muted items stay in
+  the feed (frontend dims them + shows an **Unmute** button) but are excluded from the unread count, and
+  `notifications_center.js::maybeToast` skips their toast. The platform's health dot is untouched (still
+  honest amber/red).
+- **Auto-clears on recovery:** `session_check.check_platform` removes a code from `muted_session_codes` the
+  moment its status returns to `valid` (re-reading settings fresh so two platforms recovering in the same
+  `check_all` pass don't clobber each other's clear). So a mute means "until it's fixed", never "forever" — a
+  brand-new failure after recovery re-alerts normally.
+
 ### N+1 Query Batching
 
 Four pollers switched from per-item INSERT loops to `executemany` + `INSERT OR IGNORE` for fan/interaction data:
