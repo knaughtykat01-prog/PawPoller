@@ -4470,11 +4470,21 @@ Files:
     match wins) captured `/import/bulk/bsky` as `platform="bulk"` → every "Import
     all" hit `Unknown platform: bulk` and the bulk route was unreachable. The
     specific `bulk`/`discovered-art` routes now precede the generic two-segment
-    route (with an inline comment guarding the order). **Single-image only:** the
-    importer pulls one URL (`image_url()`) and `create_artwork` takes one
-    `image_bytes`, and the pollers store a single `thumbnail_url` (the Bluesky/X
-    client keeps `images[0]` of a multi-image post) — so a multi-image
-    tweet/skeet imports as a single-image artwork using the first image.
+    route (with an inline comment guarding the order).
+  - **2.91.0 — multi-image import (Bluesky).** A multi-image post now imports as
+    **one artwork per image** (titled `… (i/N)`), not just the first. Data flow:
+    the Bluesky client collects every embed image's `fullsize` into a
+    `media_urls` list (`clients/bsky/client.py`); it's persisted as a JSON array
+    in the new `bsky_submissions.media_urls` column (schema + a `db.py` migration;
+    existing rows stay `''` until a **Full Resync** re-polls them); the importer's
+    `media_url_list(row)` returns that list (falling back to the single
+    `image_url()` for older/single-image rows), and `import_artwork` loops it —
+    each image → its own `create_artwork` (source `image_index`), the FIRST piece
+    carries the publication (`external_id = submission_id`) that clears the
+    Discovered bucket, and per-image download failures are collected, not fatal.
+    `create_artwork` is still single-image, so this is N artworks, not a gallery.
+    Only Bluesky captures `media_urls` so far — X/Instagram carousels still import
+    their first image until their clients are extended the same way.
   - 2.37.0: Inkbunny imports now re-fetch the **original** file via the API
     (`_resolve_ib_full_url` → `files[].file_url_full`, reusing the poller's cached
     SID) instead of the thumbnail. SoFurry full-res isn't feasible (the `.data`

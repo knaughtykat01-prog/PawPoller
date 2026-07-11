@@ -56,6 +56,36 @@ def image_url(row: dict) -> str:
             or row.get("thumbnail_url") or row.get("thumb_url") or "")
 
 
+def media_url_list(row: dict) -> list[str]:
+    """Every image URL for a submission, order-preserving and de-duped.
+
+    Multi-image platforms (Bluesky/X) store a JSON array of full-res URLs in a
+    ``media_urls`` column; a single-image submission (or an older row polled
+    before multi-image capture) has none, so we fall back to the single best
+    URL from :func:`image_url`. This is what lets one multi-image post import as
+    several artworks (one per image).
+    """
+    raw = row.get("media_urls")
+    urls: list[str] = []
+    if raw:
+        try:
+            v = raw if isinstance(raw, list) else json.loads(raw)
+            if isinstance(v, list):
+                urls = [str(u).strip() for u in v if str(u).strip()]
+        except Exception:
+            urls = []
+    if not urls:
+        one = image_url(row)
+        return [one] if one else []
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for u in urls:
+        if u not in seen:
+            seen.add(u)
+            deduped.append(u)
+    return deduped
+
+
 # Magic-byte signatures so we can reject non-images even when a server lies about
 # (or omits) the Content-Type header.
 _MAGIC = [(b"\x89PNG\r\n\x1a\n", ".png"), (b"\xff\xd8\xff", ".jpg"), (b"GIF87a", ".gif"),
@@ -179,34 +209,20 @@ def import_artwork(platform: str, submission_id: str) -> dict:
         raise ValueError(f"Submission {submission_id} not found for {platform}")
 
     d = dict(row)
-    url = image_url(d)
+    urls = media_url_list(d)
     # Upgrade to full resolution where a per-platform re-fetch is available.
-    # FA/Weasyl already store a full-res URL; Inkbunny stores only a thumbnail,
-    # so re-fetch the original file from its API.
+    # FA/Weasyl already store a full-res URL; Inkbunny stores only a thumbnail
+    # (single image), so re-fetch the original file from its API.
     if platform == "ib":
         try:
             full = asyncio.run(_resolve_ib_full_url(submission_id))
             if full:
-                url = full
+                urls = [full]
         except Exception as e:
             logger.warning("IB full-res resolve failed for %s (%s); using stored image",
                            submission_id, e)
-    if not url:
+    if not urls:
         raise ValueError("No image URL stored for this submission")
-
-    with httpx.Client(follow_redirects=True, timeout=60.0) as client:
-        resp = client.get(url)
-        resp.raise_for_status()
-        image_bytes = resp.content
-        content_type = resp.headers.get("content-type", "").split(";")[0].strip()
-
-    # Guard: only create an artwork from an actual image. Some platforms store a
-    # page URL instead of a file (Inkbunny), which would otherwise download HTML.
-    if not is_image(content_type, image_bytes):
-        raise ValueError(
-            f"Stored URL did not return an image (content-type: {content_type or 'unknown'}). "
-            f"{platform.upper()} may not expose a direct image URL — full import for it is pending."
-        )
 
     title = d.get(cfg["title_col"]) or f"{platform}_{submission_id}"
     tags = parse_tags(d.get("keywords"))
@@ -215,24 +231,58 @@ def import_artwork(platform: str, submission_id: str) -> dict:
     # be right for instance-scoped mast/tum URLs built from the id alone).
     external_url = d.get("link") or cfg["url_template"].format(id=submission_id)
 
-    name = artwork_reader.create_artwork(
-        title=title,
-        image_filename=f"image{pick_ext(url, content_type, image_bytes)}",
-        image_bytes=image_bytes,
-        description=d.get("description", "") or "",
-        rating=rating,
-        tags={"default": tags} if tags else {},
-        platforms=[platform],
-        source={"platform": platform, "submission_id": str(submission_id), "url": external_url},
-    )
+    # One artwork per image. A multi-image post (e.g. a 4-image skeet) becomes
+    # N separate artworks titled "… (i/N)". Per-image failures are collected, not
+    # fatal — a single bad image doesn't sink the rest of the set.
+    multi = len(urls) > 1
+    created: list[str] = []
+    errors: list[dict] = []
+    with httpx.Client(follow_redirects=True, timeout=60.0) as client:
+        for i, u in enumerate(urls):
+            try:
+                resp = client.get(u)
+                resp.raise_for_status()
+                image_bytes = resp.content
+                content_type = resp.headers.get("content-type", "").split(";")[0].strip()
+                # Guard: only create an artwork from an actual image. Some platforms
+                # store a page URL instead of a file, which would download HTML.
+                if not is_image(content_type, image_bytes):
+                    raise ValueError(
+                        f"URL did not return an image (content-type: {content_type or 'unknown'})")
+                piece_title = f"{title} ({i + 1}/{len(urls)})" if multi else title
+                name = artwork_reader.create_artwork(
+                    title=piece_title,
+                    image_filename=f"image{pick_ext(u, content_type, image_bytes)}",
+                    image_bytes=image_bytes,
+                    description=d.get("description", "") or "",
+                    rating=rating,
+                    tags={"default": tags} if tags else {},
+                    platforms=[platform],
+                    source={"platform": platform, "submission_id": str(submission_id),
+                            "url": external_url, "image_index": i},
+                )
+                created.append(name)
+            except Exception as e:  # one bad image mustn't abort the set
+                errors.append({"index": i, "url": u, "error": str(e)[:160]})
+                logger.warning("Artwork image %d/%d import failed for %s/%s: %s",
+                               i + 1, len(urls), platform, submission_id, e)
 
-    # Link it (write a publication) so it folds into the hub + leaves the
-    # discovered bucket — same external_id matching as a normal publication.
+    if not created:
+        detail = errors[0]["error"] if errors else "no importable image"
+        raise ValueError(
+            f"Stored URL did not return an image ({detail}). "
+            f"{platform.upper()} may not expose a direct image URL — full import for it is pending."
+        )
+
+    # Link ONE publication (external_id = submission_id) so the post folds into
+    # the hub + leaves the discovered bucket. Attach it to the first piece; the
+    # rest live in the library under the same import_source.submission_id (so a
+    # re-import is recognised as already-imported).
     conn = get_connection()
     try:
         posting_queries.upsert_publication(
             conn,
-            story_name=name,
+            story_name=created[0],
             chapter_index=0,
             platform=platform,
             content_type="artwork",
@@ -244,5 +294,7 @@ def import_artwork(platform: str, submission_id: str) -> dict:
     finally:
         conn.close()
 
-    logger.info("Imported artwork %s from %s/%s", name, platform, submission_id)
-    return {"status": "imported", "name": name, "platform": platform}
+    logger.info("Imported %d image(s) as artwork from %s/%s (%s)",
+                len(created), platform, submission_id, ", ".join(created))
+    return {"status": "imported", "name": created[0], "platform": platform,
+            "images": len(created), "names": created, "failed_images": len(errors)}

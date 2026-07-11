@@ -4,6 +4,34 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.91.0] - 2026-07-11 - Multi-image import: a Bluesky post's whole image set, not just the first
+
+A multi-image post (e.g. a 4-image Bluesky skeet) now imports as **one artwork per image**, instead of
+silently keeping only the first. As chosen: N separate artworks (titled `Title (i/N)`), each independently
+publishable — the single-image artwork model is unchanged. Only the **post's own** images are captured, never
+comment/reply media. **Bluesky first**; X/Instagram carousels still import their first image until their clients
+are extended the same way.
+
+**Data flow**
+- `clients/bsky/client.py` — the embed parser now collects every image's `fullsize` URL into a `media_urls`
+  list (up to Bluesky's 4), for both `embed.images#view` and `recordWithMedia#view`. `thumbnail_url` still holds
+  the first image's thumb for the gallery.
+- Schema — new `bsky_submissions.media_urls` column (JSON array) in `bsky_schema.sql` + an additive `db.py`
+  migration (`ALTER TABLE … ADD COLUMN`, idempotent). `bsky_queries.upsert_bsky_submission` persists it.
+- `posting/artwork_importer.py` — new `media_url_list(row)` returns the full set (falling back to the single
+  `image_url()` for older/single-image rows). `import_artwork` loops it: each image → its own `create_artwork`
+  (with `source.image_index`); the **first** piece carries the publication (`external_id = submission_id`) that
+  folds the post into the hub and clears the Discovered bucket; per-image download failures are collected, not
+  fatal (one bad image doesn't sink the set). Idempotent — a re-import is recognised as already-imported.
+
+**Backfill:** existing Bluesky posts stay single-image until re-polled — run a **Full Resync** to pull the extra
+images for posts already in the DB.
+
+Tests: `media_url_list` cases added to `test_artwork_importer.py`; migration + upsert + fallback verified
+end-to-end on a throwaway DB; bsky/artwork/import suites green (39). Touches `clients/bsky/client.py`,
+`database/{bsky_schema.sql,bsky_queries.py,db.py}`, `posting/artwork_importer.py`, `tests/test_artwork_importer.py`.
+Developed on `master`; needs deploy.
+
 ## [2.90.0] - 2026-07-11 - Fix: bulk "Import all" was unreachable (route shadowing)
 
 Backend bug fix surfaced in the server log while testing artwork import.

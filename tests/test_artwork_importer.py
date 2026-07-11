@@ -4,7 +4,7 @@ filesystem, so it's exercised live, not here; these cover the mapping + guard
 logic that makes one importer work safely across platforms.
 """
 from posting.artwork_importer import (
-    norm_rating, image_url, pick_ext, is_image, parse_tags,
+    norm_rating, image_url, pick_ext, is_image, parse_tags, media_url_list,
 )
 
 
@@ -49,3 +49,20 @@ def test_parse_tags_handles_json_list_csv_and_empty():
     assert parse_tags("a, b, c") == ["a", "b", "c"]
     assert parse_tags("") == []
     assert parse_tags(None) == []
+
+
+def test_media_url_list_multi_image_single_and_fallback():
+    # Multi-image post: JSON array (as stored) → every full-res URL, in order.
+    assert media_url_list({"media_urls": '["a.jpg", "b.jpg", "c.jpg"]'}) == [
+        "a.jpg", "b.jpg", "c.jpg"]
+    # Already a list (pre-serialisation) works too.
+    assert media_url_list({"media_urls": ["a.jpg", "b.jpg"]}) == ["a.jpg", "b.jpg"]
+    # De-duped, order preserved.
+    assert media_url_list({"media_urls": '["a.jpg", "a.jpg", "b.jpg"]'}) == ["a.jpg", "b.jpg"]
+    # Empty media_urls → fall back to the single best URL (older/single-image rows).
+    assert media_url_list({"media_urls": "", "thumbnail_url": "t.jpg"}) == ["t.jpg"]
+    assert media_url_list({"download_url": "full.jpg"}) == ["full.jpg"]
+    # Nothing at all → empty (import then raises "no image URL").
+    assert media_url_list({}) == []
+    # Blank/whitespace entries are dropped.
+    assert media_url_list({"media_urls": '["a.jpg", "", "  "]'}) == ["a.jpg"]

@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.90.0 — **Fix: bulk "Import all" was unreachable (route shadowing).**
+**Current version (live/master):** 2.91.0 — **Multi-image import: a Bluesky post's whole image set, not just the first.**
+A multi-image post (e.g. a 4-image skeet) now imports as **one artwork per image** (titled `Title (i/N)`, each
+independently publishable) instead of silently keeping only the first — the single-image artwork model is
+unchanged (N artworks, not a gallery). Only the **post's own** images, never comment/reply media. **Bluesky
+first**; X/Instagram carousels still import their first image until extended. Flow: `clients/bsky/client.py`
+collects every embed image's `fullsize` into a `media_urls` list → persisted as a JSON array in the new
+`bsky_submissions.media_urls` column (`bsky_schema.sql` + additive `db.py` migration; `bsky_queries` upsert) →
+`posting/artwork_importer.py` `media_url_list(row)` returns the set (falls back to single `image_url()` for
+old/single rows) and `import_artwork` loops it: each image → its own `create_artwork` (`source.image_index`), the
+FIRST piece carries the publication (`external_id=submission_id`) that clears the Discovered bucket, per-image
+failures collected not fatal, idempotent on re-import. **Backfill:** existing posts stay single-image until
+re-polled — run a **Full Resync**. Tests: `media_url_list` cases + end-to-end migration/upsert/fallback verified;
+bsky/artwork/import suites green (39). Developed on `master`; needs deploy.
+
+**Prior — 2.90.0 — Fix: bulk "Import all" was unreachable (route shadowing).**
 Backend bug fix (surfaced in the server log while testing artwork import). The per-platform **Import all** button
 always failed with `Unknown platform: bulk`: `POST /import/{platform}/{submission_id}` (generic) was registered
 *before* `POST /import/bulk/{platform}` (specific), and Starlette matches in registration order — so

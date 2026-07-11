@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS bsky_submissions (
     keywords        TEXT DEFAULT '',
     link            TEXT DEFAULT '',
     thumbnail_url   TEXT DEFAULT '',
+    media_urls      TEXT DEFAULT '',
     likes           INTEGER DEFAULT 0,
     reposts         INTEGER DEFAULT 0,
     replies         INTEGER DEFAULT 0,

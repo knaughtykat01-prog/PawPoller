@@ -23,19 +23,22 @@ from typing import Any
 def upsert_bsky_submission(conn: sqlite3.Connection, sub: dict, account_id: int) -> None:
     """Insert or update a Bluesky post's metadata and latest stats."""
     keywords_json = json.dumps(sub.get("keywords", []))
+    # Full-res URL for every attached image (multi-image posts) as a JSON array;
+    # '' when there are none. Powers all-images artwork import.
+    media_urls_json = json.dumps(sub.get("media_urls", []) or [])
     # account_id set on INSERT only; the ON CONFLICT UPDATE leaves it alone.
     conn.execute(
         """INSERT INTO bsky_submissions
            (submission_id, account_id, title, full_text, username, posted_at, content_type,
-            rating, description, keywords, link, thumbnail_url,
+            rating, description, keywords, link, thumbnail_url, media_urls,
             likes, reposts, replies, quotes, has_media, embed_type, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
            ON CONFLICT(submission_id) DO UPDATE SET
             title=excluded.title, full_text=excluded.full_text,
             username=excluded.username, content_type=excluded.content_type,
             rating=excluded.rating, description=excluded.description,
             keywords=excluded.keywords, link=excluded.link,
-            thumbnail_url=excluded.thumbnail_url,
+            thumbnail_url=excluded.thumbnail_url, media_urls=excluded.media_urls,
             likes=excluded.likes, reposts=excluded.reposts,
             replies=excluded.replies, quotes=excluded.quotes,
             has_media=excluded.has_media, embed_type=excluded.embed_type,
@@ -46,7 +49,7 @@ def upsert_bsky_submission(conn: sqlite3.Connection, sub: dict, account_id: int)
             sub.get("username", ""), sub.get("posted_at"),
             sub.get("content_type", "post"), sub.get("rating", ""),
             sub.get("description", ""), keywords_json,
-            sub.get("link", ""), sub.get("thumbnail_url", ""),
+            sub.get("link", ""), sub.get("thumbnail_url", ""), media_urls_json,
             sub.get("likes", 0), sub.get("reposts", 0),
             sub.get("replies", 0), sub.get("quotes", 0),
             sub.get("has_media", 0), sub.get("embed_type", ""),

@@ -443,12 +443,15 @@ class BskyClient:
                         if tag:
                             keywords.append(tag)
 
-        # Thumbnail from embed
+        # Thumbnail (first image) + the full set of full-res image URLs. A
+        # Bluesky post can attach up to 4 images; `media_urls` keeps every one at
+        # `fullsize` so the artwork importer can bring them all in (not just the
+        # first). `thumbnail_url` stays the first image's thumb for the gallery.
         thumbnail_url = ""
+        media_urls: list[str] = []
+        img_list = []
         if embed_type == "app.bsky.embed.images#view":
-            images = embed.get("images", [])
-            if images:
-                thumbnail_url = images[0].get("thumb", "")
+            img_list = embed.get("images", []) or []
         elif embed_type == "app.bsky.embed.external#view":
             ext = embed.get("external", {})
             thumbnail_url = ext.get("thumb", "")
@@ -456,9 +459,12 @@ class BskyClient:
             # Quote-with-media: the image is under embed.media.
             media = embed.get("media", {}) or {}
             if media.get("$type") == "app.bsky.embed.images#view":
-                imgs = media.get("images", [])
-                if imgs:
-                    thumbnail_url = imgs[0].get("thumb", "")
+                img_list = media.get("images", []) or []
+        if img_list:
+            thumbnail_url = img_list[0].get("thumb", "")
+            media_urls = [im.get("fullsize", "") or im.get("thumb", "")
+                          for im in img_list]
+            media_urls = [u for u in media_urls if u]
 
         return {
             "post_uri": uri,
@@ -472,6 +478,7 @@ class BskyClient:
             "keywords": keywords,
             "link": link,
             "thumbnail_url": thumbnail_url,
+            "media_urls": media_urls,
             "likes": likes,
             "reposts": reposts,
             "replies": replies,
@@ -495,6 +502,7 @@ class BskyClient:
             "keywords": [],
             "link": f"https://bsky.app/profile/{self._handle}/post/{rkey}",
             "thumbnail_url": "",
+            "media_urls": [],
             "likes": 0,
             "reposts": 0,
             "replies": 0,
