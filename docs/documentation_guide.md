@@ -4465,6 +4465,16 @@ Files:
     guard — `image_url()` drops the page `url` (adds `thumb_url`) and
     `import_artwork` validates Content-Type/magic bytes so non-images are
     rejected, not turned into broken artworks.
+  - **2.90.0 — route-order fix.** `/import/bulk/{platform}` was registered
+    *after* the generic `/import/{platform}/{submission_id}`, so Starlette (first
+    match wins) captured `/import/bulk/bsky` as `platform="bulk"` → every "Import
+    all" hit `Unknown platform: bulk` and the bulk route was unreachable. The
+    specific `bulk`/`discovered-art` routes now precede the generic two-segment
+    route (with an inline comment guarding the order). **Single-image only:** the
+    importer pulls one URL (`image_url()`) and `create_artwork` takes one
+    `image_bytes`, and the pollers store a single `thumbnail_url` (the Bluesky/X
+    client keeps `images[0]` of a multi-image post) — so a multi-image
+    tweet/skeet imports as a single-image artwork using the first image.
   - 2.37.0: Inkbunny imports now re-fetch the **original** file via the API
     (`_resolve_ib_full_url` → `files[].file_url_full`, reusing the poller's cached
     SID) instead of the thumbnail. SoFurry full-res isn't feasible (the `.data`

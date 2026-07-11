@@ -1,7 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.89.0 — **Artwork unify: floating select bar (+ fix the bar leaking visible).**
+**Current version (live/master):** 2.90.0 — **Fix: bulk "Import all" was unreachable (route shadowing).**
+Backend bug fix (surfaced in the server log while testing artwork import). The per-platform **Import all** button
+always failed with `Unknown platform: bulk`: `POST /import/{platform}/{submission_id}` (generic) was registered
+*before* `POST /import/bulk/{platform}` (specific), and Starlette matches in registration order — so
+`/import/bulk/bsky` was captured by the generic route as `platform="bulk"`, making the bulk route dead code since
+it shipped (2.36.0). Reordered so the specific `bulk`/`discovered-art` routes precede the generic two-segment route
+(inline comment guards it); verified with Starlette's matcher. Handlers unchanged; artwork import tests green (7).
+For the record — artwork import is **single-image** (`import_artwork` grabs one `image_url()`, `create_artwork`
+takes one `image_bytes`, pollers store a single `thumbnail_url` = `images[0]` of a multi-image post), so a
+multi-image tweet/skeet imports as one artwork using the first image. Touches `routes/artwork_api.py` only.
+Developed on `master`; needs deploy.
+
+**Prior — 2.89.0 — Artwork unify: floating select bar (+ fix the bar leaking visible).**
 Two fixes to the Artwork → "Select to unify" flow. Frontend-only. (1) **Bug:** `#art-select-bar` carries the
 `hidden` attribute, but its `.artwork-select-bar { display:flex }` rule overrides `[hidden]` in the cascade, so the
 "0 selected · Unify selected · Cancel · Tick 2 or more…" bar sat on the Artwork page **permanently** (and the

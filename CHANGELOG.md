@@ -4,6 +4,28 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.90.0] - 2026-07-11 - Fix: bulk "Import all" was unreachable (route shadowing)
+
+Backend bug fix surfaced in the server log while testing artwork import.
+
+- **`Import all from {platform}` always failed** with `Unknown platform: bulk`. Two routes both match a
+  two-segment path: `POST /import/{platform}/{submission_id}` (generic) was registered *before*
+  `POST /import/bulk/{platform}` (specific). Starlette matches in registration order, first match wins — so
+  `/import/bulk/bsky` was captured by the generic route as `platform="bulk"`, `submission_id="bsky"`, and the
+  bulk route was effectively dead code since it shipped (2.36.0). Reordered so the specific `bulk` /
+  `discovered-art` routes precede the generic two-segment route, with an inline comment guarding the order.
+  Verified with Starlette's matcher: `/import/bulk/bsky` → `import_all_for_platform(platform='bsky')`,
+  `/import/fa/123` → `import_artwork_from_platform(...)`.
+- No behaviour change to the handlers themselves; `tests/test_artwork_importer.py` + `test_integration_artwork.py`
+  green (7).
+
+Note (not a change, for the record): artwork import is **single-image**. `import_artwork` downloads one URL
+(`image_url()`), `create_artwork` takes one `image_bytes`, and the pollers store a single `thumbnail_url` (the
+Bluesky/X client keeps `images[0]` of a multi-image post) — so a multi-image tweet/skeet imports as a
+single-image artwork using the first image.
+
+Touches `routes/artwork_api.py` only. Developed on `master`; needs deploy.
+
 ## [2.89.0] - 2026-07-11 - Artwork unify: floating select bar (+ fix the bar leaking visible)
 
 Two fixes to the Artwork → "Select to unify" flow. Frontend-only.
