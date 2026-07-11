@@ -4,6 +4,26 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.95.0] - 2026-07-12 - Button audit: fix a CSP-dead "Link" button + stop Poll/Resync silently skipping platforms
+
+Two fixes from a static button audit (every interactive control → handler → endpoint cross-referenced; the
+frontend→backend wiring was otherwise clean — all 337 `api.js` calls + editor/settings `fetch`es resolve to real
+routes, every action `data-*` trigger has a handler). Frontend-only.
+
+- **Dead "Link" button (CSP).** The "Link" button in the cross-platform link-*suggestions* list
+  (`Components.linkSuggestions`, rendered on the submission-detail view) was the one control missed in the 2.51.4
+  inline-handler→delegation migration: it still used inline `onclick=`, which the app's CSP blocks, so clicking it
+  did nothing. Converted to a `data-link-suggest` trigger handled by the shared delegated click listener (calls the
+  existing `App.createLinkFromSuggestion`). Verified live: the handler now fires with the parsed items.
+- **Poll Now / Full Resync silently skipping platforms.** Both global buttons fanned out per-platform but gated
+  each on a **cached** `_pollingAuth` snapshot (built once at settings render); if it was stale, a configured
+  platform was dropped from the poll with no error. Now they call a new `App._configuredPollCodes()` that reads
+  `/api/platforms/health` **fresh at click time** and fans out to every `configured` platform (falling back to the
+  cached snapshot only if the health fetch fails). Verified live (returns the configured set from health).
+
+Touches `frontend/js/app.js` + `frontend/js/components.js`. Both verified live-in-browser, zero console errors.
+Developed on `master`; needs deploy.
+
 ## [2.94.0] - 2026-07-12 - Test isolation: per-test database (no more shared-DB bleed / 30s stalls)
 
 Test-infrastructure only — **no runtime change**. Fixes intermittent full-suite failures and a pathological runtime.

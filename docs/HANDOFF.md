@@ -1,7 +1,24 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-12
-**Current version (live/master):** 2.94.0 — **Test isolation: per-test database (no more shared-DB bleed / 30s stalls).**
+**Current version (live/master):** 2.95.0 — **Button audit: fix a CSP-dead "Link" button + stop Poll/Resync silently skipping platforms.**
+Two fixes from a static button audit (every control → handler → endpoint cross-referenced; wiring otherwise clean —
+all 337 `api.js` calls + editor/settings fetches resolve to real routes, every action `data-*` trigger has a
+handler). Frontend-only. (1) **Dead "Link" button:** the link-*suggestions* "Link" button (`Components.linkSuggestions`)
+was the one control missed in the 2.51.4 inline→delegation migration — it used inline `onclick=`, which CSP blocks,
+so it did nothing. Now a `data-link-suggest` trigger on the shared delegated listener → existing
+`App.createLinkFromSuggestion`. (2) **Poll Now / Full Resync silently skipping platforms:** both global buttons
+gated each platform on a **cached** `_pollingAuth` snapshot; if stale, a configured platform was dropped with no
+error. Now they call new `App._configuredPollCodes()` which reads `/api/platforms/health` **fresh at click time**
+(falls back to the cached snapshot only on fetch failure). Both verified live-in-browser (link handler fires with
+parsed items; helper returns the configured set), zero console errors. `frontend/js/{app,components}.js`. Developed
+on `master`; needs deploy.
+    · **Polling note (from this session):** the scheduler polls on a 240-min interval and does NOT full-poll on
+    startup, so frequent redeploys reset the timer and can leave platforms un-polled for a while; multi-image
+    `media_urls` only populates on a poll with 2.91.0+/2.93.0 code (Bluesky verified live; X was transiently
+    rate-limited 429; IG needs an actual carousel). Backfill = per-platform Full Resync.
+
+**Prior — 2.94.0 — Test isolation: per-test database (no more shared-DB bleed / 30s stalls).**
 Test-infrastructure only — **no runtime change**. The suite shared ONE temp SQLite DB, isolating only by per-test
 `DELETE`s that swallowed `OperationalError` — so partial wipes bled rows into later tests (`test_personas` +
 `test_scope_bsky` failed intermittently on wrong counts) and a single leaked connection stalled others up to the 30s

@@ -124,7 +124,8 @@ const App = {
         document.addEventListener('click', (e) => {
             const el = e.target.closest(
                 '[data-nav],[data-poll],[data-resync],[data-export],' +
-                '[data-link-stats],[data-link-delete],[data-remove-group],[data-post-action]'
+                '[data-link-stats],[data-link-delete],[data-remove-group],[data-post-action],' +
+                '[data-link-suggest]'
             );
             if (!el) return;
             const d = el.dataset;
@@ -134,6 +135,11 @@ const App = {
             if (d.export !== undefined) { API.exportSubmissions(d.export); return; }
             if (d.linkStats !== undefined) { this.viewLinkStats(Number(d.linkStats)); return; }
             if (d.linkDelete !== undefined) { this.deleteLink(Number(d.linkDelete)); return; }
+            if (d.linkSuggest !== undefined) {  // CSP-safe replacement for the old inline onclick
+                try { this.createLinkFromSuggestion(JSON.parse(el.dataset.items || '[]')); }
+                catch (err) { /* malformed items — ignore */ }
+                return;
+            }
             if (d.removeGroup !== undefined) {
                 this.removeGroupMember(Number(d.removeGroup), d.removePlatform, d.removeSub);
                 return;
@@ -1512,6 +1518,30 @@ const App = {
                 if (window.PlatformHealth) window.PlatformHealth.fetchOnce();
             }, 9000);
         });
+    },
+
+    /* Fresh list of configured platform codes for the fan-out Poll Now / Full
+     * Resync buttons. Reads /platforms/health at CLICK time so a stale
+     * _pollingAuth snapshot can't silently drop a configured platform (2.95.0).
+     * Falls back to the cached snapshot only if the health fetch fails/empty. */
+    async _configuredPollCodes() {
+        const ALL = ['ib', 'fa', 'ws', 'sf', 'sqw', 'ao3', 'da', 'wp', 'ik',
+            'bsky', 'tw', 'mast', 'tum', 'pix', 'thr', 'ig'];
+        try {
+            const health = await API.getPlatformsHealth();
+            if (health && typeof health === 'object') {
+                const codes = ALL.filter(c => health[c] && health[c].configured);
+                if (codes.length) return codes;
+            }
+        } catch (e) { /* fall through to the cached snapshot */ }
+        const a = this._pollingAuth || {};
+        const cached = { ib: true, fa: a.faAuth?.has_cookies, ws: a.wsAuth?.has_key,
+            sf: a.sfAuth?.has_credentials, sqw: a.sqwAuth?.has_credentials, ao3: a.ao3Auth?.has_credentials,
+            da: a.daAuth?.has_credentials, wp: a.wpAuth?.has_credentials, ik: a.ikAuth?.has_credentials,
+            bsky: a.bskyAuth?.has_credentials, tw: a.twAuth?.has_credentials, mast: a.mastAuth?.has_credentials,
+            tum: a.tumAuth?.has_credentials, pix: a.pixAuth?.has_credentials, thr: a.thrAuth?.has_credentials,
+            ig: a.igAuth?.has_credentials };
+        return ALL.filter(c => cached[c]);
     },
 
     async _dashPoll(btn, platform) {
@@ -10554,24 +10584,16 @@ const App = {
                 btn.disabled = true;
                 btn.textContent = 'Polling all...';
                 try {
-                    // Trigger IB + all connected platforms in parallel
-                    const triggers = [API.triggerPoll()];
-                    const auth = this._pollingAuth || {};
-                    if (auth.faAuth?.has_cookies) triggers.push(API.triggerFAPoll());
-                    if (auth.wsAuth?.has_key) triggers.push(API.triggerWSPoll());
-                    if (auth.sfAuth?.has_credentials) triggers.push(API.triggerSFPoll());
-                    if (auth.sqwAuth?.has_credentials) triggers.push(API.triggerSQWPoll());
-                    if (auth.ao3Auth?.has_credentials) triggers.push(API.triggerAO3Poll());
-                    if (auth.daAuth?.has_credentials) triggers.push(API.triggerDAPoll());
-                    if (auth.wpAuth?.has_credentials) triggers.push(API.triggerWPPoll());
-                    if (auth.ikAuth?.has_credentials) triggers.push(API.triggerIKPoll());
-                    if (auth.bskyAuth?.has_credentials) triggers.push(API.triggerBSKYPoll());
-                    if (auth.twAuth?.has_credentials) triggers.push(API.triggerTWPoll());
-                    if (auth.mastAuth?.has_credentials) triggers.push(API.triggerMASTPoll());
-                    if (auth.tumAuth?.has_credentials) triggers.push(API.triggerTUMPoll());
-                    if (auth.pixAuth?.has_credentials) triggers.push(API.triggerPIXPoll());
-                    if (auth.thrAuth?.has_credentials) triggers.push(API.triggerTHRPoll());
-                    if (auth.igAuth?.has_credentials) triggers.push(API.triggerIGPoll());
+                    // Fan out to every CONFIGURED platform, read FRESH from
+                    // /platforms/health at click time — a stale _pollingAuth
+                    // snapshot could silently drop a configured platform (2.95.0).
+                    const TRIGGERS = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll',
+                        sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll',
+                        wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll',
+                        mast: 'triggerMASTPoll', tum: 'triggerTUMPoll', pix: 'triggerPIXPoll',
+                        thr: 'triggerTHRPoll', ig: 'triggerIGPoll' };
+                    const codes = await this._configuredPollCodes();
+                    const triggers = codes.map(c => API[TRIGGERS[c]]());
                     const results = await Promise.allSettled(triggers);
                     const failed = results.filter(r => r.status === 'rejected');
                     btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';
@@ -10598,23 +10620,16 @@ const App = {
                 btn.disabled = true;
                 btn.textContent = 'Syncing all...';
                 try {
-                    const resyncs = [API.fullResync()];
-                    const auth = this._pollingAuth || {};
-                    if (auth.faAuth?.has_cookies) resyncs.push(API.fullFAResync());
-                    if (auth.wsAuth?.has_key) resyncs.push(API.fullWSResync());
-                    if (auth.sfAuth?.has_credentials) resyncs.push(API.fullSFResync());
-                    if (auth.sqwAuth?.has_credentials) resyncs.push(API.fullSQWResync());
-                    if (auth.ao3Auth?.has_credentials) resyncs.push(API.fullAO3Resync());
-                    if (auth.daAuth?.has_credentials) resyncs.push(API.fullDAResync());
-                    if (auth.wpAuth?.has_credentials) resyncs.push(API.fullWPResync());
-                    if (auth.ikAuth?.has_credentials) resyncs.push(API.fullIKResync());
-                    if (auth.bskyAuth?.has_credentials) resyncs.push(API.fullBSKYResync());
-                    if (auth.twAuth?.has_credentials) resyncs.push(API.fullTWResync());
-                    if (auth.mastAuth?.has_credentials) resyncs.push(API.fullMASTResync());
-                    if (auth.tumAuth?.has_credentials) resyncs.push(API.fullTUMResync());
-                    if (auth.pixAuth?.has_credentials) resyncs.push(API.fullPIXResync());
-                    if (auth.thrAuth?.has_credentials) resyncs.push(API.fullTHRResync());
-                    if (auth.igAuth?.has_credentials) resyncs.push(API.fullIGResync());
+                    // Fan out to every CONFIGURED platform, read FRESH from
+                    // /platforms/health (not a stale _pollingAuth snapshot) so a
+                    // configured platform can't be silently skipped (2.95.0).
+                    const RESYNCS = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync',
+                        sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync',
+                        wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync',
+                        mast: 'fullMASTResync', tum: 'fullTUMResync', pix: 'fullPIXResync',
+                        thr: 'fullTHRResync', ig: 'fullIGResync' };
+                    const codes = await this._configuredPollCodes();
+                    const resyncs = codes.map(c => API[RESYNCS[c]]());
                     const results = await Promise.allSettled(resyncs);
                     const failed = results.filter(r => r.status === 'rejected');
                     btn.textContent = failed.length ? `Done (${failed.length} failed)` : 'Done!';

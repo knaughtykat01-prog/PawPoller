@@ -1960,7 +1960,7 @@ const Components = {
                 <div class="fave-item" style="flex-wrap:wrap">
                     <span style="flex:1">${items}</span>
                     <span style="font-size:11px;color:var(--text-muted)">${(s.similarity * 100).toFixed(0)}% match</span>
-                    <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" data-items='${Utils.escapeHtml(JSON.stringify(s.items))}' onclick='App.createLinkFromSuggestion(JSON.parse(this.dataset.items))'>Link</button>
+                    <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" data-link-suggest data-items='${Utils.escapeHtml(JSON.stringify(s.items))}'>Link</button>
                 </div>
             `;
         }).join('');
