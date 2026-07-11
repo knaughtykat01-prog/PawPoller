@@ -4,6 +4,34 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.82.0] - 2026-07-11 - Guided tours: server-backed "seen" state (stop the reappearing pop-ups)
+
+The onboarding **guided tours** (`frontend/js/tour.js`) recorded "seen" only in per-browser
+`localStorage`, so a dismissal didn't follow the user: a different browser, a cleared/Private store,
+or the **installed PWA** (iOS gives a home-screen web app storage separate from Safari — the 2.81.0
+caveat) would all treat the tours as never-seen and re-offer them. This backs the seen state with
+**server preferences** so a dismissal sticks everywhere. **Frontend + two small `routes/api.py`
+additions; no polling/auth logic changed.**
+
+- **New store** — `tours_seen` (a list of tour names) in `settings.json`, exposed on
+  `GET /api/settings/preferences`. New **additive** endpoint `POST /api/settings/tour-seen`
+  `{name}` appends one tour name and never removes anything, so it's race-safe across tabs and a
+  partial/rogue client can't wipe a user's whole seen set. Empty/oversized names are rejected (400).
+- **Server is the source of truth; localStorage stays a fast cache/offline fallback.** `tour.js`
+  gains `hydrate()` — called once past the auth gate in `App.init` (alongside the health/achievement
+  watchers) — which GETs the seen set, mirrors it into `localStorage`, and **reconciles** any
+  tour dismissed only on this browser *up* to the server (a one-time migration for existing users).
+  It's memoised, but clears its memo on a 401/403 or network blip so a pre-login attempt can't cache
+  an empty set forever.
+- **Auto-fire now awaits hydration.** `maybeAuto()` `await hydrate()`s before deciding, so a tour the
+  user already dismissed on another browser/the PWA never flashes before the server set has loaded.
+  `isDone(name)` checks the server set ∪ localStorage; `end()` writes the local flag **and** POSTs to
+  the server (fire-and-forget; a lost request just retries via reconcile next login).
+- Verified locally in-browser (three scenarios): (A) with `localStorage` wiped, `isDone` still returns
+  true for server-seen tours while an unseen tour still auto-fires; (B) completing/dismissing a tour
+  persists it to `settings.json`; (C) a browser with local-only dismissals migrates them up to the
+  server on first load. Zero console errors. Developed on `master`; needs deploy.
+
 ## [2.81.0] - 2026-07-11 - PWA: installable to the home screen (standalone)
 
 PawPoller can now be **installed to the phone home screen and launched as a standalone app**

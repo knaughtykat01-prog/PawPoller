@@ -5377,9 +5377,10 @@ all hover/popup behaviour in one module:
 #### `frontend/js/tour.js` (guided tours)
 
 Interactive coach-mark onboarding — `window.Tour`
-(`{ start(name,opts), startHere(opts), maybeAuto(hash), end(completed), isDone(name), tourForHash(hash) }`),
+(`{ start(name,opts), startHere(opts), maybeAuto(hash), end(completed), isDone(name), hydrate(), tourForHash(hash) }`),
 styled by `frontend/css/tour.css`. Introduced 2.56.0 (single getting-started tour); generalised to a
-**registry of named tours** in 2.57.0 (getting-started + one tour per page).
+**registry of named tours** in 2.57.0 (getting-started + one tour per page); "seen" state moved
+**server-side** in 2.82.0 (see the persistence bullet).
 
 - **Registry.** `TOURS` maps a tour name → an array of `{ target, title, body }` steps. `getting-started`
   walks the shell chrome; 13 page tours (`platforms`, `submissions`, `stories`, `queue`, `history`,
@@ -5387,6 +5388,17 @@ styled by `frontend/css/tour.css`. Introduced 2.56.0 (single getting-started tou
   one page. `tourForHash()` maps a location hash to a tour name (or null for full-screen / deep / platform
   sub-routes). Each tour has its own seen-flag: `pp_tour_done` for getting-started, `pp_tour_done__<name>`
   for pages (`doneKey()`).
+- **Seen state is server-backed (2.82.0).** Before 2.82.0 "seen" lived only in per-browser `localStorage`,
+  so a dismissal didn't follow the user — a different browser, a cleared/Private store, or the installed PWA
+  (iOS gives a home-screen web app storage separate from Safari) all re-offered the tours. Now the source of
+  truth is `settings.json` `tours_seen` (a list of tour names), exposed on `GET /api/settings/preferences`
+  and appended via the **additive** `POST /api/settings/tour-seen {name}` (never removes — race-safe across
+  tabs, un-wipeable by a partial client; rejects empty/>64-char names 400). `localStorage` stays a
+  synchronous cache + offline fallback. `hydrate()` (memoised; called once past the auth gate in `App.init`,
+  alongside the health/achievement watchers) GETs the seen set, mirrors it into `localStorage`, and
+  **reconciles** any tour dismissed only on this browser *up* to the server (a one-time migration for existing
+  users). It clears its own memo on a 401/403 or network error, so a pre-login attempt can't cache an empty
+  set forever. `isDone(name)` = server set ∪ localStorage.
 - **Spotlight without canvas/SVG.** `.pp-tour-spot` is a small box over the target; its spread shadow
   `box-shadow: 0 0 0 9999px rgba(0,0,0,.62)` paints everything *outside* it dark, and a
   `0 0 0 3px var(--accent)` ring highlights it. A transparent `.pp-tour-blocker` swallows background clicks
@@ -5403,7 +5415,11 @@ styled by `frontend/css/tour.css`. Introduced 2.56.0 (single getting-started tou
   getting-started auto-fires once on the overview; a page tour auto-fires once on first visit **but only after
   getting-started is done**, and not within ~1.2s of another tour ending (debounce, so tours don't chain).
   The sidebar-footer **"?"** (`#help-tour-btn`) calls `Tour.startHere()` — the tour for the current route —
-  replayable regardless of the flags. `end()` writes the current tour's flag on both completion and dismissal.
+  replayable regardless of the flags. Since 2.82.0 `maybeAuto()` `await hydrate()`s before deciding, so a tour
+  the user already dismissed on another browser/the PWA never flashes before the server set has loaded. `end()`
+  persists the current tour's "seen" on both completion and dismissal — it writes the `localStorage` flag **and**
+  fire-and-forget POSTs to `/api/settings/tour-seen` (a lost request just retries via `hydrate()`'s reconcile
+  next login).
 - **Submissions caveat.** The `submissions` tour is keyed to `#/submissions`, which the router resolves to the
   legacy IB analytics view (`renderSubmissions` in app.js) — its un-prefixed route shadows the unified hub
   (`Submissions.render`). The tour therefore targets the IB view's controls (`#search-input`, `#filter-rating`,

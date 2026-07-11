@@ -1,7 +1,22 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.81.0 — **PWA: installable to the home screen (standalone).**
+**Current version (live/master):** 2.82.0 — **Guided tours: server-backed "seen" state.**
+Resolves the user-reported reappearing-guides bug (and the 2.81.0 iOS-PWA tour caveat). The onboarding
+tours (`frontend/js/tour.js`) recorded "seen" only in per-browser `localStorage`, so a dismissal didn't
+follow the user — a different browser, a cleared/Private store, or the installed PWA (iOS gives it storage
+separate from Safari) all re-offered the tours. Now backed by **server preferences**. **Frontend + two small
+`routes/api.py` additions; no polling/auth logic changed.** New `tours_seen` list in `settings.json`, exposed
+on `GET /api/settings/preferences`; new **additive** `POST /api/settings/tour-seen {name}` (appends one name,
+never removes — race-safe, un-wipeable; rejects empty/oversized 400). `tour.js` gains `hydrate()` (called once
+past the auth gate in `App.init`) → GETs the seen set, mirrors it to localStorage, and **reconciles** local-only
+dismissals *up* to the server (one-time migration); memoised but clears the memo on 401/403/network so a pre-login
+attempt can't cache empty. `maybeAuto()` now `await hydrate()`s before deciding (a tour dismissed elsewhere never
+flashes first); `isDone` = server set ∪ localStorage; `end()` writes local **and** POSTs to server. Verified locally
+in-browser across 3 scenarios (server→client isDone with empty localStorage; client→server on dismiss; local→server
+reconcile), zero console errors. Developed on `master`; needs deploy.
+
+**Prior — 2.81.0 — PWA: installable to the home screen (standalone).**
 Builds on the 2.80.0 mobile work — PawPoller now installs to the phone home screen and launches as a
 standalone app (no Safari chrome). **Frontend + a few `dashboard.py` routes; no polling/auth logic changed.**
 New `frontend/manifest.webmanifest` (served at `/manifest.webmanifest`, `application/manifest+json`):
@@ -16,12 +31,8 @@ fallback); cache-first ONLY for `?v=`-versioned static assets. `frontend/js/pwa.
 routes for both files, both added to `_AUTH_EXEMPT_PATHS`, CSP gains `worker-src 'self'` + `manifest-src 'self'`;
 the PyInstaller spec already bundles `frontend/` so the desktop build ships it. Verified locally: manifest parses,
 SW registers + controls at root scope, **0 `/api` entries cached** (58 static assets), theme-color syncs, zero
-console/CSP errors. Needs a secure context (live HTTPS is fine). **Caveat:** iOS gives a home-screen web app its
-own storage, so the installed app may re-show the getting-started tour once — planned follow-up backs tour-seen
-with server preferences. **KNOWN ITEM (user-reported):** onboarding **tour** (`tour.js`, keys `pp_tour_done` /
-`pp_tour_done__<page>`) can reappear — investigated: dismissal is NOT version-coupled (updates don't reset it in
-code); reappearance = localStorage not persisting or a different origin (desktop-app localhost vs live site have
-separate storage). Fix = server-backed tour-seen (pending). Developed on `master`; needs deploy.
+console/CSP errors. Needs a secure context (live HTTPS is fine). The iOS-PWA tour-reappearance caveat this note
+originally carried is **RESOLVED in 2.82.0** (server-backed tour-seen — see the current-version header above).
 
 **Prior — 2.80.0 — Mobile polish for the reskin pages + iOS safe-area fixes.**
 A vigilant emulated-iPhone (393×852) audit of the reskin + gamification pages found five layout issues, all

@@ -1002,6 +1002,12 @@ def get_preferences():
         # Free-form list of {id, span} objects; null until the user
         # customises (the frontend falls back to its default layout).
         "dashboard_layout": settings.get("dashboard_layout", None),
+        # ── Guided-tour "seen" set (2.82.0) ────────────────────────
+        # List of tour names the user has completed/dismissed. Backs the
+        # onboarding tours server-side so a dismissal sticks across Safari,
+        # the installed PWA, the desktop app and updates — localStorage was
+        # per-origin/per-browser and would re-show tours on a fresh store.
+        "tours_seen": settings.get("tours_seen", []),
         # ── Per-platform notification master toggles ───────────────
         "notifications_enabled": settings.get("notifications_enabled", True),
         "fa_notifications_enabled": settings.get("fa_notifications_enabled", True),
@@ -1240,6 +1246,39 @@ def save_preferences(body: dict):
     if update:
         config.save_settings(update)
     return {"status": "success", "message": "Preferences saved"}
+
+
+# ── Settings: guided-tour "seen" set (2.82.0) ─────────────────
+# The onboarding tours (frontend/js/tour.js) used to record "seen" only in
+# per-browser localStorage, so a dismissal didn't follow the user across
+# Safari, the installed PWA, the desktop app, or a device change — the tour
+# would re-offer on any fresh store. This endpoint persists the seen set in
+# settings.json instead.
+#
+# It is ADDITIVE by design: it appends one tour name to the stored list and
+# never removes anything, so it is race-safe across concurrent tabs and a
+# rogue/partial client can't wipe a user's whole seen set. The frontend reads
+# the full list back from GET /settings/preferences (tours_seen) at startup.
+
+@router.post("/settings/tour-seen")
+def mark_tour_seen(body: dict):
+    """Record that a guided tour has been completed/dismissed.
+
+    Body: {"name": "<tour-name>"} — e.g. "getting-started" or a page name
+    like "platforms". Unknown/empty names are rejected. Returns the updated
+    full seen list so the client can reconcile its in-memory set.
+    """
+    name = str(body.get("name", "")).strip()
+    if not name or len(name) > 64:
+        raise HTTPException(400, "A tour name is required")
+    settings = config.get_settings()
+    seen = settings.get("tours_seen", [])
+    if not isinstance(seen, list):
+        seen = []
+    if name not in seen:
+        seen = seen + [name]
+        config.save_settings({"tours_seen": seen})
+    return {"status": "success", "tours_seen": seen}
 
 
 # ── Settings: Telegram ────────────────────────────────────────

@@ -223,6 +223,13 @@ const App = {
         if (window.Laurels && window.Laurels.startAchievementWatch) {
             window.Laurels.startAchievementWatch();
         }
+        // Warm the guided-tour seen-set from the server now that we're past the
+        // auth gate. /api/settings/preferences needs a session, and hydrating
+        // here (before the first route() below) means a tour the user already
+        // dismissed on another browser/the PWA won't flash before the set loads.
+        if (window.Tour && window.Tour.hydrate) {
+            window.Tour.hydrate();
+        }
 
         /* First-run setup wizard — if setup_complete is not set, show
          * the guided wizard instead of the normal dashboard. This check

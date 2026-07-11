@@ -15,19 +15,29 @@
  *     `.data-table`/grid exists only when populated), so the engine SKIPS any
  *     step whose target is missing or hidden, in whichever direction you're
  *     moving. That makes each tour correct for both empty and populated pages.
- *   - "Seen" is a per-browser localStorage flag, one per tour
+ *   - "Seen" is persisted BOTH server-side (settings.json `tours_seen`, via
+ *     GET/POST /api/settings/tour-seen) AND in per-browser localStorage
  *     (`pp_tour_done` for getting-started, `pp_tour_done__<page>` for pages).
- *     Auto-fire is gated: getting-started fires once on the overview; a page
- *     tour fires once on first visit, but only AFTER getting-started is done,
- *     and never immediately on the heels of another tour (a short debounce).
- *     Replaying via the sidebar "?" ignores the flag.
+ *     The server is the source of truth so a dismissal follows the user across
+ *     Safari, the installed PWA, the desktop app and updates; localStorage is a
+ *     synchronous cache + offline fallback (older per-origin behaviour, which
+ *     re-showed tours on any fresh store — an iOS PWA gets storage separate
+ *     from Safari, so that was the reappearing-guides cause). `hydrate()` pulls
+ *     the server set once at login, mirrors it into localStorage, and pushes up
+ *     any locally-dismissed tours it doesn't yet know about (one-time migration).
+ *     Auto-fire is gated: it AWAITS hydrate() so a server-seen tour never fires
+ *     before the set has loaded; getting-started fires once on the overview; a
+ *     page tour fires once on first visit, but only AFTER getting-started is
+ *     done, and never immediately on the heels of another tour (a short
+ *     debounce). Replaying via the sidebar "?" ignores the flag.
  *
  * Public API (window.Tour):
  *   start(name, opts)   run a named tour now (ignores the seen flag)
  *   startHere(opts)     run the tour for the current route (the "?" button)
  *   maybeAuto(hash)     auto-fire hook, called from App.route()
- *   end(completed)      tear down + persist the seen flag
- *   isDone(name)        has this tour been seen/dismissed
+ *   end(completed)      tear down + persist the seen flag (local + server)
+ *   isDone(name)        has this tour been seen/dismissed (server set ∪ local)
+ *   hydrate()           load the server-side seen set (memoised); call at login
  *   tourForHash(hash)   map a location hash to a tour name (or null)
  */
 window.Tour = (function () {
@@ -35,6 +45,73 @@ window.Tour = (function () {
 
     const GS = 'getting-started';
     function doneKey(name) { return name === GS ? 'pp_tour_done' : 'pp_tour_done__' + name; }
+
+    /* ── Server-backed "seen" set ────────────────────────────────────────
+     * `_serverSeen` is the set of tour names the server knows are dismissed,
+     * null until hydrated. localStorage stays as a synchronous cache/offline
+     * fallback; the server is the source of truth so a dismissal follows the
+     * user across browsers, the installed PWA and updates. */
+    let _serverSeen = null;   // Set<string> | null
+    let _hydrateP = null;     // memoised hydrate promise (reset on auth/network fail)
+
+    function localDone(name) {
+        try { return localStorage.getItem(doneKey(name)) === '1'; } catch (e) { return false; }
+    }
+    function markLocal(name) {
+        try { localStorage.setItem(doneKey(name), '1'); } catch (e) { /* private mode */ }
+    }
+    /* Fire-and-forget: tell the server this tour is seen. Additive server-side,
+     * so losing this request just means it retries via reconcile() next login. */
+    function postSeen(name) {
+        try {
+            fetch('/api/settings/tour-seen', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ name: name }),
+            }).catch(function () {});
+        } catch (e) { /* ignore */ }
+    }
+    /* One-time migration: any tour dismissed on THIS browser before server
+     * persistence existed gets pushed up so it sticks everywhere. */
+    function reconcile() {
+        if (!_serverSeen) return;
+        Object.keys(TOURS).forEach(function (name) {
+            if (localDone(name) && !_serverSeen.has(name)) {
+                _serverSeen.add(name);
+                postSeen(name);
+            }
+        });
+    }
+    /* Load the server seen-set once. Memoised, but on an auth (401/403) or
+     * network failure we clear the memo so a later call (post-login) retries —
+     * otherwise a pre-login attempt would cache an empty set forever. */
+    function hydrate() {
+        if (_hydrateP) return _hydrateP;
+        _hydrateP = (async function () {
+            try {
+                const r = await fetch('/api/settings/preferences', { credentials: 'same-origin' });
+                if (r.status === 401 || r.status === 403) {
+                    _hydrateP = null;                 // not logged in yet — allow a retry
+                    if (!_serverSeen) _serverSeen = new Set();
+                    return;
+                }
+                if (r.ok) {
+                    const p = await r.json();
+                    const list = Array.isArray(p.tours_seen) ? p.tours_seen : [];
+                    _serverSeen = new Set(list);
+                    list.forEach(markLocal);          // mirror server → local cache
+                    reconcile();                      // push any local-only dismissals up
+                } else if (!_serverSeen) {
+                    _serverSeen = new Set();
+                }
+            } catch (e) {
+                _hydrateP = null;                     // network blip — retry later
+                if (!_serverSeen) _serverSeen = new Set();
+            }
+        })();
+        return _hydrateP;
+    }
 
     /* ── Tour registry ──────────────────────────────────────────────────
      * getting-started walks the persistent shell chrome; each page tour walks
@@ -372,7 +449,13 @@ window.Tour = (function () {
         if (!_running) return;
         _running = false;
         _lastEndAt = Date.now();
-        try { localStorage.setItem(doneKey(_name), '1'); } catch (e) { /* private mode — will just re-offer */ }
+        // Persist "seen" locally (instant) AND to the server (durable across
+        // browsers/PWA/updates). Whether the user finished or dismissed, the
+        // tour shouldn't auto-offer again.
+        const seenName = _name;
+        markLocal(seenName);
+        if (_serverSeen) _serverSeen.add(seenName);
+        postSeen(seenName);
         if (_onResize) {
             window.removeEventListener('resize', _onResize);
             window.removeEventListener('scroll', _onResize, true);
@@ -387,7 +470,8 @@ window.Tour = (function () {
     }
 
     function isDone(name) {
-        try { return localStorage.getItem(doneKey(name)) === '1'; } catch (e) { return false; }
+        if (_serverSeen && _serverSeen.has(name)) return true;
+        return localDone(name);
     }
 
     function start(name, opts) {
@@ -409,6 +493,10 @@ window.Tour = (function () {
             if (!name) return;
             const steps = TOURS[name];
             if (!steps || !steps.length) return;
+            // Load the server-side seen set before deciding, so a tour the user
+            // already dismissed on another browser/the PWA never re-fires here.
+            await hydrate();
+            if (_running) return;                          // a manual tour may have started while we awaited
             if (isDone(name)) return;
             if (name !== GS) {
                 if (!isDone(GS)) return;                       // page tours wait for getting-started
@@ -423,5 +511,5 @@ window.Tour = (function () {
         } catch (e) { /* never let onboarding break navigation */ }
     }
 
-    return { start, startHere, maybeAuto, end, isDone, tourForHash };
+    return { start, startHere, maybeAuto, end, isDone, hydrate, tourForHash };
 })();
