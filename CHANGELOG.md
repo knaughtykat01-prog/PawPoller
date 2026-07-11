@@ -4,6 +4,32 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.85.0] - 2026-07-11 - Laurels: 100+ achievements, grouped & filterable
+
+Big expansion of the Laurels gamification page — from ~23 account medals to a **104-medal catalogue**,
+grouped into browsable sections with an earned filter. Frontend-only (`laurels.js` + `laurels.css`); reuses
+the same read-only endpoints, no backend change.
+
+- **Ladders, not just the top rung.** Each engagement metric is now a full ladder of medals (one per rung,
+  earned when the total passes it) instead of a single "highest + next" badge — Views (13 rungs to 1M),
+  Favourites (12), Comments (9). Ascending order reads as a progress track.
+- **New categories:** Library (works/stories/artworks counts), Reach (platform breadth + single-work
+  cross-post depth), Following (watcher ladder), Breakouts (your best work by views, themed Breakout →
+  Legendary), Momentum (publish streak + tracking-longevity ladders), Personas (best persona metal tier +
+  how many you run), and Milestones (all-rounder + collection meta at 15/30/50/75/**100** earned).
+- **Grouped + filterable UI.** The flat medal grid is now sectioned by category with a per-group earned/total
+  count and a header note ("N of 104 earned"), plus an **All / Earned** filter that hides locked medals (and
+  empties). Makes 100+ medals actually browsable.
+- **Per-work achievements expanded** too (`workMedals`) — full view/fave/comment tiers (so a work always has a
+  next target) plus chapter (Epic/Saga) and word-count (Novel/Epic Length) badges — ~20 per work.
+- **No confetti flood on upgrade.** The celebration "seen" baseline key is bumped (`pp_laurels_seen_v2`) so
+  everyone re-baselines silently once against the new per-rung ids, and a burst cap absorbs any jump of >3 new
+  medals at once (an upgrade or a bulk poll catch-up) without a confetti storm — single crossings still pop.
+- Verified live-in-browser: 104 medals, 10 groups, zero duplicate ids, filter 104→earned works, silent
+  re-baseline, zero console errors.
+
+Developed on `master`; needs deploy.
+
 ## [2.84.0] - 2026-07-11 - Mute a platform's session alert (per-platform, auto-clears on recovery)
 
 Follow-up to 2.83.0. Adds a per-platform **Mute** control on session-health notifications, so a user who's

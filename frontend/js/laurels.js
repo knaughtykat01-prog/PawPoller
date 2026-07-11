@@ -115,11 +115,20 @@ window.Laurels = {
         const days = new Set((agg.snapshots || []).map(s => String(s.polled_at || '').slice(0, 10)).filter(Boolean));
         const trackingDays = days.size;
 
+        // Best single-persona view total + how many personas — feed the
+        // Persona-tier medals.
+        let personaViews = 0;
+        personas.forEach(p => {
+            const v = Number(p.stats && p.stats.combined && p.stats.combined.views) || 0;
+            if (v > personaViews) personaViews = v;
+        });
+
         const medals = this._buildMedals({
             totals, pV, pF, pC, ladderV, ladderF, ladderC,
             stories, artworks, works, allPlats, maxPlatsOnWork, totalPlatforms,
             breakoutViews, breakoutTitle, watchers,
             trackingDays, streak: rhythm.streak,
+            personaViews, personaCount: personas.length,
         });
 
         const empty = (!works.length && totals.views === 0 && totals.favorites === 0);
@@ -157,18 +166,11 @@ window.Laurels = {
 
         const { personas, totals, ladderV, rhythm, trackingDays, pV, pF, pC, medals } = model;
         const earned = medals.filter(m => m.earned);
-        const locked = medals.filter(m => !m.earned);
 
         body.innerHTML = `
             ${this._heroCard(totals, pV, pF, pC)}
 
-            <section class="lr-section">
-                <h2 class="lr-h2">Medals <span class="lr-h2-note">${earned.length} earned${locked.length ? ` · ${locked.length} to go` : ''}</span></h2>
-                <div class="lr-medals">
-                    ${earned.map(m => this._medal(m)).join('')}
-                    ${locked.map(m => this._medal(m)).join('')}
-                </div>
-            </section>
+            ${this._medalsSection(medals)}
 
             ${personas.length ? `
             <section class="lr-section">
@@ -196,6 +198,18 @@ window.Laurels = {
 
             <p class="lr-foot">Milestones reflect your <strong>all-time</strong> totals as each platform
             currently reports them — you keep credit for everything you've earned.</p>`;
+
+        // Medal filter (All / Earned) — CSP-safe, wired after render.
+        const sec = document.getElementById('lr-medals-section');
+        if (sec) {
+            sec.querySelectorAll('.lr-filt').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    sec.querySelectorAll('.lr-filt').forEach(b => b.classList.remove('is-active'));
+                    btn.classList.add('is-active');
+                    sec.classList.toggle('filt-earned', btn.dataset.filt === 'earned');
+                });
+            });
+        }
 
         // Animate the hero number + progress bars in, then celebrate anything
         // newly earned since the last visit.
@@ -231,7 +245,12 @@ window.Laurels = {
      * The FIRST ever check just records the baseline silently (so a returning
      * user isn't buried in confetti); after that, only genuinely new medals
      * pop. Fires when the Laurels page is opened. */
-    _SEEN_KEY: 'pp_laurels_seen',
+    // Bumped to _v2 with the 100+ medal catalogue so everyone re-baselines
+    // silently once (the new per-rung ids would otherwise all read as "new").
+    _SEEN_KEY: 'pp_laurels_seen_v2',
+    // A jump larger than this at once isn't a single "moment" (it's an upgrade
+    // adding medals, or a bulk data catch-up) → absorb silently, no confetti flood.
+    _CELEB_BURST_CAP: 3,
     _celebrateNew(earned) {
         const ids = earned.map(x => x.id).filter(Boolean);
         let seen = null;
@@ -243,7 +262,9 @@ window.Laurels = {
         const seenSet = new Set(seen);
         const fresh = earned.filter(x => x.id && !seenSet.has(x.id));
         if (!fresh.length) return;
+        // Advance the baseline first, whatever we decide to show.
         try { localStorage.setItem(this._SEEN_KEY, JSON.stringify([...new Set([...seen, ...ids])])); } catch (e) { /* ignore */ }
+        if (fresh.length > this._CELEB_BURST_CAP) return;   // bulk → silent
         fresh.forEach(m => this._enqueueCeleb(m));
     },
 
@@ -352,20 +373,27 @@ window.Laurels = {
         const words = Number(w.words) || 0;
         const gaps = Number(w.incompleteChapters) || 0;
         const m = [];
+        const num = (n) => this._num(n);
         const badge = (id, cond, icon, name, desc, sub) => m.push({ id, icon, name, desc, earned: !!cond, sub });
+        const tiers = (rows, total, key, unit) => rows.forEach(([r, nm, ic]) =>
+            badge(`${key}-${r}`, total >= r, ic, nm, `${num(r)} ${unit} on this work.`, total >= r ? '' : `${num(total)}/${num(r)}`));
 
         badge('w-published', plats >= 1, '🌱', 'Published', 'Live on at least one platform.');
         badge('w-crossposted', plats >= 3, '🔗', 'Cross-Posted', 'Live on 3 or more platforms.', plats >= 3 ? '' : `${plats}/3`);
         badge('w-wide', plats >= 8, '🌐', 'Wide Reach', 'Live on 8 or more platforms.', plats >= 8 ? '' : `${plats}/8`);
-        // View tier — surface the highest reached, else the first as a target.
-        const vTiers = [[1000, '1K Views', '👁'], [5000, '5K Club', '🔥'], [10000, '10K Club', '💥']];
-        const vHit = [...vTiers].reverse().find(t => views >= t[0]);
-        if (vHit) badge(`w-views-${vHit[0]}`, true, vHit[2], vHit[1], `Over ${this._num(vHit[0])} views on this work.`);
-        else badge('w-views-1000', false, '👁', '1K Views', 'Reach 1,000 views on this work.', `${this._num(views)}/1,000`);
-        badge('w-beloved', faves >= 100, '❤', 'Beloved', '100+ favourites on this work.', faves >= 100 ? '' : `${this._num(faves)}/100`);
-        badge('w-discussed', comments >= 25, '💬', 'Discussed', '25+ comments on this work.', comments >= 25 ? '' : `${this._num(comments)}/25`);
-        if (chapters >= 1) badge('w-epic', chapters >= 10, '📕', 'Epic', 'A work of 10+ chapters.', chapters >= 10 ? '' : `${chapters}/10 ch`);
-        if (words) badge('w-wordsmith', words >= 40000, '✍', 'Novel Length', '40,000+ words.', words >= 40000 ? '' : `${this._num(words)}/40k`);
+        // Full view / fave / comment ladders — a work always has a next target.
+        tiers([[100, 'Seen', '👁'], [500, 'Noticed', '👀'], [1000, '1K Views', '🔥'],
+               [5000, '5K Club', '💥'], [10000, '10K Club', '🚀'], [25000, 'Breakout', '🌟']], views, 'w-views', 'views');
+        tiers([[10, 'Liked', '⭐'], [100, 'Beloved', '❤'], [500, 'Adored', '💖']], faves, 'w-faves', 'favourites');
+        tiers([[10, 'Chatted', '💬'], [25, 'Discussed', '🗨'], [100, 'Talked About', '📢']], comments, 'w-comments', 'comments');
+        if (chapters >= 1) {
+            badge('w-epic', chapters >= 10, '📕', 'Epic', 'A work of 10+ chapters.', chapters >= 10 ? '' : `${chapters}/10 ch`);
+            badge('w-saga', chapters >= 25, '📚', 'Saga', 'A work of 25+ chapters.', chapters >= 25 ? '' : `${chapters}/25 ch`);
+        }
+        if (words) {
+            badge('w-wordsmith', words >= 40000, '✍', 'Novel Length', '40,000+ words.', words >= 40000 ? '' : `${num(words)}/40k`);
+            badge('w-tome', words >= 100000, '📜', 'Epic Length', '100,000+ words.', words >= 100000 ? '' : `${num(words)}/100k`);
+        }
         if (chapters > 1 && plats >= 1) badge('w-complete', gaps === 0, '✅', 'Complete Run', 'Every chapter reached every platform it should.', gaps === 0 ? '' : `${gaps} gap${gaps === 1 ? '' : 's'}`);
         return m;
     },
@@ -405,65 +433,149 @@ window.Laurels = {
             </div>`;
     },
 
-    /* ── Medal derivation (all real, all earned from thresholds) ──── */
+    /* ── Medal derivation — a big, grouped catalogue (100+), all real, all
+     * earned from thresholds on the live totals. Ladders render as a progress
+     * track (ascending: earned rungs, then climbing to the locked ones). Every
+     * medal has a stable id so the celebration diff can fire each exactly once. */
     _buildMedals(d) {
         const m = [];
-        // Metric-tier medals — one per metric at the highest rung reached, plus
-        // the next rung as a "locked, in progress" badge. Stable ids (metric+rung)
-        // let the celebration diff detect a newly-crossed milestone.
-        const tierMedal = (crossed, next, kind, key, icon, total) => {
-            if (crossed.length) {
-                const top = crossed[crossed.length - 1];
-                m.push({ id: `${key}-${top}`, icon, name: `${this._num(top)} ${kind}`, desc: `You've passed ${this._num(top)} total ${kind.toLowerCase()}.`, earned: true });
-            }
-            if (next) {
-                m.push({ id: `${key}-${next}`, icon, name: `${this._num(next)} ${kind}`, desc: `${this._num(next - total)} more ${kind.toLowerCase()} to earn this.`, earned: false });
-            }
-        };
-        tierMedal(d.pV.crossed, d.pV.next, 'Views', 'views', '👁', d.totals.views);
-        tierMedal(d.pF.crossed, d.pF.next, 'Favourites', 'faves', '⭐', d.totals.favorites);
-        tierMedal(d.pC.crossed, d.pC.next, 'Comments', 'comments', '💬', d.totals.comments);
+        const num = (n) => this._num(n);
 
-        // Catalogue + special medals (id kept stable so it can be celebrated once)
-        const badge = (id, cond, icon, name, desc, sub) => m.push({ id, icon, name, desc, earned: !!cond, sub });
-        badge('first-words', d.stories.length >= 1, '📖', 'First Words', 'Publish your first story.');
-        badge('first-canvas', d.artworks.length >= 1, '🎨', 'First Canvas', 'Add your first piece of artwork.');
-        badge('storyteller', d.stories.length >= 5, '✍', 'Storyteller', 'Have 5 stories in your library.',
-            d.stories.length >= 5 ? '' : `${d.stories.length}/5`);
-        badge('gallery', d.artworks.length >= 5, '🖼', 'Gallery', 'Have 5 pieces of artwork.',
-            d.artworks.length >= 5 ? '' : `${d.artworks.length}/5`);
-        badge('shelf-of-ten', d.works.length >= 10, '📚', 'Shelf of Ten', 'Have 10 works in your library.',
-            d.works.length >= 10 ? '' : `${d.works.length}/10`);
-        badge('prolific', d.works.length >= 25, '🗂', 'Prolific', 'Have 25 works in your library.',
-            d.works.length >= 25 ? '' : `${d.works.length}/25`);
-        badge('century', d.works.length >= 100, '🏛', 'Century', 'Have 100 works in your library.',
-            d.works.length >= 100 ? '' : `${d.works.length}/100`);
-        badge('cross-poster', d.maxPlatsOnWork >= 5, '🔗', 'Cross-Poster', 'Publish a single work to 5+ platforms.',
+        // One medal per rung of a ladder (earned when total >= rung).
+        const ladder = (o) => {
+            o.rungs.forEach(r => {
+                const earned = (o.total || 0) >= r;
+                m.push({
+                    group: o.group,
+                    id: `${o.key}-${r}`,
+                    icon: o.icon,
+                    name: (o.names && o.names[r]) || `${num(r)} ${o.unit}`,
+                    desc: o.desc ? o.desc(r) : `${o.verb} ${num(r)} ${o.unit.toLowerCase()}.`,
+                    earned,
+                    sub: earned ? '' : `${num(o.total || 0)}/${num(r)}`,
+                });
+            });
+        };
+        const badge = (group, id, cond, icon, name, desc, sub) =>
+            m.push({ group, id, icon, name, desc, earned: !!cond, sub });
+
+        // ── Views / Favourites / Comments — the big engagement ladders ──
+        ladder({ group: 'Views', key: 'views', icon: '👁', unit: 'Views', verb: 'Reach',
+            total: d.totals.views,
+            rungs: [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000],
+            names: { 1000: '1K Views', 10000: '10K Club', 100000: '100K Club', 1000000: 'Millionaire' } });
+        ladder({ group: 'Favourites', key: 'faves', icon: '⭐', unit: 'Favourites', verb: 'Reach',
+            total: d.totals.favorites,
+            rungs: [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000],
+            names: { 1000: '1K Favourites', 10000: '10K Favourites' } });
+        ladder({ group: 'Comments', key: 'comments', icon: '💬', unit: 'Comments', verb: 'Reach',
+            total: d.totals.comments,
+            rungs: [10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
+            names: { 1000: '1K Comments' } });
+
+        // ── Library: works, stories, artworks ──
+        ladder({ group: 'Library', key: 'works', icon: '📚', unit: 'Works', verb: 'Have',
+            total: d.works.length, rungs: [1, 3, 5, 10, 25, 50, 100, 250],
+            names: { 1: 'First Work', 10: 'Shelf of Ten', 100: 'Century' } });
+        ladder({ group: 'Library', key: 'stories', icon: '📖', unit: 'Stories', verb: 'Publish',
+            total: d.stories.length, rungs: [1, 5, 10, 25, 50], names: { 1: 'First Words' } });
+        ladder({ group: 'Library', key: 'art', icon: '🎨', unit: 'Artworks', verb: 'Publish',
+            total: d.artworks.length, rungs: [1, 5, 10, 25, 50], names: { 1: 'First Canvas' } });
+
+        // ── Reach: platform breadth + single-work cross-post depth ──
+        ladder({ group: 'Reach', key: 'breadth', icon: '🌐', unit: 'Platforms', verb: 'Publish across',
+            total: d.allPlats.size, rungs: [1, 2, 3, 4, 5, 8, 10, 12, 16],
+            names: { [d.totalPlatforms]: 'Full Spread' } });
+        badge('Reach', 'crosspost-3', d.maxPlatsOnWork >= 3, '🔗', 'Cross-Poster', 'Put one work on 3+ platforms.',
+            d.maxPlatsOnWork >= 3 ? '' : `best ${d.maxPlatsOnWork}/3`);
+        badge('Reach', 'crosspost-5', d.maxPlatsOnWork >= 5, '🕸', 'Wide Load', 'Put one work on 5+ platforms.',
             d.maxPlatsOnWork >= 5 ? '' : `best ${d.maxPlatsOnWork}/5`);
-        badge('wide-reach', d.allPlats.size >= 10, '🌐', 'Wide Reach', 'Publish across 10+ different platforms.',
-            d.allPlats.size >= 10 ? '' : `${d.allPlats.size}/10`);
-        badge('full-spread', d.allPlats.size >= d.totalPlatforms, '🏆', 'Full Spread', `Publish to all ${d.totalPlatforms} platforms.`,
-            d.allPlats.size >= d.totalPlatforms ? '' : `${d.allPlats.size}/${d.totalPlatforms}`);
-        badge('breakout', d.breakoutViews >= 5000, '🚀', 'Breakout', 'Land a single work over 5,000 views.',
-            d.breakoutViews >= 5000 ? (d.breakoutTitle || '') : `best ${this._num(d.breakoutViews)}`);
-        badge('viral-hit', d.breakoutViews >= 10000, '💥', 'Viral Hit', 'Land a single work over 10,000 views.',
-            d.breakoutViews >= 10000 ? (d.breakoutTitle || '') : `best ${this._num(d.breakoutViews)}`);
-        if (d.watchers > 0) {
-            badge('following-100', d.watchers >= 100, '👥', 'Following of 100', 'Gather 100 watchers across platforms.',
-                d.watchers >= 100 ? '' : `${this._num(d.watchers)}/100`);
-            if (d.watchers >= 100)
-                badge('following-500', d.watchers >= 500, '👑', 'Devoted Following', 'Gather 500 watchers across platforms.',
-                    d.watchers >= 500 ? '' : `${this._num(d.watchers)}/500`);
-        }
-        badge('on-a-roll', d.streak >= 4, '🔥', 'On a Roll', 'Publish in 4 weeks running.',
-            d.streak >= 4 ? '' : `${d.streak || 0}/4 weeks`);
-        badge('dedicated', (d.trackingDays || 0) >= 365, '📅', 'Dedicated', 'Track your work for a full year.',
-            (d.trackingDays || 0) >= 365 ? '' : `${d.trackingDays || 0}/365 days`);
-        // Meta: earn a chunk of the others.
+        badge('Reach', 'crosspost-8', d.maxPlatsOnWork >= 8, '📡', 'Omnipost', 'Put one work on 8+ platforms.',
+            d.maxPlatsOnWork >= 8 ? '' : `best ${d.maxPlatsOnWork}/8`);
+        badge('Reach', 'crosspost-all', d.maxPlatsOnWork >= d.totalPlatforms, '🌟', 'Everywhere at Once',
+            `Put one work on all ${d.totalPlatforms} platforms.`,
+            d.maxPlatsOnWork >= d.totalPlatforms ? '' : `best ${d.maxPlatsOnWork}/${d.totalPlatforms}`);
+
+        // ── Following: watchers across platforms ──
+        ladder({ group: 'Following', key: 'watchers', icon: '👥', unit: 'Watchers', verb: 'Gather',
+            total: d.watchers, rungs: [10, 25, 50, 100, 250, 500, 1000, 5000],
+            names: { 100: 'Following of 100', 1000: '1K Followers', 5000: 'Devoted Legion' } });
+
+        // ── Breakouts: your single best work by views ──
+        ladder({ group: 'Breakouts', key: 'breakout', icon: '🚀', unit: 'Views', verb: 'Land a single work at',
+            total: d.breakoutViews, rungs: [1000, 2500, 5000, 10000, 25000, 50000, 100000],
+            names: { 1000: 'Breakout', 2500: 'Rising Star', 5000: 'Hit', 10000: 'Viral',
+                     25000: 'Sensation', 50000: 'Phenomenon', 100000: 'Legendary' } });
+
+        // ── Momentum: publishing streak + tracking longevity ──
+        ladder({ group: 'Momentum', key: 'streak', icon: '🔥', unit: 'Week Streak', verb: 'Publish',
+            total: d.streak, rungs: [2, 3, 4, 6, 8, 12],
+            desc: (r) => `Publish in ${r} weeks running.`,
+            names: { 2: 'Warming Up', 4: 'On a Roll', 8: 'Relentless', 12: 'Unbroken Quarter' } });
+        ladder({ group: 'Momentum', key: 'track', icon: '📅', unit: 'Days Tracked', verb: 'Track',
+            total: d.trackingDays, rungs: [7, 30, 90, 180, 365, 730],
+            desc: (r) => `Track your work for ${num(r)} days.`,
+            names: { 365: 'Dedicated', 730: 'Veteran' } });
+
+        // ── Personas: best persona's metal tier + how many you run ──
+        const pv = d.personaViews || 0, pc = d.personaCount || 0;
+        badge('Personas', 'persona-silver', pv >= 1000, '🥈', 'Silver Persona', 'Take a persona past 1,000 views.',
+            pv >= 1000 ? '' : `${num(pv)}/1,000`);
+        badge('Personas', 'persona-gold', pv >= 10000, '🥇', 'Gold Persona', 'Take a persona past 10,000 views.',
+            pv >= 10000 ? '' : `${num(pv)}/10,000`);
+        badge('Personas', 'persona-plat', pv >= 50000, '🏅', 'Platinum Persona', 'Take a persona past 50,000 views.',
+            pv >= 50000 ? '' : `${num(pv)}/50,000`);
+        badge('Personas', 'persona-diamond', pv >= 100000, '💎', 'Diamond Persona', 'Take a persona past 100,000 views.',
+            pv >= 100000 ? '' : `${num(pv)}/100,000`);
+        badge('Personas', 'persona-two', pc >= 2, '🎭', 'Two Faces', 'Run 2 personas at once.',
+            pc >= 2 ? '' : `${pc}/2`);
+        badge('Personas', 'persona-three', pc >= 3, '🎬', 'Full Cast', 'Run 3 personas at once.',
+            pc >= 3 ? '' : `${pc}/3`);
+
+        // ── Milestones: cross-category + collection meta ──
+        badge('Milestones', 'all-rounder', d.stories.length >= 1 && d.artworks.length >= 1, '🎪',
+            'All-Rounder', 'Publish both a story and an artwork.');
         const earnedSoFar = m.filter(x => x.earned).length;
-        badge('decorated', earnedSoFar >= 15, '🎖', 'Decorated', 'Earn 15 achievements.',
-            earnedSoFar >= 15 ? '' : `${earnedSoFar}/15`);
+        [[15, 'Decorated', '🎖'], [30, 'Distinguished', '🏵'], [50, 'Illustrious', '🎗'],
+         [75, 'Hall of Fame', '🏛'], [100, 'Completionist', '🏆']].forEach(([n, nm, ic]) => {
+            badge('Milestones', `decorated-${n}`, earnedSoFar >= n, ic, nm, `Earn ${n} achievements.`,
+                earnedSoFar >= n ? '' : `${earnedSoFar}/${n}`);
+        });
         return m;
+    },
+
+    /* Group order for the medal grid (any medal whose group isn't listed falls
+     * to the end under its own heading). */
+    _GROUP_ORDER: ['Views', 'Favourites', 'Comments', 'Library', 'Reach',
+                   'Following', 'Breakouts', 'Momentum', 'Personas', 'Milestones'],
+
+    /* Grouped, filterable medals section. */
+    _medalsSection(medals) {
+        const totalEarned = medals.filter(m => m.earned).length;
+        const byGroup = {};
+        medals.forEach(md => { (byGroup[md.group] = byGroup[md.group] || []).push(md); });
+        const order = this._GROUP_ORDER.slice();
+        Object.keys(byGroup).forEach(g => { if (order.indexOf(g) < 0) order.push(g); });
+        const groups = order.filter(g => byGroup[g]).map(g => {
+            const list = byGroup[g];
+            const e = list.filter(x => x.earned).length;
+            return `
+                <div class="lr-mgroup" data-earned="${e}">
+                    <h3 class="lr-mg-title">${this.esc(g)} <span class="lr-mg-count">${e}/${list.length}</span></h3>
+                    <div class="lr-medals">${list.map(md => this._medal(md)).join('')}</div>
+                </div>`;
+        }).join('');
+        return `
+            <section class="lr-section" id="lr-medals-section">
+                <h2 class="lr-h2">Medals
+                    <span class="lr-h2-note">${totalEarned} of ${medals.length} earned</span>
+                    <span class="lr-mfilter">
+                        <button type="button" class="lr-filt is-active" data-filt="all">All</button>
+                        <button type="button" class="lr-filt" data-filt="earned">Earned</button>
+                    </span>
+                </h2>
+                ${groups}
+            </section>`;
     },
 
     _medal(m) {

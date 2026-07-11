@@ -75,6 +75,31 @@
 }
 .lr-h2-note { font-family: var(--font-sans); font-size: .8rem; font-weight: 500; color: var(--text-muted); }
 
+/* ── Medal groups + filter ── */
+.lr-mfilter { margin-left: auto; display: inline-flex; gap: .3rem; }
+.lr-filt {
+    font-family: var(--font-sans); font-size: .74rem; font-weight: 600; color: var(--text-muted);
+    background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 999px;
+    padding: .2rem .75rem; cursor: pointer; transition: color .12s ease, border-color .12s ease, background .12s ease;
+}
+.lr-filt:hover { color: var(--text-secondary); }
+.lr-filt.is-active {
+    color: var(--text-primary);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-tertiary));
+}
+.lr-mgroup { margin: 0 0 1.5rem; }
+.lr-mgroup:last-child { margin-bottom: 0; }
+.lr-mg-title {
+    font-family: var(--font-serif); font-weight: 700; font-size: 1.04rem; color: var(--text-secondary);
+    margin: 0 0 .7rem; display: flex; align-items: baseline; gap: .5rem;
+    padding-bottom: .35rem; border-bottom: 1px solid var(--card-border-inner);
+}
+.lr-mg-count { font-family: var(--font-sans); font-size: .74rem; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* "Earned" filter — hide locked medals, and any group left with none. */
+#lr-medals-section.filt-earned .lr-medal.is-locked { display: none; }
+#lr-medals-section.filt-earned .lr-mgroup[data-earned="0"] { display: none; }
+
 /* ── Medals grid ── */
 .lr-medals { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; }
 .lr-medal {

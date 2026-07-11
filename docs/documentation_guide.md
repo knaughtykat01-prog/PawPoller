@@ -4343,6 +4343,27 @@ Files:
     NOTE: milestone crossings are otherwise invisible in-app (the server-side `check_milestones` in
     `polling/telegram.py` only sends Telegram, persists nothing), so this celebration is the only in-dashboard
     surfacing of a crossing.
+  - **2.85.0 — Laurels 100+ achievements, grouped & filterable.** Expands `_buildMedals(d)` from ~23 medals to
+    a **104-medal catalogue**, still Path A (frontend-only, same `_load()` model + endpoints, no backend). The
+    core shift: each engagement metric is a **full ladder** — a `ladder({group,key,icon,unit,verb,total,rungs,
+    names,desc?})` helper pushes one medal per rung (`id:` `${key}-${rung}`, `earned: total>=rung`, `sub:`
+    `${total}/${rung}` while locked), replacing the old "top-crossed + next" pair. Ladders: Views (13 rungs →
+    1M), Favourites (12), Comments (9), Library works/stories/art, Reach breadth, Following watchers, Breakouts
+    (best single work by views, themed names), Momentum streak + tracking-days; hand-authored `badge()`s cover
+    Reach cross-post depth, Personas (best persona view-tier + count — `_load` now also computes `personaViews`
+    = max persona `stats.combined.views` and passes `personaCount`), and Milestones (all-rounder + collection
+    meta `decorated-{15,30,50,75,100}` counting earned-so-far). Every medal carries a `group`; **`_medalsSection
+    (medals)`** buckets them by `_GROUP_ORDER` and renders one `.lr-mgroup` per group (serif `.lr-mg-title` +
+    `data-earned` count) with an **All/Earned** `.lr-mfilter` toggle wired in `render()` (adds `filt-earned` to
+    the section; CSS hides `.lr-medal.is-locked` and any `.lr-mgroup[data-earned="0"]`). `workMedals(w)` similarly
+    expanded to ~20/work (full view/fave/comment tiers + Epic/Saga chapters + Novel/Epic-Length words). **Confetti-
+    flood guard (important):** the new per-rung ids would all read as "new" to a returning user, so `_SEEN_KEY` is
+    bumped to **`pp_laurels_seen_v2`** (everyone re-baselines silently once) AND `_celebrateNew` gains a
+    `_CELEB_BURST_CAP` (3): it always advances the baseline but if `>3` medals are freshly earned at once (an
+    upgrade, or a bulk poll catch-up) it returns without celebrating — single/small crossings still pop. The hero
+    view-tracker still uses the prefs/alert ladder (`ladderV`), so the medal ladder (which climbs past the alert
+    rungs) is a deliberate superset. Verified live-in-browser: 104 medals, 10 groups, 0 duplicate ids, filter
+    104→10, silent re-baseline, 0 console errors.
   - **2.80.0 — Mobile polish + iOS safe-area fixes** for the reskin/gamification pages (CSS-only, no
     logic/DOM change). Context: mobile mode is width-driven — the boot script sets `data-mobile="1"` at
     `≤768px` (index.html), the sidebar becomes a slide-in drawer, and a **fixed hamburger** (`.hamburger-btn`,

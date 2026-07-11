@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.84.0 — **Mute a platform's session alert (per-platform, auto-clears on recovery).**
+**Current version (live/master):** 2.85.0 — **Laurels: 100+ achievements, grouped & filterable.**
+Big expansion of the Laurels gamification page — ~23 account medals → a **104-medal catalogue**. Frontend-only
+(`laurels.js`+`laurels.css`), same read-only endpoints, no backend. Each engagement metric is now a full
+**ladder** (a medal per rung, earned when the total passes it) instead of one "top+next" badge — Views (13 rungs
+to 1M), Favourites (12), Comments (9) — plus new categories: Library (works/stories/art counts), Reach (breadth +
+single-work cross-post depth), Following (watcher ladder), Breakouts (best work by views), Momentum (streak +
+tracking-longevity), Personas (best persona tier + count), Milestones (all-rounder + collection meta at
+15/30/50/75/100). The grid is now **grouped by category** (per-group earned/total) with an **All/Earned filter**.
+`workMedals` expanded to ~20/work (full view/fave/comment tiers + chapter/word badges). Celebration guard: seen-key
+bumped to `pp_laurels_seen_v2` (silent re-baseline once against the new per-rung ids) + a >3 burst cap so an upgrade
+/ bulk catch-up never fires a confetti flood (single crossings still pop). Verified live-in-browser (104 medals, 10
+groups, 0 dup ids, filter works, silent re-baseline, 0 console errors). Developed on `master`; needs deploy.
+
+**Prior — 2.84.0 — Mute a platform's session alert (per-platform, auto-clears on recovery).**
 Follow-up to 2.83.0. A per-platform **Mute** control on session-health notifications lets the user silence a
 repeated alert they're handling externally (e.g. a Meta app-block) without disabling notifications wholesale or
 hiding a *future* failure. Mute = quiet-but-visible: the item stays in the feed (dimmed, with an **Unmute**
