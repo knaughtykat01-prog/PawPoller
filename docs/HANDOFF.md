@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-11
-**Current version (live/master):** 2.86.0 — **Quick Reconnect: paste a fresh token from the alert.**
+**Current version (live/master):** 2.87.0 — **Settings → Platforms: fix Inkbunny auto-open, alphabetise, logos + centred titles.**
+Polish for the Settings → Platforms accordion list. Frontend-only. (1) **Bug:** the Inkbunny accordion had a
+hardcoded `open` attribute in `app.js`, so it was expanded every time Settings → Platforms opened — removed, now
+collapsed like the rest. (2) **Alphabetical:** a post-render pass `App._enhancePlatformSettings()` (idempotent,
+try/wrapped so it can never break Settings) re-appends the 16 platform accordions A→Z by name (Session-health dot
+pinned first); no DOM rewrite, so every connect handler stays intact. (3) **Logos:** each summary gets its official
+brand logo from `window.PLATFORMS[].logo` (`/img/platforms/{code}.{png,svg}`) with an emoji fallback on 404. (4)
+**Centred titles:** new `.pset-summary` CSS centres logo+name, status dot absolutely pinned left, caret pinned
+right. Touches `frontend/js/app.js` (+3 helpers `_enhancePlatformSettings`/`_accordionName`/`_decoratePlatformSummary`,
+call site after the platforms lazy-tab load, `open`-removal) and `frontend/css/components.css` (`.pset-summary`/
+`.pset-logo`/`.pset-emoji`). Verified live-in-browser (Inkbunny collapsed, all 16 alphabetical, 16 logos, all
+centred, zero console errors). Developed on `master`; needs deploy.
+
+**Prior — 2.86.0 — Quick Reconnect: paste a fresh token from the alert.**
 When a platform's session goes expired/error (dead cookie / invalidated token — e.g. Meta code 190), a
 **Reconnect** button on the alert opens a small modal to paste fresh credentials → validates + re-saves +
 re-syncs in one go, without digging through Settings. Frontend-only; reuses the existing per-platform connect +

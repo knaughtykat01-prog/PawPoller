@@ -745,6 +745,43 @@ a.stat-card:hover {
 .status-dot.warn { background: var(--warning); }
 .status-dot.muted { background: var(--text-muted); opacity: 0.35; }
 
+/* Settings → Platforms: alphabetised accordions with a brand logo + centred
+   title. The status dot is pinned left and the caret right (absolute), so the
+   logo + name sit centred in the row. Applied by App._enhancePlatformSettings. */
+.settings-accordion summary.pset-summary {
+    position: relative;
+    justify-content: center;
+    text-align: center;
+    gap: 8px;
+    padding-left: 46px;
+    padding-right: 46px;
+}
+.settings-accordion summary.pset-summary .status-dot {
+    position: absolute;
+    left: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    margin: 0;
+}
+.settings-accordion summary.pset-summary::after {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%) rotate(0deg);
+    margin-left: 0;
+}
+.settings-accordion[open] summary.pset-summary::after {
+    transform: translateY(-50%) rotate(90deg);
+}
+.pset-logo {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+.pset-emoji { font-size: 16px; line-height: 1; flex-shrink: 0; }
+
 /* Session-health card list (Settings → Platforms → Session health) */
 .session-status-list { display: flex; flex-direction: column; gap: 2px; }
 .session-status-list .ssl-row {

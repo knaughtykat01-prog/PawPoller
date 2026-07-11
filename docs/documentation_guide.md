@@ -6187,3 +6187,28 @@ frontend, no backend.
   retones across all 8 themes. Loaded in `index.html` after `posts.css`;
   `platform_guides.js` loads after `platforms.js`/`components.js` and before
   `app.js` (it needs `window.PLATFORMS`/`window.platformByCode`).
+
+### Settings → Platforms accordion polish (2.87.0)
+
+The Settings → Platforms pane is a hand-written stack of `<details class="settings-accordion">`
+blocks (one per platform), emitted inline by `App.renderSettings()`. Three cosmetic issues were
+fixed without touching that markup wholesale — a **post-render enhancement pass** re-orders and
+decorates the already-rendered accordions:
+
+- **Inkbunny auto-open bug.** The Inkbunny `<details>` carried a stray hardcoded `open` attribute,
+  so it was expanded on every visit. Removed in `app.js` — it now starts collapsed like the rest.
+- **`App._enhancePlatformSettings()`** — called once after the platforms lazy-tab finishes loading
+  (idempotent; the whole body is `try`-wrapped so a DOM change can never break Settings). It selects
+  `:scope > details.settings-accordion` in the platforms pane (skipping the `#session-health-dot`
+  block, which stays pinned first), matches each accordion to `window.PLATFORMS` by its visible name
+  (`_accordionName()` clones the summary and strips the status dot / meta / logo / emoji before
+  reading `textContent`), sorts by `localeCompare(…, {sensitivity:'base'})`, and re-`appendChild`s
+  them in order. Because it moves the existing nodes (no innerHTML rewrite), every connect/disconnect
+  handler already bound inside stays intact.
+- **`_decoratePlatformSummary(summary, p)`** — adds the `.pset-summary` class and inserts an
+  `<img class="pset-logo" src="${p.logo}">` (from `window.PLATFORMS[].logo`,
+  `/img/platforms/{code}.{png,svg}`) right after the status dot, with an `error`-listener fallback
+  that swaps in the platform emoji (`.pset-emoji`) if the logo 404s.
+- **Centring** — `.pset-summary` CSS (`components.css`) centres the logo + name row; the status dot
+  is `position:absolute; left` and the expand caret `::after` is `position:absolute; right`, so the
+  title reads centred regardless of dot/caret width.

@@ -4,6 +4,24 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.87.0] - 2026-07-11 - Settings → Platforms: fix Inkbunny auto-open, alphabetise, add logos + centred titles
+
+Polish for the Settings → Platforms accordion list. Frontend-only.
+
+- **Fix:** the Inkbunny accordion had a hardcoded `open` attribute, so it was expanded every time you opened
+  Settings → Platforms. Removed — it now starts collapsed like the others.
+- **Alphabetical order.** The 16 platform accordions were in a fixed hand-written order; a post-render pass
+  (`App._enhancePlatformSettings`, idempotent, wrapped so it can never break Settings) now reorders them A→Z by
+  name (Session health stays pinned first). No DOM rewrite — the existing accordions are re-appended in sorted
+  order, so all their connect handlers stay intact.
+- **Brand logos.** Each platform summary gets its official logo (from `window.PLATFORMS[].logo`,
+  `/img/platforms/{code}.{png,svg}`) with an emoji fallback if the file 404s.
+- **Centred titles.** New `.pset-summary` styles centre the logo + name in the header row, with the status dot
+  pinned left and the expand caret pinned right (both absolutely positioned).
+
+Verified live-in-browser: Inkbunny collapsed, all 16 alphabetical, 16 logos present, all titles centred, zero
+console errors. Developed on `master`; needs deploy.
+
 ## [2.86.0] - 2026-07-11 - Quick Reconnect: paste a fresh token from the alert, no digging through Settings
 
 When a platform's session goes expired/error (a dead cookie, an invalidated token — e.g. the Meta code-190

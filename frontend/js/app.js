@@ -8429,6 +8429,65 @@ const App = {
         });
     },
 
+    /* Settings → Platforms: reorder the platform accordions alphabetically and
+     * decorate each summary with its brand logo + a centred title. Called after
+     * every renderSettings() paint (the pane is rebuilt fresh each time, so the
+     * ordering/decoration must be re-applied). Session health stays pinned first;
+     * only the platform accordions move. Cosmetic — wrapped so it can never break
+     * Settings. */
+    _enhancePlatformSettings() {
+        try {
+            const pane = document.querySelector('.settings-tab-content[data-tab-content="platforms"]');
+            if (!pane) return;
+            const accs = Array.from(pane.querySelectorAll(':scope > details.settings-accordion'));
+            const platforms = accs
+                .filter(a => !a.querySelector('#session-health-dot'))   // exclude the Session-health card
+                .map(a => {
+                    const summary = a.querySelector(':scope > summary');
+                    const name = this._accordionName(summary);
+                    const p = (window.PLATFORMS || []).find(x => x.label === name) || null;
+                    return { el: a, summary, name, p };
+                })
+                .filter(o => o.summary && o.name);
+            if (!platforms.length) return;
+            platforms.sort((x, y) => x.name.localeCompare(y.name, undefined, { sensitivity: 'base' }));
+            platforms.forEach(o => {
+                pane.appendChild(o.el);                // re-append in sorted order (after Session health)
+                this._decoratePlatformSummary(o.summary, o.p);
+            });
+        } catch (e) { /* cosmetic — never break Settings */ }
+    },
+
+    /* The platform name from an accordion summary (drops the dot / meta / logo). */
+    _accordionName(summary) {
+        if (!summary) return '';
+        const clone = summary.cloneNode(true);
+        clone.querySelectorAll('.status-dot, .summary-meta, .pset-logo, .pset-emoji').forEach(n => n.remove());
+        return clone.textContent.trim();
+    },
+
+    /* Add the centred-title class + brand logo (emoji fallback if the file 404s). */
+    _decoratePlatformSummary(summary, p) {
+        if (!summary) return;
+        summary.classList.add('pset-summary');
+        if (summary.querySelector('.pset-logo, .pset-emoji')) return;   // idempotent
+        if (!p || !p.logo) return;
+        const dot = summary.querySelector('.status-dot');
+        const logo = document.createElement('img');
+        logo.className = 'pset-logo';
+        logo.src = p.logo;
+        logo.alt = '';
+        logo.loading = 'lazy';
+        logo.addEventListener('error', () => {
+            const em = document.createElement('span');
+            em.className = 'pset-emoji';
+            em.textContent = p.emoji || '';
+            logo.replaceWith(em);
+        });
+        if (dot && dot.parentNode === summary) summary.insertBefore(logo, dot.nextSibling);
+        else summary.insertBefore(logo, summary.firstChild);
+    },
+
     async renderSettings() {
         this._loading();
         try {
@@ -9452,7 +9511,7 @@ const App = {
                     </div>
                 </details>
 
-                <details class="settings-accordion" open>
+                <details class="settings-accordion">
                     <summary><span class="status-dot ${creds.has_password ? 'connected' : 'disconnected'}"></span>Inkbunny${creds.username ? ` <span class="summary-meta">— ${Utils.escapeHtml(creds.username)}</span>` : ''}</summary>
                     <div class="accordion-body">
                     <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">
@@ -10226,6 +10285,11 @@ const App = {
             if (_settingsTab === 'diagnostics' && window.Diagnostics) {
                 window.Diagnostics.mount(document.getElementById('diagnostics-mount'));
             }
+
+            // Platforms pane: sort the platform accordions A→Z + give each a logo
+            // and a centred title. Runs regardless of the active tab (the pane is
+            // in the DOM either way) and is idempotent per render.
+            this._enhancePlatformSettings();
 
             // ── Theme picker (Appearance tab) ─────────────────────────
             // Click any card to apply the theme. applyTheme() persists +
