@@ -4,6 +4,24 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.99.0] - 2026-07-12 - Poll-interval fix: 6/8/10/12-hour selections now save (+ "Set all platforms" one-shot)
+
+Editing a poll interval to any value **longer than 4 hours silently did nothing.** The Settings dropdowns
+offered 6/8/10/12-hour options, but the backend validator only accepted `{15, 30, 60, 120, 240}` minutes —
+so a 6-hour pick was quietly rejected and the platform stayed on its old interval. That's the "my edits
+aren't saving" bug.
+
+- **Backend allowed set widened** to `{15, 30, 60, 120, 240, 360, 480, 600, 720}` — every option the UI
+  renders now actually persists. Values outside the set are still rejected (unchanged rate-limit guard). A
+  comment now ties this list to the dropdown options so the two can't drift apart again.
+- **New "Set all platforms" control** at the top of the Poll Intervals section: pick one interval and it's
+  applied to **all 16 platforms** in a single save, mirrors the value into every per-platform dropdown, and
+  toasts a confirmation. Saves editing sixteen dropdowns one by one to put everything on the same cadence.
+
+No schema change. The bug affected every platform's interval dropdown (all 16 share the one validator).
+
+---
+
 ## [2.98.0] - 2026-07-12 - Throttle visibility: tell throttled/partial polls from clean successes (+ AO3 "shields up" ≠ expired)
 
 You couldn't tell a fully-polled platform from one that was **rate-limited into returning partial data** — a

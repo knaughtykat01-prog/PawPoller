@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-12
-**Current version (live/master):** 2.98.0 — **Throttle visibility: tell throttled/partial polls from clean successes (+ AO3 "shields up" ≠ expired).**
+**Current version (live/master):** 2.99.0 — **Poll-interval fix: 6/8/10/12-hour selections now save (+ "Set all platforms" one-shot).**
+Editing a poll interval to anything **longer than 4 hours silently did nothing** — the Settings dropdowns render
+6/8/10/12-hour options, but `save_preferences`'s validator only accepted `{15,30,60,120,240}` minutes, so longer
+picks were quietly rejected and the platform kept its old interval (the "my edits aren't saving" report). Fix:
+widened `_ALLOWED_INTERVALS` → `{15,30,60,120,240,360,480,600,720}` in `routes/api.py` (with a comment tying it to
+the dropdown options so they can't drift again). Also new **"Set all platforms"** control at the top of the Poll
+Intervals section (`frontend/js/app.js`): pick one interval → applied to **all 16 platforms** in a single save,
+mirrored into every per-platform dropdown, with a toast. No schema change. Developed on `master`; needs deploy.
+
+**Prior — 2.98.0 — Throttle visibility: tell throttled/partial polls from clean successes (+ AO3 "shields up" ≠ expired).**
 A throttled poll (X 429, AO3 shields) used to log as `success` even with partial data. Now: new **`partial`** poll
 state — the X client sets a `throttled` flag on any 429, the poller finishes `partial` (+ reason) not `success`
 (no schema change; `/api/platforms/health` carries `last_poll_status:'partial'` + `last_poll_error`).

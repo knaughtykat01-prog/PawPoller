@@ -1153,9 +1153,10 @@ def save_preferences(body: dict):
     Each field is individually optional -- only provided keys are updated.
     Special handling:
       - run_on_startup: modifies the Windows registry (or equivalent) via config
-      - *_poll_interval_minutes: validated against the allowed set {15, 30, 60, 120, 240}
-        to prevent abuse or unreasonably fast polling that could get the user
-        rate-limited by platform APIs. Invalid values are silently ignored.
+      - *_poll_interval_minutes: validated against the allowed set
+        {15, 30, 60, 120, 240, 360, 480, 600, 720} to prevent abuse or
+        unreasonably fast polling that could get the user rate-limited by
+        platform APIs. Invalid values are silently ignored.
     """
     update = {}
 
@@ -1240,10 +1241,13 @@ def save_preferences(body: dict):
         update["notification_min_faves_delta"] = max(0, int(body["notification_min_faves_delta"]))
 
     # ── Per-platform poll intervals ────────────────────────────
-    # The allowed set {15, 30, 60, 120, 240} minutes is chosen to balance
-    # data freshness against API rate limits. Values outside this set are
-    # silently rejected to prevent misconfiguration.
-    _ALLOWED_INTERVALS = (15, 30, 60, 120, 240)
+    # The allowed set balances data freshness against API rate limits.
+    # Values outside this set are silently rejected to prevent
+    # misconfiguration. NOTE: this MUST stay in sync with the option
+    # values the settings dropdowns render (app.js Poll Intervals) —
+    # any value offered there but missing here saves nothing (the
+    # 6/8/10/12-hour options were dropped this way before 2.99.0).
+    _ALLOWED_INTERVALS = (15, 30, 60, 120, 240, 360, 480, 600, 720)
     for key in (
         "poll_interval_minutes",          # IB
         "fa_poll_interval_minutes",

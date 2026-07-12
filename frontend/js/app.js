@@ -8820,6 +8820,24 @@ const App = {
                 <details class="settings-accordion">
                     <summary>Poll Intervals <span class="summary-meta">— controls how often each platform is checked</span></summary>
                     <div class="accordion-body">
+                    <div class="settings-row" style="border-bottom:2px solid var(--border);padding-bottom:14px;margin-bottom:6px">
+                        <div>
+                            <span class="settings-label">Set all platforms</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Apply one interval to every platform at once</div>
+                        </div>
+                        <select class="filter-select" id="pref-poll-interval-all" style="width:auto">
+                            <option value="">— choose —</option>
+                            <option value="15">15 min</option>
+                            <option value="30">30 min</option>
+                            <option value="60">1 hour</option>
+                            <option value="120">2 hours</option>
+                            <option value="240">4 hours</option>
+                            <option value="360">6 hours</option>
+                            <option value="480">8 hours</option>
+                            <option value="600">10 hours</option>
+                            <option value="720">12 hours</option>
+                        </select>
+                    </div>
                     <div class="settings-row">
                         <div>
                             <span class="settings-label">IB poll interval</span>
@@ -11320,6 +11338,46 @@ const App = {
                 try {
                     await API.savePreferences({ ig_poll_interval_minutes: parseInt(e.target.value) });
                 } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
+            // "Set all platforms" — applies one interval to every platform in a
+            // single save, then mirrors the new value into each per-platform
+            // dropdown so the UI stays in sync. Keys mirror the backend's
+            // _PLATFORM_HEALTH_CONFIG order (IB has no prefix).
+            const _ALL_INTERVAL_IDS = [
+                'pref-poll-interval', 'pref-fa-poll-interval', 'pref-ws-poll-interval',
+                'pref-sf-poll-interval', 'pref-sqw-poll-interval', 'pref-ao3-poll-interval',
+                'pref-da-poll-interval', 'pref-wp-poll-interval', 'pref-ik-poll-interval',
+                'pref-bsky-poll-interval', 'pref-tw-poll-interval', 'pref-mast-poll-interval',
+                'pref-tum-poll-interval', 'pref-pix-poll-interval', 'pref-thr-poll-interval',
+                'pref-ig-poll-interval',
+            ];
+            const _ALL_INTERVAL_KEYS = [
+                'poll_interval_minutes', 'fa_poll_interval_minutes', 'ws_poll_interval_minutes',
+                'sf_poll_interval_minutes', 'sqw_poll_interval_minutes', 'ao3_poll_interval_minutes',
+                'da_poll_interval_minutes', 'wp_poll_interval_minutes', 'ik_poll_interval_minutes',
+                'bsky_poll_interval_minutes', 'tw_poll_interval_minutes', 'mast_poll_interval_minutes',
+                'tum_poll_interval_minutes', 'pix_poll_interval_minutes', 'thr_poll_interval_minutes',
+                'ig_poll_interval_minutes',
+            ];
+            document.getElementById('pref-poll-interval-all')?.addEventListener('change', async (e) => {
+                const v = parseInt(e.target.value);
+                if (!v) return;
+                const payload = {};
+                _ALL_INTERVAL_KEYS.forEach(k => { payload[k] = v; });
+                try {
+                    await API.savePreferences(payload);
+                    // mirror the applied value into every per-platform dropdown
+                    _ALL_INTERVAL_IDS.forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.value = String(v);
+                    });
+                    e.target.value = '';  // reset back to the placeholder
+                    if (window.toast) window.toast.success('All 16 platforms set to ' + (v >= 60 ? (v / 60) + 'h' : v + ' min'));
+                } catch (err) {
+                    e.target.value = '';
                     alert('Failed to save: ' + err.message);
                 }
             });
