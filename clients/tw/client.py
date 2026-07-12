@@ -194,6 +194,7 @@ class TWClient:
         self.ct0 = ct0                  # ct0 CSRF cookie from browser
         self.target_user = target_user  # Username to track (without @)
         self._user_rest_id: str = ""    # Cached user ID
+        self.throttled = False          # set True on a 429; read + reset by the poller each cycle
 
         if proxy_url and proxy_key:
             from polling.cf_proxy import CloudflareProxyTransport
@@ -301,6 +302,7 @@ class TWClient:
 
             if resp.status_code == 429:
                 logger.warning("TW: Rate limited (429), waiting 60s...")
+                self.throttled = True   # surfaced by the poller as a 'partial' poll
                 await asyncio.sleep(60)
                 resp = await self._http.get(url, params=params)
 

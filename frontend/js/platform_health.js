@@ -33,6 +33,9 @@
     function classify(entry) {
         if (!entry || !entry.configured) return 'unconfigured';
         if (entry.throttled_until) return 'throttled';
+        // A 'partial' poll = the last cycle was rate-limited (429 / block) and
+        // returned incomplete data — surface it as the amber throttled state.
+        if (entry.last_poll_status === 'partial') return 'throttled';
         if (entry.last_poll_status === 'error') return 'error';
         if (entry.last_poll_status === 'running') return 'running';
         if (!entry.last_poll_at) return 'unknown';
@@ -129,6 +132,8 @@
         if (entry.throttled_until) {
             const remaining = relativeFuture(entry.throttled_until);
             parts.push(`throttled${remaining ? ` ${remaining} remaining` : ''}`);
+        } else if (entry.last_poll_status === 'partial') {
+            parts.push('⚠ throttled — data may be incomplete');
         } else if (entry.next_poll_at) {
             const inFuture = relativeFuture(entry.next_poll_at);
             if (inFuture) parts.push(`next in ${inFuture}`);
@@ -178,6 +183,15 @@
                 kind: 'throttled',
                 title: `${label} is throttled`,
                 body: `Resumes at ${at}${remaining ? ` (${remaining} remaining)` : ''}. Polls and posts to this platform are paused until then.`,
+                action: null,
+            };
+        }
+        if (entry.last_poll_status === 'partial') {
+            return {
+                kind: 'throttled',
+                title: `${label}: last poll was throttled`,
+                body: (entry.last_poll_error ? entry.last_poll_error.slice(0, 240) + ' ' : '')
+                    + 'Rate-limited — some data may be incomplete. It fills in on the next un-throttled poll; avoid forcing repeated resyncs (that keeps the throttle alive).',
                 action: null,
             };
         }

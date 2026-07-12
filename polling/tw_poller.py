@@ -149,6 +149,7 @@ async def run_tw_poll_cycle(account_id: int | None = None, force_full: bool = Fa
     creds = config.resolve_account_credentials("tw", account_id, is_default, settings)
     client = _get_or_create_client(settings, creds.get("tw_auth_token", ""),
                                    creds.get("tw_ct0", ""), creds.get("tw_target_user", ""))
+    client.throttled = False   # reset per cycle; set True by the client on a 429
 
     try:
         conn = get_connection()
@@ -171,8 +172,13 @@ async def run_tw_poll_cycle(account_id: int | None = None, force_full: bool = Fa
         logger.info("TW: Found %d tweets", len(details))
 
         if not details:
-            _update_tw_progress("complete", message="No tweets found.")
-            tw_queries.finish_tw_poll_log(conn, log_id, "success",
+            # No tweets could mean genuinely-none OR the timeline was rate-limited
+            # away — distinguish so a throttled cycle isn't a silent "success".
+            _throttled = getattr(client, "throttled", False)
+            _status = "partial" if _throttled else "success"
+            _msg = "Rate-limited (429) — tweets may be incomplete" if _throttled else None
+            _update_tw_progress("complete", message="Rate-limited — data may be incomplete" if _throttled else "No tweets found.")
+            tw_queries.finish_tw_poll_log(conn, log_id, _status, error_message=_msg,
                                           duration_seconds=time.time() - start_time, **stats)
             conn.commit()
             return stats
@@ -232,12 +238,17 @@ async def run_tw_poll_cycle(account_id: int | None = None, force_full: bool = Fa
         await capture_followers(client, account_id, conn)
 
         duration = time.time() - start_time
+        # A 429 mid-cycle → 'partial' (some tweets may be missing), not clean 'success'.
+        _throttled = getattr(client, "throttled", False)
+        _status = "partial" if _throttled else "success"
+        _msg = "Rate-limited (429) — some tweets may be missing" if _throttled else None
         _update_tw_progress("complete", current=len(details), total=len(details),
-                            message=f"Done -- {stats['submissions_found']} tweets in {duration:.1f}s")
-        tw_queries.finish_tw_poll_log(conn, log_id, "success",
+                            message=(f"Throttled -- {stats['submissions_found']} tweets (may be incomplete)"
+                                     if _throttled else f"Done -- {stats['submissions_found']} tweets in {duration:.1f}s"))
+        tw_queries.finish_tw_poll_log(conn, log_id, _status, error_message=_msg,
                                       duration_seconds=duration, **stats)
-        logger.info("TW poll complete in %.1fs -- %d tweets, %d snapshots",
-                     duration, stats["submissions_found"], stats["snapshots_inserted"])
+        logger.info("TW poll %s in %.1fs -- %d tweets, %d snapshots",
+                     _status, duration, stats["submissions_found"], stats["snapshots_inserted"])
 
         # -- Telegram notifications ----------------------------------------
         if not is_first:

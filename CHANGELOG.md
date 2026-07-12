@@ -4,6 +4,34 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.98.0] - 2026-07-12 - Throttle visibility: tell throttled/partial polls from clean successes (+ AO3 "shields up" ≠ expired)
+
+You couldn't tell a fully-polled platform from one that was **rate-limited into returning partial data** — a
+throttled cycle (X's 429, AO3's "shields up") was still logged as `success`. Now throttling is a first-class,
+visible state.
+
+- **New `partial` poll state.** When a client is rate-limited/blocked mid-cycle, the poller records the poll as
+  **`partial`** (+ a reason) instead of `success`. The X client sets a `throttled` flag on any 429; the poller
+  reads it and finishes `partial` with "Rate-limited (429) — some tweets may be missing". No schema change
+  (`poll_log.status` is free-text); `/api/platforms/health` now carries `last_poll_status: 'partial'` +
+  `last_poll_error`.
+- **Surfacing (amber, distinct from red "expired").** `platform_health.js` classifies `partial` as the existing
+  **throttled** state → amber sidebar/grid dot, a "⚠ throttled — data may be incomplete" page subtitle, and a
+  page banner explaining it fills in on the next un-throttled poll (and not to force repeated resyncs, which keeps
+  the throttle alive). A **bell notification** — "X: last poll was throttled" (amber) — is emitted from
+  `get_notifications` for any configured platform whose last poll was `partial`, deduped by the poll timestamp.
+- **AO3 "Shields are up" is no longer mis-reported as expired credentials.** The AO3 client now records a
+  `blocked_reason` when login hits AO3's shields/rate-limit, and `validate_session` **raises** instead of returning
+  `None` — so the session check marks AO3 **amber "Unverified — AO3 temporarily blocking (shields up)"** with a
+  clear message (and a matching notification), rather than the misleading red **"session expired — re-enter
+  credentials."** (Same fix pattern as the Threads/Instagram code-200 classification in 2.83.0.) The message also
+  points at the real fix: retry later, or use **cookie auth** (`_otwarchive_session`) to skip the shielded login.
+
+Wired for **X + AO3** (the active throttlers); the client-flag mechanism drops onto any platform. Tests: notification
++ session-check suites green; verified live end-to-end (a simulated `partial` X poll → amber health state +
+"throttled" bell notification). Touches `clients/tw/client.py`, `polling/tw_poller.py`, `clients/ao3/client.py`,
+`routes/api.py`, `frontend/js/platform_health.js`. Developed on `master`; needs deploy.
+
 ## [2.97.0] - 2026-07-12 - Collections: one master container per piece (gallery + microblog + companion story)
 
 New **Collections** hub — a user-curated master folder per *piece* that bundles every place it lives (gallery

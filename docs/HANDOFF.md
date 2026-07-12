@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-12
-**Current version (live/master):** 2.97.0 — **Collections: one master container per piece (gallery + microblog + companion story).**
+**Current version (live/master):** 2.98.0 — **Throttle visibility: tell throttled/partial polls from clean successes (+ AO3 "shields up" ≠ expired).**
+A throttled poll (X 429, AO3 shields) used to log as `success` even with partial data. Now: new **`partial`** poll
+state — the X client sets a `throttled` flag on any 429, the poller finishes `partial` (+ reason) not `success`
+(no schema change; `/api/platforms/health` carries `last_poll_status:'partial'` + `last_poll_error`).
+`platform_health.js` classifies `partial` → the existing **amber "throttled"** state (dot + subtitle + banner), and
+`get_notifications` emits a "X: last poll was throttled" bell alert for any configured platform whose last poll was
+`partial` (deduped by poll ts, gated on configured). **AO3 fix:** the client records a `blocked_reason` on
+shields/rate-limit and `validate_session` **raises** → the session check shows amber **"Unverified — AO3 temporarily
+blocking (shields up)"** with a clear message (retry later / use cookie auth), NOT the misleading red **"session
+expired — re-enter credentials"** (same pattern as the 2.83.0 Threads/IG fix). Wired for X + AO3; the client-flag
+mechanism extends to any platform. Touches `clients/tw/client.py`, `polling/tw_poller.py`, `clients/ao3/client.py`,
+`routes/api.py`, `frontend/js/platform_health.js`. Verified live (simulated `partial` poll → amber + bell alert);
+notification/session tests green. Developed on `master`; needs deploy.
+
+**Prior — 2.97.0 — Collections: one master container per piece (gallery + microblog + companion story).**
 New **Collections** hub — a user-curated master folder per piece bundling every place it lives (gallery works +
 microblog submissions) with pooled analytics, all links, merged tags, and an optional companion story. Phases 1–3 +
 companion story of `docs/specs/collections.md` (Phase 0 = 2.96.0). **Backend:** `collections` +

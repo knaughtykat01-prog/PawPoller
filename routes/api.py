@@ -352,7 +352,7 @@ def get_platforms_health():
                     started = last.get("started_at")
                     entry["last_poll_at"] = started
                     entry["last_poll_status"] = last.get("status")
-                    if last.get("status") == "error":
+                    if last.get("status") in ("error", "partial"):
                         entry["last_poll_error"] = last.get("error_message")
                     if started:
                         # SQLite stores started_at via datetime('now') as
@@ -588,6 +588,36 @@ def get_notifications(limit: int = 40):
             })
     except Exception as e:
         logger.debug("notifications: session events skipped: %s", e)
+
+    # Poll-throttle events: a platform whose LAST poll was 'partial' (rate-limited
+    # or blocked, e.g. X's 429) — so a throttled cycle isn't a silent "success".
+    # Deduped by the poll's started_at, so it's one alert per throttled cycle.
+    try:
+        from polling.session_check import LABELS as _HLABELS
+        _tsettings = config.get_settings()
+        _tconn = get_connection()
+        try:
+            for _code, _qmod, _fn, _ik, _cfg in _PLATFORM_HEALTH_CONFIG:
+                try:
+                    if not _cfg(_tsettings):   # skip platforms with no credentials
+                        continue
+                    _last = getattr(_qmod, _fn)(_tconn)
+                except Exception:
+                    continue
+                if _last and _last.get("status") == "partial":
+                    items.append({
+                        "timestamp": _last.get("started_at"),
+                        "platform": _code,
+                        "kind": "throttle",
+                        "status": "warn",
+                        "summary": f"{_HLABELS.get(_code, _code.upper())}: last poll was throttled",
+                        "detail": _last.get("error_message")
+                        or "Rate-limited — some data may be incomplete. It fills in on the next un-throttled poll.",
+                    })
+        finally:
+            _tconn.close()
+    except Exception as e:
+        logger.debug("notifications: throttle events skipped: %s", e)
 
     items.sort(key=lambda e: _norm_ts(e.get("timestamp")), reverse=True)
 

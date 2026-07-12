@@ -121,6 +121,10 @@ class AO3Client:
         self.password = password
         self.target_user = target_user
         self._session_cookie = session_cookie.strip()
+        # Set when login fails due to an AO3-side *block* (shields up / rate-limit)
+        # rather than bad credentials — lets validate_session raise so the session
+        # check reports amber "temporarily blocked", not red "expired".
+        self.blocked_reason = ""
 
         # Use Cloudflare Worker proxy if configured — bypasses AO3's
         # "Shields are up!" Cloudflare TLS fingerprint check on
@@ -430,12 +434,19 @@ class AO3Client:
                         "AO3: 'Shields are up!' page returned (HTTP %d) for %s/users/login",
                         resp.status_code, _BASE,
                     )
+                    self.blocked_reason = (
+                        "AO3 is temporarily blocking automated login (“Shields are up”) — "
+                        "this is AO3-side, not your credentials. Retry later, or use cookie auth "
+                        "(paste _otwarchive_session) to skip the login page.")
                     return False
                 if resp.status_code == 429 and "Retry later" in (resp.text or ""):
                     # Long-term per-IP login ban — additional retries within
                     # the same call burn through the cooldown without
                     # accomplishing anything. One probe was enough.
                     rate_limited = True
+                    self.blocked_reason = (
+                        "AO3 login is rate-limited (HTTP 429 “Retry later”) — AO3-side, "
+                        "not your credentials. Wait 5–60 min before retrying.")
                     logger.warning(
                         "AO3: login page rate-limited (HTTP 429, 'Retry later'); "
                         "stopping in-band retries — wait 5-60 min before retrying",
@@ -603,8 +614,14 @@ class AO3Client:
                 "Re-copy `_otwarchive_session` from your browser.",
             )
             return None
+        self.blocked_reason = ""
         if await self.ensure_logged_in():
             return self.target_user
+        # An AO3-side block (shields up / rate-limit) is NOT expired creds —
+        # raise so the session check marks it amber "temporarily blocked" instead
+        # of red "expired — re-enter credentials".
+        if self.blocked_reason:
+            raise RuntimeError(self.blocked_reason)
         return None
 
     # ── Works Discovery ─────────────────────────────────────────
