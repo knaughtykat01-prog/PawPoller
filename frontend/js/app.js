@@ -10709,6 +10709,31 @@ const App = {
                 <details class="settings-accordion">
                     <summary><span class="status-dot ${twAuth.has_credentials ? 'connected' : 'disconnected'}"></span>X / Twitter${twAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(twAuth.username || '')}</span>` : ''}</summary>
                     <div class="accordion-body">
+                    <div style="background:var(--bg-subtle);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+                            <span class="settings-label">Official X API <span style="color:var(--text-muted);font-weight:normal">(optional)</span></span>
+                            <span class="tag" style="font-size:10px">poll backend: ${Utils.escapeHtml(twAuth.poll_backend || 'graphql')}</span>
+                        </div>
+                        <div style="font-size:11px;color:var(--text-muted);margin:6px 0 10px">
+                            ToS-compliant, IP-agnostic polling via the official X API v2 — sidesteps the datacenter rate-limit the scrapers hit. Bring your own Bearer token from <a href="https://developer.x.com" target="_blank" style="color:var(--accent)">developer.x.com</a> (pay-per-use; owned reads ~$0.001 each, roughly $2–7/month at a normal cadence). One token covers all your X accounts. Unset = free gallery-dl/scrape. Polling only — posting still uses cookies.
+                        </div>
+                        ${twAuth.has_api_token ? `
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                            <span class="telegram-status connected">API token set — official backend active</span>
+                            <button class="btn btn-danger" id="tw-apitoken-remove-btn" style="font-size:12px">Remove token</button>
+                            <span id="tw-apitoken-msg" style="font-size:13px"></span>
+                        </div>
+                        ` : `
+                        <div style="display:flex;flex-direction:column;gap:6px;max-width:460px">
+                            <input type="password" id="tw-api-bearer" class="search-input" placeholder="X API v2 Bearer token">
+                            <input type="text" id="tw-api-target" class="search-input" placeholder="Username to track (without @)" value="${Utils.escapeHtml(twAuth.username || '')}">
+                        </div>
+                        <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+                            <button class="btn btn-primary" id="tw-apitoken-save-btn" style="font-size:12px">Save API token</button>
+                            <span id="tw-apitoken-msg" style="font-size:13px"></span>
+                        </div>
+                        `}
+                    </div>
                     ${twAuth.has_credentials ? `
                     <div class="settings-row">
                         <div>
@@ -12863,6 +12888,40 @@ const App = {
                     if (!confirm('Disconnect X/Twitter? This clears your cookies.')) return;
                     try {
                         await API.twDisconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+
+            // TW: Official X API token — save / remove (opt-in official poll backend)
+            const twApiSaveBtn = document.getElementById('tw-apitoken-save-btn');
+            if (twApiSaveBtn) {
+                twApiSaveBtn.addEventListener('click', async () => {
+                    const bearer = (document.getElementById('tw-api-bearer')?.value || '').trim();
+                    const target = (document.getElementById('tw-api-target')?.value || '').trim();
+                    const msg = document.getElementById('tw-apitoken-msg');
+                    if (!bearer) { if (msg) msg.textContent = 'Enter a Bearer token'; return; }
+                    twApiSaveBtn.disabled = true;
+                    twApiSaveBtn.textContent = 'Validating...';
+                    try {
+                        const r = await API.twApiTokenConnect({ bearer_token: bearer, target_user: target });
+                        if (msg) msg.textContent = r.message || 'Saved';
+                        this.renderSettings();
+                    } catch (err) {
+                        if (msg) msg.textContent = 'Failed: ' + err.message;
+                        twApiSaveBtn.textContent = 'Save API token';
+                        twApiSaveBtn.disabled = false;
+                    }
+                });
+            }
+            const twApiRemoveBtn = document.getElementById('tw-apitoken-remove-btn');
+            if (twApiRemoveBtn) {
+                twApiRemoveBtn.addEventListener('click', async () => {
+                    if (!confirm('Remove the X API token? Polling falls back to the free gallery-dl / scrape backend.')) return;
+                    try {
+                        await API.twApiTokenDisconnect();
                         this.renderSettings();
                     } catch (err) {
                         alert('Failed: ' + err.message);

@@ -236,12 +236,29 @@ class TWClient:
     # -- Authentication -------------------------------------------------------
 
     async def validate_cookies(self) -> bool:
-        """Verify cookies work by making a lightweight authenticated request.
+        """Verify the active poll backend can authenticate.
 
-        Prefers gallery-dl (a single-item fetch) so validation doesn't depend on
-        the GraphQL query IDs that rotate; falls back to the UserByScreenName
-        GraphQL endpoint when gallery-dl is unavailable or inconclusive.
+        Backend-aware, mirroring get_all_tweets() priority:
+          1. **Official X API v2** — validates the Bearer token; needs NO cookies.
+          2. **gallery-dl** — a single-item fetch (avoids brittle GraphQL query IDs).
+          3. **GraphQL** UserByScreenName with the auth_token + ct0 cookies.
+        A definitive result from a higher-priority backend wins; a valid Bearer
+        token lets a cookie-less user poll. (Posting still needs cookies, but
+        that's validated separately by the Posts flow.)
         """
+        settings = config.get_settings()
+        # 1. Official API (opt-in). A valid Bearer token authenticates polling
+        #    with no cookies. A bad/None verdict falls through, so a user who
+        #    ALSO has cookies can still poll via a scraper.
+        try:
+            from clients.tw import official_api
+            if official_api.is_enabled(settings):
+                if await official_api.validate(None, self.target_user, settings) is True:
+                    return True
+        except Exception as e:
+            logger.debug("TW: official-API validation errored: %s", e)
+
+        # 2/3 need cookies.
         if not self.auth_token or not self.ct0:
             return False
         try:
@@ -286,7 +303,19 @@ class TWClient:
         return rest_id
 
     async def get_follower_count(self) -> int | None:
-        """Follower count from UserByScreenName (legacy.followers_count)."""
+        """Follower count for the tracked account.
+
+        Prefers the official API (reuses the count cached during get_all_tweets(),
+        so no extra billed call); falls back to the GraphQL UserByScreenName scrape.
+        """
+        try:
+            from clients.tw import official_api
+            fc = await official_api.get_follower_count(None, self.target_user)
+            if fc is not None:
+                return fc
+        except Exception as e:
+            logger.debug("TW: official-API follower lookup errored: %s", e)
+
         variables = json.dumps({"screen_name": self.target_user, "withSafetyModeUserFields": True})
         features = json.dumps(_GRAPHQL_FEATURES)
         data = await self._get_json(
@@ -417,16 +446,28 @@ class TWClient:
     async def get_all_tweets(self) -> list[dict]:
         """Fetch the target user's tweets with full stats.
 
-        Prefers the gallery-dl subprocess backend (clients/tw/gallerydl.py),
-        which tracks X's ever-changing internal API so we don't have to chase
-        rotating GraphQL query IDs. Falls back to the built-in GraphQL timeline
-        scrape (:meth:`_get_all_tweets_graphql`) whenever gallery-dl is absent,
-        disabled, or errors — so this method never returns worse data than the
-        GraphQL path alone would. Posting is unaffected (gallery-dl can't post).
+        Backend priority (each returns None when it's not its turn / fails, so we
+        simply fall through):
+          1. **Official X API v2** (clients/tw/official_api.py) — opt-in, when the
+             user configured a Bearer token. ToS-compliant and IP-agnostic, so it
+             sidesteps the datacenter rate-limit that throttles the scrapers.
+          2. **gallery-dl** (clients/tw/gallerydl.py) — free, tracks X's internal API.
+          3. **GraphQL scrape** (:meth:`_get_all_tweets_graphql`) — always-available fallback.
 
-        A gallery-dl result (even an empty list) is authoritative; only ``None``
-        — meaning gallery-dl was unavailable or failed — triggers the fallback.
+        A backend result (even an empty list) is authoritative; only ``None``
+        triggers the next backend. Posting is unaffected by all of this.
         """
+        # 1. Official X API v2 (opt-in, bring-your-own-token)
+        try:
+            from clients.tw import official_api
+            via_api = await official_api.fetch_tweets(None, self.target_user)
+        except Exception as e:
+            logger.warning("TW: official-API backend error, trying next: %s", e)
+            via_api = None
+        if via_api is not None:
+            return via_api
+
+        # 2. gallery-dl subprocess
         try:
             from clients.tw import gallerydl
             via_gdl = await gallerydl.fetch_tweets(self.auth_token, self.ct0, self.target_user)
@@ -435,6 +476,8 @@ class TWClient:
             via_gdl = None
         if via_gdl is not None:
             return via_gdl
+
+        # 3. GraphQL timeline scrape (always-available fallback)
         return await self._get_all_tweets_graphql()
 
     async def _get_all_tweets_graphql(self) -> list[dict]:

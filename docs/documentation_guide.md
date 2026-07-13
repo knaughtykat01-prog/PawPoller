@@ -956,6 +956,28 @@ Rate limiting: 1s between requests, 429 handling with 30s backoff.
 
 Rate limiting: 2s between requests, 429 handling with 60s backoff (X is aggressive about rate limiting).
 
+#### X poll backend priority (the hybrid)
+
+`TWClient.get_all_tweets()` and `validate_cookies()` try backends in order, each returning `None` when it's not its turn / unavailable / errored, so the chain simply falls through:
+
+1. **Official X API v2** (`clients/tw/official_api.py`, 2.106.0) — opt-in, only when a Bearer token is configured. ToS-compliant + IP-agnostic.
+2. **gallery-dl** (`clients/tw/gallerydl.py`, 2.105.0) — free, tracks X's internal API.
+3. **GraphQL scrape** (`_get_all_tweets_graphql`) — always-available fallback.
+
+`tw_polling_backend` (plain setting): `auto` (default, official→gallerydl→graphql), `official`, `gallerydl`, `graphql` (each of the latter three forces/limits selection). **Posting is unaffected** by all of this — it always uses the GraphQL `create_tweet` path.
+
+#### Official X API v2 backend (2.106.0) — `clients/tw/official_api.py`
+
+The proper fix for the **datacenter-IP rate limit** (X `429`s the scrapers' timeline requests from a server IP; see 2.105.1). The official API authenticates per-token, so it's not IP-throttled the same way.
+
+- **Opt-in, bring-your-own-token.** A Bearer token from developer.x.com (`tw_api_bearer_token`, **vaulted secret**) enables it. `is_enabled(settings)` = token present AND `tw_polling_backend` not in (`graphql`,`gallerydl`).
+- **Reads `public_metrics`** = our exact six columns (`impression_count`→views, like/retweet/reply/quote/bookmark). `_build_detail()` returns the identical detail-dict shape as the scrapers (content-type from `referenced_tweets`; photo `media_urls` from `expansions=attachments.media_keys`; Snowflake not needed — `created_at` is present). **No schema change.**
+- **Endpoints:** `GET /2/users/by/username/{handle}?user.fields=public_metrics` (resolves id + follower count in one call — cached in `_LAST_FOLLOWERS` so `get_follower_count()` spends no extra billed request), then paginated `GET /2/users/{id}/tweets?exclude=retweets&tweet.fields=public_metrics,...` (≤32 pages × 100 = X's ~3,200 lookback cap).
+- **Fallback contract:** `fetch_tweets()` returns `None` on a bad token (401/403 on resolve) or first-page failure → caller falls back to a scraper; a later-page failure returns the partial data. `validate()` returns True/False/None (definitive vs inconclusive).
+- **Token-only, no cookies:** the poller (`tw_poller.py`) drops the `auth_token`/`ct0` requirement when `official_api.is_enabled()`; `validate_cookies()` returns True on a valid Bearer token without touching cookies.
+- **Cost (pay-per-use):** owned reads ~$0.001 each (~$2–7/month typical); the poll cadence bounds spend — never `force_full` on a timer. Guardrails (recent-only reads, in-UI estimate) = Phase 2. Full design: `docs/specs/x_official_api.md`.
+- **Routes:** `/api/tw/auth/status` reports `poll_backend` + `has_api_token`; `POST /api/tw/api-token/connect` (validate + vault) and `/api-token/disconnect`.
+
 #### gallery-dl poll backend (2.105.0) — `clients/tw/gallerydl.py`
 
 Because the GraphQL query IDs above rotate whenever X ships a new web bundle, the **poll (read) path prefers [gallery-dl](https://github.com/mikf/gallery-dl)** — a maintained downloader that tracks X's internal API for us — and only falls back to the GraphQL scrape above.

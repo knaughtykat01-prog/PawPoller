@@ -1,6 +1,8 @@
 # Official X (Twitter) API v2 as an X-polling backend — Assessment & Design Spec
 
-**Status:** Proposal (spec only — no code yet) · **Author:** Rhys + Claude · **Date:** 2026-07-13
+**Status:** **Phase 1 shipped (2.106.0)** — `clients/tw/official_api.py`, opt-in bring-your-own-token,
+top of the X hybrid. Phase 2 (cost guardrails / in-UI estimate / OAuth organic metrics) still open.
+· **Author:** Rhys + Claude · **Date:** 2026-07-13
 **Problem in one line:** X polling from the server scrapes X's internal API (gallery-dl → GraphQL
 fallback, shipped 2.105.x), but X **rate-limits the GCP datacenter IP** on the timeline endpoint —
 so from the server, later accounts in a cycle get `429`'d regardless of backend. The official X API

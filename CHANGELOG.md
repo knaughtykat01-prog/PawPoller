@@ -4,6 +4,41 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.106.0] - 2026-07-13 - Official X API v2 as an opt-in X-polling backend (top of the hybrid)
+
+Adds the **official X (Twitter) API v2** as an opt-in, **bring-your-own-token** poll backend — the
+ToS-compliant, **IP-agnostic** fix for the datacenter rate-limit that throttles the scrapers on a server.
+Full assessment + design: `docs/specs/x_official_api.md`.
+
+- **New top priority in the X hybrid:** `TWClient.get_all_tweets()` / `validate_cookies()` now try
+  **official API → gallery-dl → GraphQL scrape**. Each returns `None` when it's not its turn, so the
+  fallback chain is unchanged for anyone who doesn't set a token — zero regression.
+- **Exact metric parity, no schema change.** Reads X API v2 `public_metrics` → our six columns
+  (`impression_count`→views, like/retweet/reply/quote/bookmark). New `clients/tw/official_api.py` returns
+  the identical detail-dict shape the poller already consumes (content-type from `referenced_tweets`,
+  photo `media_urls`, follower count captured from the same user-lookup so there's no extra billed call).
+- **Bring-your-own-token, opt-in.** A new **Official X API** card under Settings → X takes a **Bearer
+  token** (from developer.x.com); it's validated then stored in the credential vault
+  (`tw_api_bearer_token` is a secret). `tw_polling_backend`: `auto` (default) / `official` use it when a
+  token is present; `graphql` / `gallerydl` force a scraper. `/api/tw/auth/status` now reports
+  `poll_backend` (`official`/`gallerydl`/`graphql`) + `has_api_token`; new endpoints
+  `POST /api/tw/api-token/connect` + `/api-token/disconnect`.
+- **Token-only works with no cookies.** The poller no longer requires `auth_token`/`ct0` when the
+  official backend is configured — a Bearer token alone is enough to poll. **Posting is unaffected** and
+  still uses the cookie/GraphQL path (the official write API costs $0.015+/post; we keep the free path).
+- **One token covers all accounts.** `public_metrics` reads any public account, so a single dev app /
+  Bearer token polls all of a user's X personas — not one account.
+- **Cost (pay-per-use).** 2026 X API has no free tier but no minimum; **owned reads ~$0.001 each** →
+  roughly **$2–7/month** at a normal cadence. The poll cadence bounds spend; do not `force_full` on a
+  timer. Guardrails (recent-only reads, in-UI cost estimate) are Phase 2.
+- New: `clients/tw/official_api.py`, `tests/test_tw_official_api.py` (metric mapping, content-type/media
+  parsing, is_enabled precedence, fetch/validate fallback contract, follower cache — mocked via respx,
+  no token/network needed). `docs/specs/x_official_api.md` status → Phase 1 shipped.
+
+Full suite: 395 passed.
+
+---
+
 ## [2.105.1] - 2026-07-13 - Raise the gallery-dl poll timeout so it can ride out an X rate-limit reset
 
 Follow-up to 2.105.0, from verifying the migration live on the production VM.

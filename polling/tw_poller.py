@@ -155,13 +155,19 @@ async def run_tw_poll_cycle(account_id: int | None = None, force_full: bool = Fa
         conn = get_connection()
         log_id = tw_queries.start_tw_poll_log(conn, account_id)
 
-        # Step 1: Validate cookies
-        _update_tw_progress("searching", message="Validating X/Twitter cookies...")
-        if not client.auth_token or not client.ct0:
-            raise ValueError("X/Twitter credentials missing — set auth_token and ct0 in Settings")
+        # Step 1: Validate credentials for the active backend. The official X API
+        # backend polls with a Bearer token and needs NO cookies, so only require
+        # auth_token/ct0 when the official backend isn't configured.
+        _update_tw_progress("searching", message="Validating X/Twitter credentials...")
+        from clients.tw import official_api as _tw_official
+        _official_active = _tw_official.is_enabled(settings)
+        if not _official_active and (not client.auth_token or not client.ct0):
+            raise ValueError("X/Twitter credentials missing — set auth_token and ct0 cookies, "
+                             "or an X API Bearer token, in Settings")
         valid = await client.validate_cookies()
         if not valid:
-            raise ValueError("X/Twitter cookie validation failed -- update auth_token and ct0 in Settings")
+            raise ValueError("X/Twitter credential validation failed -- update the auth_token/ct0 "
+                             "cookies or the X API Bearer token in Settings")
 
         # Step 2: Fetch tweets. Stats come straight from the UserTweets timeline
         # (the per-tweet TweetResultByRestId endpoint 404s), so there's no second

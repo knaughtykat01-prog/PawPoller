@@ -1,7 +1,25 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-13
-**Current version (master):** 2.105.1 — **Raise the gallery-dl poll timeout so it can ride out an X rate-limit reset.**
+**Current version (master):** 2.106.0 — **Official X API v2 as an opt-in X-polling backend (top of the hybrid).**
+Adds the official X API v2 as an **opt-in, bring-your-own-token** poll backend — the ToS-compliant,
+**IP-agnostic** fix for the datacenter rate-limit that throttles the scrapers server-side. New priority:
+**official API → gallery-dl → GraphQL scrape** (`TWClient.get_all_tweets()`/`validate_cookies()`); each
+returns `None` when not its turn, so no-token users are unaffected (zero regression). Reads X API v2
+`public_metrics` → our exact 6 columns (`impression_count`→views, like/retweet/reply/quote/bookmark), no
+schema change; `clients/tw/official_api.py` returns the same detail-dict shape (content-type from
+`referenced_tweets`, photo `media_urls`, follower count from the same user-lookup — no extra billed call).
+**Opt-in UI:** an "Official X API" card under Settings → X takes a **Bearer token** (developer.x.com),
+validated then vaulted (`tw_api_bearer_token` secret). `tw_polling_backend`: `auto`/`official` use it when
+a token is set; `graphql`/`gallerydl` force a scraper. `/api/tw/auth/status` reports `poll_backend` +
+`has_api_token`; new `POST /api/tw/api-token/connect` + `/api-token/disconnect`. **Token-only works with
+no cookies** (poller drops the cookie requirement when the official backend is configured). **Posting is
+unaffected** (still cookie/GraphQL — the official write API costs $). **One token covers all accounts.**
+**Cost:** pay-per-use, no free tier but no minimum; owned reads ~$0.001 → ~$2–7/month; don't `force_full`
+on a timer. New: `clients/tw/official_api.py`, `tests/test_tw_official_api.py` (respx-mocked). Spec:
+`docs/specs/x_official_api.md` (Phase 1 shipped). Full suite 395 pass.
+
+**Prior — 2.105.1 — Raise the gallery-dl poll timeout so it can ride out an X rate-limit reset.**
 Follow-up to 2.105.0 from verifying the migration live on prod. `TW_GALLERYDL_TIMEOUT_SECONDS` **300 → 480**
 (5 → 8 min). Live test confirmed gallery-dl works — it authenticates, uses **current** query IDs (validating
 the migration), and fetched a fresh account in 15s — but from the **GCP datacenter IP** X often `429`s the

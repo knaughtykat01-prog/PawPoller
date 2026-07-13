@@ -34,7 +34,12 @@ tw_router = APIRouter(prefix="/api/tw")
 def tw_auth_status():
     """Check whether X/Twitter credentials are configured and whether there is any TW data."""
     settings = config.get_settings()
-    has_credentials = bool(settings.get("tw_auth_token") and settings.get("tw_ct0"))
+    # Connected for polling if EITHER the scrape cookies OR an X API token is set
+    # (the official-API backend needs only the token; posting still needs cookies).
+    has_credentials = bool(
+        (settings.get("tw_auth_token") and settings.get("tw_ct0"))
+        or settings.get("tw_api_bearer_token")
+    )
     has_data = False
     conn = get_connection()
     try:
@@ -45,16 +50,22 @@ def tw_auth_status():
     finally:
         conn.close()
     # Report which poll backend is live so the connect card can show whether the
-    # (more robust) gallery-dl path is in use or we're on the GraphQL fallback.
-    from clients.tw import gallerydl
+    # official API / gallery-dl path is in use, or we're on the GraphQL fallback.
+    from clients.tw import gallerydl, official_api
     gallerydl_available = gallerydl.find_gallerydl(settings) is not None
-    backend = "gallerydl" if gallerydl.is_enabled(settings) else "graphql"
+    if official_api.is_enabled(settings):
+        backend = "official"
+    elif gallerydl.is_enabled(settings):
+        backend = "gallerydl"
+    else:
+        backend = "graphql"
     return {
         "has_credentials": has_credentials,
         "has_data": has_data,
         "username": settings.get("tw_target_user", ""),
         "poll_backend": backend,
         "gallerydl_available": gallerydl_available,
+        "has_api_token": bool(settings.get("tw_api_bearer_token")),
     }
 
 
@@ -115,6 +126,55 @@ def tw_disconnect():
     config.delete_settings_keys(["tw_auth_token", "tw_ct0", "tw_target_user"])
     config.save_settings({"tw_notifications_enabled": False})
     return {"status": "success", "message": "X/Twitter disconnected"}
+
+
+# -- TW official API token (opt-in official-API poll backend) ------------------
+
+@tw_router.post("/api-token/connect")
+async def tw_api_token_connect(body: dict):
+    """Validate + save an X API v2 **Bearer token** for the official-API poll backend.
+
+    This is the ToS-compliant, IP-agnostic path (pay-per-use — owned reads ~$0.001
+    each). Only affects POLLING; posting stays on the cookie/GraphQL path. Get a
+    Bearer token from the X developer portal (developer.x.com) with a project that
+    has billing enabled.
+    """
+    token = (body.get("bearer_token") or "").strip()
+    settings = config.get_settings()
+    target = (body.get("target_user") or settings.get("tw_target_user") or "").strip().lstrip("@")
+    if not token:
+        raise HTTPException(400, "An X API Bearer token is required (from developer.x.com)")
+    if not target:
+        raise HTTPException(400, "Set the X username to track first (target_user)")
+
+    from clients.tw import official_api
+    # Overlay so is_enabled() sees the not-yet-saved token during validation.
+    overlay = {**settings, "tw_api_bearer_token": token, "tw_polling_backend": "official"}
+    try:
+        verdict = await official_api.validate(token, target, overlay)
+    except Exception as e:
+        raise HTTPException(502, f"Failed to validate token: {e}")
+    if verdict is False:
+        raise HTTPException(401, "X API rejected the token (401/403). Check the Bearer token "
+                                 "and that its project/plan can read user timelines.")
+    if verdict is None:
+        raise HTTPException(502, "Could not reach the X API to validate the token. Try again.")
+
+    save = {"tw_api_bearer_token": token, "tw_notifications_enabled": True}
+    # Persist the target too, so a token-only user (no cookies) is fully configured.
+    if not settings.get("tw_target_user"):
+        save["tw_target_user"] = target
+    config.save_settings(save)
+    return {"status": "success",
+            "message": f"X API token saved — polling @{target} via the official API"}
+
+
+@tw_router.post("/api-token/disconnect")
+def tw_api_token_disconnect():
+    """Remove the X API token; polling falls back to gallery-dl / GraphQL scrape."""
+    config.delete_settings_keys(["tw_api_bearer_token"])
+    return {"status": "success",
+            "message": "X API token removed — polling falls back to gallery-dl / scrape"}
 
 
 # -- TW Polling ---------------------------------------------------------------

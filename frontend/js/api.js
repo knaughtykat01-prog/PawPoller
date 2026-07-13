@@ -504,6 +504,8 @@ const API = {
     getTWAuthStatus() { return this.get('/api/tw/auth/status'); },
     twConnect(data) { return this.post('/api/tw/auth/connect', data); },
     twDisconnect() { return this.post('/api/tw/auth/disconnect'); },
+    twApiTokenConnect(data) { return this.post('/api/tw/api-token/connect', data); },
+    twApiTokenDisconnect() { return this.post('/api/tw/api-token/disconnect'); },
     getTWStatus() { return this.get('/api/tw/status'); },
     getTWSummary(params) { return this.get('/api/tw/summary', params); },
     getTWSubmissions(params) { return this.get('/api/tw/submissions', params); },

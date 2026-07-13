@@ -131,7 +131,7 @@ The dashboard binds to `127.0.0.1:8420` by default (loopback only), reachable at
 | Itaku | Account token | Yes | Yes\* | Artwork (\*posting in validation) |
 | Bluesky | Handle/app password | Yes | Yes | AT Protocol; posts + announcements |
 | Wattpad | Public (read-only) | Yes | -- | Public stats only |
-| X/Twitter | Auth token/ct0 | Yes | -- | Poll via gallery-dl (GraphQL fallback); views/likes/reposts |
+| X/Twitter | Auth token/ct0, or X API token | Yes | -- | Poll via official X API v2 (opt-in) → gallery-dl → GraphQL; views/likes/reposts |
 | Mastodon | Instance URL + access token | Yes | -- | Decentralised; favourites/boosts/replies |
 | Tumblr | API key + blog | Yes | -- | v2 API; notes |
 | Pixiv | Refresh token | Yes | -- | App API; illustrations + novels |
