@@ -82,6 +82,26 @@ X API v2 `public_metrics` returns the **exact six** metrics PawPoller already st
 (user timeline, paginated, ~3,200-tweet lookback cap) or `GET /2/tweets?ids=<up to 100>` (batch lookup
 of known ids). Resolve the user id once via `GET /2/users/by/username/:handle`.
 
+### Multi-account — one app covers all three personas (NOT one account)
+
+A common worry: "does this only work for one account?" **No.** For `public_metrics` (our six metrics), an
+**app-only Bearer token reads *any* public account's tweets** — X docs: *"Access public metrics with any
+authentication… Public metrics require only a Bearer Token."* The token is not bound to a single account.
+So **one dev app + one Bearer token polls all of KnaughtyKat, NaughtyKiiKinar, and the third persona**
+(and any public account) — one app, one bill, no per-account setup.
+
+The only per-account step is the *owner-only* `organic_metrics`/`non_public_metrics` (profile/link clicks —
+which we do **not** currently track): those need a one-time OAuth 2.0 authorization per account, but a
+single app holds multiple users' tokens simultaneously (*"one app can read multiple user accounts by
+managing separate access tokens for each authorized user"*). So even that is one app + N one-time
+authorizations, not N apps.
+
+**Pricing caveat across accounts:** the cheap **$0.001 "owned read"** rate is for the app-owner's own
+account; reading the *other* personas via app-only Bearer likely bills at the **$0.005 standard read**
+(or you OAuth-authorize each persona to reclaim owned-read pricing). At ~40 tweets total the spread is
+between ~$2.40 and ~$12/month — trivial either way. Verify exact scope on the dev portal before relying on
+a specific figure.
+
 ## 4. Design — opt-in fourth backend in the hybrid
 
 Reuse the exact pattern from `clients/tw/gallerydl.py`. Priority order in `TWClient.get_all_tweets()`:
