@@ -260,6 +260,28 @@ def _start_poll_orchestrator():
         for a in enabled_accounts:
             accts_by_platform.setdefault(a["platform"], []).append(a)
 
+        # X round-robin: X shares one per-IP rate budget across all a user's
+        # accounts, and the datacenter IP throttles after ~2 account-scrapes per
+        # window. Polling all X accounts back-to-back 429s the tail, so poll only
+        # the N least-recently-polled X accounts this cycle and rotate the rest
+        # to the next one. Selection is derived from tw_poll_log timestamps, so
+        # it stays fair across redeploys (which reset the poll timer).
+        tw_accts = accts_by_platform.get("tw", [])
+        tw_batch = int(settings.get("tw_roundrobin_batch", config.TW_ROUNDROBIN_BATCH) or 0)
+        if tw_accts and tw_batch and len(tw_accts) > tw_batch:
+            from polling.roundrobin import select_roundrobin
+            from database import tw_queries as _twq
+            _c = get_connection()
+            try:
+                _last_poll = _twq.get_tw_last_poll_by_account(_c)
+            finally:
+                _c.close()
+            selected = select_roundrobin(tw_accts, tw_batch, _last_poll)
+            accts_by_platform["tw"] = selected
+            logger.info("TW round-robin: polling %d/%d accounts this cycle (%s)",
+                        len(selected), len(tw_accts),
+                        ", ".join(str(a.get("label") or a["account_id"]) for a in selected))
+
         # All 15 platforms are now account-aware — no legacy single-account path.
         legacy_checks: list = []
 

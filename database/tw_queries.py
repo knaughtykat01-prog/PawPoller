@@ -176,6 +176,21 @@ def get_tw_last_poll(conn: sqlite3.Connection) -> dict | None:
     return dict(row) if row else None
 
 
+def get_tw_last_poll_by_account(conn: sqlite3.Connection) -> dict[int, str]:
+    """Map each account to its most recent poll start time.
+
+    Feeds the round-robin scheduler (polling/roundrobin.py): X's per-IP rate
+    budget only allows ~2 account-scrapes per cycle, so the scheduler polls the
+    least-recently-polled accounts first. Accounts absent from the map have
+    never been polled and sort ahead of any timestamp.
+    """
+    rows = conn.execute(
+        "SELECT account_id, MAX(started_at) AS last_poll "
+        "FROM tw_poll_log GROUP BY account_id"
+    ).fetchall()
+    return {r["account_id"]: r["last_poll"] for r in rows if r["last_poll"]}
+
+
 def get_tw_poll_log(conn: sqlite3.Connection, limit: int = 50) -> list[dict]:
     rows = conn.execute("SELECT * FROM tw_poll_log ORDER BY started_at DESC LIMIT ?", (limit,)).fetchall()
     return [dict(r) for r in rows]

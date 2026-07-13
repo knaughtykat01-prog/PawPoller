@@ -4,7 +4,33 @@ All notable changes to PawPoller are documented here.
 
 ---
 
-## [2.106.1] - 2026-07-14 - Shared cross-account rate limiter for X polling (the real sequencing fix)
+## [2.107.0] - 2026-07-14 - Round-robin X polling — poll ≤ N accounts per cycle to stay under the per-IP budget
+
+The measured fix for the multi-account X throttle. A sequential 3-account test on a cooled datacenter IP
+still throttled the **3rd** account after the first two made only ~3-4 timeline requests — X's per-IP budget
+for the datacenter is **~2 account-scrapes per window**, with a >8 min reset. No rate limit *inside* a cycle
+can help when the very act of polling all three accounts exceeds the budget. The answer is to poll **fewer
+accounts per cycle**.
+
+- **New `polling/roundrobin.py`** — `select_roundrobin(accts, batch_size, last_poll_by_id)`, a pure helper
+  that returns the `batch_size` **least-recently-polled** accounts (never-polled first, then oldest
+  `started_at`, tie-broken by id). Selection is derived from **`tw_poll_log` timestamps**
+  (`tw_queries.get_tw_last_poll_by_account`), not an in-memory cursor, so rotation stays fair across
+  redeploys/restarts (which reset the poll timer).
+- **`server.py` scheduler** — before building the poll tasks, the X account list is narrowed to
+  `TW_ROUNDROBIN_BATCH` (default **2**, overridable per-user via the `tw_roundrobin_batch` setting; 0 = poll
+  all). Only X is round-robined — every other platform still polls all its accounts. Logs
+  `TW round-robin: polling 2/3 accounts this cycle (…)`.
+- With batch 2 and 3 accounts at the 12 h cadence, each account refreshes roughly every ~18 h and no cycle
+  ever exceeds the ~2-account budget, so the tail account stops timing out. For faster/complete coverage the
+  IP-agnostic **official API** (2.106.0) remains the alternative.
+- New: `polling/roundrobin.py`, `tests/test_tw_roundrobin.py` (9 tests: pure-selection logic + the poll-log query).
+
+Full suite: 409 passed.
+
+---
+
+## [2.106.1] - 2026-07-14 - Shared cross-account rate limiter for X polling (burst guard, not a full fix)
 
 X's timeline rate limit is **per-IP and shared across all of a user's accounts**, so the scheduler
 polling three X accounts back-to-back in one cycle (`server.py` `_poll_accounts` runs them sequentially

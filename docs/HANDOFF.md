@@ -1,21 +1,29 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-14
-**Current version (master):** 2.106.1 — **Shared cross-account rate limiter for X polling (burst guard, NOT a full fix).**
-X's timeline rate limit is **per-IP, shared across all a user's accounts**. New **`polling/rate_limit.py`**
-= async **sliding-window** limiter; `TWClient._get_json` (GraphQL) + `official_api.py` (official API)
-`await tw_acquire()` before every request → **≤ `TW_RATE_LIMIT_REQUESTS` (15) per `TW_RATE_LIMIT_WINDOW_SECONDS`
-(30 s), globally across all accounts + both direct backends** (FIFO admission). gallery-dl (subprocess)
-self-paces via `--sleep-request 2.0`, so it is **not** gated here.
-**Honest live finding (sequential 3-account test, IP cooled overnight):** accounts 12 ✓ (1 tweet/16 s, gallery-dl)
-and 13 ✓ (25 tweets/33 s, gallery-dl) succeeded, but **account 14 — the 3rd in sequence — still timed out**
-(gallery-dl 480 s → GraphQL fallback → `429`, salvaged 1 tweet in 580 s). 12+13 made only ~3-4 timeline
-requests total, yet the IP throttled the 3rd and told the client to wait **>8 min**. So the datacenter IP's
-X budget is **~2 account-scrapes per window** — *far below* 15/30 s. **The limiter prevents PawPoller from
-bursting but cannot create budget the IP doesn't have, and cannot gate gallery-dl's subprocess.** The durable
-fixes for 3+ accounts stay: the **official API** (IP-agnostic, 2.106.0, needs a token) or **polling fewer
-accounts per cycle** (round-robin). New: `polling/rate_limit.py`, `tests/test_tw_rate_limit.py` (injected-clock,
-deterministic). Full suite 400 pass.
+**Current version (master):** 2.107.0 — **Round-robin X polling: poll ≤ N accounts per cycle to stay under the per-IP budget.**
+The measured fix for the multi-account throttle. A sequential 3-account test on a cooled datacenter IP still
+threw the **3rd** account (gallery-dl 480 s → GraphQL `429`) after the first two made only ~3-4 requests —
+X's per-IP budget for the datacenter is **~2 account-scrapes per window**, reset >8 min. No in-cycle rate
+limit fixes that; you have to poll **fewer accounts per cycle**. New **`polling/roundrobin.py`**
+(`select_roundrobin`) picks the `batch_size` **least-recently-polled** accounts (from `tw_poll_log`
+timestamps via `tw_queries.get_tw_last_poll_by_account`, so rotation survives redeploys). `server.py` narrows
+the X account list to **`TW_ROUNDROBIN_BATCH` (default 2**, per-user override `tw_roundrobin_batch`, 0 = poll
+all) before building tasks; **only X is round-robined.** At the 12 h cadence each of 3 accounts refreshes
+~every 18 h and no cycle exceeds the budget → the tail account stops timing out. Faster/complete coverage
+still means the IP-agnostic **official API** (2.106.0). New: `polling/roundrobin.py`,
+`tests/test_tw_roundrobin.py` (9). **Verify after deploy:** the next auto-cycle logs
+`TW round-robin: polling 2/3 accounts this cycle`. Full suite 409 pass.
+
+**⚠ Ops note:** global polling is currently **paused** on prod (I paused it for the throttle diagnostics).
+Resume after the 2.107.0 deploy so the first auto-cycle uses round-robin: `POST /api/poll/resume`.
+
+**Prior — 2.106.1 — Shared cross-account rate limiter for X polling (burst guard, not a full fix).**
+New **`polling/rate_limit.py`** = async sliding-window limiter; `TWClient._get_json` (GraphQL) +
+`official_api.py` (official API) `await tw_acquire()` before every request → **≤ 15 per 30 s, globally**
+(FIFO). gallery-dl (subprocess) isn't gated. The same 3-account test that motivated 2.107.0 showed the
+limiter is a **burst guard** — it can't create budget the IP lacks — which is why round-robin followed.
+Full suite 400 pass.
 
 **Prior — 2.106.0 — Official X API v2 as an opt-in X-polling backend (top of the hybrid).**
 Adds the official X API v2 as an **opt-in, bring-your-own-token** poll backend — the ToS-compliant,

@@ -511,6 +511,13 @@ TW_GALLERYDL_TIMEOUT_SECONDS = 480
 # back-to-back must stay under it globally. 15 req / 30 s == 1 req / 2 s averaged.
 TW_RATE_LIMIT_REQUESTS = 15
 TW_RATE_LIMIT_WINDOW_SECONDS = 30
+# Round-robin cap for X polling: poll only the N least-recently-polled X
+# accounts per cycle, rotating the rest to later cycles (polling/roundrobin.py).
+# The datacenter IP throttles after ~2 X account-scrapes per window, so a
+# back-to-back poll of 3+ accounts 429s the tail; batch 2 stays inside that
+# budget. 0 disables (poll all). Overridable per-user via the tw_roundrobin_batch
+# setting. Only X is round-robined — other platforms poll every account.
+TW_ROUNDROBIN_BATCH = 2
 
 # ── Mastodon settings ──
 MAST_REQUEST_DELAY_SECONDS = 0.5  # Mastodon REST — per-instance limits are generous
@@ -923,7 +930,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.106.1"
+APP_VERSION = "2.107.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL
