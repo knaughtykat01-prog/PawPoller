@@ -116,7 +116,7 @@ PawPoller/
 ├── updater.py               # Auto-update (desktop only); per-OS asset matching + apply path
 ├── auto_sync.py             # Settings auto-sync: debounced push + 5-min pull thread (desktop ↔ server)
 │
-├── clients/                 # Per-platform HTTP clients (all 16 platforms in one place — 2.14.3)
+├── clients/                 # Per-platform HTTP clients (all 17 platforms in one place — 2.14.3)
 │   ├── ib/                  #   Inkbunny — InkbunnyClient with SID caching
 │   ├── fa/                  #   FurAffinity — FAClient with dual HTTP transports
 │   ├── weasyl/              #   Weasyl — WeasylClient with cursor pagination
@@ -329,7 +329,7 @@ init_db()  # Creates tables/schema if the DB file does not exist yet
 **Step 2: Launch up to 16 daemon threads (see §3 for the full table)**
 All threads are `daemon=True` so they terminate automatically when the main thread (pywebview) exits. No explicit shutdown signalling is needed. Each thread is named for debugging (`threading.Thread(name="FA poller")`).
 
-Thread launch order when `polling_owner == "local"`: Uvicorn → IB poller → FA poller → WS poller → SF poller → SqW poller → AO3 poller → DA poller → WP poller → IK poller → BSKY poller → TW poller → MAST poller → TUM poller → PIX poller → THR poller → IG poller → Telegram digest → Telegram bot → Posting scheduler → pystray tray. When `polling_owner == "remote"`, the 16 platform pollers are skipped.
+Thread launch order when `polling_owner == "local"`: Uvicorn → IB poller → FA poller → WS poller → SF poller → SqW poller → AO3 poller → DA poller → WP poller → IK poller → BSKY poller → TW poller → MAST poller → TUM poller → PIX poller → THR poller → IG poller → e621 poller → Telegram digest → Telegram bot → Posting scheduler → pystray tray. When `polling_owner == "remote"`, the 17 platform pollers are skipped.
 
 **Step 3: System tray icon**
 ```python
@@ -410,7 +410,7 @@ for name, target in threads:
 ```
 
 The **poll orchestrator** (`_start_poll_orchestrator()`) runs a single loop that each cycle:
-1. **Polls all configured platforms concurrently** via `asyncio.gather()` — all 16 platform poll functions run in parallel within one async event loop
+1. **Polls all configured platforms concurrently** via `asyncio.gather()` — all 17 platform poll functions run in parallel within one async event loop
 2. **Sends one consolidated Telegram summary** covering all platform results (individual per-platform notifications are suppressed via `orchestrated_poll_active` flag)
 3. **Checks if the regular digest is due** — fires `send_digest_report()` when the elapsed time since `last_digest_sent_at` exceeds `telegram_digest_interval_hours`
 4. **Checks if the weekly digest is due** — fires `send_weekly_digest_report()` when 7 days have elapsed since `last_weekly_digest_sent_at`
@@ -488,7 +488,7 @@ Launchers:
 | Posting scheduler | Processes posting_queue table | Fixed 60 seconds | — | always |
 | Pystray tray | System tray icon + context menu | N/A (event-driven) | — | always |
 
-When polling is delegated to a remote server (`polling_owner == "remote"`), the 16 platform pollers stay idle and the local instance acts as a thin UI + posting + bot client; total thread count drops to 5.
+When polling is delegated to a remote server (`polling_owner == "remote"`), the 17 platform pollers stay idle and the local instance acts as a thin UI + posting + bot client; total thread count drops to 5.
 
 ### `server.py` — 4-Thread Model (Headless/Docker)
 
@@ -1368,6 +1368,35 @@ than `_get_json()` (which collapses every non-200 to `None`, discarding the erro
 one Meta app, so an app-block trips *both* at once — a useful tell in the logs (`THR/IG: non-expiry auth
 failure (code 200)`). The fix only changes *classification/reporting*; a real expiry (code 190) behaves
 exactly as before, and the posting path (`create_thread`/`create_post`) never calls `validate_session()`.
+
+#### e621 (2.104.0) — official REST API, poll-only, Score is the headline
+
+e621 is the 17th platform and the first with an *official, documented* JSON API, so the client
+(`clients/e621/client.py`) is unusually small. Notes that matter:
+
+- **Auth is HTTP Basic** — `username` + **API key** (Account → Manage API Access, NOT the password).
+  `E621Client._auth()` returns the `(username, api_key)` tuple httpx sends as a Basic header. Cred
+  validation hits `/favorites.json` (an authenticated-only endpoint) rather than a public post endpoint,
+  because e621 ignores bad Basic auth on public reads (they 200 regardless) — only an authed endpoint
+  actually rejects a wrong key. `e621_api_key` is a vault secret; `e621_username` is plaintext identity.
+- **User-Agent policy is enforced in code.** e621 *requires* a descriptive UA and **blocks anything that
+  impersonates a browser**. `_headers()` sends `PawPoller/<ver> (e621 self-analytics; user <name>)` and the
+  test suite asserts the UA contains no browser tokens (Mozilla/Chrome/…). Paging sleeps
+  `config.E621_REQUEST_DELAY_SECONDS` (1.0s) between requests — e621's hard limit is 2 req/s, the docs ask
+  for ~1.
+- **Score, not views.** e621 exposes no view count, so the headline metric is `score` (score.total =
+  up − down, **which can be negative**). The schema/queries mirror the gallery template but rename the first
+  metric column `views → score`; every per-platform metric map registers e621 as
+  `("score", "favorites_count", "comments_count")`. The growth-rate dict still keys the value under
+  `views_per_day` (holding the score delta) so the generic `Components.growthRateCards` renders it unchanged,
+  labelled "score/day".
+- **No thumbnail proxy, no followers.** e621's CDN (`static1.e621.net`) is hotlinkable, so — unlike Pixiv —
+  the frontend uses the thumbnail URL directly and there's no `/api/e621/thumb` relay. e621 has no per-user
+  follower count, so the poller omits the `capture_followers` step and e621 is absent from
+  `FOLLOWER_PLATFORMS`.
+- **What it tracks.** The poller pages `/posts.json?tags=user:<username>` newest-first using the
+  `page=b<id>` before-id cursor (page numbers cap at 750), and each listing already carries full engagement
+  data — so there's no per-post fetch, `get_post_details_batch()` just parses the stashed raw posts.
 
 #### Muting a session-health alert (2.84.0)
 
@@ -3935,7 +3964,7 @@ The `/claim` command scans each platform's existing submissions table in PawPoll
 | SF | `sf_submissions` | `https://sofurry.com/s/{id}` |
 | SqW | `sqw_submissions` | `https://squidgeworld.org/works/{id}` |
 
-_(abbreviated — as of 2.69.0 the dict covers **all 16 platforms**, each `{code}_submissions` with `submission_id`/`title` and, for the newer ones, a `link` permalink preferred over the template. Adding a platform here is what makes its polled submissions discoverable + importable as artwork.)_
+_(abbreviated — the dict covers **all 17 platforms**, each `{code}_submissions` with `submission_id`/`title` and, for the newer ones, a `link` permalink preferred over the template. Adding a platform here is what makes its polled submissions discoverable + importable as artwork.)_
 
 ### Change Detection
 
@@ -5751,7 +5780,7 @@ old shape, then the migration immediately upgrades it (cheap on empty tables).
 
 ### 19.6 Pending / known gaps
 
-- **Polling** is account-aware for **all 16 platforms** — the orchestrator
+- **Polling** is account-aware for **all 17 platforms** — the orchestrator
   enumerates each platform's enabled accounts; there is no legacy single-account
   path left.
 - **Posting** data layer is account-aware end to end (`/api/posting/post`

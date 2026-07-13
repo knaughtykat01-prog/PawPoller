@@ -129,7 +129,7 @@ async def setup_status():
                 "ao3_username", "sqw_username", "bsky_identifier",
                 "da_refresh_token", "wp_username", "ik_token", "tw_api_key",
                 "mast_access_token", "tum_api_key", "pix_refresh_token", "thr_access_token",
-                "ig_access_token",
+                "ig_access_token", "e621_api_key",
             )
             if settings.get(key)
         ),

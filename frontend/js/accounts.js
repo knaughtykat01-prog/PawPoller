@@ -292,7 +292,7 @@ window.Accounts = {
     _unit(platform) {
         return {
             tw: 'tweets', bsky: 'posts', mast: 'posts', tum: 'posts', thr: 'posts', ig: 'posts', ik: 'posts', da: 'deviations',
-            pix: 'works', ao3: 'works', sqw: 'works', wp: 'stories',
+            pix: 'works', ao3: 'works', sqw: 'works', wp: 'stories', e621: 'posts',
             ib: 'submissions', fa: 'submissions', ws: 'submissions', sf: 'submissions',
         }[platform] || 'subs';
     },

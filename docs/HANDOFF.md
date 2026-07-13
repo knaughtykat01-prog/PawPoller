@@ -1,7 +1,24 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-13
-**Current version (live/master):** 2.103.0 — **Quick-wins batch: cross-platform fix, per-platform pause, settings search, artwork remove.**
+**Current version (master):** 2.104.0 — **e621 is the 17th platform (poll-only) + platforms sort alphabetically.**
+Added **e621** as a poll-only analytics platform (**PawPoller now tracks 17 platforms**). Connect username +
+API key (Account → Manage API Access — the API key, NOT the password); tracks your own uploads'
+**score** (score.total, can be negative — e621 has no view count so Score is the headline), **favorites**
+(fav_count) and **comments** (comment_count), with the standard dashboard/submissions/detail/compare screens.
+Official e621 REST API over HTTP Basic; poller pages `/posts.json?tags=user:<username>` (before-id cursor),
+snapshots each post. **Policy-compliant:** descriptive **non-browser** User-Agent + ~1 req/s throttle
+(`E621_REQUEST_DELAY_SECONDS`), both mandated by e621. CDN is hotlinkable → no thumb proxy; no follower series.
+New files: `database/e621_schema.sql`, `database/e621_queries.py`, `clients/e621/client.py`,
+`polling/e621_poller.py`, `routes/e621_api.py`; wired through config vault (`e621_api_key` secret,
+`e621_username` plaintext), accounts registry, orchestrator, per-platform pause, session-health, Telegram,
+analytics/collections rollups, discovered-works, settings connect card + poll-interval, and the Overview totals.
+Also: **platforms now sort alphabetically** across the UI (registry sort in `platforms.js` drives the Platforms
+hub / command palette / context-bar / Overview tiles; Polling tab cards sort too, IB pinned first; Settings
+accordions were already A→Z). Tests: `tests/test_scope_e621.py`. Full suite 367 pass.
+**e621 needs per-account creds entered in Settings before it polls.**
+
+**Prior — 2.103.0 — Quick-wins batch: cross-platform fix, per-platform pause, settings search, artwork remove.**
 Isolated UX/bug fixes from a product-direction review (no data-model changes; larger IA/art
 consolidation spec'd separately in `docs/specs/ia_consolidation.md`). (1) **Cross-platform screen crash**
 "Cannot read properties of undefined (reading 'map')" — `Components.linkSuggestions()` read `s.items.map()`

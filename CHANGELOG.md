@@ -4,6 +4,37 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.104.0] - 2026-07-13 - e621 is the 17th platform (poll-only) + platforms now sort alphabetically
+
+Added **e621** as a poll-only analytics platform — PawPoller now tracks **17 platforms**.
+
+- **e621 (poll-only).** Connect your e621 **username + API key** (Account → Manage API Access — the
+  API key, *not* your password) and PawPoller tracks your own uploads' **score** (score.total, which
+  can be negative), **favorites** (fav_count) and **comments** (comment_count) over time, with the
+  same dashboard / submissions / detail / compare screens as the other gallery platforms. e621 has no
+  view count, so **Score is the headline metric**. Official e621 REST API over HTTP Basic auth; the
+  poller pages `/posts.json?tags=user:<username>` (before-id cursor) and snapshots each post.
+  - **Policy-compliant client:** a descriptive, **non-browser** `User-Agent`
+    (`PawPoller/<ver> (e621 self-analytics; user <name>)`) is sent on every request, and paging is
+    throttled to ~1 req/s (`E621_REQUEST_DELAY_SECONDS`) — e621's docs mandate both.
+  - e621's CDN is hotlinkable, so — unlike Pixiv — no thumbnail proxy is needed. No follower series
+    (e621 exposes no per-user follower count).
+  - New: `database/e621_schema.sql`, `database/e621_queries.py`, `clients/e621/client.py`,
+    `polling/e621_poller.py`, `routes/e621_api.py`. Wired through config credentials/vault
+    (`e621_api_key` is a secret; `e621_username` stays plaintext), the account registry, the poll
+    orchestrator, per-platform pause, session-health checks, Telegram summaries/milestones, analytics
+    + collections rollups, discovered-works, settings connect card + poll-interval, and the Overview.
+  - Tests: `tests/test_scope_e621.py` (per-account scoping, negative-score round-trip, client parsing,
+    non-browser UA).
+- **Platforms now sort alphabetically** across the UI (per request): the canonical registry
+  (`platforms.js`) is sorted by label, so the Platforms hub, command palette, context-bar switcher and
+  Overview tiles are A→Z; the Polling tab's per-platform cards sort too (Inkbunny stays pinned first).
+  The Settings → Platforms accordions were already A→Z.
+
+Full suite: 367 passed.
+
+---
+
 ## [2.103.0] - 2026-07-13 - Quick-wins batch: cross-platform fix, per-platform pause, settings search, artwork remove
 
 A batch of isolated UX/bug fixes from a product-direction review. No data-model changes;

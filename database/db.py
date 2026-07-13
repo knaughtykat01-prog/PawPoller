@@ -43,6 +43,7 @@ _TUM_SCHEMA_PATH = config.resource_path("database/tum_schema.sql")    # Tumblr t
 _PIX_SCHEMA_PATH = config.resource_path("database/pix_schema.sql")    # Pixiv tables
 _THR_SCHEMA_PATH = config.resource_path("database/thr_schema.sql")    # Threads tables
 _IG_SCHEMA_PATH = config.resource_path("database/ig_schema.sql")      # Instagram tables
+_E621_SCHEMA_PATH = config.resource_path("database/e621_schema.sql")  # e621 tables
 _POSTING_SCHEMA_PATH = config.resource_path("database/posting_schema.sql")  # Posting module tables
 _POSTS_SCHEMA_PATH = config.resource_path("database/posts_schema.sql")      # Posts (microblog) module tables
 _COLLECTIONS_SCHEMA_PATH = config.resource_path("database/collections_schema.sql")  # Collections (master container) tables
@@ -117,6 +118,8 @@ def init_db() -> None:
         conn.executescript(thr_schema_sql)
         ig_schema_sql = _IG_SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(ig_schema_sql)
+        e621_schema_sql = _E621_SCHEMA_PATH.read_text(encoding="utf-8")
+        conn.executescript(e621_schema_sql)
         posting_schema_sql = _POSTING_SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(posting_schema_sql)
         posts_schema_sql = _POSTS_SCHEMA_PATH.read_text(encoding="utf-8")
@@ -587,7 +590,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     # Migration 0d: account_id rollout for the simple platforms (no watcher/
     # kudos/session tables — just submissions/snapshots/poll_log). Each is the
     # Weasyl template via the shared helper.
-    for _p in ("ws", "da", "wp", "ik", "bsky", "tw", "mast", "tum", "pix", "thr", "ig"):
+    for _p in ("ws", "da", "wp", "ik", "bsky", "tw", "mast", "tum", "pix", "thr", "ig", "e621"):
         _add_account_id_and_backfill(
             conn, _accounts, _p,
             [f"{_p}_submissions", f"{_p}_snapshots", f"{_p}_poll_log"],

@@ -314,6 +314,26 @@
         'Development mode + your own account needs no App Review; a public app for other users would need review + would likely be rejected for adult content.',
       ],
     },
+
+    // ── e621 ─────────────────────────────────────────────────
+    e621: {
+      kind: 'Analytics', difficulty: 'Easy',
+      summary: 'Track score, favorites and comments on your e621 uploads.',
+      need: ['An e621 account', 'An API key (not your password)'],
+      steps: [
+        { t: 'Open your API access page', b: 'Log in to e621, then go to <b>Account &rarr; Manage API Access</b> (e621.net/users/home &rarr; "Manage API Access").',
+          link: { label: 'e621.net', url: 'https://e621.net/users/home' } },
+        { t: 'Copy your API key', b: 'The page shows your <b>API key</b> — a long string tied to your account. This is <b>not</b> your login password.' },
+        { t: 'Connect in PawPoller', b: 'Enter your e621 <b>username</b> and paste the <b>API key</b> in Settings.' },
+      ],
+      paste: 'Settings → e621 → Username + API key',
+      renew: { when: 'API keys don\'t expire', how: 'Only if you regenerate/revoke it on e621 — paste the new key back in.' },
+      notes: [
+        'Poll-only: PawPoller reads the engagement on posts you <b>uploaded</b> (tags <code>user:&lt;you&gt;</code>). It never posts.',
+        'e621 exposes no view count, so <b>score</b> (up-votes minus down-votes, which can go negative) is the headline metric alongside favorites and comments.',
+        'Polling is gentle by design — e621\'s API asks for about one request per second, which PawPoller respects.',
+      ],
+    },
   };
 
   function _plat(code) {

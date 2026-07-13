@@ -130,6 +130,12 @@ PLATFORM_TABLES = {
         "title_col": "title",
         "url_template": "https://twitter.com/i/status/{id}",
     },
+    "e621": {
+        "table": "e621_submissions",
+        "id_col": "submission_id",
+        "title_col": "title",
+        "url_template": "https://e621.net/posts/{id}",
+    },
 }
 
 # Word-to-number mapping for "Part One", "Part Two" etc.

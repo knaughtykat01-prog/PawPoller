@@ -1,7 +1,7 @@
 /* ===========================================================================
  * PawPoller — canonical platform registry
  * ---------------------------------------------------------------------------
- * Single source of truth for the 11 platforms. Loaded FIRST (before every
+ * Single source of truth for the 17 platforms. Loaded FIRST (before every
  * other frontend script) so the command palette, shell, Platforms hub and the
  * context-bar switcher all read `window.PLATFORMS` instead of re-declaring the
  * list (it used to be hand-duplicated in 5 places). Brand colours are the
@@ -25,7 +25,13 @@
         { code: 'pix',  label: 'Pixiv',        emoji: '\u{1F58C}', color: 'var(--platform-pix)',  pollOnly: true  },
         { code: 'thr',  label: 'Threads',      emoji: '\u{1F9F5}', color: 'var(--platform-thr)',  pollOnly: true  },
         { code: 'ig',   label: 'Instagram',    emoji: '\u{1F4F8}', color: 'var(--platform-ig)',   pollOnly: true  },
+        { code: 'e621', label: 'e621',         emoji: '\u{1F43E}', color: 'var(--platform-e621)', pollOnly: true  },
     ];
+
+    // Display order is alphabetical by label (case-insensitive) everywhere that
+    // reads window.PLATFORMS — the Platforms hub, command palette, context-bar
+    // switcher and Overview tiles. Sort once here so all consumers agree.
+    PLATFORMS.sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
 
     const byCode = {};
     PLATFORMS.forEach(p => { byCode[p.code] = p; });
@@ -33,7 +39,7 @@
     // Each platform's official logo, bundled under /img/platforms/. Itaku and
     // Weasyl ship SVGs (scalable); the rest are PNGs. Trademarks of their owners
     // — see the disclaimer on the Platforms hub.
-    const _svgLogos = ['ik', 'ws', 'mast', 'tum', 'pix', 'thr', 'ig'];
+    const _svgLogos = ['ik', 'ws', 'mast', 'tum', 'pix', 'thr', 'ig', 'e621'];
     PLATFORMS.forEach(p => { p.logo = '/img/platforms/' + p.code + (_svgLogos.includes(p.code) ? '.svg' : '.png'); });
 
     /* platformRoute(code, sub) — hash route for a platform sub-view.

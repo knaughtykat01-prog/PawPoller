@@ -1485,6 +1485,7 @@ a.stat-card:hover {
 .platform-badge.pix { background: #0096fa25; color: var(--platform-pix); }
 .platform-badge.thr { background: #55555525; color: var(--platform-thr); }
 .platform-badge.ig { background: #E1306C25; color: var(--platform-ig); }
+.platform-badge.e621 { background: #012e5725; color: var(--platform-e621); }
 
 /* ── Submissions: discovered-art import suggestion banner ──── */
 .subs-suggest-banner {

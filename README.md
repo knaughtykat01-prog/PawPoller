@@ -22,7 +22,7 @@ PawPoller is a desktop app and self-hosted server for publishing fiction across 
 ## Features
 
 - **Multi-format conversion** -- Markdown to BBCode (Inkbunny), HTML (SoFurry), Styled HTML (AO3 work skins), PDF, and SquidgeWorld format, all from one source file
-- **15-platform tracking** -- Inkbunny, FurAffinity, SoFurry, Weasyl, AO3, DeviantArt, SquidgeWorld, Wattpad, Itaku, Bluesky, X/Twitter, Mastodon, Tumblr, Pixiv, and Threads (posting to 9; the rest are read-only analytics)
+- **17-platform tracking** -- Inkbunny, FurAffinity, SoFurry, Weasyl, AO3, DeviantArt, SquidgeWorld, Wattpad, Itaku, Bluesky, X/Twitter, Mastodon, Tumblr, Pixiv, Threads, Instagram, and e621 (posting to 9; the rest are read-only analytics)
 - **Chaptered publishing** -- Split multi-chapter stories automatically, with per-chapter tags, descriptions, and thumbnails
 - **Analytics dashboard** -- Track views, favourites, comments, and other metrics across all platforms with historical charts
 - **Polling engine** -- Automatically fetches stats on a schedule, detects new comments and favourites
@@ -44,8 +44,8 @@ PawPoller is a desktop app and self-hosted server for publishing fiction across 
 </p>
 
 <p align="center">
-  <img src="site/public/screens/analytics-overview.png" alt="Analytics dashboard across 15 platforms" width="760"><br>
-  <em>Analytics across 15 platforms: views, favourites, and comment trends over time</em>
+  <img src="site/public/screens/analytics-overview.png" alt="Analytics dashboard across 17 platforms" width="760"><br>
+  <em>Analytics across 17 platforms: views, favourites, and comment trends over time</em>
 </p>
 
 <p align="center">
@@ -136,6 +136,8 @@ The dashboard binds to `127.0.0.1:8420` by default (loopback only), reachable at
 | Tumblr | API key + blog | Yes | -- | v2 API; notes |
 | Pixiv | Refresh token | Yes | -- | App API; illustrations + novels |
 | Threads | Meta access token | Yes | -- | Official API; needs a Meta app |
+| Instagram | Meta access token | Yes | Yes | Official Graph API; Business/Creator account |
+| e621 | Username + API key | Yes | -- | Official REST API; tracks your own uploads (score/faves/comments) |
 
 ---
 
@@ -213,7 +215,7 @@ python -m pytest tests/ -v
 
 ## Security
 
-PawPoller holds your login credentials for up to 16 platforms, so credential handling is
+PawPoller holds your login credentials for up to 17 platforms, so credential handling is
 treated as the core of the app: secrets are **always** stored in an encrypted vault
 (AES-128 + HMAC via Fernet), never in plaintext, with the key held in your OS keystore or an
 out-of-band env var on a server ([SETUP §5.1](docs/SETUP.md)).

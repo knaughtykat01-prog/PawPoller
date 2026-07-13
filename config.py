@@ -512,6 +512,9 @@ THR_REQUEST_DELAY_SECONDS = 1.0  # Threads Graph API — per-post insights, go g
 # ── Instagram settings ──
 IG_REQUEST_DELAY_SECONDS = 1.0  # Instagram Graph API — one /insights call per post, go gentle
 
+# ── e621 settings ──
+E621_REQUEST_DELAY_SECONDS = 1.0  # e621 REST API — hard limit 2 req/s, docs ask ~1 req/s
+
 # ── Settings sync (Phase 7a) ────────────────────────────────
 
 CREDENTIAL_FIELDS = frozenset({
@@ -546,6 +549,8 @@ CREDENTIAL_FIELDS = frozenset({
     "thr_access_token",
     # Instagram
     "ig_access_token",
+    # e621 (username is a non-secret identity field → stays plaintext)
+    "e621_api_key",
     # CF proxy
     "cf_worker_url", "cf_worker_key",
     # Dashboard auth
@@ -607,6 +612,7 @@ PLATFORM_CREDENTIAL_FIELDS = {
     "pix": ["pix_refresh_token", "pix_user_id"],
     "thr": ["thr_access_token", "thr_user_id"],
     "ig": ["ig_access_token", "ig_user_id"],
+    "e621": ["e621_username", "e621_api_key"],
 }
 
 # Matches an account-namespaced settings key: acct_<id>_<canonical_field>.
@@ -900,7 +906,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.103.0"
+APP_VERSION = "2.104.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

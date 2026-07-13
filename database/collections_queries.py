@@ -20,7 +20,7 @@ _TABLE_MAP = {
     "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions",
     "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions",
     "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions",
-    "ig": "ig_submissions",
+    "ig": "ig_submissions", "e621": "e621_submissions",
 }
 # platform code -> (views_col, favourites_col, comments_col); None = not tracked
 _METRICS = {
@@ -40,6 +40,7 @@ _METRICS = {
     "pix": ("views", "favorites_count", "comments_count"),
     "thr": ("views", "likes", "replies"),
     "ig": ("views", "likes", "comments"),
+    "e621": ("score", "favorites_count", "comments_count"),
 }
 
 

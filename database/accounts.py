@@ -31,13 +31,14 @@ import sqlite3
 logger = logging.getLogger(__name__)
 
 # All platform codes PawPoller knows about. Order is the display order.
-PLATFORMS = ["ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik", "bsky", "tw", "mast", "tum", "pix", "thr", "ig"]
+PLATFORMS = ["ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik", "bsky", "tw", "mast", "tum", "pix", "thr", "ig", "e621"]
 
 PLATFORM_NAMES = {
     "ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry",
     "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad",
     "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter", "mast": "Mastodon",
     "tum": "Tumblr", "pix": "Pixiv", "thr": "Threads", "ig": "Instagram",
+    "e621": "e621",
 }
 
 # Predicate per platform: does settings hold credentials for a default account?
@@ -60,6 +61,7 @@ DEFAULT_CRED_CHECKS = {
     "pix": lambda s: bool(s.get("pix_refresh_token")),
     "thr": lambda s: bool(s.get("thr_access_token")),
     "ig": lambda s: bool(s.get("ig_access_token")),
+    "e621": lambda s: bool(s.get("e621_username") and s.get("e621_api_key")),
 }
 
 # The flat settings key whose value names the default account (for display).
@@ -80,6 +82,7 @@ _HANDLE_KEYS = {
     "pix": ["pix_user_id"],
     "thr": ["thr_username", "thr_user_id"],
     "ig": ["ig_username", "ig_user_id"],
+    "e621": ["e621_username"],
 }
 
 
@@ -183,7 +186,7 @@ _STATS_TABLE = {
     "bsky": "bsky_submissions", "tw": "tw_submissions", "sf": "sf_submissions",
     "sqw": "sqw_submissions", "ao3": "ao3_submissions", "mast": "mast_submissions",
     "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions",
-    "ig": "ig_submissions",
+    "ig": "ig_submissions", "e621": "e621_submissions",
 }
 
 

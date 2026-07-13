@@ -41,6 +41,8 @@ window.Reconnect = (function () {
                 fields: [ f('username', 'Email', '', true), f('password', 'Password', '', true, 'password'), f('display_name', 'Display name', '', true), f('totp_code', '2FA code', 'only if 2FA is enabled', false) ] },
         ao3:  { label: 'AO3',       emoji: '📕', hint: 'Paste a fresh _otwarchive_session cookie, or your login username + password.',
                 fields: [ f('target_user', 'Username to track', 'your AO3 username', true), f('session_cookie', 'Session cookie', '_otwarchive_session value', false), f('username', 'Login username', 'optional', false), f('password', 'Password', 'optional', false, 'password') ] },
+        e621: { label: 'e621',      emoji: '🐾', hint: 'Regenerate an API key on e621 → Account → Manage API Access (this is the API key, not your password).',
+                fields: [ f('username', 'Username', 'your e621 username', true), f('api_key', 'API key', 'API key', true, 'password') ] },
     };
 
     let _el = null;

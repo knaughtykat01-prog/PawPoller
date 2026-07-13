@@ -196,7 +196,7 @@ def list_works(
 # a mixed platform's feed). Two platforms are content-pure for this app; the
 # rest are classified from the per-platform type string (category / subtype /
 # content_type) the poller already stored.
-_ART_ONLY_PLATFORMS = frozenset({"da", "ik", "pix", "ig"})  # image-first platforms
+_ART_ONLY_PLATFORMS = frozenset({"da", "ik", "pix", "ig", "e621"})  # image-first platforms
 _TEXT_ONLY_PLATFORMS = frozenset({"ao3", "sqw", "wp"})      # literature-only
 # Substrings that mark a type string as prose vs visual. Order matters only in
 # that a text hint wins over an art hint (a "story illustration" is still text).

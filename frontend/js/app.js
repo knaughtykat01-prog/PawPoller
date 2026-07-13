@@ -85,6 +85,9 @@ const App = {
     _igSortState: { field: 'views', order: 'desc' },
     _igCompareIds: new Set(),
     _igCompareMetric: 'views',
+    _e621SortState: { field: 'score', order: 'desc' },
+    _e621CompareIds: new Set(),
+    _e621CompareMetric: 'score',
     _twSortState: { field: 'views', order: 'desc' },
     _twCompareIds: new Set(),
     _twCompareMetric: 'views',
@@ -1013,6 +1016,14 @@ const App = {
             this.renderIGDetail(parts[2]);
         } else if (parts[0] === 'ig' && parts[1] === 'compare') {
             this.renderIGCompare();
+        } else if (parts[0] === 'e621' && (!parts[1] || parts[1] === '')) {
+            this.renderE621Dashboard();
+        } else if (parts[0] === 'e621' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderE621Submissions();
+        } else if (parts[0] === 'e621' && parts[1] === 'submission' && parts[2]) {
+            this.renderE621Detail(parts[2]);
+        } else if (parts[0] === 'e621' && parts[1] === 'compare') {
+            this.renderE621Compare();
         } else if (parts[0] === 'tw' && (!parts[1] || parts[1] === '')) {
             this.renderTWDashboard();
         } else if (parts[0] === 'tw' && parts[1] === 'submissions' && !parts[2]) {
@@ -1368,7 +1379,10 @@ const App = {
                 { key: 'thr', auth: auth.thrAuth?.has_credentials, name: 'Threads', statusFn: 'getTHRStatus', logFn: 'getTHRPollLog', tableFn: 'thrPollLogTable' },
                 { key: 'ig', auth: auth.igAuth?.has_credentials, name: 'Instagram', statusFn: 'getIGStatus', logFn: 'getIGPollLog', tableFn: 'igPollLogTable' },
                 { key: 'tw', auth: auth.twAuth?.has_credentials, name: 'Twitter', statusFn: 'getTWStatus', logFn: 'getTWPollLog', tableFn: 'twPollLogTable' },
+                { key: 'e621', auth: auth.e621Auth?.has_credentials, name: 'e621', statusFn: 'getE621Status', logFn: 'getE621PollLog', tableFn: 'e621PollLogTable' },
             ];
+            // Alphabetical by name (Inkbunny is rendered separately, first).
+            platforms.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
             const connected = platforms.filter(p => p.auth);
 
             // Build fetch array: IB status + log, then each connected platform's status + log
@@ -1463,7 +1477,7 @@ const App = {
     _platformLabels: {
         ib: 'Inkbunny', fa: 'FurAffinity', ws: 'Weasyl', sf: 'SoFurry',
         sqw: 'SquidgeWorld', ao3: 'AO3', da: 'DeviantArt', wp: 'Wattpad',
-        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr', pix: 'Pixiv', thr: 'Threads', ig: 'Instagram',
+        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr', pix: 'Pixiv', thr: 'Threads', ig: 'Instagram', e621: 'e621',
     },
 
     /* Settings → Platforms → "Session health" card. Renders the per-platform
@@ -1471,7 +1485,7 @@ const App = {
      * "Check sessions now" button, which fires the server-side re-validation
      * (fire-and-forget) and reloads the results after it's had time to run. */
     async _initSessionHealthCard() {
-        const CHECKABLE = ['ao3', 'sf', 'sqw', 'bsky', 'mast', 'tum', 'pix', 'thr', 'ig'];
+        const CHECKABLE = ['ao3', 'sf', 'sqw', 'bsky', 'mast', 'tum', 'pix', 'thr', 'ig', 'e621'];
         const LABELS = (window.PlatformHealth && window.PlatformHealth.LABELS) || {};
         const DOT = { valid: 'connected', expired: 'disconnected', error: 'warn', unconfigured: 'muted' };
         const WORD = { valid: 'Valid', expired: 'Expired', error: 'Unverified', unconfigured: 'Not configured' };
@@ -1547,7 +1561,7 @@ const App = {
      * Falls back to the cached snapshot only if the health fetch fails/empty. */
     async _configuredPollCodes() {
         const ALL = ['ib', 'fa', 'ws', 'sf', 'sqw', 'ao3', 'da', 'wp', 'ik',
-            'bsky', 'tw', 'mast', 'tum', 'pix', 'thr', 'ig'];
+            'bsky', 'tw', 'mast', 'tum', 'pix', 'thr', 'ig', 'e621'];
         try {
             const health = await API.getPlatformsHealth();
             if (health && typeof health === 'object') {
@@ -1561,7 +1575,7 @@ const App = {
             da: a.daAuth?.has_credentials, wp: a.wpAuth?.has_credentials, ik: a.ikAuth?.has_credentials,
             bsky: a.bskyAuth?.has_credentials, tw: a.twAuth?.has_credentials, mast: a.mastAuth?.has_credentials,
             tum: a.tumAuth?.has_credentials, pix: a.pixAuth?.has_credentials, thr: a.thrAuth?.has_credentials,
-            ig: a.igAuth?.has_credentials };
+            ig: a.igAuth?.has_credentials, e621: a.e621Auth?.has_credentials };
         return ALL.filter(c => cached[c]);
     },
 
@@ -1569,7 +1583,7 @@ const App = {
         const label = this._platformLabels[platform] || platform.toUpperCase();
         btn.disabled = true;
         btn.textContent = 'Polling...';
-        const fns = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll', sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll', wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll', mast: 'triggerMASTPoll', tum: 'triggerTUMPoll', pix: 'triggerPIXPoll', thr: 'triggerTHRPoll', ig: 'triggerIGPoll' };
+        const fns = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll', sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll', wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll', mast: 'triggerMASTPoll', tum: 'triggerTUMPoll', pix: 'triggerPIXPoll', thr: 'triggerTHRPoll', ig: 'triggerIGPoll', e621: 'triggerE621Poll' };
         try {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
@@ -1591,7 +1605,7 @@ const App = {
         if (!confirm(`Full resync re-fetches every ${label} submission from scratch. This can take several minutes and will hit ${label}'s rate limits hard. Continue?`)) return;
         btn.disabled = true;
         btn.textContent = 'Syncing...';
-        const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync', mast: 'fullMASTResync', tum: 'fullTUMResync', pix: 'fullPIXResync', thr: 'fullTHRResync', ig: 'fullIGResync' };
+        const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync', mast: 'fullMASTResync', tum: 'fullTUMResync', pix: 'fullPIXResync', thr: 'fullTHRResync', ig: 'fullIGResync', e621: 'fullE621Resync' };
         try {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
@@ -2021,6 +2035,7 @@ const App = {
             { key: 'pix', name: 'Pixiv', emoji: '&#128396;', color: 'var(--platform-pix)', url: 'https://www.pixiv.net/' },
             { key: 'thr', name: 'Threads', emoji: '&#129525;', color: 'var(--platform-thr)', url: 'https://www.threads.net/' },
             { key: 'ig', name: 'Instagram', emoji: '&#128248;', color: 'var(--platform-ig)', url: 'https://www.instagram.com/' },
+            { key: 'e621', name: 'e621', emoji: '&#128062;', color: 'var(--platform-e621)', url: 'https://e621.net/session/new' },
         ];
 
         /* Detect runtime and pre-load existing state so the wizard can
@@ -2039,7 +2054,7 @@ const App = {
         /* Per-platform connection status (used in the platforms step) */
         const authStatus = {};
         try {
-            const [ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw, mast, tum, pix, thr, ig] = await Promise.all([
+            const [ib, fa, ws, sf, sqw, ao3, da, wp, ik, bsky, tw, mast, tum, pix, thr, ig, e621] = await Promise.all([
                 API.getAuthStatus().catch(() => ({})),
                 API.getFAAuthStatus().catch(() => ({})),
                 API.getWSAuthStatus().catch(() => ({})),
@@ -2056,6 +2071,7 @@ const App = {
                 API.getPIXAuthStatus().catch(() => ({})),
                 API.getTHRAuthStatus().catch(() => ({})),
                 API.getIGAuthStatus().catch(() => ({})),
+                API.getE621AuthStatus().catch(() => ({})),
             ]);
             authStatus.ib = ib.has_credentials;
             authStatus.fa = fa.has_cookies;
@@ -2073,6 +2089,7 @@ const App = {
             authStatus.pix = pix.has_credentials;
             authStatus.thr = thr.has_credentials;
             authStatus.ig = ig.has_credentials;
+            authStatus.e621 = e621.has_credentials;
         } catch { /* ignore — all default to undefined/false */ }
 
         /* Wizard state */
@@ -2583,6 +2600,7 @@ const App = {
             bsky: () => API.getBSKYSummary(), tw: () => API.getTWSummary(),
             mast: () => API.getMASTSummary(), tum: () => API.getTUMSummary(),
             pix: () => API.getPIXSummary(), thr: () => API.getTHRSummary(), ig: () => API.getIGSummary(),
+            e621: () => API.getE621Summary(),
         };
         const [results, health] = await Promise.all([
             Promise.all(plats.map(p =>
@@ -2645,7 +2663,7 @@ const App = {
         this._loading();
         try {
             /* Fetch all platform data in parallel; .catch() fallbacks prevent one failure from blocking all */
-            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, bskySummary, twSummary, mastSummary, tumSummary, pixSummary, thrSummary, igSummary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, bskyAgg, twAgg, mastAgg, tumAgg, pixAgg, thrAgg, igAgg, topFans, trending] = await Promise.all([
+            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, bskySummary, twSummary, mastSummary, tumSummary, pixSummary, thrSummary, igSummary, e621Summary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, bskyAgg, twAgg, mastAgg, tumAgg, pixAgg, thrAgg, igAgg, e621Agg, topFans, trending] = await Promise.all([
                 API.getSummary().catch(() => null),
                 API.getFASummary().catch(() => null),
                 API.getWSSummary().catch(() => null),
@@ -2662,6 +2680,7 @@ const App = {
                 API.getPIXSummary().catch(() => null),
                 API.getTHRSummary().catch(() => null),
                 API.getIGSummary().catch(() => null),
+                API.getE621Summary().catch(() => null),
                 API.getAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getFAAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getWSAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
@@ -2678,6 +2697,7 @@ const App = {
                 API.getPIXAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getTHRAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getIGAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
+                API.getE621Aggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
                 API.getTopFans(10).catch(() => ({ fans: [] })),
                 API.getTrending({ hours: 24, threshold: 2.0 }).catch(() => ({ trending: [] })),
             ]);
@@ -2702,15 +2722,16 @@ const App = {
             const pix = pixSummary || {};
             const thr = thrSummary || {};
             const ig = igSummary || {};
+            const e621 = e621Summary || {};
 
             /* Sum totals across all platforms for the top-level stat cards.
              * Wattpad uses 'reads' instead of 'views' and 'votes' instead of 'favorites',
              * so we map them into the unified totals here.
              * Itaku has NO views — only likes (mapped to favorites), comments, and reshares. */
-            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0) + (bsky.total_submissions || 0) + (tw.total_submissions || 0) + (mast.total_submissions || 0) + (tum.total_submissions || 0) + (pix.total_submissions || 0) + (thr.total_submissions || 0) + (ig.total_submissions || 0);
+            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0) + (bsky.total_submissions || 0) + (tw.total_submissions || 0) + (mast.total_submissions || 0) + (tum.total_submissions || 0) + (pix.total_submissions || 0) + (thr.total_submissions || 0) + (ig.total_submissions || 0) + (e621.total_submissions || 0);
             const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0) + (sqw.total_views || 0) + (ao3.total_views || 0) + (da.total_views || 0) + (wp.total_reads || wp.total_views || 0) + (tw.total_views || 0) + (pix.total_views || 0) + (thr.total_views || 0) + (ig.total_views || 0);
-            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0) + (bsky.total_likes || 0) + (tw.total_likes || 0) + (mast.total_likes || 0) + (tum.total_notes || 0) + (pix.total_favorites || 0) + (thr.total_likes || 0) + (ig.total_likes || 0);
-            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0) + (ao3.total_comments || 0) + (da.total_comments || 0) + (wp.total_comments || 0) + (ik.total_comments || 0) + (bsky.total_comments || 0) + (tw.total_comments || 0) + (mast.total_comments || mast.total_replies || 0) + (pix.total_comments || 0) + (thr.total_replies || 0) + (ig.total_comments || 0);
+            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0) + (bsky.total_likes || 0) + (tw.total_likes || 0) + (mast.total_likes || 0) + (tum.total_notes || 0) + (pix.total_favorites || 0) + (thr.total_likes || 0) + (ig.total_likes || 0) + (e621.total_favorites || 0);
+            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0) + (ao3.total_comments || 0) + (da.total_comments || 0) + (wp.total_comments || 0) + (ik.total_comments || 0) + (bsky.total_comments || 0) + (tw.total_comments || 0) + (mast.total_comments || mast.total_replies || 0) + (pix.total_comments || 0) + (thr.total_replies || 0) + (ig.total_comments || 0) + (e621.total_comments || 0);
             const totalDownloads = (da.total_downloads || 0);
 
             /* Merge top lists across platforms: tag each with _platform, sort desc, take top 10 */
@@ -2815,6 +2836,7 @@ const App = {
                 platformCard('<span class="platform-badge pix">\u{1F58C} PIX</span>', 'Pixiv', { total_views: pix.total_views || 0, total_favorites: pix.total_favorites || 0, total_submissions: pix.total_submissions || 0 }, 'pix'),
                 platformCard('<span class="platform-badge thr">\u{1F9F5} THR</span>', 'Threads', { total_views: thr.total_views || 0, total_favorites: thr.total_likes || 0, total_submissions: thr.total_submissions || 0 }, 'thr'),
                 platformCard('<span class="platform-badge ig">\u{1F4F8} IG</span>', 'Instagram', { total_views: ig.total_views || 0, total_favorites: ig.total_likes || 0, total_submissions: ig.total_submissions || 0 }, 'ig'),
+                platformCard('<span class="platform-badge e621">\u{1F43E} e621</span>', 'e621', { total_views: 0, total_favorites: e621.total_favorites || 0, total_submissions: e621.total_submissions || 0 }, 'e621'),
             ].join('');
 
             /* Per-platform aggregate view charts — only those with history. */
@@ -2835,6 +2857,7 @@ const App = {
                 { id: 'chart-pix-views', title: 'Pixiv Views', snapshots: pixAgg?.snapshots, keys: ['views'] },
                 { id: 'chart-thr-views', title: 'Threads Views', snapshots: thrAgg?.snapshots, keys: ['views'] },
                 { id: 'chart-ig-views', title: 'Instagram Views', snapshots: igAgg?.snapshots, keys: ['views'] },
+                { id: 'chart-e621-score', title: 'e621 Score', snapshots: e621Agg?.snapshots, keys: ['score'] },
             ].filter(c => c.snapshots && c.snapshots.length > 0);
             const chartsHtml = chartSpecs.length
                 ? chartSpecs.map(c => `<div class="chart-container"><h3>${c.title}</h3><div class="chart-wrap"><canvas id="${c.id}"></canvas></div></div>`).join('')
@@ -7261,6 +7284,335 @@ const App = {
         }
     },
 
+    // ── E621 Dashboard ────────────────────────────────────────
+    // e621 dashboard: Score (score.total, may be negative), Favorites,
+    // Comments. e621 exposes no view count, so Score is the headline metric.
+
+    async renderE621Dashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getE621Summary({ account_id: this._acctId('e621') }),
+                API.getE621Aggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('e621') }),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const e621Pins = (pins.pins || []).filter(p => p.platform === 'e621');
+            const e621Goals = (goals.goals || []).filter(g => g.platform === 'e621' || g.platform === 'all');
+
+            const e621Health = window.PlatformHealth && window.PlatformHealth.get('e621');
+            const isUnconfigured = e621Health && e621Health.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>e621 Dashboard</h2></div>
+                    ${Components.platformEmptyState('e621', isUnconfigured ? {} : { reason: 'e621 is configured but no posts have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>e621 Dashboard</h2>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" data-poll="e621">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="e621">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="e621">Export CSV</button>
+                    </div>
+                </div>
+
+                ${e621Pins.length ? Components.pinnedSubmissions(e621Pins, 'e621') : ''}
+                ${e621Goals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(e621Goals)}</div>` : ''}
+
+                <div class="stats-grid">
+                    ${Components.statCard('Total Posts', summary.total_submissions, null, '#/e621/submissions')}
+                    ${Components.statCard('Total Score', summary.total_score || 0)}
+                    ${Components.statCard('Total Favorites', summary.total_favorites || 0)}
+                    ${Components.statCard('Total Comments', summary.total_comments || 0)}
+                </div>
+
+                ${summary.growth_rates ? Components.growthRateCards(summary.growth_rates, { views: 'score/day', faves: 'faves/day', comments: 'comments/day' }) : ''}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Score Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-views"></canvas></div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Scored</h3>
+                        ${Components.e621TopList(summary.top_scored, 'score', 'title', 'submission_id')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Top Favorited</h3>
+                        ${Components.e621TopList(summary.top_faved, 'favorites_count', 'title', 'submission_id')}
+                    </div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Fastest Growing (24h)</h3>
+                        ${Components.e621TopList(summary.fastest_growing, 'score_gained', 'title', 'submission_id')}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-views', agg.snapshots, ['score']);
+            }
+
+            this._bindDateRange(() => this.renderE621Dashboard());
+            this._bindPinAndGoalActions(() => this.renderE621Dashboard());
+            this._startAutoRefresh(() => this.renderE621Dashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading e621 dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── E621 Submissions ────────────────────────────────────────
+
+    async renderE621Submissions() {
+        this._loading();
+        try {
+            const data = await API.getE621Submissions({
+                sort_by: this._e621SortState.field,
+                order: this._e621SortState.order,
+                account_id: this._acctId('e621'),
+            });
+
+            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
+            // e621 CDN images are hotlinkable — use the thumbnail URL directly.
+            const e621GridRenderer = (subs) => Components.submissionCardGrid(
+                subs,
+                {
+                    idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumbnail_url', proxyThumb: false,
+                    typeKey: 'content_type', typeLabels: Components.E621_TYPE_LABELS,
+                    detailRoute: '/e621/submission', dateKey: 'posted_at',
+                    stats: [
+                        { key: 'score', deltaKey: 'score_delta', label: 'score' },
+                        { key: 'favorites_count', deltaKey: 'favorites_delta', label: 'favorites' },
+                        { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
+                    ],
+                }
+            );
+            const gridHtml = e621GridRenderer(data.submissions);
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>e621 Posts</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search posts...">
+                    <div class="view-toggle">
+                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
+                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
+                    </div>
+                </div>
+                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
+                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                    ${Components.e621SubmissionsTable(data.submissions)}
+                </div>
+            `;
+
+            this._setContent(html);
+            this._bindViewToggle();
+            this._bindE621TableSort();
+            this._bindE621Search(data.submissions, e621GridRenderer);
+            this._startAutoRefresh(() => this.renderE621Submissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading e621 posts</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── E621 Submission Detail ──────────────────────────────────
+
+    async renderE621Detail(postId) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getE621Submission(postId),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const fullId = sub.submission_id;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'e621' && String(p.submission_id) === String(fullId));
+            const currentTags = sub.tags || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/e621/submissions" class="back-link">&larr; Back to e621 Posts</a>
+                <div class="detail-header">
+                    ${sub.thumbnail_url ? `<img class="detail-thumb" src="${Utils.escapeHtml(Utils.safeUrl(sub.thumbnail_url) || '')}" alt="" style="max-width:160px;border-radius:8px;margin-right:16px">` : ''}
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.E621_TYPE_LABELS[sub.content_type] || sub.content_type || 'Image')}${sub.rating ? ' &middot; ' + Utils.escapeHtml(sub.rating) : ''}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on e621</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.score || 0)} <span class="lbl">score</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.favorites_count || 0)} <span class="lbl">favorites</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.comments_count || 0)} <span class="lbl">comments</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="e621" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="e621" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+
+                ${Components.growthRateCards(data.growth_rates, { views: 'score/day', faves: 'faves/day', comments: 'comments/day' })}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Stats Over Time</h3>
+                    <div class="chart-wrap"><canvas id="chart-detail"></canvas></div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots, ['score', 'favorites_count', 'comments_count']);
+            }
+
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getE621Snapshots(postId, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots, ['score', 'favorites_count', 'comments_count']);
+            });
+
+            this._bindDetailPinTag('e621', fullId, allTags.tags || [], () => this.renderE621Detail(postId));
+            this._startAutoRefresh(() => this.renderE621Detail(postId));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading e621 post</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── E621 Compare ────────────────────────────────────────────
+
+    async renderE621Compare() {
+        this._loading();
+        try {
+            const data = await API.getE621Submissions({ sort_by: 'score', order: 'desc', account_id: this._acctId('e621') });
+            const subs = data.submissions;
+
+            const chips = subs.map(s => `
+                <label class="compare-chip ${this._e621CompareIds.has(String(s.submission_id)) ? 'selected' : ''}" data-id="${Utils.escapeHtml(String(s.submission_id))}">
+                    <input type="checkbox" ${this._e621CompareIds.has(String(s.submission_id)) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>
+            `).join('');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Compare e621 Posts</h2>
+                    <div>
+                        <select class="filter-select" id="compare-metric">
+                            <option value="score" ${this._e621CompareMetric === 'score' ? 'selected' : ''}>Score</option>
+                            <option value="favorites_count" ${this._e621CompareMetric === 'favorites_count' ? 'selected' : ''}>Favorites</option>
+                            <option value="comments_count" ${this._e621CompareMetric === 'comments_count' ? 'selected' : ''}>Comments</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 e621 posts to compare their trends over time.</p>
+                <div class="compare-select">${chips}</div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container" id="compare-chart-container" style="${this._e621CompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3>
+                    <div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._e621CompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 posts above to see their trends compared.</p></div>' : ''}
+            `;
+
+            this._setContent(html);
+
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = chip.dataset.id;
+                    if (this._e621CompareIds.has(id)) {
+                        this._e621CompareIds.delete(id);
+                    } else if (this._e621CompareIds.size < 5) {
+                        this._e621CompareIds.add(id);
+                    }
+                    this.renderE621Compare();
+                });
+            });
+
+            const metricSelect = document.getElementById('compare-metric');
+            if (metricSelect) {
+                metricSelect.addEventListener('change', () => {
+                    this._e621CompareMetric = metricSelect.value;
+                    this._loadE621ComparisonChart();
+                });
+            }
+
+            this._bindDateRange(() => this._loadE621ComparisonChart());
+
+            if (this._e621CompareIds.size >= 2) {
+                await this._loadE621ComparisonChart();
+            }
+
+            this._startAutoRefresh(() => this.renderE621Compare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadE621ComparisonChart() {
+        try {
+            if (this._e621CompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getE621Comparison([...this._e621CompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, this._e621CompareMetric);
+        } catch (e) {
+            console.error('Failed to load e621 comparison chart:', e);
+        }
+    },
+
+    _bindE621TableSort() {
+        document.querySelectorAll('#e621-submissions-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (this._e621SortState.field === field) {
+                    this._e621SortState.order = this._e621SortState.order === 'desc' ? 'asc' : 'desc';
+                } else {
+                    this._e621SortState.field = field;
+                    this._e621SortState.order = 'desc';
+                }
+                this.renderE621Submissions();
+            });
+        });
+    },
+
+    // e621 variant of _bindSearch(). Filters by text (title only).
+    _bindE621Search(allSubmissions, gridRenderer) {
+        const input = document.getElementById('search-input');
+        const doFilter = () => {
+            const q = (input?.value || '').toLowerCase();
+            let filtered = allSubmissions;
+            if (q) {
+                filtered = filtered.filter(s => (s.title || '').toLowerCase().includes(q));
+            }
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
+            document.getElementById('table-container').innerHTML = Components.e621SubmissionsTable(filtered);
+            this._bindE621TableSort();
+        };
+        input?.addEventListener('input', doFilter);
+    },
+
     // ── THR Dashboard ─────────────────────────────────────────
     // Threads dashboard with Views, Likes, Reposts, Replies (+ Quotes).
 
@@ -8247,7 +8599,7 @@ const App = {
                 // Determine platform badge colour and the correct hash route prefix
                 const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[m.platform] || badgeMap.ib;
-                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', pix: '/pix/submission/', thr: '/thr/submission/', ig: '/ig/submission/', ib: '/submission/' };
+                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', pix: '/pix/submission/', thr: '/thr/submission/', ig: '/ig/submission/', e621: '/e621/submission/', ib: '/submission/' };
                 const prefix = prefixMap[m.platform] || prefixMap.ib;
                 return `
                     <tr>
@@ -8675,7 +9027,7 @@ const App = {
         try {
             // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
             // Polling tab data is loaded lazily when the user clicks into it.
-            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, updateInfo, postingSettings, browserLoginInfo, setupStatus] = await Promise.all([
+            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, e621Auth, updateInfo, postingSettings, browserLoginInfo, setupStatus] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
@@ -8696,6 +9048,7 @@ const App = {
                 API.getPIXAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getTHRAuthStatus().catch(() => ({ has_credentials: false })),
                 API.getIGAuthStatus().catch(() => ({ has_credentials: false })),
+                API.getE621AuthStatus().catch(() => ({ has_credentials: false })),
                 API.checkUpdate().catch(() => ({ available: false, current: '?', latest: '?' })),
                 API.getPostingSettings().catch(() => ({ posting_enabled: false, posting_default_platforms: [], posting_default_rating: 'adult', posting_server_url: '', posting_server_api_key: '', posting_story_archive_path: '' })),
                 API.getBrowserLoginPlatforms().catch(() => ({ available: false, platforms: [] })),
@@ -8713,7 +9066,7 @@ const App = {
             const _pollingOwner = setupStatus.polling_owner || (_isServer ? 'local' : (_isPaired ? 'server' : 'local'));
 
             // Store auth state for lazy-loaded polling tab
-            this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth };
+            this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, e621Auth };
 
             // Store browser login availability for platform connect forms
             const _browserLoginAvailable = browserLoginInfo.available;
@@ -9241,6 +9594,23 @@ const App = {
                     </div>
                     <div class="settings-row">
                         <div>
+                            <span class="settings-label">e621 poll interval</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">How often to check for new e621 data</div>
+                        </div>
+                        <select class="filter-select" id="pref-e621-poll-interval" style="width:auto">
+                            <option value="15" ${prefs.e621_poll_interval_minutes === 15 ? 'selected' : ''}>15 min</option>
+                            <option value="30" ${prefs.e621_poll_interval_minutes === 30 ? 'selected' : ''}>30 min</option>
+                            <option value="60" ${prefs.e621_poll_interval_minutes === 60 || !prefs.e621_poll_interval_minutes ? 'selected' : ''}>1 hour</option>
+                            <option value="120" ${prefs.e621_poll_interval_minutes === 120 ? 'selected' : ''}>2 hours</option>
+                            <option value="240" ${prefs.e621_poll_interval_minutes === 240 ? 'selected' : ''}>4 hours</option>
+                            <option value="360" ${prefs.e621_poll_interval_minutes === 360 ? 'selected' : ''}>6 hours</option>
+                            <option value="480" ${prefs.e621_poll_interval_minutes === 480 ? 'selected' : ''}>8 hours</option>
+                            <option value="600" ${prefs.e621_poll_interval_minutes === 600 ? 'selected' : ''}>10 hours</option>
+                            <option value="720" ${prefs.e621_poll_interval_minutes === 720 ? 'selected' : ''}>12 hours</option>
+                        </select>
+                    </div>
+                    <div class="settings-row">
+                        <div>
                             <span class="settings-label">Display timezone</span>
                             <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Timezone for Telegram messages and timestamps</div>
                         </div>
@@ -9394,6 +9764,7 @@ const App = {
                         <button class="btn btn-secondary" data-export="pix">Export PIX</button>
                         <button class="btn btn-secondary" data-export="thr">Export THR</button>
                         <button class="btn btn-secondary" data-export="ig">Export IG</button>
+                        <button class="btn btn-secondary" data-export="e621">Export e621</button>
                     </div>
                 </div>
 
@@ -10397,6 +10768,46 @@ const App = {
                     </div>
                 </details>
 
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${e621Auth.has_credentials ? 'connected' : 'disconnected'}"></span>e621${e621Auth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(e621Auth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
+                    ${e621Auth.has_credentials ? `
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Status</span>
+                        </div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(e621Auth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">e621 desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for e621 activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-e621-notifications" ${prefs.e621_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="e621-poll-btn">e621 Poll Now</button>
+                        <button class="btn btn-secondary" id="e621-resync-btn">e621 Full Resync</button>
+                        <button class="btn btn-danger" id="e621-disconnect-btn">Disconnect</button>
+                        <span id="e621-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to e621 with your <strong>username + API key</strong>. Generate the key on e621 under <em>Account → Manage API Access</em> (this is the API key, <strong>not</strong> your password). Poll-only — tracks your own uploads' score, favorites and comments.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="e621-username" class="search-input" placeholder="e621 username">
+                        <input type="password" id="e621-api-key" class="search-input" placeholder="API key">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="e621-connect-btn">Connect</button>
+                        <span id="e621-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                    </div>
+                </details>
+
                 </div><!-- /tab:platforms -->
 
                 <!-- ═══ TAB: Polling ═══ -->
@@ -10670,6 +11081,7 @@ const App = {
                     prefs.pix_poll_interval_minutes = parseInt(val('pref-pix-poll-interval')) || 60;
                     prefs.thr_poll_interval_minutes = parseInt(val('pref-thr-poll-interval')) || 60;
                     prefs.ig_poll_interval_minutes = parseInt(val('pref-ig-poll-interval')) || 60;
+                    prefs.e621_poll_interval_minutes = parseInt(val('pref-e621-poll-interval')) || 60;
 
                     // Timezone
                     if (val('pref-timezone')) prefs.display_timezone = val('pref-timezone');
@@ -10705,6 +11117,7 @@ const App = {
                     if (document.getElementById('pref-pix-notifications')) prefs.pix_notifications_enabled = !!chk('pref-pix-notifications');
                     if (document.getElementById('pref-thr-notifications')) prefs.thr_notifications_enabled = !!chk('pref-thr-notifications');
                     if (document.getElementById('pref-ig-notifications')) prefs.ig_notifications_enabled = !!chk('pref-ig-notifications');
+                    if (document.getElementById('pref-e621-notifications')) prefs.e621_notifications_enabled = !!chk('pref-e621-notifications');
 
                     await API.savePreferences(prefs);
 
@@ -10744,7 +11157,7 @@ const App = {
                         sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll',
                         wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll',
                         mast: 'triggerMASTPoll', tum: 'triggerTUMPoll', pix: 'triggerPIXPoll',
-                        thr: 'triggerTHRPoll', ig: 'triggerIGPoll' };
+                        thr: 'triggerTHRPoll', ig: 'triggerIGPoll', e621: 'triggerE621Poll' };
                     const codes = await this._configuredPollCodes();
                     const triggers = codes.map(c => API[TRIGGERS[c]]());
                     const results = await Promise.allSettled(triggers);
@@ -10780,7 +11193,7 @@ const App = {
                         sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync',
                         wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync',
                         mast: 'fullMASTResync', tum: 'fullTUMResync', pix: 'fullPIXResync',
-                        thr: 'fullTHRResync', ig: 'fullIGResync' };
+                        thr: 'fullTHRResync', ig: 'fullIGResync', e621: 'fullE621Resync' };
                     const codes = await this._configuredPollCodes();
                     const resyncs = codes.map(c => API[RESYNCS[c]]());
                     const results = await Promise.allSettled(resyncs);
@@ -11473,6 +11886,15 @@ const App = {
                 }
             });
 
+            // e621 poll interval dropdown
+            document.getElementById('pref-e621-poll-interval')?.addEventListener('change', async (e) => {
+                try {
+                    await API.savePreferences({ e621_poll_interval_minutes: parseInt(e.target.value) });
+                } catch (err) {
+                    alert('Failed to save: ' + err.message);
+                }
+            });
+
             // "Set all platforms" — applies one interval to every platform in a
             // single save, then mirrors the new value into each per-platform
             // dropdown so the UI stays in sync. Keys mirror the backend's
@@ -11483,7 +11905,7 @@ const App = {
                 'pref-da-poll-interval', 'pref-wp-poll-interval', 'pref-ik-poll-interval',
                 'pref-bsky-poll-interval', 'pref-tw-poll-interval', 'pref-mast-poll-interval',
                 'pref-tum-poll-interval', 'pref-pix-poll-interval', 'pref-thr-poll-interval',
-                'pref-ig-poll-interval',
+                'pref-ig-poll-interval', 'pref-e621-poll-interval',
             ];
             const _ALL_INTERVAL_KEYS = [
                 'poll_interval_minutes', 'fa_poll_interval_minutes', 'ws_poll_interval_minutes',
@@ -11491,7 +11913,7 @@ const App = {
                 'da_poll_interval_minutes', 'wp_poll_interval_minutes', 'ik_poll_interval_minutes',
                 'bsky_poll_interval_minutes', 'tw_poll_interval_minutes', 'mast_poll_interval_minutes',
                 'tum_poll_interval_minutes', 'pix_poll_interval_minutes', 'thr_poll_interval_minutes',
-                'ig_poll_interval_minutes',
+                'ig_poll_interval_minutes', 'e621_poll_interval_minutes',
             ];
             document.getElementById('pref-poll-interval-all')?.addEventListener('change', async (e) => {
                 const v = parseInt(e.target.value);
@@ -11506,7 +11928,7 @@ const App = {
                         if (el) el.value = String(v);
                     });
                     e.target.value = '';  // reset back to the placeholder
-                    if (window.toast) window.toast.success('All 16 platforms set to ' + (v >= 60 ? (v / 60) + 'h' : v + ' min'));
+                    if (window.toast) window.toast.success('All 17 platforms set to ' + (v >= 60 ? (v / 60) + 'h' : v + ' min'));
                 } catch (err) {
                     e.target.value = '';
                     alert('Failed to save: ' + err.message);
@@ -12468,6 +12890,78 @@ const App = {
                 twNotifToggle.addEventListener('change', async (e) => {
                     try {
                         await API.savePreferences({ tw_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
+            // e621 Connect: sends username + api_key
+            const e621ConnectBtn = document.getElementById('e621-connect-btn');
+            if (e621ConnectBtn) {
+                e621ConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('e621-msg');
+                    const username = document.getElementById('e621-username').value.trim();
+                    const api_key = document.getElementById('e621-api-key').value.trim();
+                    if (!username || !api_key) {
+                        msg.textContent = 'Username and API key are required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    e621ConnectBtn.disabled = true;
+                    e621ConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.e621Connect({ username, api_key });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        e621ConnectBtn.textContent = 'Connect';
+                        e621ConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            // e621 Disconnect
+            const e621DisconnectBtn = document.getElementById('e621-disconnect-btn');
+            if (e621DisconnectBtn) {
+                e621DisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect e621? This clears your credentials.')) return;
+                    try {
+                        await API.e621Disconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+
+            // e621 Poll Now / Full Resync
+            const e621PollBtn = document.getElementById('e621-poll-btn');
+            if (e621PollBtn) {
+                e621PollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: e621PollBtn, msgId: 'e621-msg', platform: 'e621', apiMethod: 'triggerE621Poll',
+                }));
+            }
+            const e621ResyncBtn = document.getElementById('e621-resync-btn');
+            if (e621ResyncBtn) {
+                e621ResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: e621ResyncBtn, msgId: 'e621-msg', platform: 'e621', apiMethod: 'fullE621Resync',
+                }));
+            }
+
+            // e621: Notifications toggle
+            const e621NotifToggle = document.getElementById('pref-e621-notifications');
+            if (e621NotifToggle) {
+                e621NotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ e621_notifications_enabled: e.target.checked });
                     } catch (err) {
                         e.target.checked = !e.target.checked;
                         alert('Failed to save preference: ' + err.message);

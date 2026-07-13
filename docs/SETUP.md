@@ -53,7 +53,7 @@ The wizard walks you through four steps:
 
 1. **Welcome** — overview.
 2. **Story archive path** — point at a folder where your stories live (or will live). See §5 for the expected layout.
-3. **Platform connections** — cards for all 15 platforms. You can skip this and fill it in later from Settings.
+3. **Platform connections** — cards for all 17 platforms. You can skip this and fill it in later from Settings.
 4. **Done**. Dashboard opens.
 
 ### 1.4 Where your data lives
@@ -493,6 +493,7 @@ Short version per platform:
 | Tumblr | OAuth consumer key + blog | tumblr.com/oauth/apps → register an app → copy the "OAuth Consumer Key" |
 | Pixiv | Refresh token | One-time browser login (e.g. the `gppt` helper) |
 | Threads | Meta access token | A Meta app with `threads_basic` + `threads_manage_insights` scopes |
+| e621 | Username + API key | Account → Manage API Access on e621 (the API key, not your password) |
 | Wattpad / Itaku / Bluesky / X | Public or app-password — see the in-app settings cards | |
 
 ### 5.1 Credential vault (always on)
