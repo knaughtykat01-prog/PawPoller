@@ -27,7 +27,7 @@ The tech stack is FastAPI + SQLite (WAL mode) + Vanilla JS SPA + pywebview + pys
 | 8 | Wattpad     | Stories              | Public REST API |
 | 9 | Itaku       | Art                  | Public REST API |
 | 10 | Bluesky    | Social (microblog)   | AT Protocol public API |
-| 11 | X/Twitter  | Social (microblog)   | Cookie-based GraphQL scraping |
+| 11 | X/Twitter  | Social (microblog)   | Poll via gallery-dl subprocess (GraphQL fallback); posting via GraphQL |
 
 ### Two Operating Modes
 
@@ -955,6 +955,17 @@ Rate limiting: 1s between requests, 429 handling with 30s backoff.
 **GraphQL query IDs**: Hardcoded known IDs that may rotate over time as X updates their frontend. Comments note this limitation.
 
 Rate limiting: 2s between requests, 429 handling with 60s backoff (X is aggressive about rate limiting).
+
+#### gallery-dl poll backend (2.105.0) — `clients/tw/gallerydl.py`
+
+Because the GraphQL query IDs above rotate whenever X ships a new web bundle, the **poll (read) path prefers [gallery-dl](https://github.com/mikf/gallery-dl)** — a maintained downloader that tracks X's internal API for us — and only falls back to the GraphQL scrape above.
+
+- **Hybrid, fallback-first.** `TWClient.get_all_tweets()` calls `gallerydl.fetch_tweets(...)`; the renamed `_get_all_tweets_graphql()` holds the original scrape as the fallback. `validate_cookies()` calls `gallerydl.validate(...)` first, then the `UserByScreenName` check. A gallery-dl result (even an empty list) is **authoritative**; only `None` (gallery-dl unavailable/disabled/errored) triggers the fallback. Net effect: with gallery-dl absent, X polling is byte-for-byte the old behaviour.
+- **Read-only.** gallery-dl cannot post — `create_tweet`/`upload_media` (Posts module) stay on GraphQL, untouched.
+- **Licence isolation (GPL-2.0).** gallery-dl is invoked **only as a subprocess** (`asyncio.create_subprocess_exec`) and **never imported** — mere aggregation, so PawPoller's MIT licence is unaffected. **Do not add `import gallery_dl` anywhere.**
+- **Invocation.** `gallery-dl -j -q --cookies <temp Netscape jar> --sleep-request <TW_REQUEST_DELAY_SECONDS> -o extractor.twitter.text-tweets=true -o extractor.twitter.retweets=false -o extractor.twitter.videos=false "https://x.com/<user>/tweets"`. The temp cookie jar is written from the same `auth_token`+`ct0` and deleted in a `finally`. `-j` dumps metadata (no media download); `_parse_dump_json()` reads the JSON array (each element's **last dict** is the tweet kwdict — robust to gallery-dl's message-type ints) into the identical detail-dict shape, keying `view_count`/`favorite_count`/`retweet_count`/`reply_count`/`quote_count`/`bookmark_count`, collecting photo `media_urls`, and falling back to the Snowflake-id date. Runs are capped by `TW_GALLERYDL_TIMEOUT_SECONDS` (300s).
+- **Config / delivery.** In `requirements-server.txt` (server build → console script on PATH) and `requirements.txt` (source/dev); **not** bundled into the frozen `.exe` (never imported → PyInstaller skips it) — packaged desktop auto-detects a PATH install or falls back. Plain (non-secret) settings: `tw_gallerydl_path` (explicit binary), `tw_polling_backend` (`auto` default / `graphql` forces the legacy scrape). `/api/tw/auth/status` reports `poll_backend` + `gallerydl_available`.
+- **Behavioural delta.** The gallery-dl path uses `retweets=false` (own posts), so the GraphQL path's niche "keep a repost that @-mentions me" doesn't apply on that backend; already-captured rows are never deleted (upserts only accumulate).
 
 ---
 
@@ -2593,7 +2604,8 @@ DA_REQUEST_DELAY_SECONDS       = 2.0    # DeviantArt (paces official-API pages/e
 WP_REQUEST_DELAY_SECONDS       = 1.0    # Wattpad public API
 IK_REQUEST_DELAY_SECONDS       = 1.0    # Itaku public API
 BSKY_REQUEST_DELAY_SECONDS     = 1.0    # Bluesky AT Protocol (generous rate limits)
-TW_REQUEST_DELAY_SECONDS       = 2.0    # X/Twitter GraphQL (aggressive rate limiting)
+TW_REQUEST_DELAY_SECONDS       = 2.0    # X/Twitter GraphQL + gallery-dl --sleep-request (aggressive rate limiting)
+TW_GALLERYDL_TIMEOUT_SECONDS   = 300    # kill a stuck gallery-dl poll subprocess after 5 min
 ```
 
 ### Run-on-startup (per-OS shim)
@@ -3251,7 +3263,7 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 | BSKY no posts found | Wrong identifier | `bsky_identifier` should be your handle (e.g. `user.bsky.social`) or DID (`did:plc:...`). |
 | TW polls return 403 | Cookies expired/invalid | Re-export `auth_token` and `ct0` cookies from browser DevTools → Application → Cookies on x.com. |
 | TW rate limited (429) | Polling too fast | X is aggressive about rate limiting. In `main.py`, increase `tw_poll_interval_minutes`. In `server.py`, increase `poll_interval_minutes`. Default 2s inter-request delay + 60s backoff. |
-| TW GraphQL fails | Query IDs rotated | X may update GraphQL query IDs when they deploy new frontend code. Check logs for 404s and update hardcoded IDs in `clients/tw/client.py`. |
+| TW GraphQL fails | Query IDs rotated | As of 2.105.0 the poll path prefers **gallery-dl** (`clients/tw/gallerydl.py`), which tracks X's API for us — `pip install -U gallery-dl` usually fixes a broken scrape. Only the GraphQL **fallback** (and posting) still uses hardcoded query IDs; if gallery-dl is unavailable and logs show 404s, update the IDs in `clients/tw/client.py`. Check `/api/tw/auth/status` → `poll_backend` to see which path is live. |
 
 ### Known Limitations (Not Fixed)
 

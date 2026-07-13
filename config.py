@@ -496,6 +496,10 @@ BSKY_REQUEST_DELAY_SECONDS = 1.0  # Bluesky AT Protocol — generous rate limits
 
 # ── X/Twitter settings ──
 TW_REQUEST_DELAY_SECONDS = 2.0  # X GraphQL — aggressive rate limiting, needs higher delay
+# The X poll path prefers the gallery-dl CLI (invoked as a separate subprocess —
+# see clients/tw/gallerydl.py) and falls back to the built-in GraphQL scrape when
+# gallery-dl is absent. This caps how long we wait on that subprocess per cycle.
+TW_GALLERYDL_TIMEOUT_SECONDS = 300  # kill a stuck gallery-dl run after 5 min
 
 # ── Mastodon settings ──
 MAST_REQUEST_DELAY_SECONDS = 0.5  # Mastodon REST — per-instance limits are generous
@@ -906,7 +910,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.104.0"
+APP_VERSION = "2.105.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

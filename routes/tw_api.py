@@ -44,10 +44,17 @@ def tw_auth_status():
         pass
     finally:
         conn.close()
+    # Report which poll backend is live so the connect card can show whether the
+    # (more robust) gallery-dl path is in use or we're on the GraphQL fallback.
+    from clients.tw import gallerydl
+    gallerydl_available = gallerydl.find_gallerydl(settings) is not None
+    backend = "gallerydl" if gallerydl.is_enabled(settings) else "graphql"
     return {
         "has_credentials": has_credentials,
         "has_data": has_data,
         "username": settings.get("tw_target_user", ""),
+        "poll_backend": backend,
+        "gallerydl_available": gallerydl_available,
     }
 
 

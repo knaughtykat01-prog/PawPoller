@@ -1,7 +1,27 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-13
-**Current version (master):** 2.104.0 — **e621 is the 17th platform (poll-only) + platforms sort alphabetically.**
+**Current version (master):** 2.105.0 — **X/Twitter polling moves to gallery-dl (hybrid, with GraphQL fallback).**
+The X/Twitter **poll path** now prefers **gallery-dl** (a maintained downloader that tracks X's changing
+internal API) over PawPoller's hand-rolled GraphQL scrape with its rotating query IDs. **Hybrid, never a
+regression:** `TWClient.get_all_tweets()` + `validate_cookies()` try gallery-dl first and **fall back to the
+existing GraphQL scrape** when gallery-dl is absent/disabled/errors — so if gallery-dl isn't installed, X
+polling behaves exactly as before. **Read-path only:** gallery-dl can't post, so tweet posting (Posts module →
+`create_tweet`/`upload_media`) stays entirely on GraphQL. **Licence isolation:** gallery-dl is GPL-2.0 and is
+invoked **only as a subprocess, never imported** (mere aggregation — MIT unaffected); the boundary lives in
+`clients/tw/gallerydl.py` (do not `import gallery_dl` anywhere). Runs `gallery-dl -j -q --cookies <tmp jar>
+-o extractor.twitter.text-tweets=true -o …retweets=false ".../<user>/tweets"` with the **same auth_token+ct0**,
+parses the JSON dump into the identical detail-dict shape (all 6 metrics, multi-image `media_urls`, Snowflake
+date fallback); capped by `TW_GALLERYDL_TIMEOUT_SECONDS` (300s). **Delivery:** added to `requirements-server.txt`
+(server auto-installs → console script on PATH) + `requirements.txt` (source/dev); **NOT bundled** into the
+frozen `.exe` (never imported → PyInstaller skips it) — packaged desktop auto-detects a system install or falls
+back. Overrides (plain settings, not secrets): `tw_gallerydl_path`, `tw_polling_backend` (`auto`/`graphql`).
+`/api/tw/auth/status` now returns `poll_backend` + `gallerydl_available`. New: `clients/tw/gallerydl.py`,
+`tests/test_tw_gallerydl.py` (17 tests). Full suite 384 pass.
+**Behavioural delta:** the gallery-dl path tracks own posts (`retweets=false`), so the GraphQL path's niche
+"keep a repost that @-mentions me" doesn't apply on that backend (captured tweets are never deleted).
+
+**Prior — 2.104.0 — e621 is the 17th platform (poll-only) + platforms sort alphabetically.**
 Added **e621** as a poll-only analytics platform (**PawPoller now tracks 17 platforms**). Connect username +
 API key (Account → Manage API Access — the API key, NOT the password); tracks your own uploads'
 **score** (score.total, can be negative — e621 has no view count so Score is the headline), **favorites**

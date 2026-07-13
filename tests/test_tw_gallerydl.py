@@ -1,0 +1,221 @@
+"""gallery-dl subprocess backend for the X/Twitter poll path.
+
+Covers the pure parsing of ``gallery-dl -j`` output into TWClient's detail-dict
+shape, the discovery/enable logic, the Netscape cookie writer, and the
+fetch/validate fallback contract (None => caller falls back to GraphQL). No real
+gallery-dl binary is required — the subprocess boundary is monkeypatched.
+"""
+
+import json
+
+import pytest
+
+from clients.tw import gallerydl
+
+
+# ── Sample gallery-dl -j output ─────────────────────────────────────────────
+# Media file entries are [type, url, kwdict]; a text-only tweet is [type, kwdict].
+# The tweet metadata is always the LAST element, which is what the parser keys on.
+_MEDIA_KW = {
+    "tweet_id": 1700000000000000000,
+    "content": "hello world",
+    "author": {"name": "TestHandle", "followers_count": 42},
+    "date": "2023-09-01 12:00:00",
+    "favorite_count": 5, "retweet_count": 2, "reply_count": 1,
+    "quote_count": 0, "bookmark_count": 3, "view_count": 100,
+    "hashtags": ["art", "furry"], "extension": "jpg",
+}
+_TEXT_KW = {
+    "tweet_id": 1700000000000000001,
+    "content": "just some text, no media",
+    "author": {"name": "TestHandle"},
+    "date": "2023-09-02T08:30:00.000Z",
+    "favorite_count": 1, "retweet_count": 0, "reply_count": 0,
+    "quote_count": 0, "bookmark_count": 0, "view_count": 10,
+}
+SAMPLE = json.dumps([
+    [3, "https://pbs.twimg.com/media/AAA.jpg", _MEDIA_KW],
+    [2, _TEXT_KW],
+])
+
+
+# ── Parsing ─────────────────────────────────────────────────────────────────
+
+def test_parse_media_and_text_tweets():
+    tweets = gallerydl._parse_dump_json(SAMPLE, "TestHandle")
+    assert len(tweets) == 2
+    media, text = tweets
+
+    assert media["tweet_id"] == "1700000000000000000"
+    assert media["likes"] == 5 and media["retweets"] == 2 and media["replies"] == 1
+    assert media["bookmarks"] == 3 and media["views"] == 100
+    assert media["title"].startswith("hello world")
+    assert media["description"] == "hello world"
+    assert media["keywords"] == ["art", "furry"]
+    assert media["media_urls"] == ["https://pbs.twimg.com/media/AAA.jpg"]
+    assert media["thumbnail_url"] == "https://pbs.twimg.com/media/AAA.jpg"
+    assert media["link"] == "https://x.com/TestHandle/status/1700000000000000000"
+    assert media["content_type"] == "tweet"
+    assert media["posted_at"] == "2023-09-01 12:00:00"
+
+    # Text-only tweet: no media, ISO date normalised to a space-separated string.
+    assert text["media_urls"] == [] and text["thumbnail_url"] == ""
+    assert text["views"] == 10 and text["likes"] == 1
+    assert text["posted_at"] == "2023-09-02 08:30:00"
+
+
+def test_parse_multi_image_collapses_to_one_tweet():
+    raw = json.dumps([
+        [3, "https://pbs.twimg.com/media/ONE.jpg", dict(_MEDIA_KW)],
+        [3, "https://pbs.twimg.com/media/TWO.png", dict(_MEDIA_KW)],
+    ])
+    tweets = gallerydl._parse_dump_json(raw, "TestHandle")
+    assert len(tweets) == 1
+    assert tweets[0]["media_urls"] == [
+        "https://pbs.twimg.com/media/ONE.jpg",
+        "https://pbs.twimg.com/media/TWO.png",
+    ]
+    assert tweets[0]["thumbnail_url"] == "https://pbs.twimg.com/media/ONE.jpg"
+
+
+def test_parse_skips_non_image_media():
+    kw = dict(_MEDIA_KW)
+    kw["extension"] = "mp4"
+    raw = json.dumps([[3, "https://video.twimg.com/ext_tw_video/x.mp4", kw]])
+    tweets = gallerydl._parse_dump_json(raw, "TestHandle")
+    assert len(tweets) == 1
+    assert tweets[0]["media_urls"] == []  # video not importable as artwork
+
+
+def test_parse_content_types():
+    def _ct(extra):
+        kw = {"tweet_id": 1, "content": "x", "author": {"name": "h"}, **extra}
+        return gallerydl._parse_dump_json(json.dumps([[2, kw]]), "h")[0]["content_type"]
+
+    assert _ct({"reply_id": 9}) == "reply"
+    assert _ct({"retweet_id": 9}) == "retweet"
+    assert _ct({"quote_id": 9}) == "quote"
+    assert _ct({}) == "tweet"
+
+
+def test_parse_garbage_returns_empty():
+    assert gallerydl._parse_dump_json("", "h") == []
+    assert gallerydl._parse_dump_json("not json", "h") == []
+    assert gallerydl._parse_dump_json("{}", "h") == []          # object, not array
+    assert gallerydl._parse_dump_json("[1, 2, 3]", "h") == []    # no dicts
+
+
+def test_parse_falls_back_to_snowflake_date_when_missing():
+    kw = {"tweet_id": 1445919810076827648, "content": "hi", "author": {"name": "h"}}
+    d = gallerydl._parse_dump_json(json.dumps([[2, kw]]), "h")[0]
+    assert d["posted_at"] and d["posted_at"][:4].isdigit()
+
+
+def test_normalize_date_forms():
+    assert gallerydl._normalize_date("2023-09-01 12:00:00") == "2023-09-01 12:00:00"
+    assert gallerydl._normalize_date("2023-09-01T12:00:00.000Z") == "2023-09-01 12:00:00"
+    assert gallerydl._normalize_date("2023-09-01T12:00:00+00:00") == "2023-09-01 12:00:00"
+    assert gallerydl._normalize_date("") == ""
+    assert gallerydl._normalize_date(None) == ""
+
+
+# ── Cookie jar ──────────────────────────────────────────────────────────────
+
+def test_write_cookies_netscape_format(tmp_path):
+    path = tmp_path / "cookies.txt"
+    gallerydl._write_cookies("AUTHVAL", "CT0VAL", str(path))
+    content = path.read_text(encoding="utf-8")
+    assert content.startswith("# Netscape HTTP Cookie File")
+    assert "\tauth_token\tAUTHVAL" in content
+    assert "\tct0\tCT0VAL" in content
+    for line in content.splitlines()[1:]:
+        assert line.startswith(".x.com\t")
+
+
+# ── Discovery / enable ──────────────────────────────────────────────────────
+
+def test_find_gallerydl_none_when_absent(monkeypatch):
+    monkeypatch.setattr(gallerydl.shutil, "which", lambda *_a, **_k: None)
+    assert gallerydl.find_gallerydl({}) is None
+
+
+def test_find_gallerydl_explicit_bad_path_falls_through(monkeypatch, tmp_path):
+    monkeypatch.setattr(gallerydl.shutil, "which", lambda *_a, **_k: "/usr/bin/gallery-dl")
+    # A non-existent explicit path should fall through to the PATH lookup.
+    got = gallerydl.find_gallerydl({"tw_gallerydl_path": str(tmp_path / "nope")})
+    assert got == "/usr/bin/gallery-dl"
+
+
+def test_is_enabled_backend_graphql_forces_off(monkeypatch):
+    monkeypatch.setattr(gallerydl.shutil, "which", lambda *_a, **_k: "/usr/bin/gallery-dl")
+    assert gallerydl.is_enabled({"tw_polling_backend": "graphql"}) is False
+
+
+def test_is_enabled_auto_uses_gallerydl_when_present(monkeypatch):
+    monkeypatch.setattr(gallerydl.shutil, "which", lambda *_a, **_k: "/usr/bin/gallery-dl")
+    assert gallerydl.is_enabled({"tw_polling_backend": "auto"}) is True
+    assert gallerydl.is_enabled({}) is True  # auto is the default
+
+
+# ── fetch/validate fallback contract ────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_fetch_returns_none_when_unavailable(monkeypatch):
+    monkeypatch.setattr(gallerydl, "find_gallerydl", lambda *_a, **_k: None)
+    out = await gallerydl.fetch_tweets("a", "b", "TestHandle", settings={})
+    assert out is None  # => TWClient falls back to GraphQL
+
+
+@pytest.mark.asyncio
+async def test_fetch_full_pipeline(monkeypatch):
+    monkeypatch.setattr(gallerydl, "find_gallerydl", lambda *_a, **_k: "/usr/bin/gallery-dl")
+
+    async def fake_run(exe, url, cookie_path, settings, range_spec=None):
+        assert url == "https://x.com/TestHandle/tweets"
+        return 0, SAMPLE, ""
+
+    monkeypatch.setattr(gallerydl, "_run", fake_run)
+    out = await gallerydl.fetch_tweets("a", "b", "@TestHandle", settings={})
+    assert out is not None and len(out) == 2
+    assert out[0]["views"] == 100
+
+
+@pytest.mark.asyncio
+async def test_fetch_returns_none_on_nonzero_exit(monkeypatch):
+    monkeypatch.setattr(gallerydl, "find_gallerydl", lambda *_a, **_k: "/usr/bin/gallery-dl")
+
+    async def fake_run(*_a, **_k):
+        return 1, "", "HTTPError 401 AuthRequired"
+
+    monkeypatch.setattr(gallerydl, "_run", fake_run)
+    out = await gallerydl.fetch_tweets("a", "b", "TestHandle", settings={})
+    assert out is None  # nonzero exit => fall back, not a silent empty success
+
+
+@pytest.mark.asyncio
+async def test_validate_true_false_none(monkeypatch):
+    monkeypatch.setattr(gallerydl, "find_gallerydl", lambda *_a, **_k: "/usr/bin/gallery-dl")
+
+    async def ok(*_a, **_k):
+        return 0, "[]", ""
+
+    async def auth_fail(*_a, **_k):
+        return 1, "", "AuthRequired: authenticated cookies needed"
+
+    async def ambiguous(*_a, **_k):
+        return 1, "", "ConnectionError: network unreachable"
+
+    monkeypatch.setattr(gallerydl, "_run", ok)
+    assert await gallerydl.validate("a", "b", "h", settings={}) is True
+
+    monkeypatch.setattr(gallerydl, "_run", auth_fail)
+    assert await gallerydl.validate("a", "b", "h", settings={}) is False
+
+    monkeypatch.setattr(gallerydl, "_run", ambiguous)
+    assert await gallerydl.validate("a", "b", "h", settings={}) is None  # => GraphQL fallback
+
+
+@pytest.mark.asyncio
+async def test_validate_none_when_unavailable(monkeypatch):
+    monkeypatch.setattr(gallerydl, "find_gallerydl", lambda *_a, **_k: None)
+    assert await gallerydl.validate("a", "b", "h", settings={}) is None

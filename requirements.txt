@@ -24,3 +24,11 @@ cryptography>=48.0.1
 # key in the OS keystore (Windows Credential Manager / macOS Keychain)
 # instead of a .vault_key dotfile sitting next to the ciphertext.
 keyring>=25.0
+# gallery-dl powers the X/Twitter poll path, invoked ONLY as a separate
+# subprocess (never imported — see clients/tw/gallerydl.py), so its GPL-2.0
+# licence stays at arm's length from PawPoller's MIT code. Optional at runtime:
+# if absent, X polling falls back to the built-in GraphQL scrape. NOT bundled
+# into the frozen .exe (we never import it, so PyInstaller won't pull it in) —
+# source/dev installs get it here; packaged desktop users auto-detect a system
+# install or fall back. Loose floor so it can track X's changing API.
+gallery-dl>=1.32

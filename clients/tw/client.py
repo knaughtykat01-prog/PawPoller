@@ -236,11 +236,24 @@ class TWClient:
     # -- Authentication -------------------------------------------------------
 
     async def validate_cookies(self) -> bool:
-        """Verify cookies work by making a lightweight authenticated request."""
+        """Verify cookies work by making a lightweight authenticated request.
+
+        Prefers gallery-dl (a single-item fetch) so validation doesn't depend on
+        the GraphQL query IDs that rotate; falls back to the UserByScreenName
+        GraphQL endpoint when gallery-dl is unavailable or inconclusive.
+        """
         if not self.auth_token or not self.ct0:
             return False
         try:
-            # Use the UserByScreenName endpoint as validation
+            from clients.tw import gallerydl
+            verdict = await gallerydl.validate(self.auth_token, self.ct0, self.target_user)
+        except Exception as e:
+            logger.debug("TW: gallery-dl validation errored, using GraphQL: %s", e)
+            verdict = None
+        if verdict is not None:
+            return verdict
+        try:
+            # Fallback: UserByScreenName endpoint
             user_id = await self._get_user_id()
             return bool(user_id)
         except Exception as e:
@@ -402,6 +415,29 @@ class TWClient:
     # -- Tweet Discovery ------------------------------------------------------
 
     async def get_all_tweets(self) -> list[dict]:
+        """Fetch the target user's tweets with full stats.
+
+        Prefers the gallery-dl subprocess backend (clients/tw/gallerydl.py),
+        which tracks X's ever-changing internal API so we don't have to chase
+        rotating GraphQL query IDs. Falls back to the built-in GraphQL timeline
+        scrape (:meth:`_get_all_tweets_graphql`) whenever gallery-dl is absent,
+        disabled, or errors — so this method never returns worse data than the
+        GraphQL path alone would. Posting is unaffected (gallery-dl can't post).
+
+        A gallery-dl result (even an empty list) is authoritative; only ``None``
+        — meaning gallery-dl was unavailable or failed — triggers the fallback.
+        """
+        try:
+            from clients.tw import gallerydl
+            via_gdl = await gallerydl.fetch_tweets(self.auth_token, self.ct0, self.target_user)
+        except Exception as e:
+            logger.warning("TW: gallery-dl backend error, using GraphQL: %s", e)
+            via_gdl = None
+        if via_gdl is not None:
+            return via_gdl
+        return await self._get_all_tweets_graphql()
+
+    async def _get_all_tweets_graphql(self) -> list[dict]:
         """Fetch the target user's tweets — with full stats — via UserTweets.
 
         The timeline response already carries each tweet's text and engagement

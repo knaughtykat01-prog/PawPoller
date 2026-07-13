@@ -4,6 +4,45 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.105.0] - 2026-07-13 - X/Twitter polling moves to gallery-dl (hybrid, with GraphQL fallback)
+
+The **X/Twitter poll path** now prefers **[gallery-dl](https://github.com/mikf/gallery-dl)** — a
+widely-maintained downloader that tracks X's ever-changing internal API — instead of relying solely on
+PawPoller's hand-rolled GraphQL scrape with its hardcoded, frequently-rotating query IDs. This offloads
+the recurring "X shipped a new bundle, the query IDs 404, fix them" maintenance tax to a tool whose whole
+job is keeping up with X.
+
+- **Hybrid, never a regression.** `TWClient.get_all_tweets()` and `validate_cookies()` try gallery-dl
+  first and **fall back to the existing GraphQL timeline scrape** whenever gallery-dl is absent, disabled,
+  or errors. A gallery-dl result (even empty) is authoritative; only an unavailable/failed run triggers
+  the fallback. If gallery-dl isn't installed, X polling behaves **exactly as it did before**.
+- **Read-path only — posting is untouched.** gallery-dl is a downloader and cannot post, so tweet
+  posting (the Posts module → `create_tweet`/`upload_media`) stays entirely on the GraphQL client.
+- **Licence isolation.** gallery-dl is **GPL-2.0**; PawPoller is MIT. It is invoked **only as a separate
+  subprocess and never imported** (mere aggregation, not a derivative work), so the MIT licence is
+  unaffected. New `clients/tw/gallerydl.py` carries the boundary; do not add `import gallery_dl` anywhere.
+- **How it runs.** We shell out to `gallery-dl -j -q --cookies <tmp> --sleep-request <delay>
+  -o extractor.twitter.text-tweets=true -o extractor.twitter.retweets=false ".../<user>/tweets"`, using
+  the **same `auth_token` + `ct0` cookies** (written to a temp Netscape jar), and parse the JSON dump into
+  the identical detail-dict shape the poller already consumes — all six metrics
+  (views/likes/retweets/replies/quotes/bookmarks), multi-image `media_urls`, content-type, and a
+  Snowflake-id date fallback. Runs are capped by `TW_GALLERYDL_TIMEOUT_SECONDS` (300s).
+- **Delivery.** Added to `requirements-server.txt` (server auto-installs it — the Docker build puts the
+  `gallery-dl` console script on PATH) and `requirements.txt` (source/dev installs). **Not bundled** into
+  the frozen desktop `.exe` (we never import it, so PyInstaller won't pull it in): packaged desktop users
+  auto-detect a system install or fall back to GraphQL. Optional overrides (plain settings, not secrets):
+  `tw_gallerydl_path` (explicit binary path) and `tw_polling_backend` (`auto` default / `graphql` to
+  force the legacy scrape). `/api/tw/auth/status` now reports `poll_backend` + `gallerydl_available`.
+- **Behavioural delta:** the gallery-dl path tracks the account's own posts (`retweets=false`), so the
+  niche "keep a repost that @-mentions me" behaviour of the GraphQL path doesn't apply on that backend
+  (already-captured tweets are never deleted; upserts only accumulate).
+- New: `clients/tw/gallerydl.py`, `tests/test_tw_gallerydl.py` (parsing, discovery/enable, cookie writer,
+  and the fetch/validate fallback contract — 17 tests, no real binary needed).
+
+Full suite: 384 passed.
+
+---
+
 ## [2.104.0] - 2026-07-13 - e621 is the 17th platform (poll-only) + platforms now sort alphabetically
 
 Added **e621** as a poll-only analytics platform — PawPoller now tracks **17 platforms**.

@@ -18,6 +18,15 @@ weasyprint~=68.1
 # security advisory (GHSA-537c-gmf6-5ccf).
 cryptography~=48.0.1
 
+# gallery-dl powers the X/Twitter poll path. It is GPL-2.0 and is invoked ONLY
+# as a separate subprocess (never imported — see clients/tw/gallerydl.py), so it
+# stays at arm's length from PawPoller's MIT code (mere aggregation). Unlike the
+# other pins, gallery-dl gets a looser minor-range so it can keep tracking X's
+# frequently-changing internal API — that ability IS the reason we depend on it.
+# If gallery-dl is missing at runtime, X polling falls back to the built-in
+# GraphQL scrape, so this dependency is an upgrade, not a hard requirement.
+gallery-dl~=1.32
+
 # Test dependencies (needed by CI test job — not runtime)
 # pytest >=9.0.3: 8.x/9.0.0-9.0.2 have PYSEC-2026-1845 (predictable
 # /tmp/pytest-of-* dirs, local-user DoS on UNIX). Full suite verified
