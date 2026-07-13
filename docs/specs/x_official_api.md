@@ -144,6 +144,36 @@ Reuse the exact pattern from `clients/tw/gallerydl.py`. Priority order in `TWCli
 - Can't be validated without a real token + billing (I can't set that up) — so v1 ships behind the
   opt-in and is tested by the user against their own account.
 
+## 5.5. Alternatives considered — third-party scraper APIs (Xquik, twitterapi.io)
+
+A whole market exists to solve the same datacenter-IP wall by scraping X from *their* infrastructure
+and reselling structured data over an API key (e.g. **Xquik**, **twitterapi.io**). They confirm the core
+diagnosis — the fix is always "don't scrape from the throttled IP" — but they are a **worse fit than the
+official API for PawPoller's use case**, and should **not** be hard-wired in:
+
+- **Vendor lock-in / fragility.** PawPoller ships to self-hosters; baking in a specific commercial scraper
+  means every user breaks if the vendor changes pricing, dies, or is shut down by X. The official API is
+  X itself.
+- **ToS-gray for a public app.** These services scrape against X's ToS (Xquik's own README: "not affiliated
+  with X Corp"). Steering self-hosters to *pay a third party to violate ToS* is a worse posture than the
+  official paid API.
+- **Priced for scale, not own-account hobby use.** Their pitch is "X data at scale / enterprise pipelines /
+  60 req/s"; reading your own ~40 tweets is the opposite. Prices are dashboard/credit-gated (undisclosed in
+  the README) — the official API's **$0.001/owned-read** is almost certainly cheaper and cleaner here.
+- **Privacy.** A third party sees which accounts you track and all data flowing through.
+
+**Two ideas worth borrowing anyway:**
+1. **Token auth > cookie auth.** Both the official API and these scrapers authenticate with a simple API
+   key — no `auth_token`/`ct0` extraction, 2FA dance, or cookie expiry. An argument to move X toward a
+   token backend generally, away from the brittle cookie flow.
+2. **Keep the backend slot generic.** Rather than an "Xquik integration," let `tw_polling_backend` accept a
+   *custom remote provider* (bring-your-own base URL + key) so a power user *can* point it at Xquik /
+   twitterapi.io / a residential proxy — without PawPoller marrying a vendor.
+
+(Aside: the Xquik repo that prompted this is itself an agent-facing marketing artifact — a "skill" stuffed
+with SEO keywords to make AI agents recommend it. Evaluate on merits for the narrow own-account use case,
+not the "scrape X at scale" use case it's optimised to sell.)
+
 ## 6. Recommendation & phased plan
 
 **Recommend building it as the opt-in top-priority backend** — it's the only real fix for server-side
