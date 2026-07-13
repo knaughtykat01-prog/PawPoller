@@ -3589,7 +3589,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(sub.rating || '')}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on FurAffinity</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on FurAffinity</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.views)} <span class="lbl">views</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.favorites_count)} <span class="lbl">faves</span></div>
@@ -3938,7 +3938,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(sub.rating || '')}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Weasyl</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on Weasyl</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.views)} <span class="lbl">views</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.favorites_count)} <span class="lbl">faves</span></div>
@@ -4265,7 +4265,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.escapeHtml(sub.posted_at || '')} &middot; ${Utils.escapeHtml(sub.rating || '')}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on SoFurry</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on SoFurry</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.views)} <span class="lbl">views</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.favorites_count)} <span class="lbl">likes</span></div>
@@ -4568,7 +4568,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.escapeHtml(sub.posted_at || '')} &middot; ${Utils.escapeHtml(sub.rating || '')}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on SquidgeWorld</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on SquidgeWorld</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.views)} <span class="lbl">hits</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.favorites_count)} <span class="lbl">kudos</span></div>
@@ -4872,7 +4872,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.escapeHtml(sub.posted_at || '')} &middot; ${Utils.escapeHtml(sub.rating || '')}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on AO3</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on AO3</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.views)} <span class="lbl">hits</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.favorites_count)} <span class="lbl">kudos</span></div>
@@ -5189,7 +5189,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(sub.rating || '')}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on DeviantArt</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on DeviantArt</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.views)} <span class="lbl">views</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.favorites_count)} <span class="lbl">faves</span></div>
@@ -5507,7 +5507,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Wattpad</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on Wattpad</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.reads || sub.views || 0)} <span class="lbl">reads</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.votes || sub.favorites_count || 0)} <span class="lbl">votes</span></div>
@@ -5818,7 +5818,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.BSKY_TYPE_LABELS[sub.content_type] || sub.content_type || 'Post')}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Itaku</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on Itaku</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.likes || 0)} <span class="lbl">likes</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.comments_count || 0)} <span class="lbl">comments</span></div>
@@ -6131,7 +6131,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Bluesky</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on Bluesky</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.likes || 0)} <span class="lbl">likes</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.reposts || 0)} <span class="lbl">reposts</span></div>
@@ -6447,7 +6447,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.MAST_TYPE_LABELS[sub.content_type] || sub.content_type || 'Post')}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Mastodon</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on Mastodon</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.likes || 0)} <span class="lbl">likes</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.reposts || 0)} <span class="lbl">reposts</span></div>
@@ -6731,7 +6731,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.TUM_TYPE_LABELS[sub.content_type] || sub.content_type || 'Text')}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Tumblr</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on Tumblr</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.notes || 0)} <span class="lbl">notes</span></div>
                         </div>
@@ -7008,7 +7008,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.PIX_TYPE_LABELS[sub.content_type] || sub.content_type || 'Illust')}${sub.rating && sub.rating !== 'General' ? ' &middot; ' + Utils.escapeHtml(sub.rating) : ''}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Pixiv</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on Pixiv</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.views || 0)} <span class="lbl">views</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.favorites_count || 0)} <span class="lbl">bookmarks</span></div>
@@ -7304,7 +7304,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.THR_TYPE_LABELS[sub.content_type] || sub.content_type || 'Text')}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Threads</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on Threads</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.views || 0)} <span class="lbl">views</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.likes || 0)} <span class="lbl">likes</span></div>
@@ -7603,7 +7603,7 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.IG_TYPE_LABELS[sub.content_type] || sub.content_type || 'Text')}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on Instagram</a></div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on Instagram</a></div>
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.views || 0)} <span class="lbl">views</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.likes || 0)} <span class="lbl">likes</span></div>
@@ -7919,8 +7919,8 @@ const App = {
                     <div class="detail-info">
                         <h2>${Utils.escapeHtml(sub.title)}</h2>
                         <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.TW_TYPE_LABELS[sub.content_type] || sub.content_type || 'Tweet')}</div>
-                        <div class="detail-meta"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank">View on X</a></div>
-                        ${sub.thumbnail_url ? `<div class="detail-media"><a href="${Utils.escapeHtml(sub.link || '#')}" target="_blank"><img src="${Utils.escapeHtml(sub.thumbnail_url)}" loading="lazy" alt="tweet image" style="max-width:340px;max-height:340px;border-radius:var(--radius,12px);margin:10px 0;border:1px solid var(--border)"></a></div>` : ''}
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on X</a></div>
+                        ${sub.thumbnail_url ? `<div class="detail-media"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank"><img src="${Utils.escapeHtml(sub.thumbnail_url)}" loading="lazy" alt="tweet image" style="max-width:340px;max-height:340px;border-radius:var(--radius,12px);margin:10px 0;border:1px solid var(--border)"></a></div>` : ''}
                         <div class="detail-stats">
                             <div class="detail-stat">${Utils.formatNumber(sub.views || 0)} <span class="lbl">views</span></div>
                             <div class="detail-stat">${Utils.formatNumber(sub.likes || 0)} <span class="lbl">likes</span></div>

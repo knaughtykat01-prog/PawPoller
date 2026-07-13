@@ -2418,6 +2418,29 @@ The integration is transparent: `_load_settings()` merges decrypted vault data i
 
 **API endpoints**: `GET /api/settings/vault/status` (reports `key_source`); the old `POST …/vault/enable` + `/vault/disable` endpoints were removed in 2.101.0.
 
+### Security assessment & cross-cutting controls (ASVS 5.0 L2, 2.102.0)
+
+The app is assessed against **OWASP ASVS 5.0 Level 2** — the full requirement-by-requirement
+walk-through with evidence and a Known-Gaps register lives at
+`docs/security/ASVS_ASSESSMENT.md` (ships in the public copy). Re-run/refresh it when touching
+auth, session, crypto, file handling, or the CSP/headers. Cross-cutting controls added in 2.102.0:
+
+- **Frontend URL safety** — `Utils.safeUrl()` allowlists URL schemes (http(s)/relative/blob/
+  `data:image`) so a scraped `javascript:` URL can't reach an `href`; `Utils.cssUrl()` does the
+  same then percent-encodes the CSS/HTML breakout set for `url()` contexts (both in `utils.js`).
+  All external-URL `href`/`background-image` sinks route through them.
+- **5xx error scrubber** — an `@app.exception_handler(StarletteHTTPException)` in `dashboard.py`
+  replaces the `detail` of any 5xx with `"Internal server error"` (logging the real detail),
+  while leaving 4xx validation messages intact. This neutralizes the ~200 `HTTPException(500,
+  detail=str(e))` sites without editing each one.
+- **Auth logging** — `routes/dashboard_auth.py` logs every auth outcome with client IP +
+  `_sanitize_for_log(username)` (CR/LF-stripped); the middleware logs API-key rejections and
+  rate-limit trips.
+- **Session invalidation** — `config.rotate_session_secret()` (called on password change)
+  regenerates the signing secret, invalidating all stateless session cookies at once.
+- **Reduced surface** — FastAPI docs (`/docs`,`/redoc`,`/openapi.json`) are off unless
+  `PAWPOLLER_ENABLE_DOCS=1`; log files rotate (`RotatingFileHandler`, 10 MB × 5).
+
 ### Settings Sync (Phase 7a)
 
 Desktop and server instances can share credentials via `POST /api/settings/sync`. Supports `mode: "pull"` (fetch server settings) and `mode: "push"` (send local settings to server). Auth enforced by existing dashboard middleware.

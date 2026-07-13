@@ -244,7 +244,7 @@ window.Artwork = {
                     <span class="artwork-plat" title="${this.esc(p.label)}">${p.emoji || this.esc(p.label)}</span>
                     <span class="artwork-master-member-title">${this.esc(d.title || ('#' + d.submission_id))}</span>
                     ${v}
-                    <a class="btn btn-sm" href="${this.esc(d.url)}" target="_blank" rel="noopener">View ↗</a>
+                    <a class="btn btn-sm" href="${this.esc(Utils.safeUrl(d.url) || '#')}" target="_blank" rel="noopener">View ↗</a>
                 </div>`;
         }).join('');
         return `
@@ -492,7 +492,7 @@ window.Artwork = {
         return `
             <div class="artwork-card artwork-card--disc artwork-card--selectable" data-key="${this.esc(key)}">
                 <span class="artwork-select-check" aria-hidden="true">✓</span>
-                <a href="${this.esc(d.url)}" target="_blank" rel="noopener" class="artwork-card-coverlink">
+                <a href="${this.esc(Utils.safeUrl(d.url) || '#')}" target="_blank" rel="noopener" class="artwork-card-coverlink">
                     ${cover}
                     <span class="artwork-disc-badge" title="Found on ${this.esc(plat.label)}">${plat.emoji || this.esc(plat.label)}</span>
                 </a>
@@ -500,7 +500,7 @@ window.Artwork = {
                     <div class="artwork-card-title">${this.esc(d.title || ('#' + d.submission_id))}</div>
                     <div class="artwork-card-meta">${views}</div>
                     <div class="artwork-disc-actions">
-                        <a class="btn btn-sm" href="${this.esc(d.url)}" target="_blank" rel="noopener">View ↗</a>
+                        <a class="btn btn-sm" href="${this.esc(Utils.safeUrl(d.url) || '#')}" target="_blank" rel="noopener">View ↗</a>
                         <button class="btn btn-sm btn-primary art-import-btn"
                             data-platform="${this.esc(d.platform)}" data-sid="${this.esc(d.submission_id)}">Import</button>
                     </div>
@@ -834,7 +834,7 @@ window.Artwork = {
             const plat = this._plat(p.platform);
             const st = p.stats || {};
             const link = p.external_url
-                ? `<a href="${this.esc(p.external_url)}" target="_blank" rel="noopener">view ↗</a>` : '—';
+                ? `<a href="${this.esc(Utils.safeUrl(p.external_url) || '#')}" target="_blank" rel="noopener">view ↗</a>` : '—';
             const stats = p.stats
                 ? `${Utils.formatNumber(st.views || 0)} views · ${Utils.formatNumber(st.favorites_count || 0)} faves · ${Utils.formatNumber(st.comments_count || 0)} comments`
                 : '<span class="muted">not yet polled</span>';

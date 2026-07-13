@@ -25,6 +25,18 @@ logger = logging.getLogger(__name__)
 dashboard_auth_router = APIRouter(prefix="/api/auth")
 
 
+def _sanitize_for_log(value: str, limit: int = 64) -> str:
+    """Make a user-supplied string safe to interpolate into a log line.
+
+    Strips CR/LF and other control characters (so a crafted username can't
+    forge additional log entries — ASVS V16.4.1) and caps the length.
+    """
+    if not value:
+        return "-"
+    cleaned = "".join(c for c in str(value) if c.isprintable() and c not in "\r\n")
+    return (cleaned[:limit] + "…") if len(cleaned) > limit else (cleaned or "-")
+
+
 # -- Dashboard Status --------------------------------------------------------
 
 @dashboard_auth_router.get("/dashboard-status")
@@ -71,6 +83,7 @@ async def dashboard_login(request: Request, body: dict):
 
     client_ip = request.client.host if request.client else "unknown"
     if _is_rate_limited(client_ip):
+        logger.warning("Auth: login blocked by rate limiter (ip=%s)", client_ip)
         raise HTTPException(429, "Too many failed attempts. Try again later.")
 
     username = body.get("username", "").strip()
@@ -78,6 +91,9 @@ async def dashboard_login(request: Request, body: dict):
     totp_code = body.get("totp_code", "").strip()
     remember = body.get("remember", False)
     turnstile_token = body.get("turnstile_token", "")
+    # Neutralize CR/LF in the (attacker-controlled) username before it reaches
+    # a log line, to prevent forged log entries (ASVS V16.4.1 log injection).
+    _log_user = _sanitize_for_log(username)
 
     settings = config.get_settings()
 
@@ -86,6 +102,7 @@ async def dashboard_login(request: Request, body: dict):
     if turnstile_secret:
         if not await _verify_turnstile(turnstile_token, turnstile_secret, client_ip):
             _record_auth_failure(client_ip)
+            logger.warning("Auth: login failed — bot check (ip=%s user=%s)", client_ip, _log_user)
             raise HTTPException(403, "Bot verification failed. Please try again.")
 
     # Check credentials
@@ -99,10 +116,12 @@ async def dashboard_login(request: Request, body: dict):
             raise HTTPException(400, "Dashboard auth is not configured.")
         if username != stored_user or password != legacy_pw:
             _record_auth_failure(client_ip)
+            logger.warning("Auth: login failed — bad credentials (ip=%s user=%s)", client_ip, _log_user)
             raise HTTPException(401, "Invalid username or password.")
     else:
         if username != stored_user or not config.verify_password(password, stored_hash):
             _record_auth_failure(client_ip)
+            logger.warning("Auth: login failed — bad credentials (ip=%s user=%s)", client_ip, _log_user)
             raise HTTPException(401, "Invalid username or password.")
 
     # Check TOTP if enabled
@@ -111,11 +130,13 @@ async def dashboard_login(request: Request, body: dict):
         totp = pyotp.TOTP(settings["auth_totp_secret"])
         if not totp_code or not totp.verify(totp_code, valid_window=1):
             _record_auth_failure(client_ip)
+            logger.warning("Auth: login failed — bad 2FA code (ip=%s user=%s)", client_ip, _log_user)
             raise HTTPException(401, "Invalid or missing 2FA code.")
 
     # Success — clear rate limit history and create session
     from dashboard import _auth_failures
     _auth_failures.pop(client_ip, None)
+    logger.info("Auth: login success (ip=%s user=%s)", client_ip, _log_user)
 
     max_age = 30 * 86400 if remember else 86400
     payload = {"u": username}
@@ -210,8 +231,11 @@ def dashboard_change_password(body: dict):
         raise HTTPException(401, "Current password is incorrect.")
 
     config.save_settings({"auth_password_hash": config.hash_password(new_password)})
-    logger.info("Dashboard password changed")
-    return {"status": "success", "message": "Password updated."}
+    # Invalidate all existing sessions (including this one) so a password change
+    # terminates any other logged-in session or stolen cookie (ASVS V7.4.3).
+    config.rotate_session_secret()
+    logger.info("Dashboard password changed — all sessions invalidated")
+    return {"status": "success", "message": "Password updated. Please log in again."}
 
 
 # -- TOTP 2FA ---------------------------------------------------------------

@@ -211,6 +211,24 @@ python -m pytest tests/ -v
 
 ---
 
+## Security
+
+PawPoller holds your login credentials for up to 16 platforms, so credential handling is
+treated as the core of the app: secrets are **always** stored in an encrypted vault
+(AES-128 + HMAC via Fernet), never in plaintext, with the key held in your OS keystore or an
+out-of-band env var on a server ([SETUP §5.1](docs/SETUP.md)).
+
+The app is assessed against the **[OWASP ASVS 5.0](https://owasp.org/www-project-application-security-verification-standard/) Level 2** standard.
+The full self-assessment — all 253 L1/L2 requirements adjudicated with evidence, plus an
+honest register of known gaps — is published at
+**[`docs/security/ASVS_ASSESSMENT.md`](docs/security/ASVS_ASSESSMENT.md)**. It's a
+self-assessment (not third-party certified), maintained as a baseline for future changes.
+
+Found a vulnerability? Please open a private security advisory on the GitHub repository rather
+than a public issue.
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on development setup, adding new platforms, code style, and pull requests.

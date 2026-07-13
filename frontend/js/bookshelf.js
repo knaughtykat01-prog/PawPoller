@@ -247,7 +247,7 @@ window.Bookshelf = {
         const pubRows = published.map(code => {
             const b = byPlat[code] || { views: 0, faves: 0, comments: 0, url: '' };
             const p = this._plat(code);
-            const link = b.url ? `<a class="pub-open" href="${this.esc(b.url)}" target="_blank" rel="noopener">open &#8599;</a>` : '';
+            const link = b.url ? `<a class="pub-open" href="${this.esc(Utils.safeUrl(b.url) || '#')}" target="_blank" rel="noopener">open &#8599;</a>` : '';
             return `
                 <div class="pub-row">
                     <span class="pub-plat"><span class="pub-emoji">${p.emoji || ''}</span>${this.esc(p.label)}</span>

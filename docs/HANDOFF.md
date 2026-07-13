@@ -1,7 +1,25 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-13
-**Current version (live/master):** 2.101.0 — **Credential vault is now ALWAYS ON — plaintext credential storage no longer exists.**
+**Current version (live/master):** 2.102.0 — **OWASP ASVS 5.0 Level 2 self-assessment + the fixes it surfaced.**
+Walked all 253 L1+L2 ASVS 5.0 requirements against the app with file-level evidence → published
+`docs/security/ASVS_ASSESSMENT.md` (ships public; README links it; honest Known-Gaps register; single-tenant
+threat model). Nine gaps fixed in the same pass: (1) `Utils.safeUrl()` — scraped `sub.link`/`d.url`/`external_url`
+were HTML-escaped but not scheme-checked, so a `javascript:` URL executed on click; wraps all external-URL href
+sinks (V1.2.2). (2) `Utils.cssUrl()` — `submissions.js` `thumb_url` raw in `background-image:url()`; note
+`encodeURIComponent` leaves `'()` alone so cssUrl percent-encodes them explicitly (V1.2.1). (3) CSP
+`object-src 'none'; base-uri 'none'` added to both CSPs — base-uri has no default-src fallback (V3.4.3). (4)
+FastAPI `/docs`/`/redoc`/`/openapi.json` off unless `PAWPOLLER_ENABLE_DOCS=1` (V13.4.5). (5) auth events logged
+w/ IP+sanitized-user; rejected API key now counts toward rate limiter (V16.3.1). (6) `_sanitize_for_log()` strips
+CR/LF from username (V16.4.1). (7) 5xx `StarletteHTTPException` handler scrubs `detail=str(e)` → generic (logs
+real) while 4xx pass through — closes ~200 leak sites without touching them (V16.5.1). (8)
+`config.rotate_session_secret()` on password change invalidates ALL stateless sessions (V7.4.3). (9) log rotation
+(RotatingFileHandler 10MB×5) in server.py+main.py. Tests: `test_error_scrub.py`, `test_session_rotation.py`; full
+suite 363 pass. Residual gaps (documented + mitigated): SSRF on thumbnail proxy (KG-1), no breached-password check
+(KG-5), stateless-session revocation limits (KG-8), no AV / remote-log-shipping (KG-4/11). **Public-readiness §7
+security: re-closed at a named standard (ASVS L2).**
+
+**Prior — 2.101.0 — Credential vault is now ALWAYS ON — plaintext credential storage no longer exists.**
 Rhys: "why have vault as an option, it should just exist" → the vault is no longer opt-in. `save_settings()`/
 `delete_settings_keys()` route secrets to the Fernet vault unconditionally (vault rewritten even when EMPTY —
 fixes a stale-ciphertext bug where deleting the last credential resurrected on next load); `get_credential_mode()`

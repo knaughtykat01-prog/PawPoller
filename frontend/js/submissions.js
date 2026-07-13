@@ -196,8 +196,9 @@ window.Submissions = {
     },
 
     _card(w) {
-        const cover = w.thumb_url
-            ? `<div class="story-card-cover" style="background-image:url('${w.thumb_url}')"></div>`
+        const _cover = Utils.cssUrl(w.thumb_url);
+        const cover = _cover
+            ? `<div class="story-card-cover" style="background-image:url('${_cover}')"></div>`
             : `<div class="story-card-cover" style="display:flex;align-items:center;justify-content:center;color:var(--text-muted);">no image</div>`;
         const typeChip = `<span class="chip" style="text-transform:capitalize;">${this.esc(w.content_type)}</span>`;
         const rating = w.rating ? `<span class="chip">${this.esc(w.rating)}</span>` : '';
@@ -331,7 +332,7 @@ window.Submissions = {
                     <div style="font-weight:600;">${this.esc(d.title)}</div>
                     <div class="muted" style="font-size:.8rem;">
                         <span title="${this.esc(plat.label)}">${plat.emoji || ''} ${this.esc(plat.label)}</span>${d.type ? ` &middot; ${this.esc(d.type)}` : ''}
-                        &middot; <a href="${this.esc(d.url)}" target="_blank" rel="noopener">view &#8599;</a>
+                        &middot; <a href="${this.esc(Utils.safeUrl(d.url) || '#')}" target="_blank" rel="noopener">view &#8599;</a>
                     </div>
                 </div>
                 <select id="disc-sel-${i}" style="${this._inputStyle}max-width:220px;">

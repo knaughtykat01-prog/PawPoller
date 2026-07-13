@@ -4,6 +4,47 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.102.0] - 2026-07-13 - OWASP ASVS 5.0 Level 2 self-assessment + the fixes it surfaced
+
+Walked all **253 Level 1 + Level 2 requirements** of the OWASP Application Security Verification
+Standard 5.0 against the app, with file-level evidence, and published the result at
+`docs/security/ASVS_ASSESSMENT.md` (ships in the public copy; linked from the README). It's an
+honest self-assessment — including a Known Gaps register — under the app's single-tenant,
+self-hosted threat model. The walk-through surfaced nine gaps that are **fixed here**:
+
+- **`javascript:` URLs could reach an href (V1.2.2, L1).** Scraped submission permalinks
+  (`sub.link`/`d.url`/`external_url`) were HTML-escaped but not scheme-checked, so a
+  `javascript:` URL from scraped platform data would execute on click. New `Utils.safeUrl()`
+  (allowlists http(s)/relative/blob/`data:image`) wraps every external-URL href sink.
+- **Unescaped thumbnail in a CSS context (V1.2.1).** `submissions.js` put `thumb_url` raw into
+  `background-image:url('…')`. New `Utils.cssUrl()` scheme-checks then percent-encodes the
+  breakout set (note `encodeURIComponent` leaves `'()` alone — encoded explicitly).
+- **CSP missing `object-src`/`base-uri` (V3.4.3, L2).** `base-uri` has no `default-src` fallback,
+  so a `<base>` injection was unconstrained. Both added (`'none'`) to the main + epub CSPs.
+- **API docs exposed (V13.4.5, L2).** FastAPI `/docs`, `/redoc`, `/openapi.json` now disabled
+  unless `PAWPOLLER_ENABLE_DOCS=1`.
+- **Auth events weren't logged (V16.3.1/V16.2.1, L2).** Login success/failure, bad-2FA,
+  bot-check, rate-limit trips, and rejected API keys now log **client IP + sanitized username**;
+  a rejected API key now also counts toward the rate limiter.
+- **Log injection (V16.4.1, L2).** The attacker-controlled username is run through
+  `_sanitize_for_log()` (strips CR/LF/control chars) before it reaches a log line.
+- **Internal error detail leaked to clients (V16.5.1, L2).** ~200 routes raise
+  `HTTPException(500, detail=str(e))`. A new handler scrubs **5xx** detail to a generic message
+  (logging the real one) while leaving **4xx** validation messages intact.
+- **Password change didn't end other sessions (V7.4.3, L2).** Stateless signed cookies can't be
+  revoked individually, so `config.rotate_session_secret()` now runs on password change,
+  invalidating **all** sessions (the caller re-logs-in).
+- **Unbounded log files.** `FileHandler` → `RotatingFileHandler` (10 MB × 5) in `server.py` +
+  `main.py`.
+
+New tests: `tests/test_error_scrub.py` (5xx scrub / 4xx preserved / unhandled generic),
+`tests/test_session_rotation.py` (secret rotation invalidates old cookies). Full suite: 363
+passed. Assessment verdict: no critical/high defects; the residual gaps (SSRF on the thumbnail
+proxy, no breached-password check, stateless-session limitations, no AV/remote-log-shipping) are
+documented with mitigations in the Known Gaps register.
+
+---
+
 ## [2.101.0] - 2026-07-13 - Credential vault is now ALWAYS ON — plaintext credential storage no longer exists
 
 "Why have vault as an option? It should just exist." Right. Encryption at rest is no longer a Settings

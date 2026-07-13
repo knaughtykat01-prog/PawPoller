@@ -24,13 +24,20 @@ from database.db import init_db
 
 # ── Logging ───────────────────────────────────────────────────
 # Dual-output: stdout for Docker log visibility + persistent file.
+# The file handler ROTATES (10 MB × 5) so long-running servers don't grow
+# the log unbounded on the data volume.
+
+from logging.handlers import RotatingFileHandler
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(str(config.LOGS_DIR / "server.log"), encoding="utf-8"),
+        RotatingFileHandler(
+            str(config.LOGS_DIR / "server.log"),
+            maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8",
+        ),
     ],
 )
 logger = logging.getLogger("server")

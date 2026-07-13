@@ -6,11 +6,13 @@ Usage:
 """
 
 import logging
+import os
 import sys
 import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -76,7 +78,17 @@ async def lifespan(app: FastAPI):
     logger.info("Dashboard shutting down")
 
 
-app = FastAPI(title="PawPoller", version="1.0.0", lifespan=lifespan)
+# The interactive API docs (/docs, /redoc) and the OpenAPI schema are disabled
+# by default so a running instance doesn't expose its full API surface as an
+# extraneous, unauthenticated-looking endpoint (ASVS 5.0 V13.4.5). Set
+# PAWPOLLER_ENABLE_DOCS=1 to turn them back on for local development.
+_enable_docs = bool(os.environ.get("PAWPOLLER_ENABLE_DOCS"))
+app = FastAPI(
+    title="PawPoller", version="1.0.0", lifespan=lifespan,
+    docs_url="/docs" if _enable_docs else None,
+    redoc_url="/redoc" if _enable_docs else None,
+    openapi_url="/openapi.json" if _enable_docs else None,
+)
 
 # ── CORS — Block All Cross-Origin Requests ────────────────────
 # PawPoller is a self-contained SPA where frontend and API are same-origin.
@@ -100,6 +112,24 @@ app.add_middleware(
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled error on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
     return JSONResponse(status_code=500, content={"error": "Internal server error"})
+
+
+# Server-error detail scrubber. Many routes raise HTTPException(500, detail=str(e)),
+# which would return raw exception text (filesystem paths, network errors) to the
+# client. This handler keeps client-facing 4xx detail intact (intentional,
+# operator-facing validation messages the SPA displays) but replaces the detail of
+# any 5xx with a generic message, logging the real one server-side. Closes ASVS
+# 5.0 V16.5.1 without touching ~200 individual raise sites.
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code >= 500:
+        logger.error("Server error on %s %s: %s", request.method, request.url.path, exc.detail)
+        return JSONResponse(status_code=exc.status_code,
+                            content={"detail": "Internal server error"},
+                            headers=getattr(exc, "headers", None))
+    return JSONResponse(status_code=exc.status_code,
+                        content={"detail": exc.detail},
+                        headers=getattr(exc, "headers", None))
 
 
 # ── HTTP Security Headers ──────────────────────────────────────
@@ -191,6 +221,8 @@ def _build_epub_viewer_csp() -> str:
     theme_inline_hash = _theme_inline_hash()
     _cached_epub_viewer_csp = (
         "default-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'none'; "
         f"script-src 'self' {theme_inline_hash}; "
         "style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com; "
         "font-src 'self' blob: https://fonts.gstatic.com; "
@@ -220,6 +252,11 @@ def _build_csp() -> str:
     theme_inline_hash = _theme_inline_hash()
     _cached_csp = (
         "default-src 'self'; "
+        # object-src/base-uri are named explicitly (not just via default-src):
+        # ASVS 5.0 V3.4.3 requires both, and base-uri has NO default-src
+        # fallback, so without this a <base> tag injection would be unconstrained.
+        "object-src 'none'; "
+        "base-uri 'none'; "
         f"script-src 'self' {theme_inline_hash}{cf}; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
@@ -362,6 +399,7 @@ async def session_auth_middleware(request: Request, call_next):
 
     client_ip = request.client.host if request.client else "unknown"
     if _is_rate_limited(client_ip):
+        logger.warning("Auth: request blocked by rate limiter (ip=%s path=%s)", client_ip, path)
         return Response(status_code=429, content="Too many failed attempts. Try again later.")
 
     # Check API key (Authorization: Bearer pp_xxx)
@@ -370,6 +408,11 @@ async def session_auth_middleware(request: Request, call_next):
         token = auth_header[7:]
         if config.validate_api_key(token):
             return await call_next(request)
+        # A malformed/expired/forged API key is a failed auth attempt —
+        # count it toward the rate limiter and log it (ASVS V16.3.1).
+        _record_auth_failure(client_ip)
+        logger.warning("Auth: API-key rejected (ip=%s path=%s)", client_ip, path)
+        return JSONResponse(status_code=401, content={"error": "Authentication required"})
 
     # Check session cookie (verify_session handles short/long expiry internally)
     cookie = request.cookies.get("pp_session")
@@ -377,6 +420,9 @@ async def session_auth_middleware(request: Request, call_next):
         payload = config.verify_session(cookie)
         if payload:
             return await call_next(request)
+        # Present-but-invalid cookie (tampered/expired) — log at debug; these
+        # also happen benignly on idle expiry so don't count toward lockout.
+        logger.debug("Auth: session cookie invalid/expired (ip=%s path=%s)", client_ip, path)
 
     # Not authenticated — return 401 JSON for API paths so the frontend
     # can detect it and redirect to the login page

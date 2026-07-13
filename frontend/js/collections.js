@@ -126,7 +126,7 @@ window.Collections = {
                 <td class="muted">${s.views == null ? '—' : this._fmt(s.views)}</td>
                 <td class="muted">${s.favorites == null ? '—' : this._fmt(s.favorites)}</td>
                 <td class="muted">${s.comments == null ? '—' : this._fmt(s.comments)}</td>
-                <td style="text-align:right;">${l.url ? `<a class="btn btn-sm" href="${this.esc(l.url)}" target="_blank" rel="noopener">View ↗</a>` : ''}</td>
+                <td style="text-align:right;">${l.url ? `<a class="btn btn-sm" href="${this.esc(Utils.safeUrl(l.url) || '#')}" target="_blank" rel="noopener">View ↗</a>` : ''}</td>
             </tr>`;
         }).join('');
 

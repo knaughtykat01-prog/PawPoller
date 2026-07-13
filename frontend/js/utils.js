@@ -156,6 +156,45 @@ const Utils = {
         return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     },
 
+    /* ── safeUrl ──────────────────────────────────────────────
+     * Neutralize dangerous URL schemes before a value from an EXTERNAL
+     * source (scraped submission permalinks, discovered-art URLs, poll
+     * data) is placed into an href/src. escapeHtml does NOT stop
+     * `javascript:` — an HTML-escaped `javascript:alert(1)` still executes
+     * on click. This allowlists safe forms and collapses everything else
+     * (javascript:, vbscript:, data:text/html, ...) to ''.
+     *   - relative / same-origin / anchors → always safe
+     *   - http(s):// and blob: → safe
+     *   - data:image/ → safe (inline images only; not data:text/html)
+     * Returns '' for anything else; callers typically `|| '#'`.
+     */
+    safeUrl(url) {
+        const s = String(url == null ? '' : url).trim();
+        if (s === '') return '';
+        if (/^(?:\/(?!\/)|#|\?|\.)/.test(s)) return s;      // relative / anchor / query
+        if (/^https?:\/\//i.test(s)) return s;
+        if (/^blob:/i.test(s)) return s;
+        if (/^data:image\//i.test(s)) return s;
+        return '';
+    },
+
+    /* ── cssUrl ───────────────────────────────────────────────
+     * A URL safe to drop inside a CSS url('...') in an inline style.
+     * Scheme-checks via safeUrl(), then percent-encodes the characters
+     * that could break out of the url() string or the surrounding HTML
+     * style attribute (quotes, parens, angle brackets, whitespace,
+     * backslash). Returns '' when the scheme is unsafe. Wrap the result
+     * as url('<here>').
+     */
+    cssUrl(url) {
+        const s = this.safeUrl(url);
+        if (!s) return '';
+        // NB: encodeURIComponent leaves ' ( ) * ! untouched, so percent-encode
+        // the breakout set explicitly by char code instead.
+        return s.replace(/["'()\\\s<>]/g,
+            c => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
+    },
+
     /* ── truncate ─────────────────────────────────────────────
      * Clips long strings to `len` characters and appends "..." for
      * table cells, top-performer lists, and anywhere space is tight.

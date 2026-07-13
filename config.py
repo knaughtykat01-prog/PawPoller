@@ -900,7 +900,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.101.0"
+APP_VERSION = "2.102.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL
@@ -975,6 +975,21 @@ def get_or_create_session_secret() -> str:
         save_settings({"auth_session_secret": secret})
     _session_secret_cache = secret
     return secret
+
+
+def rotate_session_secret() -> None:
+    """Generate a new session signing secret, invalidating ALL existing sessions.
+
+    Called after a password change so that any other logged-in sessions (and a
+    stolen session cookie) are terminated — the stateless signed cookie can't be
+    revoked individually, so rotating the signing key is how we force re-auth
+    everywhere (ASVS 5.0 V7.4.3). The caller's own cookie is invalidated too, so
+    the client must log in again.
+    """
+    global _session_secret_cache
+    new_secret = secrets.token_hex(32)
+    save_settings({"auth_session_secret": new_secret})
+    _session_secret_cache = new_secret
 
 
 _SESSION_MAX_AGE_SHORT = 86400        # 24 hours (default)

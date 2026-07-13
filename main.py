@@ -44,12 +44,17 @@ from database.db import init_db
 # Dual-output logging: stdout for dev console visibility, plus a persistent
 # log file under the APPDATA (frozen) or project (dev) logs directory.
 
+from logging.handlers import RotatingFileHandler
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(str(config.LOGS_DIR / "app.log"), encoding="utf-8"),
+        RotatingFileHandler(
+            str(config.LOGS_DIR / "app.log"),
+            maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8",
+        ),
     ],
 )
 logger = logging.getLogger("main")
