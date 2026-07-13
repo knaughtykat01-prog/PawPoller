@@ -4,6 +4,28 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.105.1] - 2026-07-13 - Raise the gallery-dl poll timeout so it can ride out an X rate-limit reset
+
+Follow-up to 2.105.0, from verifying the migration live on the production VM.
+
+- **`TW_GALLERYDL_TIMEOUT_SECONDS` 300 → 480 (5 → 8 min).** Live testing confirmed gallery-dl
+  works (it authenticates, uses **current** query IDs — validating the whole migration — and
+  fetched a fresh account cleanly in 15s). But from the **GCP datacenter IP**, X frequently `429`s
+  the timeline endpoint, and gallery-dl then *correctly* waits for X's reset (observed: `[twitter]
+  Waiting for 6 minutes … (rate limit)`). The old 300s cap killed gallery-dl **mid-wait**, forcing a
+  fall back to the GraphQL scrape — which `429`s on the very same per-IP rate limit. Raising the cap
+  to 8 min lets gallery-dl ride out a typical reset and actually fetch, instead of falling back to a
+  path that also fails. The rate limit is a **pre-existing, backend-agnostic** datacenter-IP
+  constraint (the GraphQL client has always had `429` handling; same family as the AO3 datacenter
+  throttle) — this just stops us from cutting gallery-dl off before it can recover.
+- Trade-off: a rate-limited account can now block its own poll for up to 8 min — negligible at the
+  12-hour poll cadence, and it converts a wasted 5-min timeout+fallback into a real gallery-dl fetch.
+- No behaviour change when X isn't rate-limiting: healthy fetches still complete in seconds.
+
+Full suite: 384 passed (unchanged — this is a constant tweak).
+
+---
+
 ## [2.105.0] - 2026-07-13 - X/Twitter polling moves to gallery-dl (hybrid, with GraphQL fallback)
 
 The **X/Twitter poll path** now prefers **[gallery-dl](https://github.com/mikf/gallery-dl)** — a

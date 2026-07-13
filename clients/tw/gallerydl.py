@@ -272,7 +272,7 @@ async def _run(exe: str, url: str, cookie_path: str, settings: dict,
         logger.warning("TW: could not launch gallery-dl (%s): %s", exe, e)
         return 1, "", str(e)
 
-    timeout = getattr(config, "TW_GALLERYDL_TIMEOUT_SECONDS", 300)
+    timeout = getattr(config, "TW_GALLERYDL_TIMEOUT_SECONDS", 480)
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:

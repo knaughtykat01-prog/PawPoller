@@ -499,7 +499,12 @@ TW_REQUEST_DELAY_SECONDS = 2.0  # X GraphQL — aggressive rate limiting, needs 
 # The X poll path prefers the gallery-dl CLI (invoked as a separate subprocess —
 # see clients/tw/gallerydl.py) and falls back to the built-in GraphQL scrape when
 # gallery-dl is absent. This caps how long we wait on that subprocess per cycle.
-TW_GALLERYDL_TIMEOUT_SECONDS = 300  # kill a stuck gallery-dl run after 5 min
+# 480s (8 min): from a datacenter IP X often 429s the timeline endpoint and
+# gallery-dl correctly waits for X's reset (~6 min observed) before fetching. The
+# cap must exceed that wait, else we kill gallery-dl mid-wait and fall back to a
+# GraphQL path that 429s on the same rate limit. 8 min rides out a typical reset
+# so gallery-dl succeeds; acceptable to block one account that long at the 12h cadence.
+TW_GALLERYDL_TIMEOUT_SECONDS = 480
 
 # ── Mastodon settings ──
 MAST_REQUEST_DELAY_SECONDS = 0.5  # Mastodon REST — per-instance limits are generous
@@ -910,7 +915,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.105.0"
+APP_VERSION = "2.105.1"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

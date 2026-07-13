@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-13
-**Current version (master):** 2.105.0 — **X/Twitter polling moves to gallery-dl (hybrid, with GraphQL fallback).**
+**Current version (master):** 2.105.1 — **Raise the gallery-dl poll timeout so it can ride out an X rate-limit reset.**
+Follow-up to 2.105.0 from verifying the migration live on prod. `TW_GALLERYDL_TIMEOUT_SECONDS` **300 → 480**
+(5 → 8 min). Live test confirmed gallery-dl works — it authenticates, uses **current** query IDs (validating
+the migration), and fetched a fresh account in 15s — but from the **GCP datacenter IP** X often `429`s the
+timeline endpoint and gallery-dl then correctly waits for X's reset (`[twitter] Waiting for 6 minutes … (rate
+limit)`). The old 300s cap killed gallery-dl mid-wait → fell back to the GraphQL scrape, which `429`s on the
+same per-IP limit. 8 min lets gallery-dl ride out a typical reset and actually fetch. Rate-limiting is a
+pre-existing, backend-agnostic datacenter-IP constraint (same family as the AO3 datacenter throttle); this
+just stops us cutting gallery-dl off early. Trade: a rate-limited account can block its poll up to 8 min
+(negligible at the 12h cadence). Full suite 384 pass (unchanged — constant tweak).
+
+**Prior — 2.105.0 — X/Twitter polling moves to gallery-dl (hybrid, with GraphQL fallback).**
 The X/Twitter **poll path** now prefers **gallery-dl** (a maintained downloader that tracks X's changing
 internal API) over PawPoller's hand-rolled GraphQL scrape with its rotating query IDs. **Hybrid, never a
 regression:** `TWClient.get_all_tweets()` + `validate_cookies()` try gallery-dl first and **fall back to the
