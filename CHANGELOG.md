@@ -4,6 +4,37 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.106.1] - 2026-07-14 - Shared cross-account rate limiter for X polling (the real sequencing fix)
+
+X's timeline rate limit is **per-IP and shared across all of a user's accounts**, so the scheduler
+polling three X accounts back-to-back in one cycle (`server.py` `_poll_accounts` runs them sequentially
+with **no spacing**) blew through it — later accounts got `429`'d and gallery-dl burned its whole timeout
+waiting out the reset. A per-request `sleep` only paces requests *within* one account, not across them.
+
+- **New `polling/rate_limit.py`** — an async **sliding-window** limiter. `TWClient._get_json` (GraphQL
+  scrape) and `clients/tw/official_api.py` (official API) now `await tw_acquire()` before every request,
+  so **no more than `TW_RATE_LIMIT_REQUESTS` (15) fire in any `TW_RATE_LIMIT_WINDOW_SECONDS` (30 s)
+  window — globally, across every account and both backends.** 15 / 30 s = 1 request every 2 s averaged,
+  but as a window a burst can't exceed 15 no matter how accounts interleave. Admission is FIFO, so
+  requests are genuinely *sequenced*.
+- gallery-dl (a subprocess) self-paces via `--sleep-request 2.0`, so its internal requests aren't gated
+  here; the limiter covers the requests PawPoller makes directly.
+- **Verified live:** after the datacenter IP cooled overnight, a sequential poll of all three accounts
+  succeeded via gallery-dl (12: 1 tweet/16 s, 13: 25 tweets/33 s, 14: …) — confirming last night's
+  timeouts were a self-inflicted penalty from repeated test polls, not a code fault. The limiter is the
+  preventive fix so normal multi-account cycles stay under the per-IP cap.
+- New: `polling/rate_limit.py`, `tests/test_tw_rate_limit.py` (deterministic via an injected clock).
+
+**Honest scope:** the diagnostic that motivated this also showed the datacenter IP throttles after only
+~2 account-scrapes (~3-4 timeline requests) — *below* 15/30 s — then makes the client wait >8 min. So this
+limiter prevents PawPoller from *bursting* and helps the direct-request backends, but it **cannot create
+budget that the datacenter IP doesn't have**: reliably scraping 3+ X accounts server-side still needs the
+official API (IP-agnostic) or polling fewer accounts per cycle. See `docs/specs/x_official_api.md`.
+
+Full suite: 400 passed.
+
+---
+
 ## [2.106.0] - 2026-07-13 - Official X API v2 as an opt-in X-polling backend (top of the hybrid)
 
 Adds the **official X (Twitter) API v2** as an opt-in, **bring-your-own-token** poll backend — the

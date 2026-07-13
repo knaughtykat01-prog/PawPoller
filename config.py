@@ -505,6 +505,12 @@ TW_REQUEST_DELAY_SECONDS = 2.0  # X GraphQL — aggressive rate limiting, needs 
 # GraphQL path that 429s on the same rate limit. 8 min rides out a typical reset
 # so gallery-dl succeeds; acceptable to block one account that long at the 12h cadence.
 TW_GALLERYDL_TIMEOUT_SECONDS = 480
+# Shared cross-account cap for X requests PawPoller makes directly (GraphQL scrape
+# + official API), enforced as a sliding window by polling/rate_limit.py. X's
+# timeline rate limit is per-IP and shared across accounts, so polling several
+# back-to-back must stay under it globally. 15 req / 30 s == 1 req / 2 s averaged.
+TW_RATE_LIMIT_REQUESTS = 15
+TW_RATE_LIMIT_WINDOW_SECONDS = 30
 
 # ── Mastodon settings ──
 MAST_REQUEST_DELAY_SECONDS = 0.5  # Mastodon REST — per-instance limits are generous
@@ -917,7 +923,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.106.0"
+APP_VERSION = "2.106.1"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

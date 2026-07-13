@@ -334,8 +334,15 @@ class TWClient:
     # -- HTTP Helpers ---------------------------------------------------------
 
     async def _get_json(self, url: str, params: dict | None = None) -> dict | None:
-        """Fetch a JSON endpoint with error handling for X's rate limiting."""
+        """Fetch a JSON endpoint with error handling for X's rate limiting.
+
+        Each request first acquires a slot in the shared cross-account X rate
+        limiter (polling/rate_limit.py) so polling several accounts back-to-back
+        can't blow through X's per-IP window.
+        """
+        from polling.rate_limit import tw_acquire
         try:
+            await tw_acquire()
             resp = await self._http.get(url, params=params)
 
             if resp.status_code == 403:
@@ -346,6 +353,7 @@ class TWClient:
                 logger.warning("TW: Rate limited (429), waiting 60s...")
                 self.throttled = True   # surfaced by the poller as a 'partial' poll
                 await asyncio.sleep(60)
+                await tw_acquire()
                 resp = await self._http.get(url, params=params)
 
             if resp.status_code == 404:

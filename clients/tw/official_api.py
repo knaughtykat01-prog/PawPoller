@@ -122,7 +122,9 @@ async def _resolve_user(http: httpx.AsyncClient, handle: str) -> tuple[str | Non
     if not _HANDLE_RE.match(handle or ""):
         logger.warning("TW official API: invalid X handle %r — skipping", handle)
         return None, None, 0
+    from polling.rate_limit import tw_acquire
     try:
+        await tw_acquire()
         r = await http.get(f"/users/by/username/{handle}",
                             params={"user.fields": "public_metrics"})
     except httpx.HTTPError as e:
@@ -251,6 +253,8 @@ async def fetch_tweets(bearer: str | None, handle: str,
                 }
                 if token:
                     params["pagination_token"] = token
+                from polling.rate_limit import tw_acquire
+                await tw_acquire()
                 r = await http.get(f"/users/{uid}/tweets", params=params)
                 if r.status_code != 200:
                     logger.warning("TW official API: tweets page %d → %s: %s",
