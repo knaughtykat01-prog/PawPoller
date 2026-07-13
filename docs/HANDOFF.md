@@ -1,7 +1,23 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-13
-**Current version (live/master):** 2.100.0 — **Security-audit pass: shell-quoting hardening, dependency CVE fixes, persona-leak scrub (+ DA URL bug).**
+**Current version (live/master):** 2.101.0 — **Credential vault is now ALWAYS ON — plaintext credential storage no longer exists.**
+Rhys: "why have vault as an option, it should just exist" → the vault is no longer opt-in. `save_settings()`/
+`delete_settings_keys()` route secrets to the Fernet vault unconditionally (vault rewritten even when EMPTY —
+fixes a stale-ciphertext bug where deleting the last credential resurrected on next load); `get_credential_mode()`
+always `local` (the stored `credential_mode:"local"` stamp is kept for downgrade compat); new
+`config.ensure_vault()` startup sweep (dashboard lifespan + server main) migrates plaintext stragglers from
+pre-2.101.0 files / hand edits / old-backup restores. UI "Enable/Disable encryption" buttons + `POST
+/api/settings/vault/enable|disable` REMOVED; `GET /api/settings/vault/status` reports `key_source` (new
+`config.vault_key_source()`: operator/keyring/dotfile) and the Credential Security card displays it.
+`config.migrate_to_cloud()` kept as console-only break-glass decrypt. Desktop startup settings-pull re-gated on
+`auto_sync_enabled` (was gated on credential_mode — storage mode was a bad proxy for "do I sync"; always-local
+would have silently killed startup pull for paired desktops). **conftest.py now redirects `VAULT_PATH` + supplies
+a suite-wide `PAWPOLLER_VAULT_KEY`** — mandatory, since every save now writes the vault (the suite would have
+clobbered the real one). `tests/test_vault_always_on.py`. Docs: SETUP.md §5.1 ("always on — what varies is where
+the key lives"), `.env.example`, documentation_guide Phase-7b section + endpoint table.
+
+**Prior — 2.100.0 — Security-audit pass: shell-quoting hardening, dependency CVE fixes, persona-leak scrub (+ DA URL bug).**
 Full pass: security-reviewer agent (auth/creds/shell/path — **0 critical/high**; SQLi, traversal, CSRF, login
 rate-limit, session expiry, IG pubmedia host all verified clean) + `pip-audit` + a public-copy rebuild-and-scan.
 Fixed: `shlex.quote()` on every interpolated path in the generated Linux uninstall/self-update scripts

@@ -964,12 +964,18 @@ def _on_closing():
 #   7. On exit, clean up the tray icon and let daemon threads die
 
 def _sync_settings_on_startup():
-    """Pull settings from server if credential_mode is 'cloud' and a server URL is configured."""
+    """Pull settings from the paired server at startup, if syncing is on.
+
+    Gated on auto_sync_enabled (default true) — the same switch as the
+    background auto-sync loops. Used to be gated on credential_mode, but
+    the vault went always-on in 2.101.0 and storage mode was never really
+    the right proxy for "do I want my paired server's settings".
+    """
     import httpx
 
     settings = config.get_settings()
-    if settings.get("credential_mode") == "local":
-        logger.info("Settings sync: local-only mode, skipping")
+    if not settings.get("auto_sync_enabled", True):
+        logger.info("Settings sync: auto-sync disabled, skipping startup pull")
         return
 
     server_url = settings.get("posting_server_url", "").rstrip("/")

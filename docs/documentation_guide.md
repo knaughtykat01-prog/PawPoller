@@ -1917,7 +1917,7 @@ still exist under each platform router).
 |---|---|---|
 | POST | `/api/settings/sync` | Push local settings.json → remote (desktop↔server pairing). |
 | GET | `/api/settings/sync/status` | Last sync metadata. |
-| POST | `/api/settings/vault/enable` / `/disable` / GET `/status` | Credential vault toggle. |
+| GET | `/api/settings/vault/status` | Credential vault status (always-on; reports key_source). |
 | GET | `/api/settings/setup-status` / POST `/setup-reset` / `/setup-complete` / `/setup-mode` | First-run wizard. |
 | POST | `/api/settings/pair-test` | Verify remote pairing works. |
 | GET | `/api/settings/browser-login/platforms` / POST `/browser-login/{platform}` | Embedded pywebview login. |
@@ -2362,7 +2362,7 @@ Frozen (.exe):
     └── assets/
   %APPDATA%/PawPoller/   # Persistent user data
     ├── data/pawpoller.db
-    ├── data/settings.vault.json  # Encrypted credentials (Phase 7b, local mode only)
+    ├── data/settings.vault.json  # Encrypted credentials (vault always-on since 2.101.0)
     ├── logs/app.log
     └── settings.json
 
@@ -2371,7 +2371,7 @@ Dev mode (python main.py):
     ├── frontend/
     ├── database/*.sql
     ├── data/pawpoller.db
-    ├── data/settings.vault.json  # Encrypted credentials (Phase 7b, local mode only)
+    ├── data/settings.vault.json  # Encrypted credentials (vault always-on since 2.101.0)
     ├── logs/app.log
     └── settings.json
 ```
@@ -2403,20 +2403,20 @@ def save_settings(data: dict) -> None:
 
 The temp file is created in the same directory as settings.json to ensure `os.replace()` is atomic (same filesystem). This prevents a crash mid-write from leaving a truncated/corrupt settings.json.
 
-### Credential Vault (Phase 7b)
+### Credential Vault (Phase 7b; ALWAYS ON since 2.101.0)
 
-When `credential_mode` is `"local"`, credential fields listed in `CREDENTIAL_FIELDS` are stored encrypted in `settings.vault.json` instead of plaintext in `settings.json`. The vault uses Fernet symmetric encryption with a key sourced from the system keyring (preferred) or a `.vault_key` dotfile with 0600 permissions.
+Credential fields listed in `CREDENTIAL_FIELDS` (plus account-namespaced `acct_<id>_<field>` secrets, via `is_credential_key()`) are **always** stored encrypted in `settings.vault.json` — there is no plaintext mode and no enable/disable toggle. The vault uses Fernet symmetric encryption with a key sourced from (in order): an operator-supplied `PAWPOLLER_VAULT_KEY`/`PAWPOLLER_VAULT_KEY_FILE` (servers — keeps the key off the data volume), the system keyring (desktop — Windows Credential Manager / macOS Keychain; `keyring` is a desktop requirement), or a `.vault_key` dotfile with 0600 permissions (last-resort fallback).
 
 ```
-settings.json   → non-credential settings only (credential_mode, poll intervals, etc.)
+settings.json   → non-credential settings only (+ credential_mode:"local" stamp for downgrade compat)
 settings.vault.json → Fernet-encrypted JSON blob containing all credential fields
 ```
 
-The integration is transparent: `_load_settings()` merges decrypted vault data into the returned dict, and `save_settings()` splits credential fields into the vault on write. All consumers see a unified view without needing vault awareness.
+The integration is transparent: `_load_settings()` merges decrypted vault data into the returned dict, and `save_settings()`/`delete_settings_keys()` split credential fields into the vault on every write — the vault is rewritten even when empty, so deleting the last secret can't be resurrected by stale ciphertext. `ensure_vault()` runs at startup (dashboard lifespan + server main) and sweeps any plaintext credential values (pre-2.101.0 file, hand edit, old-backup restore) into the vault. All consumers see a unified view without needing vault awareness.
 
-**Key functions**: `_get_vault_key()`, `_encrypt_vault()`, `_decrypt_vault()`, `get_credential_mode()`, `migrate_to_local_vault()`, `migrate_to_cloud()`.
+**Key functions**: `_get_vault_key()`, `vault_key_source()`, `_encrypt_vault()`, `_decrypt_vault()`, `ensure_vault()`, `migrate_to_local_vault()`; `migrate_to_cloud()` is a console-only break-glass decrypt (no API/UI path).
 
-**API endpoints**: `POST /api/settings/vault/enable`, `POST /api/settings/vault/disable`, `GET /api/settings/vault/status`.
+**API endpoints**: `GET /api/settings/vault/status` (reports `key_source`); the old `POST …/vault/enable` + `/vault/disable` endpoints were removed in 2.101.0.
 
 ### Settings Sync (Phase 7a)
 

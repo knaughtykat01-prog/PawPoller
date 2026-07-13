@@ -4,6 +4,42 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.101.0] - 2026-07-13 - Credential vault is now ALWAYS ON — plaintext credential storage no longer exists
+
+"Why have vault as an option? It should just exist." Right. Encryption at rest is no longer a Settings
+checkbox — it's how credentials are stored, full stop.
+
+- **Always-on vault.** `save_settings()`/`delete_settings_keys()` route every secret (the
+  `CREDENTIAL_FIELDS` set + account-namespaced `acct_<id>_*` secrets) into the Fernet vault on every
+  write, unconditionally. `get_credential_mode()` always returns `local`. The plaintext "cloud" mode is
+  gone; `settings.json` still gets a `credential_mode: "local"` stamp so a *downgraded* build keeps
+  merging the vault instead of seeing zero credentials.
+- **Startup sweep.** New `config.ensure_vault()` (wired into the dashboard lifespan + server startup)
+  migrates any plaintext credential values — a pre-2.101.0 install upgrading, a hand-edited
+  `settings.json`, or a restore from an old backup — into the vault. Idempotent, one raw file read when
+  clean.
+- **Stale-vault resurrection bug fixed.** Both save/delete paths used to skip rewriting the vault when
+  no credentials remained (`if vault_creds:`), so deleting the LAST credential left stale ciphertext
+  that resurrected it on the next load. The vault is now rewritten even when empty.
+- **UI/API simplified.** The Settings "Enable/Disable encryption" buttons and
+  `POST /api/settings/vault/enable|disable` endpoints are gone. `GET /api/settings/vault/status` now
+  reports `key_source` (`operator`/`keyring`/`dotfile` — new `config.vault_key_source()`), and the
+  Credential Security card shows which key store protects the vault.
+- **Escape hatch kept, console-only.** `config.migrate_to_cloud()` remains as a documented break-glass
+  decrypt for key-store emergencies — deliberately unreachable from the UI/API.
+- **Startup settings-pull decoupled from storage mode.** The desktop's one-shot pull from the paired
+  server used to be skipped in "local" mode (storage mode was a proxy for "do I sync") — it's now gated
+  on `auto_sync_enabled` like the background sync loops, so always-on vault doesn't silently disable
+  startup sync for paired desktops.
+- **Test isolation hardened.** `conftest.py` now redirects `VAULT_PATH` (module-level + per-test) and
+  supplies a suite-wide `PAWPOLLER_VAULT_KEY`, since every `save_settings()` now writes the vault —
+  without this the suite would have touched the real vault/keyring. New `tests/test_vault_always_on.py`
+  (5 tests: unconditional routing, startup sweep, no-resurrection, key-source, mode).
+- Docs: SETUP.md §5.1 rewritten ("always on — what varies is where the key lives"), `.env.example`,
+  documentation_guide.md (Phase 7b section + endpoint table).
+
+---
+
 ## [2.100.0] - 2026-07-13 - Security-audit pass: shell-quoting hardening, dependency CVE fixes, persona-leak scrub (+ DA URL bug)
 
 Full security pass over the auth/credential/shell-out/path surface (via the security-reviewer agent),

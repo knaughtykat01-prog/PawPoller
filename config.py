@@ -203,6 +203,31 @@ def _get_vault_key() -> bytes:
         return new_key
 
 
+def vault_key_source() -> str:
+    """Where the vault key comes from: 'operator' | 'keyring' | 'dotfile'.
+
+    Read-only — mirrors _get_vault_key()'s resolution order without creating
+    a key anywhere. Used by the vault status endpoint so the Settings page
+    can show which key store protects the credentials.
+    """
+    try:
+        if _operator_vault_key():
+            return "operator"
+    except RuntimeError:
+        # Malformed operator key — _get_vault_key would fail loudly; report
+        # the intent (operator) rather than silently claiming a fallback.
+        return "operator"
+    try:
+        import keyring
+        if keyring.get_password("PawPoller", "vault_key"):
+            return "keyring"
+        # keyring importable but no entry yet: _get_vault_key would create
+        # one there on first use.
+        return "keyring"
+    except Exception:
+        return "dotfile"
+
+
 def _encrypt_vault(creds: dict) -> None:
     """Encrypt credential fields to settings.vault.json.
 
@@ -280,11 +305,13 @@ def _load_settings() -> dict:
             return {}  # Corrupt file -- treat as empty and let next save fix it
     else:
         settings = {}
-    # Merge vault credentials when in local mode
-    if settings.get("credential_mode") == "local":
-        vault_creds = _decrypt_vault()
-        if vault_creds:
-            settings.update(vault_creds)
+    # The vault is ALWAYS ON (2.101.0) — merge unconditionally. Cheap when
+    # no vault file exists (_decrypt_vault returns {} on a missing file).
+    # Plaintext values win nothing here: ensure_vault() migrates them out
+    # at startup, and save_settings never writes secrets to plaintext.
+    vault_creds = _decrypt_vault()
+    if vault_creds:
+        settings.update(vault_creds)
     return settings
 
 
@@ -294,8 +321,8 @@ def save_settings(data: dict) -> None:
     Uses read-merge-write so that keys not present in *data* are preserved.
     Thread-safe: acquires _settings_lock for the entire read-modify-write cycle.
 
-    When credential_mode is "local", credential fields are routed to the
-    encrypted vault instead of being stored in plaintext settings.json.
+    Credential fields are ALWAYS routed to the encrypted vault — plaintext
+    settings.json never holds a secret (vault always-on as of 2.101.0).
 
     Write is atomic: data goes to a temp file first, then os.replace() swaps it
     in.  os.replace() is atomic on the same filesystem, so a crash mid-write
@@ -306,18 +333,19 @@ def save_settings(data: dict) -> None:
         current = _load_settings()
         current.update(data)  # Overlay new values on top of existing ones
 
-        # In local mode, split credentials into vault vs plaintext.
-        # is_credential_key() also catches account-namespaced secrets
-        # (acct_<id>_<field>), so extra accounts are encrypted like the default.
-        if current.get("credential_mode") == "local":
-            vault_creds = {k: v for k, v in current.items()
-                           if is_credential_key(k) and v}
-            if vault_creds:
-                _encrypt_vault(vault_creds)
-            plaintext = {k: v for k, v in current.items()
-                         if not is_credential_key(k)}
-        else:
-            plaintext = current
+        # Split credentials into vault vs plaintext. is_credential_key()
+        # also catches account-namespaced secrets (acct_<id>_<field>), so
+        # extra accounts are encrypted like the default. The vault is
+        # rewritten even when empty — otherwise deleting the last secret
+        # would leave a stale vault that resurrects it on the next load.
+        vault_creds = {k: v for k, v in current.items()
+                       if is_credential_key(k) and v}
+        _encrypt_vault(vault_creds)
+        plaintext = {k: v for k, v in current.items()
+                     if not is_credential_key(k)}
+        # Stamp the mode so a DOWNGRADED build (pre-always-on) still merges
+        # the vault instead of silently seeing zero credentials.
+        plaintext["credential_mode"] = "local"
 
         # Write to a temp file in the same directory, then atomically replace.
         # Same-directory ensures same filesystem so os.replace() is atomic.
@@ -353,16 +381,15 @@ def delete_settings_keys(keys: list[str]) -> None:
         for key in keys:
             current.pop(key, None)
 
-        # In local mode, re-split credentials into vault vs plaintext
-        if current.get("credential_mode") == "local":
-            vault_creds = {k: v for k, v in current.items()
-                           if is_credential_key(k) and v}
-            if vault_creds:
-                _encrypt_vault(vault_creds)
-            plaintext = {k: v for k, v in current.items()
-                         if not is_credential_key(k)}
-        else:
-            plaintext = current
+        # Re-split credentials into vault vs plaintext (vault always-on).
+        # Unconditional rewrite: deleting the LAST credential must clear the
+        # vault too, or the stale ciphertext resurrects it on the next load.
+        vault_creds = {k: v for k, v in current.items()
+                       if is_credential_key(k) and v}
+        _encrypt_vault(vault_creds)
+        plaintext = {k: v for k, v in current.items()
+                     if not is_credential_key(k)}
+        plaintext["credential_mode"] = "local"
 
         fd, tmp_path = tempfile.mkstemp(dir=SETTINGS_PATH.parent, suffix=".tmp")
         try:
@@ -696,10 +723,25 @@ def get_polling_owner(runtime: str) -> str:
 
 
 def get_credential_mode() -> str:
-    """Return 'cloud' or 'local'.
+    """Always 'local' — the credential vault is unconditional as of 2.101.0.
 
-    Reads directly from settings.json (not the merged view) so we can
-    determine mode before deciding whether to merge the vault.
+    Kept (rather than deleted) because callers report it for display and a
+    downgraded build reads the stored key; there is no longer a 'cloud'
+    plaintext mode to return.
+    """
+    return "local"
+
+
+def ensure_vault() -> int:
+    """Startup guard: the credential vault is ALWAYS ON (2.101.0).
+
+    If settings.json still holds plaintext credential values — a pre-2.101.0
+    install upgrading, a hand-edited file, or a restore from an old backup —
+    migrate them into the vault now. Also stamps ``credential_mode: local``
+    on files that predate the vault so downgraded builds keep working.
+    Idempotent; costs one raw file read when there is nothing to do.
+
+    Returns the number of fields migrated (0 when already clean).
     """
     with _settings_lock:
         raw = {}
@@ -707,13 +749,19 @@ def get_credential_mode() -> str:
             try:
                 raw = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
-                pass
-        return raw.get("credential_mode", "cloud")
+                return 0  # unreadable — let the normal load path handle it
+        plaintext_secrets = any(is_credential_key(k) and v for k, v in raw.items())
+        stamped = raw.get("credential_mode") == "local"
+    if plaintext_secrets or not stamped:
+        # Outside the lock: migrate_to_local_vault() takes _settings_lock itself.
+        return migrate_to_local_vault()
+    return 0
 
 
 def migrate_to_local_vault() -> int:
-    """Migrate credentials from plaintext settings.json to encrypted vault.
+    """Move any plaintext credentials from settings.json into the vault.
 
+    The always-on migration path (called via ensure_vault() at startup).
     Returns count of fields migrated.
     """
     with _settings_lock:
@@ -759,7 +807,13 @@ def migrate_to_local_vault() -> int:
 
 
 def migrate_to_cloud() -> int:
-    """Migrate credentials from encrypted vault back to plaintext settings.json.
+    """BREAK-GLASS ONLY: decrypt the vault back into plaintext settings.json.
+
+    No longer reachable from the UI or API — the vault is always-on. Kept as
+    a console escape hatch for key-store emergencies (e.g. the OS keyring is
+    about to be lost and you want to dump credentials while they still
+    decrypt): ``python -c "import config; config.migrate_to_cloud()"``.
+    Note the app will re-encrypt everything via ensure_vault() on next start.
 
     Returns count of fields migrated.
     """
@@ -846,7 +900,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.100.0"
+APP_VERSION = "2.101.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

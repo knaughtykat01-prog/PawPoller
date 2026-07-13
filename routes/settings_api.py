@@ -81,43 +81,25 @@ async def sync_status():
         "ok": True,
         "version": config.APP_VERSION,
         "timestamp": mtime,
-        "credential_mode": settings.get("credential_mode", "cloud"),
+        "credential_mode": config.get_credential_mode(),  # always 'local' (vault always-on)
         "total_keys": len(settings),
     }
 
 
-# ── Credential vault (Phase 7b) ────────────────────────────────
-
-@settings_router.post("/vault/enable")
-async def enable_vault():
-    """Switch to local-only encrypted credential mode."""
-    try:
-        count = config.migrate_to_local_vault()
-    except Exception as e:
-        logger.error("Vault enable failed: %s", e, exc_info=True)
-        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    logger.info("Vault enabled: %d credential fields migrated to vault", count)
-    return {"ok": True, "mode": "local", "fields_migrated": count}
-
-
-@settings_router.post("/vault/disable")
-async def disable_vault():
-    """Switch back to cloud/plaintext credential mode."""
-    try:
-        count = config.migrate_to_cloud()
-    except Exception as e:
-        logger.error("Vault disable failed: %s", e, exc_info=True)
-        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    logger.info("Vault disabled: %d credential fields migrated to plaintext", count)
-    return {"ok": True, "mode": "cloud", "fields_migrated": count}
-
+# ── Credential vault ───────────────────────────────────────────
+# Always-on as of 2.101.0 — the enable/disable endpoints are gone. There is
+# no plaintext mode to switch to; ensure_vault() migrates stragglers at
+# startup. (Break-glass decrypt for key-store emergencies lives in
+# config.migrate_to_cloud(), console-only by design.)
 
 @settings_router.get("/vault/status")
 async def vault_status():
-    """Check vault status."""
-    mode = config.get_credential_mode()
-    vault_exists = config.VAULT_PATH.exists()
-    return {"mode": mode, "vault_exists": vault_exists}
+    """Vault status — always-on; reports which key store holds the key."""
+    return {
+        "mode": "local",
+        "vault_exists": config.VAULT_PATH.exists(),
+        "key_source": config.vault_key_source(),
+    }
 
 
 # ── Setup wizard status (first-run detection) ────────────────

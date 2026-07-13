@@ -9306,16 +9306,11 @@ const App = {
 
                 <div class="settings-section">
                     <h3>Credential Security</h3>
-                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
-                        Encrypt stored credentials at rest. When enabled, passwords and
-                        tokens are stored in an encrypted vault instead of plaintext.
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">
+                        Passwords and tokens are always stored in an encrypted vault —
+                        plaintext credential storage no longer exists.
                     </div>
-                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                        <button class="btn btn-secondary" id="vault-enable-btn">Enable encryption</button>
-                        <button class="btn btn-secondary" id="vault-disable-btn">Disable encryption</button>
-                        <button class="btn btn-secondary" id="vault-status-btn">Check status</button>
-                    </div>
-                    <div id="vault-result" style="font-size:12px;margin-top:8px"></div>
+                    <div id="vault-result" style="font-size:12px">Checking key store…</div>
                 </div>
 
                 </div><!-- /tab:data -->
@@ -12435,53 +12430,23 @@ const App = {
                 e.target.disabled = false;
             });
 
-            // Credential Vault
+            // Credential Vault — always-on (2.101.0); the card is informational.
+            // Just report which key store protects the vault key.
             const vaultResult = document.getElementById('vault-result');
-            document.getElementById('vault-enable-btn')?.addEventListener('click', async (e) => {
-                e.target.disabled = true; e.target.textContent = 'Enabling...';
-                try {
-                    const resp = await fetch('/api/settings/vault/enable', {method: 'POST'});
-                    const data = await resp.json();
-                    if (data.ok) {
-                        vaultResult.innerHTML = '<span style="color:var(--success)">Vault enabled — ' + data.fields_migrated + ' fields encrypted</span>';
-                    } else {
-                        const detail = data.error || ('HTTP ' + resp.status);
-                        vaultResult.innerHTML = '<span style="color:var(--danger)">Failed to enable vault: ' + Utils.escapeHtml(detail) + '</span>';
-                    }
-                } catch (err) {
-                    vaultResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';
-                }
-                e.target.disabled = false; e.target.textContent = 'Enable encryption';
-            });
-            document.getElementById('vault-disable-btn')?.addEventListener('click', async (e) => {
-                if (!confirm('Disable credential encryption? Credentials will be stored in plaintext.')) return;
-                e.target.disabled = true; e.target.textContent = 'Disabling...';
-                try {
-                    const resp = await fetch('/api/settings/vault/disable', {method: 'POST'});
-                    const data = await resp.json();
-                    if (data.ok) {
-                        vaultResult.innerHTML = '<span style="color:var(--success)">Vault disabled — ' + data.fields_migrated + ' fields moved to plaintext</span>';
-                    } else {
-                        const detail = data.error || ('HTTP ' + resp.status);
-                        vaultResult.innerHTML = '<span style="color:var(--danger)">Failed to disable vault: ' + Utils.escapeHtml(detail) + '</span>';
-                    }
-                } catch (err) {
-                    vaultResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';
-                }
-                e.target.disabled = false; e.target.textContent = 'Disable encryption';
-            });
-            document.getElementById('vault-status-btn')?.addEventListener('click', async (e) => {
-                e.target.disabled = true;
-                try {
-                    const resp = await fetch('/api/settings/vault/status');
-                    const data = await resp.json();
-                    const modeLabel = data.mode === 'local' ? '<span style="color:var(--success)">encrypted</span>' : 'plaintext';
-                    vaultResult.innerHTML = 'Mode: ' + modeLabel + ' · Vault file: ' + (data.vault_exists ? 'present' : 'absent');
-                } catch (err) {
-                    vaultResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';
-                }
-                e.target.disabled = false;
-            });
+            if (vaultResult) {
+                fetch('/api/settings/vault/status')
+                    .then(r => r.json())
+                    .then(data => {
+                        const KEY_LABELS = {
+                            operator: 'operator-supplied key (PAWPOLLER_VAULT_KEY — held off this machine\'s data volume)',
+                            keyring: 'OS keystore (Windows Credential Manager / Keychain)',
+                            dotfile: 'local key file on the data volume — on a server, set PAWPOLLER_VAULT_KEY to hold the key out-of-band',
+                        };
+                        vaultResult.innerHTML = '<span style="color:var(--success)">✓ Encrypted</span> · key in: '
+                            + Utils.escapeHtml(KEY_LABELS[data.key_source] || data.key_source);
+                    })
+                    .catch(() => { vaultResult.textContent = 'Vault status unavailable'; });
+            }
 
             // Auto-Update
             const applyUpdateBtn = document.getElementById('apply-update-btn');

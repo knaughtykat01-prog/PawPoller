@@ -500,6 +500,12 @@ def main():
     # Step 2b: Migrate legacy plaintext password to bcrypt hash
     config.migrate_dashboard_auth()
 
+    # Step 2b-ii: Vault is always-on — sweep any plaintext credentials into
+    # the vault BEFORE pollers/threads read settings (idempotent, cheap).
+    _vault_migrated = config.ensure_vault()
+    if _vault_migrated:
+        logger.info("Credential vault: migrated %d plaintext field(s)", _vault_migrated)
+
     # Step 2c: Force setup_mode = "server" on first run. The headless
     # container is unambiguously the server side of any pairing — we
     # never want it to fall through to "standalone" inference and stop

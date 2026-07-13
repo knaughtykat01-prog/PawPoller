@@ -63,7 +63,7 @@ The wizard walks you through four steps:
 ├── data\
 │   ├── pawpoller.db            SQLite database (polling stats, publications, queue)
 │   ├── settings.json           Non-secret settings
-│   └── settings.vault.json     Encrypted credentials (if vault enabled — see §6.4)
+│   └── settings.vault.json     Encrypted credentials (vault is always on — see §5.1)
 └── logs\                       Rotated log files
 ```
 
@@ -495,14 +495,29 @@ Short version per platform:
 | Threads | Meta access token | A Meta app with `threads_basic` + `threads_manage_insights` scopes |
 | Wattpad / Itaku / Bluesky / X | Public or app-password — see the in-app settings cards | |
 
-### 5.1 Credential vault (optional)
+### 5.1 Credential vault (always on)
 
-If you'd rather not leave credentials sitting in plaintext `settings.json`, enable the vault:
+Credentials are **always** stored in an encrypted vault (`settings.vault.json`) — plaintext
+credential storage does not exist. There is nothing to enable; anything that lands in
+`settings.json` in plaintext (an old backup, a hand edit) is swept into the vault at the next
+startup. What varies is **where the encryption key lives**:
 
-- Settings → Credential Security → **Enable Vault**
-- On **Windows desktop**, the encryption key goes in Windows Credential Manager — separate from the ciphertext, so this is genuine at-rest protection.
-- On **Linux/Docker with no keyring**, the key is written to `data/.vault_key` (chmod 600) **on the same volume as** `settings.vault.json`. Anyone who can read the volume reads both, so by default the vault protects against casual/off-host snooping (stray backups, image layers) but is **not** real at-rest encryption against someone with host/volume access.
-- **For real at-rest protection on a server**, supply the key yourself so it lives off the data volume: set `PAWPOLLER_VAULT_KEY` (or point `PAWPOLLER_VAULT_KEY_FILE` at a mounted Docker/K8s secret) **before** enabling the vault. Generate a key with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and keep it in your secrets manager. Changing the key later means disabling then re-enabling the vault. Back the key up separately from `settings.vault.json` — losing one makes the other useless.
+- On **Windows desktop**, the key goes in Windows Credential Manager — separate from the
+  ciphertext, so this is genuine at-rest protection out of the box.
+- On **Linux/Docker with no keyring**, the key falls back to `data/.vault_key` (chmod 600)
+  **on the same volume as** `settings.vault.json`. Anyone who can read the volume reads both,
+  so this protects against casual/off-host snooping (stray backups, image layers) but is
+  **not** real at-rest encryption against someone with host/volume access.
+- **For real at-rest protection on a server**, supply the key yourself so it lives off the
+  data volume: set `PAWPOLLER_VAULT_KEY` (or point `PAWPOLLER_VAULT_KEY_FILE` at a mounted
+  Docker/K8s secret) — ideally before first run, but you can also move an existing
+  `data/.vault_key`'s contents into the env var and delete the dotfile. Generate a fresh key
+  with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+  and keep it in your secrets manager. Back the key up separately from `settings.vault.json` —
+  losing one makes the other useless (credentials are re-enterable, but it's sixteen platforms
+  of re-entering).
+
+Settings → Credential Security shows which key store is in use.
 
 ### 5.2 Two-factor auth
 

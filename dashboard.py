@@ -66,6 +66,11 @@ logger = logging.getLogger("dashboard")
 async def lifespan(app: FastAPI):
     init_db()
     config.migrate_dashboard_auth()
+    # Vault is always-on: sweep any plaintext credentials (pre-2.101.0
+    # settings.json, hand edits, old-backup restores) into the vault.
+    _migrated = config.ensure_vault()
+    if _migrated:
+        logger.info("Credential vault: migrated %d plaintext field(s)", _migrated)
     logger.info("Dashboard started at http://%s:%d", config.DASHBOARD_HOST, config.DASHBOARD_PORT)
     yield
     logger.info("Dashboard shutting down")

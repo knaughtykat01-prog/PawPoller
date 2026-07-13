@@ -15,6 +15,15 @@ os.environ["PAWPOLLER_TEST_MODE"] = "1"
 import config
 config.DB_PATH = Path(_tmpdir) / "test.db"
 config.SETTINGS_PATH = Path(_tmpdir) / "test_settings.json"
+# The vault is always-on: save_settings() writes VAULT_PATH on every save,
+# so it MUST be redirected or the suite would clobber the real vault.
+config.VAULT_PATH = Path(_tmpdir) / "test_settings.vault.json"
+# Deterministic operator key for the whole suite — keeps _get_vault_key()
+# away from the real OS keyring / dotfile. Tests that exercise key
+# resolution explicitly monkeypatch these env vars themselves.
+if not os.environ.get("PAWPOLLER_VAULT_KEY"):
+    from cryptography.fernet import Fernet
+    os.environ["PAWPOLLER_VAULT_KEY"] = Fernet.generate_key().decode()
 # Write minimal settings
 config.SETTINGS_PATH.write_text("{}", encoding="utf-8")
 
@@ -35,6 +44,7 @@ def _isolated_db(tmp_path, monkeypatch):
     """
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "test.db")
     monkeypatch.setattr(config, "SETTINGS_PATH", tmp_path / "test_settings.json")
+    monkeypatch.setattr(config, "VAULT_PATH", tmp_path / "test_settings.vault.json")
     config.SETTINGS_PATH.write_text("{}", encoding="utf-8")
     from database.db import init_db
     init_db()
