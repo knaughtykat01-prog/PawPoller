@@ -1951,7 +1951,10 @@ const Components = {
             return '<p style="color:var(--text-muted);font-size:13px">No suggestions found. Submissions need similar titles across platforms.</p>';
         }
         return suggestions.map(s => {
-            const items = s.items.map(i => {
+            // Backend (analytics_queries.auto_suggest_links) returns the pair under
+            // `submissions`, NOT `items` — reading s.items threw "undefined.map" and
+            // broke the whole Cross-Platform screen. Guard it too.
+            const items = (s.submissions || []).map(i => {
                 const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', mast: '<span class="platform-badge mast">MAST</span>', tum: '<span class="platform-badge tum">TUM</span>', pix: '<span class="platform-badge pix">PIX</span>', thr: '<span class="platform-badge thr">THR</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[i.platform] || badgeMap.ib;
                 return `${badge} ${Utils.escapeHtml(Utils.truncate(i.title, 30))}`;
@@ -1960,7 +1963,7 @@ const Components = {
                 <div class="fave-item" style="flex-wrap:wrap">
                     <span style="flex:1">${items}</span>
                     <span style="font-size:11px;color:var(--text-muted)">${(s.similarity * 100).toFixed(0)}% match</span>
-                    <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" data-link-suggest data-items='${Utils.escapeHtml(JSON.stringify(s.items))}'>Link</button>
+                    <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" data-link-suggest data-items='${Utils.escapeHtml(JSON.stringify(s.submissions || []))}'>Link</button>
                 </div>
             `;
         }).join('');

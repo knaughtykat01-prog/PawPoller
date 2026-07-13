@@ -286,6 +286,7 @@
       paste: 'Settings → Threads → Access token (+ user id)',
       renew: { when: 'Long-lived tokens last ~60 days', how: 'PawPoller auto-refreshes the token while it\'s polling. If it goes unused past ~60 days and lapses, generate a fresh one in the Meta dashboard and paste it in.' },
       notes: [
+        'Do the whole setup on a <b>desktop</b> (not mobile) in <b>Microsoft Edge — or any browser that is NOT Chrome</b>. Chrome reliably breaks Meta\'s developer dashboard and token generator: the flow silently fails or the token never appears. Edge/Firefox work.',
         'Meta gates this behind app review for public use and removes adult content — for your own account in Development mode it works without review.',
       ],
     },
@@ -307,6 +308,7 @@
       paste: 'Settings → Instagram → Access token (+ user id)',
       renew: { when: 'Long-lived tokens last ~60 days', how: 'PawPoller auto-refreshes it while polling. If it lapses, generate a fresh token in the Meta dashboard and paste it back in.' },
       notes: [
+        'Do the whole setup on a <b>desktop</b> (not mobile) in <b>Microsoft Edge — or any browser that is NOT Chrome</b>. Chrome reliably breaks Meta\'s developer dashboard and token generator: the flow silently fails or the token never appears. Edge/Firefox work. (The one mobile step is switching your IG account to professional, done in the Instagram app.)',
         'Stats need <code>instagram_business_manage_insights</code>; <b>posting</b> needs <code>instagram_business_content_publish</code> — re-generate the token if you add a scope later.',
         'Every Instagram post <b>requires a photo</b> — there are no text-only posts. Instagram fetches the image from a public address: on the server that\'s <code>IG_PUBLIC_BASE_URL</code>; on the desktop app, pair it with your server (Settings → Posting) and it hands the image to the server automatically.',
         'Development mode + your own account needs no App Review; a public app for other users would need review + would likely be rejected for adult content.',

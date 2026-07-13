@@ -957,9 +957,51 @@ async def resume_polling():
 
 @router.get("/poll/paused")
 def get_poll_paused():
-    """Return current polling pause state."""
+    """Return current polling pause state (global + per-platform)."""
     settings = config.get_settings()
-    return {"polling_paused": settings.get("polling_paused", False)}
+    return {
+        "polling_paused": settings.get("polling_paused", False),
+        "paused_platforms": settings.get("polling_paused_platforms", []) or [],
+    }
+
+
+# Valid platform codes for the per-platform pause toggle. Mirrors the poller set.
+_PAUSEABLE_PLATFORMS = {
+    "ib", "fa", "ws", "sf", "sqw", "ao3", "da", "wp", "ik",
+    "bsky", "tw", "mast", "tum", "pix", "thr", "ig",
+}
+
+
+@router.post("/poll/pause/{code}")
+def pause_platform_polling(code: str):
+    """Pause scheduled polling for ONE platform (leaves the others running).
+
+    Adds the code to polling_paused_platforms; the orchestrator's _poll_all
+    skips paused codes each cycle. Manual Poll Now / Full Resync still work.
+    """
+    code = code.lower()
+    if code not in _PAUSEABLE_PLATFORMS:
+        raise HTTPException(400, f"Unknown platform: {code}")
+    settings = config.get_settings()
+    paused = set(settings.get("polling_paused_platforms", []) or [])
+    paused.add(code)
+    config.save_settings({"polling_paused_platforms": sorted(paused)})
+    logger.info("Polling PAUSED for %s by user", code)
+    return {"status": "success", "code": code, "paused_platforms": sorted(paused)}
+
+
+@router.post("/poll/resume/{code}")
+def resume_platform_polling(code: str):
+    """Resume scheduled polling for ONE previously-paused platform."""
+    code = code.lower()
+    if code not in _PAUSEABLE_PLATFORMS:
+        raise HTTPException(400, f"Unknown platform: {code}")
+    settings = config.get_settings()
+    paused = set(settings.get("polling_paused_platforms", []) or [])
+    paused.discard(code)
+    config.save_settings({"polling_paused_platforms": sorted(paused)})
+    logger.info("Polling RESUMED for %s by user", code)
+    return {"status": "success", "code": code, "paused_platforms": sorted(paused)}
 
 
 @router.post("/session/clear")

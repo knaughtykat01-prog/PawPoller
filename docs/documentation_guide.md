@@ -422,6 +422,8 @@ First-poll notification suppression: the orchestrator tracks `_first_cycle = Tru
 
 The orchestrator respects `polling_paused`: when paused, polling is skipped but the sleep/schedule loop continues so that the cycle resumes immediately when unpaused. Manual `/poll` commands via the Telegram bot still work by calling individual poll functions directly.
 
+Per-platform pause (2.103.0): distinct from the global flag, `settings.polling_paused_platforms` is a list of platform codes. `_poll_all()` reads it once per cycle and skips any platform whose code is listed (both the account-aware and legacy task-building loops), while the other platforms poll normally. Manual "Poll Now" / "Full Resync" for a paused platform still work — the skip only applies to the scheduled cycle. Toggled from Settings → Polling per-card buttons via `POST /api/poll/pause/{code}` / `/poll/resume/{code}`.
+
 **Step 4: Block until signal** — Uses `threading.Event` + signal handler:
 ```python
 shutdown_event = threading.Event()
@@ -1817,8 +1819,9 @@ The Settings page (`#/settings`) uses a tabbed layout with 7 tabs: **General**, 
 
 **Lazy loading** — The Polling and Logs tabs use deferred data fetching to reduce API calls on initial settings load:
 - On first load, only General/Platforms/Telegram/Data/About tabs fetch their data (~15 API calls)
-- The **Polling tab** fetches its data only when the user clicks on it. This loads IB poll status + poll log, plus each connected platform's poll status and poll log in parallel (~22 API calls). A `_pollingTabLoaded` flag prevents re-fetching on subsequent tab switches.
+- The **Polling tab** fetches its data only when the user clicks on it. This loads IB poll status + poll log, plus each connected platform's poll status and poll log in parallel (~22 API calls), and the pause state (`/api/poll/paused`). A `_pollingTabLoaded` flag prevents re-fetching on subsequent tab switches. Cards render in a responsive **`.polling-grid`** (2.103.0, was a vertical stack) and each carries a **⏸ Pause / ▶ Resume** button (`_togglePlatformPause`) plus a "· paused" summary tag when paused.
 - The **Logs tab** fetches server.log, polling.log, and app.log on demand when opened.
+- **Settings search** (2.103.0): a search box above the tab strip (`#settings-search`, wired by `_wireSettingsSearch`) filters across *every* tab at once. Because all tab panels are in the DOM (inactive ones just `display:none`), a non-empty query shows all panels and hides the `.settings-section` / top-level `.settings-accordion` units whose text doesn't match; an empty query (or Esc) restores the normal single-tab view. Lazy tabs (Polling, Logs) are eager-loaded on the first search so their content is searchable.
 
 **Collapsible accordion sections** — Within each tab, related settings are grouped in native `<details>/<summary>` HTML elements, providing expand/collapse functionality without JavaScript. Each platform's configuration section is an independent accordion.
 
@@ -1867,7 +1870,9 @@ editor, settings, testing.
 | GET | `/api/poll/all-progress` | Aggregate progress across every platform. |
 | POST | `/api/poll/pause` | Pause the orchestrator (all platforms). |
 | POST | `/api/poll/resume` | Resume polling. |
-| GET | `/api/poll/paused` | `{paused: bool}` state probe. |
+| GET | `/api/poll/paused` | `{polling_paused: bool, paused_platforms: [code…]}` state probe. |
+| POST | `/api/poll/pause/{code}` | Pause scheduled polling for ONE platform (2.103.0). Adds `code` to `settings.polling_paused_platforms`; `_poll_all()` skips it each cycle. Manual poll/resync still work. |
+| POST | `/api/poll/resume/{code}` | Resume scheduled polling for ONE platform (2.103.0). |
 | POST | `/api/session/clear` | Clear server-side session state. |
 | GET | `/api/poll_log` | IB poll audit trail. |
 | GET | `/api/analytics/top-fans` | Cross-platform fan leaderboard. |

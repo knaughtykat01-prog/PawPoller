@@ -1,7 +1,24 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-13
-**Current version (live/master):** 2.102.0 — **OWASP ASVS 5.0 Level 2 self-assessment + the fixes it surfaced.**
+**Current version (live/master):** 2.103.0 — **Quick-wins batch: cross-platform fix, per-platform pause, settings search, artwork remove.**
+Isolated UX/bug fixes from a product-direction review (no data-model changes; larger IA/art
+consolidation spec'd separately in `docs/specs/ia_consolidation.md`). (1) **Cross-platform screen crash**
+"Cannot read properties of undefined (reading 'map')" — `Components.linkSuggestions()` read `s.items.map()`
+but `auto_suggest_links()` returns members under `submissions`; corrected + guarded `(s.submissions || [])`.
+(2) **Itaku infinite retry** — a post to an unconnected Itaku account fails "… not configured (ik_auth_token)",
+a permanent error queued as transient; `posting/manager.py` `_schedule_retry()` now classifies "… not
+configured" permanent (no retry, log tells user to connect first). (3) **Artwork upload "✕ Remove image"
+button** (`artwork.js` `_clearFile()`). (4) **Per-platform pause polling** — Settings → Polling cards get a
+⏸ Pause / ▶ Resume toggle; new `POST /api/poll/pause/{code}` + `/poll/resume/{code}`, state in
+`settings.polling_paused_platforms`, scheduler `_poll_all()` skips paused codes each cycle (manual Poll/Resync
+still work; distinct from global pause; "· paused" tag on card). (5) **Polling tab → grid** (`.polling-grid`
+auto-fill min 340px; was a vertical stack). (6) **Settings search** — box above the tab strip filters ALL tabs
+at once (`_wireSettingsSearch`), hides non-matching sections/accordions, Esc/clear restores; eager-loads lazy
+Polling/Logs tabs on first search. (7) **Threads/Instagram guides** now warn (first note) to do token setup on
+**desktop in Microsoft Edge / any non-Chrome browser** — Chrome breaks Meta's dashboard. Full suite: 363 pass.
+
+**Prior — 2.102.0 — OWASP ASVS 5.0 Level 2 self-assessment + the fixes it surfaced.**
 Walked all 253 L1+L2 ASVS 5.0 requirements against the app with file-level evidence → published
 `docs/security/ASVS_ASSESSMENT.md` (ships public; README links it; honest Known-Gaps register; single-tenant
 threat model). Nine gaps fixed in the same pass: (1) `Utils.safeUrl()` — scraped `sub.link`/`d.url`/`external_url`

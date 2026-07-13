@@ -124,6 +124,7 @@ const App = {
         document.addEventListener('click', (e) => {
             const el = e.target.closest(
                 '[data-nav],[data-poll],[data-resync],[data-export],' +
+                '[data-pause-plat],[data-resume-plat],' +
                 '[data-link-stats],[data-link-delete],[data-remove-group],[data-post-action],' +
                 '[data-link-suggest]'
             );
@@ -132,6 +133,8 @@ const App = {
             if (d.nav !== undefined) { this.navigate(d.nav); return; }
             if (d.poll !== undefined) { this._dashPoll(el, d.poll); return; }
             if (d.resync !== undefined) { this._dashResync(el, d.resync); return; }
+            if (d.pausePlat !== undefined) { this._togglePlatformPause(el, d.pausePlat, true); return; }
+            if (d.resumePlat !== undefined) { this._togglePlatformPause(el, d.resumePlat, false); return; }
             if (d.export !== undefined) { API.exportSubmissions(d.export); return; }
             if (d.linkStats !== undefined) { this.viewLinkStats(Number(d.linkStats)); return; }
             if (d.linkDelete !== undefined) { this.deleteLink(Number(d.linkDelete)); return; }
@@ -1377,11 +1380,22 @@ const App = {
                 fetches.push(API[p.statusFn]().catch(() => ({})));
                 fetches.push(API[p.logFn](20).catch(() => ({ polls: [] })));
             }
+            // Per-platform pause state (2.103.0) — appended last so the idx=2
+            // status/log pairing below stays intact.
+            const pausedIdx = fetches.length;
+            fetches.push(API.getPollPaused().catch(() => ({ paused_platforms: [] })));
 
             const results = await Promise.all(fetches);
             const ibStatus = results[0];
             const ibPollLog = results[1];
             const lastPoll = ibPollLog.polls?.[0] || null;
+            const pausedSet = new Set((results[pausedIdx]?.paused_platforms) || []);
+            // Renders the right pause/resume button for a platform code.
+            const pauseBtn = (key) => pausedSet.has(key)
+                ? `<button class="btn btn-sm btn-secondary" data-resume-plat="${key}">▶ Resume polling</button>`
+                : `<button class="btn btn-sm btn-warning" data-pause-plat="${key}">⏸ Pause polling</button>`;
+            const pausedTag = (key) => pausedSet.has(key)
+                ? ' <span class="summary-meta" style="color:var(--warning)">· paused</span>' : '';
 
             // Map platform results
             const pData = {};
@@ -1391,19 +1405,20 @@ const App = {
                 idx += 2;
             }
 
-            // Build Inkbunny accordion
-            let html = `
+            // Build Inkbunny accordion (grid wrapper opens here, 2.103.0)
+            let html = `<div class="polling-grid">
                 <details class="settings-accordion">
-                    <summary><span class="status-dot ${lastPoll?.status === 'success' ? 'connected' : 'disconnected'}"></span>Inkbunny <span class="summary-meta">— ${lastPoll ? lastPoll.status + ' \u00b7 ' + Utils.formatDateTime(lastPoll.started_at) : 'Never polled'}</span></summary>
+                    <summary><span class="status-dot ${lastPoll?.status === 'success' ? 'connected' : 'disconnected'}"></span>Inkbunny <span class="summary-meta">— ${lastPoll ? lastPoll.status + ' \u00b7 ' + Utils.formatDateTime(lastPoll.started_at) : 'Never polled'}</span>${pausedTag('ib')}</summary>
                     <div class="accordion-body">
                     <div class="settings-row"><span class="settings-label">Submissions tracked</span><span class="settings-value">${ibStatus.total_submissions}</span></div>
                     <div class="settings-row"><span class="settings-label">Snapshots stored</span><span class="settings-value">${Utils.formatNumber(ibStatus.total_snapshots)}</span></div>
                     <div class="settings-row"><span class="settings-label">Last poll</span><span class="settings-value">${lastPoll ? Utils.formatDateTime(lastPoll.started_at) : 'Never'}</span></div>
                     <div class="settings-row"><span class="settings-label">Last poll status</span><span class="settings-value" style="color:${lastPoll?.status === 'success' ? 'var(--success)' : lastPoll?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">${lastPoll?.status || '--'}</span></div>
                     ${lastPoll?.error_message ? `<div class="settings-row"><span class="settings-label">Last error</span><span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(lastPoll.error_message)}</span></div>` : ''}
-                    <div style="margin-top:12px;display:flex;gap:8px">
-                        <button class="btn btn-primary" data-poll="ib">Poll Now</button>
-                        <button class="btn btn-secondary" data-resync="ib">Full Resync</button>
+                    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-sm btn-primary" data-poll="ib">Poll Now</button>
+                        <button class="btn btn-sm btn-secondary" data-resync="ib">Full Resync</button>
+                        ${pauseBtn('ib')}
                     </div>
                     <div style="margin-top:12px">${Components.pollLogTable(ibPollLog.polls)}</div>
                     </div>
@@ -1416,21 +1431,23 @@ const App = {
                 const lp = ps.last_poll || null;
                 html += `
                 <details class="settings-accordion">
-                    <summary><span class="status-dot ${lp?.status === 'success' ? 'connected' : 'disconnected'}"></span>${p.name} <span class="summary-meta">— ${lp ? lp.status + ' \u00b7 ' + Utils.formatDateTime(lp.started_at) : 'Never polled'}</span></summary>
+                    <summary><span class="status-dot ${lp?.status === 'success' ? 'connected' : 'disconnected'}"></span>${p.name} <span class="summary-meta">— ${lp ? lp.status + ' \u00b7 ' + Utils.formatDateTime(lp.started_at) : 'Never polled'}</span>${pausedTag(p.key)}</summary>
                     <div class="accordion-body">
                     <div class="settings-row"><span class="settings-label">Submissions tracked</span><span class="settings-value">${ps.total_submissions || 0}</span></div>
                     <div class="settings-row"><span class="settings-label">Snapshots stored</span><span class="settings-value">${Utils.formatNumber(ps.total_snapshots || 0)}</span></div>
                     <div class="settings-row"><span class="settings-label">Last poll</span><span class="settings-value">${lp ? Utils.formatDateTime(lp.started_at) : 'Never'}</span></div>
                     <div class="settings-row"><span class="settings-label">Last poll status</span><span class="settings-value" style="color:${lp?.status === 'success' ? 'var(--success)' : lp?.status === 'error' ? 'var(--danger)' : 'var(--text-primary)'}">${lp?.status || '--'}</span></div>
                     ${lp?.error_message ? `<div class="settings-row"><span class="settings-label">Last error</span><span class="settings-value" style="color:var(--danger)">${Utils.escapeHtml(lp.error_message)}</span></div>` : ''}
-                    <div style="margin-top:12px;display:flex;gap:8px">
-                        <button class="btn btn-primary" data-poll="${p.key}">Poll Now</button>
-                        <button class="btn btn-secondary" data-resync="${p.key}">Full Resync</button>
+                    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-sm btn-primary" data-poll="${p.key}">Poll Now</button>
+                        <button class="btn btn-sm btn-secondary" data-resync="${p.key}">Full Resync</button>
+                        ${pauseBtn(p.key)}
                     </div>
                     <div style="margin-top:12px">${Components[p.tableFn](pl.polls)}</div>
                     </div>
                 </details>`;
             }
+            html += `</div>`; // close .polling-grid (2.103.0)
 
             container.innerHTML = html;
             this._pollingTabLoaded = true;
@@ -1587,6 +1604,111 @@ const App = {
             if (window.toast) window.toast.error(`${label}: resync failed — ${err.message || err}`);
             setTimeout(() => { btn.textContent = 'Full Resync'; btn.disabled = false; }, 2000);
         }
+    },
+
+    /* Per-platform pause toggle (2.103.0). `paused === true` pauses; false
+     * resumes. The scheduler skips paused platforms on its 240-min cycle;
+     * manual "Poll Now" / "Full Resync" still work. Updates the button in
+     * place (no full re-render → no scroll jump). */
+    async _togglePlatformPause(btn, platform, paused) {
+        const label = this._platformLabels[platform] || platform.toUpperCase();
+        btn.disabled = true;
+        btn.textContent = paused ? 'Pausing…' : 'Resuming…';
+        try {
+            if (paused) await API.pausePlatformPolling(platform);
+            else await API.resumePlatformPolling(platform);
+            // Flip the button to its opposite state in place.
+            if (paused) {
+                btn.dataset.pausePlat = undefined; delete btn.dataset.pausePlat;
+                btn.setAttribute('data-resume-plat', platform);
+                btn.textContent = '▶ Resume polling';
+                btn.classList.remove('btn-warning'); btn.classList.add('btn-secondary');
+            } else {
+                delete btn.dataset.resumePlat;
+                btn.setAttribute('data-pause-plat', platform);
+                btn.textContent = '⏸ Pause polling';
+                btn.classList.remove('btn-secondary'); btn.classList.add('btn-warning');
+            }
+            btn.disabled = false;
+            if (window.toast) window.toast.success(`${label}: scheduled polling ${paused ? 'paused' : 'resumed'}`);
+        } catch (err) {
+            btn.textContent = 'Error';
+            if (window.toast) window.toast.error(`${label}: ${paused ? 'pause' : 'resume'} failed — ${err.message || err}`);
+            setTimeout(() => { btn.textContent = paused ? '⏸ Pause polling' : '▶ Resume polling'; btn.disabled = false; }, 2000);
+        }
+    },
+
+    /* Settings search (2.103.0). Filters across every settings tab at once:
+     * the searchable unit is a `.settings-section` or a top-level
+     * `.settings-accordion` (per-platform cards live in Platforms/Polling).
+     * A non-empty query shows all panels and hides units whose text doesn't
+     * match; an empty query restores the normal active-tab-only view. Lazy
+     * tabs (Polling / Logs) are eager-loaded the first time a search runs so
+     * their content is searchable too. */
+    _wireSettingsSearch(tabBar) {
+        const input = document.getElementById('settings-search');
+        const info = document.getElementById('settings-search-info');
+        if (!input || !tabBar) return;
+
+        // Collect the searchable units in a panel: sections, plus any
+        // accordions that aren't already inside a section (avoids double work).
+        const unitsIn = (panel) => {
+            const units = Array.from(panel.querySelectorAll('.settings-section'));
+            panel.querySelectorAll('.settings-accordion').forEach(a => {
+                if (!a.closest('.settings-section')) units.push(a);
+            });
+            return units;
+        };
+
+        const restore = () => {
+            const active = tabBar.querySelector('.settings-tab.active')?.dataset.stab || 'general';
+            tabBar.style.display = '';
+            document.querySelectorAll('.settings-tab-content').forEach(p => {
+                p.style.display = p.dataset.tabContent === active ? '' : 'none';
+            });
+            document.querySelectorAll('.settings-tab-content .settings-section, .settings-tab-content .settings-accordion')
+                .forEach(u => { u.style.display = ''; });
+            if (info) info.textContent = '';
+        };
+
+        const run = () => {
+            const q = input.value.trim().toLowerCase();
+            if (!q) { restore(); return; }
+            // Eager-load lazy tabs once so their content is searchable.
+            if (!this._settingsSearchLoadedLazy) {
+                this._settingsSearchLoadedLazy = true;
+                try { this._loadPollingTab(); } catch (e) { /* ignore */ }
+                try { this._loadLogs(); } catch (e) { /* ignore */ }
+                // Re-run shortly so freshly-loaded async content is filtered too.
+                setTimeout(run, 400);
+            }
+            tabBar.style.display = 'none';
+            let matches = 0;
+            document.querySelectorAll('.settings-tab-content').forEach(panel => {
+                const units = unitsIn(panel);
+                let panelHit = false;
+                if (units.length) {
+                    units.forEach(u => {
+                        const hit = u.textContent.toLowerCase().includes(q);
+                        u.style.display = hit ? '' : 'none';
+                        if (hit) { panelHit = true; matches++; }
+                    });
+                } else {
+                    // Panels with no discrete units (e.g. diagnostics mount).
+                    panelHit = panel.textContent.toLowerCase().includes(q);
+                    if (panelHit) matches++;
+                }
+                panel.style.display = panelHit ? '' : 'none';
+            });
+            if (info) info.textContent = matches
+                ? `${matches} match${matches === 1 ? '' : 'es'} across all tabs`
+                : 'No matching settings';
+        };
+
+        input.addEventListener('input', run);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { input.value = ''; restore(); input.blur(); }
+        });
     },
 
     /* ── Settings → Polling tab handlers (per-platform card buttons)
@@ -8609,6 +8731,13 @@ const App = {
                     </div>
                 </div>
 
+                <div class="settings-search-bar">
+                    <input type="search" id="settings-search" class="settings-search-input"
+                           placeholder="🔍 Search settings…" autocomplete="off"
+                           aria-label="Search all settings">
+                    <span id="settings-search-info" class="settings-search-info"></span>
+                </div>
+
                 <div class="settings-tabs" id="settings-tabs">
                     <button class="settings-tab ${_settingsTab === 'general' ? 'active' : ''}" data-stab="general">General</button>
                     <button class="settings-tab ${_settingsTab === 'appearance' ? 'active' : ''}" data-stab="appearance">Appearance</button>
@@ -10351,8 +10480,15 @@ const App = {
                 });
             }
 
+            // ── Settings Search (2.103.0) ─────────────────────────────
+            // Filters every settings tab at once. Typing reveals all panels
+            // and hides the section/accordion units whose text doesn't match;
+            // clearing restores the normal single-tab view.
+            this._wireSettingsSearch(tabBar);
+
             // Load lazy tabs on initial render if active
             this._pollingTabLoaded = false;
+            this._settingsSearchLoadedLazy = false; // re-arm search's eager-load (2.103.0)
             if (_settingsTab === 'logs') this._loadLogs();
             if (_settingsTab === 'polling') this._loadPollingTab();
             if (_settingsTab === 'diagnostics' && window.Diagnostics) {

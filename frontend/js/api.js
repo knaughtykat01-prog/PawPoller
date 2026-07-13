@@ -184,6 +184,9 @@ const API = {
     pausePolling() { return this.post('/api/poll/pause'); },
     resumePolling() { return this.post('/api/poll/resume'); },
     getPollPaused() { return this.get('/api/poll/paused'); },
+    // Per-platform pause/resume (2.103.0) — code is a platform code (fa, bsky, …).
+    pausePlatformPolling(code) { return this.post(`/api/poll/pause/${code}`); },
+    resumePlatformPolling(code) { return this.post(`/api/poll/resume/${code}`); },
     getLogs(params = {}) { return this.get('/api/logs', params); },
     clearSession() { return this.post('/api/session/clear'); },
     getAuthStatus() { return this.get('/api/auth/status'); },

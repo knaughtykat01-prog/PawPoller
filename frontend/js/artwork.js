@@ -575,6 +575,7 @@ window.Artwork = {
                         </div>
                         <img id="art-preview" class="artwork-preview" alt="preview" hidden>
                     </div>
+                    <button type="button" id="art-remove" class="btn btn-sm artwork-remove" hidden>&#10005; Remove image</button>
                 </div>
                 <div class="artwork-upload-col">
                     <div class="card">
@@ -673,6 +674,9 @@ window.Artwork = {
         const localBtn = document.getElementById('art-pick-local');
         if (localBtn) localBtn.addEventListener('click', () => this._pickDesktopFile());
 
+        const removeBtn = document.getElementById('art-remove');
+        if (removeBtn) removeBtn.addEventListener('click', () => this._clearFile());
+
         document.getElementById('art-save').addEventListener('click', () => this._save(false));
         document.getElementById('art-publish').addEventListener('click', () => this._save(true));
 
@@ -723,6 +727,28 @@ window.Artwork = {
             img.hidden = true; inner.style.display = '';
             inner.querySelector('.artwork-drop-hint').textContent = 'Selected: ' + (label || 'file');
         }
+        const removeBtn = document.getElementById('art-remove');
+        if (removeBtn) removeBtn.hidden = false;
+    },
+
+    /* Clear the chosen image and restore the empty drop zone so a different
+     * file can be picked (the upload screen had no way to undo a selection). */
+    _clearFile() {
+        this._pendingFile = null;
+        this._pendingPath = null;
+        if (this._previewUrl) { URL.revokeObjectURL(this._previewUrl); this._previewUrl = null; }
+        const img = document.getElementById('art-preview');
+        const inner = document.getElementById('art-drop-inner');
+        const fileInput = document.getElementById('art-file');
+        const removeBtn = document.getElementById('art-remove');
+        if (img) { img.hidden = true; img.src = ''; }
+        if (inner) {
+            inner.style.display = '';
+            const hint = inner.querySelector('.artwork-drop-hint');
+            if (hint) hint.textContent = 'PNG, JPG, GIF or WebP';
+        }
+        if (fileInput) fileInput.value = '';
+        if (removeBtn) removeBtn.hidden = true;
     },
 
     _parseTags(s) {

@@ -290,15 +290,25 @@ def _start_poll_orchestrator():
             except Exception as e:  # noqa: BLE001
                 return [{"platform": platform, "error": describe_error(e)}]
 
+        # Per-platform pause: platforms whose code is in polling_paused_platforms
+        # are skipped this cycle (distinct from the global polling_paused flag,
+        # which skips the whole cycle upstream). Manual "Poll Now" still works.
+        paused_platforms = set(settings.get("polling_paused_platforms", []) or [])
+        if paused_platforms:
+            logger.info("Per-platform pause active — skipping: %s",
+                        ", ".join(sorted(paused_platforms)))
+
         # Build one task group per platform — account-aware platforms poll their
         # accounts sequentially inside the group; groups run concurrently.
         tasks = []
         for plat, fn in account_aware.items():
+            if plat in paused_platforms:
+                continue
             accts = accts_by_platform.get(plat, [])
             if accts:
                 tasks.append(_poll_accounts(plat, fn, accts))
         for creds_ok, plat, fn in legacy_checks:
-            if creds_ok:
+            if creds_ok and plat not in paused_platforms:
                 tasks.append(_poll_legacy(plat, fn))
 
         if not tasks:

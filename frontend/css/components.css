@@ -567,6 +567,19 @@ a.stat-card:hover {
 .btn-success { background: var(--success); color: #fff; border-color: var(--success); }
 .btn-success:hover { opacity: 0.9; }
 
+/* Pause-polling action (2.103.0) — amber outline, fills on hover. */
+.btn-warning { border-color: var(--warning); color: var(--warning); }
+.btn-warning:hover { background: var(--warning); color: #fff; }
+
+/* Polling tab card grid (2.103.0) — replaces the vertical accordion stack.
+ * Collapsed cards tile; an expanded card keeps its own width in its cell. */
+.polling-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 12px;
+    align-items: start;
+}
+
 .btn-pill { border-radius: var(--radius-pill); }
 
 /* ── Tags / Keywords ─────────────────────────────────────── */
@@ -846,6 +859,32 @@ a.stat-card:hover {
 }
 
 /* ── Settings Tabs ───────────────────────────────────────── */
+/* Settings search bar (2.103.0) — sits above the tab strip. */
+.settings-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.settings-search-input {
+    flex: 0 1 360px;
+    padding: 8px 12px;
+    background: var(--bg-input, var(--bg-hover));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 13px;
+}
+.settings-search-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.settings-search-info {
+    color: var(--text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
 .settings-tabs {
     display: flex;
     gap: 4px;

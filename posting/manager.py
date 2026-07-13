@@ -30,6 +30,17 @@ def _schedule_retry(story_name: str, ch_idx: int, platform: str, action: str,
     content_type='artwork' keeps an artwork's retry routed back to post_artwork
     by the scheduler (which branches on the queued row's content_type).
     """
+    # Permanent (config) failures — retrying can never succeed, so don't queue
+    # a backoff that just re-fails every minute. The classic case: posting to a
+    # platform whose credentials were never entered ("… not configured"). The
+    # user must connect the account first; a retry loop only spams the log.
+    _err_l = (error or "").lower()
+    if "not configured" in _err_l:
+        logger.warning("Retry: %s ch%d on %s — permanent config error, NOT retrying "
+                       "(connect the account in Settings first): %s",
+                       story_name, ch_idx, platform, error[:120])
+        return False
+
     max_attempts = 3
     if attempt >= max_attempts:
         logger.info("Retry: %s ch%d on %s — max attempts (%d) reached, giving up",

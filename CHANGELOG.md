@@ -4,6 +4,42 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.103.0] - 2026-07-13 - Quick-wins batch: cross-platform fix, per-platform pause, settings search, artwork remove
+
+A batch of isolated UX/bug fixes from a product-direction review. No data-model changes;
+the larger IA/art consolidation is spec'd separately (`docs/specs/ia_consolidation.md`).
+
+- **Cross-platform screen crashed with "Cannot read properties of undefined (reading 'map')."**
+  `Components.linkSuggestions()` read `s.items.map(...)`, but `auto_suggest_links()`
+  (`database/analytics_queries.py`) returns each suggestion's members under `submissions`, not
+  `items`. Field name corrected (both the `.map()` and the Link button's payload), guarded with
+  `(s.submissions || [])`.
+- **Itaku posting retried forever.** A post to an unconnected Itaku account fails with "Itaku auth
+  token not configured (ik_auth_token)" — a permanent config error, but `_schedule_retry()`
+  (`posting/manager.py`) queued it as transient and backed off indefinitely. "… not configured"
+  errors are now classified permanent and **not** retried; the log tells the user to connect the
+  account in Settings first.
+- **Artwork upload: no way to remove the selected image.** Added a "✕ Remove image" button to the
+  upload screen (`artwork.js`) that clears the pending file and restores the drop zone.
+- **Per-platform pause polling.** Each platform's card in Settings → Polling now has a
+  **⏸ Pause polling / ▶ Resume polling** toggle (backed by new `POST /api/poll/pause/{code}` and
+  `/poll/resume/{code}`). Paused codes live in `settings.polling_paused_platforms`; the scheduler's
+  `_poll_all()` skips them each 240-min cycle while manual "Poll Now" / "Full Resync" still work.
+  Distinct from the existing global pause. Paused platforms show a "· paused" tag on their card.
+- **Polling tab is now a grid.** The per-platform poll cards were a single vertical stack; they now
+  tile in a responsive `.polling-grid` (auto-fill, min 340px). (Platforms hub was already a grid.)
+- **Settings search.** A search box above the settings tab strip filters **every tab at once** —
+  typing reveals all panels and hides the sections/accordions whose text doesn't match; clearing
+  (or Esc) restores the normal single-tab view. Lazy tabs (Polling / Logs) are eager-loaded on the
+  first search so their content is searchable.
+- **Threads / Instagram getting-started guides** now warn, as the first note, to do the whole
+  token setup on **desktop in Microsoft Edge (or any non-Chrome browser)** — Chrome reliably breaks
+  Meta's developer dashboard and token generator.
+
+Full suite: 363 passed.
+
+---
+
 ## [2.102.0] - 2026-07-13 - OWASP ASVS 5.0 Level 2 self-assessment + the fixes it surfaced
 
 Walked all **253 Level 1 + Level 2 requirements** of the OWASP Application Security Verification
