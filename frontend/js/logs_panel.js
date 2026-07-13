@@ -12,6 +12,11 @@
  * Auto-scroll sticks to bottom unless the user has scrolled up,
  * matching the convention of every terminal log viewer the user
  * has used before.
+ *
+ * Gated by the `logs_panel_enabled` preference (Settings → App
+ * Preferences → "Floating logs button", default on). The button is
+ * only rendered when enabled; the settings toggle flips it live via
+ * window.LogsPanel.setEnabled without a reload.
  */
 
 (function () {
@@ -21,6 +26,7 @@
     const MAX_LINES = 1500;
 
     let state = loadState();
+    let enabled = true;   // gated by the logs_panel_enabled preference (default on)
     let toggleEl = null;
     let panelEl = null;
     let bodyEl = null;
@@ -237,23 +243,55 @@
         }
     }
 
-    function init() {
-        ensureToggle();
-        if (state.open) {
-            // Defer slightly so the rest of the page renders first.
-            setTimeout(() => {
+    // Show or hide the whole widget. When disabled, the toggle button is
+    // hidden and any open panel is collapsed + disconnected. Re-enabling
+    // restores the persisted open/collapsed state.
+    function applyEnabled() {
+        if (enabled) {
+            ensureToggle();
+            toggleEl.style.display = '';           // inline wins over the CSS class
+            if (state.open) {
                 ensurePanel();
                 panelEl.removeAttribute('hidden');
-                reconnect();
-            }, 200);
+                if (!evtSource) reconnect();
+            }
+        } else {
+            if (toggleEl) toggleEl.style.display = 'none';
+            if (panelEl) panelEl.setAttribute('hidden', '');
+            disconnect();
         }
+    }
+
+    function setEnabled(on) {
+        const next = !!on;
+        if (next === enabled) { applyEnabled(); return; }
+        enabled = next;
+        applyEnabled();
+    }
+
+    function init() {
         // Disconnect when the tab is hidden — saves bandwidth + spares
         // the server an idle SSE connection. Reconnect on focus return.
         document.addEventListener('visibilitychange', () => {
-            if (!state.open) return;
+            if (!enabled || !state.open) return;
             if (document.hidden) disconnect();
             else reconnect();
         });
+
+        // Decide visibility from the saved preference. Default on, and on any
+        // failure (offline / API not ready) keep the widget so behaviour never
+        // silently regresses. Defer the open-panel restore so the page renders.
+        const decide = (prefs) => {
+            enabled = !(prefs && prefs.logs_panel_enabled === false);
+            if (!enabled) { applyEnabled(); return; }
+            ensureToggle();
+            if (state.open) setTimeout(applyEnabled, 200);
+        };
+        if (typeof API !== 'undefined' && API.getPreferences) {
+            API.getPreferences().then(decide).catch(() => decide(null));
+        } else {
+            decide(null);
+        }
     }
 
     if (document.readyState === 'loading') {
@@ -262,5 +300,10 @@
         init();
     }
 
-    window.LogsPanel = { open: () => { if (!state.open) toggle(); }, close: () => { if (state.open) toggle(); }, toggle };
+    window.LogsPanel = {
+        open: () => { if (enabled && !state.open) toggle(); },
+        close: () => { if (state.open) toggle(); },
+        toggle: () => { if (enabled) toggle(); },
+        setEnabled,
+    };
 })();

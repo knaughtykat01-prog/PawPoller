@@ -1105,6 +1105,9 @@ def get_preferences():
         "mobile_mode": settings.get("mobile_mode", "auto"),
         "auto_sync_enabled": settings.get("auto_sync_enabled", True),
         "fa_direct_polling": settings.get("fa_direct_polling", False),
+        # Floating "Logs" button (bottom-right live-tail widget). Default on;
+        # users who don't want the debug control can hide it from Settings.
+        "logs_panel_enabled": settings.get("logs_panel_enabled", True),
         # ── Configurable Home dashboard widget layout (redesign) ───
         # Free-form list of {id, span} objects; null until the user
         # customises (the frontend falls back to its default layout).
@@ -1219,6 +1222,9 @@ def save_preferences(body: dict):
     # from a residential IP (the desktop instance), not the datacenter server.
     if "fa_direct_polling" in body:
         update["fa_direct_polling"] = bool(body["fa_direct_polling"])
+    # Floating "Logs" button visibility (frontend-only preference).
+    if "logs_panel_enabled" in body:
+        update["logs_panel_enabled"] = bool(body["logs_panel_enabled"])
     # Theme — accepted as opaque string; client-side validates against the
     # THEMES catalogue so unknown ids never reach here. Whitelist anyway as
     # belt-and-braces against rogue clients.

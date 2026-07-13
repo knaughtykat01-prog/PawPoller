@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-14
-**Current version (master):** 2.107.0 — **Round-robin X polling: poll ≤ N accounts per cycle to stay under the per-IP budget.**
+**Current version (master):** 2.108.0 — **Settings toggle for the floating logs button.**
+The bottom-right **"Logs"** live-tail button (`frontend/js/logs_panel.js`) was always rendered; now gated by
+the **`logs_panel_enabled`** preference (Settings → General → App Preferences → "Floating logs button",
+**default on**). `logs_panel.js` reads the pref via `API.getPreferences()` on init and only renders the
+toggle when enabled (defaults to shown on fetch failure — no silent regression); exposes
+`window.LogsPanel.setEnabled(bool)` so the settings toggle **shows/hides it live** (closes the open panel)
+with no reload. Whitelisted in `routes/api.py` `get_preferences`/`save_preferences` (the prefs endpoint only
+persists listed keys). New: `tests/test_logs_panel_pref.py` (3). Full suite 412 pass. **NOT DEPLOYED**
+(awaiting go-ahead).
+
+**Prior — 2.107.0 — Round-robin X polling: poll ≤ N accounts per cycle to stay under the per-IP budget.**
 The measured fix for the multi-account throttle. A sequential 3-account test on a cooled datacenter IP still
 threw the **3rd** account (gallery-dl 480 s → GraphQL `429`) after the first two made only ~3-4 requests —
 X's per-IP budget for the datacenter is **~2 account-scrapes per window**, reset >8 min. No in-cycle rate
@@ -9,14 +19,9 @@ limit fixes that; you have to poll **fewer accounts per cycle**. New **`polling/
 (`select_roundrobin`) picks the `batch_size` **least-recently-polled** accounts (from `tw_poll_log`
 timestamps via `tw_queries.get_tw_last_poll_by_account`, so rotation survives redeploys). `server.py` narrows
 the X account list to **`TW_ROUNDROBIN_BATCH` (default 2**, per-user override `tw_roundrobin_batch`, 0 = poll
-all) before building tasks; **only X is round-robined.** At the 12 h cadence each of 3 accounts refreshes
-~every 18 h and no cycle exceeds the budget → the tail account stops timing out. Faster/complete coverage
-still means the IP-agnostic **official API** (2.106.0). New: `polling/roundrobin.py`,
-`tests/test_tw_roundrobin.py` (9). **Verify after deploy:** the next auto-cycle logs
-`TW round-robin: polling 2/3 accounts this cycle`. Full suite 409 pass.
-
-**⚠ Ops note:** global polling is currently **paused** on prod (I paused it for the throttle diagnostics).
-Resume after the 2.107.0 deploy so the first auto-cycle uses round-robin: `POST /api/poll/resume`.
+all) before building tasks; **only X is round-robined.** **DEPLOYED + verified** — selection against the live
+prod DB picked accounts 12+13, rotating 14; **polling resumed** (`polling_paused: False`). New:
+`polling/roundrobin.py`, `tests/test_tw_roundrobin.py` (9).
 
 **Prior — 2.106.1 — Shared cross-account rate limiter for X polling (burst guard, not a full fix).**
 New **`polling/rate_limit.py`** = async sliding-window limiter; `TWClient._get_json` (GraphQL) +

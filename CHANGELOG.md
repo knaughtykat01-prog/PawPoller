@@ -4,6 +4,28 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.108.0] - 2026-07-14 - Settings toggle for the floating logs button
+
+The bottom-right **"Logs"** button (the live-tail widget, `logs_panel.js`) was always rendered. It's now
+gated by a preference so users who don't want the debug control can hide it.
+
+- **New toggle:** Settings → General → App Preferences → **"Floating logs button"** (`#pref-logs-panel`).
+  Backed by the `logs_panel_enabled` preference, **default on** (existing behaviour preserved) — flip it off
+  to hide the button.
+- **`logs_panel.js`** reads the preference on init (`API.getPreferences()`) and only renders the toggle when
+  enabled; on any fetch failure it defaults to showing the widget so behaviour never silently regresses.
+  Exposes `window.LogsPanel.setEnabled(bool)`, so the settings toggle **shows/hides the button live** (and
+  closes/disconnects the open panel) with no page reload.
+- **Backend allowlist:** `logs_panel_enabled` whitelisted in `routes/api.py` `get_preferences`
+  (default `True`) + `save_preferences` (bool-coerced) — the preferences endpoint only persists
+  explicitly-listed keys.
+- New: `tests/test_logs_panel_pref.py` (3 — default + save/read round-trip + bool coercion, guarding the
+  allowlist entry).
+
+Full suite: 412 passed.
+
+---
+
 ## [2.107.0] - 2026-07-14 - Round-robin X polling — poll ≤ N accounts per cycle to stay under the per-IP budget
 
 The measured fix for the multi-account X throttle. A sequential 3-account test on a cooled datacenter IP

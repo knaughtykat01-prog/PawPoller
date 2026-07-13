@@ -9296,6 +9296,16 @@ const App = {
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Floating logs button</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Show the bottom-right "Logs" button that live-tails server/app/polling logs</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-logs-panel" ${prefs.logs_panel_enabled !== false ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
                     </div>
                 </details>
 
@@ -11085,6 +11095,9 @@ const App = {
                     prefs.run_on_startup = !!chk('pref-startup');
                     prefs.notifications_enabled = !!chk('pref-notifications');
                     prefs.watcher_notifications_enabled = !!chk('pref-watcher-notif');
+                    if (document.getElementById('pref-logs-panel')) {
+                        prefs.logs_panel_enabled = !!chk('pref-logs-panel');
+                    }
                     if (document.getElementById('pref-auto-sync')) {
                         prefs.auto_sync_enabled = !!chk('pref-auto-sync');
                     }
@@ -11301,6 +11314,18 @@ const App = {
                     await API.savePreferences({ minimize_to_tray: e.target.checked });
                 } catch (err) {
                     e.target.checked = !e.target.checked;
+                    alert('Failed to save preference: ' + err.message);
+                }
+            });
+
+            // Floating logs button — apply immediately (show/hide) and persist.
+            document.getElementById('pref-logs-panel')?.addEventListener('change', async (e) => {
+                try { if (window.LogsPanel && LogsPanel.setEnabled) LogsPanel.setEnabled(e.target.checked); } catch (_) { /* widget optional */ }
+                try {
+                    await API.savePreferences({ logs_panel_enabled: e.target.checked });
+                } catch (err) {
+                    e.target.checked = !e.target.checked;
+                    try { if (window.LogsPanel && LogsPanel.setEnabled) LogsPanel.setEnabled(e.target.checked); } catch (_) {}
                     alert('Failed to save preference: ' + err.message);
                 }
             });

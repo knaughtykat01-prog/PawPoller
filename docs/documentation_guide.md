@@ -5567,6 +5567,16 @@ The bottom-left toggle pill + 520x360 floating panel.
 - Pause button freezes the view but keeps the SSE connection open so
   history doesn't gap.
 - File picker re-opens the SSE stream on change.
+- **Visibility gate (2.108.0):** the whole widget is gated by the
+  `logs_panel_enabled` preference (Settings → App Preferences →
+  "Floating logs button", default on, whitelisted in
+  `routes/api.py` `get_preferences`/`save_preferences`). `init()` reads
+  it via `API.getPreferences()` and only renders the toggle when
+  enabled — on any fetch failure it defaults to **shown** so the widget
+  never silently disappears. `window.LogsPanel.setEnabled(bool)` flips
+  it live (hides the button + collapses/disconnects the panel, or
+  restores the persisted open state), so the settings toggle takes
+  effect with no reload.
 
 #### `frontend/js/loading_indicator.js` (extension)
 
