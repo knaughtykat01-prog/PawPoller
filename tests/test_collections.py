@@ -11,9 +11,9 @@ from database import posting_queries
 def _seed(conn):
     # Two accounts under two personas.
     conn.execute("INSERT INTO accounts (account_id, platform, persona_id, label, enabled) "
-                 "VALUES (2, 'fa', 1, 'KnaughtyKat', 1)")
+                 "VALUES (2, 'fa', 1, 'GalleryPersona', 1)")
     conn.execute("INSERT INTO accounts (account_id, platform, persona_id, label, enabled) "
-                 "VALUES (13, 'tw', 4, 'KiiKinar', 1)")
+                 "VALUES (13, 'tw', 4, 'MicroblogPersona', 1)")
     # An FA gallery submission (views/faves/comments) + a tweet (views/likes/replies).
     conn.execute("INSERT INTO fa_submissions (submission_id, account_id, title, views, "
                  "favorites_count, comments_count, keywords) VALUES (100, 2, 'My Piece', 50, 10, 2, ?)",

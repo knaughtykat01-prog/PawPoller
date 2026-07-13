@@ -18,8 +18,8 @@ def _seed_fa_submission(conn, sid, account_id):
 def test_backfill_repoints_publication_account_from_submission():
     conn = get_connection()
     try:
-        # Two FA submissions owned by DIFFERENT accounts (2 = KnaughtyKat,
-        # 10 = Hustlestick), as polling correctly records them. FA ids are
+        # Two FA submissions owned by DIFFERENT accounts (2 = the default,
+        # 10 = a second persona), as polling correctly records them. FA ids are
         # numeric (INTEGER PK); external_id on publications is TEXT — the backfill
         # join must still match across the INTEGER↔TEXT affinity.
         _seed_fa_submission(conn, 1001, 2)
@@ -42,7 +42,7 @@ def test_backfill_repoints_publication_account_from_submission():
         acc = {r["external_id"]: r["account_id"] for r in conn.execute(
             "SELECT external_id, account_id FROM publications WHERE platform='fa'")}
         assert acc["1001"] == 2    # already correct — unchanged
-        assert acc["1002"] == 10   # re-pointed to Hustlestick
+        assert acc["1002"] == 10   # re-pointed to the second persona's account
 
         # ...and the migration marks itself done (idempotent).
         assert conn.execute(

@@ -856,10 +856,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
 
     # Migration (2.96.0): ONE-TIME backfill of publications.account_id from the
     # source submission. Imports/links used to drop the account, so every work
-    # landed on the platform's default account (e.g. all FA works → KnaughtyKat,
-    # burying Hustlestick/KiiTheTiger). Re-point each publication to the account
-    # that owns its matching {platform}_submissions row. Guarded by a meta flag
-    # so a later manual re-attribution isn't reverted on the next boot.
+    # landed on the platform's default account, burying the other personas'
+    # attribution. Re-point each publication to the account that owns its
+    # matching {platform}_submissions row. Guarded by a meta flag so a later
+    # manual re-attribution isn't reverted on the next boot.
     if "publications" in tables:
         conn.execute("CREATE TABLE IF NOT EXISTS pp_meta (key TEXT PRIMARY KEY, value TEXT)")
         _done = conn.execute(

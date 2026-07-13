@@ -64,8 +64,17 @@ SRC_DIR = resource_path(".")
 # Dev mode    -> ./data, ./logs  (project-local)
 
 if getattr(sys, "frozen", False):
-    # Persistent roaming AppData folder survives app updates / reinstalls
-    APPDATA_DIR = Path(os.environ.get("APPDATA", "")) / "PawPoller"
+    # Persistent roaming AppData folder survives app updates / reinstalls.
+    # On Linux AppImage builds APPDATA is unset — without the XDG fallback
+    # the path collapsed to a RELATIVE "PawPoller" dir (CWD-dependent data,
+    # and the uninstaller's rm -rf would target a relative path too).
+    _appdata = os.environ.get("APPDATA", "")
+    if _appdata:
+        APPDATA_DIR = Path(_appdata) / "PawPoller"
+    else:
+        _xdg = os.environ.get("XDG_DATA_HOME", "")
+        _base = Path(_xdg) if _xdg else (Path.home() / ".local" / "share")
+        APPDATA_DIR = _base / "PawPoller"
 else:
     # Dev mode: keep data alongside source for easy inspection
     APPDATA_DIR = Path(__file__).resolve().parent
@@ -837,7 +846,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.99.0"
+APP_VERSION = "2.100.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

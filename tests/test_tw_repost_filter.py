@@ -46,15 +46,15 @@ def test_missing_or_empty_is_not_repost():
 # ── Tagged-repost handling (keep reposts that @mention the account) ──
 
 def test_repost_that_tags_user_is_kept():
-    r = _repost({"entities": {"user_mentions": [{"screen_name": "KiiKinar"}]}})
+    r = _repost({"entities": {"user_mentions": [{"screen_name": "TestHandle"}]}})
     assert _is_repost(r) is True
-    assert _user_tagged_in(r, "KiiKinar") is True
-    assert _user_tagged_in(r, "@kiikinar") is True   # @ + case-insensitive
+    assert _user_tagged_in(r, "TestHandle") is True
+    assert _user_tagged_in(r, "@testhandle") is True   # @ + case-insensitive
 
 
 def test_repost_without_user_mention_is_not_tagged():
     r = _repost({"entities": {"user_mentions": [{"screen_name": "someoneelse"}]}})
-    assert _user_tagged_in(r, "KiiKinar") is False
+    assert _user_tagged_in(r, "TestHandle") is False
 
 
 def test_repost_original_is_extracted():
@@ -63,8 +63,8 @@ def test_repost_original_is_extracted():
 
 
 def test_mention_in_own_tweet_counts():
-    t = {"rest_id": "5", "legacy": {"entities": {"user_mentions": [{"screen_name": "KiiKinar"}]}}}
-    assert _user_tagged_in(t, "kiikinar") is True
+    t = {"rest_id": "5", "legacy": {"entities": {"user_mentions": [{"screen_name": "TestHandle"}]}}}
+    assert _user_tagged_in(t, "testhandle") is True
 
 
 def test_empty_target_never_tagged():
@@ -75,19 +75,19 @@ def test_empty_target_never_tagged():
 # ── Core fix: stats parsed straight from the timeline result ──
 
 def test_extract_stats_from_timeline_result():
-    c = TWClient("a", "b", "KiiKinar")
+    c = TWClient("a", "b", "TestHandle")
     result = {
         "rest_id": "123",
         "legacy": {"full_text": "hello world", "favorite_count": 5, "retweet_count": 2,
                    "reply_count": 1, "quote_count": 0, "created_at": "x", "entities": {}},
         "views": {"count": "100"},
-        "core": {"user_results": {"result": {"legacy": {"screen_name": "KiiKinar"}}}},
+        "core": {"user_results": {"result": {"legacy": {"screen_name": "TestHandle"}}}},
     }
     d = c._extract_tweet_stats(result)
     assert d["tweet_id"] == "123"
     assert d["likes"] == 5 and d["retweets"] == 2 and d["views"] == 100
     assert d["title"].startswith("hello world")
-    assert d["link"] == "https://x.com/KiiKinar/status/123"
+    assert d["link"] == "https://x.com/TestHandle/status/123"
 
 
 # ── Dates derived from the Snowflake id (X stopped filling created_at) ──
@@ -116,13 +116,13 @@ def test_tagged_repost_grabs_original_image_and_stats():
     repost = {
         "rest_id": "111",
         "legacy": {
-            "full_text": "RT @artist: look @KiiKinar",
+            "full_text": "RT @artist: look @TestHandle",
             "retweeted_status_result": {"result": {
                 "rest_id": "999",
                 "legacy": {
-                    "full_text": "look @KiiKinar I drew you",
+                    "full_text": "look @TestHandle I drew you",
                     "favorite_count": 50, "retweet_count": 7,
-                    "entities": {"user_mentions": [{"screen_name": "KiiKinar"}]},
+                    "entities": {"user_mentions": [{"screen_name": "TestHandle"}]},
                     "extended_entities": {"media": [
                         {"media_url_https": "https://pbs.twimg.com/media/ABC.jpg"}]},
                 },
@@ -131,16 +131,16 @@ def test_tagged_repost_grabs_original_image_and_stats():
             }},
         },
     }
-    assert _is_repost(repost) and _user_tagged_in(repost, "KiiKinar")
+    assert _is_repost(repost) and _user_tagged_in(repost, "TestHandle")
     src = _repost_original(repost)
-    d = TWClient("a", "b", "KiiKinar")._extract_tweet_stats(src)
+    d = TWClient("a", "b", "TestHandle")._extract_tweet_stats(src)
     assert d["thumbnail_url"] == "https://pbs.twimg.com/media/ABC.jpg"
     assert d["likes"] == 50 and d["views"] == 1234
 
 
 def test_quote_tweet_grabs_quoted_post_image():
     # A quote tweet has no media of its own; the image is in the quoted post.
-    c = TWClient("a", "b", "KiiKinar")
+    c = TWClient("a", "b", "TestHandle")
     result = {
         "rest_id": "1994383496316678229",
         "legacy": {"full_text": "And the second accompanying piece by @Ariryu_owo",
@@ -157,7 +157,7 @@ def test_quote_tweet_grabs_quoted_post_image():
 
 
 def test_extract_uses_snowflake_when_created_at_missing():
-    c = TWClient("a", "b", "KiiKinar")
+    c = TWClient("a", "b", "TestHandle")
     result = {"rest_id": "1445919810076827648",
               "legacy": {"full_text": "hi", "favorite_count": 0, "entities": {}}}
     d = c._extract_tweet_stats(result)

@@ -4,6 +4,52 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.100.0] - 2026-07-13 - Security-audit pass: shell-quoting hardening, dependency CVE fixes, persona-leak scrub (+ DA URL bug)
+
+Full security pass over the auth/credential/shell-out/path surface (via the security-reviewer agent),
+`pip-audit` over both requirements files, and a rebuild-and-scan of the public-copy pipeline. Review
+verdict: **no critical or high findings** — SQL injection, path traversal, CSRF, login rate limiting,
+session expiry, and the auth-exempt IG image host all verified clean. What it did find is fixed here:
+
+- **Shell-quoting hardening (review Medium ×3).** The generated Linux uninstall/self-update scripts
+  interpolated `$APPIMAGE`-derived paths into `rm -f`/`rm -rf`/`mv`/`exec` lines inside double quotes —
+  a filename containing `"` could break out and execute injected shell. Not attacker-reachable under
+  the current threat model (the local user picks their own AppImage filename), but `rm -rf` is the worst
+  line to leave unquoted: `uninstall.py` `_build_linux_script` + `updater.py` `_apply_update_linux` now
+  `shlex.quote()` every interpolated path and pass `--` end-of-options guards.
+- **Frozen-Linux data dir could go relative (review Low).** AppImage builds don't set `APPDATA`, so
+  `APPDATA_DIR` collapsed to a *relative* `PawPoller` dir (CWD-dependent data; the uninstaller's
+  `rm -rf` would also have targeted a relative path). `config.py` now falls back to
+  `XDG_DATA_HOME`/`~/.local/share` on non-Windows frozen builds.
+- **Dependency CVEs (pip-audit).** `cryptography` bumped `~=46.0.7 → ~=48.0.1` (server pin; wheels
+  before 48.0.1 statically link an OpenSSL with a June-2026 advisory, GHSA-537c-gmf6-5ccf) and the
+  desktop floor raised to `>=48.0.1` so a stale dev env can't bundle a vulnerable copy into the
+  installer. `weasyprint` CVE-2026-49452 assessed **not applicable** (we render the user's own story
+  HTML and never enable `presentational_hints`; no fixed release exists) — documented in
+  `requirements-server.txt`. `pytest` PYSEC-2026-1845 (UNIX `/tmp` local-user attack, CI-only dep):
+  pin bumped after the full suite passed on pytest 9.
+- **Persona-separation scrub + DA URL bug.** The DA client/poster built post URLs with a **hardcoded
+  account username** — wrong URLs for any other self-hoster and a persona linkage in code; both now use
+  the configured `target_user`. Persona handles were also scrubbed from comments/test fixtures
+  (`db.py`, `artwork_importer.py`, `test_collections.py`, `test_tw_repost_filter.py`,
+  `test_publication_account_backfill.py`) — the app's public brand handle remains, by design.
+- **`make_public.py` exclude lists caught up to 2.99.0.** New excludes: `.plan/`, `prototype/`,
+  `docs/research/`, and the root UI-mockup HTMLs (all carried VM-username/persona/story references —
+  the scanner's own scan confirmed 17 would-be leaks, now 0). New leak patterns: the non-brand persona
+  handles (case-insensitive), so a future regression fails the build loudly.
+
+- **`keyring>=25.0` added to desktop requirements.** With keyring available, the credential vault stores
+  its key in the OS keystore (Windows Credential Manager / macOS Keychain) instead of a `.vault_key`
+  dotfile next to the ciphertext.
+
+Also (ops, not code): the prod vault (already enabled) had its key **relocated out-of-band** — from the
+`.vault_key` dotfile on the backed-up data volume into `PAWPOLLER_VAULT_KEY` in the VM's `.env`
+(`docs/SETUP.md` §5.1 pattern), so data-volume backups no longer carry key+ciphertext together. The
+desktop instance's vault was **enabled** (AO3 creds migrated), keyring-backed via Windows Credential
+Manager; a stale 2 Jul `.vault_key`/vault pair from earlier testing was cleaned up.
+
+---
+
 ## [2.99.0] - 2026-07-12 - Poll-interval fix: 6/8/10/12-hour selections now save (+ "Set all platforms" one-shot)
 
 Editing a poll interval to any value **longer than 4 hours silently did nothing.** The Settings dropdowns

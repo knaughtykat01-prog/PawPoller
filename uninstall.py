@@ -264,9 +264,13 @@ def _build_windows_script(plan: UninstallPlan, tempdir: Path, remove_data: bool,
 
 def _build_linux_script(plan: UninstallPlan, tempdir: Path, remove_data: bool, remove_app: bool) -> Path:
     """Build a .sh script for Linux uninstall."""
-    app_path = plan.app_path  # the .AppImage file (or install dir for raw frozen)
-    data_dir = plan.data_dir
-    autostart = plan.autostart_target
+    import shlex
+    # shlex.quote every interpolated path: app_path comes from $APPIMAGE —
+    # the user's chosen filename — and Linux filenames may legally contain
+    # quotes/backticks/$ that would otherwise break out of the rm line.
+    app_path = shlex.quote(str(plan.app_path))  # .AppImage file (or install dir for raw frozen)
+    data_dir = shlex.quote(str(plan.data_dir))
+    autostart = shlex.quote(str(plan.autostart_target))
 
     lines: list[str] = [
         "#!/usr/bin/env bash",
@@ -280,15 +284,15 @@ def _build_linux_script(plan: UninstallPlan, tempdir: Path, remove_data: bool, r
     # Autostart already removed synchronously by config.set_run_on_startup,
     # but tidy up the .desktop file defensively in case the sync call failed.
     if remove_app or remove_data:
-        lines.append(f'rm -f "{autostart}"')
+        lines.append(f'rm -f -- {autostart}')
 
     if remove_app:
         if plan.install_type == InstallType.LINUX_APPIMAGE:
-            lines.append(f'rm -f "{app_path}"')
+            lines.append(f'rm -f -- {app_path}')
         # DEV / WINDOWS_PORTABLE (rare on Linux): skip.
 
     if remove_data:
-        lines.append(f'rm -rf "{data_dir}"')
+        lines.append(f'rm -rf -- {data_dir}')
 
     # Self-delete the helper script.
     lines.append('rm -f -- "$0"')

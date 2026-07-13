@@ -739,7 +739,9 @@ class DAClient:
         result = resp.json()
         dev_id = result.get("deviationid", "")
         logger.info("DA: Created literature deviation %s — %s", dev_id, title[:40])
-        return {"deviationid": dev_id, "url": f"https://www.deviantart.com/knaughtykat/art/{dev_id}"}
+        # Build the page URL from the configured account, not a hardcoded one.
+        return {"deviationid": dev_id,
+                "url": f"https://www.deviantart.com/{self.target_user}/art/{dev_id}"}
 
     async def oauth_stash_submit(
         self,

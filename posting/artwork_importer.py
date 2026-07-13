@@ -287,7 +287,7 @@ def import_artwork(platform: str, submission_id: str) -> dict:
             platform=platform,
             # Carry the source submission's account so the work is attributed to
             # the RIGHT account/persona (else every import lands on the platform's
-            # default account — the "Hustlestick lumped into KnaughtyKat" bug).
+            # default account — the "everything lumped under one persona" bug).
             account_id=d.get("account_id") or None,
             content_type="artwork",
             external_id=str(submission_id),

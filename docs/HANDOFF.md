@@ -1,7 +1,27 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-12
-**Current version (live/master):** 2.99.0 — **Poll-interval fix: 6/8/10/12-hour selections now save (+ "Set all platforms" one-shot).**
+**Last updated:** 2026-07-13
+**Current version (live/master):** 2.100.0 — **Security-audit pass: shell-quoting hardening, dependency CVE fixes, persona-leak scrub (+ DA URL bug).**
+Full pass: security-reviewer agent (auth/creds/shell/path — **0 critical/high**; SQLi, traversal, CSRF, login
+rate-limit, session expiry, IG pubmedia host all verified clean) + `pip-audit` + a public-copy rebuild-and-scan.
+Fixed: `shlex.quote()` on every interpolated path in the generated Linux uninstall/self-update scripts
+(`uninstall.py` `_build_linux_script`, `updater.py` `_apply_update_linux` — the review's 3 Mediums, one class);
+frozen-Linux `APPDATA_DIR` now falls back to `XDG_DATA_HOME`/`~/.local/share` instead of a CWD-relative dir
+(`config.py`); `cryptography` `~=48.0.1` server pin + `>=48.0.1` desktop floor (GHSA-537c-gmf6-5ccf, OpenSSL in
+older wheels), `pytest~=9.0.3` (PYSEC-2026-1845; suite green on 9 — 353 passed), weasyprint CVE-2026-49452
+assessed N/A (own-content HTML, no `presentational_hints`; noted in requirements-server.txt); DA client/poster no
+longer hardcode an account username in post URLs (real bug for self-hosters — now `target_user`); persona handles
+scrubbed from comments/fixtures; `make_public.py` excludes caught up (`.plan/`, `prototype/`, `docs/research/`,
+root mockup HTMLs) + case-insensitive persona-handle leak patterns (scan: 17 would-be leaks → 0, verified clean
+build). `keyring>=25.0` added to desktop requirements (vault key → OS keystore, not a dotfile). **Ops:** prod
+vault was ALREADY enabled (since ~Apr) but its key sat in `/app/data/.vault_key` NEXT to the ciphertext on the
+backed-up volume — key relocated to `PAWPOLLER_VAULT_KEY` in the VM's `.env` (0600, gitignored; SETUP.md §5.1),
+dotfile deleted after verify. Desktop instance vault ENABLED (AO3 creds migrated), key in Windows Credential
+Manager; stale 2-Jul `.vault_key`+vault test artifacts cleaned. **§2 (creds-at-rest): CLOSED for both live
+deployments** (vault default-on for NEW installs remains open — §3 first-run wizard material). Review's remaining
+informational note: plaintext-by-default for fresh installs is a conscious, documented decision.
+
+**Prior — 2.99.0 — Poll-interval fix: 6/8/10/12-hour selections now save (+ "Set all platforms" one-shot).**
 Editing a poll interval to anything **longer than 4 hours silently did nothing** — the Settings dropdowns render
 6/8/10/12-hour options, but `save_preferences`'s validator only accepted `{15,30,60,120,240}` minutes, so longer
 picks were quietly rejected and the platform kept its old interval (the "my edits aren't saving" report). Fix:

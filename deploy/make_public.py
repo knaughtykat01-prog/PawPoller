@@ -35,6 +35,9 @@ EXCLUDE_DIRS = {
     "scripts_utils",   # authoring / writing-quality tooling (not imported by the app)
     "docs/reference",  # internal reverse-engineering notes
     "docs/specs",      # internal design specs
+    "docs/research",   # internal research notes (live-account validation refs)
+    ".plan",           # session planning scratch (VM/user refs)
+    "prototype",       # UI-redesign walking skeleton (mock data uses real accounts)
     # runtime / build / vcs — mostly gitignored already; belt-and-braces:
     ".git", ".github/ISSUE_TEMPLATE", "data", "logs", "dist", "build",
     "__pycache__", ".pytest_cache", ".ruff_cache", ".idea", ".vscode",
@@ -51,6 +54,9 @@ EXCLUDE_FILES = {
     "CLAUDE.md",                     # Claude context router (local only; also gitignored)
     "auto_test_results_2026-05-22.csv",
     ".env", ".env.test", "settings.json", ".vault_key", "settings.vault.json",
+    # UI-redesign mockups (untracked working files; mock data uses real accounts)
+    "storyboard.html", "ui-directions.html", "ui-directions-2.html",
+    "ui-directions-3.html",
 }
 
 
@@ -81,6 +87,12 @@ LEAK_PATTERNS = [
     (re.compile(r"Hypnotic_Claim"), "personal story title"),
     (re.compile(r"Velvet_And_Vice"), "personal story title"),
     (re.compile(r"Extra_Credit"), "personal story title"),
+    # Persona separation: "KnaughtyKat" is the app's public brand (installer
+    # publisher, GitHub org) and allowed — but the OTHER personas must never
+    # be linked to it in a public copy.
+    (re.compile(r"hustlestick", re.IGNORECASE), "persona handle"),
+    (re.compile(r"kiikinar", re.IGNORECASE), "persona handle"),
+    (re.compile(r"kiithetiger", re.IGNORECASE), "persona handle"),
 ]
 
 # Files we never text-scan (binary / vendored).

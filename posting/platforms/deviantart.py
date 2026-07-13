@@ -166,7 +166,7 @@ class DeviantArtPoster(PlatformPoster):
             return PostResult(
                 success=True,
                 external_id=external_id,
-                external_url=f"https://www.deviantart.com/knaughtykat/art/{external_id}",
+                external_url=f"https://www.deviantart.com/{client.target_user}/art/{external_id}",
                 duration_seconds=self._elapsed(_t),
             )
         except Exception as e:
@@ -191,7 +191,7 @@ class DeviantArtPoster(PlatformPoster):
             return PostResult(
                 success=True,
                 external_id=external_id,
-                external_url=f"https://www.deviantart.com/knaughtykat/art/{external_id}",
+                external_url=f"https://www.deviantart.com/{client.target_user}/art/{external_id}",
                 duration_seconds=self._elapsed(_t),
             )
         except Exception as e:

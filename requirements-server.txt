@@ -9,10 +9,19 @@ python-dotenv~=1.2.2
 bcrypt~=4.2.0
 pyotp~=2.9.0
 itsdangerous~=2.2.0
+# weasyprint 68.x has CVE-2026-49452 (CSS injection via presentational
+# hints) — NOT applicable here: pdf_generator.py renders the user's own
+# story HTML and never enables presentational_hints. No fixed release yet;
+# re-check on the next weasyprint bump.
 weasyprint~=68.1
-cryptography~=46.0.7
+# >=48.0.1: wheels before that statically link an OpenSSL with a June-2026
+# security advisory (GHSA-537c-gmf6-5ccf).
+cryptography~=48.0.1
 
 # Test dependencies (needed by CI test job — not runtime)
-pytest~=8.3
+# pytest >=9.0.3: 8.x/9.0.0-9.0.2 have PYSEC-2026-1845 (predictable
+# /tmp/pytest-of-* dirs, local-user DoS on UNIX). Full suite verified
+# green on 9.0.3 (353 passed).
+pytest~=9.0.3
 pytest-asyncio~=1.3
 respx~=0.22
