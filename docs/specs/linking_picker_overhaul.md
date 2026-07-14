@@ -53,7 +53,7 @@ free-typed tags. `.tp-*` CSS in `editor.css`.
   remove the Cross-Platform nav item + `renderCrossPlatform` + link components
   (`linkCards`/`linkSuggestions`/`viewLinkStats`). Keep `/api/links*` dormant or remove.
 
-### 4. Auto-suggest v2 — title + **image** similarity (NATIVE, NO AI)
+### 4. Auto-suggest v2 — title + **image** similarity (NATIVE, NO AI) — ✅ DONE (2.114.0)
 Current `analytics_queries.auto_suggest_links` uses **title** Jaccard similarity.
 Add **image** similarity via **perceptual hashing** (pHash/dHash): reduce each
 artwork to a grayscale ~8×8 fingerprint, hash the gradient; same artwork across

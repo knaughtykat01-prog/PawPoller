@@ -168,6 +168,9 @@ const API = {
     // the retired Cross-Platform Links screen — 2.113.0).
     getCollectionSnapshots(id) { return this.get(`/api/collections/${id}/snapshots`); },
     getCollectionSuggestions() { return this.get('/api/collections/suggestions'); },
+    // Native pixel-hash scan (no AI) — hashes local artwork + allowlisted
+    // thumbnails so image-based suggestions can surface (2.114.0).
+    scanImageHashes(limit) { return this.post(`/api/collections/hash-scan${limit ? `?limit=${limit}` : ''}`, {}); },
 
     /* ── IB (Inkbunny) convenience methods ─────────────────────
      * General status, submission CRUD, snapshot history, aggregation,

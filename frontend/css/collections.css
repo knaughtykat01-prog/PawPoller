@@ -50,6 +50,18 @@
 .coll-suggest-info { min-width: 0; }
 .coll-suggest-title { font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .coll-suggest-meta { font-size: .82rem; display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; margin-top: .15rem; }
+.coll-reason {
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    padding: .1rem .4rem;
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+.coll-reason--image { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.coll-reason--both { color: var(--success, #4caf82); border-color: color-mix(in srgb, var(--success, #4caf82) 40%, var(--border)); }
 .coll-personas { display: flex; gap: .4rem; flex-wrap: wrap; }
 .coll-persona {
     display: inline-flex;

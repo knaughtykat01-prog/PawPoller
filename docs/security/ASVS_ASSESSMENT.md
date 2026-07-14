@@ -539,7 +539,11 @@ threat model.
   or by scraped platform data, so they could be pointed at an internal address. *Mitigation:*
   these are auth-gated on a configured instance, and the caller is the single authenticated
   operator. *Remediation:* add a scheme (`https` only) + host allowlist / private-IP block to
-  the proxy fetchers. Tracked as future hardening.
+  the proxy fetchers. Tracked as future hardening. **Update (2.114.0):** the newer
+  `POST /api/collections/hash-scan` fetcher already applies this posture — `https`-only, a
+  hardcoded public-CDN host-suffix allowlist (`database/image_hash.is_allowed_thumb_url`),
+  `follow_redirects=False`, and an 8 MB size cap — so it cannot be aimed at an internal host.
+  The pattern is the intended template for retro-fitting the older `/thumb` proxies.
 - **KG-2 — Session cookie lacks `__Host-`/`__Secure-` prefix; `Secure` is conditional.**
   (V3.3.1 PARTIAL, V3.3.3 GAP) The cookie is `HttpOnly` + `SameSite=Lax` + `Secure` on HTTPS,
   but not name-prefixed, and `Secure` can't be set on desktop `http://localhost`. *Remediation:*

@@ -110,27 +110,54 @@ window.Collections = {
         try { sugg = (await API.getCollectionSuggestions()).suggestions || []; }
         catch (e) { return; }
         this._suggestions = sugg;
-        if (!sugg.length) { host.innerHTML = ''; return; }
-        const rows = sugg.slice(0, 8).map((s, i) => {
+
+        const reasonChip = (r) => {
+            if (r === 'image') return '<span class="coll-reason coll-reason--image">🖼 pixel match</span>';
+            if (r === 'both') return '<span class="coll-reason coll-reason--both">✓ title + pixels</span>';
+            return '<span class="coll-reason">📝 title match</span>';
+        };
+        const rows = sugg.slice(0, 12).map((s, i) => {
             const subs = s.submissions || [];
             const chips = subs.map(m => {
                 const p = this._plat(m.platform);
                 return `<span class="coll-plat" title="${this.esc(p.label)}">${p.emoji || this.esc((m.platform || '').toUpperCase())}</span>`;
             }).join(' ');
-            const title = this.esc((subs[0] && subs[0].title) || 'Untitled');
+            const title = this.esc((subs.find(m => m.title) || subs[0] || {}).title || 'Untitled');
             return `<div class="coll-suggest-row">
                 <div class="coll-suggest-info">
                     <div class="coll-suggest-title">${title}</div>
-                    <div class="coll-suggest-meta">${chips} <span class="muted">· ${Math.round((s.similarity || 0) * 100)}% title match</span></div>
+                    <div class="coll-suggest-meta">${chips} ${reasonChip(s.reason)} <span class="muted">· ${Math.round((s.similarity || 0) * 100)}%</span></div>
                 </div>
                 <button class="btn btn-sm btn-primary" data-coll-suggest="${i}">Make collection</button>
             </div>`;
         }).join('');
+
+        // Always show the card so the pixel-scan control stays discoverable, even
+        // with zero current suggestions.
+        const body = rows || '<p class="muted" style="margin:.2rem 0;">No lookalikes found yet. <strong>Scan images</strong> compares your art and thumbnails by pixels (no AI) to find the same piece across platforms.</p>';
         host.innerHTML = `<div class="card coll-suggest-card" style="margin-bottom:1rem;">
-            <h3 style="margin:.1rem 0 .2rem;">Suggested collections</h3>
-            <p class="muted" style="margin:0 0 .6rem;">The same piece across platforms, not yet grouped. One click merges them into a new collection.</p>
-            ${rows}
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+                <h3 style="margin:.1rem 0 .2rem;">Suggested collections</h3>
+                <button class="btn btn-sm" data-coll-scan title="Hash local art + thumbnails and compare by pixels — no AI, runs locally">🔍 Scan images</button>
+            </div>
+            <p class="muted" style="margin:0 0 .6rem;">The same piece across platforms, not yet grouped — matched by title and by pixels. One click merges them into a new collection.</p>
+            ${body}
         </div>`;
+    },
+
+    /* Run the native pixel-hash scan, then refresh suggestions. */
+    async _scanImages() {
+        const btn = document.querySelector('[data-coll-scan]');
+        if (btn) { btn.disabled = true; btn.textContent = 'Scanning…'; }
+        try {
+            const r = await API.scanImageHashes();
+            const a = (r.local_artwork || {}).hashed || 0;
+            const t = (r.thumbnails || {}).hashed || 0;
+            this._toast('success', `Hashed ${a + t} image${a + t === 1 ? '' : 's'} (${a} art, ${t} thumbs)`);
+        } catch (err) {
+            this._toast('error', err.message || err);
+        }
+        await this._renderSuggestions();
     },
 
     /* Create a new collection from a suggestion's submission set and open it. */
@@ -267,6 +294,8 @@ window.Collections = {
             if (am) { e.preventDefault(); this._addMemberBrowser(); return; }
             const sg = e.target.closest('[data-coll-suggest]');
             if (sg) { e.preventDefault(); this._createFromSuggestion(parseInt(sg.dataset.collSuggest, 10)); return; }
+            const sc = e.target.closest('[data-coll-scan]');
+            if (sc) { e.preventDefault(); this._scanImages(); return; }
             // "Add to Collection" from a piece elsewhere in the app.
             const add = e.target.closest('[data-add-collection]');
             if (add) {

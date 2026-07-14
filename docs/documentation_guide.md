@@ -6137,8 +6137,20 @@ persona/analytics rollup correct — shipped in 2.96.0; see that changelog entry
     title). The link rows are **not deleted** — undo = delete the migrated collections. `/api/links*` endpoints stay
     dormant. Frontend: nav entry removed, `#/cross-platform`→`#/collections` redirect, command-palette + page-tour
     re-pointed to Collections.
-- **Deferred** — Phase 4 augments the suggestion engine with **perceptual-hash image** similarity (native, no AI);
-  title similarity is live today. See `docs/specs/linking_picker_overhaul.md`.
+- **Image similarity (2.114.0, Phase 4) — `database/image_hash.py`.** The suggestion engine now unions a second,
+  native (no-AI) signal: perceptual **dHash**. Shrink an image to a 9×8 greyscale grid and record, per pixel,
+  whether it is brighter than its right neighbour → a 64-bit fingerprint; resize-invariant, so a full-res upload
+  and a platform thumbnail of the same art sit a small **Hamming distance** apart. Hashes live in `image_hashes`
+  keyed by `(platform, submission_id)`. Two populators behind `POST /api/collections/hash-scan`:
+  `hash_local_artworks` (zero-network — hashes each local artwork image, stores the hash against every platform
+  copy it was posted to) and `hash_scan(conn, fetch, limit)` (fetches un-hashed thumbnails, injected fetcher).
+  **SSRF posture:** `is_allowed_thumb_url` permits https **only** on a hardcoded public-CDN host-suffix allowlist
+  (`CDN_ALLOWLIST` — Inkbunny/FA/Weasyl/Bluesky/Tumblr/X/DeviantArt); the endpoint's fetcher is redirect-disabled
+  and size-capped — same posture as `/thumb`, can't reach an internal host. pixiv (referer-gated), e621 (UA
+  policy) and per-instance Mastodon are excluded on purpose. `collections_queries.auto_suggest_collections` unions
+  `_auto_suggest` (title) with `image_hash.image_suggestions` (Hamming ≤ `HAMMING_THRESHOLD` = 8), deduping on the
+  unordered member pair so a pair found by both is tagged `reason: 'both'`. The hub's "Suggested collections" card
+  renders a 📝/🖼/✓ chip per row and a **🔍 Scan images** button.
 
 **Tag picker (2.112.0, Phase 2) — `frontend/js/tag_picker.js` (`window.TagPicker`).**
 The sibling of WorkPicker for **tags** instead of works. `TagPicker.open({ title, selected, onConfirm })`

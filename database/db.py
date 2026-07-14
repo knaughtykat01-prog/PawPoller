@@ -941,6 +941,14 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     # Guarded on the collections table existing — legacy/partial DBs (e.g. the
     # legacy-migration tests) run _run_migrations before the collections schema
     # is applied, so this whole block is skipped there.
+    # Native perceptual-hash store for pixel-based "same artwork?" suggestions
+    # (Phase 4). Additive, standalone table — safe to create unconditionally.
+    try:
+        from database import image_hash as _image_hash
+        _image_hash.ensure_table(conn)
+    except Exception as e:
+        logger.warning("image_hashes table ensure skipped: %s", e)
+
     _has_collections = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='collections'").fetchone()
     if _has_collections:

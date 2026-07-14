@@ -288,12 +288,43 @@ def _collected_pairs(conn: sqlite3.Connection) -> set:
 def auto_suggest_collections(conn: sqlite3.Connection) -> list[dict]:
     """Suggest un-collected cross-platform lookalikes to fold into a Collection.
 
-    Reuses the shared title-similarity engine (analytics_queries._auto_suggest),
-    excluding anything already inside a collection. Phase 4 augments this with
-    perceptual-hash image similarity. Imported lazily to avoid any import cycle.
+    Merges two native (no-AI) signals, excluding anything already collected:
+      • **title** similarity (Jaccard, analytics_queries._auto_suggest), and
+      • **image** similarity (perceptual dHash, image_hash.image_suggestions).
+    Pairs found by both are marked reason='both' and take the higher score.
+    Imported lazily to avoid any import cycle.
     """
-    from database import analytics_queries
-    return analytics_queries._auto_suggest(conn, _collected_pairs(conn))
+    from database import analytics_queries, image_hash
+    existing = _collected_pairs(conn)
+    title = analytics_queries._auto_suggest(conn, existing)
+    for t in title:
+        t.setdefault("reason", "title")
+    image = image_hash.image_suggestions(conn, existing)
+
+    # Merge on the unordered pair of members so title+image dedupe.
+    def _key(s):
+        return frozenset((m["platform"], str(m["submission_id"])) for m in s["submissions"])
+
+    merged: dict = {}
+    for s in title + image:
+        k = _key(s)
+        cur = merged.get(k)
+        if cur is None:
+            merged[k] = s
+        else:
+            # Same pair from both signals → reason 'both', keep the richer titles
+            # and the higher confidence.
+            cur["reason"] = "both"
+            if s.get("similarity", 0) > cur.get("similarity", 0):
+                cur["similarity"] = s["similarity"]
+            # Prefer whichever copy has non-empty titles.
+            if any(not m.get("title") for m in cur["submissions"]) and \
+               all(m.get("title") for m in s["submissions"]):
+                cur["submissions"] = s["submissions"]
+
+    out = list(merged.values())
+    out.sort(key=lambda x: x.get("similarity", 0), reverse=True)
+    return out[:20]
 
 
 def migrate_links_to_collections(conn: sqlite3.Connection) -> int:

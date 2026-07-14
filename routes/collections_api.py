@@ -41,6 +41,35 @@ def suggest_collections():
         conn.close()
 
 
+@collections_router.post("/hash-scan")
+def hash_scan(limit: int = 200):
+    """Populate the perceptual-hash store so image-based suggestions can work:
+    hash every local artwork (zero network) + fetch/hash up to `limit` un-hashed
+    thumbnails from allowlisted public CDNs. Declared before /{cid}. Server-side
+    fetch is https-only, allowlist-guarded and redirect-disabled (no SSRF).
+    """
+    import httpx
+    from database import image_hash
+    conn = get_connection()
+    try:
+        local = image_hash.hash_local_artworks(conn)
+        with httpx.Client(timeout=15.0, follow_redirects=False) as client:
+            def _fetch(url):
+                if not image_hash.is_allowed_thumb_url(url):
+                    return None  # defence in depth (missing_thumb_targets already filters)
+                try:
+                    r = client.get(url)
+                    r.raise_for_status()
+                    data = r.content
+                    return data if len(data) <= image_hash._MAX_IMAGE_BYTES else None
+                except Exception:
+                    return None
+            thumbs = image_hash.hash_scan(conn, _fetch, limit=max(1, min(int(limit), 1000)))
+        return {"status": "ok", "local_artwork": local, "thumbnails": thumbs}
+    finally:
+        conn.close()
+
+
 @collections_router.post("")
 def create_collection(body: dict):
     """Create a collection. Body: {name, cover_kind?, cover_ref?, notes?, members?}.

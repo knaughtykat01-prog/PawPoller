@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-14
-**Current version (master):** 2.113.0 — **Cross-Platform Links folded into Collections — Phase 3 of the linking/picker overhaul.**
+**Current version (master):** 2.114.0 — **Native pixel-hash image-similarity suggestions (no AI) — Phase 4 of the linking/picker overhaul.**
+Collection suggestions matched only by title; now they also match by **pixels** — the same art across platforms
+via a perceptual hash, **no AI/ML/embeddings/external service**, pure Pillow, local. New **`database/image_hash.py`**:
+**dHash** (9×8 greyscale grid → 64-bit fingerprint, resize-invariant so full-res ↔ thumbnail match by small
+**Hamming distance**); pure primitives + an `image_hashes` store keyed by `(platform, submission_id)`. Two safe
+populators via **`POST /api/collections/hash-scan`**: `hash_local_artworks` (zero-network, hashes local art →
+stores against each posted platform copy) + `hash_scan` (fetches thumbnails **only** from a hardcoded public-CDN
+allowlist — https-only, host-suffix, redirect-disabled, size-capped; same SSRF posture as `/thumb`; pixiv/e621/
+Mastodon excluded). `auto_suggest_collections` now unions **title** (Jaccard) + **image** (Hamming ≤ 8) deduped on
+the member pair → `reason` title/image/both. Frontend: Collections hub "Suggested collections" card gains a
+**🔍 Scan images** button + reason chips, shows even when empty. New `tests/test_image_hash.py` (9). Full suite
+436 pass. **DEPLOYED.**
+
+**Prior — 2.113.0 — Cross-Platform Links folded into Collections — Phase 3 of the linking/picker overhaul.**
 Cross-Platform Links and Collections were the same idea (one piece across platforms + pooled analytics); Links
 only added a combined chart + title suggestions. Both moved into Collections; the Cross-Platform screen is
 retired. **Backend:** reusable `analytics_queries.get_combined_snapshots(conn, pairs)` (link wrapper +
@@ -12,7 +25,8 @@ retired. **Backend:** reusable `analytics_queries.get_combined_snapshots(conn, p
 `collections.source_link_id`, creates a Collection per link, leaves `submission_links` intact. **Frontend:**
 Collections detail gains a Combined-growth chart; hub gains a "Suggested collections" card (one-click Make
 collection); Cross-Platform nav removed, `#/cross-platform`→`#/collections` redirect, palette/tour re-pointed.
-`/api/links*` stays dormant. New `tests/test_collections_merge.py` (6). Full suite 427 pass. **DEPLOYED.**
+`/api/links*` stays dormant. New `tests/test_collections_merge.py` (6). Full suite 427 pass. **DEPLOYED**
+(`798ebc7`; prod had 0 links → migration a correct no-op, infra in place).
 
 **Prior — 2.112.0 — Tag library in the Art module (TagPicker) — Phase 2 of the linking/picker overhaul.**
 The artwork upload screen only had a free-typed comma box for tags — no access to the canonical 4,600-tag

@@ -4,6 +4,40 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.114.0] - 2026-07-14 - Native pixel-hash image-similarity suggestions (no AI)
+
+Phase 4 of the linking/picker overhaul. Collection suggestions could only match by **title**; now they also
+match by **pixels** — the same artwork posted across platforms is detected by a perceptual hash, with **no AI,
+no ML model, no embeddings, no external service**. Pure Pillow (already a dep), runs locally.
+
+- **New `database/image_hash.py`** — **dHash** (difference hash): shrink to a 9×8 greyscale grid, record per
+  pixel whether it's brighter than its right neighbour → a 64-bit fingerprint. Resize-invariant (a full-res
+  upload and a platform thumbnail of the same image land a small **Hamming distance** apart), so cross-resolution
+  copies match. Pure primitives (`dhash_from_bytes/_path`, `hamming`, `similarity`) + a small `image_hashes`
+  store keyed by `(platform, submission_id)`.
+- **Two safe populators** (`POST /api/collections/hash-scan`):
+  - `hash_local_artworks` — hashes every local artwork image (**zero network**) and stores the hash against each
+    platform copy it was posted to, so a discovered lookalike elsewhere can match your known art.
+  - `hash_scan` — fetches + hashes up to `limit` un-hashed thumbnails, but **only** from a hardcoded allowlist of
+    public, hotlink-friendly CDNs (Inkbunny/FA/Weasyl/Bluesky/Tumblr/X/DeviantArt). Fetch is **https-only,
+    host-suffix allowlisted, redirect-disabled, size-capped** — same SSRF posture as the existing `/thumb` proxy;
+    it can never be pointed at an internal host. pixiv (referer-gated), e621 (UA policy) and per-instance
+    Mastodon/Fediverse hosts are deliberately excluded.
+- **Merged suggestion engine** — `collections_queries.auto_suggest_collections` now unions the **title** signal
+  (Jaccard) and the **image** signal (Hamming ≤ 8/64), deduping on the unordered member pair. A pair found by
+  both is tagged `reason: 'both'`; the frontend shows a 📝 title / 🖼 pixel / ✓ both chip per suggestion.
+- **Frontend** — the Collections hub's "Suggested collections" card gains a **🔍 Scan images** button (runs the
+  scan, then refreshes) and reason chips; the card now shows even with zero suggestions so the scan stays
+  discoverable.
+- ASVS known-gaps note updated to record the new allowlist-guarded fetch.
+
+New: `tests/test_image_hash.py` (9 — dHash resize-invariance + discrimination, bad-input, hamming/similarity,
+URL allowlist incl. suffix-spoof/internal-host rejection, target filtering, injected-fetch scan, oversize drop,
+cross-platform image suggestions with same-platform + collected exclusion, title+image merge to 'both').
+Full suite: 436 passed.
+
+---
+
 ## [2.113.0] - 2026-07-14 - Cross-Platform Links folded into Collections
 
 Phase 3 of the linking/picker overhaul (`docs/specs/linking_picker_overhaul.md`). Cross-Platform Links and
