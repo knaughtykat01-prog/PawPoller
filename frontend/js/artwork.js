@@ -597,6 +597,7 @@ window.Artwork = {
                         <label class="field">Tags <span class="muted">(comma-separated, used as the default for every platform)</span>
                             <textarea id="art-tags" rows="2" placeholder="tag one, tag two, tag three"></textarea>
                         </label>
+                        <button type="button" class="btn btn-sm" id="art-tag-browse">🏷️ Browse tag library</button>
                     </div>
                     <div class="card">
                         <h3>Publish to</h3>
@@ -680,6 +681,11 @@ window.Artwork = {
         document.getElementById('art-save').addEventListener('click', () => this._save(false));
         document.getElementById('art-publish').addEventListener('click', () => this._save(true));
 
+        // Tag-library browser — same picker chrome the story editor uses, so
+        // artwork tags come from the canonical 4,600-tag database, not free typing.
+        const tagBrowseBtn = document.getElementById('art-tag-browse');
+        if (tagBrowseBtn) tagBrowseBtn.addEventListener('click', () => this._openTagLibrary());
+
         // Auto-fill the title from the filename if the user hasn't typed one.
         const titleInput = document.getElementById('art-title');
         titleInput.dataset.touched = '';
@@ -755,6 +761,21 @@ window.Artwork = {
         if (!s) return [];
         const sep = s.indexOf(',') >= 0 ? ',' : /\s/;
         return s.split(sep).map(t => t.trim()).filter(Boolean);
+    },
+
+    /* Open the shared TagPicker pre-loaded with whatever is already in the
+     * default-tags box, and write the confirmed selection straight back. The
+     * picker preserves free-typed tags that aren't in the library, so this is
+     * lossless — it only ever adds discoverability, never drops a tag. */
+    _openTagLibrary() {
+        if (!window.TagPicker) { this._toast('error', 'Tag library unavailable'); return; }
+        const box = document.getElementById('art-tags');
+        if (!box) return;
+        TagPicker.open({
+            title: 'Tag library',
+            selected: this._parseTags(box.value),
+            onConfirm: (names) => { box.value = names.join(', '); },
+        });
     },
 
     _collectMetadata() {

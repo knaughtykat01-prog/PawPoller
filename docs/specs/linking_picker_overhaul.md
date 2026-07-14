@@ -21,7 +21,7 @@ template the user wants for the picker.
 
 ## Work items (sequenced)
 
-### 1. Visual work-picker (`WorkPicker`) — FOUNDATION
+### 1. Visual work-picker (`WorkPicker`) — FOUNDATION — ✅ DONE (2.111.0)
 Replace the title-only scroll lists + `prompt()` selectors with a searchable
 **thumbnail grid** modeled on the tag browser. Scales to 1000s via server-side
 search.
@@ -33,9 +33,14 @@ search.
 - Replaces: collections `_addMemberBrowser` (currently text list capped at 200),
   the cross-platform `prompt("platform:id,…")`, and any future "link to work".
 
-### 2. Tag browser in the Art module (#2)
+### 2. Tag browser in the Art module (#2) — ✅ DONE (2.112.0)
 The tag browser works in the story editor; wire the **same** browser into the
 **Art posting/upload module** (artwork.js) so artwork gets the identical tag UX.
+Shipped as **`frontend/js/tag_picker.js`** (`window.TagPicker`) — a *standalone*
+picker reusing the `.tag-browser-*` chrome + `/api/editor/tags`, NOT a refactor of
+the editor's `metadata_editor.js` browser (too coupled to `this.metadata.tags`).
+Wired into `artwork.js` via a "🏷️ Browse tag library" button; lossless merge with
+free-typed tags. `.tp-*` CSS in `editor.css`.
 
 ### 3. Collections ← Cross-Platform merge (chose: migrate then retire)
 - **Snapshot chart → Collections**: new `GET /collections/{id}/snapshots`. Refactor

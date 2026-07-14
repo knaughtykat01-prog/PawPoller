@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-14
-**Current version (master):** 2.111.0 — **Visual work-picker (WorkPicker) — Phase 1 of the linking/picker overhaul.**
+**Current version (master):** 2.112.0 — **Tag library in the Art module (TagPicker) — Phase 2 of the linking/picker overhaul.**
+The artwork upload screen only had a free-typed comma box for tags — no access to the canonical 4,600-tag
+database the story editor browses. New **`frontend/js/tag_picker.js`** `TagPicker.open({title, selected,
+onConfirm})` — a standalone picker reusing the tag browser's modal chrome (`.tag-browser-*`) with **selectable
+tag chips** (name + category badge), the six category filter chips (physical/acts/kink/meta/image/user) + live
+search, loading `/api/editor/tags` (cached in `sessionStorage` `pawpoller_tag_db_v1`, shared with the editor).
+**Deliberately standalone, not a refactor** — the editor's own browser (`metadata_editor.js`) writes straight
+into `this.metadata.tags` and is too coupled to externalise; TagPicker is pure-in/pure-out like WorkPicker,
+**zero changes to the story editor**. Wired into `artwork.js` via a `🏷️ Browse tag library` button under the
+default-tags box; opens pre-loaded with current tags, writes the confirmed selection back, **lossless** (free-
+typed non-library tags preserved). `.tp-*` CSS in `editor.css`, script in `index.html`. Frontend-only. Full
+suite 421 pass (regression). **NOT DEPLOYED.** Spec + remaining phases (Collections←Cross-Platform merge,
+native pHash image-similarity suggest, art cleanup, settings search, removals): `docs/specs/linking_picker_overhaul.md`.
+
+**Prior — 2.111.0 — Visual work-picker (WorkPicker) — Phase 1 of the linking/picker overhaul.**
 Selecting a work to add to a Collection was a text list capped at 200 rows (`collections._addMemberBrowser`),
 unusable at 1000s of works. New **`frontend/js/work_picker.js`** `WorkPicker.open({title, confirmLabel, multi,
 onConfirm})` — a **visual thumbnail-grid picker** that reuses the story-editor tag browser's modal chrome
@@ -9,8 +23,7 @@ onConfirm})` — a **visual thumbnail-grid picker** that reuses the story-editor
 re-searches. **Scales via server-side search** `/api/works?search=&type=` (+ discovered bucket); filter chips
 All/Stories/Artwork/Discovered. Collections "Add members" now opens it. `.wp-*` CSS in `editor.css`, script in
 `index.html`. Reusable — will replace the Cross-Platform `prompt()` in the merge. Frontend-only. Full suite
-421 pass (regression). **DEPLOYED.** Spec + remaining phases (tag browser→Art, Collections←Cross-Platform
-merge, native pHash image-similarity suggest, settings search, removals): `docs/specs/linking_picker_overhaul.md`.
+421 pass (regression). **DEPLOYED.**
 
 **Prior — 2.110.0 — Per-account "Poll Now" (poll one account or all), every platform.**
 Manual "Poll Now" triggered `run_<code>_poll_cycle()` with no account → only ever polled the platform

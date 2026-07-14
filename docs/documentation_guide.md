@@ -6122,6 +6122,24 @@ persona/analytics rollup correct — shipped in 2.96.0; see that changelog entry
 - **Deferred** — the unify-engine auto-*suggestions* that propose collections (native title + **perceptual-hash
   image** similarity, no AI). See `docs/specs/linking_picker_overhaul.md`.
 
+**Tag picker (2.112.0, Phase 2) — `frontend/js/tag_picker.js` (`window.TagPicker`).**
+The sibling of WorkPicker for **tags** instead of works. `TagPicker.open({ title, selected, onConfirm })`
+reuses the same `.tag-browser-*` modal chrome but fills the body with selectable **tag chips** (`.tp-chip`:
+name + category badge) filtered by the six categories (`physical/acts/kink/meta/image/user`) plus a live
+substring search. It loads the canonical tag database from `/api/editor/tags` and caches it in `sessionStorage`
+under **the same `pawpoller_tag_db_v1` key the story editor uses**, so it's free after the editor (or the
+picker) has opened once. `onConfirm(names)` receives the final selected tag names.
+- **Why standalone and not a refactor of the editor's browser:** the story-editor tag browser
+  (`metadata_editor.js`) is welded to `this.metadata.tags` — it reads every platform's tag set to show "also
+  on" indicators and applies via `_addTagToPlatform` / `_addTagToChapter`, with no automated tests. TagPicker
+  copies WorkPicker's pure-in/pure-out contract instead, so the editor is untouched.
+- **Art module wiring (`frontend/js/artwork.js`):** a `🏷️ Browse tag library` button (`#art-tag-browse`,
+  `_openTagLibrary`) under the default-tags box opens the picker seeded with the current tags and writes the
+  confirmed selection back as a comma list. **Lossless** — free-typed tags that aren't in the library are
+  pre-selected (via the picker's `preserve` map) and returned unchanged, so browsing never drops a tag.
+- `.tp-*` chip CSS lives in `editor.css` (after the `.wp-*` block); script registered in `index.html` after
+  `work_picker.js`. Reusable anywhere library-backed tag selection is needed outside the story editor.
+
 
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)
 

@@ -1894,6 +1894,50 @@
 html[data-mobile="1"] .wp-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
 
 /* =======================================================================
+   TagPicker — reusable tag-library picker (tag_picker.js). Reuses the
+   .tag-browser-* modal chrome; these style the selectable tag chips that
+   fill the body grid (a lighter, standalone alternative to the editor's
+   own tag browser cards).
+   ======================================================================= */
+.tp-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    align-content: flex-start;
+}
+
+.tp-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    background: var(--bg-tertiary);
+    border: 2px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-primary);
+    transition: border-color 0.12s, background 0.12s;
+}
+
+.tp-chip:hover { border-color: var(--accent); }
+.tp-chip.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--bg-tertiary)); }
+.tp-chip.is-selected::before { content: "✓"; font-size: 11px; color: var(--accent); font-weight: 700; }
+
+.tp-chip-name { font-weight: 500; }
+
+.tp-chip-cat {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    padding: 1px 6px;
+    background: var(--bg-secondary);
+    border-radius: 999px;
+}
+
+/* =======================================================================
    Phase 4: Chapter editor
    ======================================================================= */
 

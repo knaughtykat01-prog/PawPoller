@@ -4,6 +4,33 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.112.0] - 2026-07-14 - Tag library in the Art module (TagPicker) — same browser the story editor has
+
+Phase 2 of the linking/picker overhaul (`docs/specs/linking_picker_overhaul.md`). The artwork upload screen
+only had a free-typed comma box for tags — no access to the canonical 4,600-tag database the story editor
+browses. Now it has the **same tag-library experience**, via a new standalone picker.
+
+- **New `frontend/js/tag_picker.js`** — `TagPicker.open({title, selected, onConfirm})`. Reuses the tag
+  browser's modal chrome (`.tag-browser-*`: backdrop, sticky header with search + category chips, selected
+  strip, footer) so it matches the editor visually. Body is a wrap of selectable **tag chips** (name +
+  category badge) filtered by the six categories (physical / acts / kink / meta / image / user) and a live
+  search. Loads `/api/editor/tags` (cached in `sessionStorage` under the same `pawpoller_tag_db_v1` key the
+  editor uses, so it's free after first open).
+- **Deliberately standalone, not a refactor.** The story-editor tag browser (`metadata_editor.js`) writes
+  straight into `this.metadata.tags` (reads every platform's set for "also on" hints, applies via
+  `_addTagToPlatform`/`_addTagToChapter`) — too coupled to externalise safely. TagPicker mirrors WorkPicker
+  instead: pure in, pure out. **Zero changes to the story editor.**
+- **Wired into the Art module** — a `🏷️ Browse tag library` button under the default-tags box in
+  `artwork.js` opens the picker pre-loaded with the current tags, and writes the confirmed selection back.
+  **Lossless**: free-typed tags that aren't in the library are preserved (pre-selected + returned as-is), so
+  the picker only ever adds discoverability, never drops a tag.
+- New `.tp-*` chip styles in `frontend/css/editor.css`; script registered in `index.html`.
+- Reusable anywhere that needs library-backed tag selection outside the story editor.
+
+Frontend-only (no new Python tests). Full suite: 421 passed (regression).
+
+---
+
 ## [2.111.0] - 2026-07-14 - Visual work-picker (WorkPicker) — replaces the title-scroll selection
 
 First slice of the linking/picker overhaul (`docs/specs/linking_picker_overhaul.md`). Selecting a work to add
