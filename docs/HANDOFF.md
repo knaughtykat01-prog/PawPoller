@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-14
-**Current version (master):** 2.115.0 — **Art workflow cleanup — Phase 5 of the linking/picker overhaul.**
+**Current version (master):** 2.116.0 — **Publishing settings tab folded into General — Phase 7a of the linking/picker overhaul.**
+The user's call on the "Publishing module" removal: it's the **Settings → Publishing tab**, and they only want a
+yes/no posting toggle, in **General**. So the Publishing + Server Sync accordions (Enable-posting toggle, default
+rating/platforms, remote server URL/key/archive-path, Save button) moved into **Settings → General**; the on/off
+relabelled **"Enable posting"**. **Every element ID preserved** → the existing Publishing handlers keep working
+(pure DOM relocation, reversible). Publishing tab button removed; `#/settings/publishing` redirects to General.
+Frontend-only. Full suite 437 pass. **DEPLOYED.** **Phase 7b NEXT (in progress):** the user chose "move
+Submissions' extras (＋Collection / discovered bucket / gallery import) onto Library FIRST, then hide Submissions"
+— not yet done.
+
+**Prior — 2.115.0 — Art workflow cleanup — Phase 5 of the linking/picker overhaul.**
 Two concrete art fixes. **Discoverable delete:** the artwork *detail* page always had Delete but it was buried
 (the "missing remove artwork" complaint = a discoverability gap); every **library hub card** now has a hover
 **🗑 Delete** (`artwork.js._deleteFromHub`, confirm; published posts stay live). **Art in Collections:**
@@ -10,7 +20,8 @@ shows a per-posting thumbnail and the hub card **auto-covers** from the first lo
 (`cover_thumb`/`cover_platform`; FA/IB/Pixiv via the thumbnail relays). Fixes "Collections is missing the Artwork
 attached." **Flagged for §7 (not done):** the Artwork hub still groups art into "masters" via the same
 `submission_links` that §3 folded into Collections → two grouping systems; consolidating is a structural change
-deferred to the removals scoping. New collections test (+1). Full suite 437 pass. **DEPLOYED.**
+deferred to the removals scoping. New collections test (+1). Full suite 437 pass. **DEPLOYED** (`316f47b`).
+Settings search (#8) verified already-shipped since 2.103.0 (`_wireSettingsSearch`) — Phase 6 needs no build.
 
 **Prior — 2.114.0 — Native pixel-hash image-similarity suggestions (no AI) — Phase 4 of the linking/picker overhaul.**
 Collection suggestions matched only by title; now they also match by **pixels** — the same art across platforms

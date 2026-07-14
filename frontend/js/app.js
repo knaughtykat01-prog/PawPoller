@@ -9079,7 +9079,9 @@ const App = {
             // Store browser login availability for platform connect forms
             const _browserLoginAvailable = browserLoginInfo.available;
 
-            const _settingsTab = (window.location.hash.match(/^#\/settings\/(\w+)/) || [])[1] || 'general';
+            let _settingsTab = (window.location.hash.match(/^#\/settings\/(\w+)/) || [])[1] || 'general';
+            // Publishing tab folded into General (2.116.0) — redirect old deep links.
+            if (_settingsTab === 'publishing') _settingsTab = 'general';
 
             const html = `
                 <div class="page-header">
@@ -9109,7 +9111,6 @@ const App = {
                     <button class="settings-tab ${_settingsTab === 'logs' ? 'active' : ''}" data-stab="logs">Logs</button>
                     <button class="settings-tab ${_settingsTab === 'about' ? 'active' : ''}" data-stab="about">About</button>
                     <button class="settings-tab ${_settingsTab === 'security' ? 'active' : ''}" data-stab="security">Security</button>
-                    <button class="settings-tab ${_settingsTab === 'publishing' ? 'active' : ''}" data-stab="publishing">Publishing</button>
                     <button class="settings-tab ${_settingsTab === 'diagnostics' ? 'active' : ''}" data-stab="diagnostics">Diagnostics</button>
                 </div>
 
@@ -9230,7 +9231,7 @@ const App = {
                     <div class="settings-row">
                         <div>
                             <span class="settings-label">Auto-sync settings across devices</span>
-                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Requires <code>posting_server_url</code> + API key on the Publishing tab</div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Requires <code>posting_server_url</code> + API key in the Publishing section below</div>
                         </div>
                         <label class="toggle-switch">
                             <input type="checkbox" id="pref-auto-sync" ${prefs.auto_sync_enabled !== false ? 'checked' : ''}>
@@ -9740,6 +9741,60 @@ const App = {
                     </div>
                 </details>
 
+                <!-- Publishing — relocated from its own tab into General (2.116.0).
+                     All element IDs preserved so the Publishing handlers keep working. -->
+                <details class="settings-accordion">
+                    <summary>Publishing</summary>
+                    <div class="accordion-body">
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
+                        <label class="settings-toggle-row">
+                            <span>Enable posting</span>
+                            <input type="checkbox" id="posting-enabled-toggle" ${postingSettings.posting_enabled ? 'checked' : ''}>
+                        </label>
+                        <p style="font-size:12px;color:var(--text-muted);margin:2px 0 0">The master on/off for story, artwork and post publishing.</p>
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:12px">
+                        <label style="font-size:13px;color:var(--text-muted)">Default Rating</label>
+                        <select id="posting-default-rating" class="search-input" style="max-width:200px">
+                            <option value="general" ${postingSettings.posting_default_rating === 'general' ? 'selected' : ''}>General</option>
+                            <option value="mature" ${postingSettings.posting_default_rating === 'mature' ? 'selected' : ''}>Mature</option>
+                            <option value="adult" ${postingSettings.posting_default_rating === 'adult' ? 'selected' : ''}>Adult</option>
+                        </select>
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:12px">
+                        <label style="font-size:13px;color:var(--text-muted)">Default Platforms (comma-separated: ib,fa,ws,sf,bsky)</label>
+                        <input type="text" id="posting-default-platforms" class="search-input" value="${Utils.escapeHtml((postingSettings.posting_default_platforms || []).join(','))}" placeholder="ib,fa,sf" style="max-width:300px">
+                    </div>
+                    </div>
+                </details>
+
+                <details class="settings-accordion">
+                    <summary>Server Sync</summary>
+                    <div class="accordion-body">
+                    <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
+                        Configure these to enable the "Sync to Server" button on the Upload page.
+                        The desktop app pushes your local story archive to the remote server.
+                    </p>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Remote Server URL</label>
+                        <input type="text" id="posting-server-url" class="search-input" value="${Utils.escapeHtml(postingSettings.posting_server_url || '')}" placeholder="http://34.xx.xx.xx:8420" style="max-width:400px">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Remote Server API Key</label>
+                        <input type="text" id="posting-server-api-key" class="search-input" value="${Utils.escapeHtml(postingSettings.posting_server_api_key || '')}" placeholder="pp_xxxx..." style="max-width:400px">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Local Archive Path (auto-detected if blank)</label>
+                        <input type="text" id="posting-archive-path" class="search-input" value="${Utils.escapeHtml(postingSettings.posting_story_archive_path || '')}" placeholder="Auto-detect" style="max-width:500px">
+                    </div>
+                    </div>
+                </details>
+
+                <div style="margin-top:16px;display:flex;gap:12px">
+                    <button class="btn btn-primary" id="save-posting-settings-btn">Save Publishing Settings</button>
+                    <span id="posting-settings-status" style="font-size:13px;color:var(--text-muted);align-self:center"></span>
+                </div>
+
                 <details class="settings-accordion" style="border-color:#a44;background:rgba(180,60,60,0.04)">
                     <summary style="color:#c66">Danger zone <span class="summary-meta">— uninstall, factory reset</span></summary>
                     <div class="accordion-body">
@@ -9899,62 +9954,6 @@ const App = {
                 </div>
 
                 </div><!-- /tab:about -->
-
-                <!-- ═══ TAB: Publishing ═══ -->
-                <div class="settings-tab-content" data-tab-content="publishing" ${_settingsTab !== 'publishing' ? 'style="display:none"' : ''}>
-
-                <details class="settings-accordion" open>
-                    <summary>Publishing Settings</summary>
-                    <div class="accordion-body">
-                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
-                        <label class="settings-toggle-row">
-                            <span>Enable Posting Module</span>
-                            <input type="checkbox" id="posting-enabled-toggle" ${postingSettings.posting_enabled ? 'checked' : ''}>
-                        </label>
-                    </div>
-                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:12px">
-                        <label style="font-size:13px;color:var(--text-muted)">Default Rating</label>
-                        <select id="posting-default-rating" class="search-input" style="max-width:200px">
-                            <option value="general" ${postingSettings.posting_default_rating === 'general' ? 'selected' : ''}>General</option>
-                            <option value="mature" ${postingSettings.posting_default_rating === 'mature' ? 'selected' : ''}>Mature</option>
-                            <option value="adult" ${postingSettings.posting_default_rating === 'adult' ? 'selected' : ''}>Adult</option>
-                        </select>
-                    </div>
-                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:12px">
-                        <label style="font-size:13px;color:var(--text-muted)">Default Platforms (comma-separated: ib,fa,ws,sf,bsky)</label>
-                        <input type="text" id="posting-default-platforms" class="search-input" value="${Utils.escapeHtml((postingSettings.posting_default_platforms || []).join(','))}" placeholder="ib,fa,sf" style="max-width:300px">
-                    </div>
-                    </div>
-                </details>
-
-                <details class="settings-accordion">
-                    <summary>Server Sync</summary>
-                    <div class="accordion-body">
-                    <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
-                        Configure these to enable the "Sync to Server" button on the Upload page.
-                        The desktop app pushes your local story archive to the remote server.
-                    </p>
-                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
-                        <label style="font-size:13px;color:var(--text-muted)">Remote Server URL</label>
-                        <input type="text" id="posting-server-url" class="search-input" value="${Utils.escapeHtml(postingSettings.posting_server_url || '')}" placeholder="http://34.xx.xx.xx:8420" style="max-width:400px">
-                    </div>
-                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
-                        <label style="font-size:13px;color:var(--text-muted)">Remote Server API Key</label>
-                        <input type="text" id="posting-server-api-key" class="search-input" value="${Utils.escapeHtml(postingSettings.posting_server_api_key || '')}" placeholder="pp_xxxx..." style="max-width:400px">
-                    </div>
-                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
-                        <label style="font-size:13px;color:var(--text-muted)">Local Archive Path (auto-detected if blank)</label>
-                        <input type="text" id="posting-archive-path" class="search-input" value="${Utils.escapeHtml(postingSettings.posting_story_archive_path || '')}" placeholder="Auto-detect" style="max-width:500px">
-                    </div>
-                    </div>
-                </details>
-
-                <div style="margin-top:16px;display:flex;gap:12px">
-                    <button class="btn btn-primary" id="save-posting-settings-btn">Save Publishing Settings</button>
-                    <span id="posting-settings-status" style="font-size:13px;color:var(--text-muted);align-self:center"></span>
-                </div>
-
-                </div><!-- /tab:publishing -->
 
                 <!-- ═══ TAB: Security ═══ -->
                 <div class="settings-tab-content" data-tab-content="security" ${_settingsTab !== 'security' ? 'style="display:none"' : ''}>

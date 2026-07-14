@@ -91,10 +91,19 @@ whose text doesn't match, eager-loading the lazy Polling/Logs tabs so they're
 searchable too, with a live match count. Same "already exists" pattern as the
 per-platform pause button and the polling grid.
 
-### 7. Removals — scope before deleting (chose: scope with me first)
-- **Submissions tab (#5)**: it's the `/api/works` library hub (also hosts
-  "＋ Collection"). Map dependencies, then decide hide vs delete.
-- **Publishing module (#9)**: clarify which surface (Stories/Posts/queue/history).
+### 7. Removals — scope before deleting (SCOPED WITH USER 2026-07-14)
+- **Publishing module (#9) → ✅ DONE (2.116.0).** User clarified: it's the
+  **Settings → Publishing tab**, and they only want a yes/no posting toggle, in
+  **General**. Moved the whole Publishing + Server Sync panel into General (all
+  element IDs preserved so handlers keep working), relabelled the toggle "Enable
+  posting", removed the tab button, redirect old deep link. Reversible.
+- **Submissions tab (#5) → ⏳ IN PROGRESS (7b).** User chose **"move extras to
+  Library first, then hide Submissions"**. Extras to port from `submissions.js`
+  onto the Library (`bookshelf.js`) screen: (1) the **＋ Collection** affordance on
+  work cards, (2) the **discovered-art bucket** (`#/submissions/discovered` →
+  `Submissions.renderDiscovered`), (3) **gallery import**. THEN hide Submissions
+  from nav (keep route + module = reversible). Both list `/api/works`; Library is
+  the cover-forward view, Submissions adds subtab filters/search/sort.
 
 ## Already done (verified — do NOT rebuild)
 - **Per-platform pause button** (#10) — exists since 2.103.0 (inside each Polling

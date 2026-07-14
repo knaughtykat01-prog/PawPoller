@@ -4,6 +4,27 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.116.0] - 2026-07-14 - Publishing settings tab folded into General (Phase 7a)
+
+Phase 7 of the linking/picker overhaul — the removals, scoped with the user first. The user's call on the
+"Publishing module": it's the **Settings → Publishing tab**, and "realistically I only need the tick for yes/no
+to posting, and it should just be in General." So the whole Publishing tab moved into **General** and the
+separate tab is gone.
+
+- The **Publishing** and **Server Sync** accordions (Enable posting toggle, default rating/platforms, remote
+  server URL/API-key/archive-path, Save button) now live under **Settings → General**, with the on/off toggle
+  relabelled **"Enable posting"** and given a one-line description — the simple yes/no the user wanted.
+- **Every element ID is preserved** (`posting-enabled-toggle`, `posting-default-rating`,
+  `posting-default-platforms`, `posting-server-url`, `posting-server-api-key`, `posting-archive-path`,
+  `save-posting-settings-btn`, `posting-settings-status`), so the existing Publishing event handlers keep working
+  unchanged — a pure relocation, nothing removed, fully reversible.
+- The **Publishing** tab button is removed and old `#/settings/publishing` deep links redirect to General.
+- Reversible: no settings keys or handlers changed; only the DOM location of the panel moved.
+
+Frontend-only DOM relocation (no new tests). Full suite: 437 passed (regression).
+
+---
+
 ## [2.115.0] - 2026-07-14 - Art workflow cleanup — discoverable delete + art shown in Collections
 
 Phase 5 of the linking/picker overhaul. Two concrete fixes to the art experience, plus a documented map of the
