@@ -7,7 +7,7 @@ helper is pure (accts + batch + last-poll map → accounts to poll), so most of
 this is exercised without a DB; one test covers the poll-log query that feeds it.
 """
 
-from polling.roundrobin import select_roundrobin
+from polling.roundrobin import select_roundrobin, effective_batch
 
 
 def _accts(*ids):
@@ -80,6 +80,29 @@ def test_rotation_covers_all_accounts_over_cycles():
     # Over 6 cycles of 2/3, every account is polled and none is starved.
     assert all(c > 0 for c in polled_counts.values())
     assert max(polled_counts.values()) - min(polled_counts.values()) <= 1
+
+
+def test_effective_batch_scraper_always_throttles():
+    # No official API → scrapers share a per-IP budget → round-robin regardless.
+    assert effective_batch(2, official_active=False, save_tokens=False) == 2
+    assert effective_batch(2, official_active=False, save_tokens=True) == 2
+
+
+def test_effective_batch_official_polls_all_by_default():
+    # Official API is IP-agnostic → poll every account (batch 0) unless opted in.
+    assert effective_batch(2, official_active=True, save_tokens=False) == 0
+
+
+def test_effective_batch_official_throttles_when_saving_tokens():
+    # User opted into throttling to spend fewer paid reads.
+    assert effective_batch(2, official_active=True, save_tokens=True) == 2
+
+
+def test_save_tokens_preference_round_trips():
+    from routes.api import get_preferences, save_preferences
+    assert get_preferences()["tw_roundrobin_save_tokens"] is False
+    save_preferences({"tw_roundrobin_save_tokens": True})
+    assert get_preferences()["tw_roundrobin_save_tokens"] is True
 
 
 def test_get_tw_last_poll_by_account_query():

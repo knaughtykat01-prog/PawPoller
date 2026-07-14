@@ -1,15 +1,27 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-14
-**Current version (master):** 2.108.0 — **Settings toggle for the floating logs button.**
+**Current version (master):** 2.109.0 — **Backend-aware X round-robin + "save API costs" toggle.**
+Round-robin (2.107.0) was throttle-protection for the *scraper*, but kept firing under the IP-agnostic
+**official API** — needlessly capping the cycle at 2/3 accounts. New **`effective_batch(configured, *,
+official_active, save_tokens)`** (`polling/roundrobin.py`): scrapers always round-robin; the official API
+polls **every** account each cycle (batch 0) **unless** the user opts into throttling to spend fewer paid
+reads. `server.py` consults `official_api.is_enabled` + the new **`tw_roundrobin_save_tokens`** setting; log
+names the reason (`per-IP throttle | save-tokens`). New toggle in X settings → Official X API card (shown
+when a token is set): **"Throttle polling to save API costs"** (default off), whitelisted in
+`routes/api.py`. **Net: with a Bearer token connected, all X accounts poll every cycle.** New:
+`tests/test_tw_roundrobin.py` +4. Full suite 416 pass. **NOT DEPLOYED** (awaiting go-ahead).
+
+**Live status (X official API, verified 2026-07-14):** Bearer token connected on prod (`has_api_token: True`,
+backend `auto` → official). A poll of @KnaughtyKat ran via the **official API in 0.4 s** (`clients.tw.official_api:
+TW official API: 1 tweets`) — token valid, tier allows `public_metrics` reads. **Gotcha found:** the manual
+`/api/tw/poll/trigger` polls only the **default account** (→ account picker is the next build, all platforms).
+
+**Prior — 2.108.0 — Settings toggle for the floating logs button.**
 The bottom-right **"Logs"** live-tail button (`frontend/js/logs_panel.js`) was always rendered; now gated by
-the **`logs_panel_enabled`** preference (Settings → General → App Preferences → "Floating logs button",
-**default on**). `logs_panel.js` reads the pref via `API.getPreferences()` on init and only renders the
-toggle when enabled (defaults to shown on fetch failure — no silent regression); exposes
-`window.LogsPanel.setEnabled(bool)` so the settings toggle **shows/hides it live** (closes the open panel)
-with no reload. Whitelisted in `routes/api.py` `get_preferences`/`save_preferences` (the prefs endpoint only
-persists listed keys). New: `tests/test_logs_panel_pref.py` (3). Full suite 412 pass. **NOT DEPLOYED**
-(awaiting go-ahead).
+the **`logs_panel_enabled`** preference (Settings → App Preferences → "Floating logs button", **default on**).
+Reads the pref via `API.getPreferences()`, exposes `window.LogsPanel.setEnabled(bool)` (live show/hide).
+Whitelisted in `routes/api.py`. New: `tests/test_logs_panel_pref.py` (3). **NOT DEPLOYED.**
 
 **Prior — 2.107.0 — Round-robin X polling: poll ≤ N accounts per cycle to stay under the per-IP budget.**
 The measured fix for the multi-account throttle. A sequential 3-account test on a cooled datacenter IP still

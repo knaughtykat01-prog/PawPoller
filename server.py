@@ -260,27 +260,35 @@ def _start_poll_orchestrator():
         for a in enabled_accounts:
             accts_by_platform.setdefault(a["platform"], []).append(a)
 
-        # X round-robin: X shares one per-IP rate budget across all a user's
-        # accounts, and the datacenter IP throttles after ~2 account-scrapes per
-        # window. Polling all X accounts back-to-back 429s the tail, so poll only
-        # the N least-recently-polled X accounts this cycle and rotate the rest
-        # to the next one. Selection is derived from tw_poll_log timestamps, so
-        # it stays fair across redeploys (which reset the poll timer).
+        # X round-robin: the scraper backends share one per-IP rate budget and
+        # the datacenter IP throttles after ~2 account-scrapes per window, so
+        # they always poll only the N least-recently-polled accounts and rotate
+        # the rest. The official API is IP-agnostic — it polls every account
+        # each cycle unless the user opts into throttling to save paid reads
+        # (tw_roundrobin_save_tokens). effective_batch() encodes that policy;
+        # selection is from tw_poll_log timestamps so it's fair across redeploys.
         tw_accts = accts_by_platform.get("tw", [])
-        tw_batch = int(settings.get("tw_roundrobin_batch", config.TW_ROUNDROBIN_BATCH) or 0)
-        if tw_accts and tw_batch and len(tw_accts) > tw_batch:
-            from polling.roundrobin import select_roundrobin
-            from database import tw_queries as _twq
-            _c = get_connection()
-            try:
-                _last_poll = _twq.get_tw_last_poll_by_account(_c)
-            finally:
-                _c.close()
-            selected = select_roundrobin(tw_accts, tw_batch, _last_poll)
-            accts_by_platform["tw"] = selected
-            logger.info("TW round-robin: polling %d/%d accounts this cycle (%s)",
-                        len(selected), len(tw_accts),
-                        ", ".join(str(a.get("label") or a["account_id"]) for a in selected))
+        if tw_accts:
+            from polling.roundrobin import select_roundrobin, effective_batch
+            from clients.tw import official_api as _tw_official
+            _official_active = _tw_official.is_enabled(settings)
+            _configured = int(settings.get("tw_roundrobin_batch", config.TW_ROUNDROBIN_BATCH) or 0)
+            tw_batch = effective_batch(
+                _configured, official_active=_official_active,
+                save_tokens=bool(settings.get("tw_roundrobin_save_tokens", False)))
+            if tw_batch and len(tw_accts) > tw_batch:
+                from database import tw_queries as _twq
+                _c = get_connection()
+                try:
+                    _last_poll = _twq.get_tw_last_poll_by_account(_c)
+                finally:
+                    _c.close()
+                selected = select_roundrobin(tw_accts, tw_batch, _last_poll)
+                accts_by_platform["tw"] = selected
+                _reason = "save-tokens" if _official_active else "per-IP throttle"
+                logger.info("TW round-robin (%s): polling %d/%d accounts this cycle (%s)",
+                            _reason, len(selected), len(tw_accts),
+                            ", ".join(str(a.get("label") or a["account_id"]) for a in selected))
 
         # All 15 platforms are now account-aware — no legacy single-account path.
         legacy_checks: list = []

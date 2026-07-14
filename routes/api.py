@@ -1108,6 +1108,9 @@ def get_preferences():
         # Floating "Logs" button (bottom-right live-tail widget). Default on;
         # users who don't want the debug control can hide it from Settings.
         "logs_panel_enabled": settings.get("logs_panel_enabled", True),
+        # Throttle X polling (round-robin) to save paid API reads. Only bites
+        # when the official API backend is active; scrapers round-robin anyway.
+        "tw_roundrobin_save_tokens": settings.get("tw_roundrobin_save_tokens", False),
         # ── Configurable Home dashboard widget layout (redesign) ───
         # Free-form list of {id, span} objects; null until the user
         # customises (the frontend falls back to its default layout).
@@ -1225,6 +1228,9 @@ def save_preferences(body: dict):
     # Floating "Logs" button visibility (frontend-only preference).
     if "logs_panel_enabled" in body:
         update["logs_panel_enabled"] = bool(body["logs_panel_enabled"])
+    # Throttle X polling to save paid API reads (round-robin under the official API).
+    if "tw_roundrobin_save_tokens" in body:
+        update["tw_roundrobin_save_tokens"] = bool(body["tw_roundrobin_save_tokens"])
     # Theme — accepted as opaque string; client-side validates against the
     # THEMES catalogue so unknown ids never reach here. Whitelist anyway as
     # belt-and-braces against rogue clients.

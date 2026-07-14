@@ -10733,6 +10733,16 @@ const App = {
                             <button class="btn btn-danger" id="tw-apitoken-remove-btn" style="font-size:12px">Remove token</button>
                             <span id="tw-apitoken-msg" style="font-size:13px"></span>
                         </div>
+                        <div class="settings-row" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+                            <div>
+                                <span class="settings-label">Throttle polling to save API costs</span>
+                                <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Poll a rotating 2 of your X accounts per scheduled cycle instead of all — fewer paid reads. Off = poll every account each cycle (the official API has no rate limit).</div>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="pref-tw-save-tokens" ${prefs.tw_roundrobin_save_tokens ? 'checked' : ''}>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
                         ` : `
                         <div style="display:flex;flex-direction:column;gap:6px;max-width:460px">
                             <input type="password" id="tw-api-bearer" class="search-input" placeholder="X API v2 Bearer token">
@@ -11150,6 +11160,7 @@ const App = {
                     if (document.getElementById('pref-ik-notifications')) prefs.ik_notifications_enabled = !!chk('pref-ik-notifications');
                     if (document.getElementById('pref-bsky-notifications')) prefs.bsky_notifications_enabled = !!chk('pref-bsky-notifications');
                     if (document.getElementById('pref-tw-notifications')) prefs.tw_notifications_enabled = !!chk('pref-tw-notifications');
+                    if (document.getElementById('pref-tw-save-tokens')) prefs.tw_roundrobin_save_tokens = !!chk('pref-tw-save-tokens');
                     if (document.getElementById('pref-mast-notifications')) prefs.mast_notifications_enabled = !!chk('pref-mast-notifications');
                     if (document.getElementById('pref-tum-notifications')) prefs.tum_notifications_enabled = !!chk('pref-tum-notifications');
                     if (document.getElementById('pref-pix-notifications')) prefs.pix_notifications_enabled = !!chk('pref-pix-notifications');

@@ -4,6 +4,31 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.109.0] - 2026-07-14 - Backend-aware X round-robin + "save API costs" toggle
+
+Round-robin (2.107.0) was a workaround for the **scraper's** per-IP throttle, but it kept firing even after
+the **official API** (IP-agnostic, no throttle) was connected — needlessly capping the scheduled cycle at
+2/3 accounts. Now round-robin adapts to the active backend, and becomes a user-controlled cost lever for the
+paid API.
+
+- **New `effective_batch(configured, *, official_active, save_tokens)`** in `polling/roundrobin.py`:
+  - **Scraper backends** (gallery-dl / GraphQL) → always round-robin (per-IP throttle protection).
+  - **Official API** → poll **every** account each cycle (batch 0) by default — no rate limit to dodge.
+  - **Official API + opt-in** → round-robin to spend fewer paid reads.
+- **`server.py`** consults the active backend (`official_api.is_enabled`) + the new
+  `tw_roundrobin_save_tokens` setting to decide the batch. Log line now names the reason:
+  `TW round-robin (per-IP throttle | save-tokens): polling N/M accounts…`.
+- **New toggle:** X settings → Official X API card (shown when a token is set) → **"Throttle polling to save
+  API costs"** (`tw_roundrobin_save_tokens`, default **off** = poll all every cycle). Whitelisted in
+  `routes/api.py` `get_preferences`/`save_preferences`.
+- Net effect: with your Bearer token connected, **all X accounts now poll every scheduled cycle**; flip the
+  toggle only to trade freshness for lower API spend.
+- Tests: `tests/test_tw_roundrobin.py` +4 (effective_batch matrix + save-tokens pref round-trip).
+
+Full suite: 416 passed.
+
+---
+
 ## [2.108.0] - 2026-07-14 - Settings toggle for the floating logs button
 
 The bottom-right **"Logs"** button (the live-tail widget, `logs_panel.js`) was always rendered. It's now
