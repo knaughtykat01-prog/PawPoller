@@ -55,7 +55,9 @@ window.Collections = {
                 </div>
                 <button class="btn btn-primary" data-coll-new>+ New collection</button>
             </div>
+            <div id="coll-suggest"></div>
             <div id="coll-grid"><div class="loading-spinner">Loading…</div></div>`;
+        this._renderSuggestions();
         await this._loadPersonas();
         let items = [];
         try {
@@ -96,6 +98,56 @@ window.Collections = {
                     <div class="coll-personas">${this._personaChips(c.persona_ids)}</div>
                 </div>
             </a>`;
+    },
+
+    /* Suggested collections — un-grouped cross-platform lookalikes (title
+     * similarity today; + perceptual-hash image similarity in Phase 4). Folded
+     * in from the retired Cross-Platform Links screen. Non-fatal. */
+    async _renderSuggestions() {
+        const host = document.getElementById('coll-suggest');
+        if (!host) return;
+        let sugg = [];
+        try { sugg = (await API.getCollectionSuggestions()).suggestions || []; }
+        catch (e) { return; }
+        this._suggestions = sugg;
+        if (!sugg.length) { host.innerHTML = ''; return; }
+        const rows = sugg.slice(0, 8).map((s, i) => {
+            const subs = s.submissions || [];
+            const chips = subs.map(m => {
+                const p = this._plat(m.platform);
+                return `<span class="coll-plat" title="${this.esc(p.label)}">${p.emoji || this.esc((m.platform || '').toUpperCase())}</span>`;
+            }).join(' ');
+            const title = this.esc((subs[0] && subs[0].title) || 'Untitled');
+            return `<div class="coll-suggest-row">
+                <div class="coll-suggest-info">
+                    <div class="coll-suggest-title">${title}</div>
+                    <div class="coll-suggest-meta">${chips} <span class="muted">· ${Math.round((s.similarity || 0) * 100)}% title match</span></div>
+                </div>
+                <button class="btn btn-sm btn-primary" data-coll-suggest="${i}">Make collection</button>
+            </div>`;
+        }).join('');
+        host.innerHTML = `<div class="card coll-suggest-card" style="margin-bottom:1rem;">
+            <h3 style="margin:.1rem 0 .2rem;">Suggested collections</h3>
+            <p class="muted" style="margin:0 0 .6rem;">The same piece across platforms, not yet grouped. One click merges them into a new collection.</p>
+            ${rows}
+        </div>`;
+    },
+
+    /* Create a new collection from a suggestion's submission set and open it. */
+    async _createFromSuggestion(idx) {
+        const s = (this._suggestions || [])[idx];
+        if (!s) return;
+        const subs = s.submissions || [];
+        if (!subs.length) return;
+        const name = (subs[0] && subs[0].title) || 'New collection';
+        try {
+            const members = subs.map(m => ({ member_type: 'submission', member_ref: `${m.platform}:${m.submission_id}` }));
+            const r = await API.createCollection({ name, members });
+            this._toast('success', 'Collection created');
+            location.hash = `#/collections/${r.id}`;
+        } catch (err) {
+            this._toast('error', err.message || err);
+        }
     },
 
     // ── Detail ──────────────────────────────────────────────────
@@ -160,6 +212,11 @@ window.Collections = {
                 ${Components.statCard('Comments', t.comments || 0)}
                 ${Components.statCard('Platforms', t.platforms || 0)}
             </div>
+            <div class="card" id="coll-chart-card" style="margin:1rem 0;display:none;">
+                <h3>Combined growth</h3>
+                <p class="muted" style="margin:.1rem 0 .6rem;">Summed views/faves/comments across every location over time.</p>
+                <div class="chart-wrap"><canvas id="coll-combined-chart"></canvas></div>
+            </div>
             ${c.story ? `<div class="card" style="margin-bottom:1rem;"><h3>Companion story</h3>
                 <p><a href="#/posting/story/${encodeURIComponent(c.story.name)}">${this.esc(c.story.name.replace(/_/g, ' '))}</a></p></div>` : ''}
             <div class="card" style="margin-bottom:1rem;">
@@ -176,6 +233,21 @@ window.Collections = {
                 ${memberRows ? `<table class="data-table" style="margin-top:.6rem;"><tbody>${memberRows}</tbody></table>`
                              : '<p class="muted" style="margin-top:.6rem;">No members yet — add works or submissions with <strong>＋ Add member</strong>, or use "Add to Collection" from the Submissions hub.</p>'}
             </div>`;
+
+        // Combined cross-platform growth chart — folded in from the retired
+        // Cross-Platform Links screen (2.113.0). Only shown when there's a real
+        // time-series (2+ points); a nicety, so failures are silent.
+        try {
+            const snap = await API.getCollectionSnapshots(id);
+            const rows = (snap && snap.snapshots) || [];
+            if (rows.length > 1 && window.Charts) {
+                const card = document.getElementById('coll-chart-card');
+                if (card) {
+                    card.style.display = '';
+                    Charts.aggregateLine('coll-combined-chart', rows, ['views', 'favorites_count', 'comments_count']);
+                }
+            }
+        } catch (e) { /* chart is optional */ }
     },
 
     // ── Actions (delegated) ─────────────────────────────────────
@@ -193,6 +265,8 @@ window.Collections = {
             if (del) { e.preventDefault(); this._delete(); return; }
             const am = e.target.closest('[data-coll-addmember]');
             if (am) { e.preventDefault(); this._addMemberBrowser(); return; }
+            const sg = e.target.closest('[data-coll-suggest]');
+            if (sg) { e.preventDefault(); this._createFromSuggestion(parseInt(sg.dataset.collSuggest, 10)); return; }
             // "Add to Collection" from a piece elsewhere in the app.
             const add = e.target.closest('[data-add-collection]');
             if (add) {

@@ -36,6 +36,20 @@
 .coll-meta { font-size: .82rem; display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
 .coll-plat { font-size: 1rem; }
 .coll-stats { font-size: .82rem; }
+
+/* Suggested collections (folded in from Cross-Platform Links, 2.113.0) */
+.coll-suggest-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .5rem 0;
+    border-top: 1px solid var(--border);
+}
+.coll-suggest-row:first-of-type { border-top: none; }
+.coll-suggest-info { min-width: 0; }
+.coll-suggest-title { font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coll-suggest-meta { font-size: .82rem; display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; margin-top: .15rem; }
 .coll-personas { display: flex; gap: .4rem; flex-wrap: wrap; }
 .coll-persona {
     display: inline-flex;

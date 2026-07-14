@@ -236,6 +236,113 @@ def rollup_collection(conn: sqlite3.Connection, cid: int) -> dict | None:
     }
 
 
+def collection_member_pairs(conn: sqlite3.Connection, cid: int) -> list[tuple]:
+    """`(platform, submission_id)` pairs for a collection's submission + work
+    members (posts excluded — no per-platform stats table). Feeds the combined
+    snapshot chart via analytics_queries.get_combined_snapshots."""
+    pairs: list[tuple] = []
+    for m in get_members(conn, cid):
+        mt, mref = m["member_type"], m["member_ref"]
+        if mt == "submission":
+            platform, _, sid = mref.partition(":")
+            if platform and sid:
+                pairs.append((platform, sid))
+        elif mt == "work":
+            ct, _, name = mref.partition(":")
+            for p in posting_queries.get_publications(conn, story_name=name, content_type=ct):
+                if p.get("status") not in (None, "", "posted"):
+                    continue
+                ext = p.get("external_id")
+                if p.get("platform") and ext:
+                    pairs.append((p["platform"], str(ext)))
+    return pairs
+
+
+def _collected_pairs(conn: sqlite3.Connection) -> set:
+    """All `(platform, str(submission_id))` pairs already inside ANY collection —
+    the exclusion set for suggestions, so we never re-propose a merged piece."""
+    existing: set = set()
+    try:
+        rows = conn.execute(
+            "SELECT member_type, member_ref FROM collection_members").fetchall()
+    except Exception:
+        return existing
+    for r in rows:
+        mt, mref = r["member_type"], r["member_ref"]
+        if mt == "submission":
+            platform, _, sid = mref.partition(":")
+            if platform and sid:
+                existing.add((platform, str(sid)))
+        elif mt == "work":
+            ct, _, name = mref.partition(":")
+            try:
+                for p in posting_queries.get_publications(conn, story_name=name, content_type=ct):
+                    ext = p.get("external_id")
+                    if p.get("platform") and ext:
+                        existing.add((p["platform"], str(ext)))
+            except Exception:
+                pass
+    return existing
+
+
+def auto_suggest_collections(conn: sqlite3.Connection) -> list[dict]:
+    """Suggest un-collected cross-platform lookalikes to fold into a Collection.
+
+    Reuses the shared title-similarity engine (analytics_queries._auto_suggest),
+    excluding anything already inside a collection. Phase 4 augments this with
+    perceptual-hash image similarity. Imported lazily to avoid any import cycle.
+    """
+    from database import analytics_queries
+    return analytics_queries._auto_suggest(conn, _collected_pairs(conn))
+
+
+def migrate_links_to_collections(conn: sqlite3.Connection) -> int:
+    """One-time, idempotent: fold each Cross-Platform submission_link into a
+    Collection (submission members). The original submission_links rows are left
+    INTACT so the operation is fully reversible; idempotency + provenance are
+    tracked via collections.source_link_id. Returns the number newly created.
+    """
+    try:
+        link_rows = conn.execute("SELECT link_id FROM submission_links").fetchall()
+    except Exception:
+        return 0  # link tables absent on this DB — nothing to migrate
+    try:
+        migrated = {r["source_link_id"] for r in conn.execute(
+            "SELECT source_link_id FROM collections WHERE source_link_id IS NOT NULL")}
+    except Exception:
+        return 0  # source_link_id column not present yet — migration hook adds it first
+    n = 0
+    for lr in link_rows:
+        lid = lr["link_id"]
+        if lid in migrated:
+            continue
+        members = conn.execute(
+            "SELECT platform, submission_id FROM submission_link_members WHERE link_id = ?",
+            (lid,)).fetchall()
+        if len(members) < 2:
+            continue  # a link needs 2+ members to be meaningful
+        # Name the collection from the first member that resolves to a title.
+        name = ""
+        for m in members:
+            row = _submission_row(conn, m["platform"], str(m["submission_id"]))
+            if row and (row.get("title") or row.get("full_text")):
+                name = (row.get("title") or row.get("full_text") or "").strip()[:120]
+                break
+        if not name:
+            name = f"Linked piece #{lid}"
+        cur = conn.execute(
+            "INSERT INTO collections (name, notes, source_link_id) VALUES (?, ?, ?)",
+            (name, "Migrated from a Cross-Platform link.", lid))
+        cid = cur.lastrowid
+        for m in members:
+            conn.execute(
+                "INSERT OR IGNORE INTO collection_members (collection_id, member_type, member_ref) "
+                "VALUES (?, 'submission', ?)",
+                (cid, f"{m['platform']}:{m['submission_id']}"))
+        n += 1
+    return n
+
+
 def list_collections_with_summary(conn: sqlite3.Connection) -> list[dict]:
     """Every collection + a light rollup (totals, platforms, personas, cover) for
     the hub grid. Reuses rollup_collection but trims the heavy per-location list."""

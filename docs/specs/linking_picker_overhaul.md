@@ -42,7 +42,7 @@ the editor's `metadata_editor.js` browser (too coupled to `this.metadata.tags`).
 Wired into `artwork.js` via a "🏷️ Browse tag library" button; lossless merge with
 free-typed tags. `.tp-*` CSS in `editor.css`.
 
-### 3. Collections ← Cross-Platform merge (chose: migrate then retire)
+### 3. Collections ← Cross-Platform merge (chose: migrate then retire) — ✅ DONE (2.113.0)
 - **Snapshot chart → Collections**: new `GET /collections/{id}/snapshots`. Refactor
   `analytics_queries.get_link_combined_snapshots` into a helper taking a list of
   `(platform, submission_id)` pairs; call it from both links and collections.

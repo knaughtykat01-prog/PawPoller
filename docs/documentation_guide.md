@@ -6119,8 +6119,26 @@ persona/analytics rollup correct — shipped in 2.96.0; see that changelog entry
   thumb}`. It **scales to thousands** via server-side search (`/api/works?search=&type=` + the discovered
   bucket) — the old `_addMemberBrowser` text list was capped at 200 rows. `.wp-*` card CSS lives in
   `editor.css`. Reusable anywhere a work/submission is chosen (will replace the Cross-Platform `prompt()`).
-- **Deferred** — the unify-engine auto-*suggestions* that propose collections (native title + **perceptual-hash
-  image** similarity, no AI). See `docs/specs/linking_picker_overhaul.md`.
+- **Cross-Platform Links folded in (2.113.0, Phase 3).** Cross-Platform Links were the same idea as a Collection
+  (one piece across platforms + pooled analytics), so the screen was retired and its two unique features moved in:
+  - **Combined growth chart** — `analytics_queries.get_combined_snapshots(conn, pairs)` is the reusable core
+    (merges per-platform snapshots by `polled_at`, summing overlapping timestamps). `get_link_combined_snapshots`
+    is now a thin wrapper; `collections_queries.collection_member_pairs(cid)` resolves a collection's submission +
+    work members to `(platform, submission_id)` pairs (posts excluded). Served by `GET /api/collections/{cid}/snapshots`
+    and charted on the Collections detail page (`Charts.aggregateLine`, shown only when a real series exists).
+  - **Suggestions** — shared engine `analytics_queries._auto_suggest(conn, existing)` (title-Jaccard ≥ 0.6).
+    `auto_suggest_links` excludes already-linked pairs; `collections_queries.auto_suggest_collections` excludes
+    already-**collected** pairs (`_collected_pairs`). Served by `GET /api/collections/suggestions` (declared BEFORE
+    `/{cid}` so the static path wins over the int converter) and surfaced as the hub's "Suggested collections" card
+    with a one-click "Make collection".
+  - **Migration** `collections_queries.migrate_links_to_collections(conn)` (called from `db.py._run_migrations`):
+    one-time, **idempotent**, **reversible**. Adds a `collections.source_link_id` provenance column, then creates a
+    Collection per not-yet-migrated `submission_links` row (submission members, named from the first resolvable
+    title). The link rows are **not deleted** — undo = delete the migrated collections. `/api/links*` endpoints stay
+    dormant. Frontend: nav entry removed, `#/cross-platform`→`#/collections` redirect, command-palette + page-tour
+    re-pointed to Collections.
+- **Deferred** — Phase 4 augments the suggestion engine with **perceptual-hash image** similarity (native, no AI);
+  title similarity is live today. See `docs/specs/linking_picker_overhaul.md`.
 
 **Tag picker (2.112.0, Phase 2) — `frontend/js/tag_picker.js` (`window.TagPicker`).**
 The sibling of WorkPicker for **tags** instead of works. `TagPicker.open({ title, selected, onConfirm })`

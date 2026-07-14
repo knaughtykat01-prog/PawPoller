@@ -28,7 +28,7 @@
         { label: 'Posting Queue',      hint: 'Pending uploads',           href: '#/posting/queue' },
         { label: 'Posting History',    hint: 'Audit trail',               href: '#/posting/log' },
         { label: 'Groups',             hint: 'Submission groups',         href: '#/groups' },
-        { label: 'Cross-Platform',     hint: 'Linked submissions',        href: '#/cross-platform' },
+        { label: 'Collections',        hint: 'One piece across platforms', href: '#/collections' },
         { label: 'Analytics',          hint: 'Cross-platform analytics',  href: '#/analytics' },
         // Per-platform dashboards
         ...PLATFORMS.flatMap(p => [

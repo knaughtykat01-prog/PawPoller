@@ -164,6 +164,10 @@ const API = {
     removeCollectionMember(id, memberType, memberRef) {
         return this.del(`/api/collections/${id}/members?member_type=${encodeURIComponent(memberType)}&member_ref=${encodeURIComponent(memberRef)}`);
     },
+    // Combined cross-platform growth chart + merge suggestions (folded in from
+    // the retired Cross-Platform Links screen — 2.113.0).
+    getCollectionSnapshots(id) { return this.get(`/api/collections/${id}/snapshots`); },
+    getCollectionSuggestions() { return this.get('/api/collections/suggestions'); },
 
     /* ── IB (Inkbunny) convenience methods ─────────────────────
      * General status, submission CRUD, snapshot history, aggregation,

@@ -216,12 +216,11 @@ window.Tour = (function () {
             { target: '.empty-state', title: 'Nothing here yet', body: 'While you have no groups, this prompt sits here — it disappears the moment you create your first one.' },
         ],
 
-        'cross-platform': [
-            { target: null, title: 'Cross-Platform Links', body: 'Links join the same work across platforms — say Inkbunny and FA — so their views, faves and comments combine.' },
-            { target: '.page-header', title: 'Links overview', body: 'This page is where you connect matching submissions across sites to see their pooled analytics together.' },
-            { target: '#create-link-btn', title: 'Create a link', body: 'Enter platform:id pairs like ib:12345, fa:67890 to link the same work across several platforms at once.' },
-            { target: '.stats-grid', title: 'Your links', body: 'Each link shows as a card here; use its Stats button to view combined figures, or Remove to unlink it.' },
-            { target: '.empty-state', title: 'No links yet', body: 'Until you link something, this prompt appears here — it clears as soon as you create your first link.' },
+        'collections': [
+            { target: null, title: 'Collections', body: 'A collection is one master folder per piece — every place it is posted across platforms, with pooled analytics, merged tags and an optional companion story.' },
+            { target: '.page-header', title: 'Collections overview', body: 'This is your Collections hub. Each piece you group across platforms shows here as a card with its combined figures.' },
+            { target: '[data-coll-new]', title: 'New collection', body: 'Start one here, then add works, submissions or a story — or use “Add to Collection” from the Submissions hub.' },
+            { target: '#coll-suggest', title: 'Suggested collections', body: 'PawPoller spots the same piece posted to several platforms and offers to merge them into a collection in one click.' },
         ],
 
         'accounts': [
@@ -253,7 +252,7 @@ window.Tour = (function () {
         if (p0 === 'submissions' && !parts[1]) return 'submissions';
         if (p0 === 'analytics') return 'analytics';
         if (p0 === 'groups' && !parts[1]) return 'groups';
-        if (p0 === 'cross-platform') return 'cross-platform';
+        if (p0 === 'collections' && !parts[1]) return 'collections';
         if (p0 === 'accounts' && !parts[1]) return 'accounts';
         if (p0 === 'settings') return 'settings';
         if (p0 === 'posts') return 'posts';

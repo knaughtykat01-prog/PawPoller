@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-14
-**Current version (master):** 2.112.0 — **Tag library in the Art module (TagPicker) — Phase 2 of the linking/picker overhaul.**
+**Current version (master):** 2.113.0 — **Cross-Platform Links folded into Collections — Phase 3 of the linking/picker overhaul.**
+Cross-Platform Links and Collections were the same idea (one piece across platforms + pooled analytics); Links
+only added a combined chart + title suggestions. Both moved into Collections; the Cross-Platform screen is
+retired. **Backend:** reusable `analytics_queries.get_combined_snapshots(conn, pairs)` (link wrapper +
+`collections_queries.collection_member_pairs` both feed it); shared `_auto_suggest(conn, existing)` engine
+(links exclude linked pairs, new `auto_suggest_collections` excludes collected). New endpoints
+`GET /api/collections/{cid}/snapshots` + `GET /api/collections/suggestions` (declared before `/{cid}`).
+**Migration** `migrate_links_to_collections` (db.py) — one-time, idempotent, **reversible**: adds
+`collections.source_link_id`, creates a Collection per link, leaves `submission_links` intact. **Frontend:**
+Collections detail gains a Combined-growth chart; hub gains a "Suggested collections" card (one-click Make
+collection); Cross-Platform nav removed, `#/cross-platform`→`#/collections` redirect, palette/tour re-pointed.
+`/api/links*` stays dormant. New `tests/test_collections_merge.py` (6). Full suite 427 pass. **DEPLOYED.**
+
+**Prior — 2.112.0 — Tag library in the Art module (TagPicker) — Phase 2 of the linking/picker overhaul.**
 The artwork upload screen only had a free-typed comma box for tags — no access to the canonical 4,600-tag
 database the story editor browses. New **`frontend/js/tag_picker.js`** `TagPicker.open({title, selected,
 onConfirm})` — a standalone picker reusing the tag browser's modal chrome (`.tag-browser-*`) with **selectable
@@ -12,7 +25,7 @@ into `this.metadata.tags` and is too coupled to externalise; TagPicker is pure-i
 **zero changes to the story editor**. Wired into `artwork.js` via a `🏷️ Browse tag library` button under the
 default-tags box; opens pre-loaded with current tags, writes the confirmed selection back, **lossless** (free-
 typed non-library tags preserved). `.tp-*` CSS in `editor.css`, script in `index.html`. Frontend-only. Full
-suite 421 pass (regression). **NOT DEPLOYED.** Spec + remaining phases (Collections←Cross-Platform merge,
+suite 421 pass (regression). **DEPLOYED** (`30de906`). Spec + remaining phases (Collections←Cross-Platform merge,
 native pHash image-similarity suggest, art cleanup, settings search, removals): `docs/specs/linking_picker_overhaul.md`.
 
 **Prior — 2.111.0 — Visual work-picker (WorkPicker) — Phase 1 of the linking/picker overhaul.**

@@ -1037,7 +1037,9 @@ const App = {
         } else if (parts[0] === 'group' && parts[1]) {
             this.renderGroupDetail(parseInt(parts[1]));
         } else if (parts[0] === 'cross-platform') {
-            this.renderCrossPlatform();
+            // Retired in 2.113.0 — folded into Collections. Redirect old links.
+            location.hash = '#/collections';
+            return;
         } else if (parts[0] === 'analytics') {
             this.renderAnalytics();
         } else if (parts[0] === 'accounts') {

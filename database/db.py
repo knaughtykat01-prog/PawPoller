@@ -934,4 +934,27 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     from database import followers as _followers
     _followers.ensure_follower_tables(conn)
 
+    # Migration: fold Cross-Platform links into Collections (they are the same
+    # idea — one piece across platforms). Adds a provenance column so the fold is
+    # idempotent and reversible (the submission_links rows are NOT deleted), then
+    # creates a Collection per not-yet-migrated link. See collections_queries.
+    # Guarded on the collections table existing — legacy/partial DBs (e.g. the
+    # legacy-migration tests) run _run_migrations before the collections schema
+    # is applied, so this whole block is skipped there.
+    _has_collections = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='collections'").fetchone()
+    if _has_collections:
+        try:
+            conn.execute("ALTER TABLE collections ADD COLUMN source_link_id INTEGER")
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+        try:
+            from database import collections_queries as _cq
+            _n = _cq.migrate_links_to_collections(conn)
+            if _n:
+                logger.info("Collections: migrated %d Cross-Platform link(s) into collections", _n)
+        except Exception as e:  # never let a data migration block startup
+            logger.warning("Collections link migration skipped: %s", e)
+
     conn.commit()

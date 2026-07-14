@@ -28,6 +28,19 @@ def list_collections():
         conn.close()
 
 
+@collections_router.get("/suggestions")
+def suggest_collections():
+    """Auto-suggest un-collected cross-platform lookalikes to fold into a
+    collection (title similarity today; + perceptual-hash image similarity in
+    Phase 4). Declared BEFORE /{cid} so the static path wins over the int param.
+    """
+    conn = get_connection()
+    try:
+        return {"suggestions": cq.auto_suggest_collections(conn)}
+    finally:
+        conn.close()
+
+
 @collections_router.post("")
 def create_collection(body: dict):
     """Create a collection. Body: {name, cover_kind?, cover_ref?, notes?, members?}.
@@ -62,6 +75,21 @@ def get_collection(cid: int):
         if not roll:
             raise HTTPException(404, detail="Collection not found")
         return roll
+    finally:
+        conn.close()
+
+
+@collections_router.get("/{cid}/snapshots")
+def get_collection_snapshots(cid: int):
+    """Combined time-series (summed views/faves/comments) across the collection's
+    submission + work members — the chart the Cross-Platform screen used to own."""
+    conn = get_connection()
+    try:
+        if not cq.get_collection(conn, cid):
+            raise HTTPException(404, detail="Collection not found")
+        from database import analytics_queries
+        pairs = cq.collection_member_pairs(conn, cid)
+        return {"snapshots": analytics_queries.get_combined_snapshots(conn, pairs)}
     finally:
         conn.close()
 

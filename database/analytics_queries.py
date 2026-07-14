@@ -449,24 +449,18 @@ def get_link_combined_stats(conn: sqlite3.Connection, link_id: int) -> dict:
     }
 
 
-def get_link_combined_snapshots(conn: sqlite3.Connection, link_id: int) -> list[dict]:
-    """Get merged time-series (sum views/faves/comments at each timestamp) for linked submissions.
+def get_combined_snapshots(conn: sqlite3.Connection, pairs) -> list[dict]:
+    """Merged time-series (sum views/faves/comments at each timestamp) for a set
+    of `(platform, submission_id)` pairs.
 
-    Merges snapshots from different platforms by timestamp. Because different
-    platforms may be polled at slightly different times (or have different poll
-    cadences), the merge is keyed by exact polled_at timestamp string. When
-    two platforms happen to have snapshots at the same timestamp, their values
-    are summed. When they don't overlap, each timestamp only contains data
-    from whichever platform(s) had a snapshot at that moment.
+    This is the reusable core: a Cross-Platform link and a Collection both boil
+    down to "a set of platform submissions that are the same piece", so both
+    chart their combined growth through here. Merges snapshots across platforms
+    by exact `polled_at` timestamp string — platforms polled at the same instant
+    sum, non-overlapping timestamps carry only whoever had a snapshot then.
 
-    This produces a combined time-series suitable for charting the total
-    performance of cross-posted content over time.
+    `pairs` is any iterable of `(platform, submission_id)` tuples.
     """
-    members = conn.execute(
-        "SELECT platform, submission_id FROM submission_link_members WHERE link_id = ?",
-        (link_id,),
-    ).fetchall()
-
     # Accumulate snapshots across platforms, indexed by timestamp string.
     # Each timestamp entry sums values from all linked submissions that
     # have a snapshot at that exact time.
@@ -493,8 +487,7 @@ def get_link_combined_snapshots(conn: sqlite3.Connection, link_id: int) -> list[
         "e621": ("score", "favorites_count", "comments_count"),
     }
 
-    for m in members:
-        plat = m["platform"]
+    for plat, sid in pairs:
         # Dynamic table lookup for the platform's snapshot table.
         snap_table = _snap_map.get(plat)
         if not snap_table:
@@ -512,7 +505,7 @@ def get_link_combined_snapshots(conn: sqlite3.Connection, link_id: int) -> list[
             rows = conn.execute(
                 f"SELECT {', '.join(select_cols)} FROM {snap_table} "
                 f"WHERE submission_id = ? ORDER BY polled_at ASC",
-                (m["submission_id"],),
+                (sid,),
             ).fetchall()
         except Exception:
             continue
@@ -530,14 +523,41 @@ def get_link_combined_snapshots(conn: sqlite3.Connection, link_id: int) -> list[
     return sorted(time_data.values(), key=lambda x: x["polled_at"])
 
 
+def get_link_combined_snapshots(conn: sqlite3.Connection, link_id: int) -> list[dict]:
+    """Combined time-series for a Cross-Platform link — thin wrapper over
+    get_combined_snapshots after resolving the link's members to pairs."""
+    members = conn.execute(
+        "SELECT platform, submission_id FROM submission_link_members WHERE link_id = ?",
+        (link_id,),
+    ).fetchall()
+    return get_combined_snapshots(conn, [(m["platform"], m["submission_id"]) for m in members])
+
+
 def auto_suggest_links(conn: sqlite3.Connection) -> list[dict]:
+    """Cross-platform link suggestions by title similarity, excluding pairs the
+    user has already linked. Thin wrapper over the shared `_auto_suggest` engine.
+    """
+    existing = set()
+    try:
+        for m in conn.execute("SELECT platform, submission_id FROM submission_link_members").fetchall():
+            existing.add((m["platform"], str(m["submission_id"])))
+    except Exception:
+        pass
+    return _auto_suggest(conn, existing)
+
+
+def _auto_suggest(conn: sqlite3.Connection, existing: set) -> list[dict]:
     """Find potential cross-platform matches by title similarity.
+
+    Shared engine behind both Cross-Platform link suggestions and Collection
+    suggestions — the only difference between them is *what's already grouped*,
+    passed in as `existing` (a set of `(platform, str(submission_id))` pairs to
+    exclude).
 
     Algorithm:
     1. Load all submissions from all nine platforms.
-    2. Build a set of (platform, submission_id) pairs that are already linked,
-       so we can exclude them from suggestions. This prevents suggesting links
-       for content that has already been linked by the user.
+    2. `existing` marks pairs already grouped (linked or collected), excluded
+       from suggestions so we never re-propose what the user already merged.
     3. Compare every pair of submissions across different platforms (not within
        the same platform -- cross-posting to the same site is not meaningful).
        Uses nested loops over platform pairs (IB-FA, IB-WS, FA-WS).
@@ -576,16 +596,9 @@ def auto_suggest_links(conn: sqlite3.Connection) -> list[dict]:
         except Exception:
             platforms[platform] = []
 
-    # Step 2: Build exclusion set of already-linked submissions.
-    # Any submission that is already part of a link should not be suggested
-    # again, to avoid duplicate link proposals.
-    existing = set()
-    try:
-        link_members = conn.execute("SELECT platform, submission_id FROM submission_link_members").fetchall()
-        for m in link_members:
-            existing.add((m["platform"], m["submission_id"]))
-    except Exception:
-        pass
+    # Step 2: exclusion set (`existing`) is provided by the caller — links pass
+    # their linked pairs, collections pass their collected pairs. Keys compared
+    # as (platform, str(submission_id)) so int/str id storage never mismatches.
 
     # Step 3-4: Compare across platforms (not within the same platform).
     # Iterates over all unique platform pairs: (ib, fa), (ib, ws), (fa, ws).
@@ -594,12 +607,12 @@ def auto_suggest_links(conn: sqlite3.Connection) -> list[dict]:
         for j in range(i + 1, len(platform_keys)):
             p1, p2 = platform_keys[i], platform_keys[j]
             for s1 in platforms[p1]:
-                # Skip submissions already linked on this platform.
-                if (p1, s1["submission_id"]) in existing:
+                # Skip submissions already grouped on this platform.
+                if (p1, str(s1["submission_id"])) in existing:
                     continue
                 for s2 in platforms[p2]:
-                    # Skip submissions already linked on the other platform.
-                    if (p2, s2["submission_id"]) in existing:
+                    # Skip submissions already grouped on the other platform.
+                    if (p2, str(s2["submission_id"])) in existing:
                         continue
                     similarity = _title_similarity(s1["title"], s2["title"])
                     # Jaccard threshold of 0.6: at least 60% word overlap

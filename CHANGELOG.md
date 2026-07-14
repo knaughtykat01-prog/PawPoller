@@ -4,6 +4,44 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.113.0] - 2026-07-14 - Cross-Platform Links folded into Collections
+
+Phase 3 of the linking/picker overhaul (`docs/specs/linking_picker_overhaul.md`). Cross-Platform Links and
+Collections were **the same idea** — bundle one piece's appearances across platforms and pool their analytics.
+Collections is the richer model (polymorphic members, tags, personas, companion story); Links only added a
+**combined growth chart** and **title-match suggestions**. So both moved into Collections and the Cross-Platform
+screen is retired.
+
+**Backend**
+- **Reusable snapshot core** — `analytics_queries.get_combined_snapshots(conn, pairs)` takes any list of
+  `(platform, submission_id)` pairs and returns the merged time-series. `get_link_combined_snapshots(link_id)`
+  is now a thin wrapper over it; `collections_queries.collection_member_pairs(cid)` feeds it a collection's
+  submission + work members (posts excluded — no per-platform stats table).
+- **Shared suggestion engine** — extracted `analytics_queries._auto_suggest(conn, existing)` (title-Jaccard,
+  0.6 threshold). `auto_suggest_links` excludes already-linked pairs; new `collections_queries.auto_suggest_collections`
+  excludes already-**collected** pairs. IDs compared as `str` so int/str storage never mismatches.
+- **New endpoints** (`routes/collections_api.py`): `GET /api/collections/{cid}/snapshots` (combined chart) and
+  `GET /api/collections/suggestions` (declared **before** `/{cid}` so the static path wins over the int param).
+- **Migration** (`db.py` → `collections_queries.migrate_links_to_collections`) — one-time, **idempotent**,
+  **reversible**: adds a `collections.source_link_id` provenance column, then creates a Collection per
+  not-yet-migrated link (submission members named from the first resolvable title). The original
+  `submission_links` rows are **left intact**, so the fold can be undone.
+
+**Frontend**
+- **Collections detail** now shows a **Combined growth** chart (`API.getCollectionSnapshots`, only when a real
+  time-series exists).
+- **Collections hub** now shows a **Suggested collections** card — un-grouped cross-platform lookalikes with a
+  one-click "Make collection" that creates the collection and opens it.
+- **Cross-Platform retired** — nav entry removed, command-palette entry swapped for Collections, page tour
+  re-pointed to a Collections tour, and `#/cross-platform` now **redirects** to `#/collections` (old bookmarks
+  keep working). The `/api/links*` endpoints stay dormant (unused, not deleted) for reversibility.
+
+New: `tests/test_collections_merge.py` (6 — combined snapshots merge, link-wrapper regression, member-pair
+resolution, suggestion find-then-exclude, migration idempotent+reversible, degenerate-link skip).
+Full suite: 427 passed.
+
+---
+
 ## [2.112.0] - 2026-07-14 - Tag library in the Art module (TagPicker) — same browser the story editor has
 
 Phase 2 of the linking/picker overhaul (`docs/specs/linking_picker_overhaul.md`). The artwork upload screen
