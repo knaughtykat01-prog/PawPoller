@@ -180,6 +180,13 @@ const API = {
     getComparison(ids, params) { return this.get('/api/comparison', { ids: ids.join(','), ...params }); },
     getPollLog(limit) { return this.get('/api/poll_log', { limit }); },
     triggerPoll() { return this.post('/api/poll/trigger'); },
+    // Poll one platform, optionally scoped to a single account. accountId null/''
+    // → poll every enabled account for the platform (not just the default).
+    triggerAccountPoll(code, accountId) {
+        const q = (accountId !== null && accountId !== undefined && accountId !== '')
+            ? `?account_id=${encodeURIComponent(accountId)}` : '';
+        return this.post(`/api/poll/trigger/${code}${q}`);
+    },
     fullResync() { return this.post('/api/poll/full-resync'); },
     pausePolling() { return this.post('/api/poll/pause'); },
     resumePolling() { return this.post('/api/poll/resume'); },

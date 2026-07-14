@@ -908,6 +908,29 @@ async def trigger_poll():
         raise HTTPException(500, detail=str(e))
 
 
+@router.post("/poll/trigger/{code}")
+async def trigger_account_poll(code: str, account_id: int | None = Query(None)):
+    """Manual poll for one platform, optionally scoped to a single account.
+
+    ``account_id`` given → poll just that account; omitted → poll EVERY enabled
+    account for the platform (not only the default). Backs the account picker on
+    the dashboard poll button. Manual polls are explicit, so they ignore the
+    scheduled-cycle round-robin/save-tokens throttle — you get exactly what you
+    asked for.
+    """
+    from polling.multi_account import poll_platform_accounts, get_poll_cycles
+    if code not in get_poll_cycles():
+        raise HTTPException(404, f"Unknown platform: {code}")
+    try:
+        scope = account_id if account_id is not None else "all"
+        spawn(poll_platform_accounts(code, account_id),
+              f"poll_platform_accounts:{code}:{scope}")
+        return {"status": "started", "platform": code, "account_id": account_id}
+    except Exception as e:
+        logger.error("Error in /api/poll/trigger/%s: %s", code, e, exc_info=True)
+        raise HTTPException(500, detail=str(e))
+
+
 @router.post("/poll/full-resync")
 async def full_resync():
     """Force full resync -- re-scrapes ALL faves and comments regardless of changes.

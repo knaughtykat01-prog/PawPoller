@@ -1,16 +1,27 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-14
-**Current version (master):** 2.109.0 — **Backend-aware X round-robin + "save API costs" toggle.**
-Round-robin (2.107.0) was throttle-protection for the *scraper*, but kept firing under the IP-agnostic
-**official API** — needlessly capping the cycle at 2/3 accounts. New **`effective_batch(configured, *,
-official_active, save_tokens)`** (`polling/roundrobin.py`): scrapers always round-robin; the official API
-polls **every** account each cycle (batch 0) **unless** the user opts into throttling to spend fewer paid
-reads. `server.py` consults `official_api.is_enabled` + the new **`tw_roundrobin_save_tokens`** setting; log
-names the reason (`per-IP throttle | save-tokens`). New toggle in X settings → Official X API card (shown
-when a token is set): **"Throttle polling to save API costs"** (default off), whitelisted in
-`routes/api.py`. **Net: with a Bearer token connected, all X accounts poll every cycle.** New:
-`tests/test_tw_roundrobin.py` +4. Full suite 416 pass. **NOT DEPLOYED** (awaiting go-ahead).
+**Current version (master):** 2.110.0 — **Per-account "Poll Now" (poll one account or all), every platform.**
+Manual "Poll Now" triggered `run_<code>_poll_cycle()` with no account → only ever polled the platform
+**default** (why connecting the X token + Poll Now refreshed only KnaughtyKat). New **`polling/multi_account.py`**
+`poll_platform_accounts(platform, account_id=None)`: an id polls that account; `None` enumerates enabled
+accounts and polls each (falls back to a single default poll if none seeded). `get_poll_cycles()` = code→cycle
+registry (17). New endpoint **`POST /api/poll/trigger/{code}?account_id=`** (`routes/api.py`); manual polls are
+explicit so they **ignore** the scheduled round-robin/save-tokens throttle. Frontend `_dashPoll` reads the
+context-bar account switcher (`_accountFilter[code]`) → `API.triggerAccountPoll(code, id)`; selected account
+polls one, "All accounts" polls all. Works for every multi-account platform (switcher already renders at 2+
+accounts). New: `tests/test_multi_account_poll.py` (5). Full suite 421 pass. **DEPLOYED.**
+
+**Prior — 2.109.0 — Backend-aware X round-robin + "save API costs" toggle.** DEPLOYED (`9c70acc`).
+New **`effective_batch(configured, *, official_active, save_tokens)`** (`polling/roundrobin.py`): scrapers
+always round-robin (per-IP protection); the official API polls **every** account each cycle **unless** the
+user opts into `tw_roundrobin_save_tokens` (X settings → Official X API card → "Throttle polling to save API
+costs", default off) to spend fewer paid reads. `server.py` consults `official_api.is_enabled` + the setting.
+**Net: with a Bearer token connected, all X accounts poll every scheduled cycle.** New: `test_tw_roundrobin.py` +4.
+
+**Live status (X official API, verified 2026-07-14):** Bearer token connected on prod (`has_api_token: True`,
+backend `auto` → official). A poll of @KnaughtyKat ran via the **official API in 0.4 s** — token valid, tier
+allows `public_metrics` reads.
 
 **Live status (X official API, verified 2026-07-14):** Bearer token connected on prod (`has_api_token: True`,
 backend `auto` → official). A poll of @KnaughtyKat ran via the **official API in 0.4 s** (`clients.tw.official_api:

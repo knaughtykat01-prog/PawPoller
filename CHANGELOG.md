@@ -4,6 +4,32 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.110.0] - 2026-07-14 - Per-account "Poll Now" — poll one account or all, every platform
+
+The manual "Poll Now" button triggered `run_<code>_poll_cycle()` with no account → it only ever polled the
+platform's **default** account (why connecting the X token and clicking Poll Now only refreshed KnaughtyKat).
+Now it honours the account switcher and can poll one account or every enabled account, for **every**
+multi-account platform.
+
+- **New `polling/multi_account.py`** — `poll_platform_accounts(platform, account_id=None)`: a specific
+  `account_id` polls just that account; `None` enumerates the platform's **enabled accounts** and polls each
+  in sequence (falling back to a single default poll if none are seeded). Shares the per-account loop shape
+  with `server.py._poll_accounts` / `main.py._poll_platform_accounts`. `get_poll_cycles()` is the code→cycle
+  registry (all 17 platforms).
+- **New endpoint** `POST /api/poll/trigger/{code}?account_id=` (`routes/api.py`) → spawns
+  `poll_platform_accounts`. Manual polls are **explicit**, so they ignore the scheduled-cycle
+  round-robin/save-tokens throttle — you get exactly the account(s) you asked for.
+- **Frontend:** `_dashPoll` now reads the context-bar account switcher (`_accountFilter[code]`, already
+  rendered for any platform with 2+ accounts) and calls `API.triggerAccountPoll(code, accountId)`. Selected
+  account → poll one; "All accounts" (or single-account platform) → poll all. Toast names the scope.
+- Independent of 2.109.0's save-tokens toggle: that governs the **scheduled** cadence (round-robin); this
+  governs **manual** polls. A manual "poll all" always polls all, regardless of the toggle.
+- New: `tests/test_multi_account_poll.py` (5 — registry, single-account, all-accounts loop, fallback, unknown).
+
+Full suite: 421 passed.
+
+---
+
 ## [2.109.0] - 2026-07-14 - Backend-aware X round-robin + "save API costs" toggle
 
 Round-robin (2.107.0) was a workaround for the **scraper's** per-IP throttle, but it kept firing even after

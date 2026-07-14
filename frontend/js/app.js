@@ -1583,11 +1583,17 @@ const App = {
         const label = this._platformLabels[platform] || platform.toUpperCase();
         btn.disabled = true;
         btn.textContent = 'Polling...';
-        const fns = { ib: 'triggerPoll', fa: 'triggerFAPoll', ws: 'triggerWSPoll', sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll', wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll', mast: 'triggerMASTPoll', tum: 'triggerTUMPoll', pix: 'triggerPIXPoll', thr: 'triggerTHRPoll', ig: 'triggerIGPoll', e621: 'triggerE621Poll' };
+        /* Honour the context-bar account switcher: if a specific account is
+         * selected for this platform, poll just that one; otherwise ("All
+         * accounts", or a single-account platform) poll every enabled account.
+         * The generic /api/poll/trigger/{code} endpoint handles both. */
+        const acct = (this._accountFilter && this._accountFilter[platform] != null)
+            ? this._accountFilter[platform] : null;
         try {
-            await API[fns[platform]]();
+            await API.triggerAccountPoll(platform, acct);
             btn.textContent = 'Done!';
-            if (window.toast) window.toast.success(`${label}: poll triggered`);
+            const scope = acct != null ? 'selected account' : 'all accounts';
+            if (window.toast) window.toast.success(`${label}: poll triggered (${scope})`);
             /* Poll is fire-and-forget (2.51.5) — there's no fresh data 1.5 s
              * later, and a full this.route() re-render bounced the viewport to
              * the top of the page (2.51.7). Just reset the button; the 60 s
