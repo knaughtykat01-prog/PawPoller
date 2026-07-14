@@ -4,6 +4,26 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.111.0] - 2026-07-14 - Visual work-picker (WorkPicker) — replaces the title-scroll selection
+
+First slice of the linking/picker overhaul (`docs/specs/linking_picker_overhaul.md`). Selecting a work to add
+to a Collection was a **text-only list capped at 200 rows** (`collections._addMemberBrowser`) — unusable at
+1000s of works. Replaced with a **visual thumbnail-grid picker** modeled on the story-editor tag browser.
+
+- **New `frontend/js/work_picker.js`** — `WorkPicker.open({title, confirmLabel, multi, onConfirm})`. Reuses
+  the tag browser's modal chrome (`.tag-browser-*`: backdrop, sticky header with search + filter chips,
+  selected strip, footer) so it feels native; the grid holds **image cards** (thumbnail + title + badge),
+  multi-select, selection survives re-searches.
+- **Scales to thousands** via server-side search: `/api/works?search=&type=` (returns `thumb_url` covers).
+  Filter chips: All / Stories / Artwork / Discovered (works + the discovered-unlinked bucket).
+- **Collections "Add members"** now opens the picker instead of the 200-row text list. One-click multi-add.
+- New `.wp-*` card styles in `frontend/css/editor.css`; script registered in `index.html`.
+- Reusable: the same picker will replace the Cross-Platform `prompt("platform:id,…")` in the upcoming merge.
+
+Frontend-only (no new Python tests). Full suite: 421 passed (regression).
+
+---
+
 ## [2.110.0] - 2026-07-14 - Per-account "Poll Now" — poll one account or all, every platform
 
 The manual "Poll Now" button triggered `run_<code>_poll_cycle()` with no account → it only ever polled the

@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-14
-**Current version (master):** 2.110.0 — **Per-account "Poll Now" (poll one account or all), every platform.**
+**Current version (master):** 2.111.0 — **Visual work-picker (WorkPicker) — Phase 1 of the linking/picker overhaul.**
+Selecting a work to add to a Collection was a text list capped at 200 rows (`collections._addMemberBrowser`),
+unusable at 1000s of works. New **`frontend/js/work_picker.js`** `WorkPicker.open({title, confirmLabel, multi,
+onConfirm})` — a **visual thumbnail-grid picker** that reuses the story-editor tag browser's modal chrome
+(`.tag-browser-*` classes) with image cards (thumb + title + badge), multi-select, selection surviving
+re-searches. **Scales via server-side search** `/api/works?search=&type=` (+ discovered bucket); filter chips
+All/Stories/Artwork/Discovered. Collections "Add members" now opens it. `.wp-*` CSS in `editor.css`, script in
+`index.html`. Reusable — will replace the Cross-Platform `prompt()` in the merge. Frontend-only. Full suite
+421 pass (regression). **DEPLOYED.** Spec + remaining phases (tag browser→Art, Collections←Cross-Platform
+merge, native pHash image-similarity suggest, settings search, removals): `docs/specs/linking_picker_overhaul.md`.
+
+**Prior — 2.110.0 — Per-account "Poll Now" (poll one account or all), every platform.**
 Manual "Poll Now" triggered `run_<code>_poll_cycle()` with no account → only ever polled the platform
 **default** (why connecting the X token + Poll Now refreshed only KnaughtyKat). New **`polling/multi_account.py`**
 `poll_platform_accounts(platform, account_id=None)`: an id polls that account; `None` enumerates enabled

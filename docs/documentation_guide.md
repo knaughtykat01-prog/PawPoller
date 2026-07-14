@@ -6110,8 +6110,17 @@ persona/analytics rollup correct — shipped in 2.96.0; see that changelog entry
   delegated click listener keyed on `data-coll-*` / `data-add-collection`, no inline handlers; modals reuse the
   `.guide-modal` shell. **Curation:** `Collections.pickAndAdd(memberType, memberRef, label)` powers a "＋ Collection"
   `role="button"` span on every Submissions-hub work card (`submissions.js`), and the detail page has a
-  browse-to-add member picker (`_addMemberBrowser`, over `/api/works` + `/api/works/discovered`).
-- **Deferred** — the unify-engine auto-*suggestions* that propose collections (spec §7 Phase 4, second half).
+  browse-to-add member picker (`_addMemberBrowser`).
+- **Member picker (2.111.0) — `frontend/js/work_picker.js` (`window.WorkPicker`).** `_addMemberBrowser` now
+  opens **WorkPicker**, a reusable *visual* picker modeled on the story-editor tag browser: it reuses the
+  `.tag-browser-*` modal chrome (backdrop, sticky header with search + filter chips, selected strip, footer)
+  but fills the grid with **image cards** (thumbnail + title + badge) instead of tag chips. `WorkPicker.open({
+  title, confirmLabel, multi, onConfirm })` returns selected items as `{member_type, member_ref, title, badge,
+  thumb}`. It **scales to thousands** via server-side search (`/api/works?search=&type=` + the discovered
+  bucket) — the old `_addMemberBrowser` text list was capped at 200 rows. `.wp-*` card CSS lives in
+  `editor.css`. Reusable anywhere a work/submission is chosen (will replace the Cross-Platform `prompt()`).
+- **Deferred** — the unify-engine auto-*suggestions* that propose collections (native title + **perceptual-hash
+  image** similarity, no AI). See `docs/specs/linking_picker_overhaul.md`.
 
 
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)

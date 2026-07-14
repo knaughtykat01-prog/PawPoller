@@ -256,38 +256,24 @@ window.Collections = {
     async _addMemberBrowser() {
         const c = this._current;
         if (!c) return;
-        let works = [], disc = [];
-        try { works = (await API.getWorks()).works || []; } catch (e) { /* */ }
-        try { disc = ((await API.getDiscovered()).discovered || []); } catch (e) { /* */ }
-        const workRows = works.slice(0, 200).map(w =>
-            `<button class="btn coll-pick-row" data-mt="work" data-mr="${this.esc(w.content_type + ':' + w.name)}">
-                <span class="coll-mtype">${this.esc(w.content_type)}</span> ${this.esc(w.title || w.name)}</button>`).join('');
-        const discRows = disc.slice(0, 200).map(d =>
-            `<button class="btn coll-pick-row" data-mt="submission" data-mr="${this.esc(d.platform + ':' + d.submission_id)}">
-                <span class="coll-mtype">${this.esc(d.platform)}</span> ${this.esc((d.title || d.submission_id) + '')}</button>`).join('');
-        const wrap = this._shell('Add members',
-            `<input class="coll-input" id="coll-br-search" type="search" placeholder="Filter…" style="margin-bottom:.7rem;">
-             <div class="coll-pick-list" id="coll-br-list">
-                ${workRows}${discRows || (workRows ? '' : '<p class="muted">Nothing to add yet.</p>')}
-             </div>
-             <div class="coll-actions" style="margin-top:.8rem;"><button class="btn" id="coll-br-done">Done</button></div>`);
-        const close = () => { wrap.remove(); this.renderDetail(c.id); };
-        wrap.querySelector('#coll-br-done').addEventListener('click', close);
-        wrap.querySelector('.guide-modal-close')?.addEventListener('click', () => wrap.remove());
-        const search = wrap.querySelector('#coll-br-search');
-        search.addEventListener('input', () => {
-            const q = search.value.toLowerCase();
-            wrap.querySelectorAll('#coll-br-list .coll-pick-row').forEach(b =>
-                b.style.display = b.textContent.toLowerCase().includes(q) ? '' : 'none');
+        // Visual picker (work_picker.js) — searchable thumbnail grid that scales
+        // to 1000s of works. Falls back to nothing if the component is unavailable.
+        if (!window.WorkPicker) { this._toast('error', 'Picker unavailable'); return; }
+        let added = 0;
+        WorkPicker.open({
+            title: `Add to “${c.name}”`,
+            confirmLabel: 'Add selected',
+            onConfirm: async (items) => {
+                for (const it of items) {
+                    try {
+                        await API.addCollectionMember(c.id, { member_type: it.member_type, member_ref: it.member_ref });
+                        added++;
+                    } catch (err) { this._toast('error', `${it.title}: ${err.message || err}`); }
+                }
+                if (added) this._toast('success', `Added ${added} item${added === 1 ? '' : 's'}`);
+                this.renderDetail(c.id);
+            },
         });
-        wrap.querySelectorAll('#coll-br-list .coll-pick-row').forEach(b =>
-            b.addEventListener('click', async () => {
-                b.disabled = true;
-                try {
-                    await API.addCollectionMember(c.id, { member_type: b.dataset.mt, member_ref: b.dataset.mr });
-                    b.textContent = '✓ added'; b.classList.add('is-added');
-                } catch (err) { b.disabled = false; this._toast('error', err.message || err); }
-            }));
     },
 
     /* Bare modal shell (reuses guide-modal); returns the wrapper element. */
