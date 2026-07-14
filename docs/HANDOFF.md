@@ -1,7 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-14
-**Current version (master):** 2.116.0 — **Publishing settings tab folded into General — Phase 7a of the linking/picker overhaul.**
+**Current version (master):** 2.117.0 — **Submissions extras → Library, Submissions retired from nav — Phase 7b (Phase 7 COMPLETE).**
+The user found Submissions redundant with the cover-forward **Library** (both list `/api/works`) and chose "move
+extras to Library first, then hide Submissions." Done: **＋Collection** on every Library `.book` card (same
+`data-add-collection` span, handled by the global collections.js delegate); **discovered-art import banner**
+moved onto Library (`bookshelf._loadDiscovered`/`_importAllArt`); **discovered bucket** at new route
+`#/library/discovered` (renders `Submissions.renderDiscovered`, back-link → Library); **Submissions removed from
+nav** but `#/submissions` route + `submissions.js` **kept** (reversible, nothing deleted). Library already had
+All/Stories/Artwork + persona + search + sort, so it's now a superset. Frontend-only. Full suite 437 pass.
+**DEPLOYED.** **The whole 7-phase linking/picker/collections overhaul is now shipped** (2.111–2.117 + the
+2.103.0-era pre-existing pieces); spec `docs/specs/linking_picker_overhaul.md` all ✅. Remaining follow-up (NOT
+in scope, flagged): consolidating the Artwork hub's "masters" (submission_links) grouping into Collections.
+
+**Prior — 2.116.0 — Publishing settings tab folded into General — Phase 7a of the linking/picker overhaul.**
 The user's call on the "Publishing module" removal: it's the **Settings → Publishing tab**, and they only want a
 yes/no posting toggle, in **General**. So the Publishing + Server Sync accordions (Enable-posting toggle, default
 rating/platforms, remote server URL/key/archive-path, Save button) moved into **Settings → General**; the on/off

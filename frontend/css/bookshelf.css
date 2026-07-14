@@ -51,7 +51,43 @@
     display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
     gap: 1.5rem 1.35rem;
 }
-.book { text-decoration: none; color: inherit; display: flex; flex-direction: column; }
+.book { position: relative; text-decoration: none; color: inherit; display: flex; flex-direction: column; }
+
+/* ＋ Collection affordance on a shelf card — hidden until hover/focus so it
+   never competes with the cover (2.117.0, moved from the Submissions hub). */
+.book-collect {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 2;
+    padding: 3px 8px;
+    font-size: 11px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .12s ease, background .12s ease;
+}
+.book:hover .book-collect,
+.book:focus-within .book-collect { opacity: 1; }
+.book-collect:hover { background: var(--accent, #6c8cff); }
+
+/* Discovered-art import banner on the Library (moved from Submissions). */
+.shelf-discovered-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: .7rem .9rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent, #6c8cff) 8%, var(--bg-card));
+    font-size: 13px;
+}
+.shelf-discovered-actions { display: flex; gap: .5rem; flex-shrink: 0; }
 .book-cover {
     position: relative; aspect-ratio: 3 / 4; border-radius: 10px;
     background-color: var(--bg-tertiary, var(--bg-card)); background-size: cover; background-position: center;

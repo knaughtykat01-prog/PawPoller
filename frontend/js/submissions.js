@@ -238,7 +238,7 @@ window.Submissions = {
                     <p class="muted">Posts the pollers found on your platforms that aren't linked to a
                     local work yet. Link one to an existing work to fold it into the hub.</p>
                 </div>
-                <a class="btn" href="#/submissions" style="flex-shrink:0;">&larr; Submissions</a>
+                <a class="btn" href="#/library" style="flex-shrink:0;">&larr; Library</a>
             </div>
             <div id="disc-list"><div class="loading-spinner">Loading…</div></div>`;
 

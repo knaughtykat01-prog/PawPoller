@@ -97,13 +97,17 @@ per-platform pause button and the polling grid.
   **General**. Moved the whole Publishing + Server Sync panel into General (all
   element IDs preserved so handlers keep working), relabelled the toggle "Enable
   posting", removed the tab button, redirect old deep link. Reversible.
-- **Submissions tab (#5) → ⏳ IN PROGRESS (7b).** User chose **"move extras to
-  Library first, then hide Submissions"**. Extras to port from `submissions.js`
-  onto the Library (`bookshelf.js`) screen: (1) the **＋ Collection** affordance on
-  work cards, (2) the **discovered-art bucket** (`#/submissions/discovered` →
-  `Submissions.renderDiscovered`), (3) **gallery import**. THEN hide Submissions
-  from nav (keep route + module = reversible). Both list `/api/works`; Library is
-  the cover-forward view, Submissions adds subtab filters/search/sort.
+- **Submissions tab (#5) → ✅ DONE (2.117.0).** User chose "move extras to Library
+  first, then hide Submissions." Ported onto Library (`bookshelf.js`): (1) **＋
+  Collection** span on every `.book` card (global collections.js delegate handles
+  it), (2) **discovered bucket** at new route `#/library/discovered` (reuses
+  `Submissions.renderDiscovered`, back-link → Library), (3) **discovered-art import**
+  banner (`_loadDiscovered`/`_importAllArt`). Then removed Submissions from nav;
+  `#/submissions` route + `submissions.js` kept = reversible, nothing deleted.
+
+**Phase 7 COMPLETE. The full 7-phase overhaul is shipped (2.111–2.117).**
+Remaining follow-up (out of scope, flagged in §5): consolidate the Artwork hub's
+"masters" (submission_links) grouping into Collections.
 
 ## Already done (verified — do NOT rebuild)
 - **Per-platform pause button** (#10) — exists since 2.103.0 (inside each Polling

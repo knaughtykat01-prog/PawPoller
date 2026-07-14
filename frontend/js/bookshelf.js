@@ -36,6 +36,11 @@ window.Bookshelf = {
             || { code, label: code, emoji: '', color: '#888' };
     },
 
+    _toast(kind, msg) {
+        if (window.toast && window.toast[kind]) window.toast[kind](msg);
+        else if (window.toast && window.toast.info) window.toast.info(msg);
+    },
+
     _num(n) {
         return (window.Utils && Utils.formatNumber) ? Utils.formatNumber(n || 0) : String(n || 0);
     },
@@ -67,6 +72,7 @@ window.Bookshelf = {
                     <span aria-hidden="true">🏅</span> Laurels
                 </a>
             </div>
+            <div id="shelf-discovered"></div>
             <div id="shelf-controls"></div>
             <div id="shelf-grid"><div class="loading-spinner">Loading your shelf…</div></div>`;
 
@@ -82,6 +88,48 @@ window.Bookshelf = {
         this._personas = (data && data.personas) || [];
         this._renderControls();
         this._paint();
+        this._loadDiscovered();   // discovered-art import banner (moved from Submissions)
+    },
+
+    /* Discovered-art import banner + link — ported from the retired Submissions
+     * hub. Best-effort; never blocks the shelf. */
+    async _loadDiscovered() {
+        const slot = document.getElementById('shelf-discovered');
+        if (!slot) return;
+        let art = [];
+        try {
+            const disc = await API.getDiscovered();
+            art = ((disc && disc.discovered) || []).filter(d => d.kind === 'art' && d.thumbnail_url);
+        } catch { return; }
+        if (!art.length) { slot.innerHTML = ''; return; }
+        const one = art.length === 1;
+        slot.innerHTML = `
+            <div class="shelf-discovered-banner">
+                <div><strong>${art.length} discovered art piece${one ? '' : 's'}</strong> from your polling
+                ${one ? "isn't" : "aren't"} in your library yet — import ${one ? 'it' : 'them'} to manage and re-post.</div>
+                <div class="shelf-discovered-actions">
+                    <button class="btn btn-primary btn-sm" id="shelf-import-art">Import all art</button>
+                    <a class="btn btn-sm" href="#/library/discovered">Review →</a>
+                </div>
+            </div>`;
+        const b = document.getElementById('shelf-import-art');
+        if (b) b.addEventListener('click', () => this._importAllArt());
+    },
+
+    async _importAllArt() {
+        const b = document.getElementById('shelf-import-art');
+        if (b) { b.disabled = true; b.textContent = 'Importing…'; }
+        try {
+            const res = await API.importDiscoveredArt();
+            const bits = [`imported ${res.imported}`];
+            if (res.failed) bits.push(`${res.failed} failed`);
+            this._toast(res.imported ? 'success' : (res.failed ? 'warn' : 'info'),
+                `Discovered art: ${bits.join(', ')}`);
+            await this.render();   // refresh shelf + banner
+        } catch (err) {
+            this._toast('error', `Import failed: ${this.esc(err.message || err)}`);
+            if (b) { b.disabled = false; b.textContent = 'Import all art'; }
+        }
     },
 
     _renderControls() {
@@ -167,9 +215,16 @@ window.Bookshelf = {
         const rating = w.rating ? `<span class="book-rating">${this.esc(w.rating)}</span>` : '';
         const plats = (w.platforms || []).slice(0, 8).map(c =>
             `<span class="book-plat" title="${this.esc(this._plat(c).label)}">${this._plat(c).emoji || c}</span>`).join('');
+        // ＋ Collection — same affordance the (now-retired) Submissions hub had.
+        // The global collections.js click delegate handles [data-add-collection]
+        // and preventDefaults the card's own navigation.
+        const collect = `<span class="book-collect" role="button" tabindex="-1"
+            data-add-collection data-mtype="work" data-mref="${this.esc(w.content_type + ':' + w.name)}"
+            data-label="${this.esc(w.title || w.name)}" title="Add to a collection">＋ Collection</span>`;
         return `
             <a class="book" href="${this.esc(href)}">
                 ${cover}
+                ${collect}
                 <div class="book-spine">
                     <div class="book-title">${this.esc(w.title || w.name)}</div>
                     <div class="book-meta">${w.meta ? this.esc(w.meta) : (isStory ? 'Story' : 'Artwork')}${rating ? ' · ' : ''}${rating}${draftTag ? ' ' + draftTag : ''}</div>

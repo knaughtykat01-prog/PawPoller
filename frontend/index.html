@@ -120,9 +120,10 @@
             <li class="nav-group">
               <button class="nav-group-label" data-nav-toggle type="button" aria-expanded="false">Publishing<span class="nav-caret" aria-hidden="true">&#9662;</span></button>
               <ul class="nav-sub">
-                <li><a href="#/submissions" class="nav-link" data-page="submissions">
-                    <span class="nav-icon">&#128218;</span><span class="nav-label">Submissions</span>
-                </a></li>
+                <!-- Submissions retired from nav in 2.117.0 — its works list is the
+                     cover-forward Library (#/library), which absorbed ＋Collection, the
+                     discovered-art import banner and the discovered bucket
+                     (#/library/discovered). The #/submissions route is kept (reversible). -->
                 <li><a href="#/posting" class="nav-link" data-page="posting">
                     <span class="nav-icon">&#128228;</span><span class="nav-label">Stories</span>
                 </a></li>

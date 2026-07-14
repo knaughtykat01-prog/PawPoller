@@ -4,6 +4,30 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.117.0] - 2026-07-14 - Submissions extras moved to Library, then Submissions retired from nav (Phase 7b)
+
+Completes Phase 7 of the linking/picker overhaul. The user found the Submissions tab redundant with the newer
+cover-forward **Library** (both list `/api/works`) and chose **"move its extras to Library first, then hide
+Submissions."** Done:
+
+- **＋ Collection on Library cards** — every shelf `.book` now carries the same `data-add-collection` affordance
+  the Submissions hub had (hover-revealed ＋ Collection; handled by the existing global collections.js click
+  delegate, so no new wiring). Library already had the All/Stories/Artwork segments, persona filter, search and
+  sort, so it's now a full superset of the Submissions hub.
+- **Discovered-art import on Library** — the "N discovered art pieces… Import all art" banner (→
+  `API.importDiscoveredArt`) moved onto the Library header (`bookshelf._loadDiscovered`/`_importAllArt`).
+- **Discovered bucket under Library** — new route `#/library/discovered` renders the existing
+  `Submissions.renderDiscovered` screen; its back-link now points to Library.
+- **Submissions retired from nav** — the sidebar item is gone. The `#/submissions` route + `submissions.js` are
+  **kept** (the discovered screen still uses it, and the route stays reachable), so the change is fully
+  reversible — nothing deleted.
+
+Also (2.116.0, Phase 7a): the Publishing settings tab was folded into General. Phase 7 is now complete.
+
+Frontend-only. Full suite: 437 passed (regression).
+
+---
+
 ## [2.116.0] - 2026-07-14 - Publishing settings tab folded into General (Phase 7a)
 
 Phase 7 of the linking/picker overhaul — the removals, scoped with the user first. The user's call on the
