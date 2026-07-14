@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-14
-**Current version (master):** 2.114.0 — **Native pixel-hash image-similarity suggestions (no AI) — Phase 4 of the linking/picker overhaul.**
+**Current version (master):** 2.115.0 — **Art workflow cleanup — Phase 5 of the linking/picker overhaul.**
+Two concrete art fixes. **Discoverable delete:** the artwork *detail* page always had Delete but it was buried
+(the "missing remove artwork" complaint = a discoverability gap); every **library hub card** now has a hover
+**🗑 Delete** (`artwork.js._deleteFromHub`, confirm; published posts stay live). **Art in Collections:**
+`_location_from_submission` now returns each location's `thumbnail_url` → the collection detail Locations table
+shows a per-posting thumbnail and the hub card **auto-covers** from the first location with an image
+(`cover_thumb`/`cover_platform`; FA/IB/Pixiv via the thumbnail relays). Fixes "Collections is missing the Artwork
+attached." **Flagged for §7 (not done):** the Artwork hub still groups art into "masters" via the same
+`submission_links` that §3 folded into Collections → two grouping systems; consolidating is a structural change
+deferred to the removals scoping. New collections test (+1). Full suite 437 pass. **DEPLOYED.**
+
+**Prior — 2.114.0 — Native pixel-hash image-similarity suggestions (no AI) — Phase 4 of the linking/picker overhaul.**
 Collection suggestions matched only by title; now they also match by **pixels** — the same art across platforms
 via a perceptual hash, **no AI/ML/embeddings/external service**, pure Pillow, local. New **`database/image_hash.py`**:
 **dHash** (9×8 greyscale grid → 64-bit fingerprint, resize-invariant so full-res ↔ thumbnail match by small
@@ -12,7 +23,7 @@ allowlist — https-only, host-suffix, redirect-disabled, size-capped; same SSRF
 Mastodon excluded). `auto_suggest_collections` now unions **title** (Jaccard) + **image** (Hamming ≤ 8) deduped on
 the member pair → `reason` title/image/both. Frontend: Collections hub "Suggested collections" card gains a
 **🔍 Scan images** button + reason chips, shows even when empty. New `tests/test_image_hash.py` (9). Full suite
-436 pass. **DEPLOYED.**
+436 pass. **DEPLOYED** (`beff84d`; `image_hashes` table live, 0 rows until first scan).
 
 **Prior — 2.113.0 — Cross-Platform Links folded into Collections — Phase 3 of the linking/picker overhaul.**
 Cross-Platform Links and Collections were the same idea (one piece across platforms + pooled analytics); Links

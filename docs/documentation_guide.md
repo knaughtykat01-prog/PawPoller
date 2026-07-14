@@ -6151,6 +6151,16 @@ persona/analytics rollup correct — shipped in 2.96.0; see that changelog entry
   `_auto_suggest` (title) with `image_hash.image_suggestions` (Hamming ≤ `HAMMING_THRESHOLD` = 8), deduping on the
   unordered member pair so a pair found by both is tagged `reason: 'both'`. The hub's "Suggested collections" card
   renders a 📝/🖼/✓ chip per row and a **🔍 Scan images** button.
+- **Art shown in Collections (2.115.0, Phase 5).** `_location_from_submission` returns each location's
+  `thumbnail_url`; the detail Locations table renders a per-posting thumbnail and `list_collections_with_summary`
+  exposes `cover_thumb`/`cover_platform` (first location with an image) so a hub card auto-covers from the art.
+  `collections.js._thumbSrc` routes FA/IB/Pixiv through the thumbnail relays (mirrors `artwork.js`).
+- **Two art-grouping systems — the flagged "mess" (for §7 scoping).** The **Artwork hub** groups cross-posted art
+  into "**masters**" via `artwork.js._foldMasters` + Unify/Split, which call `create_link`/`delete_link` on the
+  **same `submission_links` tables** that Phase 3 folded into Collections. So `#/artwork` masters and
+  `#/collections` are two overlapping grouping models. This is why `/api/links*` was kept **dormant, not deleted**
+  in 2.113.0 — the Artwork hub still depends on it. Consolidating masters → Collections is the intended end-state
+  but a structural change deferred to the removals scoping (`docs/specs/linking_picker_overhaul.md` §5/§7).
 
 **Tag picker (2.112.0, Phase 2) — `frontend/js/tag_picker.js` (`window.TagPicker`).**
 The sibling of WorkPicker for **tags** instead of works. `TagPicker.open({ title, selected, onConfirm })`

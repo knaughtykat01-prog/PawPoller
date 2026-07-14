@@ -149,6 +149,27 @@ def test_migrate_links_to_collections_idempotent_and_reversible():
         conn.close()
 
 
+def test_locations_carry_thumbnail_and_summary_auto_covers():
+    """Phase 5: each location exposes its image + the hub summary auto-covers from
+    the first location that has one, so Collections can SHOW the art."""
+    conn = get_connection()
+    try:
+        conn.execute("INSERT INTO fa_submissions (submission_id, title, views, thumbnail_url) "
+                     "VALUES (100, 'Wolf Tale', 50, 'https://d.facdn.net/a.jpg')")
+        cid = cq.create_collection(conn, "Wolf Tale")
+        cq.add_member(conn, cid, "submission", "fa:100")
+        conn.commit()
+
+        roll = cq.rollup_collection(conn, cid)
+        assert roll["locations"][0]["thumbnail_url"] == "https://d.facdn.net/a.jpg"
+
+        summ = {c["id"]: c for c in cq.list_collections_with_summary(conn)}[cid]
+        assert summ["cover_thumb"] == "https://d.facdn.net/a.jpg"
+        assert summ["cover_platform"] == "fa"
+    finally:
+        conn.close()
+
+
 def test_migrate_skips_degenerate_single_member_link():
     conn = get_connection()
     try:

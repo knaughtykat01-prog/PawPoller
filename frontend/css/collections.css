@@ -62,6 +62,17 @@
 }
 .coll-reason--image { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
 .coll-reason--both { color: var(--success, #4caf82); border-color: color-mix(in srgb, var(--success, #4caf82) 40%, var(--border)); }
+
+/* Location thumbnails in the collection detail table (2.115.0) */
+.coll-loc-thumb {
+    width: 44px;
+    height: 44px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    display: block;
+}
+.coll-loc-thumb--none { border: 1px dashed var(--border); }
 .coll-personas { display: flex; gap: .4rem; flex-wrap: wrap; }
 .coll-persona {
     display: inline-flex;

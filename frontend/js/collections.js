@@ -83,11 +83,23 @@ window.Collections = {
         grid.innerHTML = items.map(c => this._card(c)).join('');
     },
 
+    /* FA / Inkbunny / Pixiv thumbnails need the backend relay (CORS + mixed
+     * content); everything else loads directly. Mirrors artwork.js._thumbSrc. */
+    _thumbSrc(platform, url) {
+        if (!url) return '';
+        if (platform === 'fa') return Utils.faThumbUrl(url);
+        if (platform === 'ib') return Utils.thumbUrl(url);
+        if (platform === 'pix') return Utils.pixThumbUrl(url);
+        return url;
+    },
+
     _card(c) {
         const t = c.totals || {};
-        const cover = c.cover_kind === 'url' && c.cover_ref
+        const cover = (c.cover_kind === 'url' && c.cover_ref)
             ? `<img class="coll-cover-img" src="${this.esc(c.cover_ref)}" alt="" loading="lazy">`
-            : `<div class="coll-cover-ph">🗂️</div>`;
+            : (c.cover_thumb
+                ? `<img class="coll-cover-img" src="${this.esc(this._thumbSrc(c.cover_platform, c.cover_thumb))}" alt="" loading="lazy">`
+                : `<div class="coll-cover-ph">🗂️</div>`);
         return `
             <a class="coll-card" href="#/collections/${c.id}">
                 <div class="coll-cover">${cover}</div>
@@ -198,8 +210,11 @@ window.Collections = {
         const locRows = locs.map(l => {
             const p = this._plat(l.platform);
             const s = l.stats || {};
-            const pid = (this._personas && l.account_id) ? '' : '';
+            const thumb = l.thumbnail_url
+                ? `<img class="coll-loc-thumb" src="${this.esc(this._thumbSrc(l.platform, l.thumbnail_url))}" alt="" loading="lazy">`
+                : '<span class="coll-loc-thumb coll-loc-thumb--none"></span>';
             return `<tr>
+                <td>${thumb}</td>
                 <td><strong>${p.emoji || ''} ${this.esc(p.label)}</strong></td>
                 <td class="muted">${this.esc(l.title || '')}</td>
                 <td class="muted">${s.views == null ? '—' : this._fmt(s.views)}</td>
@@ -248,7 +263,7 @@ window.Collections = {
                 <p><a href="#/posting/story/${encodeURIComponent(c.story.name)}">${this.esc(c.story.name.replace(/_/g, ' '))}</a></p></div>` : ''}
             <div class="card" style="margin-bottom:1rem;">
                 <h3>Locations</h3>
-                ${locRows ? `<table class="data-table"><thead><tr><th>Platform</th><th>Title</th><th>Views</th><th>Faves</th><th>Comments</th><th></th></tr></thead><tbody>${locRows}</tbody></table>`
+                ${locRows ? `<table class="data-table"><thead><tr><th></th><th>Platform</th><th>Title</th><th>Views</th><th>Faves</th><th>Comments</th><th></th></tr></thead><tbody>${locRows}</tbody></table>`
                           : '<p class="muted">No resolvable locations yet — add works or submissions below.</p>'}
             </div>
             ${tags ? `<div class="card" style="margin-bottom:1rem;"><h3>Tags</h3><div class="coll-tags">${tags}</div></div>` : ''}

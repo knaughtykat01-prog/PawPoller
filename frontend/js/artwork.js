@@ -140,6 +140,10 @@ window.Artwork = {
                     : this._discoveredCard(m.d)).join('');
 
         grid.addEventListener('click', e => {
+            // Delete-from-card takes priority over the card's navigation and over
+            // select mode (library cards aren't selectable anyway).
+            const del = e.target.closest('[data-art-del]');
+            if (del) { e.preventDefault(); e.stopPropagation(); this._deleteFromHub(del.dataset.artDel); return; }
             // Master controls stay live in and out of select mode.
             const split = e.target.closest('.art-master-split');
             if (split) { e.preventDefault(); this._splitMaster(split.dataset.linkId); return; }
@@ -538,11 +542,30 @@ window.Artwork = {
         return `
             <a class="artwork-card" href="#/artwork/image/${encodeURIComponent(a.name)}">
                 ${cover}
+                <span class="artwork-card-del" role="button" tabindex="-1"
+                    data-art-del="${this.esc(a.name)}" title="Delete artwork"
+                    aria-label="Delete ${this.esc(a.title || a.name)}">🗑</span>
                 <div class="artwork-card-body">
                     <div class="artwork-card-title">${this.esc(a.title || a.name)}</div>
                     <div class="artwork-card-meta">${rating}<span class="artwork-plats">${plats}</span></div>
                 </div>
             </a>`;
+    },
+
+    /* Delete a saved artwork straight from a hub card. The detail page has had a
+     * Delete button all along, but it was buried — surfacing it here is the fix
+     * for "artwork upload screen missing remove artwork" (a discoverability gap). */
+    async _deleteFromHub(name) {
+        if (!confirm(`Delete "${(name || '').replace(/_/g, ' ')}" from your library?\nAny already-published posts stay live on each platform.`)) return;
+        try {
+            await API.deleteArtwork(name);
+            this._toast('success', 'Deleted');
+            const y = window.scrollY;
+            await this.render();
+            window.scrollTo(0, y);
+        } catch (err) {
+            this._toast('error', 'Delete failed: ' + (err.message || err));
+        }
     },
 
     /* ── Create / upload flow ───────────────────────────────── */

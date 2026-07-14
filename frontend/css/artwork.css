@@ -12,6 +12,7 @@
 
 .artwork-card {
     display: block;
+    position: relative;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -25,6 +26,29 @@
     border-color: var(--accent);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 }
+/* Delete affordance on a library card — hidden until hover/focus so it never
+   competes with the artwork, but keeps "remove artwork" one click away. */
+.artwork-card-del {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 2;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .12s ease, background .12s ease;
+}
+.artwork-card:hover .artwork-card-del,
+.artwork-card:focus-within .artwork-card-del { opacity: 1; }
+.artwork-card-del:hover { background: var(--danger, #e0484d); }
 .artwork-card-cover {
     aspect-ratio: 1 / 1;
     background-size: cover;

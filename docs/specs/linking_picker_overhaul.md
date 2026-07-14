@@ -62,15 +62,34 @@ no ML model, no embeddings, no external service, runs locally. Store a hash per
 artwork (compute on poll/import), compare by Hamming distance to suggest links.
 Combine with title similarity for the merged suggestion engine.
 
-### 5. Art workflow cleanup (#3 — "feels like a mess")
-Umbrella for the art experience. Depends on 1, 2, 4. Map the current art flow
-(upload → tags → artwork hub → submissions → collections) and propose a cleaner
-one. Clarify #1 "remove artwork" (there IS a hidden "Remove image" button that
-appears after adding a file — confirm whether that's the gap or deleting a saved
-artwork).
+### 5. Art workflow cleanup (#3 — "feels like a mess") — ✅ DONE (2.115.0)
+Umbrella for the art experience. Shipped:
+- **Discoverable delete** — the artwork *detail* page always had a Delete button,
+  but it was buried (the "missing remove artwork" complaint was a discoverability
+  gap). Now every library hub card has a hover **🗑 Delete** (confirm; published
+  posts stay live). The upload screen's "Remove image" already clears a pending file.
+- **Art shown in Collections** — `_location_from_submission` now returns each
+  location's `thumbnail_url`; the collection detail's Locations table shows a
+  thumbnail per posting and the hub card auto-covers from the first location with
+  an image (`cover_thumb`/`cover_platform` in the summary). Fixes "Collections is
+  missing the Artwork attached to the selected postings."
 
-### 6. Settings search (#8)
-A filter box over the settings sections/accordions.
+**Flagged for §7 scoping — the real structural "mess":** the Artwork hub groups
+cross-posted art into "**masters**" via the *same* `submission_links` tables that
+§3 just folded into Collections (`artwork.js._foldMasters` / Unify / Split →
+`create_link`/`delete_link`). So art now has **two** grouping systems (masters vs
+Collections). Consolidating masters → Collections is the right end-state but it is
+a structural change that overlaps the removals work, so it is deferred to §7 where
+the user wants to scope removals first — NOT done unilaterally.
+
+### 6. Settings search (#8) — ✅ ALREADY DONE (2.103.0 — do NOT rebuild)
+Verified in code 2026-07-14: a full cross-tab settings filter already ships.
+`app.js._wireSettingsSearch` + the `#settings-search` search bar (placeholder
+"🔍 Search settings…") rendered above the tabs in `renderSettings`; a non-empty
+query shows all panels and hides `.settings-section`/`.settings-accordion` units
+whose text doesn't match, eager-loading the lazy Polling/Logs tabs so they're
+searchable too, with a live match count. Same "already exists" pattern as the
+per-platform pause button and the polling grid.
 
 ### 7. Removals — scope before deleting (chose: scope with me first)
 - **Submissions tab (#5)**: it's the `/api/works` library hub (also hosts
@@ -83,6 +102,8 @@ A filter box over the settings sections/accordions.
 - **Polling grid** (#11) — `.polling-grid` is already responsive
   (`minmax(340px,1fr)`); collapses to 1 col when narrow.
 - **Cross-Platform "map" error** (#7) — user confirms it works now; not a bug.
+- **Settings search** (#8, §6) — exists since 2.103.0 (`_wireSettingsSearch` +
+  `#settings-search`). See §6.
 
 ## Platforms-grid note (#11)
 The connect screen (Settings → Platforms) is vertical `<details>` accordions;

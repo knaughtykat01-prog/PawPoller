@@ -168,6 +168,10 @@ def _location_from_submission(conn, platform: str, sid: str, *, url: str = "",
         "account_id": account_id if account_id is not None else row.get("account_id"),
         "stats": _stats_from_row(platform, row),
         "keywords": _parse_tags(row.get("keywords")),
+        # Cover image so Collections can SHOW the art at each location, not just
+        # name it (the "Collections is missing the artwork" gap). Raw CDN URL;
+        # the frontend routes FA/IB/Pixiv through their thumbnail relays.
+        "thumbnail_url": row.get("thumbnail_url") or "",
         "source": source,
     }
 
@@ -380,12 +384,22 @@ def list_collections_with_summary(conn: sqlite3.Connection) -> list[dict]:
     out = []
     for c in list_collections(conn):
         roll = rollup_collection(conn, c["id"]) or {}
+        locs = roll.get("locations", [])
+        # Auto-cover: first location that actually has an image, so a collection
+        # card shows the piece even when no explicit cover was set.
+        cover_thumb, cover_platform = "", ""
+        for l in locs:
+            if l.get("thumbnail_url"):
+                cover_thumb, cover_platform = l["thumbnail_url"], l["platform"]
+                break
         out.append({
             **c,
             "totals": roll.get("totals", {"views": 0, "favorites": 0, "comments": 0,
                                           "platforms": 0, "locations": 0}),
             "persona_ids": roll.get("persona_ids", []),
             "member_count": len(roll.get("members", [])),
-            "platforms": sorted({l["platform"] for l in roll.get("locations", [])}),
+            "platforms": sorted({l["platform"] for l in locs}),
+            "cover_thumb": cover_thumb,
+            "cover_platform": cover_platform,
         })
     return out

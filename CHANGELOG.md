@@ -4,6 +4,31 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.115.0] - 2026-07-14 - Art workflow cleanup — discoverable delete + art shown in Collections
+
+Phase 5 of the linking/picker overhaul. Two concrete fixes to the art experience, plus a documented map of the
+remaining structural work.
+
+- **Discoverable "remove artwork"** — the artwork *detail* page always had a Delete button, but it was buried
+  (the "artwork upload screen missing remove artwork" complaint was really a discoverability gap, same shape as
+  the polling-pause finding). Every **library hub card** now has a hover **🗑 Delete** (`artwork.js._deleteFromHub`,
+  confirm dialog; already-published posts stay live on each platform). The upload screen's "Remove image" already
+  clears a pending file.
+- **Art shown in Collections** — `collections_queries._location_from_submission` now returns each location's
+  `thumbnail_url`; the collection detail's **Locations** table shows a thumbnail per posting and the hub card
+  **auto-covers** from the first location that has an image (`cover_thumb` / `cover_platform` in the summary,
+  FA/IB/Pixiv routed through the existing thumbnail relays). Fixes "Collections is missing the Artwork attached
+  to the selected postings."
+- **Flagged, not done:** the Artwork hub groups cross-posted art into "**masters**" via the *same*
+  `submission_links` tables that 2.113.0 folded into Collections — so art now has two grouping systems (masters
+  vs Collections). Consolidating them is the right end-state but a structural change that overlaps the removals
+  work, so it's deferred to the Phase 7 scoping conversation, not done unilaterally. See
+  `docs/specs/linking_picker_overhaul.md` §5/§7.
+
+New: `test_collections_merge.py::test_locations_carry_thumbnail_and_summary_auto_covers`. Full suite: 437 passed.
+
+---
+
 ## [2.114.0] - 2026-07-14 - Native pixel-hash image-similarity suggestions (no AI)
 
 Phase 4 of the linking/picker overhaul. Collection suggestions could only match by **title**; now they also
