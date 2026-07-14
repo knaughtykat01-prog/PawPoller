@@ -9,7 +9,7 @@ moved onto Library (`bookshelf._loadDiscovered`/`_importAllArt`); **discovered b
 `#/library/discovered` (renders `Submissions.renderDiscovered`, back-link → Library); **Submissions removed from
 nav** but `#/submissions` route + `submissions.js` **kept** (reversible, nothing deleted). Library already had
 All/Stories/Artwork + persona + search + sort, so it's now a superset. Frontend-only. Full suite 437 pass.
-**DEPLOYED.** **The whole 7-phase linking/picker/collections overhaul is now shipped** (2.111–2.117 + the
+**DEPLOYED** (`a02a297`). **The whole 7-phase linking/picker/collections overhaul is now shipped** (2.111–2.117 + the
 2.103.0-era pre-existing pieces); spec `docs/specs/linking_picker_overhaul.md` all ✅. Remaining follow-up (NOT
 in scope, flagged): consolidating the Artwork hub's "masters" (submission_links) grouping into Collections.
 
