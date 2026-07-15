@@ -179,6 +179,8 @@ async def run_e621_poll_cycle(account_id: int | None = None, force_full: bool = 
             try:
                 uri = detail["post_uri"]
                 score = detail.get("score", 0)
+                up_score = detail.get("up_score", 0)
+                down_score = detail.get("down_score", 0)
                 faves = detail.get("favorites_count", 0)
                 comments = detail.get("comments_count", 0)
 
@@ -189,7 +191,8 @@ async def run_e621_poll_cycle(account_id: int | None = None, force_full: bool = 
 
                 e621_queries.upsert_e621_submission(conn, detail, account_id)
                 e621_queries.insert_e621_snapshot(conn, account_id, uri, score, faves,
-                                                  comments, polled_at=poll_timestamp)
+                                                  comments, polled_at=poll_timestamp,
+                                                  up_score=up_score, down_score=down_score)
                 stats["snapshots_inserted"] += 1
 
             except Exception as e:

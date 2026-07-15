@@ -11,4 +11,7 @@ Supported platforms:
     sofurry        REST JSON API with CSRF token auth
     squidgeworld   OTW Archive Rails form (same software as AO3)
     bluesky        AT Protocol createRecord + uploadBlob (announcements only)
+    deviantart     Eclipse API (artwork)
+    itaku          DRF token (artwork + text posts)
+    e621           Official REST API upload (POST /uploads.json, artwork)
 """

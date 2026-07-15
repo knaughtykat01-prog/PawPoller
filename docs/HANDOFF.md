@@ -1,17 +1,19 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-14
-**Current version (master):** 2.117.0 — **Submissions extras → Library, Submissions retired from nav — Phase 7b (Phase 7 COMPLETE).**
-The user found Submissions redundant with the cover-forward **Library** (both list `/api/works`) and chose "move
-extras to Library first, then hide Submissions." Done: **＋Collection** on every Library `.book` card (same
-`data-add-collection` span, handled by the global collections.js delegate); **discovered-art import banner**
-moved onto Library (`bookshelf._loadDiscovered`/`_importAllArt`); **discovered bucket** at new route
-`#/library/discovered` (renders `Submissions.renderDiscovered`, back-link → Library); **Submissions removed from
-nav** but `#/submissions` route + `submissions.js` **kept** (reversible, nothing deleted). Library already had
-All/Stories/Artwork + persona + search + sort, so it's now a superset. Frontend-only. Full suite 437 pass.
-**DEPLOYED** (`a02a297`). **The whole 7-phase linking/picker/collections overhaul is now shipped** (2.111–2.117 + the
-2.103.0-era pre-existing pieces); spec `docs/specs/linking_picker_overhaul.md` all ✅. Remaining follow-up (NOT
-in scope, flagged): consolidating the Artwork hub's "masters" (submission_links) grouping into Collections.
+**Last updated:** 2026-07-15
+**Current version (master):** 2.118.0 — **e621 posting (poll-only → poll+post) + v2-extended polling.**
+e621's official OpenAPI (https://e621.wiki/openapi.yaml) confirmed the upload endpoint takes the **same HTTP Basic
+username + API key** we already store, so e621 is now a **posting target**. New **`E621Client.upload_post`**
+(`POST /uploads.json` multipart: file + tag_string + rating s/q/e + optional source/description; rejections
+surface e621's own message incl. duplicate→existing-post URL) and **`E621Poster`** (`posting/platforms/e621.py`,
+art-only, registered in `manager._get_poster`, rating map, validates image + ≥4 tags, `requires_mode="any"`).
+Frontend: e621 added to the Artwork hub poster list (`artwork.js._PLATFORMS`), `pollOnly:false` in platforms.js.
+**Polling future-proofed:** poller now requests **v2 extended** (`v2=true&mode=extended`, nested `files`/`stats`)
+instead of the legacy `{"posts":[…]}` shape e621's spec marks *deprecated* — `_parse_post` tolerates **both**
+(both verified live). **up/down vote split now trends** (`e621_snapshots.up_score/down_score`, guarded migration).
+**PawPoller now posts to 11 platforms** (was 10). New `tests/test_e621_posting.py` (20 cases). Full suite green.
+**Caveats:** e621 uploads hit a janitor approval queue, demand accurate tags + a source, and reject duplicates.
+**DEPLOYED** pending. Follow-up still flagged: consolidating the Artwork hub's "masters" (submission_links) into Collections.
 
 **Prior — 2.116.0 — Publishing settings tab folded into General — Phase 7a of the linking/picker overhaul.**
 The user's call on the "Publishing module" removal: it's the **Settings → Publishing tab**, and they only want a

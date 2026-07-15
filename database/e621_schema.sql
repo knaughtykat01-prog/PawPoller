@@ -7,7 +7,8 @@
 -- Metric shape mirrors the gallery platforms but the headline metric is
 -- SCORE (score.total, which can be NEGATIVE) rather than views — e621 exposes
 -- no view count. favorites_count = fav_count, comments_count = comment_count.
--- up_score / down_score are kept for context but are not snapshotted.
+-- up_score / down_score (the vote split behind the net score) are stored on the
+-- submission AND trended in each snapshot.
 -- submission_id is the e621 post id as TEXT.
 --
 PRAGMA journal_mode=WAL;
@@ -40,6 +41,8 @@ CREATE TABLE IF NOT EXISTS e621_snapshots (
     submission_id   TEXT NOT NULL,
     polled_at       TEXT NOT NULL DEFAULT (datetime('now')),
     score           INTEGER NOT NULL DEFAULT 0,
+    up_score        INTEGER NOT NULL DEFAULT 0,
+    down_score      INTEGER NOT NULL DEFAULT 0,
     favorites_count INTEGER NOT NULL DEFAULT 0,
     comments_count  INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (submission_id) REFERENCES e621_submissions(submission_id)

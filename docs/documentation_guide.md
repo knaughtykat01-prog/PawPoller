@@ -1410,10 +1410,12 @@ one Meta app, so an app-block trips *both* at once — a useful tell in the logs
 failure (code 200)`). The fix only changes *classification/reporting*; a real expiry (code 190) behaves
 exactly as before, and the posting path (`create_thread`/`create_post`) never calls `validate_session()`.
 
-#### e621 (2.104.0) — official REST API, poll-only, Score is the headline
+#### e621 (2.104.0 poll · 2.118.0 post) — official REST API, Score is the headline
 
 e621 is the 17th platform and the first with an *official, documented* JSON API, so the client
-(`clients/e621/client.py`) is unusually small. Notes that matter:
+(`clients/e621/client.py`) is unusually small. Poll-only until 2.118.0, when its OpenAPI
+(https://e621.wiki/openapi.yaml) confirmed the upload endpoint takes the same creds — see **Posting** and
+**Response-shape future-proofing** below. Notes that matter:
 
 - **Auth is HTTP Basic** — `username` + **API key** (Account → Manage API Access, NOT the password).
   `E621Client._auth()` returns the `(username, api_key)` tuple httpx sends as a Basic header. Cred
@@ -1438,6 +1440,27 @@ e621 is the 17th platform and the first with an *official, documented* JSON API,
 - **What it tracks.** The poller pages `/posts.json?tags=user:<username>` newest-first using the
   `page=b<id>` before-id cursor (page numbers cap at 750), and each listing already carries full engagement
   data — so there's no per-post fetch, `get_post_details_batch()` just parses the stashed raw posts.
+- **Response-shape future-proofing (2.118.0).** `/posts.json` has two live formats: the LEGACY default
+  (`{"posts":[…]}` with flat `file`/`score`/`fav_count`), which e621's own OpenAPI marks *deprecated*, and the
+  supported **v2 extended** (`v2=true&mode=extended` → a bare array of nested `files`/`stats`). The poller now
+  requests v2 extended, and `get_all_post_uris` handles both envelopes while `_parse_post`'s `_file_url` /
+  `_thumb_url` / `_stats` helpers read **either** shape — so polling can't break when e621 flips or drops the
+  legacy default. Both shapes are covered by `tests/test_e621_posting.py`.
+- **up/down vote split trends (2.118.0).** `_stats` returns `(total, up, down, fav, comment)`; the poller writes
+  `up_score`/`down_score` into each `e621_snapshots` row (new columns via a guarded db.py migration), so the
+  vote split behind the net score is now trended, not just the current value on the submission row.
+
+**Posting (2.118.0).** `E621Client.upload_post(tag_string, rating, file_path|direct_url, source, description)`
+does a multipart `POST /uploads.json` with the same HTTP Basic creds, returning `{success, post_id, location}`;
+a rejection raises `RuntimeError` carrying e621's own reason (duplicate → appends the existing post's URL,
+missing tags, or a 403 permission note). `posting/platforms/e621.py::E621Poster` wraps it as an art-only poster
+registered in `manager._get_poster`, so artwork publishes through the normal `post_artwork` path. Rating maps
+general→`s`, mature→`q`, adult/explicit/**unknown**→`e` (under-rating adult content on e621 is a policy
+violation, so unknown defaults to explicit). `validate()` requires an image and ≥4 tags — e621 flags
+under-tagged posts. `requires_mode="any"` (the REST API isn't datacenter-IP-blocked like FA's HTML flow).
+**Operational caveats:** e621 uploads enter a **janitor approval queue**, want an accurate tag set + a source
+(pass one via the artwork's per-platform `source` override → `package.extra["source"]`), and **reject duplicates
+by file hash**. It's the bring-your-own-creds self-host model — you upload your own art as your own account.
 
 #### Muting a session-health alert (2.84.0)
 

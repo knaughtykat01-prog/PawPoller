@@ -76,11 +76,15 @@ def get_all_e621_submissions(conn: sqlite3.Connection, sort_by: str = "score", o
 
 def insert_e621_snapshot(conn: sqlite3.Connection, account_id: int, submission_id: str,
                          score: int, favorites_count: int, comments_count: int,
-                         polled_at: str | None = None) -> None:
+                         polled_at: str | None = None,
+                         up_score: int = 0, down_score: int = 0) -> None:
     ts = polled_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
-        "INSERT INTO e621_snapshots (account_id, submission_id, polled_at, score, favorites_count, comments_count) VALUES (?, ?, ?, ?, ?, ?)",
-        (account_id, submission_id, ts, score, favorites_count, comments_count),
+        "INSERT INTO e621_snapshots (account_id, submission_id, polled_at, score, "
+        "up_score, down_score, favorites_count, comments_count) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (account_id, submission_id, ts, score, up_score, down_score,
+         favorites_count, comments_count),
     )
 
 

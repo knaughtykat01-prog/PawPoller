@@ -4,6 +4,37 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.118.0] - 2026-07-15 - e621 posting (poll-only → poll+post) + v2-extended polling
+
+e621 was poll-only since 2.104.0. Its official OpenAPI (https://e621.wiki/openapi.yaml) confirms the upload
+endpoint works over the **same HTTP Basic username + API key** we already store, so e621 is now a **posting
+target** too — and the poller is future-proofed off e621's deprecated response format.
+
+**Posting**
+- **`E621Client.upload_post`** — `POST /uploads.json` (multipart): `upload[file]` + `tag_string` + `rating`
+  (s/q/e), optional `source` / `description`. Returns `{success, post_id, location}`; rejections surface e621's
+  own message (duplicate → includes the existing post URL, missing tags, permission).
+- **`E621Poster`** (`posting/platforms/e621.py`) — art-only, registered in `manager._get_poster`, so artwork
+  publishes through the same `post_artwork` path as every other gallery. Rating map (general→s, mature→q,
+  adult/explicit/unknown→e). Validation enforces an image + a real tag set (≥4 tags), since e621 flags
+  under-tagged posts. `requires_mode="any"` — the API works from the server (no datacenter-IP block).
+- **Frontend** — e621 added to the Artwork hub's poster list; its "poll only" pill is gone.
+- **Caveats (documented, not blockers):** e621 uploads hit a **janitor approval queue**, demand accurate
+  tagging + a source, and **reject duplicates**. Self-host, bring-your-own-creds model — you upload your own art
+  as your own account.
+
+**Polling future-proofing**
+- The poller now requests the supported **v2 extended** format (`v2=true&mode=extended`, a bare array of nested
+  `files`/`stats`) instead of the legacy `{"posts":[…]}` shape e621's own spec marks *deprecated*. `_parse_post`
+  is **tolerant of both shapes**, so polling can't break whichever one e621 serves. (Both verified live.)
+- **up/down vote split now trends** — `e621_snapshots` gains `up_score`/`down_score` (guarded, idempotent
+  migration); the poller records them each cycle. Previously only the net score was snapshotted.
+
+**PawPoller now posts to 11 platforms** (was 10). Tests: new `tests/test_e621_posting.py` (20 cases — dual-shape
+parse, upload success/duplicate/validation, poster happy-path). Full suite: 457 passed (was 437).
+
+---
+
 ## [2.117.0] - 2026-07-14 - Submissions extras moved to Library, then Submissions retired from nav (Phase 7b)
 
 Completes Phase 7 of the linking/picker overhaul. The user found the Submissions tab redundant with the newer

@@ -5,7 +5,7 @@
 //
 // `post: true` reflects the platforms with a live PlatformPoster:
 // Inkbunny, FurAffinity, SoFurry, Weasyl, AO3, SquidgeWorld, DeviantArt,
-// Itaku, Bluesky and Instagram. Everything polls (17); the rest are
+// Itaku, Bluesky, Instagram and e621. Everything polls (17); the rest are
 // read-only analytics.
 
 export type Kind = 'fiction' | 'art' | 'social';
@@ -39,10 +39,10 @@ export const PLATFORMS: Platform[] = [
   { name: 'Pixiv',        logo: 'pix.svg',  poll: true, post: false, testing: true, kinds: ['art', 'fiction'], note: 'Illustrations + novels' },
   { name: 'Threads',      logo: 'thr.svg',  poll: true, post: false, testing: true, kinds: ['social'], note: 'Posts: views, likes, reposts · Meta app required' },
   { name: 'Instagram',    logo: 'ig.svg',   poll: true, post: true,  testing: true, kinds: ['art', 'social'], note: 'Photos + captions · server-only, Meta app' },
-  { name: 'e621',         logo: 'e621.svg', poll: true, post: false, kinds: ['art'], note: 'Uploads: score, faves, comments · official API' },
+  { name: 'e621',         logo: 'e621.svg', poll: true, post: true,  testing: true, kinds: ['art'], note: 'Upload art + score/faves/comments · official API' },
 ];
 
-export const POST_COUNT = PLATFORMS.filter((p) => p.post).length;   // 10
+export const POST_COUNT = PLATFORMS.filter((p) => p.post).length;   // 11
 export const POLL_COUNT = PLATFORMS.length;                          // 17
 
 export const byKind = (kind: Kind): Platform[] =>

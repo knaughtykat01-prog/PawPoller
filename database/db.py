@@ -965,4 +965,20 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         except Exception as e:  # never let a data migration block startup
             logger.warning("Collections link migration skipped: %s", e)
 
+    # e621: trend the up/down vote split (previously only the net score was
+    # snapshotted). Additive columns on e621_snapshots — guarded + idempotent.
+    _has_e621_snap = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='e621_snapshots'").fetchone()
+    if _has_e621_snap:
+        _e621_snap_cols = {r[1] for r in conn.execute(
+            "PRAGMA table_info(e621_snapshots)").fetchall()}
+        for _col in ("up_score", "down_score"):
+            if _col not in _e621_snap_cols:
+                try:
+                    conn.execute(
+                        f"ALTER TABLE e621_snapshots ADD COLUMN {_col} INTEGER NOT NULL DEFAULT 0")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e).lower():
+                        raise
+
     conn.commit()
