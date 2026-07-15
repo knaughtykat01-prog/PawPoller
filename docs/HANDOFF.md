@@ -1,7 +1,22 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-15
-**Current version (master):** 2.120.0 — **X multi-account: round-robin fix + account stagger (poll all 3 free).**
+**Current version (master):** 2.121.0 — **X follower counts ride the free gallery-dl scrape (no billed call).**
+Completes the "$0 X polling" work. After 2.119.0/2.120.0 tweets came from free gallery-dl, but the per-cycle
+**follower-count** snapshot still spent one billed official X API v2 `/users/by/username` call per account (the
+07:15 UTC poll logs showed 3 accounts → 3 paid calls). Cause: `TWClient.get_follower_count` tried the official API
+first, and its "reuse the count cached during fetch_tweets" trick no longer warms (official `fetch_tweets` doesn't
+run when gallery-dl serves tweets → guaranteed cache miss → fresh billed lookup). Fix: **gallery-dl now captures
+`author.followers_count`** from the `-j` dump it already parses (new `gallerydl._extract_follower_count` +
+`_LAST_FOLLOWERS` cache + pure-cache-read `gallerydl.get_follower_count`), and `TWClient.get_follower_count` is
+reordered **gallery-dl (free, cached) → official API (paid) → GraphQL scrape**. Each `fetch_tweets` attempt
+invalidates the handle's cached count up front and re-sets only on success, so a failed cycle can't return a stale
+number (it falls through to the paid/scrape path); `get_follower_count` also returns `None` under backend
+`"official"`/`"graphql"`. Net: a gallery-dl poll is now **truly $0** — tweets *and* followers free; the paid API is
+billed only on a cycle gallery-dl can't serve. +7 tests in `test_tw_gallerydl.py`; full X suite green (59).
+**DEPLOY pending.**
+
+**Prior — 2.120.0 — X multi-account: round-robin fix + account stagger (poll all 3 free).**
 Follow-up to 2.119.0. With gallery-dl the primary (IP-bound) X backend, the round-robin that keeps X inside the
 per-IP throttle budget was silently OFF — so all 3 X accounts polled every cycle and the tail still fell back to
 the paid API (~35c). Two fixes: (1) **`roundrobin.effective_batch` bug** — it disabled round-robin whenever an X

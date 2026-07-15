@@ -48,6 +48,13 @@ _IMAGE_EXTS = {"jpg", "jpeg", "png", "webp"}
 # in their high bits; used as a fallback when gallery-dl's `date` is missing.
 _TWITTER_EPOCH_MS = 1288834974657
 
+# Follower count captured during a fetch, keyed by lowercased handle. gallery-dl
+# attaches the author's user object (incl. followers_count) to every tweet, so a
+# poll that already scraped the timeline exposes the follower total for FREE —
+# get_follower_count() reads this instead of spending a billed official-API
+# user-lookup. Warmed (and invalidated) by fetch_tweets().
+_LAST_FOLLOWERS: dict[str, int] = {}
+
 
 # -- Discovery ---------------------------------------------------------------
 
@@ -238,6 +245,39 @@ def _parse_dump_json(raw: str, target_user: str) -> list[dict]:
     return result
 
 
+def _extract_follower_count(raw: str, handle: str) -> int | None:
+    """Pull the tracked account's follower count out of a ``gallery-dl -j`` dump.
+
+    gallery-dl attaches the tweet author's user object (including
+    ``followers_count``) to every tweet kwdict, so the timeline we already
+    fetched carries the follower total at no extra cost. Prefer the author whose
+    handle matches the tracked account; fall back to the first author that
+    reports a count. Returns ``None`` when the dump has no usable count (e.g. an
+    account with no tweets, or an older gallery-dl that omits the field).
+    """
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, list):
+        return None
+    want = (handle or "").lstrip("@").lower()
+    fallback: int | None = None
+    for el in data:
+        if not (isinstance(el, list) and el and isinstance(el[-1], dict)):
+            continue
+        author = el[-1].get("author") or el[-1].get("user") or {}
+        if not isinstance(author, dict) or "followers_count" not in author:
+            continue
+        count = _safe_int(author.get("followers_count"))
+        name = str(author.get("name") or "").lstrip("@").lower()
+        if want and name == want:
+            return count
+        if fallback is None:
+            fallback = count
+    return fallback
+
+
 # -- Subprocess --------------------------------------------------------------
 
 async def _run(exe: str, url: str, cookie_path: str, settings: dict,
@@ -312,10 +352,14 @@ async def fetch_tweets(auth_token: str, ct0: str, target_user: str,
     if not is_enabled(settings):
         return None
     exe = find_gallerydl(settings)
-    if not exe or not (auth_token and ct0 and target_user):
+    handle = (target_user or "").lstrip("@")
+    # A fresh attempt invalidates any prior cycle's cached follower count, so a
+    # failure this cycle can't hand get_follower_count() a stale number — it will
+    # fall through to the paid/scrape path instead.
+    _LAST_FOLLOWERS.pop(handle.lower(), None)
+    if not exe or not (auth_token and ct0 and handle):
         return None
 
-    handle = target_user.lstrip("@")
     url = f"https://x.com/{handle}/tweets"
     tmpdir = tempfile.mkdtemp(prefix="pp_tw_gdl_")
     cookie_path = os.path.join(tmpdir, "cookies.txt")
@@ -327,6 +371,11 @@ async def fetch_tweets(auth_token: str, ct0: str, target_user: str,
                            rc, (err or "").strip()[:300])
             return None
         tweets = _parse_dump_json(out, handle)
+        # Ride the timeline scrape for the follower count too (free), so the
+        # poll's capture_followers step needn't spend a billed API call.
+        fc = _extract_follower_count(out, handle)
+        if fc is not None:
+            _LAST_FOLLOWERS[handle.lower()] = fc
         logger.info("TW: gallery-dl returned %d tweets for %s", len(tweets), handle)
         return tweets
     except Exception as e:
@@ -334,6 +383,26 @@ async def fetch_tweets(auth_token: str, ct0: str, target_user: str,
         return None
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def get_follower_count(target_user: str, settings: dict | None = None) -> int | None:
+    """Follower count captured during this cycle's :func:`fetch_tweets`, or ``None``.
+
+    A pure cache read — no network, no subprocess. Because gallery-dl's timeline
+    metadata already carries ``author.followers_count``, a poll that fetched
+    tweets via gallery-dl exposes the follower total for free; TWClient prefers
+    this over the billed official-API user-lookup. Returns ``None`` when
+    gallery-dl isn't the active backend or nothing was captured for this handle
+    this cycle (fetch failed, or the account had no tweets), so the caller falls
+    through to the paid API / GraphQL scrape.
+    """
+    settings = settings if settings is not None else config.get_settings()
+    if not is_enabled(settings):
+        return None
+    h = (target_user or "").lstrip("@").lower()
+    if not h:
+        return None
+    return _LAST_FOLLOWERS.get(h)
 
 
 async def validate(auth_token: str, ct0: str, target_user: str,

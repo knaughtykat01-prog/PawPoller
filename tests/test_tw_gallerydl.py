@@ -285,3 +285,111 @@ async def test_get_all_tweets_falls_back_to_official_when_gallerydl_none(monkeyp
 
     assert result == [{"tweet_id": "42", "likes": 3}]  # official API's result
     assert called["gdl"] is True and called["official"] is True
+
+
+# ── Follower count rides the free timeline scrape ───────────────────────────
+# gallery-dl's tweet metadata already carries author.followers_count, so a poll
+# that scraped tweets for free must NOT then spend a billed official-API call
+# just to snapshot the follower total.
+
+def test_extract_follower_count_prefers_matching_handle():
+    # _MEDIA_KW's author is TestHandle w/ 42 followers; the text tweet omits it.
+    assert gallerydl._extract_follower_count(SAMPLE, "TestHandle") == 42
+    assert gallerydl._extract_follower_count(SAMPLE, "@TestHandle") == 42
+
+
+def test_extract_follower_count_falls_back_to_first_author():
+    # No author matches the requested handle → take the first reported count.
+    raw = json.dumps([[3, "https://pbs.twimg.com/media/AAA.jpg", dict(_MEDIA_KW)]])
+    assert gallerydl._extract_follower_count(raw, "SomeoneElse") == 42
+
+
+def test_extract_follower_count_none_when_absent():
+    # A dump whose only tweet omits followers_count → None (nothing to cache).
+    raw = json.dumps([[2, dict(_TEXT_KW)]])
+    assert gallerydl._extract_follower_count(raw, "TestHandle") is None
+    assert gallerydl._extract_follower_count("not json", "h") is None
+    assert gallerydl._extract_follower_count("[]", "h") is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_warms_follower_cache(monkeypatch):
+    gallerydl._LAST_FOLLOWERS.pop("testhandle", None)
+    monkeypatch.setattr(gallerydl, "find_gallerydl", lambda *_a, **_k: "/usr/bin/gallery-dl")
+
+    async def fake_run(*_a, **_k):
+        return 0, SAMPLE, ""
+
+    monkeypatch.setattr(gallerydl, "_run", fake_run)
+    await gallerydl.fetch_tweets("a", "b", "@TestHandle", settings={})
+    # The follower count is now available for free — no network call.
+    assert gallerydl.get_follower_count("TestHandle", settings={}) == 42
+
+
+@pytest.mark.asyncio
+async def test_failed_fetch_invalidates_stale_follower_cache(monkeypatch):
+    # A previous cycle cached 99; this cycle's gallery-dl fetch fails.
+    gallerydl._LAST_FOLLOWERS["testhandle"] = 99
+    monkeypatch.setattr(gallerydl, "find_gallerydl", lambda *_a, **_k: "/usr/bin/gallery-dl")
+
+    async def fail_run(*_a, **_k):
+        return 1, "", "HTTPError 401 AuthRequired"
+
+    monkeypatch.setattr(gallerydl, "_run", fail_run)
+    out = await gallerydl.fetch_tweets("a", "b", "TestHandle", settings={})
+    assert out is None
+    # Stale 99 must be gone so the caller falls through to the paid/scrape path.
+    assert gallerydl.get_follower_count("TestHandle", settings={}) is None
+
+
+def test_get_follower_count_none_when_backend_off():
+    gallerydl._LAST_FOLLOWERS["testhandle"] = 55
+    try:
+        # "official"/"graphql" force gallery-dl off — its stale cache must not leak.
+        assert gallerydl.get_follower_count("TestHandle", {"tw_polling_backend": "official"}) is None
+        assert gallerydl.get_follower_count("TestHandle", {"tw_polling_backend": "graphql"}) is None
+    finally:
+        gallerydl._LAST_FOLLOWERS.pop("testhandle", None)
+
+
+@pytest.mark.asyncio
+async def test_client_follower_count_prefers_gallerydl(monkeypatch):
+    from clients.tw import client as tw_client, official_api
+
+    called = {"official": False}
+    monkeypatch.setattr(gallerydl, "get_follower_count", lambda *_a, **_k: 123)
+
+    async def official_should_not_run(*_a, **_k):
+        called["official"] = True
+        return 999
+
+    monkeypatch.setattr(official_api, "get_follower_count", official_should_not_run)
+
+    c = tw_client.TWClient("at", "ct0", "handle")
+    try:
+        fc = await c.get_follower_count()
+    finally:
+        await c.close()
+
+    assert fc == 123                 # gallery-dl's free cached count
+    assert called["official"] is False   # paid API never touched
+
+
+@pytest.mark.asyncio
+async def test_client_follower_count_falls_back_to_official(monkeypatch):
+    from clients.tw import client as tw_client, official_api
+
+    monkeypatch.setattr(gallerydl, "get_follower_count", lambda *_a, **_k: None)
+
+    async def official_rescues(*_a, **_k):
+        return 77
+
+    monkeypatch.setattr(official_api, "get_follower_count", official_rescues)
+
+    c = tw_client.TWClient("at", "ct0", "handle")
+    try:
+        fc = await c.get_follower_count()
+    finally:
+        await c.close()
+
+    assert fc == 77                  # official API's value when gallery-dl has none

@@ -305,9 +305,26 @@ class TWClient:
     async def get_follower_count(self) -> int | None:
         """Follower count for the tracked account.
 
-        Prefers the official API (reuses the count cached during get_all_tweets(),
-        so no extra billed call); falls back to the GraphQL UserByScreenName scrape.
+        Order mirrors get_all_tweets() so the follower total rides along for free
+        with whatever backend already polled the timeline this cycle:
+          1. **gallery-dl** — the count captured during this cycle's tweet fetch
+             (author.followers_count); zero extra requests, so a gallery-dl poll
+             stays $0 end to end.
+          2. **Official API** — the value its own fetch_tweets() cached, else one
+             billed user-lookup (only reached when the official API is the active
+             backend; a cache hit still costs nothing).
+          3. **GraphQL UserByScreenName** — the cookie-based scrape fallback.
         """
+        # 1. gallery-dl already fetched this during get_all_tweets() — free.
+        try:
+            from clients.tw import gallerydl
+            fc = gallerydl.get_follower_count(self.target_user)
+            if fc is not None:
+                return fc
+        except Exception as e:
+            logger.debug("TW: gallery-dl follower lookup errored: %s", e)
+
+        # 2. Official API (paid) — cached during its fetch, else one billed call.
         try:
             from clients.tw import official_api
             fc = await official_api.get_follower_count(None, self.target_user)

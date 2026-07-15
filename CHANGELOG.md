@@ -4,6 +4,38 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.121.0] - 2026-07-15 - X follower counts ride the free gallery-dl scrape (no billed call)
+
+Completes the "$0 X polling" work from 2.119.0/2.120.0. Tweets already came from free gallery-dl, but the
+per-cycle **follower-count** snapshot still spent one billed official X API v2 `/users/by/username` call per
+account (verified in the 07:15 UTC poll logs: 3 accounts → 3 paid calls). Root cause: `get_follower_count`
+tried the official API first, and its "reuse the count cached during fetch_tweets" optimisation no longer
+warms — the official `fetch_tweets` doesn't run when gallery-dl serves tweets, so it was a guaranteed cache
+miss → a fresh billed lookup. gallery-dl's timeline metadata already carries `author.followers_count`; we
+were discarding it.
+
+- **gallery-dl now captures the follower count (`clients/tw/gallerydl.py`).** `fetch_tweets` extracts
+  `author.followers_count` from the same `-j` dump it already parses (new `_extract_follower_count`, prefers
+  the author whose handle matches the tracked account) and caches it per-handle in `_LAST_FOLLOWERS`. New
+  public `get_follower_count(target_user)` is a pure cache read — no network, no subprocess.
+- **`TWClient.get_follower_count` reordered (`clients/tw/client.py`)** to mirror `get_all_tweets`:
+  **gallery-dl (free, cached) → official API (paid, cached-or-one-lookup) → GraphQL scrape**. When gallery-dl
+  is the active backend the free cached count wins, so the poll's `capture_followers` step makes **zero** paid
+  calls. The official/GraphQL paths are untouched fallbacks for when gallery-dl isn't serving tweets.
+- **Stale-count guard.** Each `fetch_tweets` attempt invalidates the handle's cached count up front and only
+  re-sets it on success, so a cycle where gallery-dl fails can't hand back a previous cycle's follower number —
+  it falls through to the paid/scrape path instead. Also honours the backend switch: `get_follower_count`
+  returns `None` under `tw_polling_backend` `"official"`/`"graphql"` so a stale cache can't leak.
+
+Net: for a gallery-dl poll, **X polling is now truly $0** — tweets *and* follower counts both free. The paid
+API is billed only on the rare cycle gallery-dl can't serve.
+
+Tests: `tests/test_tw_gallerydl.py` (+7 — extractor handle-match/fallback/absent, cache warm on fetch, stale
+invalidation on failure, backend-off returns None, client prefers gallery-dl / falls back to official). Full
+X suite green (59).
+
+---
+
 ## [2.120.0] - 2026-07-15 - X multi-account: round-robin fix + account stagger (poll all 3 free)
 
 Follow-up to 2.119.0. With gallery-dl now the primary (IP-bound) X backend, the round-robin that keeps X
