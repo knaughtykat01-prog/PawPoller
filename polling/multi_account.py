@@ -103,12 +103,18 @@ async def poll_platform_accounts(platform, account_id=None, *, run_cycle=None):
         from polling.notifications import current_alert_account
     except Exception:  # noqa: BLE001
         current_alert_account = None
+    from polling.rate_limit import tw_account_stagger
+    polled_count = 0
 
     for a in accts:
         creds = config.resolve_account_credentials(
             platform, a["account_id"], bool(a["is_default"]), settings)
         if not check(creds):
             continue  # this account has no usable credentials — skip it
+        # Space X account polls into bursts to dodge the per-IP throttle
+        # (no-op for other platforms and for the first burst).
+        await tw_account_stagger(platform, polled_count, settings)
+        polled_count += 1
         if current_alert_account is not None:
             current_alert_account.set((platform, a["account_id"]))
         try:

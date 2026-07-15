@@ -518,6 +518,16 @@ TW_RATE_LIMIT_WINDOW_SECONDS = 30
 # budget. 0 disables (poll all). Overridable per-user via the tw_roundrobin_batch
 # setting. Only X is round-robined — other platforms poll every account.
 TW_ROUNDROBIN_BATCH = 2
+# X account STAGGER (polling/rate_limit.py): when polling ALL X accounts in one
+# cycle (tw_roundrobin_batch=0), space them so the per-IP throttle never trips.
+# The IP tolerates ~2 account-scrapes per window then needs a >8-min reset, so we
+# poll in bursts of TW_ACCOUNT_STAGGER_EVERY (2) and sleep TW_ACCOUNT_STAGGER_SECONDS
+# (480 = 8 min) between bursts — long enough for a fresh window, so every account
+# stays on the free gallery-dl path instead of the paid fallback. The first burst
+# has no wait, so a 1–2 account cycle (or round-robin batch 2) is never slowed.
+# 0 disables. Overridable per-user via tw_account_stagger_seconds. X-only.
+TW_ACCOUNT_STAGGER_SECONDS = 480
+TW_ACCOUNT_STAGGER_EVERY = 2
 
 # ── Mastodon settings ──
 MAST_REQUEST_DELAY_SECONDS = 0.5  # Mastodon REST — per-instance limits are generous
@@ -930,7 +940,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.119.0"
+APP_VERSION = "2.120.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

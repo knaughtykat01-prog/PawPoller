@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-15
-**Current version (master):** 2.119.0 — **X poll: gallery-dl primary, paid API as the fallback.**
+**Current version (master):** 2.120.0 — **X multi-account: round-robin fix + account stagger (poll all 3 free).**
+Follow-up to 2.119.0. With gallery-dl the primary (IP-bound) X backend, the round-robin that keeps X inside the
+per-IP throttle budget was silently OFF — so all 3 X accounts polled every cycle and the tail still fell back to
+the paid API (~35c). Two fixes: (1) **`roundrobin.effective_batch` bug** — it disabled round-robin whenever an X
+API token was merely *present* (`official_active`), stale now that the official API is only a paid fallback;
+renamed to **`official_primary`**, caller computes `official_api.is_enabled(s) AND NOT gallerydl.is_enabled(s)` so
+round-robin correctly activates when gallery-dl is primary. (2) **`rate_limit.tw_account_stagger`** — for
+`tw_roundrobin_batch=0` (poll all), X accounts poll in **bursts of 2** with an **8-min gap** between bursts
+(`TW_ACCOUNT_STAGGER_SECONDS=480`), long enough for X's per-IP window to reset → every account stays on free
+gallery-dl. First burst has no wait, so a 1–2 account cycle / round-robin batch 2 is never slowed; applied in all
+three account loops (server/desktop scheduled + manual dispatch); X-only. **This user set to `tw_roundrobin_batch=0`**
+(all 3 every cycle): burst {1,2} → 8-min gap → {3}, all free. +3 files of tests. Full suite green. **DEPLOYED** pending
+(also sets `tw_roundrobin_batch=0` on the server).
+
+**Prior — 2.119.0 — X poll: gallery-dl primary, paid API as the fallback.**
 X polling defaulted to the **paid** official X API v2 every cycle (~35c/poll even for a 1-tweet account); gallery-dl
 (free) was tier 2 and never ran. Flipped the priority in `TWClient.get_all_tweets`: **gallery-dl → official API →
 GraphQL** (was official→gallerydl→graphql). gallery-dl is the free primary; the official API is the **paid fallback**,

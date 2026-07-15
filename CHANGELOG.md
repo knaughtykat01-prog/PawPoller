@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.120.0] - 2026-07-15 - X multi-account: round-robin fix + account stagger (poll all 3 free)
+
+Follow-up to 2.119.0. With gallery-dl now the primary (IP-bound) X backend, the round-robin that keeps X
+polling inside the per-IP throttle budget was silently disabled — so all 3 of the user's X accounts polled
+every cycle and the tail account still fell back to the paid API (~35c). Two fixes so every X account polls
+on free gallery-dl.
+
+- **Round-robin bug fix (`roundrobin.effective_batch`)** — it disabled round-robin whenever an X API token
+  was merely *present* (`official_active`), on the old assumption that a token meant "poll all via the
+  IP-agnostic official API." Since 2.119.0 the official API is only a paid *fallback*, so that's stale.
+  Renamed the input to **`official_primary`** and the caller (`server.py`) now computes it as
+  `official_api.is_enabled(s) AND NOT gallerydl.is_enabled(s)` — true only when the IP-agnostic API is
+  actually the primary path. Net: with gallery-dl primary, round-robin correctly **activates** (batch 2), so
+  a scraper cycle never exceeds the ~2-account per-IP budget.
+- **X account stagger (`rate_limit.tw_account_stagger`)** — for users who want **all** accounts polled every
+  cycle (`tw_roundrobin_batch=0`), accounts are now polled in **bursts of `TW_ACCOUNT_STAGGER_EVERY` (2)** with
+  a **`TW_ACCOUNT_STAGGER_SECONDS` (480 = 8 min)** gap between bursts — long enough for X's per-IP window to
+  reset, so every account stays on free gallery-dl instead of the paid fallback. The first burst has no wait,
+  so a 1–2 account cycle (or round-robin batch 2) is never slowed. Applied in all three account loops
+  (server scheduled, desktop scheduled, manual dispatch). X-only; per-user override `tw_account_stagger_seconds`.
+- **This user's config:** `tw_roundrobin_batch` set to **0** on the server (their choice: all 3 accounts every
+  cycle), so the 3 accounts poll as burst {1,2} → 8-min gap → {3}, all on free gallery-dl. ~16 min added to the
+  X poll inside the multi-hour cycle; other platforms poll concurrently and are unaffected.
+
+Tests: `tests/test_tw_stagger.py` (7 — burst pattern, first-burst-free, disable, override) + updated
+`test_tw_roundrobin.py` (official_primary rename). Full suite green.
+
+---
+
 ## [2.119.0] - 2026-07-15 - X poll: gallery-dl primary, paid API as the fallback
 
 X polling was defaulting to the **paid** official X API v2 on every cycle (tier 1), so a routine 12-hour

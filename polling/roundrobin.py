@@ -51,18 +51,25 @@ def select_roundrobin(accts: list, batch_size: int,
     return sorted(accts, key=_key)[:batch_size]
 
 
-def effective_batch(configured_batch: int, *, official_active: bool,
+def effective_batch(configured_batch: int, *, official_primary: bool,
                     save_tokens: bool) -> int:
-    """Batch size to actually apply this cycle, given the active X backend.
+    """Batch size to actually apply this cycle, given the PRIMARY X backend.
 
     The scraper backends (gallery-dl / GraphQL) share one per-IP rate budget,
-    so they **always** round-robin — it's throttle protection, not a choice.
-    The official API is IP-agnostic, so it polls **every** account each cycle
-    unless the user opts into throttling to spend fewer paid API reads.
+    so whenever a scraper is the primary poll path they **must** round-robin —
+    it's throttle protection, not a choice. Only when the IP-agnostic official
+    API is the *primary* backend can we poll **every** account each cycle
+    (unless the user opts into throttling to spend fewer paid reads).
+
+    ``official_primary`` must mean the official API is what actually polls first
+    — i.e. it's enabled AND no scraper preempts it. Since 2.119.0 gallery-dl is
+    the default primary and the official API is only a paid *fallback*, so a mere
+    "token present" no longer implies IP-agnostic polling; the caller computes
+    ``official_primary = official_api.is_enabled(s) and not gallerydl.is_enabled(s)``.
 
     Returns 0 (= poll all, round-robin disabled) when throttling shouldn't
     apply, otherwise the configured batch.
     """
-    if official_active and not save_tokens:
+    if official_primary and not save_tokens:
         return 0
     return configured_batch

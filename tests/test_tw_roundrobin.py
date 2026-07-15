@@ -83,19 +83,19 @@ def test_rotation_covers_all_accounts_over_cycles():
 
 
 def test_effective_batch_scraper_always_throttles():
-    # No official API → scrapers share a per-IP budget → round-robin regardless.
-    assert effective_batch(2, official_active=False, save_tokens=False) == 2
-    assert effective_batch(2, official_active=False, save_tokens=True) == 2
+    # A scraper (gallery-dl/GraphQL) is primary → shared per-IP budget → round-robin.
+    assert effective_batch(2, official_primary=False, save_tokens=False) == 2
+    assert effective_batch(2, official_primary=False, save_tokens=True) == 2
 
 
-def test_effective_batch_official_polls_all_by_default():
-    # Official API is IP-agnostic → poll every account (batch 0) unless opted in.
-    assert effective_batch(2, official_active=True, save_tokens=False) == 0
+def test_effective_batch_official_primary_polls_all_by_default():
+    # Only when the IP-agnostic official API is the PRIMARY do we poll every account.
+    assert effective_batch(2, official_primary=True, save_tokens=False) == 0
 
 
-def test_effective_batch_official_throttles_when_saving_tokens():
+def test_effective_batch_official_primary_throttles_when_saving_tokens():
     # User opted into throttling to spend fewer paid reads.
-    assert effective_batch(2, official_active=True, save_tokens=True) == 2
+    assert effective_batch(2, official_primary=True, save_tokens=True) == 2
 
 
 def test_save_tokens_preference_round_trips():

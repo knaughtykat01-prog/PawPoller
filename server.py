@@ -263,18 +263,21 @@ def _start_poll_orchestrator():
         # X round-robin: the scraper backends share one per-IP rate budget and
         # the datacenter IP throttles after ~2 account-scrapes per window, so
         # they always poll only the N least-recently-polled accounts and rotate
-        # the rest. The official API is IP-agnostic — it polls every account
-        # each cycle unless the user opts into throttling to save paid reads
-        # (tw_roundrobin_save_tokens). effective_batch() encodes that policy;
+        # the rest. Only when the IP-agnostic official API is the *primary* path
+        # can we poll every account each cycle (unless the user throttles to save
+        # paid reads via tw_roundrobin_save_tokens). Since 2.119.0 gallery-dl is
+        # the default primary and the official API is a paid fallback, so
+        # "official is primary" = official enabled AND no scraper preempts it.
         # selection is from tw_poll_log timestamps so it's fair across redeploys.
         tw_accts = accts_by_platform.get("tw", [])
         if tw_accts:
             from polling.roundrobin import select_roundrobin, effective_batch
-            from clients.tw import official_api as _tw_official
-            _official_active = _tw_official.is_enabled(settings)
+            from clients.tw import official_api as _tw_official, gallerydl as _tw_gdl
+            _official_primary = (_tw_official.is_enabled(settings)
+                                 and not _tw_gdl.is_enabled(settings))
             _configured = int(settings.get("tw_roundrobin_batch", config.TW_ROUNDROBIN_BATCH) or 0)
             tw_batch = effective_batch(
-                _configured, official_active=_official_active,
+                _configured, official_primary=_official_primary,
                 save_tokens=bool(settings.get("tw_roundrobin_save_tokens", False)))
             if tw_batch and len(tw_accts) > tw_batch:
                 from database import tw_queries as _twq
@@ -285,7 +288,7 @@ def _start_poll_orchestrator():
                     _c.close()
                 selected = select_roundrobin(tw_accts, tw_batch, _last_poll)
                 accts_by_platform["tw"] = selected
-                _reason = "save-tokens" if _official_active else "per-IP throttle"
+                _reason = "save-tokens" if _official_primary else "per-IP throttle"
                 logger.info("TW round-robin (%s): polling %d/%d accounts this cycle (%s)",
                             _reason, len(selected), len(tw_accts),
                             ", ".join(str(a.get("label") or a["account_id"]) for a in selected))
@@ -297,11 +300,17 @@ def _start_poll_orchestrator():
             """Poll each enabled account on one platform, in sequence."""
             out = []
             check = accounts_db.DEFAULT_CRED_CHECKS.get(platform, lambda s: True)
+            from polling.rate_limit import tw_account_stagger
+            polled_count = 0
             for a in accts:
                 creds = config.resolve_account_credentials(
                     platform, a["account_id"], bool(a["is_default"]), settings)
                 if not check(creds):
                     continue  # account has no usable credentials — skip
+                # Space X account polls into bursts so polling all of them never
+                # trips the per-IP throttle (no-op for other platforms / first burst).
+                await tw_account_stagger(platform, polled_count, settings)
+                polled_count += 1
                 label = a.get("label") or platform
                 # Tag this account onto the task context so per-cycle instant
                 # alerts (maybe_send_telegram_summary) can label which account /

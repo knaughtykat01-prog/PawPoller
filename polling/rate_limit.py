@@ -86,3 +86,38 @@ def get_tw_limiter() -> AsyncSlidingWindowLimiter:
 async def tw_acquire() -> None:
     """Await a slot in the shared X request budget before making a request."""
     await get_tw_limiter().acquire()
+
+
+async def tw_account_stagger(platform: str, polled_count: int,
+                             settings: dict | None = None, *,
+                             sleep_fn=asyncio.sleep) -> None:
+    """Space X account polls so polling *all* accounts never trips the per-IP throttle.
+
+    X's timeline limit is per-IP and shared across accounts: the datacenter IP
+    tolerates ~N account-scrapes per window (``TW_ACCOUNT_STAGGER_EVERY``, 2),
+    then needs a >8-min reset. So when a cycle polls every X account
+    (``tw_roundrobin_batch=0``), we poll in **bursts of N** and sleep
+    ``tw_account_stagger_seconds`` (default ``TW_ACCOUNT_STAGGER_SECONDS`` = 480 =
+    8 min) **between** bursts — long enough for a fresh window, so each account
+    stays on the free gallery-dl path rather than the paid fallback.
+
+    Call this BEFORE polling each X account, passing ``polled_count`` = how many
+    X accounts have already been polled this cycle (0 for the first). It sleeps
+    only at a burst boundary (``polled_count`` a positive multiple of N), so the
+    first burst — and any 1–2 account cycle, or a round-robin batch of 2 — is
+    never slowed. No-op for non-X platforms and when the gap is <= 0.
+    """
+    if platform != "tw":
+        return
+    if settings is None:
+        settings = config.get_settings()
+    every = int(getattr(config, "TW_ACCOUNT_STAGGER_EVERY", 2) or 0)
+    try:
+        gap = float(settings.get("tw_account_stagger_seconds",
+                                 getattr(config, "TW_ACCOUNT_STAGGER_SECONDS", 480)))
+    except (TypeError, ValueError):
+        gap = float(getattr(config, "TW_ACCOUNT_STAGGER_SECONDS", 480))
+    if gap > 0 and every > 0 and polled_count > 0 and polled_count % every == 0:
+        logger.info("TW: staggering %.0fs before account #%d (per-IP throttle guard)",
+                    gap, polled_count + 1)
+        await sleep_fn(gap)
