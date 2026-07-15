@@ -11,16 +11,17 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const socialPlatforms = byKind('social');
 
 const metrics = [
-  { platform: 'Bluesky', shape: 'Likes, reposts, replies, quotes — plus posting for announcements.' },
+  { platform: 'Bluesky', shape: 'Likes, reposts, replies, quotes — plus posting from the Posts module.' },
   { platform: 'X / Twitter', shape: 'Views, likes, reposts, replies, quotes.' },
   { platform: 'Mastodon', shape: 'Favourites, boosts, replies. Undergoing testing.' },
   { platform: 'Tumblr', shape: 'A single notes count (likes + reblogs + replies). Undergoing testing.' },
   { platform: 'Threads', shape: 'Views, likes, reposts, replies, quotes. Needs a Meta app; undergoing testing.' },
+  { platform: 'Instagram', shape: 'Likes and comments, plus reach, views, saves and shares. Photo posts; server-only, Meta app.' },
 ];
 ---
 <BaseLayout
   title="Social post tracking — measure your posts and tweets | PawPoller"
-  description="Track your posts and tweets on Bluesky, X/Twitter, Mastodon, Tumblr and Threads — likes, reposts, replies, quotes, views and notes, alongside your fiction and artwork."
+  description="Track your posts and tweets on Bluesky, X/Twitter, Mastodon, Tumblr, Threads and Instagram — likes, reposts, replies, quotes, views and notes, alongside your fiction and artwork."
 >
   <Nav />
   <main>
@@ -36,9 +37,9 @@ const metrics = [
     <section class="py-24">
       <div class="container-prose">
         <div class="max-w-2xl">
-          <h2 class="text-4xl text-ink-50 md:text-5xl">Five networks, tracked.</h2>
+          <h2 class="text-4xl text-ink-50 md:text-5xl">Six networks, tracked.</h2>
           <p class="mt-6 text-ink-300">
-            Bluesky, X/Twitter, Mastodon, Tumblr and Threads. Most are read-only analytics; Bluesky can also post announcements when you publish.
+            Bluesky, X/Twitter, Mastodon, Tumblr, Threads and Instagram. PawPoller tracks the engagement each one exposes, and the Posts module can publish short updates to any of them.
           </p>
         </div>
         <div class="mt-10">

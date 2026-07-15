@@ -1,10 +1,12 @@
 ---
 // Trust strip lifted out of the hero (the hero stays a single value-prop
 // moment). Three numbers that frame the pitch before the problem statement.
+// Platform counts derive from the platform matrix so they never drift.
+import { POST_COUNT, POLL_COUNT } from '../lib/platforms';
 const stats = [
-  { value: '9',  label: 'Posting targets' },
-  { value: '15', label: 'Polled platforms' },
-  { value: '1',  label: 'Source of truth' },
+  { value: String(POST_COUNT), label: 'Posting targets' },
+  { value: String(POLL_COUNT), label: 'Polled platforms' },
+  { value: '1',                label: 'Source of truth' },
 ];
 ---
 <section class="border-y border-ink-800/60 bg-ink-950/40">

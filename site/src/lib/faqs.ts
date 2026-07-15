@@ -32,8 +32,8 @@ export const FAQS: Faq[] = [
   },
   {
     key: 'why-nine',
-    q: 'Why nine posting platforms but fifteen polled?',
-    a: 'Wattpad, X/Twitter, Mastodon, Tumblr, Pixiv and Threads are either public read-only or have posting APIs that discourage third-party automation. PawPoller reads their stats for your analytics; it won\'t pretend to post where it shouldn\'t. Several platforms are currently marked as undergoing testing while we validate them — see the platforms table.',
+    q: 'Why post to ten platforms but poll seventeen?',
+    a: 'The other seven — Wattpad, Pixiv, e621, X/Twitter, Mastodon, Tumblr and Threads — are polled for analytics but not used as full submission targets; several have posting APIs that discourage third-party automation, so PawPoller reads their stats without posting where it shouldn\'t. (Short microblog posts to Bluesky, X, Mastodon, Tumblr, Threads and Instagram live in the Posts module.) Some platforms are marked as undergoing testing while we validate them — see the table.',
   },
   {
     key: 'cloud',

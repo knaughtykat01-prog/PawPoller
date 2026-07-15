@@ -3,9 +3,10 @@
 // content kind). Keep in step with the app's poster registry
 // (posting/platforms/__init__.py + manager._get_poster) and the pollers.
 //
-// `post: true` reflects the nine platforms with a live PlatformPoster:
+// `post: true` reflects the platforms with a live PlatformPoster:
 // Inkbunny, FurAffinity, SoFurry, Weasyl, AO3, SquidgeWorld, DeviantArt,
-// Itaku, Bluesky. Everything polls (15); the rest are read-only analytics.
+// Itaku, Bluesky and Instagram. Everything polls (17); the rest are
+// read-only analytics.
 
 export type Kind = 'fiction' | 'art' | 'social';
 
@@ -37,10 +38,12 @@ export const PLATFORMS: Platform[] = [
   { name: 'Tumblr',       logo: 'tum.svg',  poll: true, post: false, testing: true, kinds: ['social'], note: 'Posts: notes' },
   { name: 'Pixiv',        logo: 'pix.svg',  poll: true, post: false, testing: true, kinds: ['art', 'fiction'], note: 'Illustrations + novels' },
   { name: 'Threads',      logo: 'thr.svg',  poll: true, post: false, testing: true, kinds: ['social'], note: 'Posts: views, likes, reposts · Meta app required' },
+  { name: 'Instagram',    logo: 'ig.svg',   poll: true, post: true,  testing: true, kinds: ['art', 'social'], note: 'Photos + captions · server-only, Meta app' },
+  { name: 'e621',         logo: 'e621.svg', poll: true, post: false, kinds: ['art'], note: 'Uploads: score, faves, comments · official API' },
 ];
 
-export const POST_COUNT = PLATFORMS.filter((p) => p.post).length;   // 9
-export const POLL_COUNT = PLATFORMS.length;                          // 15
+export const POST_COUNT = PLATFORMS.filter((p) => p.post).length;   // 10
+export const POLL_COUNT = PLATFORMS.length;                          // 17
 
 export const byKind = (kind: Kind): Platform[] =>
   PLATFORMS.filter((p) => p.kinds.includes(kind));

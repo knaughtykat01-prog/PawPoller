@@ -16,15 +16,15 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const posters = PLATFORMS.filter((p) => p.post);
 ---
 <BaseLayout
-  title="Posting — write once, publish to nine platforms | PawPoller"
-  description="Draft one MASTER.md, regenerate BBCode, HTML, work skins and PDF, and publish chaptered fiction to nine platforms with a publish-check matrix and drift detection."
+  title="Posting — write once, publish to ten platforms | PawPoller"
+  description="Draft one MASTER.md, regenerate BBCode, HTML, work skins and PDF, and publish chaptered fiction and artwork to ten platforms with a publish-check matrix and drift detection."
 >
   <Nav />
   <main>
     <PageHero
       eyebrow="Posting"
       title="Write it once."
-      accent="Post it nine places."
+      accent="Post it ten places."
       lead="One Markdown source becomes every format each platform wants — BBCode, SoFurry HTML, AO3/SquidgeWorld work skins, print-ready PDF — and posts where you tell it to. Nothing goes live without your confirmation."
       primary={{ label: 'Download PawPoller', href: `${base}/download` }}
       secondary={{ label: 'Compare all platforms', href: `${base}/platforms` }}
@@ -41,13 +41,13 @@ const posters = PLATFORMS.filter((p) => p.post);
     <section class="border-t border-ink-800/60 bg-ink-950/30 py-24">
       <div class="container-prose">
         <div class="max-w-2xl">
-          <h2 class="text-4xl text-ink-50 md:text-5xl">Nine places it posts.</h2>
+          <h2 class="text-4xl text-ink-50 md:text-5xl">Ten places it posts.</h2>
           <p class="mt-6 text-ink-300">
-            Six fiction archives (Inkbunny, FurAffinity, SoFurry, Weasyl, AO3, SquidgeWorld), two art galleries (DeviantArt, Itaku) and Bluesky for announcements. FurAffinity posting runs desktop-only because of its datacenter-IP block; a few targets are still undergoing testing.
+            Six fiction archives (Inkbunny, FurAffinity, SoFurry, Weasyl, AO3, SquidgeWorld), two art galleries (DeviantArt, Itaku), Bluesky for announcements and Instagram for photo posts. FurAffinity posting runs desktop-only because of its datacenter-IP block; a few targets are still undergoing testing.
           </p>
         </div>
         <div class="mt-10">
-          <PlatformStrip items={posters} href={`${base}/platforms`} linkLabel="See the full 15-platform matrix" />
+          <PlatformStrip items={posters} href={`${base}/platforms`} linkLabel="See the full 17-platform matrix" />
         </div>
       </div>
     </section>
