@@ -74,15 +74,16 @@ def is_enabled(settings: dict | None = None) -> bool:
     """Whether the gallery-dl poll backend should be attempted.
 
     ``tw_polling_backend`` (a plain setting, not a secret):
-      * ``"auto"`` (default) — use gallery-dl when it's present.
+      * ``"auto"`` (default) — gallery-dl is the PRIMARY poll path when present;
+                               the official API becomes the paid fallback.
+      * ``"gallerydl"``      — gallery-dl only (drops the paid fallback).
+      * ``"official"``       — force the paid official API first; gallery-dl is
+                               disabled so it can't preempt the chosen backend.
       * ``"graphql"``        — force the legacy GraphQL scrape (skip gallery-dl).
-      * ``"gallerydl"``      — same as auto (use when present); documented so the
-                               user can express intent even though we always fall
-                               back if the binary vanishes.
     """
     settings = settings if settings is not None else config.get_settings()
     backend = (settings.get("tw_polling_backend") or "auto").strip().lower()
-    if backend == "graphql":
+    if backend in ("graphql", "official"):
         return False
     return find_gallerydl(settings) is not None
 

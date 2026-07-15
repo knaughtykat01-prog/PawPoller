@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-15
-**Current version (master):** 2.118.0 — **e621 posting (poll-only → poll+post) + v2-extended polling.**
+**Current version (master):** 2.119.0 — **X poll: gallery-dl primary, paid API as the fallback.**
+X polling defaulted to the **paid** official X API v2 every cycle (~35c/poll even for a 1-tweet account); gallery-dl
+(free) was tier 2 and never ran. Flipped the priority in `TWClient.get_all_tweets`: **gallery-dl → official API →
+GraphQL** (was official→gallerydl→graphql). gallery-dl is the free primary; the official API is the **paid fallback**,
+reached only when gallery-dl returns `None`. So a normal poll costs **nothing** and X (paid) is the safety net. Also:
+`gallerydl.is_enabled` now stands down under `tw_polling_backend="official"` (so that explicit mode still forces
+paid-first); `/api/tw/auth/status` reports the true primary. **No server setting change needed** — the VM is already
+on `auto` with gallery-dl baked into the image, so post-deploy `auto` = gallerydl→official→graphql; the Bearer token
+stays as the fallback. Verified live: gallery-dl authenticated with the real cookies + returned real engagement
+metrics from the datacenter IP, 2s/request throttle. +3 tests in `test_tw_gallerydl.py`. Full suite green. **DEPLOYED** pending.
+
+**Prior — 2.118.0 — e621 posting (poll-only → poll+post) + v2-extended polling.**
 e621's official OpenAPI (https://e621.wiki/openapi.yaml) confirmed the upload endpoint takes the **same HTTP Basic
 username + API key** we already store, so e621 is now a **posting target**. New **`E621Client.upload_post`**
 (`POST /uploads.json` multipart: file + tag_string + rating s/q/e + optional source/description; rejections

@@ -456,36 +456,44 @@ class TWClient:
 
         Backend priority (each returns None when it's not its turn / fails, so we
         simply fall through):
-          1. **Official X API v2** (clients/tw/official_api.py) — opt-in, when the
-             user configured a Bearer token. ToS-compliant and IP-agnostic, so it
-             sidesteps the datacenter rate-limit that throttles the scrapers.
-          2. **gallery-dl** (clients/tw/gallerydl.py) — free, tracks X's internal API.
-          3. **GraphQL scrape** (:meth:`_get_all_tweets_graphql`) — always-available fallback.
+          1. **gallery-dl** (clients/tw/gallerydl.py) — free, tracks X's internal
+             API; the primary path so a normal poll costs nothing.
+          2. **Official X API v2** (clients/tw/official_api.py) — the paid
+             fallback: ToS-compliant and IP-agnostic, so it rescues a poll only
+             when gallery-dl fails. You're billed a request only on that fallback,
+             not every cycle.
+          3. **GraphQL scrape** (:meth:`_get_all_tweets_graphql`) — always-available
+             last-ditch fallback (fragile: hardcoded query IDs).
+
+        The ``tw_polling_backend`` setting overrides this: ``"gallerydl"`` drops
+        the paid fallback, ``"official"`` forces the paid API first (gallery-dl
+        disabled), ``"graphql"`` forces the scrape only. Under the default
+        ``"auto"`` all three chain in the order above.
 
         A backend result (even an empty list) is authoritative; only ``None``
         triggers the next backend. Posting is unaffected by all of this.
         """
-        # 1. Official X API v2 (opt-in, bring-your-own-token)
-        try:
-            from clients.tw import official_api
-            via_api = await official_api.fetch_tweets(None, self.target_user)
-        except Exception as e:
-            logger.warning("TW: official-API backend error, trying next: %s", e)
-            via_api = None
-        if via_api is not None:
-            return via_api
-
-        # 2. gallery-dl subprocess
+        # 1. gallery-dl subprocess (free primary — X polls cost nothing here)
         try:
             from clients.tw import gallerydl
             via_gdl = await gallerydl.fetch_tweets(self.auth_token, self.ct0, self.target_user)
         except Exception as e:
-            logger.warning("TW: gallery-dl backend error, using GraphQL: %s", e)
+            logger.warning("TW: gallery-dl backend error, trying next: %s", e)
             via_gdl = None
         if via_gdl is not None:
             return via_gdl
 
-        # 3. GraphQL timeline scrape (always-available fallback)
+        # 2. Official X API v2 (paid fallback — only reached when gallery-dl fails)
+        try:
+            from clients.tw import official_api
+            via_api = await official_api.fetch_tweets(None, self.target_user)
+        except Exception as e:
+            logger.warning("TW: official-API backend error, using GraphQL: %s", e)
+            via_api = None
+        if via_api is not None:
+            return via_api
+
+        # 3. GraphQL timeline scrape (always-available last-ditch fallback)
         return await self._get_all_tweets_graphql()
 
     async def _get_all_tweets_graphql(self) -> list[dict]:

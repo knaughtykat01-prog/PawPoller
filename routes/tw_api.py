@@ -49,14 +49,15 @@ def tw_auth_status():
         pass
     finally:
         conn.close()
-    # Report which poll backend is live so the connect card can show whether the
-    # official API / gallery-dl path is in use, or we're on the GraphQL fallback.
+    # Report which poll backend is PRIMARY (tried first) so the connect card can
+    # show what's in use. Mirrors get_all_tweets' order: gallery-dl first (free),
+    # then the official API (paid fallback), then the GraphQL scrape.
     from clients.tw import gallerydl, official_api
     gallerydl_available = gallerydl.find_gallerydl(settings) is not None
-    if official_api.is_enabled(settings):
-        backend = "official"
-    elif gallerydl.is_enabled(settings):
+    if gallerydl.is_enabled(settings):
         backend = "gallerydl"
+    elif official_api.is_enabled(settings):
+        backend = "official"
     else:
         backend = "graphql"
     return {

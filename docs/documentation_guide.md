@@ -960,11 +960,13 @@ Rate limiting: 2s between requests, 429 handling with 60s backoff (X is aggressi
 
 `TWClient.get_all_tweets()` and `validate_cookies()` try backends in order, each returning `None` when it's not its turn / unavailable / errored, so the chain simply falls through:
 
-1. **Official X API v2** (`clients/tw/official_api.py`, 2.106.0) — opt-in, only when a Bearer token is configured. ToS-compliant + IP-agnostic.
-2. **gallery-dl** (`clients/tw/gallerydl.py`, 2.105.0) — free, tracks X's internal API.
-3. **GraphQL scrape** (`_get_all_tweets_graphql`) — always-available fallback.
+1. **gallery-dl** (`clients/tw/gallerydl.py`, 2.105.0) — free, tracks X's internal API. **The primary path (2.119.0)**, so a normal poll costs nothing.
+2. **Official X API v2** (`clients/tw/official_api.py`, 2.106.0) — the **paid fallback**: reached only when gallery-dl returns `None` (fails/unavailable). ToS-compliant + IP-agnostic, so it reliably rescues the cycle — and you're billed a request *only* on that fallback, not every poll.
+3. **GraphQL scrape** (`_get_all_tweets_graphql`) — always-available last-ditch fallback (fragile hardcoded query IDs).
 
-`tw_polling_backend` (plain setting): `auto` (default, official→gallerydl→graphql), `official`, `gallerydl`, `graphql` (each of the latter three forces/limits selection). **Posting is unaffected** by all of this — it always uses the GraphQL `create_tweet` path.
+**Why gallery-dl-first (2.119.0):** the official API is reliable but billed per request; ordering the free scraper ahead of it means the paid call happens only on the rare poll gallery-dl can't serve. Previously the order was official→gallerydl→graphql (paid every cycle whenever a token was set).
+
+`tw_polling_backend` (plain setting): `auto` (default, **gallerydl→official→graphql**), `official` (forces the paid API first — gallery-dl stands down via its `is_enabled`), `gallerydl` (gallery-dl only, drops the paid fallback), `graphql` (scrape only). **Posting is unaffected** by all of this — it always uses the GraphQL `create_tweet` path.
 
 **Shared cross-account rate limiter (2.106.1) — `polling/rate_limit.py`.** X's timeline rate limit is **per-IP, shared across all a user's accounts**, so `_poll_accounts` polling several X accounts back-to-back can exceed it even though each account paces its own requests. `TWClient._get_json` (GraphQL) and `official_api.py` (official API) `await tw_acquire()` before every request, admitting at most `TW_RATE_LIMIT_REQUESTS` (15) per `TW_RATE_LIMIT_WINDOW_SECONDS` (30 s) as a **sliding window, globally** — FIFO, so requests are genuinely sequenced. gallery-dl (subprocess) self-paces via `--sleep-request 2.0` and isn't gated here. **Scope (measured, don't overclaim):** a sequential 3-account test on a cooled IP still throttled the 3rd account after 12+13 made only ~3-4 requests — X's per-IP budget for the datacenter is **~2 account-scrapes per window**, *below* 15/30 s, and the reset is >8 min. So this limiter is a **burst guard** that keeps PawPoller from *worsening* the throttle; it cannot manufacture budget the IP lacks, and cannot gate gallery-dl's own subprocess requests. The durable fix for 3+ accounts remains the **official API** (2.106.0, IP-agnostic) or **round-robin polling** (fewer accounts per cycle).
 

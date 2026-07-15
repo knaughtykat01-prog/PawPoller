@@ -151,6 +151,13 @@ def test_is_enabled_backend_graphql_forces_off(monkeypatch):
     assert gallerydl.is_enabled({"tw_polling_backend": "graphql"}) is False
 
 
+def test_is_enabled_backend_official_forces_off(monkeypatch):
+    # "official" forces the paid API first, so gallery-dl must stand down even
+    # when the binary is present (otherwise it would preempt the chosen backend).
+    monkeypatch.setattr(gallerydl.shutil, "which", lambda *_a, **_k: "/usr/bin/gallery-dl")
+    assert gallerydl.is_enabled({"tw_polling_backend": "official"}) is False
+
+
 def test_is_enabled_auto_uses_gallerydl_when_present(monkeypatch):
     monkeypatch.setattr(gallerydl.shutil, "which", lambda *_a, **_k: "/usr/bin/gallery-dl")
     assert gallerydl.is_enabled({"tw_polling_backend": "auto"}) is True
@@ -219,3 +226,62 @@ async def test_validate_true_false_none(monkeypatch):
 async def test_validate_none_when_unavailable(monkeypatch):
     monkeypatch.setattr(gallerydl, "find_gallerydl", lambda *_a, **_k: None)
     assert await gallerydl.validate("a", "b", "h", settings={}) is None
+
+
+# ── Backend ORDER in TWClient.get_all_tweets ─────────────────────────────────
+# The user's requirement: gallery-dl is the primary (free) path; the paid
+# official API is the FALLBACK, reached only when gallery-dl returns None.
+
+@pytest.mark.asyncio
+async def test_get_all_tweets_prefers_gallerydl_over_official(monkeypatch):
+    from clients.tw import client as tw_client, official_api
+
+    called = {"gdl": False, "official": False}
+
+    async def gdl_ok(auth, ct0, user, settings=None):
+        called["gdl"] = True
+        return [{"tweet_id": "1", "likes": 7}]
+
+    async def official_should_not_run(*_a, **_k):
+        called["official"] = True
+        return [{"tweet_id": "99", "likes": 0}]
+
+    monkeypatch.setattr(gallerydl, "fetch_tweets", gdl_ok)
+    monkeypatch.setattr(official_api, "fetch_tweets", official_should_not_run)
+
+    c = tw_client.TWClient("at", "ct0", "handle")
+    try:
+        result = await c.get_all_tweets()
+    finally:
+        await c.close()
+
+    assert result == [{"tweet_id": "1", "likes": 7}]   # gallery-dl's result
+    assert called["gdl"] is True
+    assert called["official"] is False                 # paid API never touched
+
+
+@pytest.mark.asyncio
+async def test_get_all_tweets_falls_back_to_official_when_gallerydl_none(monkeypatch):
+    from clients.tw import client as tw_client, official_api
+
+    called = {"gdl": False, "official": False}
+
+    async def gdl_fails(auth, ct0, user, settings=None):
+        called["gdl"] = True
+        return None                                    # gallery-dl unavailable/failed
+
+    async def official_rescues(*_a, **_k):
+        called["official"] = True
+        return [{"tweet_id": "42", "likes": 3}]
+
+    monkeypatch.setattr(gallerydl, "fetch_tweets", gdl_fails)
+    monkeypatch.setattr(official_api, "fetch_tweets", official_rescues)
+
+    c = tw_client.TWClient("at", "ct0", "handle")
+    try:
+        result = await c.get_all_tweets()
+    finally:
+        await c.close()
+
+    assert result == [{"tweet_id": "42", "likes": 3}]  # official API's result
+    assert called["gdl"] is True and called["official"] is True

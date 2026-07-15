@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.119.0] - 2026-07-15 - X poll: gallery-dl primary, paid API as the fallback
+
+X polling was defaulting to the **paid** official X API v2 on every cycle (tier 1), so a routine 12-hour
+poll cost ~35c even for an account with one tweet. gallery-dl (free) was only tier 2 and never ran. Flipped
+the priority so the free scraper leads and you only pay on the rare poll it can't serve.
+
+- **New backend order in `TWClient.get_all_tweets`:** gallery-dl → official X API → GraphQL scrape (was:
+  official → gallery-dl → GraphQL). gallery-dl is the free primary; the official API is now the **paid
+  fallback**, reached only when gallery-dl returns `None`. Net effect: a normal poll costs **nothing**, and
+  the billed API call happens only when the free path fails — so X (the paid API) is the safety net, not the
+  default.
+- **`gallerydl.is_enabled` now stands down under `tw_polling_backend="official"`** (returns False), so the
+  explicit "official" mode still forces the paid API first without gallery-dl preempting it. The `auto`
+  default now means gallery-dl→official→graphql; `gallerydl` = gallery-dl only (no paid fallback); `graphql`
+  = scrape only.
+- **`/api/tw/auth/status` reports the true primary** — gallery-dl when enabled, else official, else graphql
+  (was reporting official first).
+- **No server setting change needed:** the server is already on `auto` with gallery-dl baked into the image
+  (`requirements-server.txt`), so after deploy the existing `auto` setting does the right thing — gallery-dl
+  primary, paid API fallback. The Bearer token stays stored as the fallback.
+- Verified live before shipping: gallery-dl authenticated with the real stored cookies and returned real
+  engagement metrics (views/likes/RTs/replies/quotes/bookmarks) from the VM's datacenter IP, throttled at
+  2s/request.
+
+Tests: +3 in `tests/test_tw_gallerydl.py` (gallery-dl preferred over official; official rescues when gallery-dl
+returns None; `is_enabled` stands down under "official"). Full suite green.
+
+---
+
 ## [2.118.0] - 2026-07-15 - e621 posting (poll-only → poll+post) + v2-extended polling
 
 e621 was poll-only since 2.104.0. Its official OpenAPI (https://e621.wiki/openapi.yaml) confirms the upload
