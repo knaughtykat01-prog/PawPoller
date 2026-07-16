@@ -843,8 +843,10 @@ const App = {
             if (!active && parts[0] === 'artwork' && href === '#/artwork') active = true;
             /* Submissions hub sub-routes (#/submissions/discovered, /work/...) keep "Submissions" lit. */
             if (!active && parts[0] === 'submissions' && href === '#/submissions') active = true;
-            /* Library (Bookshelf) work sub-routes (#/library/work/...) keep "Library" lit. */
-            if (!active && parts[0] === 'library' && href === '#/library') active = true;
+            /* Library (Bookshelf) work sub-routes (#/library/work/...) keep "Library" lit.
+               Masterpieces live inside Library (grid + #/masterpieces/{name} detail), so
+               keep "Library" lit for those routes too. */
+            if (!active && (parts[0] === 'library' || parts[0] === 'masterpieces') && href === '#/library') active = true;
             link.classList.toggle('active', active);
         });
 
@@ -1085,6 +1087,13 @@ const App = {
             if (window.Collections) window.Collections.renderDetail(parts[1]);
         } else if (parts[0] === 'collections') {
             if (window.Collections) window.Collections.render();
+        } else if (parts[0] === 'masterpieces' && parts[1]) {
+            // Masterpiece detail (read-only, Phase 2). Name may contain slashes.
+            if (window.Masterpieces) window.Masterpieces.renderDetail(parts.slice(1).join('/'));
+        } else if (parts[0] === 'masterpieces') {
+            // The managed grid lives inside Library under its own type filter —
+            // land there with the Masterpieces segment pre-selected.
+            if (window.Bookshelf) { window.Bookshelf._type = 'masterpiece'; window.Bookshelf.render(); }
         } else if (parts[0] === 'library' && parts[1] === 'discovered') {
             // Discovered-art bucket, moved under Library (Submissions retired, 2.117.0).
             if (window.Submissions) window.Submissions.renderDiscovered();

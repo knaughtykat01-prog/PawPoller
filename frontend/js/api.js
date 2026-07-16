@@ -172,6 +172,11 @@ const API = {
     // thumbnails so image-based suggestions can surface (2.114.0).
     scanImageHashes(limit) { return this.post(`/api/collections/hash-scan${limit ? `?limit=${limit}` : ''}`, {}); },
 
+    /* ── Masterpieces (master record per image — read API, Phase 1/2) ── */
+    getMasterpieces() { return this.get('/api/masterpieces'); },
+    getMasterpiece(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}`); },
+    getMasterpieceSnapshots(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}/snapshots`); },
+
     /* ── IB (Inkbunny) convenience methods ─────────────────────
      * General status, submission CRUD, snapshot history, aggregation,
      * comparison, polling control, session management, authentication,

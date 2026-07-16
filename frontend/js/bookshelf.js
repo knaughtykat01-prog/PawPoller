@@ -19,7 +19,7 @@
 window.Bookshelf = {
     _works: [],
     _personas: [],
-    _type: 'all',      // all | story | artwork
+    _type: 'all',      // all | story | artwork | masterpiece
     _persona: 0,       // 0 = all
     _search: '',
     _sort: 'recent',   // recent | title | platforms
@@ -86,6 +86,9 @@ window.Bookshelf = {
         }
         this._works = (data && data.works) || [];
         this._personas = (data && data.personas) || [];
+        // Fresh masterpiece data per Library open (the grid is lazy-loaded on first
+        // switch to the Masterpieces segment; this just drops any stale cache).
+        if (window.Masterpieces && Masterpieces.resetCache) Masterpieces.resetCache();
         this._renderControls();
         this._paint();
         this._loadDiscovered();   // discovered-art import banner (moved from Submissions)
@@ -145,7 +148,7 @@ window.Bookshelf = {
             </select>` : '';
         el.innerHTML = `
             <div class="shelf-controls">
-                <div class="shelf-segs">${seg('all', 'All')}${seg('story', 'Stories')}${seg('artwork', 'Artwork')}</div>
+                <div class="shelf-segs">${seg('all', 'All')}${seg('story', 'Stories')}${seg('artwork', 'Artwork')}${seg('masterpiece', 'Masterpieces')}</div>
                 ${personaSel}
                 <input id="shelf-search" class="shelf-input" type="search" placeholder="Search the shelf…" value="${this.esc(this._search)}">
                 <select id="shelf-sort" class="shelf-input shelf-sort">
@@ -182,6 +185,18 @@ window.Bookshelf = {
     _paint() {
         const grid = document.getElementById('shelf-grid');
         if (!grid) return;
+        // Masterpieces are their own managed surface (master-record-per-image, from
+        // /api/masterpieces) — hand the grid to the Masterpieces module, passing the
+        // shared shelf filters so persona/search/sort keep working across segments.
+        if (this._type === 'masterpiece') {
+            if (window.Masterpieces) {
+                Masterpieces.renderGrid(grid, { persona: this._persona, search: this._search, sort: this._sort });
+            } else {
+                grid.className = '';
+                grid.innerHTML = `<div class="empty-state"><h3>Masterpieces unavailable</h3></div>`;
+            }
+            return;
+        }
         const list = this._filtered();
         if (!list.length) {
             grid.className = '';

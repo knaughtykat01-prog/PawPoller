@@ -4,6 +4,36 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.126.0] - 2026-07-16 - Masterpieces Phase 2: managed grid in Library + read-only detail view
+
+Third slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 2, §5.2) — the **first
+user-visible** Masterpiece surface, read-only. Consumes the Phase 1 `/api/masterpieces` read API; no backend change.
+
+- **Masterpieces grid, inside Library.** The Library shelf (`bookshelf.js`) gains a fourth type segment —
+  **All / Stories / Artwork / Masterpieces**. Selecting **Masterpieces** hands the grid to the new
+  `frontend/js/masterpieces.js` (`window.Masterpieces.renderGrid`), which renders a card per Masterpiece
+  (canonical image cover · title · N linked sites · pooled views/faves/comments · persona dots) from
+  `GET /api/masterpieces`. The shelf's persona / search / sort controls carry across to it. Each card links
+  to the detail view. (Additive — the existing All/Stories/Artwork behaviour is untouched; the spec's target
+  3-way filter that folds Artwork into Masterpieces waits until masterpieces carry live member data at
+  publish time, Phase 4.)
+- **Read-only Masterpiece detail** (`#/masterpieces/{name}`, `renderDetail`): canonical image hero + title +
+  rating + persona dots + pooled headline stats; a **Canonical record** panel (description / characters /
+  tags — read-only, editing is Phase 5); a **Published to** Locations table (one row per linked upload —
+  thumbnail · platform · primary/crosspost role · per-platform views/faves/comments · open↗), with an empty
+  state until the promote/publish flows populate members (Phases 3–4); and a **combined growth chart**
+  (`Charts.aggregateLine` over `GET /api/masterpieces/{name}/snapshots`, shown only with ≥2 points). Reuses
+  the Collections/story-detail chrome and thumbnail relays.
+- **Wiring:** `api.js` gains `getMasterpieces` / `getMasterpiece` / `getMasterpieceSnapshots`; `app.js` routes
+  `#/masterpieces/{name}` → detail and bare `#/masterpieces` → Library with the Masterpieces segment
+  pre-selected (Library nav stays lit on both); new `frontend/css/masterpieces.css`; scripts/styles
+  registered in `index.html`.
+
+Read-only end-to-end validated (list summary, detail rollup with fa-primary/ws-crosspost locations, 404).
+Frontend-only; backend suite unchanged from 2.125.0. `SITE_VERSION` → 2.126.0.
+
+---
+
 ## [2.125.0] - 2026-07-16 - Masterpieces Phase 1: membership model + cross-site rollup + read API
 
 Second slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 1) — the data model that lets one

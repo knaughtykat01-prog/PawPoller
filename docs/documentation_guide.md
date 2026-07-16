@@ -6248,6 +6248,19 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   record's per-platform map, `tags` = the union observed on live member uploads), `GET /{name}/snapshots` (combined
   time-series across every site the image lives on, via `analytics_queries.get_combined_snapshots(conn, member_pairs)`).
   Read-only in Phase 1; the promote/link + edit-and-Sync write flows land in Phases 3–5.
+- **Frontend (Phase 2, 2.126.0) — `frontend/js/masterpieces.js` (`window.Masterpieces`) + `masterpieces.css`.** The
+  managed grid lives **inside Library** (`bookshelf.js`), not its own nav item (spec §0-A3): the shelf's type
+  segment gains a fourth option **Masterpieces**, and `_paint()` delegates that segment to
+  `Masterpieces.renderGrid(gridEl, {persona, search, sort})` — a `.mp-card` per Masterpiece (canonical-image cover ·
+  title · N sites · pooled stats · persona dots) from `API.getMasterpieces()`. The list is cached per Library session
+  (`resetCache()` called by `bookshelf.render()`). Cards link to the read-only **detail** `renderDetail(name)` at
+  `#/masterpieces/{name}`: image hero + rating + persona dots + pooled headline; a read-only **Canonical record**
+  panel (desc/characters/tags — editing is Phase 5); a **Published to** Locations table over `m.locations`
+  (thumbnail via `_thumbSrc` FA/IB/Pixiv relays · platform · `primary`/`crosspost` role · per-platform stats ·
+  open↗); and a combined chart (`Charts.aggregateLine` over `API.getMasterpieceSnapshots`, ≥2 points). `app.js` routes
+  bare `#/masterpieces` → Library with the segment preset (`Bookshelf._type='masterpiece'`) and keeps the Library nav
+  lit for both routes. Additive: the existing All/Stories/Artwork segments are unchanged; folding Artwork into
+  Masterpieces (the spec's 3-way target) waits until members auto-populate on publish (Phase 4).
 
 
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)

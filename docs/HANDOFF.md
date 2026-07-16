@@ -1,21 +1,29 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-16
-**Current version (master):** 2.125.0 — **Masterpieces Phase 1: membership model + cross-site rollup + read API.**
-Second slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 1) — the data model + read API that
-let one image's uploads across N sites pool into one record; still no user-visible UI (that's Phase 2). New
-**`masterpiece_members` table** (`database/db.py`) — NAME-keyed membership, PK `(masterpiece_name, platform,
-submission_id)` (idempotent re-link, spec §0-A2), carrying `account_id`/`role`/`linked_via`; no stats copied in —
-`(platform, submission_id)` resolves live against the `*_submissions` tables at rollup time, like a Collection's
-members. New **`database/masterpiece_queries.py`** — membership CRUD + `rollup_members` (pooled totals / merged tags /
-personas / resolved locations) + `summarize` (light grid rollup + auto-cover), **reusing `collections_queries`'
-per-platform stat normalisation** so a Masterpiece and a Collection pool stats identically. New **`/api/masterpieces`
-read API** (`routes/masterpieces_api.py`, wired in `dashboard.py`): `GET ""` (folders + light `summary`), `GET /{name}`
-(canonical `masterpiece.json` merged with the live member rollup), `GET /{name}/snapshots` (combined time-series).
-No promote/link flow yet (Phase 3), so members start empty → zeroed pooled stats until then (expected). +7 tests
-(`test_masterpiece_rollup.py`). Full suite green. **DEPLOY pending.** Next: **Phase 2** (detail view + Library grid).
-**UI-polish item 9 (Platforms-in-Settings card grid) still re-queued** as its own careful pass — the ~2000-line
-account-connect `renderSettings()`, higher-risk than the other polish items.
+**Current version (master):** 2.126.0 — **Masterpieces Phase 2: managed grid in Library + read-only detail view.**
+Third slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 2, §5.2) — the **first user-visible**
+Masterpiece surface, read-only, over the Phase 1 read API (no backend change). Library's shelf (`bookshelf.js`) gains a
+fourth type segment **All / Stories / Artwork / Masterpieces**; the **Masterpieces** segment hands the grid to new
+**`frontend/js/masterpieces.js`** (`renderGrid`) — a card per Masterpiece (canonical-image cover · title · N sites ·
+pooled views/faves/comments · persona dots) from `GET /api/masterpieces`, carrying the shelf's persona/search/sort.
+Cards link to a read-only **detail view** (`#/masterpieces/{name}`, `renderDetail`): image hero + rating + persona dots
++ pooled headline stats; a **Canonical record** panel (desc/characters/tags, read-only — editing is Phase 5); a
+**Published to** Locations table (thumbnail · platform · primary/crosspost role · per-platform stats · open↗, empty
+until members exist); and a combined growth chart (`Charts.aggregateLine`, ≥2 points). `api.js` +3 wrappers; `app.js`
+routes `#/masterpieces` (→ Library, segment preset) + `#/masterpieces/{name}` (→ detail); new `masterpieces.css`.
+Additive — existing All/Stories/Artwork untouched; the spec's target 3-way filter (fold Artwork→Masterpieces) waits
+for live member data at publish (Phase 4). Read path validated end-to-end (list/detail/404); backend suite unchanged.
+**DEPLOY pending.** Next: **Phase 3** (promote flow — "＋ Make Masterpiece" on Gallery tiles, pHash/title suggestions,
+attach/detach members). **UI-polish item 9 (Platforms-in-Settings card grid) still re-queued** as its own careful pass.
+
+**Prior — 2.125.0 — Masterpieces Phase 1: membership model + cross-site rollup + read API. DEPLOYED.**
+New **`masterpiece_members` table** (`database/db.py`) — NAME-keyed membership, PK `(masterpiece_name, platform,
+submission_id)` (idempotent, spec §0-A2), carrying `account_id`/`role`/`linked_via`; stats resolve live against the
+`*_submissions` tables at rollup, like a Collection's members. New **`database/masterpiece_queries.py`** — membership
+CRUD + `rollup_members` + `summarize`, **reusing `collections_queries`' per-platform normalisation** so a Masterpiece
+and a Collection pool identically. New **`/api/masterpieces`** read API (`routes/masterpieces_api.py`, wired in
+`dashboard.py`): list + `/{name}` (canonical merged with rollup) + `/{name}/snapshots`. +7 tests.
 
 **Prior — 2.124.0 — Masterpieces Phase 0: `masterpiece.json` (back-compat artwork rename). DEPLOYED.**
 No behaviour change. `posting/artwork_reader.py` reads BOTH `masterpiece.json` and legacy `artwork.json` (new

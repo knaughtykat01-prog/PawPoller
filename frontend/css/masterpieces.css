@@ -1,0 +1,155 @@
+/* Masterpieces — the managed grid + read-only detail. Token-driven so it
+   retones across all themes. Mirrors collections.css (.coll-*) with .mp-*; a
+   Masterpiece is the master record for ONE image (see docs/specs/masterpieces.md). */
+
+/* ── Grid + cards (rendered inside Library under the type filter) ── */
+.mp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+}
+.mp-card {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--card-border, var(--border));
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--surface, var(--bg-secondary));
+    text-decoration: none;
+    color: inherit;
+    transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.mp-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+    border-color: var(--accent);
+}
+.mp-cover {
+    aspect-ratio: 1 / 1;                 /* art is square-ish; show more of the image than a 16:9 */
+    background: var(--bg-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+.mp-cover-img { width: 100%; height: 100%; object-fit: cover; }
+.mp-cover-ph { font-size: 2.4rem; opacity: .5; }
+.mp-body { padding: .7rem .8rem .8rem; display: flex; flex-direction: column; gap: .35rem; }
+.mp-name { font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-meta { font-size: .82rem; display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; color: var(--text-secondary); }
+.mp-plat { font-size: 1rem; }
+.mp-stats { font-size: .82rem; color: var(--text-secondary); }
+.mp-personas-inline { display: flex; gap: .3rem; flex-wrap: wrap; margin-top: .1rem; }
+
+/* ── Detail view ── */
+.mp-detail-head {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+}
+.mp-hero {
+    flex: 0 0 auto;
+    width: min(320px, 42vw);
+    aspect-ratio: 1 / 1;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--bg-secondary);
+    border: 1px solid var(--card-border, var(--border));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.mp-hero-img { width: 100%; height: 100%; object-fit: contain; }
+.mp-hero-ph { font-size: 3rem; opacity: .4; }
+.mp-head-info { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: .55rem; }
+.mp-title { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+.mp-rating {
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    padding: .12rem .5rem;
+    border-radius: 5px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--card-border, var(--border));
+    color: var(--text-muted);
+    align-self: flex-start;
+}
+.mp-rating--adult { color: var(--danger, #c0392b); border-color: color-mix(in srgb, var(--danger, #c0392b) 40%, var(--border)); }
+.mp-rating--mature { color: #e0883a; border-color: color-mix(in srgb, #e0883a 40%, var(--border)); }
+
+/* Headline pooled stats row */
+.mp-headline { display: flex; gap: 1.4rem; flex-wrap: wrap; }
+.mp-headline-item { display: flex; flex-direction: column; }
+.mp-headline-num { font-size: 1.3rem; font-weight: 700; line-height: 1.1; }
+.mp-headline-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); }
+
+/* Personas + tags reuse the Collections visual language */
+.mp-personas { display: flex; gap: .4rem; flex-wrap: wrap; }
+.mp-persona {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .74rem;
+    padding: .1rem .5rem;
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--card-border, var(--border));
+    color: var(--text);
+}
+.mp-persona-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.mp-tags { display: flex; flex-wrap: wrap; gap: .4rem; }
+.mp-tag {
+    font-size: .78rem;
+    padding: .15rem .55rem;
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--card-border, var(--border));
+    color: var(--text-muted);
+}
+
+/* Canonical metadata panel + section headers */
+.mp-section { margin: 1.5rem 0; }
+.mp-section-title { font-size: 1rem; font-weight: 600; margin-bottom: .6rem; }
+.mp-desc { color: var(--text-secondary); line-height: 1.5; white-space: pre-wrap; }
+
+/* Locations ("Published to") table — same shape as the Collections table */
+.mp-loc-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.mp-loc-table th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: .76rem;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    padding: .4rem .5rem;
+    border-bottom: 1px solid var(--border);
+}
+.mp-loc-table td { padding: .5rem .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.mp-loc-thumb {
+    width: 44px;
+    height: 44px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    display: block;
+}
+.mp-loc-thumb--none { border: 1px dashed var(--border); }
+.mp-loc-plat { display: inline-flex; align-items: center; gap: .35rem; }
+.mp-role {
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    padding: .08rem .4rem;
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+.mp-role--primary { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+
+/* Combined chart container */
+.mp-chart-wrap { position: relative; height: 280px; }
+
+/* Empty / loading states */
+.mp-empty { color: var(--text-muted); padding: 2rem 0; text-align: center; }
