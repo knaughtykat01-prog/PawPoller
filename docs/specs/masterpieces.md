@@ -13,6 +13,53 @@ FA / Weasyl / Inkbunny / Bluesky / e621 / Instagram copy of one picture points b
 
 ---
 
+## 0. Amendments (post-review — 2026-07-16) — these OVERRIDE the body below where they conflict
+
+A code-grounded review verified this spec against the codebase (`image_hash`, `posting/manager`,
+`artwork_reader`, `collections_queries`, `db.py`, `analytics_queries`) — nearly every claim held. The
+following decisions are now **binding** and supersede the body where they differ.
+
+**A1 — "Sync all" is edit-where-supported, post-only elsewhere (DECIDED with owner).** §6.2's "change once,
+push everywhere" is real only where a platform's poster exposes edit. Verified: FA's poster has
+`supports_edit = True` + `edit(external_id, package)`, **but** (a) `edit()` currently takes a
+`StoryUploadPackage` and there is **no `update_artwork` orchestration** in `manager.py` — artwork-edit is
+**new code**, not reuse; (b) several targets **cannot** edit at all (Bluesky posts are immutable →
+delete+repost; e621 uses a separate tag-edit API; IG edits caption not image). Therefore:
+  - Sync pushes canonical metadata only to members whose poster reports `supports_edit` **and** whose
+    package type is artwork-capable.
+  - Non-editable members render as **post-only** in the Locations table — no Sync action (a "re-post to
+    update" affordance at most). Never silently overwrite a hand-edited upload (drift/confirm first).
+  - Artwork-edit is built **per platform** (FA/Weasyl/IB first) and is its **own phase** (new Phase 5),
+    NOT bundled into publish. This is the least-baked part of the spec — treat it as net-new work.
+
+**A2 — Membership is NAME-keyed, not id-keyed (DECIDED).** To match the story model (both `publications`
+and `collection_members` key on the work *name*), `masterpiece_members` keys on the Masterpiece **name**.
+Revised PK: **`(masterpiece_name, platform, submission_id)`**. The `masterpieces` table becomes a **pure
+optional index** (fast listing + `source_link_id` provenance) and must NOT become a second identity;
+Collections keep referencing a Masterpiece by `member_ref='<name>'`. A folder rename is then a
+single-surface migration. This overrides the `masterpiece_id INTEGER FK` in §2.1.
+
+**A3 — Placement: Library, not a revived "Submissions hub" (DEFAULT — owner to confirm).** Submissions was
+removed from nav in 2.117.0 and its works folded into **Library**; stories live there now. The managed
+Masterpieces grid lands in **Library** beside stories with a type filter (All / Stories / Masterpieces).
+"Submissions = stories + artwork" from the locked model is a *category/filter*, not a resurrected hub.
+This overrides "in the Submissions hub" in §5.1. (Flagged for the owner's final IA call.)
+
+**A4 — Phases renumber + split.** 2.123.0 already shipped (tag-browser parity), and A1 splits Sync into its
+own phase, so the §8 table is revised in place: Phase 0 → **2.124.0**, and a new **Phase 5 — artwork edit /
+Sync-where-supported** slots in before Collections interop. See the revised table in §8.
+
+**A5 — Known limitations to STATE, not fix now.**
+  - *pHash coverage:* the hash-scan CDN allowlist excludes e621/Pixiv/Mastodon, so the promote flow's "same
+    image elsewhere" suggestions won't cover **e621** (a posting target) until those CDNs are added or a
+    different fetch path is used. Title-match still applies there.
+  - *Rating vocabulary:* the canonical set is **general / mature / adult** (matches the uploader), not
+    "explicit"; the poster maps it to each platform's own scale.
+  - *Corrections:* `auto_suggest_collections` lives in `collections_queries.py` (not `image_hash.py`, where
+    §3.1 step 4 loosely places it); `post_artwork`'s override param is `extras` (not `extra`).
+
+---
+
 ## 1. Concept & boundary
 
 ### 1.1 What a Masterpiece is
@@ -384,18 +431,19 @@ under the default account" bug (`collections.md` §3).
 
 Ordering principle (from the linking overhaul + IA specs): **additive backend first, reversible cosmetic
 IA next, one-way data migration last.** Each phase ships independently. Versions are indicative — current
-master is **2.122.0** — and may shift as the parallel bug / UI-polish / IA phases of the wider overhaul
-interleave.
+master is **2.123.0** — and may shift as the parallel bug / UI-polish / IA phases of the wider overhaul
+interleave. **(Revised per §0-A4: renumbered off 2.123.0, and Sync split into its own Phase 5 per §0-A1.)**
 
 | Phase | Ships | Version (indicative) |
 |---|---|---|
-| **0 — Rename in place.** `masterpiece.json` = back-compat superset of `artwork.json`; reader/writer accept both; `masterpieces` index table + folder adoption migration; `characters` field + `phash` backfill. No behaviour change. | Backend + migration | **2.123.0** |
-| **1 — Model + rollup + read API.** `masterpiece_members` table; `rollup_masterpiece` (shared helpers factored from `collections_queries`); `GET /api/masterpieces`, `/{id}`, `/{id}/snapshots`; unit tests on the rollup (pure function, like `rollup_collection`). | Backend | **2.124.0** |
-| **2 — Masterpiece detail view + Masterpieces grid.** Read-only detail (canonical panel, Locations table, combined chart) + the managed grid in Submissions with the type filter. Reuses story-detail chrome. | Frontend | **2.125.0** |
-| **3 — Promote flow.** "＋ Make Masterpiece" on Gallery tiles; import full-res; pHash + title **suggestions** via `image_hash.image_suggestions` in a `WorkPicker`-style checklist; attach/detach members. | Frontend + small API | **2.126.0** |
-| **4 — Fresh create + publish/sync from Create.** "＋ New Masterpiece"; `post_artwork` auto-adds members; the Masterpiece-scoped **Sync all** (metadata → every editable member) with drift detection; IG + e621 added to `_ALL_POSTER_IDS`. | Frontend + posting glue | **2.127.0** |
-| **5 — Collections interop.** `member_type='masterpiece'` in `collection_members` + `rollup_collection`; "Add to Collection" on the Masterpiece detail; `WorkPicker` gains a `masterpiece` source. | Backend + frontend | **2.128.0** |
-| **6 — `submission_links` → Masterpieces migration + retire the old masters UI.** Idempotent/reversible fold; re-point the auto-suggest engine to propose Masterpieces (same-image) vs Collections (same-piece); remove `artwork.js` `_foldMasters` / "Unify selected" (the Gallery stops minting `submission_link` masters). Keep `/api/links` dormant until the fold is proven. | Backend + frontend | **2.129.0** |
+| **0 — Rename in place.** `masterpiece.json` = back-compat superset of `artwork.json`; reader/writer accept both; `masterpieces` **index** table (name-keyed, §0-A2) + folder adoption migration; `characters` field + `phash` backfill. No behaviour change. | Backend + migration | **2.124.0** |
+| **1 — Model + rollup + read API.** `masterpiece_members` table (PK `(masterpiece_name, platform, submission_id)`, §0-A2); `rollup_masterpiece` (shared helpers factored from `collections_queries`); `GET /api/masterpieces`, `/{id}`, `/{id}/snapshots`; unit tests on the rollup (pure function, like `rollup_collection`). | Backend | **2.125.0** |
+| **2 — Masterpiece detail view + Masterpieces grid.** Read-only detail (canonical panel, Locations table, combined chart) + the managed grid **in Library** (§0-A3) with the All/Stories/Masterpieces type filter. Reuses story-detail chrome. | Frontend | **2.126.0** |
+| **3 — Promote flow.** "＋ Make Masterpiece" on Gallery tiles; import full-res; pHash + title **suggestions** via `image_hash.image_suggestions` in a `WorkPicker`-style checklist; attach/detach members. | Frontend + small API | **2.127.0** |
+| **4 — Fresh create + publish (post-only) from Create.** "＋ New Masterpiece"; `post_artwork` auto-adds members on each success; IG + e621 added to `_ALL_POSTER_IDS`. **Publish/re-post only — no metadata edit yet** (that's Phase 5). | Frontend + posting glue | **2.128.0** |
+| **5 — Artwork edit / Sync-where-supported (NEW, §0-A1).** Net-new per-platform artwork `edit()` + a `manager.update_artwork` orchestration, FA/Weasyl/IB first; Masterpiece **Sync all** pushes canonical metadata only to `supports_edit` members with drift detection; non-editable members (Bluesky/e621/IG/…) render **post-only**. Never overwrite a drifted/hand-edited upload without confirm. | Posting (per-platform) + frontend | **2.129.0** |
+| **6 — Collections interop.** `member_type='masterpiece'` in `collection_members` + `rollup_collection`; "Add to Collection" on the Masterpiece detail; `WorkPicker` gains a `masterpiece` source. | Backend + frontend | **2.130.0** |
+| **7 — `submission_links` → Masterpieces migration + retire the old masters UI.** Idempotent/reversible fold (name-keyed); re-point the auto-suggest engine to propose Masterpieces (same-image) vs Collections (same-piece); remove `artwork.js` `_foldMasters` / "Unify selected" (the Gallery stops minting `submission_link` masters). Keep `/api/links` dormant until the fold is proven. | Backend + frontend | **2.131.0** |
 
 **Independent, any time:** the Collections rollup gaps flagged in `ia_consolidation.md` §(f)5 (post
 members contribute nothing; art thumbnails) — orthogonal but adjacent; fix while the rollup helpers are
