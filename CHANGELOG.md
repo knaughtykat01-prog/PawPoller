@@ -4,6 +4,37 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.122.0] - 2026-07-16 - UI bug sweep: artwork upload, editor toolbars, SquidgeWorld publish-check, AO3 5xx
+
+Five fixes from a UI review pass (start of a larger Artwork/Masterpiece/IA overhaul).
+
+- **"Choose image" button no longer mangled (New artwork).** Two compounding CSS bugs: `.artwork-preview` set
+  `display:block`, overriding the `[hidden]` attribute so the empty preview `<img>` always rendered — as a
+  broken-image bar that stole width in the flex drop row and squished the upload column until the
+  `<label class="btn">` wrapped into a blob. Fixed `.artwork-preview[hidden]` to actually hide, and gave `.btn`
+  `display:inline-flex` (was the label/anchor default `inline`, which blobs across wrapped lines) so every
+  button/label/anchor renders as a proper box.
+- **Story Editor top toolbar no longer runs off-screen.** `.editor-title { flex:1 }` pinned the action cluster
+  hard-right where it overflowed. The toolbar now wraps (`flex-wrap`) and on desktop the actions take their own
+  full-width row, **centered on screen**.
+- **Rich-editor (WYSIWYG) toolbar wraps instead of cramming.** In the narrow quad panel the 13 tools were a
+  horizontal scroll strip; on desktop they now wrap to a second row (mobile keeps its swipe strip).
+- **SquidgeWorld no longer shows 🔒 in the publish matrix when configured via the standard flow.** Publish-check
+  required `sqw_author_username`/`sqw_author_password`, but the SqW connect flow saves `sqw_username`/
+  `sqw_password` and the poster resolves `sqw_author_* OR sqw_*` (`posting/platforms/squidgeworld.py`).
+  Publish-check now mirrors that OR (`editor_api.py` `PLATFORM_CREDS["sqw"]`), so a SqW connected normally reads
+  as publishable.
+- **AO3 5xx posts log a clearer, obviously-transient error.** A Cloudflare 525 (AO3 origin unreachable) has no
+  AO3 `<li class="error">` markup, so it logged "unknown error". A 5xx with no parseable error now says
+  "AO3/Cloudflare temporarily unavailable — will retry". No behaviour change — the posting manager already
+  retries it (1/5/30-min backoff, 3 attempts, and 5xx is classified transient; only "not configured" is
+  permanent); this is purely message clarity.
+
+Frontend-only for the first three (CSS); backend touches are `editor_api.py` (SqW cred OR) and `clients/ao3/client.py`
+(message). No schema/API changes. `SITE_VERSION` → 2.122.0.
+
+---
+
 ## [2.121.0] - 2026-07-15 - X follower counts ride the free gallery-dl scrape (no billed call)
 
 Completes the "$0 X polling" work from 2.119.0/2.120.0. Tweets already came from free gallery-dl, but the

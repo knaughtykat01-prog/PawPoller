@@ -1278,7 +1278,13 @@ async def publish_check(story_name: str):
         "fa":   ("fa_cookie_a", "fa_cookie_b"),
         "ws":   ("ws_api_key",),
         "sf":   ("sf_username", "sf_password"),
-        "sqw":  ("sqw_author_username", "sqw_author_password"),
+        # SqW posting falls back to the polling creds when the author-specific
+        # ones aren't set (posting/platforms/squidgeworld.py resolves
+        # sqw_author_username OR sqw_username). Mirror that OR here so a SqW
+        # configured via the standard connect flow — which saves sqw_username/
+        # sqw_password — isn't wrongly shown as 🔒 no-credentials. (2.122.0)
+        "sqw":  (("sqw_author_username", "sqw_author_password"),
+                 ("sqw_username", "sqw_password")),
         "ao3":  (("ao3_username", "ao3_password"), ("ao3_session_cookie",)),
         "da":   ("da_cookie",),
         "ik":   (),

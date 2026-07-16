@@ -160,6 +160,11 @@
     display: block;
     background: var(--bg-tertiary);
 }
+/* The class `display: block` above beats the UA `[hidden] { display: none }`,
+   so without this the empty preview <img> shows anyway — as a broken-image
+   "preview" bar that steals width in the flex drop row and squishes the
+   "Choose image" column. Respect the attribute. (2.122.0) */
+.artwork-preview[hidden] { display: none; }
 
 /* Form fields */
 .artwork-upload .field,

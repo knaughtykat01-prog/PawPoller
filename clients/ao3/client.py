@@ -1013,6 +1013,13 @@ class AO3Client:
         if "/works/new" in final_url or resp.status_code >= 400:
             errors = re.findall(r'class="error"[^>]*>(.*?)</li>', resp.text, re.DOTALL)
             err_text = "; ".join(re.sub(r'<[^>]+>', '', e).strip() for e in errors[:5])
+            # A 5xx (esp. Cloudflare 502/503/520-524/525) is AO3's server/CDN being
+            # transiently unavailable, not a problem with the work — that error page
+            # carries no AO3 <li class="error"> markup, so err_text is empty and the
+            # log said "unknown error". Give an obviously-transient message instead;
+            # the posting manager retries it (1/5/30-min backoff). (2.122.0)
+            if not err_text and resp.status_code >= 500:
+                err_text = "AO3/Cloudflare temporarily unavailable — will retry"
             raise RuntimeError(f"AO3: Work creation failed (status {resp.status_code}): {err_text or 'unknown error'}")
 
         work_match = re.search(r'/works/(\d+)', final_url)

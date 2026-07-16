@@ -4915,9 +4915,14 @@ button on the editor toolbar → modal) renders:
   - `not_supported` (grey –) — work-oriented platforms (AO3, SQW) show
     grey dashes on per-chapter rows because they post whole works
   - `no_credentials` (grey 🔒) — platform has no credentials configured;
-    action panel shows "Set up in Settings" message. `PLATFORM_CREDS` map
-    in `publish_check.js` checks per-platform credential requirements
-    before the matrix loop.
+    action panel shows "Set up in Settings" message. The `PLATFORM_CREDS` map
+    in `editor_api.py` (`publish_check`) declares each platform's required
+    settings keys and is checked before the matrix loop. **Keep it in step with
+    what the poster actually reads** — e.g. SqW is an OR-of-ANDs
+    `(sqw_author_username, sqw_author_password)` OR `(sqw_username, sqw_password)`
+    because `squidgeworld.py` resolves `sqw_author_* OR sqw_*`; requiring only
+    the author keys (which the standard connect flow doesn't set) wrongly locked
+    a working SqW config (fixed 2.122.0).
   - `error` (red ⚠) — poster init / package build threw
   - `blocked` (red ✗) — fresh cell with validation errors
 

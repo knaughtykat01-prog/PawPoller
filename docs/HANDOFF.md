@@ -1,7 +1,30 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-15
-**Current version (master):** 2.121.0 — **X follower counts ride the free gallery-dl scrape (no billed call).**
+**Last updated:** 2026-07-16
+**Current version (master):** 2.122.0 — **UI bug sweep (start of the Artwork/Masterpiece/IA overhaul).**
+Five fixes from a UI review pass: (1) **"Choose image" button** un-mangled — `.artwork-preview` `display:block`
+overrode `[hidden]` so the empty preview showed + squished the flex column until the `<label class="btn">`
+wrapped to a blob; fixed `.artwork-preview[hidden]` + gave `.btn` `display:inline-flex`. (2) **Story Editor top
+toolbar** wraps + actions get their own **centered** full-width row on desktop (was pinned right, overflowed).
+(3) **Rich-editor toolbar** wraps to a 2nd row on desktop instead of a cramped scroll strip. (4) **SquidgeWorld
+🔒 in publish matrix** — publish-check required `sqw_author_*` but the connect flow saves `sqw_username`/
+`sqw_password` and the poster resolves `sqw_author_* OR sqw_*`; publish-check (`editor_api.py PLATFORM_CREDS`)
+now mirrors that OR. (5) **AO3 5xx** logs "AO3/Cloudflare temporarily unavailable — will retry" instead of
+"unknown error" (behaviour unchanged; manager already retries 1/5/30-min). Frontend CSS + 2 small backend
+touches; no schema change. `SITE_VERSION`→2.122.0. **DEPLOY pending.**
+
+**BIG PICTURE — locked with the user 2026-07-16:** a large **Artwork/Masterpiece/IA overhaul** is now the active
+direction. Entity model (confirmed): **Masterpiece** = master record for ONE image (the image analog of a story's
+MASTER.md — canonical title/desc/tags/rating/JSON; every site-upload points back to it); **Artwork = Gallery** of
+discovered+imported images (grid); **Collection** = cross-type folder for pooled stats (exists); **Submissions** =
+stories+artwork only; **Posts** = microblog catalogue only; **Create** = the single home for ALL publishing;
+**Instagram** reclassified as an art-gallery platform (moves out of Posts). ~18-item backlog triaged into Bugs
+(this release) / UI polish / IA restructure / Masterpieces / Future (marketing-image generator + simple image
+editor). Plus two later adds: **multi-account Overview** and **test the in-app GUI self-update** (repo now public).
+Task list tracks it. **The X full-history backfill (desktop walk → server ingest + steady-state `--range` cap) is
+PARKED** — greenlit but deprioritised behind this overhaul.
+
+**Prior — 2.121.0 — X follower counts ride the free gallery-dl scrape (no billed call).**
 Completes the "$0 X polling" work. After 2.119.0/2.120.0 tweets came from free gallery-dl, but the per-cycle
 **follower-count** snapshot still spent one billed official X API v2 `/users/by/username` call per account (the
 07:15 UTC poll logs showed 3 accounts → 3 paid calls). Cause: `TWClient.get_follower_count` tried the official API

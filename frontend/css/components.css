@@ -533,6 +533,15 @@ a.stat-card:hover {
 
 /* ── Buttons ─────────────────────────────────────────────── */
 .btn {
+    /* inline-flex (not the label/anchor default of inline) so a `<label class="btn">`
+       or `<a class="btn">` renders as a proper rectangular button instead of an
+       inline run whose background blobs across wrapped lines. (2.122.0) */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    white-space: nowrap;
+    text-decoration: none;
     padding: 8px 16px;
     border-radius: var(--radius);
     border: 1px solid var(--border);
