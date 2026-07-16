@@ -20,6 +20,9 @@ window.Masterpieces = {
     _cache: null,           // [] of masterpiece list rows, per Library session
     _current: null,         // name of the Masterpiece the detail view is showing
     _wired: false,          // document click delegate attached once
+    // Platforms whose poster can't edit in place (supports_edit=False, mirrors the
+    // backend) — Sync skips them; they render "post-only" in the Locations table.
+    _POST_ONLY: new Set(['bsky', 'e621', 'ik']),
 
     /* Drop the list cache so the next grid render refetches (called on each
        Library open by bookshelf.render). */
@@ -198,12 +201,11 @@ window.Masterpieces = {
             Object.values(ct).forEach(arr => (arr || []).forEach(x => seen.add(x)));
             tagList = [...seen];
         }
-        const tagsHtml = tagList.length
-            ? tagList.map(x => `<span class="mp-tag">${this.esc(x)}</span>`).join('')
-            : '<span class="muted">No tags yet.</span>';
-        const charsHtml = (m.characters && m.characters.length)
-            ? m.characters.map(c => `<span class="mp-tag">${this.esc(c)}</span>`).join('')
-            : '';
+        const curRating = (m.rating || '').toLowerCase();
+        const ratingOpts = ['general', 'mature', 'adult'].map(r =>
+            `<option value="${r}"${curRating === r ? ' selected' : ''}>${r[0].toUpperCase() + r.slice(1)}</option>`).join('');
+        const charsStr = (m.characters || []).join(', ');
+        const tagsStr = tagList.join(', ');
 
         // Locations ("Published to") — one row per linked site-upload.
         const locs = m.locations || [];
@@ -216,6 +218,9 @@ window.Masterpieces = {
                 : `<span class="mp-loc-thumb mp-loc-thumb--none"></span>`;
             const roleCls = l.role === 'primary' ? 'mp-role mp-role--primary' : 'mp-role';
             const role = l.role ? `<span class="${roleCls}">${this.esc(l.role)}</span>` : '';
+            // Platforms whose poster can't edit in place are Sync-exempt (§0-A1).
+            const postOnly = this._POST_ONLY.has(l.platform)
+                ? `<span class="mp-role mp-role--postonly" title="This site can't be edited in place — re-post to update">post-only</span>` : '';
             const safe = window.Utils && Utils.safeUrl ? Utils.safeUrl(l.url) : l.url;
             const link = safe ? `<a href="${this.esc(safe)}" target="_blank" rel="noopener">open&nbsp;&#8599;</a>` : '';
             const title = l.title ? `<div class="muted" style="font-size:.8rem">${this.esc(l.title)}</div>` : '';
@@ -224,7 +229,7 @@ window.Masterpieces = {
             return `
                 <tr>
                     <td>${thumb}</td>
-                    <td><span class="mp-loc-plat">${p.emoji || ''} ${this.esc(p.label)}</span> ${role}${title}</td>
+                    <td><span class="mp-loc-plat">${p.emoji || ''} ${this.esc(p.label)}</span> ${role}${postOnly}${title}</td>
                     <td>${this._fmt(st.views)}</td>
                     <td>${this._fmt(st.favorites)}</td>
                     <td>${this._fmt(st.comments)}</td>
@@ -257,11 +262,30 @@ window.Masterpieces = {
             </div>
 
             <div class="mp-section">
-                <div class="mp-section-title">Canonical record</div>
-                ${m.description ? `<p class="mp-desc">${this.esc(m.description)}</p>` : '<p class="muted">No description yet.</p>'}
-                ${charsHtml ? `<div style="margin-top:.7rem"><div class="mp-section-title" style="font-size:.82rem">Characters</div><div class="mp-tags">${charsHtml}</div></div>` : ''}
-                <div style="margin-top:.7rem"><div class="mp-section-title" style="font-size:.82rem">Tags</div><div class="mp-tags">${tagsHtml}</div></div>
-                <p class="muted" style="margin-top:.7rem;font-size:.82rem">Editing the canonical record &amp; syncing it to every site arrives in Phase 5.</p>
+                <div class="mp-section-title">Canonical record
+                    <span class="muted" style="font-weight:400;font-size:.8rem">— edit once, then sync to every editable site</span>
+                </div>
+                <div class="mp-edit">
+                    <label class="mp-field"><span>Title</span>
+                        <input class="mp-input" id="mp-e-title" value="${this.esc(m.title || '')}"></label>
+                    <label class="mp-field"><span>Description</span>
+                        <textarea class="mp-input" id="mp-e-desc" rows="4">${this.esc(m.description || '')}</textarea></label>
+                    <div class="mp-field-row">
+                        <label class="mp-field"><span>Rating</span>
+                            <select class="mp-input" id="mp-e-rating">${ratingOpts}</select></label>
+                        <label class="mp-field"><span>Characters <span class="muted">(comma-separated)</span></span>
+                            <input class="mp-input" id="mp-e-chars" value="${this.esc(charsStr)}"></label>
+                    </div>
+                    <label class="mp-field"><span>Tags <span class="muted">(canonical / default)</span>
+                            <button class="btn btn-sm" data-mp-tagbrowse type="button">🏷️ Browse</button></span>
+                        <input class="mp-input" id="mp-e-tags" value="${this.esc(tagsStr)}"></label>
+                    <div class="mp-edit-actions">
+                        <button class="btn btn-primary btn-sm" data-mp-save type="button">Save canonical</button>
+                        <button class="btn btn-sm" data-mp-sync type="button"
+                            title="Push this record to every editable site (metadata only — never re-uploads the image)">↑ Sync to sites</button>
+                        <span class="mp-edit-msg muted" id="mp-edit-msg"></span>
+                    </div>
+                </div>
             </div>
 
             <div class="mp-section">
@@ -293,6 +317,12 @@ window.Masterpieces = {
         if (this._wired) return;
         this._wired = true;
         document.addEventListener('click', (e) => {
+            const save = e.target.closest('[data-mp-save]');
+            if (save) { e.preventDefault(); this._saveCanonical(); return; }
+            const sync = e.target.closest('[data-mp-sync]');
+            if (sync) { e.preventDefault(); this._syncAll(sync); return; }
+            const tb = e.target.closest('[data-mp-tagbrowse]');
+            if (tb) { e.preventDefault(); this._openTagBrowse(); return; }
             const scan = e.target.closest('[data-mp-scan]');
             if (scan) { e.preventDefault(); this._scanForMatches(scan); return; }
             const att = e.target.closest('[data-mp-attach]');
@@ -305,6 +335,70 @@ window.Masterpieces = {
     _toast(kind, msg) {
         if (window.toast && window.toast[kind]) window.toast[kind](msg);
         else if (window.toast && window.toast.info) window.toast.info(msg);
+    },
+
+    /* ── Canonical edit + Sync-all (Phase 5) ── */
+
+    _readCanonical() {
+        const val = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+        const list = (s) => s.split(',').map(x => x.trim()).filter(Boolean);
+        return {
+            title: val('mp-e-title').trim(),
+            description: val('mp-e-desc'),
+            rating: val('mp-e-rating'),
+            characters: list(val('mp-e-chars')),
+            tags: list(val('mp-e-tags')),
+        };
+    },
+
+    _msg(text, isErr) {
+        const el = document.getElementById('mp-edit-msg');
+        if (el) { el.textContent = text; el.className = 'mp-edit-msg ' + (isErr ? 'mp-err' : 'muted'); }
+    },
+
+    async _saveCanonical() {
+        if (!this._current) return;
+        this._msg('Saving…', false);
+        try {
+            await API.patchMasterpiece(this._current, this._readCanonical());
+            this._toast('success', 'Canonical record saved');
+            await this.renderDetail(this._current);   // reflect the new title/rating in the header
+        } catch (err) {
+            this._msg('Save failed: ' + (err.message || err), true);
+        }
+    },
+
+    async _syncAll(btn) {
+        if (!this._current) return;
+        if (!window.confirm('Push this canonical record (title, description, tags, rating) to every editable site? '
+            + 'It overwrites those fields on the live uploads. Bluesky / e621 / Itaku are skipped (post-only).')) return;
+        btn.disabled = true;
+        try {
+            await API.patchMasterpiece(this._current, this._readCanonical());   // save first, then push
+            this._msg('Syncing…', false);
+            const res = await API.syncMasterpiece(this._current);
+            const parts = [`synced ${res.synced}`];
+            if (res.skipped) parts.push(`${res.skipped} post-only`);
+            if (res.failed) parts.push(`${res.failed} failed`);
+            const fails = (res.results || []).filter(r => r.error).map(r => `${r.platform}: ${r.error}`);
+            this._toast(res.failed ? 'warn' : 'success', 'Sync: ' + parts.join(' · '));
+            this._msg('Sync: ' + parts.join(' · ') + (fails.length ? ' — ' + fails.join('; ') : ''), !!res.failed);
+        } catch (err) {
+            this._msg('Sync failed: ' + (err.message || err), true);
+        } finally {
+            btn.disabled = false;
+        }
+    },
+
+    _openTagBrowse() {
+        const input = document.getElementById('mp-e-tags');
+        if (!input || !window.TagPicker) { this._toast('info', 'Tag browser unavailable'); return; }
+        const selected = input.value.split(',').map(x => x.trim()).filter(Boolean);
+        TagPicker.open({
+            title: 'Canonical tags',
+            selected,
+            onConfirm: (names) => { input.value = (names || []).join(', '); },
+        });
     },
 
     async _loadSuggestions() {

@@ -150,6 +150,29 @@
     color: var(--text-secondary);
 }
 .mp-role--primary { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.mp-role--postonly { color: var(--text-muted); }
+
+/* Canonical edit form (Phase 5) */
+.mp-edit { display: flex; flex-direction: column; gap: .8rem; max-width: 640px; }
+.mp-field { display: flex; flex-direction: column; gap: .3rem; font-size: .88rem; }
+.mp-field > span { color: var(--text-muted); display: flex; align-items: center; gap: .5rem; }
+.mp-field-row { display: flex; gap: .8rem; flex-wrap: wrap; }
+.mp-field-row .mp-field { flex: 1 1 200px; }
+.mp-input {
+    width: 100%;
+    padding: .5rem .6rem;
+    border: 1px solid var(--card-border, var(--border));
+    border-radius: 8px;
+    background: var(--bg, var(--surface));
+    color: var(--text);
+    font: inherit;
+    box-sizing: border-box;
+}
+.mp-input:focus { outline: none; border-color: var(--accent); }
+textarea.mp-input { resize: vertical; }
+.mp-edit-actions { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.mp-edit-msg { font-size: .82rem; }
+.mp-err { color: var(--danger, #c0392b); }
 
 /* Detach ("unlink") on a Locations row */
 .mp-loc-detach {

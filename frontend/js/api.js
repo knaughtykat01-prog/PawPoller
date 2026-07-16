@@ -185,6 +185,9 @@ const API = {
     removeMasterpieceMember(name, platform, submissionId) {
         return this.del(`/api/masterpieces/${encodeURIComponent(name)}/members?platform=${encodeURIComponent(platform)}&submission_id=${encodeURIComponent(submissionId)}`);
     },
+    // Canonical edit (writes masterpiece.json) + Sync-all (push to editable members).
+    patchMasterpiece(name, body) { return this.patch(`/api/masterpieces/${encodeURIComponent(name)}`, body); },
+    syncMasterpiece(name, body = {}) { return this.post(`/api/masterpieces/${encodeURIComponent(name)}/sync`, body); },
 
     /* ── IB (Inkbunny) convenience methods ─────────────────────
      * General status, submission CRUD, snapshot history, aggregation,

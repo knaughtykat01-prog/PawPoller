@@ -347,6 +347,22 @@ def create_artwork(
     return folder.name
 
 
+def read_raw_metadata(name: str) -> dict:
+    """The raw parsed ``masterpiece.json`` for a folder — no tag cascade applied.
+
+    ``load_artwork`` cascades ``tags.default`` onto every poster id (for package
+    building); callers that need to EDIT the canonical record (e.g. change the
+    default tags without freezing the cascade or clobbering real per-platform
+    overrides) must read the raw file instead. Traversal-guarded via
+    ``load_artwork``.
+    """
+    art = load_artwork(name)                 # re-anchors + validates the name
+    src = _meta_path(art.path)
+    if src is None:
+        return {}
+    return json.loads(src.read_text(encoding="utf-8"))
+
+
 def save_artwork_metadata(name: str, updates: dict) -> ArtworkInfo:
     """Merge updates into an existing folder's metadata (the edit flow).
 

@@ -4,6 +4,33 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.129.0] - 2026-07-16 - Masterpieces Phase 5: edit the canonical record once, sync everywhere
+
+Sixth slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 5, §0-A1, §6.2) — the core promise:
+**change a piece's title/description/tags/rating once and push it to every site that supports editing.** A key finding
+de-risked this: the per-platform `edit()` methods are already metadata-oriented and content-type-agnostic (Weasyl is
+metadata-only; Inkbunny skips content unless `file_type=='bbcode'`; FurAffinity's file refresh is off when
+`extra['skip_content_refresh']` is set), so this is a **new orchestration + UI**, not net-new per-platform posting code.
+
+- **Editable canonical record.** The Masterpiece detail panel is now a form (title · description · rating ·
+  characters · tags, with a 🏷️ TagPicker) → `PATCH /api/masterpieces/{name}` → `artwork_reader.save_artwork_metadata`
+  (writes `masterpiece.json`). Editing the canonical **default** tags preserves any real per-platform tag overrides
+  (new `artwork_reader.read_raw_metadata` reads the un-cascaded file). Rating vocab is general/mature/adult (§0-A5).
+- **Sync-all.** `posting/manager.update_artwork` — the artwork parallel of `update_story`, driven off
+  `masterpiece_members` (so it reaches promote/pHash-linked members too), **metadata-only**
+  (`extra['skip_content_refresh']=True` — never re-uploads the image). For each member whose poster reports
+  `supports_edit` it calls `poster.edit(submission_id, package)`; non-editable platforms (Bluesky / e621 / Itaku) are
+  returned **skipped `post-only`** and never touched (§0-A1). Exposed as async `POST /api/masterpieces/{name}/sync`
+  (`{synced, skipped, failed, results}`). The detail view's **↑ Sync to sites** saves the record then pushes it behind
+  a **confirm** (never silently overwrite a hand-edited upload), reports a per-member result, and marks non-editable
+  locations **post-only** in the table.
+
+Tests: `test_masterpiece_sync.py` +5 (sync edits editable members metadata-only + skips post-only + records the
+publication; empty-members; PATCH updates canonical + preserves per-platform tags; rating validation; empty-body 400).
+`api.js` +2 wrappers. Full suite green. `SITE_VERSION` → 2.129.0.
+
+---
+
 ## [2.128.0] - 2026-07-16 - Masterpieces Phase 4: publishing IS mastering + fresh create
 
 Fifth slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 4, §3.2, §6) — publish-to-master

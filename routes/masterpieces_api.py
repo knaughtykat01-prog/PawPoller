@@ -179,3 +179,76 @@ def remove_masterpiece_member(name: str, platform: str, submission_id: str):
         return {"status": "removed"}
     finally:
         conn.close()
+
+
+# ── Canonical edit + Sync-all (Phase 5) ──────────────────────────
+
+# Canonical rating vocabulary (spec §0-A5) — the poster maps to each site's scale.
+_RATINGS = {"general", "mature", "adult"}
+
+
+@masterpieces_router.patch("/{name}")
+def update_masterpiece(name: str, body: dict):
+    """Edit the Masterpiece's canonical record (writes ``masterpiece.json``).
+
+    Editable fields: title / description / rating / characters / tags (the
+    canonical *default* tag set — per-platform overrides are preserved). This is
+    the "edit once" half; pushing it to the live uploads is POST /{name}/sync.
+    """
+    try:
+        raw = artwork_reader.read_raw_metadata(name)
+    except FileNotFoundError:
+        raise HTTPException(404, detail="Masterpiece not found")
+
+    updates: dict = {}
+    if "title" in body:
+        updates["title"] = str(body.get("title") or "").strip()
+    if "description" in body:
+        updates["description"] = str(body.get("description") or "")
+    if "rating" in body:
+        r = str(body.get("rating") or "").strip().lower()
+        if r and r not in _RATINGS:
+            raise HTTPException(400, detail="rating must be general | mature | adult")
+        updates["rating"] = r
+    if "characters" in body and isinstance(body["characters"], list):
+        updates["characters"] = [str(c).strip() for c in body["characters"] if str(c).strip()]
+    if "tags" in body and isinstance(body["tags"], list):
+        # Set the canonical (default) tags; keep any real per-platform overrides
+        # from the RAW file (not the cascaded ArtworkInfo).
+        tags = dict(raw.get("tags") or {})
+        tags["default"] = [str(t).strip() for t in body["tags"] if str(t).strip()]
+        updates["tags"] = tags
+    if not updates:
+        raise HTTPException(400, detail="no editable fields provided")
+
+    artwork_reader.save_artwork_metadata(name, updates)
+    return {"status": "updated", "name": name}
+
+
+@masterpieces_router.post("/{name}/sync")
+async def sync_masterpiece(name: str, body: dict | None = None):
+    """Push the canonical record to every **editable** member (metadata only —
+    never re-uploads the image). Members on non-editable platforms
+    (Bluesky/e621/Itaku) are returned as skipped ``post-only``. Body (optional):
+    {platforms?: [...]} to restrict the sync."""
+    from posting import manager
+    try:
+        artwork_reader.load_artwork(name)
+    except FileNotFoundError:
+        raise HTTPException(404, detail="Masterpiece not found")
+    platforms = (body or {}).get("platforms") or None
+    try:
+        results = await manager.update_artwork(name, platforms=platforms)
+    except Exception as e:
+        logger.error("Masterpiece sync failed for %s: %s", name, e, exc_info=True)
+        raise HTTPException(500, detail=str(e))
+    synced = [r for r in results if r.get("success")]
+    skipped = [r for r in results if r.get("skipped")]
+    failed = [r for r in results if not r.get("success") and not r.get("skipped")]
+    return {
+        "status": "completed",
+        "synced": len(synced),
+        "skipped": len(skipped),
+        "failed": len(failed),
+        "results": results,
+    }

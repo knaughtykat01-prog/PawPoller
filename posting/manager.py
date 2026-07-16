@@ -668,6 +668,127 @@ async def update_story(
     return results
 
 
+async def update_artwork(
+    artwork_name: str,
+    platforms: list[str] | None = None,
+    account_filter: int | None = None,
+    extras: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Push a Masterpiece's canonical metadata to its editable members ("Sync all",
+    spec §6.2). The artwork parallel of ``update_story``, but driven off the
+    ``masterpiece_members`` table (so it also reaches members linked by promote /
+    pHash that never had a publication) and **metadata-only** by default.
+
+    For each member whose poster reports ``supports_edit``: rebuild the artwork
+    package from ``masterpiece.json`` and call ``poster.edit(submission_id,
+    package)`` with ``extra['skip_content_refresh']=True`` — we push
+    title/description/tags/rating, never re-upload the image. Members on platforms
+    that can't edit (Bluesky/e621/Itaku) are returned as skipped ``post-only`` and
+    never touched (§0-A1). Each edit is recorded (log + publication metadata,
+    content_type='artwork').
+
+    Args:
+        artwork_name: Masterpiece / artwork folder name.
+        platforms: Restrict to these platforms (None = all editable members).
+        account_filter: Only members owned by this account_id.
+        extras: Extra package overrides (merged after skip_content_refresh).
+
+    Returns: one result dict per member (skipped members carry ``skipped=True``).
+    """
+    from posting import artwork_reader
+    from database import masterpiece_queries
+
+    artwork = artwork_reader.load_artwork(artwork_name)
+
+    conn = get_connection()
+    try:
+        members = masterpiece_queries.get_members(conn, artwork_name)
+    finally:
+        conn.close()
+    if not members:
+        return [{"error": f"No linked uploads for {artwork_name}"}]
+
+    results: list[dict[str, Any]] = []
+    for m in members:
+        plat = m["platform"]
+        ext_id = str(m["submission_id"])
+        account_id = m.get("account_id")
+
+        if platforms and plat not in platforms:
+            continue
+        if account_filter is not None and account_id != account_filter:
+            continue
+        if not ext_id:
+            continue
+
+        # Resolve None → the platform's default account (a concrete id is required
+        # for _get_poster / the publication + log writes), mirroring post_artwork.
+        account_id = _resolve_account_id(plat, account_id)
+        try:
+            poster = _get_poster(plat, account_id)
+        except ValueError:
+            results.append({"platform": plat, "submission_id": ext_id,
+                            "success": False, "skipped": True, "reason": "no poster"})
+            continue
+        # Non-editable platforms are post-only — never silently overwrite them.
+        if not poster.supports_edit:
+            results.append({"platform": plat, "submission_id": ext_id,
+                            "success": False, "skipped": True, "reason": "post-only"})
+            continue
+
+        package = artwork_reader.build_artwork_package(artwork, plat)
+        package.extra["skip_content_refresh"] = True   # metadata sync only — never re-upload the image
+        if extras:
+            package.extra.update(extras)
+
+        result = await poster.edit(ext_id, package)
+
+        conn = get_connection()
+        try:
+            pub_id = posting_queries.upsert_publication(
+                conn, artwork_name, 0, plat,
+                account_id=account_id,
+                content_type="artwork",
+                external_id=result.external_id or ext_id,
+                external_url=result.external_url or "",
+                title_used=package.title,
+                description_used=package.description[:500],
+                tags_used=package.tags,
+                rating_used=package.rating,
+                status="posted" if result.success else "failed",
+            )
+            posting_queries.log_posting_action(
+                conn, plat, artwork_name, 0,
+                action="update",
+                account_id=account_id,
+                content_type="artwork",
+                status="success" if result.success else "failed",
+                pub_id=pub_id,
+                external_id=result.external_id or ext_id,
+                external_url=result.external_url,
+                error_message=result.error,
+                duration_seconds=result.duration_seconds,
+            )
+        finally:
+            conn.close()
+
+        results.append({
+            "platform": plat,
+            "submission_id": ext_id,
+            "success": result.success,
+            "external_url": result.external_url or "",
+            # A successful edit may carry a soft note (e.g. Weasyl: file content
+            # can't be replaced via API) — surface it without failing the sync.
+            "note": result.error if result.success else None,
+            "error": None if result.success else result.error,
+            "duration": result.duration_seconds,
+        })
+
+        await poster._rate_limit()
+
+    return results
+
+
 async def update_all_changed(
     platforms: list[str] | None = None,
 ) -> list[dict[str, Any]]:

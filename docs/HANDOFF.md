@@ -1,20 +1,28 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-16
-**Current version (master):** 2.128.0 — **Masterpieces Phase 4: publishing IS mastering + fresh create (post-only).**
-Fifth slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 4, §3.2, §6). **`post_artwork` now
-auto-links a member on each successful post** (`role='crosspost'`, `linked_via='publication'`, `account_id` carried) —
-the artwork folder IS the Masterpiece (Phase 0), so a fresh master accumulates members automatically as it publishes,
-no manual linking; idempotent + best-effort (a link failure never breaks a recorded post). **"＋ New Masterpiece"** on
-the Masterpieces grid (`masterpieces.js`) routes to the artwork uploader (`#/artwork/new`), which already writes a
-`masterpiece.json` folder and publishes via `post_artwork` → create-and-publish yields a mastered record with live
-members end-to-end. **e621 added to `artwork_reader._ALL_POSTER_IDS`** (a full art poster wired in `_get_poster`);
-**Instagram deliberately NOT added** — IG posting exists only in the Posts module (`post_publisher`), not the artwork
-`post_artwork`/`_get_poster` path, so it needs a net-new `IGPoster` adapter (tracked separately; a correction to the
-spec's optimistic note). Post-only — editing canonical metadata + **Sync-all remain Phase 5**. +2 tests
-(`test_integration_artwork.py`). **DEPLOY pending.** Next: **Phase 5** (net-new per-platform artwork `edit()` +
-`manager.update_artwork` + Masterpiece "Sync all" with drift/confirm; FA/Weasyl/IB first). **UI-polish item 9
+**Current version (master):** 2.129.0 — **Masterpieces Phase 5: edit the canonical record once, sync everywhere.**
+Sixth slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 5, §0-A1, §6.2) — the core promise.
+**Finding that de-risked it:** the per-platform `edit()` methods are already metadata-oriented + content-type-agnostic
+(Weasyl metadata-only; IB skips content unless `file_type=='bbcode'`; FA's file refresh is off under
+`extra['skip_content_refresh']`), so this was a new **orchestration + UI**, NOT net-new per-platform posting code.
+The detail panel is now an **editable form** (title/description/rating/characters/tags + 🏷️ TagPicker) →
+`PATCH /api/masterpieces/{name}` → `save_artwork_metadata` (writes `masterpiece.json`; editing canonical **default**
+tags preserves per-platform overrides via new `artwork_reader.read_raw_metadata`). **Sync-all**:
+`posting/manager.update_artwork` (artwork parallel of `update_story`, driven off `masterpiece_members`,
+**metadata-only** — `skip_content_refresh=True`, never re-uploads the image) calls `poster.edit` for `supports_edit`
+members; non-editable (Bluesky/e621/Itaku) are **skipped `post-only`**, never touched (§0-A1). Async
+`POST /api/masterpieces/{name}/sync`; the **↑ Sync to sites** button saves then pushes behind a **confirm**, reports a
+per-member result, and badges non-editable locations **post-only**. +5 tests (`test_masterpiece_sync.py`), `api.js` +2.
+**DEPLOY pending.** Next: **Phase 6** (Collections interop — `member_type='masterpiece'` in `collection_members` +
+`rollup_collection`, "Add to Collection" on the detail, `WorkPicker` masterpiece source). **UI-polish item 9
 (Platforms-in-Settings card grid) still re-queued** as its own careful pass.
+
+**Prior — 2.128.0 — Masterpieces Phase 4: publishing IS mastering + fresh create (post-only). DEPLOYED.**
+`post_artwork` auto-links a `masterpiece_member` on each successful post (`linked_via='publication'`, account carried)
+— a fresh master accumulates members as it publishes; idempotent + best-effort. **"＋ New Masterpiece"** on the grid
+→ the `#/artwork/new` uploader. **e621** added to `artwork_reader._ALL_POSTER_IDS`; **IG deliberately not** (needs a
+net-new `IGPoster` adapter — the artwork path can't post to IG). +2 tests.
 
 **Prior — 2.127.0 — Masterpieces Phase 3: promote flow + same-image linking (first write surface). DEPLOYED.**
 **"★ Master" on Gallery discovered tiles** → `POST /api/masterpieces {from:{…}}` → `promote_from_submission` (reuses

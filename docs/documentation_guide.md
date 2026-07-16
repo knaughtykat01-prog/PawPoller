@@ -6285,7 +6285,23 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   folder) becomes a mastered record with live members purely by publishing. **e621** is in
   `artwork_reader._ALL_POSTER_IDS` (a valid art target, wired in `_get_poster`); **Instagram is not** — IG posting
   lives only in the Posts module (`post_publisher`), not `post_artwork`/`_get_poster`, so an art-target IG needs a
-  net-new `IGPoster` adapter (deferred, like the Phase 5 artwork-`edit()` work).
+  net-new `IGPoster` adapter (deferred).
+- **Canonical edit + Sync-all (Phase 5, 2.129.0) — "edit once, push everywhere".** The per-platform `edit(external_id,
+  package)` methods turned out already metadata-oriented + content-type-agnostic (Weasyl metadata-only; IB reads
+  content only when `file_type=='bbcode'`; FA's file refresh is gated on `extra['skip_content_refresh']`), so Phase 5
+  is a new orchestration, not new posting code. **Edit:** `PATCH /api/masterpieces/{name}` whitelists title /
+  description / rating (general|mature|adult) / characters / tags → `artwork_reader.save_artwork_metadata`. Editing the
+  canonical **default** tags preserves real per-platform overrides — the route reads the un-cascaded file via new
+  `artwork_reader.read_raw_metadata(name)` (since `load_artwork` cascades `tags.default` onto every poster id). **Sync:**
+  `posting/manager.update_artwork(name, platforms=None, account_filter=None, extras=None)` mirrors `update_story` but is
+  driven off `masterpiece_members` (reaches promote/pHash-linked members, not just publications) and **metadata-only**
+  (`package.extra['skip_content_refresh']=True` — never re-uploads the image); it resolves each member's account
+  (`_resolve_account_id`), calls `poster.edit` for `supports_edit` platforms, and returns non-editable ones
+  (Bluesky/e621/Itaku) as `{skipped:True, reason:'post-only'}` — never touched (§0-A1). Async
+  `POST /api/masterpieces/{name}/sync` aggregates `{synced, skipped, failed, results}`. Frontend (`masterpieces.js`):
+  the Canonical record panel is an editable form (`_saveCanonical` → PATCH; `_openTagBrowse` → `window.TagPicker`); **↑
+  Sync to sites** (`_syncAll`) saves then pushes behind a `window.confirm`, reports a per-member summary, and the
+  Locations table badges non-editable platforms `post-only` (JS `_POST_ONLY` set mirrors the backend `supports_edit`).
 
 
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)
