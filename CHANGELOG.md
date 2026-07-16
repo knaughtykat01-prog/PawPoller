@@ -4,6 +4,33 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.130.0] - 2026-07-16 - Masterpieces Phase 6: a Masterpiece can join a Collection
+
+Seventh slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 6, §7) — the two orthogonal
+grouping axes finally connect **without duplicating each other**. A Masterpiece is *per-image* mastering; a Collection
+is *cross-type* bundling ("this piece + its companion story + the announcement posts"). Now a Masterpiece can be a
+Collection **member**, contributing its whole set of site-uploads to the Collection's pooled stats.
+
+- **New `masterpiece` member type** in `collection_members` (`member_ref` = the bare Masterpiece name; the type
+  disambiguates, so no `content_type:name` prefix). `collections_queries.rollup_collection` resolves it by folding the
+  Masterpiece's `masterpiece_members` locations into the Collection's pooled totals / merged tags / personas (each
+  tagged with `masterpiece_name`); `collection_member_pairs` includes them in the combined snapshot chart; and
+  `_collected_pairs` counts them so the auto-suggest engine never re-proposes an already-collected piece. Lazy import
+  of `masterpiece_queries` avoids the import cycle. `routes/collections_api._MEMBER_TYPES` gains `masterpiece`.
+- **"＋ Add to Collection"** on the Masterpiece detail header (`masterpieces.js`) — a `data-add-collection`
+  `data-mtype="masterpiece"` button picked up by the existing document-level Collections delegate (pick an existing
+  collection or create one), no new wiring.
+- **WorkPicker gains a `masterpiece` source** (`work_picker.js`) — a "Masterpieces" filter chip (its own chip, not
+  folded into "All", to avoid double-listing the artwork folders) fetching `GET /api/masterpieces`, so the Collections
+  "＋ Add member" browser can pick Masterpieces directly. Their `member_type`/`member_ref` pass straight through to
+  `addCollectionMember`.
+
+Collections stay cross-type; Masterpieces stay per-image — the §1.2 boundary holds. Tests:
+`test_masterpiece_collection_interop.py` +3 (member pools into the collection rollup; feeds the snapshot pairs;
+excluded from suggestions). Full suite green. `SITE_VERSION` → 2.130.0.
+
+---
+
 ## [2.129.0] - 2026-07-16 - Masterpieces Phase 5: edit the canonical record once, sync everywhere
 
 Sixth slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 5, §0-A1, §6.2) — the core promise:

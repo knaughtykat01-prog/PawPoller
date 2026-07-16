@@ -6302,6 +6302,19 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   the Canonical record panel is an editable form (`_saveCanonical` → PATCH; `_openTagBrowse` → `window.TagPicker`); **↑
   Sync to sites** (`_syncAll`) saves then pushes behind a `window.confirm`, reports a per-member summary, and the
   Locations table badges non-editable platforms `post-only` (JS `_POST_ONLY` set mirrors the backend `supports_edit`).
+- **Collections interop (Phase 6, 2.130.0).** A Masterpiece can be a Collection member — the two grouping axes connect
+  without duplicating (per-image mastering vs cross-type bundling; §1.2 boundary). `collection_members` gains
+  `member_type='masterpiece'` with `member_ref` = the **bare** Masterpiece name (the type disambiguates, unlike works'
+  `content_type:name`). `collections_queries.rollup_collection` resolves it by lazy-importing `masterpiece_queries`
+  (avoids the import cycle — `masterpiece_queries` imports this module at load) and folding every
+  `masterpiece_members` location into the Collection's pooled totals/tags/personas (tagged with `masterpiece_name`);
+  `collection_member_pairs` (snapshot chart) and `_collected_pairs` (suggestion exclusion) include them too;
+  `collections_api._MEMBER_TYPES` gains `masterpiece`. Frontend: **"＋ Add to Collection"** on the detail header is a
+  `data-add-collection data-mtype="masterpiece"` button caught by the existing document-level `collections.js`
+  delegate (no new wiring); `work_picker.js` gains a **Masterpieces** filter chip (`FILTERS.masterpiece`, `mp:true`,
+  fetching `GET /api/masterpieces` — kept out of "All" to avoid double-listing artwork folders) so the Collections
+  "＋ Add member" browser can pick Masterpieces, whose `member_type`/`member_ref` pass straight into
+  `addCollectionMember`.
 
 
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)

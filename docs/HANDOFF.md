@@ -1,22 +1,29 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-16
-**Current version (master):** 2.129.0 — **Masterpieces Phase 5: edit the canonical record once, sync everywhere.**
-Sixth slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 5, §0-A1, §6.2) — the core promise.
-**Finding that de-risked it:** the per-platform `edit()` methods are already metadata-oriented + content-type-agnostic
-(Weasyl metadata-only; IB skips content unless `file_type=='bbcode'`; FA's file refresh is off under
-`extra['skip_content_refresh']`), so this was a new **orchestration + UI**, NOT net-new per-platform posting code.
-The detail panel is now an **editable form** (title/description/rating/characters/tags + 🏷️ TagPicker) →
-`PATCH /api/masterpieces/{name}` → `save_artwork_metadata` (writes `masterpiece.json`; editing canonical **default**
-tags preserves per-platform overrides via new `artwork_reader.read_raw_metadata`). **Sync-all**:
-`posting/manager.update_artwork` (artwork parallel of `update_story`, driven off `masterpiece_members`,
-**metadata-only** — `skip_content_refresh=True`, never re-uploads the image) calls `poster.edit` for `supports_edit`
-members; non-editable (Bluesky/e621/Itaku) are **skipped `post-only`**, never touched (§0-A1). Async
-`POST /api/masterpieces/{name}/sync`; the **↑ Sync to sites** button saves then pushes behind a **confirm**, reports a
-per-member result, and badges non-editable locations **post-only**. +5 tests (`test_masterpiece_sync.py`), `api.js` +2.
-**DEPLOY pending.** Next: **Phase 6** (Collections interop — `member_type='masterpiece'` in `collection_members` +
-`rollup_collection`, "Add to Collection" on the detail, `WorkPicker` masterpiece source). **UI-polish item 9
-(Platforms-in-Settings card grid) still re-queued** as its own careful pass.
+**Current version (master):** 2.130.0 — **Masterpieces Phase 6: a Masterpiece can join a Collection.**
+Seventh slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 6, §7) — the two grouping axes
+connect without duplicating: a Masterpiece is *per-image* mastering, a Collection is *cross-type* bundling, and now a
+Masterpiece can be a Collection **member** contributing its whole set of site-uploads. New **`masterpiece` member type**
+in `collection_members` (`member_ref` = bare Masterpiece name); `collections_queries.rollup_collection` folds the
+Masterpiece's `masterpiece_members` locations into the Collection's pooled totals/tags/personas (each tagged
+`masterpiece_name`); `collection_member_pairs` + `_collected_pairs` include them (snapshot chart + suggestion
+exclusion). Lazy import of `masterpiece_queries` avoids the cycle; `collections_api._MEMBER_TYPES` gains `masterpiece`.
+**"＋ Add to Collection"** on the Masterpiece detail (a `data-add-collection` button handled by the existing
+document-level Collections delegate — no new wiring). **WorkPicker** gains a **Masterpieces** source chip (its own
+chip, not in "All", to avoid double-listing the folders) so the Collections "＋ Add member" browser can pick
+Masterpieces. Collections stay cross-type; Masterpieces stay per-image (§1.2 boundary holds). +3 tests
+(`test_masterpiece_collection_interop.py`). **DEPLOY pending.** Next: **Phase 7** (the last slice — `submission_links`
+→ Masterpieces migration, re-point the auto-suggest engine, retire the old `artwork.js` `_foldMasters`/"Unify" masters
+UI; keep `/api/links` dormant until proven). **UI-polish item 9 (Platforms-in-Settings card grid) still re-queued.**
+
+**Prior — 2.129.0 — Masterpieces Phase 5: edit the canonical record once, sync everywhere. DEPLOYED.**
+Editable canonical form (title/description/rating/characters/tags + TagPicker) → `PATCH /api/masterpieces/{name}` →
+`save_artwork_metadata` (preserves per-platform tag overrides via new `read_raw_metadata`). **Sync-all**:
+`manager.update_artwork` (mirrors `update_story`, off `masterpiece_members`, metadata-only — `skip_content_refresh`)
+edits `supports_edit` members; Bluesky/e621/Itaku are skipped **post-only**. Async `POST /{name}/sync`; **↑ Sync to
+sites** saves then pushes behind a confirm. Finding: per-platform `edit()` already handle artwork metadata → new
+orchestration, not net-new posting code. +5 tests.
 
 **Prior — 2.128.0 — Masterpieces Phase 4: publishing IS mastering + fresh create (post-only). DEPLOYED.**
 `post_artwork` auto-links a `masterpiece_member` on each successful post (`linked_via='publication'`, account carried)

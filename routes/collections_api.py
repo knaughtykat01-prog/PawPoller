@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 collections_router = APIRouter(prefix="/api/collections", tags=["collections"])
 
-_MEMBER_TYPES = {"work", "submission", "post"}
+_MEMBER_TYPES = {"work", "submission", "post", "masterpiece"}
 
 
 @collections_router.get("")

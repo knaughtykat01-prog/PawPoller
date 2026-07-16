@@ -25,10 +25,13 @@
 
     // filter → {type for /api/works, includeDiscovered}
     const FILTERS = {
-        all:        { label: 'All',        type: 'all',     disc: true },
-        story:      { label: 'Stories',    type: 'story',   disc: false },
-        artwork:    { label: 'Artwork',    type: 'artwork', disc: false },
-        discovered: { label: 'Discovered', type: null,      disc: true },
+        all:         { label: 'All',          type: 'all',     disc: true },
+        story:       { label: 'Stories',      type: 'story',   disc: false },
+        artwork:     { label: 'Artwork',      type: 'artwork', disc: false },
+        // Masterpieces on their own chip — NOT folded into 'all', since they share
+        // the same folders as artwork works and would double-list.
+        masterpiece: { label: 'Masterpieces', type: null,      disc: false, mp: true },
+        discovered:  { label: 'Discovered',   type: null,      disc: true },
     };
 
     async function fetchItems(query, filterKey) {
@@ -56,6 +59,26 @@
                     title,
                     badge: d.platform,
                     thumb: d.thumbnail_url || '',
+                });
+            });
+        }
+        if (f.mp) {
+            // Masterpieces as pickable Collection members (member_ref = bare name;
+            // member_type disambiguates, no colon prefix). Cover = canonical image.
+            const r = await API.getMasterpieces().catch(() => ({ masterpieces: [] }));
+            const q = (query || '').toLowerCase();
+            (r.masterpieces || []).forEach(m => {
+                const title = m.title || m.name;
+                if (q && !(title.toLowerCase().includes(q) || (m.name || '').toLowerCase().includes(q))) return;
+                const thumb = m.image
+                    ? `/api/artwork/image?name=${encodeURIComponent(m.name)}&file=${encodeURIComponent(m.image)}`
+                    : ((m.summary && m.summary.cover_thumb) || '');
+                items.push({
+                    member_type: 'masterpiece',
+                    member_ref: m.name,
+                    title,
+                    badge: 'masterpiece',
+                    thumb,
                 });
             });
         }

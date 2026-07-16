@@ -210,6 +210,19 @@ def rollup_collection(conn: sqlite3.Connection, cid: int) -> dict | None:
                     loc["work_name"] = name
                     loc["work_type"] = ct
                     locations.append(loc)
+        elif mtype == "masterpiece":
+            # A Masterpiece contributes its WHOLE set of site-uploads to the
+            # Collection (spec §7) — resolved live from masterpiece_members so the
+            # pooled stats/tags/personas stay current. Lazy import avoids a cycle
+            # (masterpiece_queries imports this module at load time).
+            from database import masterpiece_queries
+            for mm in masterpiece_queries.get_members(conn, mref):
+                loc = _location_from_submission(
+                    conn, mm["platform"], mm["submission_id"],
+                    account_id=mm.get("account_id"), source="masterpiece")
+                if loc:
+                    loc["masterpiece_name"] = mref
+                    locations.append(loc)
         # 'post' members: resolved lightly for now (no per-platform stats table);
         # surfaced by the curation UI. Left out of stats rollup intentionally.
 
@@ -259,6 +272,9 @@ def collection_member_pairs(conn: sqlite3.Connection, cid: int) -> list[tuple]:
                 ext = p.get("external_id")
                 if p.get("platform") and ext:
                     pairs.append((p["platform"], str(ext)))
+        elif mt == "masterpiece":
+            from database import masterpiece_queries
+            pairs.extend(masterpiece_queries.member_pairs(conn, mref))
     return pairs
 
 
@@ -284,6 +300,13 @@ def _collected_pairs(conn: sqlite3.Connection) -> set:
                     ext = p.get("external_id")
                     if p.get("platform") and ext:
                         existing.add((p["platform"], str(ext)))
+            except Exception:
+                pass
+        elif mt == "masterpiece":
+            try:
+                from database import masterpiece_queries
+                for plat, sid in masterpiece_queries.member_pairs(conn, mref):
+                    existing.add((plat, str(sid)))
             except Exception:
                 pass
     return existing

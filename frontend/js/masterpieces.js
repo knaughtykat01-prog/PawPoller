@@ -251,7 +251,10 @@ window.Masterpieces = {
                 <div class="mp-head-info">
                     <div class="mp-title">${this.esc(m.title || name)}</div>
                     <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">${rating}
-                        ${personas ? `<span class="mp-personas">${personas}</span>` : ''}</div>
+                        ${personas ? `<span class="mp-personas">${personas}</span>` : ''}
+                        <button class="btn btn-sm" data-add-collection data-mtype="masterpiece"
+                            data-mref="${this.esc(name)}" data-label="${this.esc(m.title || name)}"
+                            title="Bundle this piece (with its companion story / announcement posts) into a Collection">＋ Add to Collection</button></div>
                     <div class="mp-headline">
                         <div class="mp-headline-item"><span class="mp-headline-num">${this._fmt(t.views)}</span><span class="mp-headline-label">Views</span></div>
                         <div class="mp-headline-item"><span class="mp-headline-num">${this._fmt(t.favorites)}</span><span class="mp-headline-label">Favorites</span></div>
