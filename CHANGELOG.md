@@ -4,6 +4,30 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.128.0] - 2026-07-16 - Masterpieces Phase 4: publishing IS mastering + fresh create
+
+Fifth slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 4, §3.2, §6) — publish-to-master
+integration + a fresh-create entry point. Post-only (editing canonical metadata + Sync-all remain Phase 5).
+
+- **Publishing IS mastering.** `posting/manager.post_artwork` now, on **each successful post**, upserts a
+  `masterpiece_member` for the folder (`role='crosspost'`, `linked_via='publication'`, `account_id` carried from the
+  post) — the artwork folder IS the Masterpiece (Phase 0), so a fresh master accumulates its members automatically as
+  it's published, no manual linking. Idempotent (`INSERT OR IGNORE` + `ensure_indexed`) and best-effort (a link
+  failure never breaks an already-recorded post). Failed/validation-rejected posts link nothing.
+- **"＋ New Masterpiece"** entry point on the Masterpieces grid in Library (`masterpieces.js`) → the artwork uploader
+  (`#/artwork/new`), which already writes a `masterpiece.json` folder (Phase 0) and publishes via `post_artwork` — so
+  create-and-publish now yields a mastered record with live members end-to-end.
+- **e621 is a valid Masterpiece target.** Added to `artwork_reader._ALL_POSTER_IDS` (the default-tag cascade) — e621
+  is a full art poster wired into `manager._get_poster` (2.118.0). **Instagram is deliberately NOT added**: IG posting
+  exists only via the Posts module (`post_publisher`), not the artwork `post_artwork`/`_get_poster` path, so targeting
+  it needs a net-new `IGPoster` adapter (tracked separately, like the Phase 5 artwork-edit work) — a correction to the
+  spec's optimistic "IG posting already exists" note.
+
+Tests: `test_integration_artwork.py` +2 (successful post auto-links a `publication` member + adopts the index; failed
+post links nothing). Full suite green. `SITE_VERSION` → 2.128.0.
+
+---
+
 ## [2.127.0] - 2026-07-16 - Masterpieces Phase 3: promote flow + same-image linking
 
 Fourth slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 3, §3.1) — the **first write

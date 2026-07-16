@@ -32,8 +32,13 @@ IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
 
 # Every poster ID the Artwork hub targets — used to cascade default tags to any
 # platform without an explicit list. These are exactly the image-capable
-# platforms; the fiction-only sites (ao3/sqw/wp) don't take image submissions.
-_ALL_POSTER_IDS = ["ib", "fa", "ws", "sf", "da", "ik", "bsky"]
+# platforms wired into manager._get_poster; the fiction-only sites (ao3/sqw/wp)
+# don't take image submissions. e621 is a full art poster (2.118.0, ≥4 tags) and
+# a valid Masterpiece target (Masterpieces Phase 4). Instagram is deliberately
+# NOT here: IG posting exists only via the Posts module (post_publisher), not the
+# artwork post_artwork/_get_poster path, so targeting it needs a net-new IGPoster
+# adapter — tracked separately, not wired in Phase 4.
+_ALL_POSTER_IDS = ["ib", "fa", "ws", "sf", "da", "ik", "bsky", "e621"]
 
 # Metadata filename. The Masterpiece era (Phase 0) writes `masterpiece.json`;
 # legacy folders have `artwork.json`. `masterpiece.json` is a back-compatible

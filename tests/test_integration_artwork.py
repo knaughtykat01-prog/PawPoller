@@ -95,6 +95,56 @@ async def test_post_artwork_pipeline(artwork_archive, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_post_artwork_auto_links_masterpiece_member(artwork_archive, monkeypatch):
+    """Publishing IS mastering (Phase 4): a successful artwork post auto-adds a
+    masterpiece_member (linked_via='publication') for the folder, so a fresh
+    Masterpiece accumulates its members as it's posted. A failed post does not."""
+    from database import masterpiece_queries as mq
+
+    name = artwork_reader.create_artwork(
+        title="Linked Art", image_filename="pic.png", image_bytes=b"\x89PNG fake",
+        tags={"default": ["a", "b", "c", "d"]})
+    stub = _StubPoster()
+    monkeypatch.setattr(manager, "_get_poster", lambda platform, account_id=None: stub)
+
+    await manager.post_artwork(name, ["ib"])
+
+    conn = get_connection()
+    try:
+        members = mq.get_members(conn, name)
+        assert len(members) == 1
+        m = members[0]
+        assert (m["platform"], m["submission_id"]) == ("ib", "999")   # stub external_id
+        assert m["linked_via"] == "publication" and m["role"] == "crosspost"
+        # The folder was adopted into the masterpieces index too.
+        assert conn.execute("SELECT 1 FROM masterpieces WHERE name = ?", (name,)).fetchone()
+    finally:
+        conn.close()
+
+
+@pytest.mark.asyncio
+async def test_failed_post_does_not_link_member(artwork_archive, monkeypatch):
+    """A failed/validation-rejected post leaves no masterpiece_member."""
+    from database import masterpiece_queries as mq
+
+    name = artwork_reader.create_artwork(
+        title="Unlinked", image_filename="x.png", image_bytes=b"x", tags={"default": ["one"]})
+
+    class _Rejecting(_StubPoster):
+        def validate(self, package):
+            return ["needs more tags"]
+
+    monkeypatch.setattr(manager, "_get_poster", lambda platform, account_id=None: _Rejecting())
+    await manager.post_artwork(name, ["ib"])
+
+    conn = get_connection()
+    try:
+        assert mq.get_members(conn, name) == []
+    finally:
+        conn.close()
+
+
+@pytest.mark.asyncio
 async def test_post_artwork_validation_failure(artwork_archive, monkeypatch):
     """A poster reporting validation errors yields a failed result and no post."""
     name = artwork_reader.create_artwork(

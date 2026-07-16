@@ -34,6 +34,9 @@
 }
 .mp-cover-img { width: 100%; height: 100%; object-fit: cover; }
 .mp-cover-ph { font-size: 2.4rem; opacity: .5; }
+
+/* Grid toolbar (＋ New Masterpiece) above the cards */
+.mp-gridbar { display: flex; justify-content: flex-end; margin: 0 0 1rem; }
 .mp-body { padding: .7rem .8rem .8rem; display: flex; flex-direction: column; gap: .35rem; }
 .mp-name { font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mp-meta { font-size: .82rem; display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; color: var(--text-secondary); }

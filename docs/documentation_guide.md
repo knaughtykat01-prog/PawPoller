@@ -6277,6 +6277,15 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   strip (`＋ Link` = `API.addMasterpieceMember`, `↻ Scan` = `API.scanImageHashes` then reload) and an **✕ unlink** per
   location (`API.removeMasterpieceMember`); both re-render the detail to re-pool stats. Editing the canonical metadata
   + Sync-all remain Phase 5.
+- **Publishing IS mastering (Phase 4, 2.128.0).** `posting/manager.post_artwork` upserts a `masterpiece_member` on
+  **each successful post** (`role='crosspost'`, `linked_via='publication'`, `account_id` from the post) right after
+  it records the publication — idempotent + best-effort (wrapped so a link failure never breaks a recorded post). So
+  every artwork publish (the existing hub AND a fresh Masterpiece) auto-accumulates members; a fresh "＋ New
+  Masterpiece" (button on the Masterpieces grid → the `#/artwork/new` uploader, which writes a `masterpiece.json`
+  folder) becomes a mastered record with live members purely by publishing. **e621** is in
+  `artwork_reader._ALL_POSTER_IDS` (a valid art target, wired in `_get_poster`); **Instagram is not** — IG posting
+  lives only in the Posts module (`post_publisher`), not `post_artwork`/`_get_poster`, so an art-target IG needs a
+  net-new `IGPoster` adapter (deferred, like the Phase 5 artwork-`edit()` work).
 
 
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)

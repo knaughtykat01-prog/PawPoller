@@ -1,21 +1,27 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-16
-**Current version (master):** 2.127.0 — **Masterpieces Phase 3: promote flow + same-image linking (first write surface).**
-Fourth slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 3, §3.1). **"★ Master" on Gallery
-discovered tiles** (`artwork.js`) → `POST /api/masterpieces {from:{platform,submission_id}}` → `promote_from_submission`
-reuses `artwork_importer.import_artwork` (full-res, idempotent), seeds the source as the **primary** member (carrying
-`account_id` for persona correctness), computes + stores the canonical image's **pHash** (`image_hash.dhash_from_path`)
-in `image_hashes` + on `masterpiece.json`, then opens the detail view. The detail view is now **interactive**: a
-**"Link the same image elsewhere"** section (`GET /{name}/suggestions` → `masterpiece_queries.suggestions`: anchored
-native dHash, seed from members' + canonical hashes, scan `image_hashes` within `HAMMING_THRESHOLD=8`, exclude members)
-renders candidate cards with one-click **＋ Link**; a **↻ Scan for matches** button warms the hash store (reuses
-`POST /api/collections/hash-scan`); each location has an **✕ unlink**. Attach (`POST /{name}/members`, account defaulted
-from the source row) / detach (`DELETE …/members`) re-pool stats live. `api.js` +4 wrappers; document-level click
-delegate (CSP-safe). Editing canonical metadata + Sync-all remain **Phase 5**. Validated end-to-end (promote → primary
-→ suggestion 100% → attach pools → excludes → detach). +4 tests (`test_masterpiece_promote.py`). **DEPLOY pending.**
-Next: **Phase 4** (fresh "＋ New Masterpiece" + publish-from-Create auto-adding members; IG+e621 into `_ALL_POSTER_IDS`).
-**UI-polish item 9 (Platforms-in-Settings card grid) still re-queued** as its own careful pass.
+**Current version (master):** 2.128.0 — **Masterpieces Phase 4: publishing IS mastering + fresh create (post-only).**
+Fifth slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 4, §3.2, §6). **`post_artwork` now
+auto-links a member on each successful post** (`role='crosspost'`, `linked_via='publication'`, `account_id` carried) —
+the artwork folder IS the Masterpiece (Phase 0), so a fresh master accumulates members automatically as it publishes,
+no manual linking; idempotent + best-effort (a link failure never breaks a recorded post). **"＋ New Masterpiece"** on
+the Masterpieces grid (`masterpieces.js`) routes to the artwork uploader (`#/artwork/new`), which already writes a
+`masterpiece.json` folder and publishes via `post_artwork` → create-and-publish yields a mastered record with live
+members end-to-end. **e621 added to `artwork_reader._ALL_POSTER_IDS`** (a full art poster wired in `_get_poster`);
+**Instagram deliberately NOT added** — IG posting exists only in the Posts module (`post_publisher`), not the artwork
+`post_artwork`/`_get_poster` path, so it needs a net-new `IGPoster` adapter (tracked separately; a correction to the
+spec's optimistic note). Post-only — editing canonical metadata + **Sync-all remain Phase 5**. +2 tests
+(`test_integration_artwork.py`). **DEPLOY pending.** Next: **Phase 5** (net-new per-platform artwork `edit()` +
+`manager.update_artwork` + Masterpiece "Sync all" with drift/confirm; FA/Weasyl/IB first). **UI-polish item 9
+(Platforms-in-Settings card grid) still re-queued** as its own careful pass.
+
+**Prior — 2.127.0 — Masterpieces Phase 3: promote flow + same-image linking (first write surface). DEPLOYED.**
+**"★ Master" on Gallery discovered tiles** → `POST /api/masterpieces {from:{…}}` → `promote_from_submission` (reuses
+`artwork_importer.import_artwork`, idempotent), seeds the source as **primary** member (account carried), stores the
+canonical **pHash**. Detail view interactive: **"Link the same image elsewhere"** suggestions (`GET /{name}/suggestions`
+→ anchored native dHash), **＋ Link** / **↻ Scan** (`hash-scan`) / **✕ unlink**; attach (`POST /{name}/members`) /
+detach re-pool live. `api.js` +4; document-level click delegate. +4 tests (`test_masterpiece_promote.py`).
 
 **Prior — 2.126.0 — Masterpieces Phase 2: managed grid in Library + read-only detail view. DEPLOYED.**
 First user-visible surface (frontend-only, over the Phase 1 read API). Library shelf (`bookshelf.js`) gains a 4th type

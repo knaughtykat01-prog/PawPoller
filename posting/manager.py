@@ -440,6 +440,23 @@ async def post_artwork(
                 error_message=result.error,
                 duration_seconds=result.duration_seconds,
             )
+            # Publishing IS mastering (spec §6.1): the artwork folder IS the
+            # Masterpiece (Phase 0), so a successful upload becomes a member with
+            # linked_via='publication'. This is what makes a fresh "New Masterpiece"
+            # accumulate its members automatically as it is posted. Idempotent
+            # (add_member = INSERT OR IGNORE + ensure_indexed); best-effort so a
+            # membership-link failure never breaks an already-recorded post.
+            if result.success and result.external_id:
+                try:
+                    from database import masterpiece_queries
+                    masterpiece_queries.add_member(
+                        conn, artwork_name, platform, result.external_id,
+                        account_id=account_id, role="crosspost",
+                        linked_via="publication")
+                    conn.commit()
+                except Exception:
+                    logger.warning("Masterpiece member link failed for %s/%s",
+                                   artwork_name, platform, exc_info=True)
         finally:
             conn.close()
 

@@ -103,15 +103,19 @@ window.Masterpieces = {
             (((b.summary && b.summary.platforms) || []).length) - (((a.summary && a.summary.platforms) || []).length));
         else list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
 
+        const newBtn = `<a class="btn btn-primary btn-sm" href="#/artwork/new"
+            title="Upload a new image, describe it once, and publish it across sites">＋ New Masterpiece</a>`;
         if (!list.length) {
             gridEl.className = '';
-            gridEl.innerHTML = `<div class="empty-state"><h3>No masterpieces yet</h3>
-                <p class="muted">Every artwork folder is a masterpiece. Promote a gallery image to link its
-                copies across sites and pool their stats — coming soon.</p></div>`;
+            gridEl.innerHTML = `<div class="mp-gridbar">${newBtn}</div>
+                <div class="empty-state"><h3>No masterpieces yet</h3>
+                <p class="muted">Every artwork folder is a masterpiece. Create one, or promote a gallery image
+                (★ Master) to link its copies across sites and pool their stats.</p></div>`;
             return;
         }
-        gridEl.className = 'mp-grid';
-        gridEl.innerHTML = list.map(m => this._card(m)).join('');
+        gridEl.className = '';
+        gridEl.innerHTML = `<div class="mp-gridbar">${newBtn}</div>
+            <div class="mp-grid">${list.map(m => this._card(m)).join('')}</div>`;
     },
 
     _cover(m, cls) {
