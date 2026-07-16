@@ -1,5 +1,7 @@
 """Artwork archive reader tests — create / load / build_artwork_package."""
 
+import json
+
 import pytest
 
 from posting import artwork_reader
@@ -35,7 +37,9 @@ def test_create_and_load_artwork(artwork_archive):
     assert art.tags_by_platform["fa"] == ["autumn", "figure_study"]
     assert art.tags_by_platform["ib"] == ["autumn", "study"]
     assert (artwork_archive / name / "study.png").is_file()
-    assert (artwork_archive / name / "artwork.json").is_file()
+    # Phase 0: new folders are written as masterpiece.json (not the legacy name).
+    assert (artwork_archive / name / "masterpiece.json").is_file()
+    assert not (artwork_archive / name / "artwork.json").is_file()
 
 
 def test_build_artwork_package(artwork_archive):
@@ -86,3 +90,56 @@ def test_list_artworks_newest_first(artwork_archive):
 def test_load_artwork_traversal_guard(artwork_archive):
     with pytest.raises(FileNotFoundError):
         artwork_reader.load_artwork("../../etc/passwd")
+
+
+# ── Phase 0: masterpiece.json back-compat (legacy artwork.json still works) ──
+
+def _write_legacy(folder, meta):
+    folder.mkdir()
+    (folder / "img.png").write_bytes(b"x")
+    (folder / "artwork.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def test_reads_legacy_artwork_json(artwork_archive):
+    # A pre-Phase-0 folder has only artwork.json — still fully readable.
+    _write_legacy(artwork_archive / "Legacy_Piece", {
+        "title": "Legacy Piece", "rating": "adult", "image": "img.png",
+        "tags": {"default": ["old"]}, "platforms": ["fa"],
+        "import_source": {"platform": "fa", "submission_id": "123"},
+    })
+    assert "Legacy_Piece" in {i["name"] for i in artwork_reader.list_artworks()}
+    art = artwork_reader.load_artwork("Legacy_Piece")
+    assert art.title == "Legacy Piece"
+    assert art.tags_by_platform["fa"] == ["old"]   # default cascaded
+
+
+def test_list_exposes_import_source(artwork_archive):
+    # find_existing() relies on import_source coming through list_artworks().
+    _write_legacy(artwork_archive / "Sourced", {
+        "title": "Sourced", "image": "img.png",
+        "import_source": {"platform": "ib", "submission_id": "999"},
+    })
+    item = next(i for i in artwork_reader.list_artworks() if i["name"] == "Sourced")
+    assert item["import_source"] == {"platform": "ib", "submission_id": "999"}
+
+
+def test_save_migrates_legacy_to_masterpiece(artwork_archive):
+    folder = artwork_archive / "Migrate_Me"
+    _write_legacy(folder, {"title": "Old", "image": "img.png"})
+
+    artwork_reader.save_artwork_metadata("Migrate_Me", {"title": "New"})
+    # Migrate-on-edit: masterpiece.json now exists, legacy artwork.json is gone,
+    # and the merged content survives.
+    assert (folder / "masterpiece.json").is_file()
+    assert not (folder / "artwork.json").is_file()
+    assert artwork_reader.load_artwork("Migrate_Me").title == "New"
+
+
+def test_characters_round_trip(artwork_archive):
+    name = artwork_reader.create_artwork(
+        title="Char Test", image_filename="a.png", image_bytes=b"1",
+        characters=["char_a", "char_b"])
+    art = artwork_reader.load_artwork(name)
+    assert art.characters == ["char_a", "char_b"]
+    listed = next(i for i in artwork_reader.list_artworks() if i["name"] == name)
+    assert listed["characters"] == ["char_a", "char_b"]

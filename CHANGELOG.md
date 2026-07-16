@@ -4,6 +4,28 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.124.0] - 2026-07-16 - Masterpieces Phase 0: masterpiece.json (back-compat artwork rename)
+
+First slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 0) — a **no-behaviour-change**
+foundation that renames the per-image master file with full back-compat. A Masterpiece is the image analog of a
+story's `MASTER.md`; Phase 0 lays the on-disk + index groundwork, nothing user-visible yet.
+
+- **`artwork_reader` reads BOTH `masterpiece.json` and legacy `artwork.json`** (new `_meta_path` prefers the new
+  file). `masterpiece.json` is a strict superset, so an existing folder is a valid Masterpiece with no members yet.
+- **Writers emit `masterpiece.json`.** `create_artwork` writes the new filename; `save_artwork_metadata` migrates
+  a folder on first edit (writes `masterpiece.json`, retires the legacy `artwork.json` — nothing lost).
+- **New `characters` field** (parity with `story.json`) — read, written, and surfaced in `list_artworks`.
+- **`masterpieces` index table** (`database/db.py`) — a thin, **name-keyed** index (spec §0-A2), additive
+  `CREATE TABLE IF NOT EXISTS`. Empty for now; cross-site membership + rollup land in Phase 1.
+- **`artwork_importer.find_existing`** no longer reads `artwork.json` directly — it uses the `import_source` now
+  surfaced by `list_artworks`, so it works regardless of which metadata file a folder has.
+
+No API/schema-visible change; existing artwork folders keep working untouched. Tests: `test_artwork_reader.py` +4
+(legacy read, `import_source` surfacing, migrate-on-edit, `characters` round-trip). Full suite green.
+`SITE_VERSION` → 2.124.0.
+
+---
+
 ## [2.123.0] - 2026-07-16 - Artwork tag browser matches the story tag browser
 
 UI-polish track (item 1 of 5, following the 2.122.0 bug sweep). The artwork uploader's "Browse tag library"

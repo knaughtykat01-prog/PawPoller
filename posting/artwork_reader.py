@@ -35,6 +35,27 @@ IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
 # platforms; the fiction-only sites (ao3/sqw/wp) don't take image submissions.
 _ALL_POSTER_IDS = ["ib", "fa", "ws", "sf", "da", "ik", "bsky"]
 
+# Metadata filename. The Masterpiece era (Phase 0) writes `masterpiece.json`;
+# legacy folders have `artwork.json`. `masterpiece.json` is a back-compatible
+# SUPERSET of `artwork.json`, so a folder with only the legacy file is a valid
+# Masterpiece with no members yet. Readers accept BOTH (prefer the new file);
+# writers emit the new file and retire the legacy one on first edit.
+_META_FILE = "masterpiece.json"
+_LEGACY_META_FILE = "artwork.json"
+
+
+def _meta_path(folder: Path) -> Path | None:
+    """Metadata file for an artwork/Masterpiece folder — prefers
+    ``masterpiece.json``, falls back to legacy ``artwork.json``; ``None`` if
+    neither exists."""
+    new = folder / _META_FILE
+    if new.is_file():
+        return new
+    legacy = folder / _LEGACY_META_FILE
+    if legacy.is_file():
+        return legacy
+    return None
+
 
 def get_artwork_archive_path() -> Path:
     """Get the artwork archive root, configurable via settings.
@@ -74,6 +95,7 @@ class ArtworkInfo:
     descriptions_by_platform: dict[str, str] = field(default_factory=dict)
     categories_by_platform: dict[str, dict] = field(default_factory=dict)
     platforms: list[str] = field(default_factory=list)   # target platforms
+    characters: list[str] = field(default_factory=list)  # canonical characters (parity with story.json)
     created_at: str = ""
 
     @property
@@ -94,13 +116,13 @@ def list_artworks() -> list[dict]:
     for entry in sorted(archive.iterdir()):
         if not entry.is_dir() or entry.name.startswith("."):
             continue
-        meta_path = entry / "artwork.json"
-        if not meta_path.is_file():
+        meta_path = _meta_path(entry)
+        if meta_path is None:
             continue
         try:
             data = json.loads(meta_path.read_text(encoding="utf-8"))
         except Exception as e:
-            logger.warning("Failed to read artwork.json for %s: %s", entry.name, e)
+            logger.warning("Failed to read %s for %s: %s", meta_path.name, entry.name, e)
             continue
         items.append({
             "name": entry.name,
@@ -111,7 +133,9 @@ def list_artworks() -> list[dict]:
             "image": data.get("image", ""),
             "thumbnail": data.get("thumbnail", ""),
             "tags": data.get("tags", {}),
+            "characters": data.get("characters", []),
             "platforms": data.get("platforms", []),
+            "import_source": data.get("import_source", {}),
             "created_at": data.get("created_at", ""),
         })
     # Newest first (created_at is an ISO-ish string; empty sorts last).
@@ -134,9 +158,9 @@ def load_artwork(name: str) -> ArtworkInfo:
         raise FileNotFoundError(f"Artwork folder not found: {name}") from None
     if not candidate.is_dir():
         raise FileNotFoundError(f"Artwork folder not found: {candidate}")
-    meta_path = candidate / "artwork.json"
-    if not meta_path.is_file():
-        raise FileNotFoundError(f"artwork.json not found for: {name}")
+    meta_path = _meta_path(candidate)
+    if meta_path is None:
+        raise FileNotFoundError(f"masterpiece.json / artwork.json not found for: {name}")
 
     data = json.loads(meta_path.read_text(encoding="utf-8"))
 
@@ -161,6 +185,7 @@ def load_artwork(name: str) -> ArtworkInfo:
         descriptions_by_platform=data.get("descriptions", {}),
         categories_by_platform=data.get("categories", {}),
         platforms=data.get("platforms", []),
+        characters=list(data.get("characters", []) or []),
         created_at=data.get("created_at", ""),
     )
 
@@ -271,11 +296,12 @@ def create_artwork(
     descriptions: dict | None = None,
     categories: dict | None = None,
     platforms: list[str] | None = None,
+    characters: list[str] | None = None,
     thumbnail_filename: str | None = None,
     thumbnail_bytes: bytes | None = None,
     source: dict | None = None,
 ) -> str:
-    """Create a new artwork folder (image + artwork.json). Returns its name.
+    """Create a new artwork folder (image + masterpiece.json). Returns its name.
 
     Used by both the browser-upload endpoint (bytes from an UploadFile) and the
     desktop create-from-local-path endpoint (bytes read from the chosen file),
@@ -305,22 +331,36 @@ def create_artwork(
         "titles": titles or {},
         "descriptions": descriptions or {},
         "categories": categories or {},
+        "characters": characters or [],
         "platforms": platforms or [],
         "import_source": source or {},
         "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
     }
-    (folder / "artwork.json").write_text(
+    (folder / _META_FILE).write_text(
         json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
-    logger.info("Created artwork %s (%s)", folder.name, image_name)
+    logger.info("Created masterpiece %s (%s)", folder.name, image_name)
     return folder.name
 
 
 def save_artwork_metadata(name: str, updates: dict) -> ArtworkInfo:
-    """Merge updates into an existing artwork.json (for the edit flow)."""
+    """Merge updates into an existing folder's metadata (the edit flow).
+
+    Reads whichever metadata file exists, merges, and writes forward as
+    ``masterpiece.json`` — retiring a legacy ``artwork.json`` so the folder keeps
+    a single source of truth (migrate-on-edit; Phase 0). ``masterpiece.json`` is
+    a strict superset, so nothing is lost.
+    """
     artwork = load_artwork(name)
-    meta_path = artwork.path / "artwork.json"
-    data = json.loads(meta_path.read_text(encoding="utf-8"))
+    src_path = _meta_path(artwork.path)
+    data = json.loads(src_path.read_text(encoding="utf-8")) if src_path else {}
     data.update(updates)
-    meta_path.write_text(
+    new_path = artwork.path / _META_FILE
+    new_path.write_text(
         json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    legacy = artwork.path / _LEGACY_META_FILE
+    if legacy.is_file() and legacy != new_path:
+        try:
+            legacy.unlink()
+        except OSError:
+            logger.warning("Could not remove legacy artwork.json for %s", name)
     return load_artwork(name)

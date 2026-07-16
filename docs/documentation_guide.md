@@ -5980,12 +5980,19 @@ Every default is `"story"`, so the existing story flow is byte-for-byte unchange
 `posting/artwork_reader.py` (mirrors `story_reader.py`): one folder per artwork
 under `get_artwork_archive_path()` (setting `artwork_archive_path` → Docker
 `/app/data/artwork` on the existing persistent volume → desktop
-`…/m_x/Archives/Artwork`). Each folder has the image + an `artwork.json`
-(`title/description/author/rating/image/thumbnail` + per-platform
-`tags/titles/descriptions/categories` maps). `create_artwork` (used by both
-upload paths), `load_artwork` (traversal-guarded), and `build_artwork_package`
+`…/m_x/Archives/Artwork`). Each folder has the image + a **`masterpiece.json`**
+(`title/description/author/rating/characters/image/thumbnail` + per-platform
+`tags/titles/descriptions/categories` maps). **Back-compat (Masterpieces Phase 0,
+2.124.0):** the reader accepts BOTH `masterpiece.json` and the legacy
+`artwork.json` via `_meta_path` (prefers the new; the new file is a strict
+superset), writers emit `masterpiece.json`, and `save_artwork_metadata` migrates
+a folder to it on first edit. `create_artwork` (used by both upload paths),
+`load_artwork` (traversal-guarded), and `build_artwork_package`
 → a `StoryUploadPackage` (chapter 0, image `file_path`, per-platform cascade,
-`extra` = the platform's category map).
+`extra` = the platform's category map). A folder is the on-disk half of a
+**Masterpiece** (the master record for one image; see
+`docs/specs/masterpieces.md`); the name-keyed `masterpieces` index table +
+`masterpiece_members` (Phase 1) are the relational half.
 
 `manager.post_artwork(artwork_name, platforms, account_ids, extras)` is the
 parallel of `post_story`: per platform it builds the image package, validates,

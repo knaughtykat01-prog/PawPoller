@@ -688,6 +688,22 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             );
         """)
 
+    # ── Masterpiece index (Masterpieces Phase 0) ────────────────
+    # A Masterpiece is the master record for ONE image — the image analog of a
+    # story's MASTER.md. Its canonical metadata lives on disk as masterpiece.json
+    # (see posting/artwork_reader.py); this is a thin, NAME-KEYED index (spec
+    # docs/specs/masterpieces.md §0-A2) for fast listing + migration provenance,
+    # NOT the source of truth. Cross-site membership (which uploads are the same
+    # image) is the separate masterpiece_members table added in Phase 1.
+    if "masterpieces" not in tables:
+        conn.execute("""CREATE TABLE IF NOT EXISTS masterpieces (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            name           TEXT NOT NULL UNIQUE,
+            source_link_id INTEGER,
+            created_at     TEXT DEFAULT (datetime('now')),
+            updated_at     TEXT DEFAULT (datetime('now'))
+        )""")
+
     # ── Watcher tables ──────────────────────────────────────────
     if "watchers" not in tables:
         conn.execute("""CREATE TABLE IF NOT EXISTS watchers (

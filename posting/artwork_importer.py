@@ -134,11 +134,7 @@ def parse_tags(raw) -> list[str]:
 def find_existing(platform: str, submission_id: str) -> str | None:
     """Name of an artwork already imported from this submission, if any."""
     for a in artwork_reader.list_artworks():
-        try:
-            data = json.loads((Path(a["path"]) / "artwork.json").read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        src = data.get("import_source") or {}
+        src = a.get("import_source") or {}
         if src.get("platform") == platform and str(src.get("submission_id", "")) == str(submission_id):
             return a["name"]
     return None

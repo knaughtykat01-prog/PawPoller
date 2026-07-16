@@ -1,7 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-16
-**Current version (master):** 2.123.0 — **Artwork tag browser now matches the story tag browser.**
+**Current version (master):** 2.124.0 — **Masterpieces Phase 0: `masterpiece.json` (back-compat artwork rename).**
+First slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 0) — **no behaviour change**.
+`posting/artwork_reader.py` now reads BOTH `masterpiece.json` and legacy `artwork.json` (new `_meta_path`, prefers
+the new); writers emit `masterpiece.json` (`create_artwork`), and `save_artwork_metadata` migrates a folder on first
+edit (retiring the legacy file — it's a strict superset). New `characters` field (parity with `story.json`). New
+**name-keyed `masterpieces` index table** in `database/db.py` (spec §0-A2; empty — membership+rollup are Phase 1).
+`artwork_importer.find_existing` now uses `import_source` from `list_artworks` instead of reading `artwork.json`
+directly. +4 tests. Full suite green. **DEPLOY pending.** Next: **Phase 1** (`masterpiece_members` table +
+`rollup_masterpiece` + read API). **Spec was reviewed + amended** (§0 Amendments: Sync-where-supported, name-keying,
+Library placement, renumbered phases). **UI-polish item 9 (Platforms-in-Settings card grid) re-queued** as its own
+careful pass — it's the ~2000-line account-connect `renderSettings()`, higher-risk than the other polish items.
+
+**Prior — 2.123.0 — Artwork tag browser now matches the story tag browser.**
 The artwork uploader's "Browse tag library" picker (`TagPicker`, `tag_picker.js`) rendered compact name+category
 chips; it now renders the story editor's richer `.tag-browser-card` layout (name + coloured category badge +
 description + ＋Add/✓Added), with All/Selected + per-category count chips and a "Selected: N" footer, reusing the
