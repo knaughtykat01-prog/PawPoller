@@ -148,6 +148,36 @@
 }
 .mp-role--primary { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
 
+/* Detach ("unlink") on a Locations row */
+.mp-loc-detach {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: .15rem .35rem;
+    border-radius: 5px;
+}
+.mp-loc-detach:hover { color: var(--danger, #c0392b); background: var(--bg-secondary); }
+
+/* Same-image suggestions ("link the same image elsewhere") */
+.mp-scan-btn { margin-left: .5rem; font-weight: 400; }
+.mp-suggest-grid { display: flex; flex-wrap: wrap; gap: .7rem; }
+.mp-suggest {
+    width: 150px;
+    border: 1px solid var(--card-border, var(--border));
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--surface, var(--bg-secondary));
+    display: flex;
+    flex-direction: column;
+}
+.mp-suggest-thumb { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: var(--bg-secondary); display: block; }
+.mp-suggest-body { padding: .45rem .5rem; display: flex; flex-direction: column; gap: .35rem; }
+.mp-suggest-title { font-size: .8rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-suggest-meta { font-size: .72rem; color: var(--text-muted); }
+
 /* Combined chart container */
 .mp-chart-wrap { position: relative; height: 280px; }
 

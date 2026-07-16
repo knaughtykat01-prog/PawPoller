@@ -4,19 +4,22 @@
  * + masterpiece.json, and (Phase 1) a membership table linking every site-upload
  * of that image so their stats pool. See docs/specs/masterpieces.md.
  *
- * This module is READ-ONLY in Phase 2:
  *   - renderGrid(gridEl, filters)  — the managed grid, shown inside Library under
  *                                    the "Masterpieces" segment (bookshelf.js).
  *   - renderDetail(name)           — the #/masterpieces/{name} detail view.
  *
- * Editing / promote / publish / sync land in Phases 3–5. Rendering mirrors
- * collections.js (template strings + a document-level click delegate, CSP-safe —
- * no inline handlers) and reuses Charts.aggregateLine for the combined chart.
+ * Phase 3 adds membership management to the detail view: same-image **suggestions**
+ * (native perceptual-hash, no AI) with one-click **attach**, and **detach** on each
+ * linked location. Editing the canonical metadata + Sync-all still land in Phase 5.
+ * Rendering mirrors collections.js (template strings + a document-level click
+ * delegate, CSP-safe — no inline handlers) and reuses Charts.aggregateLine.
  */
 window.Masterpieces = {
     _personas: {},          // persona_id -> {name, color}
     _personasLoaded: false,
     _cache: null,           // [] of masterpiece list rows, per Library session
+    _current: null,         // name of the Masterpiece the detail view is showing
+    _wired: false,          // document click delegate attached once
 
     /* Drop the list cache so the next grid render refetches (called on each
        Library open by bookshelf.render). */
@@ -145,6 +148,8 @@ window.Masterpieces = {
     /* ── Detail (#/masterpieces/{name}) ── */
 
     async renderDetail(name) {
+        this._current = name;
+        this._init();
         const app = document.getElementById('app');
         app.innerHTML = `
             <div class="work-back"><a href="#/library">&larr; Library</a></div>
@@ -210,6 +215,8 @@ window.Masterpieces = {
             const safe = window.Utils && Utils.safeUrl ? Utils.safeUrl(l.url) : l.url;
             const link = safe ? `<a href="${this.esc(safe)}" target="_blank" rel="noopener">open&nbsp;&#8599;</a>` : '';
             const title = l.title ? `<div class="muted" style="font-size:.8rem">${this.esc(l.title)}</div>` : '';
+            const detach = `<button class="mp-loc-detach" title="Unlink this upload from the Masterpiece"
+                data-mp-detach data-platform="${this.esc(l.platform)}" data-sid="${this.esc(l.submission_id)}">✕</button>`;
             return `
                 <tr>
                     <td>${thumb}</td>
@@ -218,15 +225,16 @@ window.Masterpieces = {
                     <td>${this._fmt(st.favorites)}</td>
                     <td>${this._fmt(st.comments)}</td>
                     <td>${link}</td>
+                    <td>${detach}</td>
                 </tr>`;
         }).join('');
         const locTable = locs.length
             ? `<table class="mp-loc-table">
-                    <thead><tr><th></th><th>Platform</th><th>Views</th><th>Faves</th><th>Comments</th><th></th></tr></thead>
+                    <thead><tr><th></th><th>Platform</th><th>Views</th><th>Faves</th><th>Comments</th><th></th><th></th></tr></thead>
                     <tbody>${locRows}</tbody>
                </table>`
-            : `<div class="mp-empty">No linked uploads yet. Linking this image's copies across sites (and
-               auto-linking on publish) arrives in the promote &amp; publish flows — Phases 3–4.</div>`;
+            : `<div class="mp-empty">No linked uploads yet — use <strong>Link the same image elsewhere</strong>
+               below to attach this image's copies on other sites. (Publishing will also auto-link, Phase 4.)</div>`;
 
         root.innerHTML = `
             <div class="mp-detail-head">
@@ -257,13 +265,121 @@ window.Masterpieces = {
                 ${locTable}
             </div>
 
+            <div class="mp-section">
+                <div class="mp-section-title">Link the same image elsewhere
+                    <button class="btn btn-sm mp-scan-btn" data-mp-scan
+                        title="Hash platform thumbnails to find this exact image on other sites (native, no AI)">↻ Scan for matches</button>
+                </div>
+                <div id="mp-suggest-body"><div class="muted">Looking for the same image on other sites…</div></div>
+            </div>
+
             <div class="mp-section" id="mp-chart-card" style="display:none">
                 <div class="mp-section-title">Combined growth <span class="muted" style="font-weight:400">— summed across every site</span></div>
                 <div class="mp-chart-wrap"><canvas id="mp-combined-chart"></canvas></div>
             </div>`;
 
-        // Combined time-series — only when there are ≥2 points (same as Collections).
+        // Same-image suggestions (native pHash) + combined time-series (≥2 points).
+        this._loadSuggestions();
         this._loadChart(name);
+    },
+
+    /* ── Membership management (Phase 3) ── */
+
+    _init() {
+        if (this._wired) return;
+        this._wired = true;
+        document.addEventListener('click', (e) => {
+            const scan = e.target.closest('[data-mp-scan]');
+            if (scan) { e.preventDefault(); this._scanForMatches(scan); return; }
+            const att = e.target.closest('[data-mp-attach]');
+            if (att) { e.preventDefault(); this._attach(att); return; }
+            const det = e.target.closest('[data-mp-detach]');
+            if (det) { e.preventDefault(); this._detach(det.dataset.platform, det.dataset.sid); return; }
+        });
+    },
+
+    _toast(kind, msg) {
+        if (window.toast && window.toast[kind]) window.toast[kind](msg);
+        else if (window.toast && window.toast.info) window.toast.info(msg);
+    },
+
+    async _loadSuggestions() {
+        const body = document.getElementById('mp-suggest-body');
+        if (!body || !this._current) return;
+        let sug = [];
+        try {
+            const d = await API.getMasterpieceSuggestions(this._current);
+            sug = (d && d.suggestions) || [];
+        } catch { body.innerHTML = `<div class="muted">Couldn't load suggestions.</div>`; return; }
+        if (!sug.length) {
+            body.innerHTML = `<div class="muted">No matches found yet. If you've uploaded this image elsewhere,
+                hit <strong>Scan for matches</strong> above to hash platform thumbnails and look again.</div>`;
+            return;
+        }
+        body.className = '';
+        body.innerHTML = `<div class="mp-suggest-grid">${sug.map(s => this._suggestCard(s)).join('')}</div>`;
+    },
+
+    _suggestCard(s) {
+        const p = this._plat(s.platform);
+        const thumbUrl = this._thumbSrc(s.platform, s.thumbnail_url);
+        const thumb = thumbUrl
+            ? `<img class="mp-suggest-thumb" src="${this.esc(thumbUrl)}" alt="" loading="lazy">`
+            : `<div class="mp-suggest-thumb"></div>`;
+        const pct = Math.round((s.similarity || 0) * 100);
+        return `
+            <div class="mp-suggest">
+                ${thumb}
+                <div class="mp-suggest-body">
+                    <div class="mp-suggest-title" title="${this.esc(s.title || '')}">${this.esc(s.title || ('#' + s.submission_id))}</div>
+                    <div class="mp-suggest-meta">${p.emoji || ''} ${this.esc(p.label)} · ${pct}% match</div>
+                    <button class="btn btn-sm btn-primary" data-mp-attach
+                        data-platform="${this.esc(s.platform)}" data-sid="${this.esc(s.submission_id)}"
+                        data-account="${s.account_id != null ? this.esc(s.account_id) : ''}">＋ Link</button>
+                </div>
+            </div>`;
+    },
+
+    async _scanForMatches(btn) {
+        const orig = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Scanning…';
+        try {
+            if (API.scanImageHashes) await API.scanImageHashes();
+            await this._loadSuggestions();
+            this._toast('success', 'Scan complete');
+        } catch (err) {
+            this._toast('error', 'Scan failed: ' + (err.message || err));
+        } finally {
+            btn.disabled = false; btn.textContent = orig;
+        }
+    },
+
+    async _attach(btn) {
+        if (!this._current) return;
+        const platform = btn.dataset.platform, sid = btn.dataset.sid;
+        const account = btn.dataset.account;
+        btn.disabled = true; btn.textContent = 'Linking…';
+        try {
+            const body = { platform, submission_id: sid, linked_via: 'phash' };
+            if (account) body.account_id = parseInt(account, 10);
+            await API.addMasterpieceMember(this._current, body);
+            this._toast('success', 'Linked');
+            await this.renderDetail(this._current);   // re-pool stats + refresh suggestions
+        } catch (err) {
+            btn.disabled = false; btn.textContent = '＋ Link';
+            this._toast('error', 'Link failed: ' + (err.message || err));
+        }
+    },
+
+    async _detach(platform, sid) {
+        if (!this._current) return;
+        try {
+            await API.removeMasterpieceMember(this._current, platform, sid);
+            this._toast('success', 'Unlinked');
+            await this.renderDetail(this._current);
+        } catch (err) {
+            this._toast('error', 'Unlink failed: ' + (err.message || err));
+        }
     },
 
     async _loadChart(name) {

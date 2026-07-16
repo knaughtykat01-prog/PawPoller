@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from database.collections_queries import _acct_to_persona, _location_from_submission
+from database.collections_queries import _acct_to_persona, _location_from_submission, _submission_row
 
 
 # ── Index + membership CRUD ──────────────────────────────────────
@@ -138,3 +138,115 @@ def summarize(conn: sqlite3.Connection, name: str) -> dict:
         "cover_thumb": cover_thumb,
         "cover_platform": cover_platform,
     }
+
+
+# ── Promote (create a Masterpiece from a discovered/imported submission) ──
+
+def promote_from_submission(conn: sqlite3.Connection, platform: str, submission_id) -> dict:
+    """Materialise a Masterpiece from a platform submission the pollers already
+    discovered, and seed its **primary** member (spec §3.1).
+
+    Reuses ``posting.artwork_importer.import_artwork`` for the heavy lifting
+    (download full-res where available, write the folder + ``masterpiece.json`` +
+    a publication with the right ``account_id``) — that path is idempotent
+    (re-promoting a submission returns the existing folder). Then:
+      • ensure the name is indexed,
+      • add the source ``(platform, submission_id, account_id)`` as ``role='primary'``,
+      • compute + store the canonical image's perceptual hash (feeds same-image
+        suggestions) both in ``image_hashes`` and on ``masterpiece.json``.
+
+    Returns ``{name, status, images}``. Raises ValueError on an un-importable
+    submission (surfaced by the route as a 4xx). Import runs on its own
+    connections and commits before we touch ``conn``.
+    """
+    from posting import artwork_importer
+
+    res = artwork_importer.import_artwork(platform, str(submission_id))
+    name = res["name"]
+    ensure_indexed(conn, name)
+
+    row = _submission_row(conn, platform, str(submission_id)) or {}
+    add_member(conn, name, platform, submission_id, account_id=row.get("account_id"),
+               role="primary", linked_via="manual")
+
+    # Perceptual hash of the canonical image — best-effort, never fails the promote.
+    try:
+        from database import image_hash
+        from posting import artwork_reader
+        art = artwork_reader.load_artwork(name)
+        if art.image:
+            ph = image_hash.dhash_from_path(str(art.path / art.image))
+            if ph:
+                image_hash.ensure_table(conn)
+                image_hash.store(conn, platform, str(submission_id), ph, source="masterpiece")
+                artwork_reader.save_artwork_metadata(name, {"phash": ph})
+    except Exception:
+        pass
+
+    return {"name": name, "status": res.get("status", "imported"),
+            "images": res.get("images", 1)}
+
+
+# ── Same-image suggestions (native pHash, no AI) ─────────────────
+
+def suggestions(conn: sqlite3.Connection, name: str) -> list[dict]:
+    """Cross-platform "this same image also lives here?" candidates for a
+    Masterpiece — NOT already members (spec §3.1 step 4).
+
+    Anchored, native, no-AI: seed from the perceptual hashes of the Masterpiece's
+    existing members **and** a fresh hash of its canonical image, then scan the
+    ``image_hashes`` store for rows within ``HAMMING_THRESHOLD`` of any seed. The
+    store is warmed by ``POST /api/collections/hash-scan`` (local artwork + an
+    allowlisted thumbnail scan); if it is cold this simply returns few/none, so the
+    frontend offers a "scan for matches" action first.
+
+    Returns ``[{platform, submission_id, similarity, reason:'image', title,
+    thumbnail_url, account_id}, …]`` sorted by similarity, best 20.
+    """
+    from database import image_hash
+
+    members = set(member_pairs(conn, name))
+    seeds: set[str] = set()
+    for plat, sid in members:
+        r = conn.execute(
+            "SELECT phash FROM image_hashes WHERE platform = ? AND submission_id = ?",
+            (plat, str(sid))).fetchone()
+        if r and r["phash"]:
+            seeds.add(r["phash"])
+    # Fresh hash of the canonical image so suggestions work even when no member
+    # has been hashed yet (zero network — local file).
+    try:
+        from posting import artwork_reader
+        art = artwork_reader.load_artwork(name)
+        if art.image:
+            ph = image_hash.dhash_from_path(str(art.path / art.image))
+            if ph:
+                seeds.add(ph)
+    except Exception:
+        pass
+    if not seeds:
+        return []
+
+    out: dict[tuple, dict] = {}
+    for row in image_hash.all_hashes(conn):
+        key = (row["platform"], str(row["submission_id"]))
+        if key in members:
+            continue
+        d = min(image_hash.hamming(row["phash"], s) for s in seeds)
+        if d > image_hash.HAMMING_THRESHOLD:
+            continue
+        sim = round(1.0 - d / 64.0, 3)
+        cur = out.get(key)
+        if cur is not None and cur["similarity"] >= sim:
+            continue
+        loc = _location_from_submission(conn, key[0], key[1], source="suggestion") or {}
+        out[key] = {
+            "platform": key[0],
+            "submission_id": key[1],
+            "similarity": sim,
+            "reason": "image",
+            "title": loc.get("title", ""),
+            "thumbnail_url": loc.get("thumbnail_url", ""),
+            "account_id": loc.get("account_id"),
+        }
+    return sorted(out.values(), key=lambda c: c["similarity"], reverse=True)[:20]

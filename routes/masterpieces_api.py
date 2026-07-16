@@ -98,3 +98,84 @@ def get_masterpiece_snapshots(name: str):
         return {"snapshots": analytics_queries.get_combined_snapshots(conn, pairs)}
     finally:
         conn.close()
+
+
+@masterpieces_router.get("/{name}/suggestions")
+def get_masterpiece_suggestions(name: str):
+    """Native (no-AI) same-image candidates not yet linked to this Masterpiece —
+    perceptual-hash + title, anchored to the master's members/canonical image.
+    Warm the hash store first via POST /api/collections/hash-scan if it's cold."""
+    try:
+        artwork_reader.load_artwork(name)
+    except FileNotFoundError:
+        raise HTTPException(404, detail="Masterpiece not found")
+    conn = get_connection()
+    try:
+        return {"suggestions": mq.suggestions(conn, name)}
+    finally:
+        conn.close()
+
+
+# ── Write (promote + membership, Phase 3) ────────────────────────
+
+@masterpieces_router.post("")
+def promote_masterpiece(body: dict):
+    """Promote a discovered/imported submission into a Masterpiece + seed its
+    primary member. Body: {from: {platform, submission_id}} (spec §3.1)."""
+    src = (body or {}).get("from") or {}
+    platform = (src.get("platform") or "").strip()
+    sid = str(src.get("submission_id") or "").strip()
+    if not platform or not sid:
+        raise HTTPException(400, detail="from.platform and from.submission_id are required")
+    conn = get_connection()
+    try:
+        res = mq.promote_from_submission(conn, platform, sid)
+        conn.commit()
+        return {"status": res.get("status", "imported"), "name": res["name"],
+                "images": res.get("images", 1)}
+    except ValueError as e:
+        # Un-importable submission (no image URL, FA datacenter-IP block, …).
+        raise HTTPException(422, detail=str(e))
+    finally:
+        conn.close()
+
+
+@masterpieces_router.post("/{name}/members")
+def add_masterpiece_member(name: str, body: dict):
+    """Attach a site-upload to this Masterpiece. Body: {platform, submission_id,
+    account_id?, role?, linked_via?}."""
+    try:
+        artwork_reader.load_artwork(name)
+    except FileNotFoundError:
+        raise HTTPException(404, detail="Masterpiece not found")
+    platform = (body.get("platform") or "").strip()
+    sid = str(body.get("submission_id") or "").strip()
+    if not platform or not sid:
+        raise HTTPException(400, detail="platform and submission_id are required")
+    conn = get_connection()
+    try:
+        # Default the member's account to the source submission's, so persona
+        # rollup stays correct (the "everything lumps under the default" bug).
+        acct = body.get("account_id")
+        if acct is None:
+            from database.collections_queries import _submission_row
+            acct = (_submission_row(conn, platform, sid) or {}).get("account_id")
+        mq.add_member(conn, name, platform, sid, account_id=acct,
+                      role=body.get("role", "crosspost"),
+                      linked_via=body.get("linked_via", "manual"))
+        conn.commit()
+        return {"status": "added"}
+    finally:
+        conn.close()
+
+
+@masterpieces_router.delete("/{name}/members")
+def remove_masterpiece_member(name: str, platform: str, submission_id: str):
+    """Detach a site-upload (query params: platform, submission_id)."""
+    conn = get_connection()
+    try:
+        mq.remove_member(conn, name, platform, submission_id)
+        conn.commit()
+        return {"status": "removed"}
+    finally:
+        conn.close()

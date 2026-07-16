@@ -4,6 +4,33 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.127.0] - 2026-07-16 - Masterpieces Phase 3: promote flow + same-image linking
+
+Fourth slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 3, §3.1) — the **first write
+surface**: turn a discovered image into a mastered record, then link its copies across sites. Native, no-AI.
+
+- **"★ Master" on Gallery discovered tiles** (`artwork.js`). One click → `POST /api/masterpieces {from:{platform,
+  submission_id}}` → `promote_from_submission` reuses `artwork_importer.import_artwork` (full-res where the platform
+  allows; idempotent), seeds the source as the **primary** member (carrying its `account_id` so persona rollup stays
+  correct), computes + stores the canonical image's **perceptual hash** (`image_hash.dhash_from_path`) in
+  `image_hashes` **and** on `masterpiece.json` — then opens the master's detail view.
+- **Same-image suggestions on the detail view** — "Link the same image elsewhere". `GET /api/masterpieces/{name}/
+  suggestions` → `masterpiece_queries.suggestions`: anchored, native **dHash** matching (seed from the members'
+  hashes + a fresh hash of the canonical image, scan the `image_hashes` store for rows within
+  `HAMMING_THRESHOLD=8`, excluding existing members). Candidates render as thumbnail cards (platform · match %) with
+  one-click **＋ Link**. A **↻ Scan for matches** button warms the hash store first (reuses `POST /api/collections/
+  hash-scan`) so copies you uploaded by hand can be found.
+- **Attach / detach members.** `POST /api/masterpieces/{name}/members` (defaults the member's `account_id` from the
+  source submission) + `DELETE …/members`; every linked location gets an **✕ unlink**. Attaching/detaching re-pools
+  the Masterpiece's stats live and refreshes suggestions. The detail view is now interactive (a document-level click
+  delegate, CSP-safe); editing the canonical metadata + Sync-all still land in Phase 5.
+
+Full read+write path validated end-to-end (promote → primary member → suggestion at 100% → attach pools stats →
+suggestion excludes it → detach). Tests: `test_masterpiece_promote.py` +4 (promote seeds member + pHash, idempotent,
+anchored suggestions surface same-image non-members, empty-without-seed). `api.js` +4 wrappers. `SITE_VERSION` → 2.127.0.
+
+---
+
 ## [2.126.0] - 2026-07-16 - Masterpieces Phase 2: managed grid in Library + read-only detail view
 
 Third slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 2, §5.2) — the **first

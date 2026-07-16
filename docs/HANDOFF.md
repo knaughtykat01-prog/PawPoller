@@ -1,21 +1,29 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-16
-**Current version (master):** 2.126.0 — **Masterpieces Phase 2: managed grid in Library + read-only detail view.**
-Third slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 2, §5.2) — the **first user-visible**
-Masterpiece surface, read-only, over the Phase 1 read API (no backend change). Library's shelf (`bookshelf.js`) gains a
-fourth type segment **All / Stories / Artwork / Masterpieces**; the **Masterpieces** segment hands the grid to new
-**`frontend/js/masterpieces.js`** (`renderGrid`) — a card per Masterpiece (canonical-image cover · title · N sites ·
-pooled views/faves/comments · persona dots) from `GET /api/masterpieces`, carrying the shelf's persona/search/sort.
-Cards link to a read-only **detail view** (`#/masterpieces/{name}`, `renderDetail`): image hero + rating + persona dots
-+ pooled headline stats; a **Canonical record** panel (desc/characters/tags, read-only — editing is Phase 5); a
-**Published to** Locations table (thumbnail · platform · primary/crosspost role · per-platform stats · open↗, empty
-until members exist); and a combined growth chart (`Charts.aggregateLine`, ≥2 points). `api.js` +3 wrappers; `app.js`
-routes `#/masterpieces` (→ Library, segment preset) + `#/masterpieces/{name}` (→ detail); new `masterpieces.css`.
-Additive — existing All/Stories/Artwork untouched; the spec's target 3-way filter (fold Artwork→Masterpieces) waits
-for live member data at publish (Phase 4). Read path validated end-to-end (list/detail/404); backend suite unchanged.
-**DEPLOY pending.** Next: **Phase 3** (promote flow — "＋ Make Masterpiece" on Gallery tiles, pHash/title suggestions,
-attach/detach members). **UI-polish item 9 (Platforms-in-Settings card grid) still re-queued** as its own careful pass.
+**Current version (master):** 2.127.0 — **Masterpieces Phase 3: promote flow + same-image linking (first write surface).**
+Fourth slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 3, §3.1). **"★ Master" on Gallery
+discovered tiles** (`artwork.js`) → `POST /api/masterpieces {from:{platform,submission_id}}` → `promote_from_submission`
+reuses `artwork_importer.import_artwork` (full-res, idempotent), seeds the source as the **primary** member (carrying
+`account_id` for persona correctness), computes + stores the canonical image's **pHash** (`image_hash.dhash_from_path`)
+in `image_hashes` + on `masterpiece.json`, then opens the detail view. The detail view is now **interactive**: a
+**"Link the same image elsewhere"** section (`GET /{name}/suggestions` → `masterpiece_queries.suggestions`: anchored
+native dHash, seed from members' + canonical hashes, scan `image_hashes` within `HAMMING_THRESHOLD=8`, exclude members)
+renders candidate cards with one-click **＋ Link**; a **↻ Scan for matches** button warms the hash store (reuses
+`POST /api/collections/hash-scan`); each location has an **✕ unlink**. Attach (`POST /{name}/members`, account defaulted
+from the source row) / detach (`DELETE …/members`) re-pool stats live. `api.js` +4 wrappers; document-level click
+delegate (CSP-safe). Editing canonical metadata + Sync-all remain **Phase 5**. Validated end-to-end (promote → primary
+→ suggestion 100% → attach pools → excludes → detach). +4 tests (`test_masterpiece_promote.py`). **DEPLOY pending.**
+Next: **Phase 4** (fresh "＋ New Masterpiece" + publish-from-Create auto-adding members; IG+e621 into `_ALL_POSTER_IDS`).
+**UI-polish item 9 (Platforms-in-Settings card grid) still re-queued** as its own careful pass.
+
+**Prior — 2.126.0 — Masterpieces Phase 2: managed grid in Library + read-only detail view. DEPLOYED.**
+First user-visible surface (frontend-only, over the Phase 1 read API). Library shelf (`bookshelf.js`) gains a 4th type
+segment **All / Stories / Artwork / Masterpieces**; the Masterpieces segment delegates the grid to
+**`frontend/js/masterpieces.js`** (`renderGrid`) — a card per Masterpiece (canonical cover · title · N sites · pooled
+stats · persona dots). Cards link to a read-only detail (`#/masterpieces/{name}`): image hero + pooled headline + a
+Canonical record panel + a Published-to Locations table + combined chart. `api.js` +3; `app.js` routes both; new
+`masterpieces.css`. Additive (existing segments untouched).
 
 **Prior — 2.125.0 — Masterpieces Phase 1: membership model + cross-site rollup + read API. DEPLOYED.**
 New **`masterpiece_members` table** (`database/db.py`) — NAME-keyed membership, PK `(masterpiece_name, platform,

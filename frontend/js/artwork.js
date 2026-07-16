@@ -157,7 +157,11 @@ window.Artwork = {
                 return;
             }
             const imp = e.target.closest('.art-import-btn');
-            if (imp) { e.preventDefault(); this._importDiscovered(imp); }
+            if (imp) { e.preventDefault(); this._importDiscovered(imp); return; }
+            // Promote a discovered piece straight into a Masterpiece (import + seed
+            // its primary member), then open the master's detail view.
+            const mk = e.target.closest('.art-make-mp-btn');
+            if (mk) { e.preventDefault(); this._makeMasterpiece(mk); }
         });
 
         document.getElementById('art-select-toggle')
@@ -507,6 +511,9 @@ window.Artwork = {
                         <a class="btn btn-sm" href="${this.esc(Utils.safeUrl(d.url) || '#')}" target="_blank" rel="noopener">View ↗</a>
                         <button class="btn btn-sm btn-primary art-import-btn"
                             data-platform="${this.esc(d.platform)}" data-sid="${this.esc(d.submission_id)}">Import</button>
+                        <button class="btn btn-sm art-make-mp-btn"
+                            title="Import this image and make it a Masterpiece — the master record you sync across every site"
+                            data-platform="${this.esc(d.platform)}" data-sid="${this.esc(d.submission_id)}">★ Master</button>
                     </div>
                 </div>
             </div>`;
@@ -528,6 +535,23 @@ window.Artwork = {
         } catch (err) {
             btn.disabled = false; btn.textContent = 'Import';
             this._toast('error', 'Import failed: ' + (err.message || err));
+        }
+    },
+
+    /* Promote a discovered piece into a Masterpiece: imports the image (full-res
+     * where the platform allows), seeds the source as the primary member, hashes
+     * the canonical image, then opens the master's detail view where lookalikes on
+     * other sites can be linked in. */
+    async _makeMasterpiece(btn) {
+        const platform = btn.dataset.platform, sid = btn.dataset.sid;
+        btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Mastering…';
+        try {
+            const res = await API.promoteMasterpiece(platform, sid);
+            this._toast('success', 'Made a Masterpiece — opening it');
+            window.location.hash = `#/masterpieces/${res.name}`;
+        } catch (err) {
+            btn.disabled = false; btn.textContent = orig;
+            this._toast('error', 'Make Masterpiece failed: ' + (err.message || err));
         }
     },
 

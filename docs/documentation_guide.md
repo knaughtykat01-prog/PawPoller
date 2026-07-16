@@ -6261,6 +6261,22 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   bare `#/masterpieces` → Library with the segment preset (`Bookshelf._type='masterpiece'`) and keeps the Library nav
   lit for both routes. Additive: the existing All/Stories/Artwork segments are unchanged; folding Artwork into
   Masterpieces (the spec's 3-way target) waits until members auto-populate on publish (Phase 4).
+- **Promote + linking (Phase 3, 2.127.0) — the first write surface.** `masterpiece_queries.promote_from_submission`
+  wraps `posting.artwork_importer.import_artwork` (idempotent full-res import → folder + `masterpiece.json` +
+  publication), then seeds the source as the `role='primary'` member (account carried from the submission row) and
+  stores the canonical image's dHash (`image_hash.dhash_from_path`) in `image_hashes` + on `masterpiece.json`.
+  `masterpiece_queries.suggestions(conn, name)` is the anchored, no-AI same-image finder: seed pHashes = the members'
+  stored hashes ∪ a fresh hash of the canonical image, then scan `image_hash.all_hashes` for rows within
+  `HAMMING_THRESHOLD` (8) that aren't already members, resolved to `{platform, submission_id, similarity, title,
+  thumbnail_url, account_id}` via `_location_from_submission`. Write API on `routes/masterpieces_api.py`:
+  `POST /api/masterpieces {from:{platform,submission_id}}` (promote — 422 on an un-importable submission),
+  `GET /{name}/suggestions`, `POST /{name}/members` (attach — account defaulted from the source row for persona
+  correctness), `DELETE /{name}/members?platform=&submission_id=` (detach). Frontend: **"★ Master"** on Gallery
+  discovered tiles (`artwork.js._makeMasterpiece` → `API.promoteMasterpiece` → open the detail); the detail view
+  (`masterpieces.js`) gains a document-level click delegate driving a **"Link the same image elsewhere"** suggestions
+  strip (`＋ Link` = `API.addMasterpieceMember`, `↻ Scan` = `API.scanImageHashes` then reload) and an **✕ unlink** per
+  location (`API.removeMasterpieceMember`); both re-render the detail to re-pool stats. Editing the canonical metadata
+  + Sync-all remain Phase 5.
 
 
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)

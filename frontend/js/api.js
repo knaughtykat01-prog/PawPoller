@@ -172,10 +172,19 @@ const API = {
     // thumbnails so image-based suggestions can surface (2.114.0).
     scanImageHashes(limit) { return this.post(`/api/collections/hash-scan${limit ? `?limit=${limit}` : ''}`, {}); },
 
-    /* ── Masterpieces (master record per image — read API, Phase 1/2) ── */
+    /* ── Masterpieces (master record per image — Phase 1/2 read, Phase 3 write) ── */
     getMasterpieces() { return this.get('/api/masterpieces'); },
     getMasterpiece(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}`); },
     getMasterpieceSnapshots(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}/snapshots`); },
+    getMasterpieceSuggestions(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}/suggestions`); },
+    // Promote a discovered/imported submission into a Masterpiece (+ seed primary member).
+    promoteMasterpiece(platform, submissionId) {
+        return this.post('/api/masterpieces', { from: { platform, submission_id: String(submissionId) } });
+    },
+    addMasterpieceMember(name, body) { return this.post(`/api/masterpieces/${encodeURIComponent(name)}/members`, body); },
+    removeMasterpieceMember(name, platform, submissionId) {
+        return this.del(`/api/masterpieces/${encodeURIComponent(name)}/members?platform=${encodeURIComponent(platform)}&submission_id=${encodeURIComponent(submissionId)}`);
+    },
 
     /* ── IB (Inkbunny) convenience methods ─────────────────────
      * General status, submission CRUD, snapshot history, aggregation,
