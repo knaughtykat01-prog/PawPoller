@@ -1,17 +1,27 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-16
-**Current version (master):** 2.124.0 — **Masterpieces Phase 0: `masterpiece.json` (back-compat artwork rename).**
-First slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 0) — **no behaviour change**.
-`posting/artwork_reader.py` now reads BOTH `masterpiece.json` and legacy `artwork.json` (new `_meta_path`, prefers
-the new); writers emit `masterpiece.json` (`create_artwork`), and `save_artwork_metadata` migrates a folder on first
-edit (retiring the legacy file — it's a strict superset). New `characters` field (parity with `story.json`). New
-**name-keyed `masterpieces` index table** in `database/db.py` (spec §0-A2; empty — membership+rollup are Phase 1).
-`artwork_importer.find_existing` now uses `import_source` from `list_artworks` instead of reading `artwork.json`
-directly. +4 tests. Full suite green. **DEPLOY pending.** Next: **Phase 1** (`masterpiece_members` table +
-`rollup_masterpiece` + read API). **Spec was reviewed + amended** (§0 Amendments: Sync-where-supported, name-keying,
-Library placement, renumbered phases). **UI-polish item 9 (Platforms-in-Settings card grid) re-queued** as its own
-careful pass — it's the ~2000-line account-connect `renderSettings()`, higher-risk than the other polish items.
+**Current version (master):** 2.125.0 — **Masterpieces Phase 1: membership model + cross-site rollup + read API.**
+Second slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 1) — the data model + read API that
+let one image's uploads across N sites pool into one record; still no user-visible UI (that's Phase 2). New
+**`masterpiece_members` table** (`database/db.py`) — NAME-keyed membership, PK `(masterpiece_name, platform,
+submission_id)` (idempotent re-link, spec §0-A2), carrying `account_id`/`role`/`linked_via`; no stats copied in —
+`(platform, submission_id)` resolves live against the `*_submissions` tables at rollup time, like a Collection's
+members. New **`database/masterpiece_queries.py`** — membership CRUD + `rollup_members` (pooled totals / merged tags /
+personas / resolved locations) + `summarize` (light grid rollup + auto-cover), **reusing `collections_queries`'
+per-platform stat normalisation** so a Masterpiece and a Collection pool stats identically. New **`/api/masterpieces`
+read API** (`routes/masterpieces_api.py`, wired in `dashboard.py`): `GET ""` (folders + light `summary`), `GET /{name}`
+(canonical `masterpiece.json` merged with the live member rollup), `GET /{name}/snapshots` (combined time-series).
+No promote/link flow yet (Phase 3), so members start empty → zeroed pooled stats until then (expected). +7 tests
+(`test_masterpiece_rollup.py`). Full suite green. **DEPLOY pending.** Next: **Phase 2** (detail view + Library grid).
+**UI-polish item 9 (Platforms-in-Settings card grid) still re-queued** as its own careful pass — the ~2000-line
+account-connect `renderSettings()`, higher-risk than the other polish items.
+
+**Prior — 2.124.0 — Masterpieces Phase 0: `masterpiece.json` (back-compat artwork rename). DEPLOYED.**
+No behaviour change. `posting/artwork_reader.py` reads BOTH `masterpiece.json` and legacy `artwork.json` (new
+`_meta_path`, prefers the new); writers emit `masterpiece.json` and migrate a folder on first edit (retiring the
+legacy file — strict superset). New `characters` field (parity with `story.json`). New name-keyed `masterpieces`
+index table (spec §0-A2). `artwork_importer.find_existing` uses `import_source` from `list_artworks`. +4 tests.
 
 **Prior — 2.123.0 — Artwork tag browser now matches the story tag browser.**
 The artwork uploader's "Browse tag library" picker (`TagPicker`, `tag_picker.js`) rendered compact name+category

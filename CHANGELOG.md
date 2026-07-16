@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.125.0] - 2026-07-16 - Masterpieces Phase 1: membership model + cross-site rollup + read API
+
+Second slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 1) — the data model that lets one
+image's uploads across N sites be pooled into a single record, plus the read API the Library grid + detail view will
+consume. Still no user-visible UI (that's Phase 2); this is the backend a Masterpiece needs to pool its analytics.
+
+- **`masterpiece_members` table** (`database/db.py`) — NAME-keyed membership: which platform uploads ARE this
+  Masterpiece. PK `(masterpiece_name, platform, submission_id)` so re-linking the same upload is idempotent
+  (spec §0-A2). Carries `account_id`, `role` (`primary`/`crosspost`), `linked_via` (`manual`/`phash`/`title`/`publish`).
+  No stats are copied in — `(platform, submission_id)` resolves live against the per-platform `*_submissions` tables at
+  rollup time, exactly like a Collection's submission members.
+- **`database/masterpiece_queries.py`** (new) — membership CRUD (`ensure_indexed`, `add_member`, `remove_member`,
+  `member_pairs`, `get_members`) + `rollup_members` (pooled totals / merged tags / personas / resolved locations) +
+  `summarize` (light rollup for the grid: totals, member count, platforms, auto-cover thumbnail). The per-platform
+  stat normalisation is **reused from `collections_queries`** (`_location_from_submission` / `_acct_to_persona`), so a
+  Masterpiece and a Collection pool stats identically — one source of truth.
+- **`/api/masterpieces` read API** (`routes/masterpieces_api.py`, registered in `dashboard.py`) — `GET ""` (every
+  artwork folder + its light pooled `summary`, adopting each name into the index on the way past), `GET /{name}`
+  (canonical metadata from `masterpiece.json` **merged** with the live member rollup — `canonical_tags` = the master
+  record's per-platform map, `tags` = the union observed on live uploads), `GET /{name}/snapshots` (combined
+  time-series across every site the image lives on, via `analytics_queries.get_combined_snapshots`).
+
+Phase 1 has no promote/link flow yet (that's Phase 3), so members start empty and a fresh Masterpiece lists with zeroed
+pooled stats until then — expected. Tests: `test_masterpiece_rollup.py` +7 (membership CRUD + index adoption,
+idempotent PK, pooled totals/tags, empty-name rollup, persona spanning, cover selection). Full suite green.
+`SITE_VERSION` → 2.125.0.
+
+---
+
 ## [2.124.0] - 2026-07-16 - Masterpieces Phase 0: masterpiece.json (back-compat artwork rename)
 
 First slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 0) — a **no-behaviour-change**

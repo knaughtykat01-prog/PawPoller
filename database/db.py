@@ -704,6 +704,33 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             updated_at     TEXT DEFAULT (datetime('now'))
         )""")
 
+    # ── Masterpiece membership (Masterpieces Phase 1) ───────────
+    # Which platform uploads ARE this Masterpiece (the same image posted to N
+    # sites). NAME-keyed, mirroring collection_members but stat-typed like a
+    # Collection's submission members: (platform, submission_id) resolves live
+    # against the per-platform *_submissions tables at rollup time — no stats are
+    # copied here. PK is (masterpiece_name, platform, submission_id) so re-linking
+    # the same upload is idempotent (spec docs/specs/masterpieces.md §0-A2).
+    #   role      — 'primary' (the source upload) vs 'crosspost'
+    #   linked_via — how the link was made: 'manual' | 'phash' | 'title' | 'publish'
+    if "masterpiece_members" not in tables:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS masterpiece_members (
+                masterpiece_name TEXT NOT NULL,
+                platform         TEXT NOT NULL,
+                submission_id    TEXT NOT NULL,
+                account_id       INTEGER,
+                role             TEXT DEFAULT 'crosspost',
+                linked_via       TEXT DEFAULT 'manual',
+                added_at         TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (masterpiece_name, platform, submission_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_mp_members_site
+                ON masterpiece_members(platform, submission_id);
+            CREATE INDEX IF NOT EXISTS idx_mp_members_name
+                ON masterpiece_members(masterpiece_name);
+        """)
+
     # ── Watcher tables ──────────────────────────────────────────
     if "watchers" not in tables:
         conn.execute("""CREATE TABLE IF NOT EXISTS watchers (

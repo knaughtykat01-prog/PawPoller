@@ -5992,7 +5992,7 @@ a folder to it on first edit. `create_artwork` (used by both upload paths),
 `extra` = the platform's category map). A folder is the on-disk half of a
 **Masterpiece** (the master record for one image; see
 `docs/specs/masterpieces.md`); the name-keyed `masterpieces` index table +
-`masterpiece_members` (Phase 1) are the relational half.
+`masterpiece_members` (Phase 1, 2.125.0) are the relational half — see §20.10.
 
 `manager.post_artwork(artwork_name, platforms, account_ids, extras)` is the
 parallel of `post_story`: per platform it builds the image package, validates,
@@ -6219,6 +6219,35 @@ picker) has opened once. `onConfirm(names)` receives the final selected tag name
   pre-selected (via the picker's `preserve` map) and returned unchanged, so browsing never drops a tag.
 - `.tp-*` chip CSS lives in `editor.css` (after the `.wp-*` block); script registered in `index.html` after
   `work_picker.js`. Reusable anywhere library-backed tag selection is needed outside the story editor.
+
+## 20.10 Masterpieces — the master record for ONE image (2.124.0 Phase 0, 2.125.0 Phase 1)
+
+A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical record for a single artwork
+(title/desc/rating/tags/characters + the source image) that every site-upload of that image points back to. Spec:
+`docs/specs/masterpieces.md` (§0 Amendments are binding). Two halves:
+
+- **On-disk (Phase 0, §20.2)** — one artwork folder + `masterpiece.json` (back-compat superset of legacy
+  `artwork.json`). This is the source of truth for the canonical metadata.
+- **Relational (Phase 1)** — a name-keyed index + a membership table recording which platform uploads ARE this image:
+  - **`masterpieces`** (`database/db.py`) — thin index `(id, name UNIQUE, source_link_id, timestamps)`; a Masterpiece
+    is keyed by its folder **name**, NOT a numeric id (spec §0-A2), so the disk folder stays the identity.
+  - **`masterpiece_members`** — `(masterpiece_name, platform, submission_id)` PK (idempotent re-link) + `account_id`,
+    `role` (`primary`/`crosspost`), `linked_via` (`manual`/`phash`/`title`/`publish`). No stats stored — the pair
+    resolves live against the per-platform `*_submissions` tables at rollup time, exactly like a Collection's
+    submission members.
+- **Rollup — `database/masterpiece_queries.py`.** Membership CRUD (`ensure_indexed`, `add_member`, `remove_member`,
+  `get_members`, `member_pairs`) + `rollup_members(conn, name)` (resolves members → locations, pools non-None totals,
+  unions tags, collects personas + platforms) + `summarize` (light grid rollup: totals, member count, platforms,
+  auto-cover = first member with a thumbnail). It **imports `_location_from_submission` + `_acct_to_persona` from
+  `collections_queries`**, so a Masterpiece and a Collection pool stats through the identical per-platform
+  normalisation (`_METRICS`) — one source of truth. In Phase 1 members start empty (no promote flow until Phase 3),
+  so a fresh Masterpiece rolls up to zeroed totals — expected.
+- **Read API — `routes/masterpieces_api.py`** (`/api/masterpieces`, registered in `dashboard.py`): `GET ""` (every
+  artwork folder + a light pooled `summary`, adopting each name into the `masterpieces` index on the way past),
+  `GET /{name}` (canonical `masterpiece.json` **merged** with the live member rollup — `canonical_tags` = the master
+  record's per-platform map, `tags` = the union observed on live member uploads), `GET /{name}/snapshots` (combined
+  time-series across every site the image lives on, via `analytics_queries.get_combined_snapshots(conn, member_pairs)`).
+  Read-only in Phase 1; the promote/link + edit-and-Sync write flows land in Phases 3–5.
 
 
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)

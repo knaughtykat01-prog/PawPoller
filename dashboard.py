@@ -41,6 +41,7 @@ from routes.posting_api import posting_router
 from routes.artwork_api import artwork_router
 from routes.posts_api import posts_router
 from routes.collections_api import collections_router
+from routes.masterpieces_api import masterpieces_router
 from routes.submissions_api import works_router
 from routes.editor_api import editor_router
 from routes.dashboard_auth import dashboard_auth_router
@@ -458,6 +459,7 @@ app.include_router(artwork_router)  # Artwork hub routes (/api/artwork/*)
 app.include_router(posts_router)    # Posts (microblog) module routes (/api/posts/*)
 app.include_router(works_router)    # Unified Submissions hub (/api/works)
 app.include_router(collections_router)  # Collections (master container) routes (/api/collections/*)
+app.include_router(masterpieces_router)  # Masterpieces (master image record) routes (/api/masterpieces/*)
 app.include_router(editor_router)   # Story editor routes (/api/editor/*)
 app.include_router(settings_router)  # Settings sync routes (/api/settings/*)
 app.include_router(accounts_router)  # Multi-account registry routes (/api/accounts/*)
