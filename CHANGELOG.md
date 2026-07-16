@@ -4,6 +4,24 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.133.0] - 2026-07-17 - Settings → Platforms as a card grid
+
+The platform-connection accordions in Settings → Platforms now lay out as a responsive **card grid**, matching the
+standalone Platforms tab (`.hub-grid`) instead of a single tall stacked column.
+
+- **CSS-only** (`components.css`). A grid on the `.settings-tab-content[data-tab-content="platforms"]` pane
+  (`repeat(auto-fill, minmax(300px, 1fr))`); each collapsed platform is a compact card with a hover lift echoing the
+  hub tiles. An **open** platform spans the full width so its credential form has room — which also avoids ragged gaps
+  that expand-in-place would otherwise leave in a multi-column row. The pinned **Session-health** card and the
+  accounts/trademark **footer** span full-width (`grid-column: 1 / -1`); single column on phones.
+- **Zero risk to the connect flow:** no markup, element id, input, or button changed — the connect handlers all bind by
+  element id, and the accordions stay **direct children** of the pane, so `_enhancePlatformSettings`'
+  `:scope > details.settings-accordion` alphabetise / brand-logo / footer logic is untouched.
+
+Frontend-only (CSS); backend suite unchanged from 2.131.0. `SITE_VERSION` → 2.133.0.
+
+---
+
 ## [2.132.0] - 2026-07-17 - Overview: "By persona" multi-account widget
 
 Adds the multi-account Overview the user asked for, as an opt-in dashboard widget. PawPoller groups a user's accounts

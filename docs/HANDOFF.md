@@ -1,14 +1,22 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.132.0 — **Overview "By persona" multi-account widget.**
-Frontend-only. New opt-in Overview dashboard widget (`app.js` `_dashWidgetMeta`/`_dashWidgetHtml` +
-`_personasWidgetHtml`): one row per **persona** (PawPoller's cross-platform identity grouping) — swatch · name · account
-count · pooled 👁/❤/💬 — linking to `#/persona/{id}`. No backend change: `GET /api/personas` already returns each persona
-with `stats.combined`, fetched in parallel with the events feed and cached in the widget ctx. **Catalog-only** (add via
-⚙ Customize → Add widget, like Trending/Events) so existing dashboards are untouched. Backend suite unchanged. **DEPLOY
-pending.** (Clears backlog task #62. #63 self-update verified — see below. Remaining backlog: #64 Platforms-in-Settings
-card grid.)
+**Current version (master):** 2.133.0 — **Settings → Platforms as a card grid.**
+Frontend-only (**CSS**, `components.css`). The Settings → Platforms connection accordions now lay out as a responsive
+card grid (mirrors the Platforms tab's `.hub-grid`) instead of a stacked column: a grid on the
+`.settings-tab-content[data-tab-content="platforms"]` pane, collapsed platforms as compact cards (hover lift), an **open**
+platform spanning full-width for form room (avoids ragged expand-in-place gaps), and the pinned Session-health card +
+footer full-width. **Zero risk to the connect flow** — no markup/id/input/button changed (handlers bind by element id;
+accordions stay direct children so `_enhancePlatformSettings`' `:scope > details.settings-accordion` logic is untouched).
+Backend unchanged. **DEPLOY pending.** **This clears the last open backlog task (#64) — task list is now empty.**
+
+**Prior — 2.132.0 — Overview "By persona" multi-account widget. DEPLOYED.**
+Opt-in Overview dashboard widget (`app.js` `_dashWidgetMeta`/`_dashWidgetHtml` + `_personasWidgetHtml`): one row per
+**persona** — swatch · name · account count · pooled 👁/❤/💬 — linking to `#/persona/{id}`. `GET /api/personas` already
+returns each persona with `stats.combined`; fetched in parallel with the events feed. Catalog-only (⚙ Customize → Add
+widget), so existing dashboards are untouched. (#63 self-update VERIFIED live — check reaches the now-public repo, but
+GitHub Releases stalled at v2.53.0 while code is at 2.13x, so desktop self-update needs releases cut — a build-pipeline
+step, not a code fix.)
 
 **★ THE MASTERPIECE BUILD IS COMPLETE — all 8 phases (0–7) shipped (2.124.0 → 2.131.0), DEPLOYED.** A single image now
 has the master record a story always had: promote/create → publish (auto-links members) → edit once → sync to editable

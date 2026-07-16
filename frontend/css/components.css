@@ -842,6 +842,44 @@ a.stat-card:hover {
     text-align: center;
 }
 
+/* Settings → Platforms as a responsive CARD GRID (mirrors the Platforms tab's
+   .hub-grid). Purely presentational: the connect handlers bind by element id and
+   the accordions stay DIRECT children, so _enhancePlatformSettings' `:scope >
+   details.settings-accordion` sort/logo/footer logic is untouched. Collapsed
+   platforms are compact cards; an OPEN one spans the full width so its credential
+   form has room (and expand-in-place never leaves ragged multi-column gaps). */
+.settings-tab-content[data-tab-content="platforms"] {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+    align-items: start;
+}
+/* Grid gap replaces the accordion's stacked margin. */
+.settings-tab-content[data-tab-content="platforms"] > details.settings-accordion {
+    margin-bottom: 0;
+    transition: border-color .12s ease, box-shadow .12s ease, transform .12s ease;
+}
+/* A hover lift echoes the hub tiles (collapsed cards only). */
+.settings-tab-content[data-tab-content="platforms"] > details.settings-accordion:not([open]):hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+/* Full-width rows: the pinned Session-health card, an OPEN platform (form room),
+   and the accounts/trademark footer. */
+.settings-tab-content[data-tab-content="platforms"] > details.settings-accordion:has(#session-health-dot),
+.settings-tab-content[data-tab-content="platforms"] > details.settings-accordion[open],
+.settings-tab-content[data-tab-content="platforms"] > .pset-footer {
+    grid-column: 1 / -1;
+}
+.settings-tab-content[data-tab-content="platforms"] > details.settings-accordion[open] {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-glass);
+}
+/* Phones: a single column (the original stacked look). */
+@media (max-width: 640px) {
+    .settings-tab-content[data-tab-content="platforms"] { grid-template-columns: 1fr; }
+}
+
 /* Session-health card list (Settings → Platforms → Session health) */
 .session-status-list { display: flex; flex-direction: column; gap: 2px; }
 .session-status-list .ssl-row {
