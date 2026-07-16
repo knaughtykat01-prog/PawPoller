@@ -18,9 +18,6 @@ window.Artwork = {
     _pendingPath: null,    // desktop local path awaiting copy
     _previewUrl: null,     // object URL for the live preview (revoked on re-pick)
 
-    _selectMode: false,    // gallery "Select to unify" mode active
-    _selected: new Set(),  // keys ("platform:submission_id") of ticked discovered tiles
-    _suggestions: [],      // filtered title-match pairs for the "possible matches" banner
 
     esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
@@ -57,9 +54,6 @@ window.Artwork = {
      *                  the backend `kind` tag + the art-capable platform set.
      */
     async render() {
-        this._selectMode = false;
-        this._selected.clear();
-
         const app = document.getElementById('app');
         app.innerHTML = `
             <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
@@ -70,19 +64,10 @@ window.Artwork = {
                     multiple art sites at once.</p>
                 </div>
                 <div style="display:flex;gap:.5rem;flex-shrink:0;">
-                    <button class="btn" id="art-select-toggle">Select</button>
                     <a class="btn" href="#/artwork/log">History</a>
                     <a class="btn btn-primary" href="#/artwork/new">+ New artwork</a>
                 </div>
             </div>
-            <div id="art-select-bar" class="artwork-select-bar" hidden>
-                <span id="art-select-count">0 selected</span>
-                <button class="btn btn-primary btn-sm" id="art-unify-btn" disabled>Unify selected</button>
-                <button class="btn btn-sm" id="art-select-cancel">Cancel</button>
-                <span class="muted artwork-select-hint">Tick 2 or more posts of the same piece, then Unify
-                to merge them into one master with pooled stats.</span>
-            </div>
-            <div id="art-suggest-slot"></div>
             <div id="artwork-grid"><div class="loading-spinner">Loading…</div></div>`;
 
         const grid = document.getElementById('artwork-grid');
@@ -144,18 +129,13 @@ window.Artwork = {
             // select mode (library cards aren't selectable anyway).
             const del = e.target.closest('[data-art-del]');
             if (del) { e.preventDefault(); e.stopPropagation(); this._deleteFromHub(del.dataset.artDel); return; }
-            // Master controls stay live in and out of select mode.
+            // Existing masters (dormant cross-platform links) stay expandable/splittable
+            // for read-only display; the Gallery no longer MINTS new ones (Masterpieces
+            // Phase 7 — use "★ Master" instead).
             const split = e.target.closest('.art-master-split');
             if (split) { e.preventDefault(); this._splitMaster(split.dataset.linkId); return; }
             const tog = e.target.closest('.art-master-toggle');
             if (tog) { e.preventDefault(); this._toggleMaster(tog); return; }
-            // While selecting, a tap on a selectable tile toggles its tick and
-            // swallows the tile's own navigation / import.
-            if (this._selectMode) {
-                const card = e.target.closest('.artwork-card--selectable');
-                if (card) { e.preventDefault(); this._toggleSelect(card); }
-                return;
-            }
             const imp = e.target.closest('.art-import-btn');
             if (imp) { e.preventDefault(); this._importDiscovered(imp); return; }
             // Promote a discovered piece straight into a Masterpiece (import + seed
@@ -163,24 +143,6 @@ window.Artwork = {
             const mk = e.target.closest('.art-make-mp-btn');
             if (mk) { e.preventDefault(); this._makeMasterpiece(mk); }
         });
-
-        document.getElementById('art-select-toggle')
-            .addEventListener('click', () => this._enterSelect());
-        document.getElementById('art-select-cancel')
-            .addEventListener('click', () => this._exitSelect());
-        document.getElementById('art-unify-btn')
-            .addEventListener('click', () => this._unifySelected());
-
-        // "Possible matches" banner: delegated once on the (fresh) slot element;
-        // its contents arrive later via _loadSuggestions so the grid never waits.
-        const slot = document.getElementById('art-suggest-slot');
-        slot.addEventListener('click', e => {
-            const u = e.target.closest('.art-suggest-unify');
-            if (u) { e.preventDefault(); this._unifySuggestion(parseInt(u.dataset.idx, 10)); return; }
-            const d = e.target.closest('.art-suggest-dismiss');
-            if (d) { e.preventDefault(); this._dismissSuggestion(parseInt(d.dataset.idx, 10)); }
-        });
-        this._loadSuggestions(standalone);
     },
 
     /* ── Masters (unify) ────────────────────────────────────────
@@ -295,177 +257,6 @@ window.Artwork = {
         } catch (err) {
             this._toast('error', 'Split failed: ' + (err.message || err));
         }
-    },
-
-    /* ── Select-to-unify mode ── */
-
-    _enterSelect() {
-        this._selectMode = true;
-        this._selected.clear();
-        const grid = document.getElementById('artwork-grid');
-        if (grid) grid.classList.add('selecting');
-        // Visibility via classes: [hidden] alone is overridden by the bar's own
-        // display value and the toggle's .btn display, so they'd leak visible.
-        const bar = document.getElementById('art-select-bar');
-        if (bar) { bar.classList.add('is-active'); bar.hidden = false; }
-        const t = document.getElementById('art-select-toggle');
-        if (t) t.classList.add('is-hidden');
-        this._updateSelectBar();
-    },
-
-    _exitSelect() {
-        this._selectMode = false;
-        this._selected.clear();
-        const grid = document.getElementById('artwork-grid');
-        if (grid) {
-            grid.classList.remove('selecting');
-            grid.querySelectorAll('.artwork-card.selected').forEach(c => c.classList.remove('selected'));
-        }
-        const bar = document.getElementById('art-select-bar');
-        if (bar) { bar.classList.remove('is-active'); bar.hidden = true; }
-        const t = document.getElementById('art-select-toggle');
-        if (t) t.classList.remove('is-hidden');
-    },
-
-    _toggleSelect(card) {
-        const key = card.dataset.key;
-        if (!key) return;
-        if (this._selected.has(key)) { this._selected.delete(key); card.classList.remove('selected'); }
-        else { this._selected.add(key); card.classList.add('selected'); }
-        this._updateSelectBar();
-    },
-
-    _updateSelectBar() {
-        const n = this._selected.size;
-        const countEl = document.getElementById('art-select-count');
-        if (countEl) countEl.textContent = `${n} selected`;
-        const unify = document.getElementById('art-unify-btn');
-        if (unify) unify.disabled = n < 2;
-    },
-
-    async _unifySelected() {
-        const keys = [...this._selected];
-        if (keys.length < 2) return;
-        const members = keys.map(k => this._unkey(k));
-        const btn = document.getElementById('art-unify-btn');
-        btn.disabled = true; btn.textContent = 'Unifying…';
-        try {
-            await API.createLink({ members });
-            this._toast('success', `Unified ${members.length} pieces into one master`);
-            this._exitSelect();
-            const y = window.scrollY;
-            await this.render();
-            window.scrollTo(0, y);
-        } catch (err) {
-            this._toast('error', 'Unify failed: ' + (err.message || err));
-            btn.disabled = false; btn.textContent = 'Unify selected';
-        }
-    },
-
-    /* ── "Possible matches" banner ──────────────────────────────
-     *
-     * Reuses the existing title-similarity engine (`/api/links/suggestions` →
-     * auto_suggest_links) to nudge the obvious merges. Loaded lazily after the
-     * grid paints; filtered to pairs whose members are BOTH standalone art tiles
-     * in this gallery (so story matches never show here), minus any the user has
-     * dismissed. auto_suggest_links already excludes already-linked pairs.
-     */
-
-    async _loadSuggestions(standalone) {
-        let suggestions = [];
-        try {
-            const sd = await API.getLinkSuggestions();
-            suggestions = (sd && sd.suggestions) || [];
-        } catch (e) { return; }   // additive — silent on failure
-        this._suggestions = this._artSuggestions(suggestions, standalone);
-        const slot = document.getElementById('art-suggest-slot');
-        if (slot) slot.innerHTML = this._suggestBanner();
-    },
-
-    _pairKey(keys) { return [...keys].sort().join('|'); },
-
-    _dismissedSet() {
-        try { return new Set(JSON.parse(localStorage.getItem('pp_artunify_dismissed') || '[]')); }
-        catch (e) { return new Set(); }
-    },
-
-    _dismiss(pairKey) {
-        const s = this._dismissedSet();
-        s.add(pairKey);
-        try { localStorage.setItem('pp_artunify_dismissed', JSON.stringify([...s])); } catch (e) { /* quota */ }
-    },
-
-    _artSuggestions(suggestions, standalone) {
-        const byKey = new Map(standalone.map(d => [this._key(d.platform, d.submission_id), d]));
-        const dismissed = this._dismissedSet();
-        const seen = new Set();
-        const out = [];
-        for (const s of (suggestions || [])) {
-            const subs = s.submissions || [];
-            if (subs.length < 2) continue;
-            const keys = subs.map(m => this._key(m.platform, m.submission_id));
-            if (!keys.every(k => byKey.has(k))) continue;   // both must be standalone art tiles here
-            const pk = this._pairKey(keys);
-            if (dismissed.has(pk) || seen.has(pk)) continue;
-            seen.add(pk);
-            out.push({
-                pairKey: pk,
-                members: subs.map(m => ({ platform: m.platform, submission_id: String(m.submission_id) })),
-                tiles: keys.map(k => byKey.get(k)),
-            });
-        }
-        return out.slice(0, 5);
-    },
-
-    _suggestBanner() {
-        const items = this._suggestions || [];
-        if (!items.length) return '';
-        const cards = items.map((o, i) => {
-            const emojis = o.tiles.map(d => {
-                const p = this._plat(d.platform);
-                return `<span class="artwork-plat" title="${this.esc(p.label)}">${p.emoji || this.esc(p.label)}</span>`;
-            }).join(' ');
-            const t = o.tiles.find(d => d && d.title);
-            const title = this.esc((t && t.title) || 'these pieces');
-            return `
-                <div class="artwork-suggest-card" data-idx="${i}">
-                    <span class="artwork-suggest-plats">${emojis}</span>
-                    <span class="artwork-suggest-text">“${title}” looks like the same piece across ${o.members.length} sites.</span>
-                    <button type="button" class="btn btn-sm btn-primary art-suggest-unify" data-idx="${i}">Unify</button>
-                    <button type="button" class="btn btn-sm art-suggest-dismiss" data-idx="${i}" title="Dismiss">✕</button>
-                </div>`;
-        }).join('');
-        return `
-            <div class="artwork-suggest-banner">
-                <div class="artwork-suggest-head">Possible matches
-                    <span class="muted">— art with near-identical titles the pollers found across sites.</span>
-                </div>
-                ${cards}
-            </div>`;
-    },
-
-    async _unifySuggestion(idx) {
-        const o = (this._suggestions || [])[idx];
-        if (!o) return;
-        try {
-            await API.createLink({ members: o.members });
-            this._toast('success', 'Unified into one master');
-            const y = window.scrollY;
-            await this.render();
-            window.scrollTo(0, y);
-        } catch (err) {
-            this._toast('error', 'Unify failed: ' + (err.message || err));
-        }
-    },
-
-    _dismissSuggestion(idx) {
-        const o = (this._suggestions || [])[idx];
-        if (!o) return;
-        this._dismiss(o.pairKey);
-        const card = document.querySelector(`.artwork-suggest-card[data-idx="${idx}"]`);
-        if (card) card.remove();
-        const slot = document.getElementById('art-suggest-slot');
-        if (slot && !slot.querySelector('.artwork-suggest-card')) slot.innerHTML = '';
     },
 
     /* Keep only art-capable, visual (non-text), thumbnailed discovered items. */

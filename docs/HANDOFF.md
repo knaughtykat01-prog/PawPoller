@@ -1,21 +1,29 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-16
-**Current version (master):** 2.130.0 — **Masterpieces Phase 6: a Masterpiece can join a Collection.**
-Seventh slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 6, §7) — the two grouping axes
-connect without duplicating: a Masterpiece is *per-image* mastering, a Collection is *cross-type* bundling, and now a
-Masterpiece can be a Collection **member** contributing its whole set of site-uploads. New **`masterpiece` member type**
-in `collection_members` (`member_ref` = bare Masterpiece name); `collections_queries.rollup_collection` folds the
-Masterpiece's `masterpiece_members` locations into the Collection's pooled totals/tags/personas (each tagged
-`masterpiece_name`); `collection_member_pairs` + `_collected_pairs` include them (snapshot chart + suggestion
-exclusion). Lazy import of `masterpiece_queries` avoids the cycle; `collections_api._MEMBER_TYPES` gains `masterpiece`.
-**"＋ Add to Collection"** on the Masterpiece detail (a `data-add-collection` button handled by the existing
-document-level Collections delegate — no new wiring). **WorkPicker** gains a **Masterpieces** source chip (its own
-chip, not in "All", to avoid double-listing the folders) so the Collections "＋ Add member" browser can pick
-Masterpieces. Collections stay cross-type; Masterpieces stay per-image (§1.2 boundary holds). +3 tests
-(`test_masterpiece_collection_interop.py`). **DEPLOY pending.** Next: **Phase 7** (the last slice — `submission_links`
-→ Masterpieces migration, re-point the auto-suggest engine, retire the old `artwork.js` `_foldMasters`/"Unify" masters
-UI; keep `/api/links` dormant until proven). **UI-polish item 9 (Platforms-in-Settings card grid) still re-queued.**
+**Last updated:** 2026-07-17
+**Current version (master):** 2.131.0 — **Masterpieces Phase 7 (FINAL): retire old art-masters minting + links→Masterpieces migration.**
+Last slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 7, §7). Live DB has **zero
+`submission_links`**, so this is a behavioural no-op on real data — the work is the retirement + migration correctness.
+**Gallery stops minting `submission_link` masters** (`artwork.js`): removed the "Select → Unify selected" flow + the
+"Possible matches" suggestion strip (both called `API.createLink`) + their methods/state (~170 lines); the read-only
+display of any existing masters is kept **dormant** (`_foldMasters`/`_masterCard`/split still render — honours §7 "keep
+`/api/links` dormant until the fold is proven"). Users master art via **★ Master** + the detail "Link the same image
+elsewhere" (Phase 3). **Auto-suggest re-pointed** (`collections_queries.auto_suggest_collections`): each suggestion
+carries a `target` — same-image (pHash) → `masterpiece`, same-piece (title) → `collection`. **`migrate_links_to_masterpieces`**
+(`masterpiece_queries`, mirrors the collections one) — idempotent + reversible (source_link_id; links intact), account
+carried; **known limitation (§9):** migrated Masterpieces are index-only (no canonical image) so grid-invisible until
+materialised — hence a **callable, NOT wired to startup**. +5 tests (`test_masterpiece_migration.py`). **DEPLOY pending.**
+**★ THE MASTERPIECE BUILD IS COMPLETE — all 8 phases (0–7) shipped (2.124.0 → 2.131.0).** A single image now has the
+master record a story always had: promote/create → publish (auto-links members) → edit once → sync to editable sites →
+bundle into Collections. **Next up (unrelated backlog):** UI-polish item 9 (Platforms-in-Settings card grid, task #64),
+multi-account Overview (#62), test GUI self-update (#63). Also deferred from Phase 4: a net-new `IGPoster` adapter so
+Instagram can be an artwork/Masterpiece target; and (§9) materialise-on-migrate for index-only Masterpieces.
+
+**Prior — 2.130.0 — Masterpieces Phase 6: a Masterpiece can join a Collection. DEPLOYED.**
+New `masterpiece` member type in `collection_members` (`member_ref` = bare name); `rollup_collection` folds a
+Masterpiece's whole set of site-uploads into the Collection's pooled stats/tags/personas; snapshot pairs +
+suggestion-exclusion handle it; lazy import avoids the cycle. **"＋ Add to Collection"** on the detail (existing
+document-level delegate); **WorkPicker** gains a Masterpieces source chip. §1.2 boundary holds. +3 tests.
 
 **Prior — 2.129.0 — Masterpieces Phase 5: edit the canonical record once, sync everywhere. DEPLOYED.**
 Editable canonical form (title/description/rating/characters/tags + TagPicker) → `PATCH /api/masterpieces/{name}` →

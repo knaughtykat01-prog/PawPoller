@@ -250,3 +250,72 @@ def suggestions(conn: sqlite3.Connection, name: str) -> list[dict]:
             "account_id": loc.get("account_id"),
         }
     return sorted(out.values(), key=lambda c: c["similarity"], reverse=True)[:20]
+
+
+# ── submission_links → Masterpieces migration (Phase 7, §7) ──────
+
+def migrate_links_to_masterpieces(conn: sqlite3.Connection) -> int:
+    """One-time, idempotent, **reversible** fold of each Cross-Platform
+    ``submission_link`` (an old art "master") into a Masterpiece (spec §7).
+
+    Mirrors ``collections_queries.migrate_links_to_collections``: each link with
+    ≥2 members becomes one Masterpiece — a ``masterpieces`` index row +
+    ``masterpiece_members`` (the first title-resolving member is ``role='primary'``,
+    ``linked_via='migration'``). The ``submission_links`` rows are left **intact**
+    (fully reversible); idempotency + provenance via ``masterpieces.source_link_id``.
+    Returns the number newly created.
+
+    **Known limitation (spec §9):** a migrated Masterpiece is *index-only* — it has
+    no canonical folder/image yet, so it won't appear in the folder-based Library
+    grid (which enumerates `list_artworks()`) until "materialised" via the promote
+    flow. This function is therefore provided for explicit invocation, NOT wired to
+    startup (so it can't silently mint grid-invisible Masterpieces). On installs
+    where ``submission_links`` is empty it is a no-op.
+    """
+    try:
+        link_rows = conn.execute("SELECT link_id FROM submission_links").fetchall()
+    except Exception:
+        return 0  # link tables absent on this DB — nothing to migrate
+    try:
+        migrated = {r["source_link_id"] for r in conn.execute(
+            "SELECT source_link_id FROM masterpieces WHERE source_link_id IS NOT NULL")}
+    except Exception:
+        return 0  # masterpieces table / source_link_id not present yet
+    n = 0
+    for lr in link_rows:
+        lid = lr["link_id"]
+        if lid in migrated:
+            continue
+        members = conn.execute(
+            "SELECT platform, submission_id FROM submission_link_members WHERE link_id = ?",
+            (lid,)).fetchall()
+        if len(members) < 2:
+            continue  # a link needs 2+ members to be a meaningful master
+        # Name from the first member that resolves a title (fallback: link id).
+        name = ""
+        for m in members:
+            row = _submission_row(conn, m["platform"], str(m["submission_id"]))
+            if row and (row.get("title") or row.get("full_text")):
+                name = (row.get("title") or row.get("full_text") or "").strip()[:120]
+                break
+        if not name:
+            name = f"Linked piece #{lid}"
+        # Never collide with an existing Masterpiece/folder name (masterpieces.name
+        # is UNIQUE); suffix if needed.
+        base, k = name, 2
+        while conn.execute("SELECT 1 FROM masterpieces WHERE name = ?", (name,)).fetchone():
+            name, k = f"{base} ({k})", k + 1
+        conn.execute("INSERT INTO masterpieces (name, source_link_id) VALUES (?, ?)", (name, lid))
+        first = True
+        for m in members:
+            # account_id from the source row → correct persona rollup (§7 preserve).
+            row = _submission_row(conn, m["platform"], str(m["submission_id"])) or {}
+            conn.execute(
+                "INSERT OR IGNORE INTO masterpiece_members "
+                "(masterpiece_name, platform, submission_id, account_id, role, linked_via) "
+                "VALUES (?, ?, ?, ?, ?, 'migration')",
+                (name, m["platform"], str(m["submission_id"]), row.get("account_id"),
+                 "primary" if first else "crosspost"))
+            first = False
+        n += 1
+    return n

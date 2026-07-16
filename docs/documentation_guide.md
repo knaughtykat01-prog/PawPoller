@@ -6315,6 +6315,19 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   fetching `GET /api/masterpieces` — kept out of "All" to avoid double-listing artwork folders) so the Collections
   "＋ Add member" browser can pick Masterpieces, whose `member_type`/`member_ref` pass straight into
   `addCollectionMember`.
+- **Retire old masters + migration (Phase 7, 2.131.0) — the build's final slice.** The Gallery (`artwork.js`) no
+  longer **mints** `submission_link` "art masters": the "Select → Unify selected" flow and the "Possible matches"
+  suggestion strip (both called `API.createLink`) were removed along with their methods/state; the read-only
+  **display** of any existing masters (`_foldMasters`/`_masterCard`/`_splitMaster`) is deliberately kept **dormant**
+  (honours §7's "keep `/api/links` dormant until the fold is proven" — nothing is orphaned; on live there are zero
+  links anyway). `collections_queries.auto_suggest_collections` now stamps each suggestion with `target`:
+  `masterpiece` for a same-image (pHash) match, `collection` for a same-piece (title) match — so the one engine feeds
+  both. `masterpiece_queries.migrate_links_to_masterpieces` mirrors `migrate_links_to_collections` (idempotent,
+  reversible via `masterpieces.source_link_id`, account carried for persona correctness). **It is a callable, NOT
+  wired to startup:** a migrated Masterpiece is index-only (no canonical image), so it would be invisible in the
+  folder-based Library grid until "materialised" — auto-running it could silently mint grid-invisible Masterpieces
+  (known limitation, spec §9). This completes the Masterpiece build (phases 0–7): a single image now has the full
+  master lifecycle a story always had.
 
 
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)

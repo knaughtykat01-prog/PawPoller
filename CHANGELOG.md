@@ -4,6 +4,36 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.131.0] - 2026-07-17 - Masterpieces Phase 7 (final): retire the old art-masters minting + links→Masterpieces migration
+
+Final slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 7, §7) — the Gallery stops minting the
+legacy `submission_link` "art masters", the auto-suggest engine re-points, and the one-time link→Masterpiece migration
+lands. (The live DB has **zero** `submission_links`, so this is behaviourally a no-op on real data — the work is the
+retirement + the migration's correctness.)
+
+- **Gallery stops minting `submission_link` masters** (`artwork.js`). Removed the "Select → Unify selected" flow and the
+  "Possible matches" suggestion strip (both called `API.createLink`), plus their methods/state (~170 lines). The
+  read-only display of any **existing** masters is kept **dormant** (`_foldMasters`/`_masterCard`/split still render —
+  honouring §7 "keep `/api/links` dormant until the fold is proven"), so nothing is orphaned. Users now master art via
+  **★ Master** (promote → Masterpiece) and the detail view's "Link the same image elsewhere" (Phase 3).
+- **Auto-suggest re-pointed** (`collections_queries.auto_suggest_collections`). Each suggestion now carries a `target`:
+  a **same-image** (perceptual-hash) match → `masterpiece` (the same picture across sites); a **same-piece** title match
+  (a gallery upload + a microblog post about it) → `collection`. Additive field; the suggestions UI routes on it.
+- **`migrate_links_to_masterpieces`** (`masterpiece_queries`, mirrors `migrate_links_to_collections`) — idempotent +
+  **reversible** (submission_links left intact; provenance via `masterpieces.source_link_id`), account carried from the
+  source row for persona correctness. **Known limitation (§9):** a migrated Masterpiece is *index-only* (no canonical
+  image yet) so it won't show in the folder-based Library grid until materialised — hence it is a **callable**, NOT
+  wired to startup (can't silently mint grid-invisible Masterpieces). The existing startup `migrate_links_to_collections`
+  hook is left untouched (also a no-op on zero links).
+
+**The Masterpiece build is now complete — all 8 phases (0–7) shipped.** A single image has the master record a story
+already had: promote/create → publish (auto-links members) → edit once → sync to editable sites → bundle into
+Collections. Tests: `test_masterpiece_migration.py` +5 (migration idempotent/reversible/persona-carry; skips
+single-member links; no-op without links; suggest targets image→masterpiece, title→collection). Full suite green.
+`SITE_VERSION` → 2.131.0.
+
+---
+
 ## [2.130.0] - 2026-07-16 - Masterpieces Phase 6: a Masterpiece can join a Collection
 
 Seventh slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 6, §7) — the two orthogonal

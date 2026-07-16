@@ -350,6 +350,13 @@ def auto_suggest_collections(conn: sqlite3.Connection) -> list[dict]:
                 cur["submissions"] = s["submissions"]
 
     out = list(merged.values())
+    # Route each suggestion (spec §7, Masterpieces Phase 7): a same-IMAGE match
+    # (perceptual hash) is the SAME picture across sites → propose a **Masterpiece**;
+    # a same-PIECE title match (a gallery upload + a microblog post about it) →
+    # propose a **Collection**. 'both' leans Masterpiece. Additive field; the
+    # suggestions UI routes on it.
+    for s in out:
+        s["target"] = "masterpiece" if s.get("reason") in ("image", "both") else "collection"
     out.sort(key=lambda x: x.get("similarity", 0), reverse=True)
     return out[:20]
 
