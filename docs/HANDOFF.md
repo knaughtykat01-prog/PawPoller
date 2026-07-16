@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-16
-**Current version (master):** 2.122.0 — **UI bug sweep (start of the Artwork/Masterpiece/IA overhaul).**
+**Current version (master):** 2.123.0 — **Artwork tag browser now matches the story tag browser.**
+The artwork uploader's "Browse tag library" picker (`TagPicker`, `tag_picker.js`) rendered compact name+category
+chips; it now renders the story editor's richer `.tag-browser-card` layout (name + coloured category badge +
+description + ＋Add/✓Added), with All/Selected + per-category count chips and a "Selected: N" footer, reusing the
+exact `.tag-browser-*` CSS. Frontend-only; reusable everywhere `TagPicker` is used. **DEPLOY pending.** First item
+of the UI-polish track (remaining: story/artwork detail tightening + artwork ratings, Platforms-in-Settings card
+layout, Artwork gallery filters). **Masterpiece spec DRAFTED** at `docs/specs/masterpieces.md` (masterpiece.json on
+disk mirroring the story model + `masterpiece_members` table + pHash-suggested promote flow; supersedes the old
+"fold submission_links into Collections" plan — masters→Masterpieces, a Masterpiece can be a Collection member;
+phased 0–6). Not yet deep-reviewed.
+
+**Prior — 2.122.0 — UI bug sweep (start of the Artwork/Masterpiece/IA overhaul). DEPLOYED.**
 Five fixes from a UI review pass: (1) **"Choose image" button** un-mangled — `.artwork-preview` `display:block`
 overrode `[hidden]` so the empty preview showed + squished the flex column until the `<label class="btn">`
 wrapped to a blob; fixed `.artwork-preview[hidden]` + gave `.btn` `display:inline-flex`. (2) **Story Editor top

@@ -4,6 +4,18 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.123.0] - 2026-07-16 - Artwork tag browser matches the story tag browser
+
+UI-polish track (item 1 of 5, following the 2.122.0 bug sweep). The artwork uploader's "Browse tag library"
+picker (`TagPicker`, `frontend/js/tag_picker.js`) rendered compact name+category chips, unlike the story editor's
+richer browser (`metadata_editor.js`). They now match: `TagPicker` renders the same `.tag-browser-card` layout —
+tag name, coloured category badge, description, and a **＋ Add / ✓ Added** button — with **All / Selected +
+per-category filter chips carrying live (search-aware) counts** and a **"Selected: N"** footer, reusing the exact
+`.tag-browser-*` CSS (in `editor.css`) so the two browsers are visually identical. `TagPicker` is standalone and
+reusable, so every caller benefits (currently the artwork uploader). Frontend-only; no schema/API change.
+
+---
+
 ## [2.122.0] - 2026-07-16 - UI bug sweep: artwork upload, editor toolbars, SquidgeWorld publish-check, AO3 5xx
 
 Five fixes from a UI review pass (start of a larger Artwork/Masterpiece/IA overhaul).

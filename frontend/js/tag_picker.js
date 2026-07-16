@@ -47,9 +47,14 @@
         let query = '';
         let searchTimer = null;
 
-        const chips = ['all', ...CATS].map(k =>
-            `<button type="button" class="tag-browser-chip${k === cat ? ' tag-browser-chip-active' : ''}" data-tp-cat="${k}">
-                <span class="tag-browser-chip-label">${k === 'all' ? 'All' : esc(k.charAt(0).toUpperCase() + k.slice(1))}</span></button>`).join('');
+        // Match the story editor's tag browser: an "All" + "Selected" pair ahead
+        // of the category chips, each with a live count. (2.123.0)
+        const chipKeys = ['all', 'selected', ...CATS];
+        const chips = chipKeys.map(k => {
+            const label = k === 'all' ? 'All' : k === 'selected' ? 'Selected'
+                : esc(k.charAt(0).toUpperCase() + k.slice(1));
+            return `<button type="button" class="tag-browser-chip${k === cat ? ' tag-browser-chip-active' : ''}" data-tp-cat="${k}"><span class="tag-browser-chip-label">${label}</span> <span class="tag-browser-chip-count" data-tp-count="${k}"></span></button>`;
+        }).join('');
 
         const root = document.createElement('div');
         root.className = 'tp-root';
@@ -66,11 +71,11 @@
                 </div>
                 <div class="tag-browser-selected" id="tp-selected"></div>
                 <div class="tag-browser-body">
-                    <div class="tp-grid" id="tp-grid"><div class="tag-browser-empty">Loading…</div></div>
+                    <div class="tag-browser-grid" id="tp-grid"><div class="tag-browser-empty">Loading…</div></div>
                 </div>
                 <div class="tag-browser-footer">
-                    <div class="tag-browser-count" id="tp-count">0 selected</div>
-                    <button type="button" class="btn btn-primary" id="tp-confirm">Apply</button>
+                    <div class="tag-browser-count" id="tp-count">Selected: 0</div>
+                    <button type="button" class="btn btn-primary" id="tp-confirm">Done</button>
                 </div>
             </div>`;
         document.body.appendChild(root);
@@ -104,36 +109,83 @@
             }).join('');
             selectedEl.innerHTML = `<span class="tag-browser-selected-label">Selected</span><span class="tag-browser-selected-pills">${pills}</span>`;
         };
-        const updateCount = () => { countEl.textContent = `${selected.size} selected`; renderSelected(); };
+        const updateCount = () => {
+            countEl.textContent = `Selected: ${selected.size}`;
+            renderSelected();
+            updateChipCounts();
+            if (cat === 'selected') render();   // keep the Selected filter view in sync
+        };
 
         const visible = () => {
             const q = query.toLowerCase();
             return tags.filter(t =>
-                (cat === 'all' || t.category === cat) &&
+                (cat === 'all' ? true
+                    : cat === 'selected' ? selected.has(t.name.toLowerCase())
+                    : t.category === cat) &&
                 (!q || t.name.toLowerCase().includes(q)));
         };
 
+        // Live per-category counts on the filter chips (search-aware), matching the
+        // story editor's tag browser.
+        const updateChipCounts = () => {
+            const q = query.toLowerCase();
+            const counts = { all: 0, selected: 0 };
+            CATS.forEach(c => { counts[c] = 0; });
+            for (const t of tags) {
+                if (q && !t.name.toLowerCase().includes(q)) continue;
+                counts.all++;
+                if (counts[t.category] != null) counts[t.category]++;
+                if (selected.has(t.name.toLowerCase())) counts.selected++;
+            }
+            root.querySelectorAll('[data-tp-count]').forEach(el => {
+                const k = el.getAttribute('data-tp-count');
+                el.textContent = counts[k] != null ? String(counts[k]) : '';
+            });
+        };
+
+        // Card layout identical to the story editor's tag browser (reuses the same
+        // .tag-browser-card* CSS) so the two browsers match. (2.123.0)
         const render = () => {
             const items = visible().slice(0, 400);
             grid.innerHTML = items.length
                 ? items.map(t => {
                     const low = t.name.toLowerCase();
-                    return `<button type="button" class="tp-chip${selected.has(low) ? ' is-selected' : ''}" data-tp-name="${esc(t.name)}">
-                        <span class="tp-chip-name">${esc(t.name)}</span>
-                        <span class="tp-chip-cat">${esc(t.category || '')}</span>
-                    </button>`;
+                    const isSel = selected.has(low);
+                    const desc = t.desc ? `<div class="tag-browser-card-desc">${esc(t.desc)}</div>` : '';
+                    const btnCls = isSel ? 'tag-browser-card-btn tag-browser-card-btn-added' : 'tag-browser-card-btn';
+                    const btnLabel = isSel ? '&#10003; Added' : '+ Add';
+                    return `<div class="tag-browser-card${isSel ? ' tag-browser-card-added' : ''}" data-tp-name="${esc(t.name)}">
+                        <div class="tag-browser-card-head">
+                            <div class="tag-browser-card-name">${esc(t.name)}</div>
+                            <span class="tag-browser-card-cat metadata-tag-cat-${esc(t.category || '')}">${esc(t.category || '')}</span>
+                        </div>
+                        ${desc}
+                        <div class="tag-browser-card-footer">
+                            <button type="button" class="${btnCls}" data-tp-toggle="${esc(t.name)}">${btnLabel}</button>
+                        </div>
+                    </div>`;
                 }).join('')
                 : '<div class="tag-browser-empty">No tags match.</div>';
+            updateChipCounts();
         };
 
+        const _setCardState = (card, isSel) => {
+            const btn = card.querySelector('[data-tp-toggle]');
+            card.classList.toggle('tag-browser-card-added', isSel);
+            if (btn) {
+                btn.className = isSel ? 'tag-browser-card-btn tag-browser-card-btn-added' : 'tag-browser-card-btn';
+                btn.innerHTML = isSel ? '&#10003; Added' : '+ Add';
+            }
+        };
         grid.addEventListener('click', (e) => {
-            const chip = e.target.closest('.tp-chip');
-            if (!chip) return;
-            const name = chip.getAttribute('data-tp-name');
+            const card = e.target.closest('.tag-browser-card');
+            if (!card) return;
+            const name = card.getAttribute('data-tp-name');
             const low = name.toLowerCase();
             byLower.set(low, name);
-            if (selected.has(low)) { selected.delete(low); chip.classList.remove('is-selected'); }
-            else { selected.add(low); chip.classList.add('is-selected'); }
+            const nowSel = !selected.has(low);
+            if (nowSel) selected.add(low); else selected.delete(low);
+            _setCardState(card, nowSel);
             updateCount();
         });
         selectedEl.addEventListener('click', (e) => {
@@ -141,8 +193,8 @@
             if (!rm) return;
             const low = rm.getAttribute('data-tp-unpick');
             selected.delete(low);
-            const chip = grid.querySelector(`.tp-chip[data-tp-name="${CSS.escape(byLower.get(low) || low)}"]`);
-            if (chip) chip.classList.remove('is-selected');
+            const card = grid.querySelector(`.tag-browser-card[data-tp-name="${CSS.escape(byLower.get(low) || low)}"]`);
+            if (card) _setCardState(card, false);
             updateCount();
         });
         root.querySelectorAll('[data-tp-cat]').forEach(btn => btn.addEventListener('click', () => {
