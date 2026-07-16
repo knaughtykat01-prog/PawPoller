@@ -2721,10 +2721,15 @@ const App = {
                 API.getTopFans(10).catch(() => ({ fans: [] })),
                 API.getTrending({ hours: 24, threshold: 2.0 }).catch(() => ({ trending: [] })),
             ]);
-            // System events feed — fetched separately so a slow
-            // /api/activity/recent doesn't block the rest of the
-            // page render. Failure falls back to an empty list.
-            const systemActivity = await API.getRecentActivity(20).catch(() => ({ events: [] }));
+            // System events feed + personas (for the "By persona" multi-account
+            // widget) — fetched together, after the platform bulk, so a slow
+            // /api/activity/recent doesn't block the rest of the page render.
+            // Failures fall back to empty. getPersonas already returns each
+            // persona with pooled stats.combined, so no per-persona round-trips.
+            const [systemActivity, personasResp] = await Promise.all([
+                API.getRecentActivity(20).catch(() => ({ events: [] })),
+                API.getPersonas().catch(() => ({ personas: [] })),
+            ]);
 
             const ib = ibSummary || {};
             const fa = faSummary || {};
@@ -2909,6 +2914,7 @@ const App = {
                 topFans: (topFans.fans || []).slice(0, 10),
                 trending: (trending.trending || []),
                 systemActivity: (systemActivity.events || []).slice(0, 20),
+                personas: (personasResp.personas || []),
             };
 
             this._renderDashboard();
@@ -2953,6 +2959,7 @@ const App = {
             { id: 'activity', title: 'Recent activity', icon: '\u{1F4AC}', desc: 'Latest faves & comments', spans: [2, 4] },
             { id: 'topfans', title: 'Top fans', icon: '\u{1F451}', desc: 'Most engaged readers', spans: [2, 4] },
             { id: 'events', title: 'System events', icon: '\u{1F6CE}', desc: 'Polls, posts and alerts', spans: [2, 4] },
+            { id: 'personas', title: 'By persona', icon: '\u{1F465}', desc: 'Pooled stats per persona (multi-account)', spans: [2, 4] },
         ];
     },
 
@@ -2979,8 +2986,35 @@ const App = {
             case 'activity': return `<div class="wtitle">Recent activity</div>${Components.overviewRecentActivity(ctx.recentActivity)}`;
             case 'topfans': return `<div class="wtitle">Top fans</div>${Components.topFansTable(ctx.topFans)}`;
             case 'events': return `<div class="wtitle">System events</div>${Components.systemEventsFeed(ctx.systemActivity)}`;
+            case 'personas': return `<div class="wtitle">By persona <span class="muted" style="font-weight:400;font-size:.8rem">— your accounts, pooled by identity</span></div>${this._personasWidgetHtml(ctx.personas)}`;
             default: return '<div class="wtitle">Widget</div>';
         }
+    },
+
+    /* "By persona" Overview widget — a compact multi-account roll-up. Each row is
+     * one persona (its accounts pooled) linking to that persona's detail page.
+     * getPersonas() already returns stats.combined per persona, so this is a pure
+     * render. Empty state nudges single-account users toward the feature. */
+    _personasWidgetHtml(personas) {
+        const list = (personas || []).filter(p => p && p.persona_id);
+        if (!list.length) {
+            return '<div class="dash-empty">No personas yet — group your accounts into personas on the '
+                + '<a href="#/accounts">Accounts</a> page to see per-identity stats here.</div>';
+        }
+        const fmt = n => Utils.formatCompact(n || 0);
+        const rows = list.map(p => {
+            const c = (p.stats && p.stats.combined) || {};
+            const nAcct = (p.accounts || []).length;
+            const sw = `<span style="display:inline-block;width:12px;height:12px;border-radius:3px;`
+                + `background:${Utils.escapeHtml(p.color || '#6c8cff')};margin-right:.5rem;vertical-align:middle;"></span>`;
+            return `<a href="#/persona/${p.persona_id}" style="display:flex;align-items:center;gap:.6rem;`
+                + `justify-content:space-between;padding:.5rem .1rem;border-bottom:1px solid var(--border);`
+                + `text-decoration:none;color:inherit;flex-wrap:wrap;">`
+                + `<span style="font-weight:600;min-width:0;">${sw}${Utils.escapeHtml(p.name || 'Persona')}</span>`
+                + `<span class="muted" style="font-size:.82rem;">${nAcct} account${nAcct === 1 ? '' : 's'}`
+                + ` · \u{1F441} ${fmt(c.views)} · ❤ ${fmt(c.favorites)} · \u{1F4AC} ${fmt(c.comments)}</span></a>`;
+        }).join('');
+        return `<div>${rows}</div>`;
     },
 
     _dashWidgetMount(id, ctx, w) {

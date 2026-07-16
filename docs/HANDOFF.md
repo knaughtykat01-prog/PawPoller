@@ -1,23 +1,32 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.131.0 — **Masterpieces Phase 7 (FINAL): retire old art-masters minting + links→Masterpieces migration.**
-Last slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 7, §7). Live DB has **zero
-`submission_links`**, so this is a behavioural no-op on real data — the work is the retirement + migration correctness.
-**Gallery stops minting `submission_link` masters** (`artwork.js`): removed the "Select → Unify selected" flow + the
-"Possible matches" suggestion strip (both called `API.createLink`) + their methods/state (~170 lines); the read-only
-display of any existing masters is kept **dormant** (`_foldMasters`/`_masterCard`/split still render — honours §7 "keep
-`/api/links` dormant until the fold is proven"). Users master art via **★ Master** + the detail "Link the same image
-elsewhere" (Phase 3). **Auto-suggest re-pointed** (`collections_queries.auto_suggest_collections`): each suggestion
-carries a `target` — same-image (pHash) → `masterpiece`, same-piece (title) → `collection`. **`migrate_links_to_masterpieces`**
-(`masterpiece_queries`, mirrors the collections one) — idempotent + reversible (source_link_id; links intact), account
-carried; **known limitation (§9):** migrated Masterpieces are index-only (no canonical image) so grid-invisible until
-materialised — hence a **callable, NOT wired to startup**. +5 tests (`test_masterpiece_migration.py`). **DEPLOY pending.**
-**★ THE MASTERPIECE BUILD IS COMPLETE — all 8 phases (0–7) shipped (2.124.0 → 2.131.0).** A single image now has the
-master record a story always had: promote/create → publish (auto-links members) → edit once → sync to editable sites →
-bundle into Collections. **Next up (unrelated backlog):** UI-polish item 9 (Platforms-in-Settings card grid, task #64),
-multi-account Overview (#62), test GUI self-update (#63). Also deferred from Phase 4: a net-new `IGPoster` adapter so
-Instagram can be an artwork/Masterpiece target; and (§9) materialise-on-migrate for index-only Masterpieces.
+**Current version (master):** 2.132.0 — **Overview "By persona" multi-account widget.**
+Frontend-only. New opt-in Overview dashboard widget (`app.js` `_dashWidgetMeta`/`_dashWidgetHtml` +
+`_personasWidgetHtml`): one row per **persona** (PawPoller's cross-platform identity grouping) — swatch · name · account
+count · pooled 👁/❤/💬 — linking to `#/persona/{id}`. No backend change: `GET /api/personas` already returns each persona
+with `stats.combined`, fetched in parallel with the events feed and cached in the widget ctx. **Catalog-only** (add via
+⚙ Customize → Add widget, like Trending/Events) so existing dashboards are untouched. Backend suite unchanged. **DEPLOY
+pending.** (Clears backlog task #62. #63 self-update verified — see below. Remaining backlog: #64 Platforms-in-Settings
+card grid.)
+
+**★ THE MASTERPIECE BUILD IS COMPLETE — all 8 phases (0–7) shipped (2.124.0 → 2.131.0), DEPLOYED.** A single image now
+has the master record a story always had: promote/create → publish (auto-links members) → edit once → sync to editable
+sites → bundle into Collections. Spec `docs/specs/masterpieces.md`; architecture `documentation_guide.md` §20.10.
+**Deferred follow-ups (not blocking):** a net-new `IGPoster` adapter so Instagram can be an artwork/Masterpiece target
+(the artwork `post_artwork`/`_get_poster` path can't post to IG — IG posting lives only in the Posts module); and (§9)
+materialise-on-migrate for index-only Masterpieces created by `migrate_links_to_masterpieces` (a callable, not
+startup-wired). **#63 self-update: VERIFIED** on the live server — `check_for_update()` reaches the now-public repo,
+compares correctly (2.13x > latest release v2.53.0 → no-update), resolves the asset URL; GUI wiring present. Finding:
+GitHub Releases stalled at **v2.53.0** while code is at 2.13x — `/pp-release` bumps the version but hasn't been cutting
+Releases, so desktop self-update has nothing new until releases are published (a build-pipeline step, not a code fix).
+
+**Prior — 2.131.0 — Masterpieces Phase 7 (FINAL): retire old art-masters minting + links→Masterpieces migration. DEPLOYED.**
+`artwork.js` stops minting `submission_link` masters (removed Select→Unify + "Possible matches" strip + methods/state,
+~170 lines); dormant link display kept (`_foldMasters`/`_masterCard`/split — honours "keep `/api/links` dormant").
+`auto_suggest_collections` stamps `target` (image→masterpiece, title→collection). `migrate_links_to_masterpieces`
+(idempotent/reversible, callable NOT startup-wired — migrated masters are index-only/grid-invisible until materialised,
+§9). Live had 0 `submission_links`. +5 tests.
 
 **Prior — 2.130.0 — Masterpieces Phase 6: a Masterpiece can join a Collection. DEPLOYED.**
 New `masterpiece` member type in `collection_members` (`member_ref` = bare name); `rollup_collection` folds a

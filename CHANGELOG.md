@@ -4,6 +4,24 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.132.0] - 2026-07-17 - Overview: "By persona" multi-account widget
+
+Adds the multi-account Overview the user asked for, as an opt-in dashboard widget. PawPoller groups a user's accounts
+into **personas** (cross-platform identities); this surfaces each persona's pooled stats at a glance.
+
+- **New "By persona" widget** in the Overview widget catalog (`app.js` `_dashWidgetMeta`/`_dashWidgetHtml` +
+  `_personasWidgetHtml`). One row per persona — colour swatch · name · account count · pooled 👁 views / ❤ favourites /
+  💬 comments — each linking to that persona's detail page (`#/persona/{id}`). Empty state nudges single-account users
+  to group their accounts on the Accounts page.
+- **No backend change / no extra round-trips:** `GET /api/personas` already returns every persona with
+  `stats.combined`, so `renderOverview` just fetches it (in parallel with the system-events feed) and caches it in the
+  widget context. The widget is **catalog-only** (add it via ⚙ Customize → Add widget, like Trending / System events),
+  so existing dashboards are untouched and the default Overview is unaffected.
+
+Frontend-only; backend suite unchanged from 2.131.0. `SITE_VERSION` → 2.132.0.
+
+---
+
 ## [2.131.0] - 2026-07-17 - Masterpieces Phase 7 (final): retire the old art-masters minting + links→Masterpieces migration
 
 Final slice of the Masterpiece build (spec `docs/specs/masterpieces.md` §8 Phase 7, §7) — the Gallery stops minting the
