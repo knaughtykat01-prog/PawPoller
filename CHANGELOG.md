@@ -4,6 +4,26 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.139.0] - 2026-07-17 - Instagram is now an artwork publish target
+
+Instagram graduated from "Posts-only" to a **first-class artwork publish target** — you can now tick **Instagram** in the
+Artwork upload/publish flow (and on a Masterpiece) alongside Inkbunny, FA, Weasyl, e621, etc.
+
+- New `posting/platforms/instagram.py` **`InstagramPoster`**, wired into `manager._get_poster` and
+  `artwork_reader._ALL_POSTER_IDS`. It reuses the Posts module's public-image-hosting path (`posting.ig_media`): Instagram
+  never accepts raw bytes, so PawPoller stashes a web-safe JPEG at a public URL (server with `IG_PUBLIC_BASE_URL`) or
+  relays it to a paired server (desktop), hands Meta the URL, publishes, then deletes the stash.
+- **Caption** = the artwork description (or title), with the tag set appended as sanitised **hashtags** (alnum/underscore
+  only, deduped, capped at Instagram's 30).
+- IG has no photo edit/replace API, so it's **post-only** (like Bluesky / e621 / Itaku): added to the frontend
+  `_PLATFORMS` (artwork picker) and the `_POST_ONLY` sets so Masterpiece "Sync to sites" correctly skips it. `validate()`
+  fails fast with a clear message when no public host is configured.
+- +6 tests (`test_instagram_artwork_poster.py`): hashtag sanitising, caption build, validation, not-connected, happy path.
+
+Backend + frontend. `SITE_VERSION` → 2.139.0.
+
+---
+
 ## [2.138.0] - 2026-07-17 - Promo Maker: BookTok-style excerpt images
 
 A new **Promo Maker** tool (`#/promo`, under **Create** in the sidebar) turns a spicy excerpt into a shareable

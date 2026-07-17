@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.138.0 — **Promo Maker (BookTok-style excerpt images).**
+**Current version (master):** 2.139.0 — **Instagram is now an artwork publish target.**
+IG graduated from Posts-only to a first-class **artwork** target: new `posting/platforms/instagram.py` `InstagramPoster`
+(wired into `manager._get_poster` + `artwork_reader._ALL_POSTER_IDS`), reusing the Posts module's public-image-hosting
+path (`ig_media`: stash a web-safe JPEG at a public URL / relay to a paired server → Meta cURLs it → publish → cleanup).
+Caption = description/title + sanitised hashtags (cap 30). **Post-only** (no IG edit API) → added to frontend `_PLATFORMS`
++ the `_POST_ONLY` sets so Masterpiece Sync skips it. +6 tests. Backend+frontend.
+
+**📋 NEW: request tracker — `docs/BACKLOG.md`.** Every ask Rhys makes now gets a row there (single source of truth,
+cross-session) so nothing slips. Update it when a request lands AND when an item ships (move to Done + version). Live
+session progress also mirrored in the harness task list.
+
+**Prior — 2.138.0 — Promo Maker (BookTok-style excerpt images).**
 New **`#/promo`** tool (sidebar **Create → Promo Maker**): paste an excerpt, select phrases + tap a colour to highlight,
 pick a gradient/photo background + size preset (Square/Portrait/Story), download a PNG. All **client-side canvas**
 (`frontend/js/promo.js` + `promo.css`; wired into `index.html` + `app.js` router). This is backlog item 7

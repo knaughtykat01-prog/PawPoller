@@ -105,6 +105,9 @@ def _get_poster(platform: str, account_id: int | None = None) -> PlatformPoster:
         elif platform == "e621":
             from posting.platforms.e621 import E621Poster
             poster = E621Poster()
+        elif platform == "ig":
+            from posting.platforms.instagram import InstagramPoster
+            poster = InstagramPoster()
         else:
             raise ValueError(f"Unknown platform: {platform}")
         # All posters carry an account_id; account-aware posters (IB, and FA

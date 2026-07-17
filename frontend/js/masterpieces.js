@@ -22,7 +22,7 @@ window.Masterpieces = {
     _wired: false,          // document click delegate attached once
     // Platforms whose poster can't edit in place (supports_edit=False, mirrors the
     // backend) — Sync skips them; they render "post-only" in the Locations table.
-    _POST_ONLY: new Set(['bsky', 'e621', 'ik']),
+    _POST_ONLY: new Set(['bsky', 'e621', 'ik', 'ig']),
 
     /* Drop the list cache so the next grid render refetches (called on each
        Library open by bookshelf.render). */
