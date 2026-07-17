@@ -57,7 +57,8 @@ def masterpiece_duplicates():
     conn = get_connection()
     try:
         image_hash.hash_masterpieces(conn)                     # populate + prune
-        groups = image_hash.duplicate_masterpiece_groups(conn)
+        dismissed = mq.not_duplicate_pairs(conn)               # user "not the same" decisions
+        groups = image_hash.duplicate_masterpiece_groups(conn, dismissed=dismissed)
         result = []
         for g in groups:
             items = []
@@ -83,6 +84,21 @@ def masterpiece_duplicates():
         return {"groups": result}
     finally:
         conn.close()
+
+
+@masterpieces_router.post("/not-duplicate")
+def not_duplicate_ep(body: dict):
+    """Remember that these Masterpieces are NOT the same image, so the finder stops
+    grouping them. Body: {names: [name, name, ...]} (2+)."""
+    names = [str(n) for n in (body.get("names") or []) if n]
+    if len(names) < 2:
+        raise HTTPException(400, detail="names must list at least two Masterpieces")
+    conn = get_connection()
+    try:
+        added = mq.add_not_duplicate(conn, names)
+    finally:
+        conn.close()
+    return {"status": "remembered", "pairs_added": added}
 
 
 @masterpieces_router.post("/merge")

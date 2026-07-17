@@ -1,7 +1,13 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.144.0 — **Merge duplicate Masterpieces (perceptual-hash finder).**
+**Current version (master):** 2.145.0 — **"Not the same" — dismiss false-positive duplicate matches.**
+Companion to 2.144's finder: a **✗ Not the same** button on each duplicate group persists every pair to a new
+`masterpiece_not_duplicate` table (`mq.add_not_duplicate`, normalised); `duplicate_masterpiece_groups(dismissed=...)` skips
+those edges so rejected look-alikes never regroup. New `POST /api/masterpieces/not-duplicate`; `/duplicates` passes
+`mq.not_duplicate_pairs()` in. +1 test.
+
+**Prior — 2.144.0 — Merge duplicate Masterpieces (perceptual-hash finder).**
 Same image → two Masterpieces (e.g. "Ki's New Ref" twice). New **🔍 Find duplicates** (`#/masterpieces/duplicates`, button
 in the Masterpieces grid bar): dHash each hero image (`image_hash.hash_masterpieces` under synthetic `__mp__`, self-pruning)
 → cluster by Hamming (`duplicate_masterpiece_groups`, union-find, ≤8) → merge each group into a survivor (most views/sites,

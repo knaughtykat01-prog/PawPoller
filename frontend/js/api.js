@@ -179,6 +179,7 @@ const API = {
     getMasterpieceSuggestions(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}/suggestions`); },
     getMasterpieceDuplicates() { return this.get('/api/masterpieces/duplicates'); },
     mergeMasterpieces(keep, drop) { return this.post('/api/masterpieces/merge', { keep, drop }); },
+    dismissMasterpieceDuplicate(names) { return this.post('/api/masterpieces/not-duplicate', { names }); },
 
     // "What's new" changelog since the version this browser last saw (update popup).
     getWhatsNew(since) { return this.get('/api/whatsnew', { since: since || '' }); },

@@ -66,6 +66,7 @@ split, Option A (**2.142**).
 | IA: Create hub + Posts split (view-only feed, composer in Create) | **2.142** |
 | Ignore button in the Library's discovered review view (tweet-art) | **2.143** |
 | Merge duplicate Masterpieces (pHash finder + one-click merge) | **2.144** |
+| "Not the same" — dismiss + remember false-positive dup matches | **2.145** |
 | AO3 525 error logging | (per HANDOFF ledger) |
 | In-app "what's new" changelog popup on update | 2.134 |
 

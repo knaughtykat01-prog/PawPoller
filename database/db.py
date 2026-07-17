@@ -746,6 +746,20 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             );
         """)
 
+    # ── "Not a duplicate" decisions for the Masterpiece de-dup finder (2.145.0) ─
+    # When the perceptual-hash finder flags two Masterpieces as look-alikes but the
+    # user says they're actually different, we remember that pair so the finder
+    # never groups them again. Stored normalised (name_a < name_b).
+    if "masterpiece_not_duplicate" not in tables:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS masterpiece_not_duplicate (
+                name_a       TEXT NOT NULL,
+                name_b       TEXT NOT NULL,
+                decided_at   TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (name_a, name_b)
+            );
+        """)
+
     # ── Watcher tables ──────────────────────────────────────────
     if "watchers" not in tables:
         conn.execute("""CREATE TABLE IF NOT EXISTS watchers (

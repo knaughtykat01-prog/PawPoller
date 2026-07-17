@@ -4,6 +4,23 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.145.0] - 2026-07-17 - "Not the same" — dismiss false-positive duplicate matches
+
+Companion to 2.144's duplicate finder: when it flags two Masterpieces as look-alikes but they're actually **different
+images**, you can now tell it so — and it **remembers**.
+
+- Each duplicate group gains a **✗ Not the same** button. Confirming records every pair in that group in a new
+  `masterpiece_not_duplicate` table (`masterpiece_queries.add_not_duplicate`, normalised `name_a < name_b`).
+- The finder skips those pairs on every future scan (`duplicate_masterpiece_groups(..., dismissed=...)` drops the edge),
+  so a rejected pair never regroups. (A later near-identical *third* image can still bridge them; dismissing again fully
+  separates.)
+- New endpoint `POST /api/masterpieces/not-duplicate` {names:[…]}; the `/duplicates` scan now passes
+  `mq.not_duplicate_pairs()` in. +1 test.
+
+Backend + frontend. `SITE_VERSION` → 2.145.0.
+
+---
+
 ## [2.144.0] - 2026-07-17 - Merge duplicate Masterpieces (perceptual-hash finder)
 
 The same image can end up as **two separate Masterpieces** — e.g. imported from two platforms as two folders, so "Ki's

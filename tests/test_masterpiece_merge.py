@@ -47,3 +47,18 @@ def test_duplicate_groups_cluster_by_hamming():
     assert len(groups) == 1
     assert sorted(groups[0]) == ["A", "B", "C"]
     conn.close()
+
+
+def test_not_duplicate_dismissal_persists():
+    conn = get_connection()
+    image_hash.ensure_table(conn)
+    image_hash.store(conn, "__mp__", "A", "ffffffffffffffff")
+    image_hash.store(conn, "__mp__", "B", "ffffffffffffffff")   # flagged as a look-alike of A
+    conn.commit()
+    assert image_hash.duplicate_masterpiece_groups(conn)        # grouped before dismissal
+    # User says "not the same" → remembered, and the pair no longer groups.
+    mq.add_not_duplicate(conn, ["A", "B"])
+    dismissed = mq.not_duplicate_pairs(conn)
+    assert dismissed == {("A", "B")}                            # normalised (a < b)
+    assert image_hash.duplicate_masterpiece_groups(conn, dismissed=dismissed) == []
+    conn.close()

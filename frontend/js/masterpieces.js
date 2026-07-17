@@ -160,6 +160,25 @@ window.Masterpieces = {
         wrap.innerHTML = groups.map((g, gi) => this._dupGroup(g, gi)).join('');
         wrap.querySelectorAll('[data-merge]').forEach(btn =>
             btn.addEventListener('click', () => this._mergeGroup(parseInt(btn.dataset.merge, 10), groups)));
+        wrap.querySelectorAll('[data-notdup]').forEach(btn =>
+            btn.addEventListener('click', () => this._notDuplicate(parseInt(btn.dataset.notdup, 10), groups)));
+    },
+
+    /* "Not the same" — remember that this group's images are actually different,
+     * so the finder stops flagging them. Persisted server-side (2.145.0). */
+    async _notDuplicate(gi, groups) {
+        const items = groups[gi];
+        const groupEl = document.querySelector(`.mp-dup-group[data-group="${gi}"]`);
+        const msg = groupEl ? groupEl.querySelector(`[data-msg="${gi}"]`) : null;
+        if (msg) msg.textContent = 'Remembering…';
+        try {
+            await API.dismissMasterpieceDuplicate(items.map(m => m.name));
+            if (groupEl) { groupEl.style.opacity = '.5'; groupEl.querySelectorAll('button').forEach(b => b.disabled = true); }
+            if (msg) msg.textContent = 'Won’t flag these again ✓';
+            this._toast('success', 'Marked as different — won’t be flagged again');
+        } catch (err) {
+            if (msg) msg.textContent = 'Failed: ' + err.message;
+        }
     },
 
     _dupGroup(items, gi) {
@@ -188,6 +207,8 @@ window.Masterpieces = {
                 <div class="mp-dup-row">${cards}</div>
                 <div class="mp-dup-actions">
                     <button class="btn btn-primary btn-sm" data-merge="${gi}">Merge ${items.length} into one</button>
+                    <button class="btn btn-sm" data-notdup="${gi}"
+                        title="These are different images — don't flag them as duplicates again">✗ Not the same</button>
                     <span class="mp-dup-msg muted" data-msg="${gi}"></span>
                 </div>
             </div>`;

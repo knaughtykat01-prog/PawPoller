@@ -67,6 +67,31 @@ def remove_member(conn: sqlite3.Connection, name: str, platform: str, submission
                  (name,))
 
 
+def add_not_duplicate(conn: sqlite3.Connection, names: list[str]) -> int:
+    """Remember that these Masterpieces are NOT the same image (the de-dup finder
+    flagged them but the user said no). Records every pair in the group so none of
+    them get re-grouped. Returns the number of new pairs stored."""
+    uniq = sorted({n for n in (names or []) if n})
+    added = 0
+    for i in range(len(uniq)):
+        for j in range(i + 1, len(uniq)):
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO masterpiece_not_duplicate (name_a, name_b) "
+                "VALUES (?, ?)", (uniq[i], uniq[j]))
+            added += cur.rowcount
+    conn.commit()
+    return added
+
+
+def not_duplicate_pairs(conn: sqlite3.Connection) -> set[tuple]:
+    """Every user-confirmed 'not the same image' pair, normalised (a < b). The
+    de-dup finder skips these edges so dismissed look-alikes never regroup."""
+    return {
+        (r["name_a"], r["name_b"])
+        for r in conn.execute("SELECT name_a, name_b FROM masterpiece_not_duplicate")
+    }
+
+
 def merge_masterpieces(conn: sqlite3.Connection, keep: str, drop: str) -> int:
     """Fold ``drop``'s site-members into ``keep`` and remove ``drop``'s index row.
 

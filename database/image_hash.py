@@ -340,9 +340,15 @@ def hash_masterpieces(conn: sqlite3.Connection) -> dict:
     return {"scanned": scanned, "hashed": hashed}
 
 
-def duplicate_masterpiece_groups(conn: sqlite3.Connection) -> list[list[str]]:
+def duplicate_masterpiece_groups(conn: sqlite3.Connection,
+                                 dismissed: set | None = None) -> list[list[str]]:
     """Clusters of Masterpiece names whose hero images are near-identical (Hamming
-    ≤ threshold). Only groups of 2+ are returned. Assumes hash_masterpieces() ran."""
+    ≤ threshold). Only groups of 2+ are returned. Assumes hash_masterpieces() ran.
+
+    ``dismissed`` is a set of user-confirmed "not the same" name pairs (normalised
+    ``(a, b)`` with a < b) — those edges are skipped, so a rejected look-alike pair
+    never re-groups (2.145.0)."""
+    dismissed = dismissed or set()
     rows = [(r["submission_id"], r["phash"]) for r in conn.execute(
         "SELECT submission_id, phash FROM image_hashes WHERE platform = ?", (_MP_PLATFORM,))]
     n = len(rows)
@@ -361,6 +367,9 @@ def duplicate_masterpiece_groups(conn: sqlite3.Connection) -> list[list[str]]:
 
     for i in range(n):
         for j in range(i + 1, n):
+            pair = (rows[i][0], rows[j][0]) if rows[i][0] < rows[j][0] else (rows[j][0], rows[i][0])
+            if pair in dismissed:
+                continue  # user said these aren't the same image — don't link them
             if hamming(rows[i][1], rows[j][1]) <= HAMMING_THRESHOLD:
                 union(i, j)
     clusters: dict[int, list[str]] = {}
