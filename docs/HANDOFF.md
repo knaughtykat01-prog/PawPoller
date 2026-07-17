@@ -1,7 +1,13 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.140.0 — **Artwork hub: dedup Masterpiece members + Ignore list + multi-account Overview.**
+**Current version (master):** 2.141.0 — **Detail pages: less scrolling (compaction pass).**
+Conservative CSS-first density pass (backlog E, "detail poetization / no scrolling"): artwork detail cover column is
+**sticky** (stays in view while reading the right column); story detail info card becomes a **2-col hero** (cover beside
+body) when a cover exists — saves ~a screenful — via `story-detail-info--hascover` + a wide-screen rule (narrow/no-cover
+unchanged); masterpiece `.mp-section` spacing tightened. Frontend-only. Follow-up if wanted: tabbed sections.
+
+**Prior — 2.140.0 — Artwork hub: dedup Masterpiece members + Ignore list + multi-account Overview.**
 (1) A discovered piece that's a **Masterpiece member no longer shows as a duplicate tile** — `get_discovered_unlinked`
 subtracts `masterpiece_queries.all_member_pairs`. (2) New **🚫 Ignore** on discovered tiles → `ignored_submissions` table
 (`database/ignored_queries.py`) + `POST/DELETE/GET /api/works/discovered/ignore[d]`; reversible via **Ignored** view

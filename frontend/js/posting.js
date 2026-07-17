@@ -190,7 +190,7 @@ const Posting = {
 
             // ── Info card ──────────────────────────────────────
             const infoHtml = `
-                <div class="story-detail-info card">
+                <div class="story-detail-info card${coverHtml ? ' story-detail-info--hascover' : ''}">
                     ${coverHtml}
                     <div class="story-detail-info-body">
                         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">

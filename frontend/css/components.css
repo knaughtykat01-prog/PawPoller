@@ -2022,10 +2022,20 @@ a.stat-card:hover {
    image can run edge-to-edge. Body padding is restored by .story-detail-info-body,
    which always wraps the actual content (renderStoryDetail emits it
    unconditionally — empty cover just means no .story-detail-cover sibling). */
-.story-detail-info { margin-bottom: 16px; padding: 0; overflow: hidden; }
+.story-detail-info { margin-bottom: 14px; padding: 0; overflow: hidden; }
 .story-detail-info h2 { margin: 0 0 4px; }
 .story-detail-cover { height: 200px; background-size: cover; background-position: center; border-bottom: 1px solid var(--border); }
 .story-detail-info-body { padding: 16px; }
+/* Compact hero: when there's a cover, sit it beside the body instead of a
+   full-width banner above — saves ~200px of vertical scroll on wide screens.
+   No cover → the plain stacked card (no empty column). */
+@media (min-width: 720px) {
+    .story-detail-info--hascover { display: grid; grid-template-columns: 210px 1fr; }
+    .story-detail-info--hascover .story-detail-cover {
+        height: 100%; min-height: 210px;
+        border-bottom: none; border-right: 1px solid var(--border);
+    }
+}
 .story-detail-meta { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0; font-size: 0.9rem; color: var(--text-secondary); align-items: center; }
 .story-detail-desc { color: var(--text-secondary); line-height: 1.5; margin-top: 8px; }
 .story-detail-summary { margin-top: 10px; padding: 10px 12px; background: var(--bg-tertiary); border-left: 3px solid var(--accent-dim); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; }

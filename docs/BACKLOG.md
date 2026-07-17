@@ -14,11 +14,10 @@ Legend: 🔴 open · 🟡 in progress · 🟢 done · ⚪ deferred/parked
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| E | **Detail compaction** ("poetization / no scrolling") — story, artwork & Masterpiece detail denser, fits without scrolling | 🟡 next (Rhys pick #2) | Layout/CSS; somewhat subjective — keep the key info above the fold |
-| F | **IA restructure** — split **Submissions** (stories+art) from **Posts** (microblog catalogue); move post-creation into **Create**; posting-under-Create | 🔴 queued (Rhys pick #3) | Big navigation reshape, touches many screens |
+| F | **IA restructure** — split **Submissions** (stories+art) from **Posts** (microblog catalogue); move post-creation into **Create**; posting-under-Create | 🔴 next (Rhys pick #3) | Big navigation reshape, touches many screens — **plan with Rhys before executing** |
 
-_Recently shipped from this table:_ **A** Instagram → artwork upload (**2.139**); **B** Masterpiece member dedup,
-**C** Ignore function, **D** multi-account Overview default (**2.140**).
+_Recently shipped from this table:_ **A** Instagram → artwork upload (**2.139**); **B** dedup, **C** Ignore, **D**
+multi-account Overview (**2.140**); **E** detail compaction pass (**2.141**, CSS-first — tabbed-sections follow-up open).
 
 ## 🔴 Open (smaller / follow-ups)
 
@@ -61,6 +60,7 @@ _Recently shipped from this table:_ **A** Instagram → artwork upload (**2.139*
 | Masterpiece member dedup (no duplicate discovered tiles) | **2.140** |
 | Ignore function for discovered artwork (+ Ignored/restore view) | **2.140** |
 | Multi-account Overview shown by default ("By persona" widget) | **2.140** |
+| Detail pages compaction (less scrolling) — CSS-first pass | **2.141** |
 | AO3 525 error logging | (per HANDOFF ledger) |
 | In-app "what's new" changelog popup on update | 2.134 |
 

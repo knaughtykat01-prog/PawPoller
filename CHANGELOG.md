@@ -4,6 +4,23 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.141.0] - 2026-07-17 - Detail pages: less scrolling (compaction pass)
+
+A conservative density pass on the three detail pages so the key info sits higher and there's less scrolling
+(the "detail poetization / no scrolling" ask). Deliberately CSS-first + reversible — no DOM/logic restructuring.
+
+- **Artwork detail:** the cover column is now **sticky** on wide screens, so the image stays in view while you read
+  the Details / Published / Publish-to-more cards on the right. Tighter inter-card gaps; cards drop their own margins.
+- **Story detail:** when a story has a cover, the info card becomes a **2-column hero** (cover *beside* the title/meta/
+  description) instead of a full-width banner stacked above it — saves roughly a screen's worth of vertical space. No
+  cover → unchanged plain card; narrow screens → still stacked (`story-detail-info--hascover` + a `min-width:720px` rule).
+- **Masterpiece detail:** tighter `.mp-section` spacing (head was already side-by-side).
+
+Frontend-only (CSS + one conditional class in `posting.js`); backend suite unchanged. `SITE_VERSION` → 2.141.0.
+Follow-up if wanted: collapse secondary sections into tabs for even less scroll.
+
+---
+
 ## [2.140.0] - 2026-07-17 - Artwork hub: dedup Masterpiece members, Ignore list, multi-account Overview
 
 Three requested improvements.

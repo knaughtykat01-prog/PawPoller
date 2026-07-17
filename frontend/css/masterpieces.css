@@ -112,8 +112,8 @@
 }
 
 /* Canonical metadata panel + section headers */
-.mp-section { margin: 1.5rem 0; }
-.mp-section-title { font-size: 1rem; font-weight: 600; margin-bottom: .6rem; }
+.mp-section { margin: 1.1rem 0; }
+.mp-section-title { font-size: 1rem; font-weight: 600; margin-bottom: .5rem; }
 .mp-desc { color: var(--text-secondary); line-height: 1.5; white-space: pre-wrap; }
 
 /* Locations ("Published to") table — same shape as the Collections table */
