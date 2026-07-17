@@ -4,6 +4,28 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.136.0] - 2026-07-17 - Artwork tab: filter/search + editable metadata
+
+Two Artwork-hub improvements from the UI backlog.
+
+**Filter & search bar.** The Artwork grid gained a segmented filter — **All · In library · Discovered** (with live
+counts) — plus a **title search box**. "In library" is work you uploaded/imported here; "Discovered" is art the pollers
+found on your accounts (masters + standalone tiles). Filtering is client-side over the already-loaded set (no refetch);
+the grid's delegated click handler survives the re-render because it's bound to the container. `artwork.js` `render()`
+now stores `_hubItems` and re-renders via `_applyHubFilters()`; new `.artwork-filters` / `.art-seg*` / `.art-search`
+styles track all 8 themes.
+
+**Editable canonical record on standalone artwork.** The artwork detail page previously showed rating/description as a
+read-only badge — now it's a proper edit card (**Title · Description · Rating · Tags** + 🏷️ tag-library browse). Saving
+PATCHes `/api/artwork/images/{name}` (existing endpoint) and merges the new default tags into the per-platform dict so
+overrides survive. This closes the "change the rating of an artwork" gap for standalone pieces (Masterpieces could
+already edit their canonical record + sync it out; standalone art is local-only until you publish or promote it).
+`_openTagLibrary(targetId)` was generalised so both the upload form and the detail editor can reuse it.
+
+Frontend-only; backend suite unchanged. `SITE_VERSION` → 2.136.0.
+
+---
+
 ## [2.135.0] - 2026-07-17 - Overview stat cards are click-through
 
 The four headline Overview stat cards (Submissions · Total views · Favourites · Comments, plus Downloads) now

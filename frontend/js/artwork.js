@@ -68,6 +68,7 @@ window.Artwork = {
                     <a class="btn btn-primary" href="#/artwork/new">+ New artwork</a>
                 </div>
             </div>
+            <div id="artwork-filters" class="artwork-filters" hidden></div>
             <div id="artwork-grid"><div class="loading-spinner">Loading…</div></div>`;
 
         const grid = document.getElementById('artwork-grid');
@@ -110,19 +111,43 @@ window.Artwork = {
             return;
         }
 
-        // Merge into one grid, newest first. Library cards link to their detail;
+        // Merge into one list, newest first. Library cards link to their detail;
         // master cards pool a linked set; discovered cards carry View ↗ + Import.
+        // Each item carries a lowercased title for the search filter.
         const merged = [
-            ...library.map(a => ({ _src: 'lib', _date: a.created_at || '', a })),
-            ...masters.map(m => ({ _src: 'master', _date: m._date || '', m })),
-            ...standalone.map(d => ({ _src: 'disc', _date: d.posted_at || '', d })),
+            ...library.map(a => ({ _src: 'lib', _date: a.created_at || '', _title: (a.title || a.name || '').toLowerCase(), a })),
+            ...masters.map(m => ({ _src: 'master', _date: m._date || '', _title: this._masterTitle(m.members).toLowerCase(), m })),
+            ...standalone.map(d => ({ _src: 'disc', _date: d.posted_at || '', _title: (d.title || '').toLowerCase(), d })),
         ].sort((x, y) => (y._date || '').localeCompare(x._date || ''));
+        this._hubItems = merged;
+        // "In library" = uploaded/imported here; "Discovered" = found by the
+        // pollers (masters + standalone discovered tiles).
+        this._hubSeg = this._hubSeg || 'all';
+        this._hubSearch = '';
+
+        // Filter bar (client-side over the already-loaded set).
+        const counts = {
+            all: merged.length,
+            lib: merged.filter(m => m._src === 'lib').length,
+            disc: merged.filter(m => m._src !== 'lib').length,
+        };
+        const filterBar = document.getElementById('artwork-filters');
+        filterBar.hidden = false;
+        filterBar.innerHTML = this._hubFilterBar(counts);
+        filterBar.querySelectorAll('[data-seg]').forEach(btn =>
+            btn.addEventListener('click', () => {
+                this._hubSeg = btn.dataset.seg;
+                filterBar.querySelectorAll('[data-seg]').forEach(b => b.classList.toggle('is-active', b === btn));
+                this._applyHubFilters();
+            }));
+        const searchEl = filterBar.querySelector('#artwork-search');
+        if (searchEl) searchEl.addEventListener('input', () => {
+            this._hubSearch = searchEl.value.trim().toLowerCase();
+            this._applyHubFilters();
+        });
 
         grid.className = 'artwork-grid';
-        grid.innerHTML = merged.map(m =>
-            m._src === 'lib' ? this._card(m.a)
-                : m._src === 'master' ? this._masterCard(m.m)
-                    : this._discoveredCard(m.d)).join('');
+        this._applyHubFilters();
 
         grid.addEventListener('click', e => {
             // Delete-from-card takes priority over the card's navigation and over
@@ -143,6 +168,49 @@ window.Artwork = {
             const mk = e.target.closest('.art-make-mp-btn');
             if (mk) { e.preventDefault(); this._makeMasterpiece(mk); }
         });
+    },
+
+    /* Segmented filter + search bar for the Artwork hub. Purely client-side over
+     * the loaded set — separates uploaded/imported library work from art the
+     * pollers discovered, and lets the user title-search across both. */
+    _hubFilterBar(counts) {
+        const seg = (id, label, n) =>
+            `<button type="button" class="art-seg${this._hubSeg === id ? ' is-active' : ''}" data-seg="${id}">`
+            + `${label} <span class="art-seg-count">${n}</span></button>`;
+        return `
+            <div class="art-seg-group" role="group" aria-label="Filter artwork">
+                ${seg('all', 'All', counts.all)}
+                ${seg('lib', 'In library', counts.lib)}
+                ${seg('disc', 'Discovered', counts.disc)}
+            </div>
+            <input type="search" id="artwork-search" class="art-search" placeholder="Search titles…"
+                value="${this.esc(this._hubSearch || '')}" autocomplete="off">`;
+    },
+
+    /* Re-render just the grid from this._hubItems using the current segment +
+     * search. Cheap (no refetch); the grid's delegated click handler survives
+     * because it's bound to the container, not the cards. */
+    _applyHubFilters() {
+        const grid = document.getElementById('artwork-grid');
+        if (!grid) return;
+        const seg = this._hubSeg || 'all';
+        const q = this._hubSearch || '';
+        const items = (this._hubItems || []).filter(m => {
+            if (seg === 'lib' && m._src !== 'lib') return false;
+            if (seg === 'disc' && m._src === 'lib') return false;
+            if (q && !(m._title || '').includes(q)) return false;
+            return true;
+        });
+        if (!items.length) {
+            grid.className = '';
+            grid.innerHTML = `<div class="empty-state"><p class="muted">No artwork matches this filter.</p></div>`;
+            return;
+        }
+        grid.className = 'artwork-grid';
+        grid.innerHTML = items.map(m =>
+            m._src === 'lib' ? this._card(m.a)
+                : m._src === 'master' ? this._masterCard(m.m)
+                    : this._discoveredCard(m.d)).join('');
     },
 
     /* ── Masters (unify) ────────────────────────────────────────
@@ -605,9 +673,9 @@ window.Artwork = {
      * default-tags box, and write the confirmed selection straight back. The
      * picker preserves free-typed tags that aren't in the library, so this is
      * lossless — it only ever adds discoverability, never drops a tag. */
-    _openTagLibrary() {
+    _openTagLibrary(targetId = 'art-tags') {
         if (!window.TagPicker) { this._toast('error', 'Tag library unavailable'); return; }
-        const box = document.getElementById('art-tags');
+        const box = document.getElementById(targetId);
         if (!box) return;
         TagPicker.open({
             title: 'Tag library',
@@ -731,6 +799,18 @@ window.Artwork = {
             </tr>`;
         }).join('');
 
+        // Editable canonical metadata (rating / title / description / tags). The
+        // rating select is pre-selected to the current value; the tags box shows
+        // the default tag list (the cascade source for every platform).
+        const curRating = (data.rating || '').toLowerCase();
+        const ratingOpts = ['general', 'mature', 'adult'].map(r =>
+            `<option value="${r}"${curRating === r ? ' selected' : ''}>${r[0].toUpperCase() + r.slice(1)}</option>`).join('');
+        const tagsObj = data.tags || {};
+        const defaultTags = (tagsObj.default && tagsObj.default.length)
+            ? tagsObj.default
+            : [...new Set(Object.values(tagsObj).flat())];
+        const defaultTagsStr = defaultTags.join(', ');
+
         app.innerHTML = `
             <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
                 <div>
@@ -745,10 +825,26 @@ window.Artwork = {
                 <div class="artwork-detail-col">${cover}</div>
                 <div class="artwork-detail-col">
                     <div class="card">
-                        <div class="artwork-detail-meta">
-                            ${data.rating ? `<span class="artwork-badge artwork-badge--${this.esc(data.rating)}">${this.esc(data.rating)}</span>` : ''}
+                        <h3>Details <span class="muted" style="font-weight:400;font-size:.8rem">— edit the canonical record</span></h3>
+                        <label class="field">Title
+                            <input type="text" id="art-edit-title" value="${this.esc(data.title || '')}" placeholder="Artwork title">
+                        </label>
+                        <label class="field">Description
+                            <textarea id="art-edit-desc" rows="4" placeholder="Caption / description">${this.esc(data.description || '')}</textarea>
+                        </label>
+                        <div class="field-row">
+                            <label class="field">Rating
+                                <select id="art-edit-rating">${ratingOpts}</select>
+                            </label>
                         </div>
-                        ${data.description ? `<p>${this.esc(data.description)}</p>` : '<p class="muted">No description.</p>'}
+                        <label class="field">Tags <span class="muted">(comma-separated default)</span>
+                            <textarea id="art-edit-tags" rows="2" placeholder="tag one, tag two">${this.esc(defaultTagsStr)}</textarea>
+                        </label>
+                        <div class="artwork-actions">
+                            <button type="button" class="btn btn-sm" id="art-edit-tagbrowse">🏷️ Browse tag library</button>
+                            <button type="button" class="btn btn-primary btn-sm" id="art-edit-save">Save changes</button>
+                            <span id="art-edit-msg" class="muted"></span>
+                        </div>
                     </div>
                     <div class="card">
                         <h3>Published</h3>
@@ -783,6 +879,39 @@ window.Artwork = {
 
         document.getElementById('art-delete').addEventListener('click', () => this._delete(name));
         document.getElementById('art-detail-publish').addEventListener('click', () => this._publishMore(name));
+        document.getElementById('art-edit-save').addEventListener('click', () => this._saveMeta(name, data));
+        document.getElementById('art-edit-tagbrowse').addEventListener('click', () => this._openTagLibrary('art-edit-tags'));
+    },
+
+    /* Save canonical metadata edits (rating / title / description / tags) on a
+     * standalone artwork. Merges the new default tags into the existing per-
+     * platform tag dict so overrides survive, then PATCHes /images/{name}. This
+     * updates the local record only — use "Sync" on a Masterpiece to push edits
+     * out to already-published sites. */
+    async _saveMeta(name, data) {
+        const msg = document.getElementById('art-edit-msg');
+        const btn = document.getElementById('art-edit-save');
+        const title = document.getElementById('art-edit-title').value.trim();
+        if (!title) { msg.textContent = 'Enter a title.'; return; }
+        const tags = { ...(data.tags || {}) };
+        const def = this._parseTags(document.getElementById('art-edit-tags').value);
+        if (def.length) tags.default = def; else delete tags.default;
+        const updates = {
+            title,
+            description: document.getElementById('art-edit-desc').value,
+            rating: document.getElementById('art-edit-rating').value,
+            tags,
+        };
+        btn.disabled = true;
+        msg.textContent = 'Saving…';
+        try {
+            await API.updateArtwork(name, updates);
+            this._toast('success', 'Saved');
+            this.renderDetail(name);
+        } catch (err) {
+            msg.textContent = 'Save failed: ' + err.message;
+            btn.disabled = false;
+        }
     },
 
     async _publishMore(name) {

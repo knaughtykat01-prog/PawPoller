@@ -1,7 +1,13 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.135.0 — **Overview stat cards are click-through.**
+**Current version (master):** 2.136.0 — **Artwork tab: filter/search + editable metadata.**
+The Artwork hub gained a segmented filter (**All · In library · Discovered**, live counts) + a **title search** box
+(`artwork.js render()` now stores `_hubItems`, re-renders via `_applyHubFilters()`). The standalone-artwork **detail page
+is now editable** — Title/Description/**Rating**/Tags edit card PATCHing the existing `/api/artwork/images/{name}` (closes
+the "change an artwork's rating" gap for standalone pieces; Masterpieces could already edit+sync). Frontend-only.
+
+**Prior — 2.135.0 — Overview stat cards are click-through.**
 The Overview headline stat cards (Submissions/Views/Faves/Comments/Downloads) now deep-link to the works library
 (`#/library`) — `app.js _dashWidgetHtml` wraps each in a `[data-nav]` link (suppressed in ⚙ Customize). First step of the
 "clickable widgets" ask (per-metric sorted destinations still to come). Frontend-only.
@@ -15,12 +21,12 @@ code). **Tell the user to hard-refresh (PWA service worker may be caching).** Do
   format (2.123), platforms-in-settings card grid (2.133), SquidgeWorld cred-key lock (2.122), the whole Masterpiece
   build 0–7, Collections grouping + multi-match suggest, multi-account Overview persona widget (2.132), AO3 525 logging.
 - **GENUINELY UNDONE (backlog):** (1) Overview clickable widgets — *stat cards done in 2.135; per-metric sorted views +
-  20 more widgets NOT done*; (2) Artwork/Gallery filters + separations; (3) story/artwork/Masterpiece detail
-  "poetization" (less scrolling); (4) change rating of STANDALONE artwork (Masterpieces already can via Phase 5);
-  (5) IA: posting under **Create**, split **Submissions** (stories+art) from **Posts** (microblog catalogue), move
-  Create-posts into Create; (6) **Instagram → art upload** (deferred — needs a net-new `IGPoster` adapter); (7)
-  **marketing-image generator** (BookTok-style, doable via Pillow like the cover/scene scripts — see IMG_0351.jpg);
-  (8) simple **image editor** (crop/resize/format/stickers/blur/censor) — future.
+  20 more widgets NOT done*; ~~(2) Artwork/Gallery filters + separations~~ **DONE 2.136**; (3) story/artwork/Masterpiece
+  detail "poetization" (less scrolling); ~~(4) change rating of STANDALONE artwork~~ **DONE 2.136** (edit card on the
+  artwork detail — title/desc/rating/tags); (5) IA: posting under **Create**, split **Submissions** (stories+art) from
+  **Posts** (microblog catalogue), move Create-posts into Create; (6) **Instagram → art upload** (deferred — needs a
+  net-new `IGPoster` adapter); (7) **marketing-image generator** (BookTok-style, doable via Pillow like the cover/scene
+  scripts — see IMG_0351.jpg); (8) simple **image editor** (crop/resize/format/stickers/blur/censor) — future.
 
 **Prior — 2.134.0 — In-app "What's new" popup on update + real GitHub Release notes. DEPLOYED.**
 When the running version differs from the one this browser last saw (a desktop self-update **or** a server redeploy), the

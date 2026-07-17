@@ -3,6 +3,59 @@
  * Uses theme tokens throughout so it tracks all 8 themes.
  */
 
+/* Filter/search bar above the grid — segments library vs discovered work
+   and title-searches across both (client-side over the loaded set). */
+.artwork-filters {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.1rem;
+}
+.art-seg-group {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--bg-card);
+}
+.art-seg {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: .88rem;
+    padding: .42rem .9rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    transition: background .15s ease, color .15s ease;
+}
+.art-seg + .art-seg { border-left: 1px solid var(--border); }
+.art-seg:hover { color: var(--text-primary); }
+.art-seg.is-active { background: var(--accent); color: #fff; }
+.art-seg-count {
+    font-size: .74rem;
+    font-weight: 600;
+    padding: .05rem .4rem;
+    border-radius: 999px;
+    background: rgba(128, 128, 128, .18);
+}
+.art-seg.is-active .art-seg-count { background: rgba(255, 255, 255, .28); }
+.art-search {
+    flex: 1 1 200px;
+    max-width: 320px;
+    padding: .45rem .8rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: .9rem;
+}
+.art-search:focus { outline: none; border-color: var(--accent); }
+
 /* Grid of artwork cards */
 .artwork-grid {
     display: grid;
