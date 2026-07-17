@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.155.0 — **One works hub: Stories + Artwork fold into the Library** (backlog L).
+**Current version (master):** 2.156.0 — **The update popup speaks English now.**
+Rhys: *"For the update log, it should just be the simplified version, not so technical."* The in-app What's-new modal
+was rendering the **CHANGELOG entry body verbatim** — so a release popped up talking about `assemble_works` and
+`GetTickCount64()`. Dumbing down CHANGELOG.md was the wrong fix (it's the *engineering* record; HANDOFF +
+documentation_guide cross-reference it by version), so the audiences are now **separated**:
+**every entry opens with a `>` blockquote = the plain-language summary**, and that is the ONLY thing the popup shows.
+`_summarize()` extracts it; pre-convention entries fall back to their **first paragraph** (a sentence, not a wall).
+**`/api/whatsnew` no longer returns `body`** — just `{version, header, summary}`, so the popup *can't* render the
+internals. Convention documented at the top of `CHANGELOG.md` + in the `CLAUDE.md` rituals. +6 tests.
+**WHEN WRITING A CHANGELOG ENTRY: write the blockquote.** No identifiers, no root causes — that goes below it.
+
+**Prior — 2.155.0 — One works hub: Stories + Artwork fold into the Library** (backlog L).
 Three hubs listed your works and two were redundant: `/api/works` always returned both kinds behind a `content_type`
 discriminator, so **Stories** (`#/posting`) was it filtered to stories with *no search/sort* (a strict subset of the
 Library's Stories segment, same detail page) and **Artwork** (`#/artwork`) was it filtered to artwork + discovered

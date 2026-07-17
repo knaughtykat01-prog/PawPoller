@@ -3358,10 +3358,13 @@ const App = {
 
     _showWhatsNewModal(data) {
         const esc = (s) => Utils.escapeHtml(String(s == null ? '' : s));
+        // The SUMMARY only — one plain-language line per release, never the full
+        // entry (2.156.0). CHANGELOG.md is the engineering record; popping its
+        // internals at someone who just wanted to know what changed is noise.
         const items = (data.entries || []).map(e => `
             <div class="wn-entry">
                 <div class="wn-ver">v${esc(e.version)}${e.header ? ` <span class="wn-head">${esc(e.header)}</span>` : ''}</div>
-                <div class="wn-body">${this._mdLite(e.body || '')}</div>
+                <div class="wn-body">${this._mdLite(e.summary || '')}</div>
             </div>`).join('');
         const more = data.truncated
             ? '<p class="wn-more">…and earlier updates too — see CHANGELOG.md for the full history.</p>' : '';

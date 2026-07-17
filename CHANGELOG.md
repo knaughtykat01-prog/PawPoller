@@ -1,10 +1,49 @@
 # PawPoller Changelog
 
-All notable changes to PawPoller are documented here.
+All notable changes to PawPoller are documented here. This is the **engineering** record — it names functions,
+routes and root causes on purpose, because `docs/HANDOFF.md` and `docs/documentation_guide.md` cross-reference
+entries by version and it carries context across dev sessions.
+
+**Every entry opens with a `>` blockquote: the plain-language summary.** That blockquote — and *only* that — is what
+the in-app "What's new" popup shows (`/api/whatsnew` → `routes/whatsnew_api.py`, since 2.156.0). Write it for
+someone who just wants to know what changed: what's different, what to do about it, no identifiers. The technical
+detail goes below it, where it belongs. An entry without a blockquote falls back to its first paragraph in the
+popup, which is usually the wrong thing to show — so write the blockquote.
+
+---
+
+## [2.156.0] - 2026-07-17 - The update popup speaks English now
+
+> The "What's new" box that appears after an update was showing you the developer notes — function names, routes,
+> the lot. It now shows a plain one-liner per update saying what actually changed for you.
+
+Rhys: *"For the update log, it should just be the simplified version, not so technical."*
+
+The in-app What's-new modal rendered the **CHANGELOG entry body verbatim**. CHANGELOG.md is the *engineering*
+record — it names functions, routes and root causes on purpose, because `HANDOFF.md` and `documentation_guide.md`
+cross-reference entries by version and it carries context across dev sessions. Piping that straight into a popup
+meant yesterday's release greeted the user with `assemble_works`, `replaceState` and `GetTickCount64()`.
+
+Fixing it by dumbing down CHANGELOG.md would have traded one problem for a worse one, so the two audiences are now
+separated instead:
+
+- **Convention:** every entry opens with a `>` blockquote — the plain-language summary. Documented at the top of
+  `CHANGELOG.md` itself and in the `CLAUDE.md` rituals so it doesn't quietly rot.
+- **`_summarize()`** pulls that blockquote out. Entries written before today (and any that forget it) fall back to
+  their **first paragraph** — imperfect, but a sentence rather than a wall of internals. A blockquote further down
+  an entry isn't mistaken for the summary.
+- **`/api/whatsnew` no longer returns `body` at all** — just `{version, header, summary}`. The popup can't render
+  what it never receives, which is a stronger guarantee than trusting the frontend to pick the right field.
+
+Summaries written for 2.154.0 and 2.155.0. +6 tests.
 
 ---
 
 ## [2.155.0] - 2026-07-17 - One works hub: Stories and Artwork fold into the Library
+
+> Stories and Artwork aren't separate pages any more — they're filters inside your Library, alongside Masterpieces
+> and anything polling has discovered. Nothing you could do before is gone; the buttons just live in one place now.
+> Old links still work, and every story keeps its blurb, category and content warnings on its card.
 
 Backlog **L** — the Option B that got deferred when Rhys picked Option A for the IA reshape. There were **three**
 hubs listing your works, and two of them were showing the same records the third already held:
@@ -78,6 +117,10 @@ run unlucky enough to land inside a tick.
 ---
 
 ## [2.154.0] - 2026-07-17 - Housekeeping: personal data scrub of the public copy
+
+> Housekeeping. Checked that none of your personal details — story titles, artists' names, your own file paths —
+> can end up in the copy of PawPoller other people download. A few had slipped through, including eight menu labels
+> in the story editor that were named after your stories. All cleaned up.
 
 Rhys: *"do a quick housekeeping check in the files being commit no personal data like art titles or anything is
 uploaded"* — so this release ran the real `deploy/make_public.py` build+scan end to end (418 files ship, 16,434 are
