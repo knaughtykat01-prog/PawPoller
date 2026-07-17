@@ -1106,6 +1106,9 @@ const App = {
             if (window.Collections) window.Collections.renderDetail(parts[1]);
         } else if (parts[0] === 'collections') {
             if (window.Collections) window.Collections.render();
+        } else if (parts[0] === 'masterpieces' && parts[1] === 'duplicates') {
+            // Duplicate-finder / merge review (2.144.0).
+            if (window.Masterpieces) window.Masterpieces.renderDuplicates();
         } else if (parts[0] === 'masterpieces' && parts[1]) {
             // Masterpiece detail (read-only, Phase 2). Name may contain slashes.
             if (window.Masterpieces) window.Masterpieces.renderDetail(parts.slice(1).join('/'));

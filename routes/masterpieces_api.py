@@ -44,6 +44,75 @@ def list_masterpieces():
         conn.close()
 
 
+# ── De-duplication (2.144.0) ──────────────────────────────────────────────────
+# NOTE: these MUST be declared before the generic /{name} route, else Starlette
+# captures "/duplicates" as name="duplicates".
+
+@masterpieces_router.get("/duplicates")
+def masterpiece_duplicates():
+    """Groups of Masterpieces whose hero images are near-identical (perceptual
+    hash), so the user can merge same-image duplicates. Each group is sorted with
+    the best merge-survivor first (most views, then most sites)."""
+    from database import image_hash
+    conn = get_connection()
+    try:
+        image_hash.hash_masterpieces(conn)                     # populate + prune
+        groups = image_hash.duplicate_masterpiece_groups(conn)
+        result = []
+        for g in groups:
+            items = []
+            for name in g:
+                try:
+                    art = artwork_reader.load_artwork(name)
+                except FileNotFoundError:
+                    continue
+                s = mq.summarize(conn, name)
+                items.append({
+                    "name": name,
+                    "title": art.title or name,
+                    "image": art.image,
+                    "thumbnail": art.thumbnail or "",
+                    "cover_thumb": s.get("cover_thumb", ""),
+                    "cover_platform": s.get("cover_platform", ""),
+                    "views": (s.get("totals") or {}).get("views", 0),
+                    "sites": s.get("member_count", 0),
+                })
+            if len(items) >= 2:
+                items.sort(key=lambda x: (x["views"], x["sites"]), reverse=True)
+                result.append(items)
+        return {"groups": result}
+    finally:
+        conn.close()
+
+
+@masterpieces_router.post("/merge")
+def merge_masterpieces_ep(body: dict):
+    """Merge two Masterpieces of the same image: fold ``drop``'s site-links into
+    ``keep`` and delete ``drop`` (its image is identical). Body: {keep, drop}."""
+    keep = (body.get("keep") or "").strip()
+    drop = (body.get("drop") or "").strip()
+    if not keep or not drop or keep == drop:
+        raise HTTPException(400, detail="keep and drop (distinct) are required")
+    conn = get_connection()
+    try:
+        artwork_reader.load_artwork(keep)          # 404 if either is missing
+        art_drop = artwork_reader.load_artwork(drop)
+        moved = mq.merge_masterpieces(conn, keep, drop)
+        # Drop the now-redundant folder (identical image) + its cached hero hash.
+        conn.execute("DELETE FROM image_hashes WHERE platform = '__mp__' AND submission_id = ?", (drop,))
+        conn.commit()
+    except FileNotFoundError:
+        raise HTTPException(404, detail="Masterpiece not found")
+    finally:
+        conn.close()
+    import shutil
+    try:
+        shutil.rmtree(art_drop.path)
+    except OSError:
+        logger.warning("merge: could not remove folder for %s", drop)
+    return {"status": "merged", "keep": keep, "dropped": drop, "members_moved": moved}
+
+
 @masterpieces_router.get("/{name}")
 def get_masterpiece(name: str):
     """Full detail: canonical metadata (from masterpiece.json) + resolved member

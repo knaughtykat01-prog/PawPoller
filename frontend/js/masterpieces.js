@@ -108,6 +108,8 @@ window.Masterpieces = {
 
         const newBtn = `<a class="btn btn-primary btn-sm" href="#/artwork/new"
             title="Upload a new image, describe it once, and publish it across sites">＋ New Masterpiece</a>`;
+        const dupBtn = `<a class="btn btn-sm" href="#/masterpieces/duplicates"
+            title="Find Masterpieces of the same image and merge them into one">🔍 Find duplicates</a>`;
         if (!list.length) {
             gridEl.className = '';
             gridEl.innerHTML = `<div class="mp-gridbar">${newBtn}</div>
@@ -117,8 +119,105 @@ window.Masterpieces = {
             return;
         }
         gridEl.className = '';
-        gridEl.innerHTML = `<div class="mp-gridbar">${newBtn}</div>
+        gridEl.innerHTML = `<div class="mp-gridbar">${newBtn}${dupBtn}</div>
             <div class="mp-grid">${list.map(m => this._card(m)).join('')}</div>`;
+    },
+
+    /* ── Duplicate finder / merge (2.144.0) ─────────────────────
+     * The same image can become two separate Masterpieces (imported as two
+     * folders). This scans hero images by perceptual hash, groups look-alikes,
+     * and lets the user merge each group into one survivor (folding the others'
+     * site-links in and deleting the redundant records). */
+    async renderDuplicates() {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="page-header">
+                <h1>Merge duplicate Masterpieces</h1>
+                <p class="muted"><a href="#/masterpieces">← Back to Masterpieces</a> · Same image, more than one
+                Masterpiece? Pick the one to keep and merge the rest into it — their site-links move over and the
+                duplicate record is removed (the image is identical, so nothing is lost).</p>
+            </div>
+            <div id="mp-dups"><div class="loading-spinner">Scanning your images…</div></div>`;
+        this._loadDuplicates();
+    },
+
+    async _loadDuplicates() {
+        const wrap = document.getElementById('mp-dups');
+        if (!wrap) return;
+        let groups;
+        try {
+            const d = await API.getMasterpieceDuplicates();
+            groups = (d && d.groups) || [];
+        } catch (err) {
+            wrap.innerHTML = `<div class="card error">Scan failed: ${this.esc(err.message)}</div>`;
+            return;
+        }
+        if (!groups.length) {
+            wrap.innerHTML = `<div class="empty-state"><h3>No duplicates found 🎉</h3>
+                <p class="muted">No two Masterpieces share the same image.</p></div>`;
+            return;
+        }
+        wrap.innerHTML = groups.map((g, gi) => this._dupGroup(g, gi)).join('');
+        wrap.querySelectorAll('[data-merge]').forEach(btn =>
+            btn.addEventListener('click', () => this._mergeGroup(parseInt(btn.dataset.merge, 10), groups)));
+    },
+
+    _dupGroup(items, gi) {
+        // items[0] is the recommended survivor (most views, then most sites).
+        const cards = items.map((m, i) => {
+            const cover = m.cover_thumb
+                ? `<img class="mp-dup-thumb" src="${this.esc(this._thumbSrc(m.cover_platform, m.cover_thumb))}" alt="" loading="lazy">`
+                : (this._canonUrl(m.name, m.image)
+                    ? `<img class="mp-dup-thumb" src="${this.esc(this._canonUrl(m.name, m.image))}" alt="" loading="lazy">`
+                    : `<span class="mp-dup-thumb mp-dup-thumb--none">🖼️</span>`);
+            const keepTag = i === 0
+                ? `<span class="mp-dup-keep">✓ keeps</span>`
+                : `<label class="mp-dup-pick"><input type="radio" name="dup-keep-${gi}" value="${i}"> keep this instead</label>`;
+            return `
+                <div class="mp-dup-card${i === 0 ? ' is-keep' : ''}" data-idx="${i}">
+                    ${cover}
+                    <div class="mp-dup-meta">
+                        <div class="mp-dup-title">${this.esc(m.title || m.name)}</div>
+                        <div class="mp-dup-stats muted">${this._fmt(m.views)} views · ${m.sites} site${m.sites === 1 ? '' : 's'}</div>
+                        ${keepTag}
+                    </div>
+                </div>`;
+        }).join('');
+        return `
+            <div class="mp-dup-group card" data-group="${gi}">
+                <div class="mp-dup-row">${cards}</div>
+                <div class="mp-dup-actions">
+                    <button class="btn btn-primary btn-sm" data-merge="${gi}">Merge ${items.length} into one</button>
+                    <span class="mp-dup-msg muted" data-msg="${gi}"></span>
+                </div>
+            </div>`;
+    },
+
+    async _mergeGroup(gi, groups) {
+        const items = groups[gi];
+        const groupEl = document.querySelector(`.mp-dup-group[data-group="${gi}"]`);
+        const msg = groupEl ? groupEl.querySelector(`[data-msg="${gi}"]`) : null;
+        // Survivor = the radio the user picked, else the recommended items[0].
+        let keepIdx = 0;
+        const picked = groupEl && groupEl.querySelector(`input[name="dup-keep-${gi}"]:checked`);
+        if (picked) keepIdx = parseInt(picked.value, 10);
+        const keep = items[keepIdx];
+        const drops = items.filter((_m, i) => i !== keepIdx);
+        if (!window.confirm(`Merge ${drops.length} duplicate${drops.length === 1 ? '' : 's'} into “${keep.title || keep.name}”? `
+            + `Their site-links move over and the duplicate records are deleted. This can't be undone.`)) return;
+        const btn = groupEl && groupEl.querySelector('[data-merge]');
+        if (btn) btn.disabled = true;
+        if (msg) msg.textContent = 'Merging…';
+        let ok = 0, fail = 0;
+        for (const d of drops) {
+            try { await API.mergeMasterpieces(keep.name, d.name); ok++; }
+            catch (e) { fail++; }
+        }
+        this._cache = null;   // grid is stale after a merge
+        if (msg) msg.textContent = fail ? `Merged ${ok}, ${fail} failed` : 'Merged ✓';
+        if (groupEl) { groupEl.style.opacity = '.55'; }
+        this._toast(fail ? 'error' : 'success',
+            fail ? `Merged ${ok}, ${fail} failed` : `Merged into ${keep.title || keep.name}`);
     },
 
     _cover(m, cls) {

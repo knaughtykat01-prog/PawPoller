@@ -295,3 +295,75 @@ def image_suggestions(conn: sqlite3.Connection, existing: set) -> list[dict]:
                 })
     suggestions.sort(key=lambda x: x["similarity"], reverse=True)
     return suggestions[:20]
+
+
+# ── Masterpiece de-duplication (2.144.0) ─────────────────────────────────────
+# The same image can end up as two separate Masterpieces (e.g. imported from two
+# platforms as two folders). We hash each Masterpiece's canonical hero image
+# (local, zero network) under a synthetic "__mp__" platform keyed by Masterpiece
+# name, then cluster by Hamming distance to surface look-alikes for merging.
+
+_MP_PLATFORM = "__mp__"
+
+
+def hash_masterpieces(conn: sqlite3.Connection) -> dict:
+    """Hash every Masterpiece's local hero image, storing it under the synthetic
+    ``__mp__`` platform keyed by name. Prunes hashes for names that no longer
+    exist and skips names already hashed. Zero network. {scanned, hashed}."""
+    from pathlib import Path
+    from posting import artwork_reader
+    ensure_table(conn)
+    try:
+        artworks = artwork_reader.list_artworks()
+    except Exception:
+        return {"scanned": 0, "hashed": 0}
+    current = {a.get("name") for a in artworks if a.get("name")}
+    have = {r["submission_id"] for r in conn.execute(
+        "SELECT submission_id FROM image_hashes WHERE platform = ?", (_MP_PLATFORM,))}
+    # Prune stale (deleted/merged) Masterpiece hashes.
+    for stale in have - current:
+        conn.execute("DELETE FROM image_hashes WHERE platform = ? AND submission_id = ?",
+                     (_MP_PLATFORM, stale))
+    scanned = hashed = 0
+    for art in artworks:
+        name = art.get("name")
+        folder = art.get("path")
+        image = art.get("image")
+        if not name or not folder or not image or name in have:
+            continue
+        scanned += 1
+        ph = dhash_from_path(Path(folder) / image)
+        if ph:
+            store(conn, _MP_PLATFORM, name, ph, source="mp")
+            hashed += 1
+    conn.commit()
+    return {"scanned": scanned, "hashed": hashed}
+
+
+def duplicate_masterpiece_groups(conn: sqlite3.Connection) -> list[list[str]]:
+    """Clusters of Masterpiece names whose hero images are near-identical (Hamming
+    ≤ threshold). Only groups of 2+ are returned. Assumes hash_masterpieces() ran."""
+    rows = [(r["submission_id"], r["phash"]) for r in conn.execute(
+        "SELECT submission_id, phash FROM image_hashes WHERE platform = ?", (_MP_PLATFORM,))]
+    n = len(rows)
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if hamming(rows[i][1], rows[j][1]) <= HAMMING_THRESHOLD:
+                union(i, j)
+    clusters: dict[int, list[str]] = {}
+    for i in range(n):
+        clusters.setdefault(find(i), []).append(rows[i][0])
+    return [g for g in clusters.values() if len(g) >= 2]

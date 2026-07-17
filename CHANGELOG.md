@@ -4,6 +4,27 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.144.0] - 2026-07-17 - Merge duplicate Masterpieces (perceptual-hash finder)
+
+The same image can end up as **two separate Masterpieces** — e.g. imported from two platforms as two folders, so "Ki's
+New Ref" shows twice in the Library → Masterpieces grid, each with its own site-links. New **🔍 Find duplicates** tool
+(button in the Masterpieces grid bar → `#/masterpieces/duplicates`) fixes that.
+
+- **Detection (no AI):** each Masterpiece's canonical hero image is hashed with the existing **dHash** perceptual hasher
+  (`image_hash.hash_masterpieces`, stored under a synthetic `__mp__` platform, self-pruning), then clustered by Hamming
+  distance (`duplicate_masterpiece_groups`, union-find, ≤8-bit threshold). Zero network — local images only.
+- **Merge:** each look-alike group renders side-by-side with the **best survivor pre-selected** (most views, then most
+  sites); you can pick a different survivor. Merging folds every other Masterpiece's **site-links into the survivor**
+  (`masterpiece_queries.merge_masterpieces`, dedupes colliding members) and **deletes the redundant record + folder**
+  (the image is identical, so nothing is lost). Per-group confirm; can't be undone.
+- New endpoints `GET /api/masterpieces/duplicates` + `POST /api/masterpieces/merge` (declared before `/{name}` so
+  `duplicates` isn't captured as a name). +3 tests.
+
+Backend + frontend. `SITE_VERSION` → 2.144.0. Note: this cleans up EXISTING duplicates; auto-linking on import so new
+ones don't form is a noted follow-up.
+
+---
+
 ## [2.143.0] - 2026-07-17 - Ignore button in the Library's discovered view
 
 Follow-up to 2.140's Ignore feature. The 🚫 Ignore button existed only on the **Artwork hub's** discovered tiles — but

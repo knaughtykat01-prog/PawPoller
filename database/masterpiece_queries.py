@@ -67,6 +67,30 @@ def remove_member(conn: sqlite3.Connection, name: str, platform: str, submission
                  (name,))
 
 
+def merge_masterpieces(conn: sqlite3.Connection, keep: str, drop: str) -> int:
+    """Fold ``drop``'s site-members into ``keep`` and remove ``drop``'s index row.
+
+    Used to collapse two Masterpieces of the SAME image (2.144.0 de-dup). Members
+    already on ``keep`` (same platform+submission_id) are discarded as duplicates.
+    The caller is responsible for deleting ``drop``'s on-disk folder (its image is
+    identical to ``keep``'s). Returns the number of members actually moved."""
+    ensure_indexed(conn, keep)
+    moved = 0
+    for m in get_members(conn, drop):
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO masterpiece_members "
+            "(masterpiece_name, platform, submission_id, account_id, role, linked_via) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (keep, m["platform"], str(m["submission_id"]), m.get("account_id"),
+             m.get("role") or "crosspost", "merge"))
+        moved += cur.rowcount
+    conn.execute("DELETE FROM masterpiece_members WHERE masterpiece_name = ?", (drop,))
+    conn.execute("DELETE FROM masterpieces WHERE name = ?", (drop,))
+    conn.execute("UPDATE masterpieces SET updated_at = datetime('now') WHERE name = ?", (keep,))
+    conn.commit()
+    return moved
+
+
 def member_pairs(conn: sqlite3.Connection, name: str) -> list[tuple]:
     """`(platform, submission_id)` pairs for a Masterpiece — feeds the combined
     snapshot chart via analytics_queries.get_combined_snapshots."""

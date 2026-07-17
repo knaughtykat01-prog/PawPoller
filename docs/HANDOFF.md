@@ -1,7 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.143.0 — **Ignore button added to the Library's discovered view.**
+**Current version (master):** 2.144.0 — **Merge duplicate Masterpieces (perceptual-hash finder).**
+Same image → two Masterpieces (e.g. "Ki's New Ref" twice). New **🔍 Find duplicates** (`#/masterpieces/duplicates`, button
+in the Masterpieces grid bar): dHash each hero image (`image_hash.hash_masterpieces` under synthetic `__mp__`, self-pruning)
+→ cluster by Hamming (`duplicate_masterpiece_groups`, union-find, ≤8) → merge each group into a survivor (most views/sites,
+overridable) via `masterpiece_queries.merge_masterpieces` (folds site-links in, deletes the redundant record + folder).
+New `GET /api/masterpieces/duplicates` + `POST /api/masterpieces/merge` (before `/{name}`). +3 tests. Follow-up:
+auto-link on import so new dupes don't form.
+
+**Prior — 2.143.0 — Ignore button added to the Library's discovered view.**
 2.140's 🚫 Ignore existed only on the Artwork hub's discovered tiles; the primary review surface is
 **`#/library/discovered`** (`Submissions.renderDiscovered`), which is unfiltered (the Artwork hub's `_PLATFORMS`
 allowlist excludes X/Threads/etc.), so tweet/microblog art shows there. Added Ignore to each `_discRow` (`_ignoreOne`,

@@ -27,6 +27,7 @@ split, Option A (**2.142**).
 | I | Promo Maker follow-ups: source excerpt **from a story/chapter**; per-word **censor bars**; **"share to Posts"** hand-off | ⚪ | 2.138 shipped the core tool |
 | K | Detail compaction follow-up: collapse secondary sections into **tabs** for even less scroll | ⚪ | 2.141 did the CSS-first pass |
 | L | **Merge the works hubs** (Option B) — fold Library/Stories/Artwork into one "Submissions" hub with type filters | ⚪ | Rhys chose Option A for the IA reshape; this is the bigger end-state if wanted later |
+| M | **Auto-link on import** — when a newly imported/promoted image matches an existing Masterpiece (pHash), link into it instead of minting a duplicate | ⚪ | 2.144 added the finder+merge for existing dupes; this prevents new ones forming |
 
 ## ⚪ Deferred / future
 
@@ -63,6 +64,8 @@ split, Option A (**2.142**).
 | Multi-account Overview shown by default ("By persona" widget) | **2.140** |
 | Detail pages compaction (less scrolling) — CSS-first pass | **2.141** |
 | IA: Create hub + Posts split (view-only feed, composer in Create) | **2.142** |
+| Ignore button in the Library's discovered review view (tweet-art) | **2.143** |
+| Merge duplicate Masterpieces (pHash finder + one-click merge) | **2.144** |
 | AO3 525 error logging | (per HANDOFF ledger) |
 | In-app "what's new" changelog popup on update | 2.134 |
 

@@ -2,6 +2,30 @@
    retones across all themes. Mirrors collections.css (.coll-*) with .mp-*; a
    Masterpiece is the master record for ONE image (see docs/specs/masterpieces.md). */
 
+/* ── Duplicate finder / merge (2.144.0) ── */
+.mp-dup-group { margin-bottom: 1rem; }
+.mp-dup-row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: stretch; }
+.mp-dup-card {
+    display: flex; gap: .7rem; align-items: center;
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: .7rem; background: var(--bg-secondary);
+    min-width: 240px; flex: 1 1 240px;
+}
+.mp-dup-card.is-keep { border-color: var(--success); box-shadow: 0 0 0 1px var(--success); }
+.mp-dup-thumb {
+    width: 64px; height: 64px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+    background: var(--bg-tertiary);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 1.6rem;
+}
+.mp-dup-thumb--none { color: var(--text-muted); }
+.mp-dup-meta { min-width: 0; }
+.mp-dup-title { font-weight: 600; font-size: .92rem; line-height: 1.2; word-break: break-word; }
+.mp-dup-stats { font-size: .8rem; margin: .15rem 0 .3rem; }
+.mp-dup-keep { font-size: .78rem; font-weight: 700; color: var(--success); }
+.mp-dup-pick { font-size: .78rem; color: var(--text-secondary); display: inline-flex; align-items: center; gap: .3rem; cursor: pointer; }
+.mp-dup-actions { display: flex; align-items: center; gap: .8rem; margin-top: .8rem; flex-wrap: wrap; }
+.mp-dup-msg { font-size: .82rem; }
+
 /* ── Grid + cards (rendered inside Library under the type filter) ── */
 .mp-grid {
     display: grid;
