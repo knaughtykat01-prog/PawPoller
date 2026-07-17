@@ -2017,6 +2017,35 @@ a.stat-card:hover {
 .story-category { font-size: 0.75rem; color: var(--text-muted); }
 .story-warning { color: var(--warning); }
 
+/* ── Detail-page tabs (2.150.0) ─────────────────────────────
+   Reusable tab strip for a detail page's secondary sections, so the page is
+   one screen deep instead of a long stack. Used by the Story detail; the
+   Masterpiece detail shares the same classes. */
+.det-tabs {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+}
+.det-tab {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.55rem 0.9rem;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+.det-tab:hover { color: var(--text-primary); }
+.det-tab.is-active { color: var(--accent); border-bottom-color: var(--accent); }
+.det-panel { display: none; }
+.det-panel.is-active { display: block; }
+
 /* ── Story Detail Page ─────────────────────────────────────── */
 /* The detail info card overrides the default .card padding so the cover
    image can run edge-to-edge. Body padding is restored by .story-detail-info-body,

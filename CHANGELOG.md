@@ -4,6 +4,30 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.150.0] - 2026-07-17 - Story detail: tabbed sections (one screen, not ten)
+
+Backlog **K** — the follow-up to 2.141's CSS compaction pass. The Story detail page stacked **ten** sections vertically
+(info, pending, totals, platforms, comparison chart, chapters, tags, timeline, history, formats), which was the actual
+"endless scrolling" complaint.
+
+- **Always visible:** the hero info card, the **pending-queue callout** (the most actionable thing on the page when it's
+  there) and the cross-platform **totals strip**.
+- **Everything else moved behind tabs:** *Platforms · Chapters · Tags · Timeline · History · Formats*. The page is now
+  roughly one screen deep instead of ten.
+- **Empty sections are dropped**, so a story never shows a dead tab (a one-shot with no chapters simply has no Chapters
+  tab).
+- **Platforms is deliberately first** (= the default-open panel) because the comparison chart lives in it, and Chart.js
+  needs a *visible* canvas to size itself on first render — a hidden one would come out 0×0.
+
+New reusable `.det-tabs` / `.det-tab` / `.det-panel` classes in `components.css` (token-driven, tracks all 8 themes) so
+other detail pages can adopt the same strip later. The Masterpiece + Artwork details are deliberately **left alone** —
+they only carry 3–4 sections and were already tightened in 2.141, and the Masterpiece growth chart would hit the same
+hidden-canvas sizing problem.
+
+Frontend-only; backend suite unchanged. Also fixes version drift: `SITE_VERSION` was stale at 2.148.0 → **2.150.0**.
+
+---
+
 ## [2.149.0] - 2026-07-17 - Masterpiece junk bin (kept-but-hidden status)
 
 Rhys: "perhaps we can have a junk category? for arts it had pulled but is not needed or useful, or archived?"

@@ -1,7 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.149.0 — **Masterpiece junk bin (kept-but-hidden status).**
+**Current version (master):** 2.150.0 — **Story detail: tabbed sections (one screen, not ten).**
+Backlog **K** done. The Story detail stacked TEN sections (the real "endless scroll" complaint). Now the hero + pending
+callout + totals stay visible and the rest sit behind tabs — *Platforms · Chapters · Tags · Timeline · History ·
+Formats* (`posting.js renderStoryDetail`). Empty sections are filtered out (no dead tabs). **Platforms is first on
+purpose** — the comparison chart lives there and Chart.js must size on a *visible* canvas. New reusable
+`.det-tabs/.det-tab/.det-panel` in `components.css`. Masterpiece/Artwork details left alone (3–4 sections, already
+tightened in 2.141; their chart would hit the same hidden-canvas issue). Also fixed `SITE_VERSION` drift (was 2.148.0).
+
+**Prior — 2.149.0 — Masterpiece junk bin (kept-but-hidden status).**
 Rhys's ask: a junk category "for arts it had pulled but is not needed or useful, or archived". New
 `masterpieces.status` column (`''`/`'junk'`, guarded migration) + `mq.set_status/get_status/statuses`; new
 **`POST /api/masterpieces/{name}/status`** (works for **index-only names** — the 13 swept-in tweets have no folder);

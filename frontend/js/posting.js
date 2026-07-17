@@ -562,18 +562,49 @@ const Posting = {
                 <div class="format-actions" style="margin-top:0.75em">${downloadAllHtml}</div>
               </div>`;
 
+            // ── Tabbed secondary sections (2.150.0) ────────────
+            // The page used to stack TEN sections vertically — the "endless
+            // scroll" complaint. The hero + anything actionable (pending queue)
+            // + the headline totals stay always-visible; everything else moves
+            // behind tabs, so the page is one screen deep instead of ten.
+            // Empty sections are dropped so a story never shows a dead tab.
+            // Platforms is first (and therefore the default-open panel) —
+            // important, because the comparison chart lives in it and Chart.js
+            // needs a VISIBLE canvas to size itself correctly on first render.
+            const detTabs = [
+                { id: 'platforms', label: 'Platforms', html: platformsHtml + comparisonHtml },
+                { id: 'chapters', label: 'Chapters', html: chaptersHtml },
+                { id: 'tags', label: 'Tags', html: tagsHtml },
+                { id: 'timeline', label: 'Timeline', html: timelineHtml },
+                { id: 'history', label: 'History', html: recentLogHtml },
+                { id: 'formats', label: 'Formats', html: formatsHtml },
+            ].filter(t => (t.html || '').trim());
+
+            const tabBar = `<div class="det-tabs" role="tablist">${detTabs.map((t, i) =>
+                `<button type="button" class="det-tab${i === 0 ? ' is-active' : ''}" role="tab"
+                    aria-selected="${i === 0}" data-tab="${t.id}">${t.label}</button>`).join('')}</div>`;
+            const tabPanels = detTabs.map((t, i) =>
+                `<div class="det-panel${i === 0 ? ' is-active' : ''}" role="tabpanel"
+                    data-panel="${t.id}">${t.html}</div>`).join('');
+
             App._setContent(`
                 <a href="#/posting" class="back-link">&larr; All Stories</a>
                 ${infoHtml}
                 ${pendingHtml}
                 ${totalsHtml}
-                ${platformsHtml}
-                ${comparisonHtml}
-                ${chaptersHtml}
-                ${tagsHtml}
-                ${timelineHtml}
-                ${recentLogHtml}
-                ${formatsHtml}`);
+                ${tabBar}
+                ${tabPanels}`);
+
+            document.querySelectorAll('.det-tab').forEach(btn =>
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.det-tab').forEach(x => {
+                        const on = x === btn;
+                        x.classList.toggle('is-active', on);
+                        x.setAttribute('aria-selected', String(on));
+                    });
+                    document.querySelectorAll('.det-panel').forEach(p =>
+                        p.classList.toggle('is-active', p.dataset.panel === btn.dataset.tab));
+                }));
 
             // Comparison chart needs to be initialised AFTER the canvas is
             // in the DOM. Single deferred call — Chart.js handles the rest.
