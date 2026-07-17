@@ -4,6 +4,23 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.143.0] - 2026-07-17 - Ignore button in the Library's discovered view
+
+Follow-up to 2.140's Ignore feature. The 🚫 Ignore button existed only on the **Artwork hub's** discovered tiles — but
+the primary place you review discovered submissions is **`#/library/discovered`** (the "Discovered submissions" view,
+`Submissions.renderDiscovered`), which is **not** platform-filtered, so it's where art the pollers pulled from tweets /
+microblog actually shows up (the Artwork hub's `_PLATFORMS` allowlist excludes X, Threads, etc.).
+
+- Added a **🚫 Ignore** button to every row in `#/library/discovered` (`_discRow`), wired to the existing
+  `POST /api/works/discovered/ignore` (`_ignoreOne`) — hides the row and persists it.
+- Added an **Ignored** link in that view's header → the restore view (`#/artwork/ignored`, ↩ Restore).
+
+Reuses the 2.140 backend (no new endpoints). Frontend-only; backend suite unchanged. `SITE_VERSION` → 2.143.0.
+Note: the Masterpiece-member **dedup** already applies here too — both this view and the Artwork hub read
+`get_discovered_unlinked`, which subtracts Masterpiece members, so a piece added to a Masterpiece stops appearing here.
+
+---
+
 ## [2.142.0] - 2026-07-17 - Navigation restructure: Create hub + Posts split
 
 The information-architecture reshape (backlog F, Option A): a clear **Create** section, **Posts** becomes view-only, and

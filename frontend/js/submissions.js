@@ -238,7 +238,10 @@ window.Submissions = {
                     <p class="muted">Posts the pollers found on your platforms that aren't linked to a
                     local work yet. Link one to an existing work to fold it into the hub.</p>
                 </div>
-                <a class="btn" href="#/library" style="flex-shrink:0;">&larr; Library</a>
+                <div style="display:flex;gap:.5rem;flex-shrink:0;">
+                    <a class="btn" href="#/artwork/ignored">Ignored</a>
+                    <a class="btn" href="#/library">&larr; Library</a>
+                </div>
             </div>
             <div id="disc-list"><div class="loading-spinner">Loading…</div></div>`;
 
@@ -281,6 +284,8 @@ window.Submissions = {
             if (lbtn) lbtn.addEventListener('click', () => this._linkOne(i));
             const ibtn = document.getElementById(`disc-import-btn-${i}`);
             if (ibtn) ibtn.addEventListener('click', () => this._importOne(i));
+            const gbtn = document.getElementById(`disc-ignore-btn-${i}`);
+            if (gbtn) gbtn.addEventListener('click', () => this._ignoreOne(i));
         });
         document.querySelectorAll('#disc-list [data-bulk]').forEach(b =>
             b.addEventListener('click', () => this._importAll(b.dataset.bulk)));
@@ -341,7 +346,23 @@ window.Submissions = {
                 </select>
                 <button class="btn btn-primary" id="disc-link-btn-${i}">Link</button>
                 <button class="btn" id="disc-import-btn-${i}" title="Download the image + metadata as a new artwork">Import</button>
+                <button class="btn" id="disc-ignore-btn-${i}" title="Hide this — not something you want here (e.g. an image from a tweet). Reversible from the Ignored view.">🚫 Ignore</button>
             </div>`;
+    },
+
+    async _ignoreOne(i) {
+        const d = this._discItems[i];
+        const btn = document.getElementById(`disc-ignore-btn-${i}`);
+        if (btn) btn.disabled = true;
+        try {
+            await API.ignoreDiscovered(d.platform, d.submission_id);
+            this._toast('success', 'Ignored — hidden from discovered');
+            this._discItems.splice(i, 1);
+            this._paintDiscovered();
+        } catch (err) {
+            this._toast('error', `Ignore failed: ${err.message}`);
+            if (btn) btn.disabled = false;
+        }
     },
 
     async _linkOne(i) {

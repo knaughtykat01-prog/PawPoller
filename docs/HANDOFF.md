@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.142.0 — **Navigation restructure: Create hub + Posts split.**
+**Current version (master):** 2.143.0 — **Ignore button added to the Library's discovered view.**
+2.140's 🚫 Ignore existed only on the Artwork hub's discovered tiles; the primary review surface is
+**`#/library/discovered`** (`Submissions.renderDiscovered`), which is unfiltered (the Artwork hub's `_PLATFORMS`
+allowlist excludes X/Threads/etc.), so tweet/microblog art shows there. Added Ignore to each `_discRow` (`_ignoreOne`,
+reuses the 2.140 endpoint) + an **Ignored** header link → `#/artwork/ignored`. Frontend-only. Masterpiece-member dedup
+already applies to this view (both read `get_discovered_unlinked`).
+
+**Prior — 2.142.0 — Navigation restructure: Create hub + Posts split.**
 IA reshape (backlog F, Option A): **Create** group = New Story/New Artwork/New Post/Promo Maker; **Posts** is now a
 view-only feed with composing moved to **`#/posts/new`** (`Posts.renderCompose`, redirects to feed on success); sidebar
 "Publishing" → **Publish** (Stories·Artwork·Posts·Collections) with Queue/History moved to Insights & Tools. Library stays
