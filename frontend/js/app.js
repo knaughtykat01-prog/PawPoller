@@ -1066,7 +1066,7 @@ const App = {
         } else if (parts[0] === 'posting' && !parts[1]) {
             Posting.renderUpload();
         } else if (parts[0] === 'posting' && parts[1] === 'story' && parts[2]) {
-            // Story name may contain slashes (e.g. The_Abstinent_Bet/Naughty_Version)
+            // Story name may contain slashes (e.g. My_Story/Alt_Version)
             Posting.renderStoryDetail(parts.slice(2).join('/'));
         } else if (parts[0] === 'posting' && parts[1] === 'queue') {
             Posting.renderQueue();
@@ -1077,7 +1077,7 @@ const App = {
         } else if (parts[0] === 'editor' && !parts[1]) {
             Editor.renderStoryList();
         } else if (parts[0] === 'editor' && parts[1]) {
-            // Story name may contain slashes (e.g. The_Abstinent_Bet/Nice_Version)
+            // Story name may contain slashes (e.g. My_Story/Nice_Version)
             Editor.renderEditor(parts.slice(1).join('/'));
         } else if (parts[0] === 'promo') {
             if (window.Promo) window.Promo.render();

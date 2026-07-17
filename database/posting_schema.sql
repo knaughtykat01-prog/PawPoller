@@ -14,7 +14,7 @@ PRAGMA foreign_keys=ON;
 -- PUBLICATIONS — tracks every story/chapter posted to every platform
 -- ============================================================
 -- One row per (story, chapter, platform) combination.
--- After uploading Chapter 1 of "Extra Credit" to Inkbunny, this table
+-- After uploading Chapter 1 of a story to Inkbunny, this table
 -- records the Inkbunny submission_id so we can later edit/update/replace it.
 
 CREATE TABLE IF NOT EXISTS publications (

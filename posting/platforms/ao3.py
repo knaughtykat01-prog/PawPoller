@@ -748,8 +748,8 @@ class AO3Poster(PlatformPoster):
             # flip the work to "posted"), it doesn't auto-publish other
             # draft chapters. Without this loop, multi-chapter live posts
             # land with only the final chapter visible.
-            # Bug surfaced on work 84822261 (The Silk-Threaded Bonds,
-            # 5 chapters): the 2.22.11b success run published ch5 live
+            # Bug surfaced on a live 5-chapter work: the 2.22.11b success
+            # run published ch5 live
             # but chs 2-4 remained drafts. Fixed in 2.22.13.
             if has_chapters and publish_live:
                 try:

@@ -272,7 +272,7 @@ def process_all(archive: Path, story_filter: str | None = None, dry_run: bool = 
         if not entry.is_dir() or entry.name.startswith(".") or entry.name == "Reference_Guides":
             continue
 
-        # Check for sub-stories (e.g. The_Abstinent_Bet/Naughty_Version)
+        # Check for sub-stories (e.g. My_Story/Alt_Version)
         has_master = (entry / "Markdown" / "MASTER.md").is_file()
         sub_dirs = [d for d in entry.iterdir() if d.is_dir() and (d / "Markdown" / "MASTER.md").is_file()]
 

@@ -459,7 +459,7 @@ story-archive/
 │   ├── SquidgeWorld_HTML/          auto-generated (SqW)
 │   ├── PDF/                        auto-generated (WeasyPrint / Edge)
 │   └── cover.png                   optional cover image
-└── The_Abstinent_Bet/
+└── My_Second_Story/
     └── Nice_Version/               stories can be nested one level deep
         └── Markdown/MASTER.md
 ```

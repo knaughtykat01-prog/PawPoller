@@ -27,7 +27,7 @@ def _client_with_payload(payload):
 
 def test_extracts_thumbnail_and_stats():
     payload = (
-        '["title","Ms. Kristoff","description","a ref","publishedAt","2026-02-19",'
+        '["title","A Sample Piece","description","a ref","publishedAt","2026-02-19",'
         '"category","artwork","views",858,"likes",42,'
         '"avatarUrl","https://cdn.sofurryfiles.com/users/avatars/large/2a/c9/2ac9bb76",'
         '"thumbnail","https://cdn.sofurryfiles.com/submissions/thumbnails/6b/e3/6be33fb0-7dbd-45ab-9fde-1819a0c65f98",'
@@ -36,7 +36,7 @@ def test_extracts_thumbnail_and_stats():
     d = asyncio.run(_client_with_payload(payload).get_submission_detail("1YAApVD1"))
     assert d["thumbnail_url"] == \
         "https://cdn.sofurryfiles.com/submissions/thumbnails/6b/e3/6be33fb0-7dbd-45ab-9fde-1819a0c65f98"
-    assert d["title"] == "Ms. Kristoff"
+    assert d["title"] == "A Sample Piece"
     assert d["views"] == 858
     assert d["favorites_count"] == 42
     assert d["comments_count"] == 12

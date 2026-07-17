@@ -264,7 +264,7 @@ def get_story_image(story: str = Query(...), file: str = Query(...)):
     """Serve a cover/thumbnail image from a story folder.
 
     Query params (not path segments) so sub-stories like
-    ``The_Abstinent_Bet/Nice_Version`` and nested files like
+    ``My_Story/Nice_Version`` and nested files like
     ``Images/cover.png`` round-trip cleanly through ``encodeURIComponent``.
 
     Hardened against path traversal: the resolved file MUST live under the
@@ -431,8 +431,8 @@ def get_story_archive(story: str = Query(...)):
     folder_name = story_root.name
 
     # Build zip in memory. Typical story is well under 50MB after
-    # compression — even Velvet_and_Vice (~70K words, 9 sections,
-    # multi-format) was 28MB total across the whole archive of ~13
+    # compression — even a ~70K-word, 9-section story with every
+    # format generated came to ~28MB across a whole archive of ~13
     # stories. One story alone fits comfortably in RAM.
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:

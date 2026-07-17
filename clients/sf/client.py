@@ -1111,7 +1111,7 @@ def _safe_int(val: Any) -> int:
 # ── React Router turbo-stream helpers (SoFurry beta /…​.data payloads) ──
 # React Router serialises loader data as a flat array where object entries are
 # laid out as ``"key",value`` pairs, so the value we want sits immediately after
-# its key name (e.g. ``"views",1485`` or ``"title","Hypnotic Claim"``). These
+# its key name (e.g. ``"views",1485`` or ``"title","Some Story"``). These
 # pull a single scalar by key — robust enough for stats without a full decoder.
 
 def _rr_int(text: str, key: str) -> int:

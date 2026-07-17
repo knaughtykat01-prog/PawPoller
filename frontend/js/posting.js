@@ -106,7 +106,7 @@ const Posting = {
                 }).join('');
 
                 // Cover image. Sub-story names contain a slash
-                // (e.g. The_Abstinent_Bet/Nice_Version) and image paths can be
+                // (e.g. My_Story/Nice_Version) and image paths can be
                 // nested (Images/cover.png), so both go through encodeURIComponent
                 // and ride as query params on /api/posting/image rather than path
                 // segments — keeps the round-trip unambiguous.

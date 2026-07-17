@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.153.0 — **Replace a Masterpiece's canonical image.**
+**Current version (master):** 2.154.0 — **Housekeeping: personal-data scrub of the public copy.**
+Rhys asked for a check that no personal data (art titles etc.) ships. Ran the real `deploy/make_public.py` build+scan
+(418 ship / 16,434 excluded) and fixed every hit: **`docs/BACKLOG.md`** now in `EXCLUDE_FILES` (art titles + artist
+handles + local paths); **8 user-facing** scene-break labels in `editor.js` were named after private stories
+(`◆ · ◆ (Extra Credit)` → `(dot diamond)` etc. — these rendered **in the UI**); 12 comments/docstrings using real story
+names as path examples (`The_Abstinent_Bet/Nice_Version` → `My_Story/Nice_Version`); 1 test fixture (test files DO ship).
+**Scanner gap fixed:** `LEAK_PATTERNS` only matched *underscored* titles, so every prose comment and UI label slipped
+through — now matches spaced titles + art titles + artist handles, and is **case-sensitive** so the public e621 tag
+`extra_credit` in `tag_database/e621_lookup.tsv` stops false-positiving. Scan reports **clean**. NB the scanner is a
+net, not a proof — `EXCLUDE_DIRS`/`EXCLUDE_FILES` remain the source of truth for what's safe to publish.
+
+**Prior — 2.153.0 — Replace a Masterpiece's canonical image.**
 Rhys asked for swapping in a better/higher-res file. `PATCH /images/{name}` is metadata-only, so this is a new
 **`POST /api/masterpieces/{name}/image`** (multipart) + **⇪ Replace image** under the detail hero. **Keeps the record**
 (masterpiece.json + every `masterpiece_members` link → pooled stats carry over); only the hero pointer (`image`) moves.

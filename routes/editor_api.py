@@ -171,7 +171,7 @@ SKIP_DIRS = {"Reference_Guides"}
 
 def _resolve_story_dir(story_name: str) -> Path:
     """Resolve a story name to its directory. Handles versioned stories
-    like 'The_Abstinent_Bet/Nice_Version' via the :path converter."""
+    like 'My_Story/Nice_Version' via the :path converter."""
     archive = get_archive_path()
     candidate = (archive / story_name).resolve()
     try:
@@ -2140,7 +2140,7 @@ async def delete_story(story_name: str, confirm_name: str = ""):
     server-side half of the frontend's "type the folder name" overlay;
     catches both accidental clicks and CSRF-style mistakes.
 
-    Versioned stories (e.g. `The_Abstinent_Bet/Nice_Version`) are
+    Versioned stories (e.g. `My_Story/Nice_Version`) are
     confirmed against the leaf folder name, not the full path.
     """
     import shutil

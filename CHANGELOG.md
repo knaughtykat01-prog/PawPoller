@@ -4,6 +4,45 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.154.0] - 2026-07-17 - Housekeeping: personal data scrub of the public copy
+
+Rhys: *"do a quick housekeeping check in the files being commit no personal data like art titles or anything is
+uploaded"* — so this release ran the real `deploy/make_public.py` build+scan end to end (418 files ship, 16,434 are
+excluded) and fixed everything it caught. The repo stays private; this is about the **cleaned copy** that
+`make_public.py` produces for self-hosters.
+
+### The leaks that were actually shipping
+
+- **`docs/BACKLOG.md`** — the request tracker added earlier today. It carries art titles, artist handles, local
+  Windows paths and session notes, and nothing excluded it. Added to `EXCLUDE_FILES`, alongside `HANDOFF.md` /
+  `documentation_guide.md` / `CHANGELOG.md`, which were already excluded for the same reason.
+- **Eight user-facing editor labels.** The scene-break dropdown in `frontend/js/editor.js` named its presets after
+  private stories — `◆ · ◆ (Extra Credit)`, `(Velvet fleur-de-lis)`, `(Abstinent Bet)`, `(Chosen)`, `(Ruins)`,
+  `(Drumheller)`, `(Silk moons)`, `(NSES)`. These render **in the UI**, so a self-hoster would read someone else's
+  story titles in their own editor. Renamed to describe the glyphs: `(dot diamond)`, `(star fleur-de-lis)`,
+  `(star ring star)`, `(star trio)`, `(asterisks)`, `(dash star)`, `(moons + star)`, `(asterism diamond)`.
+- **Twelve code comments and docstrings** using real story names as examples — mostly
+  `The_Abstinent_Bet/Nice_Version` illustrating the versioned-story path convention, plus a real AO3 work id + title
+  in an `ao3.py` bug note and a size estimate naming a 70K-word story. Genericised to `My_Story/Alt_Version` etc.;
+  every one kept its explanatory value.
+- **One test fixture** (`tests/test_sf_thumbnail.py`) with a real art title. Test files DO ship publicly.
+
+### The scanner gap that let them through
+
+`LEAK_PATTERNS` only matched the **underscored** form of story titles, so anything written with spaces —
+which is every prose comment and every UI label — sailed past. Patterns now match both forms, plus art titles and
+artist handles surfaced by the art audit.
+
+They're also now **case-sensitive**, which fixes a false positive: `tag_database/e621_lookup.tsv` legitimately
+contains the public e621 tag `extra_credit`, and an `IGNORECASE` pattern flagged the tag database as a leak. A title
+is only ever written title-case, so matching `Extra Credit` and not `extra_credit` keeps the signal and drops the
+noise. The scan now reports **clean**.
+
+Scope note: the scanner is a net, not a proof. The real defence is `EXCLUDE_DIRS`/`EXCLUDE_FILES` — the art titles
+live in docs that don't ship at all. These patterns catch the ones likely to be pasted into a comment or fixture.
+
+---
+
 ## [2.153.0] - 2026-07-17 - Replace a Masterpiece's canonical image
 
 Rhys: *"say i wanted to replace the file for the masterwork with a better version or better resolution, is that

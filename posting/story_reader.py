@@ -159,7 +159,7 @@ def list_stories() -> list[dict]:
         if (entry / "Markdown" / "MASTER.md").is_file() or (entry / "Tags").is_dir() or (entry / "story.json").is_file():
             stories.append(_story_entry(entry))
         else:
-            # Check for sub-stories (e.g. The_Abstinent_Bet/Naughty_Version/)
+            # Check for sub-stories (e.g. My_Story/Alt_Version/)
             for sub in sorted(entry.iterdir()):
                 if sub.is_dir() and (
                     (sub / "Markdown" / "MASTER.md").is_file() or (sub / "story.json").is_file()
@@ -645,7 +645,7 @@ def build_package(
     # that already display chapter context in their UI.
     #
     # We detect "Part" vs "Chapter" from the chapter title itself so that
-    # stories like Hypnotic Claim (which uses "Part 1" / "Part 2") get the
+    # stories that use "Part 1" / "Part 2" instead of chapters get the
     # matching word, while normal stories use "Chapter".
     if (
         platform == "fa"

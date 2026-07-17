@@ -157,7 +157,7 @@ def _normalize(text: str) -> str:
 def _story_name_to_title(name: str) -> str:
     """Convert folder name to normalized title.
 
-    Handles compound names: The_Abstinent_Bet/Naughty_Version → the abstinent bet naughty version
+    Handles compound names: My_Story/Alt_Version → my story alt version
     """
     return _normalize(name.replace("_", " ").replace("/", " "))
 

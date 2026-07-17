@@ -47,6 +47,7 @@ EXCLUDE_DIRS = {
 EXCLUDE_FILES = {
     "TODO.md",                       # internal task list
     "CHANGELOG.md",                  # detailed internal history (VM/story refs) — curate a public one separately
+    "docs/BACKLOG.md",               # internal request tracker (art titles, artist names, local paths, session notes)
     "docs/HANDOFF.md",               # internal session handoff (VM identity, story names)
     "docs/documentation_guide.md",   # internal dev reference (VM identity, story names)
     "cli/pp.sh",                     # personal VM launcher (symlinks into /usr/local/bin on the VM)
@@ -84,9 +85,25 @@ LEAK_PATTERNS = [
     (re.compile(r"knaughtykat01@"), "personal email"),
     (re.compile(r"C:[\\/]Users[\\/]rhysc"), "personal absolute path"),
     (re.compile(r"/home/kithetiger"), "VM absolute path"),
-    (re.compile(r"Hypnotic_Claim"), "personal story title"),
-    (re.compile(r"Velvet_And_Vice"), "personal story title"),
-    (re.compile(r"Extra_Credit"), "personal story title"),
+    # Story titles: match the SPACED form as well as the underscored one. The
+    # underscore-only patterns missed real leaks sitting in code comments and even
+    # a user-facing editor label ("◆ · ◆ (Extra Credit)") — see 2.154.0.
+    #
+    # Deliberately CASE-SENSITIVE (title-case): the tag database legitimately
+    # contains public e621 tags like `extra_credit`, which an IGNORECASE pattern
+    # flags as a false positive. A title is only ever written title-case.
+    (re.compile(r"Hypnotic[\s_]Claim"), "personal story title"),
+    (re.compile(r"Velvet[\s_][Aa]nd[\s_]Vice"), "personal story title"),
+    (re.compile(r"Extra[\s_]Credit"), "personal story title"),
+    (re.compile(r"Abstinent[\s_]Bet"), "personal story title"),
+    (re.compile(r"Silk[\s-]Threaded"), "personal story title"),
+    # Art titles / artist handles surfaced by the 2026-07 art audit. Not
+    # exhaustive (a full art index doesn't belong in a scanner) — the real
+    # defence is that the docs holding them are excluded above; these just catch
+    # the ones most likely to be pasted into a comment or test fixture.
+    (re.compile(r"Ki'?s[\s_]New[\s_]Ref"), "personal art title"),
+    (re.compile(r"Bread2Garlic|VektorichArt|Kasscabel|Franubis|DarTrax",
+                re.IGNORECASE), "artist handle"),
     # Persona separation: "KnaughtyKat" is the app's public brand (installer
     # publisher, GitHub org) and allowed — but the OTHER personas must never
     # be linked to it in a public copy.
