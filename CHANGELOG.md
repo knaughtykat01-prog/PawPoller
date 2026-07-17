@@ -4,6 +4,30 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.134.0] - 2026-07-17 - In-app "What's new" popup on update + real release notes
+
+When the app updates, it now shows you what changed — and the GitHub Release notes are the real changelog instead of a
+bare link.
+
+- **"What's new" popup.** When the running version differs from the one this browser last saw (a desktop self-update
+  **or** a server redeploy), the app pops a changelog modal listing every version's highlights since — sourced from the
+  bundled `CHANGELOG.md`. New `GET /api/whatsnew?since=<version>` (`routes/whatsnew_api.py`) parses the changelog and
+  returns entries newer than the browser's last-seen version (capped at 12, with a "…and earlier" note). The frontend
+  (`app.js` `_maybeShowWhatsNew`/`_showWhatsNewModal`) tracks the last-seen version in `localStorage`, fires once per
+  session on the first authenticated page, and renders the entries with a small **safe** markdown-lite pass (escape
+  first, then an allow-list of bold / inline-code / bullets / subheads — no raw HTML from the source reaches the DOM).
+  First run on a browser is silent (records the version, no popup). `CHANGELOG.md` is now bundled into the desktop
+  build (`pawpoller.spec`).
+- **Real GitHub Release notes.** The CI (`.github/workflows/build.yml`) now sets the Release body from the version's
+  hand-written `CHANGELOG.md` entry (`installer/changelog_extract.py` → `RELEASE_NOTES.md` → `body_path`) on both build
+  jobs, instead of `generate_release_notes` — which only produced a bare "Full Changelog" compare link on this
+  direct-commit repo (no PRs to summarise).
+
+Tests: `test_whatsnew.py` +5 (changelog parse; `since` filtering; first-run/already-current empty; truncation). Full
+suite green. `SITE_VERSION` → 2.134.0.
+
+---
+
 ## [2.133.0] - 2026-07-17 - Settings → Platforms as a card grid
 
 The platform-connection accordions in Settings → Platforms now lay out as a responsive **card grid**, matching the

@@ -879,6 +879,15 @@ const App = {
             setTimeout(() => window.Tour?.maybeAuto(_tourHash), 120);
         }
 
+        /* One-shot "What's new" check — fires on the first authenticated page.
+         * Skipped on the auth-gate screens (the /api/whatsnew fetch is auth-gated
+         * and would 401 before login); runs once per session. */
+        if (!this._whatsNewChecked
+            && !['dashboard-login', 'dashboard-setup', 'setup', 'login', 'loading'].includes(parts[0])) {
+            this._whatsNewChecked = true;
+            this._maybeShowWhatsNew();
+        }
+
         if (parts[0] === 'dashboard-login') {
             this.renderDashboardLogin();
         } else if (parts[0] === 'dashboard-setup') {
@@ -3088,6 +3097,79 @@ const App = {
             if (paint() && this._healthUnsub) { this._healthUnsub(); this._healthUnsub = null; }
         });
         if (PH.fetchOnce) PH.fetchOnce();
+    },
+
+    /* ── "What's new" popup (shown once when the running version changed) ──
+     * The app pops a changelog when the version it's serving differs from the one
+     * this browser last saw (a self-update or a server redeploy). Sourced from the
+     * bundled CHANGELOG.md via /api/whatsnew (auth-gated → no-ops before login). */
+    async _maybeShowWhatsNew() {
+        let seen = null;
+        try { seen = localStorage.getItem('pp_seen_version'); } catch (e) { return; }
+        let data;
+        try { data = await API.getWhatsNew(seen || ''); } catch (e) { return; }   // 401 pre-login, etc.
+        const current = data && data.current;
+        if (!current) return;
+        if (!seen) {                                   // first run on this browser → remember silently
+            try { localStorage.setItem('pp_seen_version', current); } catch (e) { /* private mode */ }
+            return;
+        }
+        if (current !== seen && data.entries && data.entries.length) {
+            this._showWhatsNewModal(data);
+        }
+        try { localStorage.setItem('pp_seen_version', current); } catch (e) { /* private mode */ }
+    },
+
+    _showWhatsNewModal(data) {
+        const esc = (s) => Utils.escapeHtml(String(s == null ? '' : s));
+        const items = (data.entries || []).map(e => `
+            <div class="wn-entry">
+                <div class="wn-ver">v${esc(e.version)}${e.header ? ` <span class="wn-head">${esc(e.header)}</span>` : ''}</div>
+                <div class="wn-body">${this._mdLite(e.body || '')}</div>
+            </div>`).join('');
+        const more = data.truncated
+            ? '<p class="wn-more">…and earlier updates too — see CHANGELOG.md for the full history.</p>' : '';
+        let ov = document.getElementById('whatsnew-ov');
+        if (!ov) { ov = document.createElement('div'); ov.id = 'whatsnew-ov'; ov.className = 'wn-ov'; document.body.appendChild(ov); }
+        ov.innerHTML = `
+            <div class="wn-modal" role="dialog" aria-modal="true" aria-label="What's new">
+                <div class="wn-top">
+                    <h2>✨ What's new <span class="wn-cur">v${esc(data.current)}</span></h2>
+                    <button class="wn-x" type="button" aria-label="Close">×</button>
+                </div>
+                <div class="wn-scroll">${items}${more}</div>
+                <div class="wn-foot"><button class="btn btn-primary wn-got" type="button">Got it</button></div>
+            </div>`;
+        ov.classList.add('open');
+        const close = () => ov.classList.remove('open');
+        ov.querySelector('.wn-x').addEventListener('click', close);
+        ov.querySelector('.wn-got').addEventListener('click', close);
+        ov.addEventListener('click', (e) => { if (e.target === ov) close(); });   // backdrop
+    },
+
+    /* Minimal, SAFE markdown for changelog bodies: escape everything first, then
+     * apply a tiny allow-list (bold, inline code, bullet lists, ### subheads). No
+     * raw HTML from the source ever reaches the DOM. */
+    _mdLite(src) {
+        const inline = (t) => Utils.escapeHtml(t)
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        let html = '', inList = false;
+        for (const raw of String(src || '').split('\n')) {
+            const line = raw.replace(/\s+$/, '');
+            const li = line.match(/^\s*[-*]\s+(.*)$/);
+            if (li) {
+                if (!inList) { html += '<ul>'; inList = true; }
+                html += `<li>${inline(li[1])}</li>`;
+                continue;
+            }
+            if (inList) { html += '</ul>'; inList = false; }
+            if (!line.trim()) continue;                          // blank → block spacing
+            if (/^#{1,6}\s/.test(line)) html += `<p class="wn-sub">${inline(line.replace(/^#{1,6}\s/, ''))}</p>`;
+            else html += `<p>${inline(line)}</p>`;
+        }
+        if (inList) html += '</ul>';
+        return html;
     },
 
     /* _renderDashboard() — (re)build the Home widget grid from this._dashCtx +

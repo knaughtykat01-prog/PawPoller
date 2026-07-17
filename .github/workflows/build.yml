@@ -65,6 +65,11 @@ jobs:
       # artifacts too was duplicate storage that overflowed the 500MB
       # included quota and blocked Actions. Releases are the canonical
       # distribution; grab builds from the Releases page.
+      # Release body from the hand-written CHANGELOG entry (generate_release_notes
+      # only yields a bare compare link on this direct-commit repo — no PRs).
+      - name: Extract release notes
+        run: python installer/changelog_extract.py "${{ steps.version.outputs.version }}"
+
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
@@ -72,7 +77,7 @@ jobs:
           files: |
             dist/PawPoller-windows-x64.zip
             installer/Output/PawPoller-Setup-*.exe
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
 
   build-linux:
     runs-on: ubuntu-22.04
@@ -131,6 +136,11 @@ jobs:
           chmod +x installer/build-appimage.sh
           installer/build-appimage.sh "${{ steps.version.outputs.version }}"
 
+      # Same CHANGELOG-derived body as build-windows (idempotent — both jobs may
+      # create/update the release depending on which finishes first).
+      - name: Extract release notes
+        run: python installer/changelog_extract.py "${{ steps.version.outputs.version }}"
+
       # No upload-artifact — the AppImage is attached to the GitHub Release
       # below (free). See the note in build-windows.
       - name: Attach to GitHub Release
@@ -138,8 +148,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: installer/Output/PawPoller-*-x86_64.AppImage
-          # generate_release_notes already produced by build-windows;
-          # subsequent jobs uploading to the same release just add assets.
+          body_path: RELEASE_NOTES.md
 
   test:
     runs-on: ubuntu-latest

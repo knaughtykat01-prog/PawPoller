@@ -43,6 +43,7 @@ a = Analysis(
         ('frontend', 'frontend'),
         *_DB_SCHEMAS,
         ('assets', 'assets'),
+        ('CHANGELOG.md', '.'),   # served by /api/whatsnew for the in-app "What's new" popup
     ],
     hiddenimports=[
         'uvicorn.logging',

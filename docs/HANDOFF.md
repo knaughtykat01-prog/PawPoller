@@ -1,14 +1,27 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.133.0 — **Settings → Platforms as a card grid.**
-Frontend-only (**CSS**, `components.css`). The Settings → Platforms connection accordions now lay out as a responsive
-card grid (mirrors the Platforms tab's `.hub-grid`) instead of a stacked column: a grid on the
-`.settings-tab-content[data-tab-content="platforms"]` pane, collapsed platforms as compact cards (hover lift), an **open**
-platform spanning full-width for form room (avoids ragged expand-in-place gaps), and the pinned Session-health card +
-footer full-width. **Zero risk to the connect flow** — no markup/id/input/button changed (handlers bind by element id;
-accordions stay direct children so `_enhancePlatformSettings`' `:scope > details.settings-accordion` logic is untouched).
-Backend unchanged. **DEPLOY pending.** **This clears the last open backlog task (#64) — task list is now empty.**
+**Current version (master):** 2.134.0 — **In-app "What's new" popup on update + real GitHub Release notes.**
+When the running version differs from the one this browser last saw (a desktop self-update **or** a server redeploy), the
+app pops a changelog modal of what changed. New **`GET /api/whatsnew?since=<ver>`** (`routes/whatsnew_api.py`) parses the
+**bundled** `CHANGELOG.md` (added to `pawpoller.spec` datas) and returns entries newer than the browser's last-seen
+version (capped 12). Frontend (`app.js` `_maybeShowWhatsNew`/`_showWhatsNewModal`/`_mdLite`): tracks last-seen in
+`localStorage['pp_seen_version']`, fires once per session on the first authenticated page (guard in `route()`), renders
+via a **safe** markdown-lite pass (escape-first allow-list — no raw HTML reaches the DOM); first run is silent. Also
+**fixed the GitHub Release notes**: CI (`build.yml`) now sets the Release body from the CHANGELOG entry
+(`installer/changelog_extract.py` → `body_path`) on both build jobs, replacing `generate_release_notes` (which only
+produced a bare compare link on this direct-commit repo). +5 tests (`test_whatsnew.py`). **DEPLOY pending; then cut the
+v2.134.0 release** (tag → CI) which also validates the new CHANGELOG-based notes. Backlog empty.
+
+**v2.133.0 was CUT as a GitHub Release** (2026-07-17) to un-stall desktop self-update (had been stuck at v2.53.0) — CI
+built all 3 assets (win zip + Setup.exe, Linux AppImage). Process recorded in memory [[reference_pawpoller_cut_release]]:
+a release = **push a `vX.Y.Z` tag** → `build.yml`; `/pp-release` bumps+deploys the VM but does NOT push the tag.
+
+**Prior — 2.133.0 — Settings → Platforms as a card grid. DEPLOYED.**
+Frontend-only CSS (`components.css`): the Settings → Platforms connection accordions lay out as a responsive card grid
+(mirrors the Platforms tab's `.hub-grid`) — collapsed = compact cards, an **open** one spans full-width for form room,
+Session-health + footer full-width. Zero risk to the connect flow (no markup/id changed; accordions stay direct children
+so `_enhancePlatformSettings` is untouched).
 
 **Prior — 2.132.0 — Overview "By persona" multi-account widget. DEPLOYED.**
 Opt-in Overview dashboard widget (`app.js` `_dashWidgetMeta`/`_dashWidgetHtml` + `_personasWidgetHtml`): one row per

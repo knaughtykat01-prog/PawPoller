@@ -177,6 +177,9 @@ const API = {
     getMasterpiece(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}`); },
     getMasterpieceSnapshots(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}/snapshots`); },
     getMasterpieceSuggestions(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}/suggestions`); },
+
+    // "What's new" changelog since the version this browser last saw (update popup).
+    getWhatsNew(since) { return this.get('/api/whatsnew', { since: since || '' }); },
     // Promote a discovered/imported submission into a Masterpiece (+ seed primary member).
     promoteMasterpiece(platform, submissionId) {
         return this.post('/api/masterpieces', { from: { platform, submission_id: String(submissionId) } });
