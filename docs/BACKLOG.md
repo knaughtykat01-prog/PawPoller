@@ -29,6 +29,12 @@ split, Option A (**2.142**).
 | L | **Merge the works hubs** (Option B) — fold Library/Stories/Artwork into one "Submissions" hub with type filters | ⚪ | Rhys chose Option A for the IA reshape; this is the bigger end-state if wanted later |
 | M | **Auto-link on import** — when a newly imported/promoted image matches an existing Masterpiece (pHash), link into it instead of minting a duplicate | ⚪ | 2.144 added the finder+merge for existing dupes; this prevents new ones forming |
 
+## 🔴 Bugs
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| N | ~~**SoFurry not grabbing thumbnails/images**~~ | 🟢 **FIXED 2.146** | `get_submission_detail` never extracted the image from the `.data` payload (`thumbnail_url` hard-coded `""`). Now pulls the `/submissions/thumbnails/` CDN URL. Force an SF poll to backfill. |
+
 ## ⚪ Deferred / future
 
 | # | Item | Status | Notes |

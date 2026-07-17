@@ -4,6 +4,22 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.146.0] - 2026-07-17 - Fix: SoFurry thumbnails/images now captured
+
+SoFurry submissions were showing with **no thumbnail** everywhere (Artwork hub, cards, Masterpiece covers). Root cause:
+`clients/sf/client.py` `get_submission_detail` parsed title/views/likes/comments out of the beta `/s/{id}.data` payload
+but **never extracted the image** — `thumbnail_url` was hard-coded to `""`.
+
+- The beta payload embeds the artwork thumbnail as a full CDN URL under **`/submissions/thumbnails/`** (distinct from the
+  poster's `/users/avatars/`). Now extracted with a targeted regex; text works (no such URL) correctly stay blank.
+- Verified against live data through the CF proxy the SF poller uses (the `.data` endpoint 403s datacenter IPs directly).
+  The CDN thumbnails are **hotlinkable** (200, `image/webp`, no referer) so they render directly — no thumb-proxy needed.
+- `upsert_sf_submission` already persists `thumbnail_url`, so a poll cycle backfills every SF work. +2 tests.
+
+Backend only. `SITE_VERSION` → 2.146.0. Post-deploy: a forced SF poll backfills existing thumbnails immediately.
+
+---
+
 ## [2.145.0] - 2026-07-17 - "Not the same" — dismiss false-positive duplicate matches
 
 Companion to 2.144's duplicate finder: when it flags two Masterpieces as look-alikes but they're actually **different

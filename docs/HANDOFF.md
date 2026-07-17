@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.145.0 — **"Not the same" — dismiss false-positive duplicate matches.**
+**Current version (master):** 2.146.0 — **Fix: SoFurry thumbnails/images now captured.**
+SF submissions had no thumbnail anywhere — `clients/sf/client.py` `get_submission_detail` parsed stats from the beta
+`/s/{id}.data` payload but hard-coded `thumbnail_url=""`. Now extracts the full CDN URL under `/submissions/thumbnails/`
+(distinct from `/users/avatars/`); text works stay blank. CDN is hotlinkable (200, webp, no referer) so it renders direct.
+Verified via the CF proxy (the `.data` endpoint 403s datacenter IPs directly). +2 tests. **Post-deploy:** force an SF poll
+to backfill — `docker exec … python -c "import asyncio; from polling.sf_poller import run_sf_poll_cycle; asyncio.run(run_sf_poll_cycle(force_full=True))"`.
+
+**Prior — 2.145.0 — "Not the same" — dismiss false-positive duplicate matches.**
 Companion to 2.144's finder: a **✗ Not the same** button on each duplicate group persists every pair to a new
 `masterpiece_not_duplicate` table (`mq.add_not_duplicate`, normalised); `duplicate_masterpiece_groups(dismissed=...)` skips
 those edges so rejected look-alikes never regroup. New `POST /api/masterpieces/not-duplicate`; `/duplicates` passes

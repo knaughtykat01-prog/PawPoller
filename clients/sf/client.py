@@ -592,6 +592,13 @@ class SoFurryClient:
             cm = re.search(r'"total",(\d+),"hasMore"', text)
             if cm:
                 detail["comments_count"] = int(cm.group(1))
+            # Artwork thumbnail — the beta payload embeds the full CDN URL under
+            # /submissions/thumbnails/ (distinct from /users/avatars/, which is the
+            # poster's avatar). Text works have none; leaving it "" is correct there.
+            tm = re.search(
+                r'https://cdn\.sofurryfiles\.com/submissions/thumbnails/[^"\\ ]+', text)
+            if tm:
+                detail["thumbnail_url"] = tm.group(0)
         except Exception as e:
             logger.warning("Failed to fetch SF submission %s via .data: %s", submission_id, e)
 
