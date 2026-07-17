@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.137.0 — **Four new Overview widgets.**
+**Current version (master):** 2.138.0 — **Promo Maker (BookTok-style excerpt images).**
+New **`#/promo`** tool (sidebar **Create → Promo Maker**): paste an excerpt, select phrases + tap a colour to highlight,
+pick a gradient/photo background + size preset (Square/Portrait/Story), download a PNG. All **client-side canvas**
+(`frontend/js/promo.js` + `promo.css`; wired into `index.html` + `app.js` router). This is backlog item 7
+(marketing-image generator; reference was the pastel-highlight book-page card). Frontend-only. Follow-ups: source excerpt
+from a story, per-word censor bars, "share to Posts".
+
+**Prior — 2.137.0 — Four new Overview widgets.**
 The customisable Overview board grew from 15 → 19 widgets (all opt-in via ⚙ Customize): **⚡ Quick actions** (create-flow
 tiles), **📊 Engagement rate** (interactions/view + avg views/work), **🎯 Milestones** (progress bars to the next
 round-number goal), **⭐ Spotlight** (top-performing work). All render from the cached `_dashCtx` — no new endpoints.
@@ -31,8 +38,10 @@ code). **Tell the user to hard-refresh (PWA service worker may be caching).** Do
   detail "poetization" (less scrolling); ~~(4) change rating of STANDALONE artwork~~ **DONE 2.136** (edit card on the
   artwork detail — title/desc/rating/tags); (5) IA: posting under **Create**, split **Submissions** (stories+art) from
   **Posts** (microblog catalogue), move Create-posts into Create; (6) **Instagram → art upload** (deferred — needs a
-  net-new `IGPoster` adapter); (7) **marketing-image generator** (BookTok-style, doable via Pillow like the cover/scene
-  scripts — see IMG_0351.jpg); (8) simple **image editor** (crop/resize/format/stickers/blur/censor) — future.
+  net-new `IGPoster` adapter); ~~(7) marketing-image generator~~ **DONE 2.138** (Promo Maker `#/promo`, client-side
+  canvas); (8) simple **image editor** (crop/resize/format/stickers/blur/censor) — future.
+- **Overview widgets:** ~~(1) more widgets~~ stat click-through **DONE 2.135**, +4 widgets **DONE 2.137**; per-metric
+  *sorted* stat-card destinations still open.
 
 **Prior — 2.134.0 — In-app "What's new" popup on update + real GitHub Release notes. DEPLOYED.**
 When the running version differs from the one this browser last saw (a desktop self-update **or** a server redeploy), the

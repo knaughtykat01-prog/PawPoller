@@ -4,6 +4,31 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.138.0] - 2026-07-17 - Promo Maker: BookTok-style excerpt images
+
+A new **Promo Maker** tool (`#/promo`, under **Create** in the sidebar) turns a spicy excerpt into a shareable
+promotional image — the viral "book-page with pastel highlights" format used to promote stories on Instagram / TikTok /
+Bluesky / Threads.
+
+- **Paste an excerpt**, select any phrase and tap a colour swatch to **highlight** it (6-colour pastel palette). Highlights
+  are stored as character ranges and painted as coloured rects behind the words.
+- Renders as a serif **"book page"** card (justified text, auto-fitting height, soft shadow) over a choice of **gradient
+  backgrounds** (Blush / Dusk / Ink / Sage / Peach / Plain) or an **uploaded photo** (auto blurred + darkened for
+  legibility).
+- **Size presets** — Square 1:1, Portrait 4:5, Story 9:16 — a serif/sans toggle, a text-size slider, an optional
+  footer/handle line, and an overflow warning when the text is taller than the frame.
+- **Download PNG** — exports the canvas 1:1 at full resolution. Everything runs **client-side on a `<canvas>`** (no server
+  round-trip, no font dependency; identical on desktop + server).
+
+New files: `frontend/js/promo.js`, `frontend/css/promo.css`; wired into `index.html`, the sidebar (**Create → Promo
+Maker**), and the `app.js` router (`#/promo`). Frontend-only; no backend, no new endpoints, backend suite unchanged.
+Pure tokenisation/highlight logic unit-checked (char-offset integrity + range overlap). `SITE_VERSION` → 2.138.0.
+
+Follow-ups noted: sourcing the excerpt directly from a story/chapter, per-word strikethrough (censor bars), and a
+"share to Posts" hand-off.
+
+---
+
 ## [2.137.0] - 2026-07-17 - Four new Overview widgets
 
 The customisable Overview board gained four new widgets (catalog 15 → 19), all opt-in via **⚙ Customize → Add widget**:

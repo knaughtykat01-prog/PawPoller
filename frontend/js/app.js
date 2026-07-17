@@ -1075,6 +1075,8 @@ const App = {
         } else if (parts[0] === 'editor' && parts[1]) {
             // Story name may contain slashes (e.g. The_Abstinent_Bet/Nice_Version)
             Editor.renderEditor(parts.slice(1).join('/'));
+        } else if (parts[0] === 'promo') {
+            if (window.Promo) window.Promo.render();
         } else if (parts[0] === 'artwork' && !parts[1]) {
             if (window.Artwork) window.Artwork.render();
         } else if (parts[0] === 'artwork' && parts[1] === 'new') {

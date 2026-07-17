@@ -1,0 +1,72 @@
+/* ── Promo Maker (#/promo) ───────────────────────────────────────────────
+ * Two-column tool: controls on the left, live <canvas> preview on the right.
+ * Uses theme tokens so the chrome tracks all 8 themes; the canvas itself is
+ * self-contained (its colours come from the JS presets, not CSS).
+ * ──────────────────────────────────────────────────────────────────────── */
+
+.promo-layout {
+    display: grid;
+    grid-template-columns: minmax(320px, 420px) 1fr;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.promo-controls { display: flex; flex-direction: column; gap: 1rem; }
+.promo-controls .card { margin: 0; }
+
+.promo-hint { font-size: 12.5px; margin: -.3rem 0 .6rem; }
+
+.promo-swatches { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.promo-swatch {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    cursor: pointer;
+    padding: 0;
+    transition: transform .12s ease, border-color .12s ease;
+}
+.promo-swatch:hover { transform: scale(1.12); }
+.promo-swatch.is-active { border-color: var(--text-primary); box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--accent); }
+
+.promo-bgs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: .4rem; }
+.promo-bg {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    border: 2px solid var(--border);
+    cursor: pointer;
+    padding: 0;
+    transition: transform .12s ease, border-color .12s ease;
+}
+.promo-bg:hover { transform: scale(1.08); }
+.promo-bg.is-active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--accent); }
+
+.promo-check { display: flex; align-items: center; gap: .5rem; font-size: 13.5px; cursor: pointer; }
+.promo-check input { width: auto; }
+
+.promo-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.promo-warn { color: var(--warning, #d08700); font-size: 12.5px; }
+
+.promo-preview {
+    position: sticky;
+    top: 1rem;
+    display: flex;
+    justify-content: center;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.2rem;
+    min-width: 0;
+}
+/* The canvas is exported at full resolution; scale it down to fit the column. */
+.promo-preview canvas {
+    max-width: 100%;
+    max-height: 78vh;
+    height: auto;
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+@media (max-width: 900px) {
+    .promo-layout { grid-template-columns: 1fr; }
+    .promo-preview { position: static; }
+}
