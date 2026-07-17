@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.148.0 — **4 more Overview widgets + Promo censor bars & Send-to-Posts.**
+**Current version (master):** 2.149.0 — **Masterpiece junk bin (kept-but-hidden status).**
+Rhys's ask: a junk category "for arts it had pulled but is not needed or useful, or archived". New
+`masterpieces.status` column (`''`/`'junk'`, guarded migration) + `mq.set_status/get_status/statuses`; new
+**`POST /api/masterpieces/{name}/status`** (works for **index-only names** — the 13 swept-in tweets have no folder);
+list + detail carry `status`. Grid hides junked pieces + gains a **🗑 Junk (N)** toggle view with per-card **♻ Restore**;
+detail gets a **🗑 Junk / ♻ Restore** button + badge. Junking keeps folder/metadata/members — reversible, softer than
+merge. +4 tests (`test_masterpiece_junk.py`). Companion to the standalone **art audit** (55 pieces named/described/
+tagged, see `docs/BACKLOG.md` item O; deliverable `C:\Users\rhysc\claude\art_audit\review.html`) — the audit's 14 junk
+finds are this feature's first customers.
+
+**Prior — 2.148.0 — 4 more Overview widgets + Promo censor bars & Send-to-Posts.**
 Backlog **H**: catalog 19 → 23 — **🌐 Platforms live**, **🥇 Best platform** (ranks by views so engagement-only platforms
 can't win), **🗨 Recent comments** (activity filtered to comments), **⏳ Pending queue**. First two read a new `platRollup`
 in `_dashCtx` (no extra fetch); queue adds one additive `getPostingQueue()`. Backlog **I** finished: Promo **censor bars**

@@ -180,6 +180,10 @@ const API = {
     getMasterpieceDuplicates() { return this.get('/api/masterpieces/duplicates'); },
     mergeMasterpieces(keep, drop) { return this.post('/api/masterpieces/merge', { keep, drop }); },
     dismissMasterpieceDuplicate(names) { return this.post('/api/masterpieces/not-duplicate', { names }); },
+    // Junk status: 'junk' hides it from the grid (kept on disk, reversible); '' restores.
+    setMasterpieceStatus(name, status) {
+        return this.post(`/api/masterpieces/${encodeURIComponent(name)}/status`, { status });
+    },
 
     // "What's new" changelog since the version this browser last saw (update popup).
     getWhatsNew(since) { return this.get('/api/whatsnew', { since: since || '' }); },

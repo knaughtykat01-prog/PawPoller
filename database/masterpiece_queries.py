@@ -36,6 +36,29 @@ def ensure_indexed(conn: sqlite3.Connection, name: str, *,
             (source_link_id, name))
 
 
+def set_status(conn: sqlite3.Connection, name: str, status: str) -> None:
+    """Mark a Masterpiece as junk (``'junk'``) or restore it (``''``).
+
+    Junk = kept-but-hidden: the folder + members survive untouched, the grid just
+    stops showing it outside the Junk view. Works for index-only names too (the
+    13-junk-tweets case) — we ensure the index row exists first.
+    """
+    ensure_indexed(conn, name)
+    conn.execute(
+        "UPDATE masterpieces SET status = ?, updated_at = datetime('now') WHERE name = ?",
+        (status, name))
+
+
+def get_status(conn: sqlite3.Connection, name: str) -> str:
+    row = conn.execute("SELECT status FROM masterpieces WHERE name = ?", (name,)).fetchone()
+    return (row[0] or "") if row else ""
+
+
+def statuses(conn: sqlite3.Connection) -> dict[str, str]:
+    """name -> status for every indexed Masterpiece (one query, for the list)."""
+    return {r[0]: (r[1] or "") for r in conn.execute("SELECT name, status FROM masterpieces")}
+
+
 def get_members(conn: sqlite3.Connection, name: str) -> list[dict]:
     return [dict(r) for r in conn.execute(
         "SELECT masterpiece_name, platform, submission_id, account_id, role, "

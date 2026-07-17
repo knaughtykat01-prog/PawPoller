@@ -700,9 +700,20 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
             name           TEXT NOT NULL UNIQUE,
             source_link_id INTEGER,
+            status         TEXT NOT NULL DEFAULT '',
             created_at     TEXT DEFAULT (datetime('now')),
             updated_at     TEXT DEFAULT (datetime('now'))
         )""")
+
+    # Junk status (2.149.0): '' = active, 'junk' = kept-but-hidden. For pulled
+    # art that isn't wanted in the grid (memes, other people's ads, retired
+    # pieces) without destroying the record/folder — softer than merge/delete,
+    # reversible from the Junk view. Guarded ADD COLUMN for pre-2.149 DBs.
+    try:
+        conn.execute("ALTER TABLE masterpieces ADD COLUMN status TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
 
     # ── Masterpiece membership (Masterpieces Phase 1) ───────────
     # Which platform uploads ARE this Masterpiece (the same image posted to N

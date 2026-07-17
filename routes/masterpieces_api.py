@@ -34,10 +34,12 @@ def list_masterpieces():
     conn = get_connection()
     try:
         out = []
+        st = mq.statuses(conn)
         for art in artwork_reader.list_artworks():
             name = art["name"]
             mq.ensure_indexed(conn, name)
-            out.append({**art, "summary": mq.summarize(conn, name)})
+            out.append({**art, "summary": mq.summarize(conn, name),
+                        "status": st.get(name, "")})
         conn.commit()
         return {"masterpieces": out}
     finally:
@@ -129,6 +131,41 @@ def merge_masterpieces_ep(body: dict):
     return {"status": "merged", "keep": keep, "dropped": drop, "members_moved": moved}
 
 
+# ── Junk status (2.149.0) ─────────────────────────────────────────────────────
+# 'junk' = kept-but-hidden: for pulled art that isn't wanted in the grid (memes,
+# other people's ads, retired pieces) without deleting the record/folder.
+# Reversible — restore sets status back to ''. Softer than /merge (which deletes).
+
+_MP_STATUSES = {"", "junk"}
+
+
+@masterpieces_router.post("/{name}/status")
+def set_masterpiece_status(name: str, body: dict):
+    """Set the Masterpiece's junk status. Body: {status: 'junk' | ''}.
+
+    Accepts index-only names (Masterpieces with no folder — e.g. swept-in tweets)
+    as well as real folders, since junking is exactly what those need.
+    """
+    status = str((body or {}).get("status", "")).strip().lower()
+    if status not in _MP_STATUSES:
+        raise HTTPException(400, detail="status must be 'junk' or '' (restore)")
+    conn = get_connection()
+    try:
+        has_folder = True
+        try:
+            artwork_reader.load_artwork(name)
+        except FileNotFoundError:
+            has_folder = False
+        if not has_folder and not conn.execute(
+                "SELECT 1 FROM masterpieces WHERE name = ?", (name,)).fetchone():
+            raise HTTPException(404, detail="Masterpiece not found")
+        mq.set_status(conn, name, status)
+        conn.commit()
+        return {"status": "updated", "name": name, "junk": status == "junk"}
+    finally:
+        conn.close()
+
+
 @masterpieces_router.get("/{name}")
 def get_masterpiece(name: str):
     """Full detail: canonical metadata (from masterpiece.json) + resolved member
@@ -148,6 +185,7 @@ def get_masterpiece(name: str):
         roll = mq.rollup_members(conn, name)
         return {
             "name": art.name,
+            "status": mq.get_status(conn, name),
             "title": art.title,
             "description": art.description,
             "author": art.author,

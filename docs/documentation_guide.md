@@ -6329,6 +6329,17 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   (known limitation, spec §9). This completes the Masterpiece build (phases 0–7): a single image now has the full
   master lifecycle a story always had.
 
+- **Junk bin (2.149.0) — kept-but-hidden status.** `masterpieces.status` (`''` active / `'junk'`, guarded ADD-COLUMN
+  migration) marks pulled art the user doesn't want in the grid — memes, other people's commission ads, retired
+  pieces — **without deleting** the folder, metadata or members (softer than the 2.144 merge, which deletes the
+  duplicate). `masterpiece_queries.set_status/get_status/statuses`; **`POST /api/masterpieces/{name}/status`**
+  `{status:'junk'|''}` — deliberately accepts **index-only names** (a Masterpiece with no folder, e.g. the swept-in
+  tweets from `migrate_links_to_masterpieces`) since those can't be junked any other way. `GET /api/masterpieces`
+  rows + `GET /{name}` carry `status`; the grid (`masterpieces.js renderGrid`) filters junked out by default and
+  offers a **🗑 Junk (N)** toggle view with per-card ♻ Restore; the detail page has the Junk/Restore button + badge.
+  The discovered-tile counterpart is the Ignore list (2.140, `ignored_submissions`) — Ignore is for *unpromoted*
+  discovered art, Junk is for *Masterpiece records*.
+
 
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)
 

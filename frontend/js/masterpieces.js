@@ -25,8 +25,9 @@ window.Masterpieces = {
     _POST_ONLY: new Set(['bsky', 'e621', 'ik', 'ig']),
 
     /* Drop the list cache so the next grid render refetches (called on each
-       Library open by bookshelf.render). */
-    resetCache() { this._cache = null; },
+       Library open by bookshelf.render). Also leaves the junk-bin view, so a
+       fresh Library visit always starts on the normal grid. */
+    resetCache() { this._cache = null; this._junkView = false; },
 
     /* ── small shared helpers (same shape as collections.js) ── */
     esc(s) {
@@ -78,9 +79,13 @@ window.Masterpieces = {
 
     /* ── Grid (rendered into Library's #shelf-grid) ── */
 
+    _junkView: false,       // grid shows junked pieces instead of active ones
+    _lastGrid: null,         // {el, filters} so the Junk toggle can re-render
+
     async renderGrid(gridEl, filters) {
         if (!gridEl) return;
         filters = filters || {};
+        this._lastGrid = { el: gridEl, filters };
         await this._loadPersonas();
         if (this._cache === null) {
             gridEl.className = '';
@@ -95,7 +100,9 @@ window.Masterpieces = {
             }
         }
 
-        let list = this._cache.slice();
+        // Junk split (2.149.0): junked pieces are kept but live behind the Junk view.
+        const junked = this._cache.filter(m => m.status === 'junk');
+        let list = (this._junkView ? junked : this._cache.filter(m => m.status !== 'junk')).slice();
         const persona = filters.persona || 0;
         const q = (filters.search || '').toLowerCase();
         const sort = filters.sort || 'recent';
@@ -110,17 +117,52 @@ window.Masterpieces = {
             title="Upload a new image, describe it once, and publish it across sites">＋ New Masterpiece</a>`;
         const dupBtn = `<a class="btn btn-sm" href="#/masterpieces/duplicates"
             title="Find Masterpieces of the same image and merge them into one">🔍 Find duplicates</a>`;
-        if (!list.length) {
-            gridEl.className = '';
-            gridEl.innerHTML = `<div class="mp-gridbar">${newBtn}</div>
-                <div class="empty-state"><h3>No masterpieces yet</h3>
-                <p class="muted">Every artwork folder is a masterpiece. Create one, or promote a gallery image
-                (★ Master) to link its copies across sites and pool their stats.</p></div>`;
-            return;
-        }
+        // The Junk toggle appears once anything is junked (or while viewing the bin).
+        const junkBtn = (junked.length || this._junkView)
+            ? `<button class="btn btn-sm${this._junkView ? ' btn-primary' : ''}" data-mp-junkview type="button"
+                title="Pulled art you've binned — kept on disk, hidden from the grid, restorable">
+                🗑 Junk (${junked.length})</button>` : '';
+        const junkBanner = this._junkView
+            ? `<div class="card muted" style="margin:.4rem 0 .8rem;padding:.5rem .8rem">Showing the junk bin —
+                these stay on disk and keep their site-links, they're just hidden from the grid.
+                <strong>♻ Restore</strong> puts one back.</div>` : '';
+        const bar = `<div class="mp-gridbar">${newBtn}${dupBtn}${junkBtn}</div>${junkBanner}`;
         gridEl.className = '';
-        gridEl.innerHTML = `<div class="mp-gridbar">${newBtn}${dupBtn}</div>
-            <div class="mp-grid">${list.map(m => this._card(m)).join('')}</div>`;
+        if (!list.length) {
+            gridEl.innerHTML = `${bar}
+                <div class="empty-state"><h3>${this._junkView ? 'The junk bin is empty' : 'No masterpieces yet'}</h3>
+                <p class="muted">${this._junkView
+                    ? 'Nothing junked. Use 🗑 Junk on a masterpiece’s page to move it here.'
+                    : 'Every artwork folder is a masterpiece. Create one, or promote a gallery image (★ Master) to link its copies across sites and pool their stats.'}</p></div>`;
+        } else {
+            gridEl.innerHTML = `${bar}
+                <div class="mp-grid">${list.map(m => this._card(m)).join('')}</div>`;
+        }
+        this._wireGridBar(gridEl);
+    },
+
+    _wireGridBar(gridEl) {
+        const toggle = gridEl.querySelector('[data-mp-junkview]');
+        if (toggle) toggle.addEventListener('click', () => {
+            this._junkView = !this._junkView;
+            const g = this._lastGrid || {};
+            this.renderGrid(g.el || gridEl, g.filters);
+        });
+        gridEl.querySelectorAll('[data-mp-restore]').forEach(btn =>
+            btn.addEventListener('click', async (e) => {
+                e.preventDefault(); e.stopPropagation();   // card is an <a> — don't navigate
+                btn.disabled = true;
+                try {
+                    await API.setMasterpieceStatus(btn.dataset.name, '');
+                    this._toast('success', 'Restored to the grid');
+                    this._cache = null;
+                    const g = this._lastGrid || {};
+                    this.renderGrid(g.el || gridEl, g.filters);
+                } catch (err) {
+                    btn.disabled = false;
+                    this._toast('error', 'Restore failed: ' + (err.message || err));
+                }
+            }));
     },
 
     /* ── Duplicate finder / merge (2.144.0) ─────────────────────
@@ -258,6 +300,10 @@ window.Masterpieces = {
         const badges = plats.slice(0, 8).map(c =>
             `<span class="mp-plat" title="${this.esc(this._plat(c).label)}">${this._plat(c).emoji || c}</span>`).join('');
         const personas = this._personaChips(s.persona_ids);
+        // In the junk view every card carries a one-click Restore.
+        const restore = this._junkView
+            ? `<button class="btn btn-sm" data-mp-restore data-name="${this.esc(m.name)}"
+                style="margin-top:.35rem" type="button">♻ Restore</button>` : '';
         // Raw slug in the href (folder names are [\w-] slugs); the API layer
         // encodes once when fetching — mirrors Bookshelf's #/library/work/{name}.
         return `
@@ -268,6 +314,7 @@ window.Masterpieces = {
                     <div class="mp-meta">${badges}<span class="muted">· ${nSites} site${nSites === 1 ? '' : 's'}</span></div>
                     <div class="mp-stats">👁 ${this._fmt(t.views)} · ❤ ${this._fmt(t.favorites)} · 💬 ${this._fmt(t.comments)}</div>
                     ${personas ? `<div class="mp-personas-inline">${personas}</div>` : ''}
+                    ${restore}
                 </div>
             </a>`;
     },
@@ -312,6 +359,13 @@ window.Masterpieces = {
             : `<div class="mp-hero-ph">🖼️</div>`;
         const rating = m.rating ? `<span class="${this._ratingCls(m.rating)}">${this.esc(m.rating)}</span>` : '';
         const personas = this._personaChips(m.persona_ids);
+        const isJunk = m.status === 'junk';
+        const junkBadge = isJunk
+            ? `<span class="mp-role" title="Hidden from the grid — restore to bring it back">🗑 junk</span>` : '';
+        const junkBtn = `<button class="btn btn-sm" data-mp-junk data-junk="${isJunk ? '' : 'junk'}" type="button"
+            title="${isJunk ? 'Put this back in the Masterpieces grid'
+                : 'Hide from the grid without deleting — the folder and site-links are kept'}">
+            ${isJunk ? '♻ Restore' : '🗑 Junk'}</button>`;
 
         // Canonical tags: prefer the "default" set, else the union across platforms.
         const ct = m.canonical_tags || {};
@@ -370,11 +424,12 @@ window.Masterpieces = {
                 <div class="mp-hero">${hero}</div>
                 <div class="mp-head-info">
                     <div class="mp-title">${this.esc(m.title || name)}</div>
-                    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">${rating}
+                    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">${rating}${junkBadge}
                         ${personas ? `<span class="mp-personas">${personas}</span>` : ''}
                         <button class="btn btn-sm" data-add-collection data-mtype="masterpiece"
                             data-mref="${this.esc(name)}" data-label="${this.esc(m.title || name)}"
-                            title="Bundle this piece (with its companion story / announcement posts) into a Collection">＋ Add to Collection</button></div>
+                            title="Bundle this piece (with its companion story / announcement posts) into a Collection">＋ Add to Collection</button>
+                        ${junkBtn}</div>
                     <div class="mp-headline">
                         <div class="mp-headline-item"><span class="mp-headline-num">${this._fmt(t.views)}</span><span class="mp-headline-label">Views</span></div>
                         <div class="mp-headline-item"><span class="mp-headline-num">${this._fmt(t.favorites)}</span><span class="mp-headline-label">Favorites</span></div>
@@ -452,7 +507,28 @@ window.Masterpieces = {
             if (att) { e.preventDefault(); this._attach(att); return; }
             const det = e.target.closest('[data-mp-detach]');
             if (det) { e.preventDefault(); this._detach(det.dataset.platform, det.dataset.sid); return; }
+            const junk = e.target.closest('[data-mp-junk]');
+            if (junk) { e.preventDefault(); this._setJunk(junk); return; }
         });
+    },
+
+    /* Junk / restore from the detail page (2.149.0). Junking keeps the folder +
+       members; it only hides the piece behind the grid's Junk view. */
+    async _setJunk(btn) {
+        if (!this._current) return;
+        const toJunk = btn.dataset.junk === 'junk';
+        if (toJunk && !window.confirm('Move this masterpiece to the junk bin? It stays on disk with all its '
+            + 'site-links and can be restored any time — it just leaves the grid.')) return;
+        btn.disabled = true;
+        try {
+            await API.setMasterpieceStatus(this._current, toJunk ? 'junk' : '');
+            this._cache = null;   // grid split is stale
+            this._toast('success', toJunk ? 'Moved to junk' : 'Restored to the grid');
+            await this.renderDetail(this._current);
+        } catch (err) {
+            btn.disabled = false;
+            this._toast('error', 'Failed: ' + (err.message || err));
+        }
     },
 
     _toast(kind, msg) {

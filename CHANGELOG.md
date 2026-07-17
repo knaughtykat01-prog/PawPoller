@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.149.0] - 2026-07-17 - Masterpiece junk bin (kept-but-hidden status)
+
+Rhys: "perhaps we can have a junk category? for arts it had pulled but is not needed or useful, or archived?"
+The Ignore list (2.140) covers *discovered* tiles; this is its counterpart for **Masterpieces** — pulled art that
+became a full record but isn't wanted in the grid (memes, other people's commission ads, retired pieces). Junking
+**keeps the folder, metadata and site-links untouched**; the piece just moves behind a Junk view. Fully reversible —
+softer than the 2.144 merge (which deletes) and the only option for the swept-in-tweet Masterpieces that have no
+folder at all.
+
+### Backend
+- `masterpieces.status` column (`''` active / `'junk'`), guarded `ALTER TABLE` migration for existing DBs
+  (`database/db.py`).
+- `masterpiece_queries.set_status / get_status / statuses` — status works for **index-only names** too (no folder
+  required), which is exactly what the 13 swept-in tweet entries need.
+- New **`POST /api/masterpieces/{name}/status`** `{status: 'junk' | ''}` (400 on anything else, 404 when the name has
+  neither folder nor index row). `GET /api/masterpieces` rows and `GET /{name}` now carry `status`.
+
+### Frontend (`masterpieces.js`, `api.js`)
+- The Library's Masterpieces grid **hides junked pieces** by default and grows a **🗑 Junk (N)** toggle (appears once
+  anything is junked) that flips the grid into the junk bin — banner + per-card **♻ Restore**.
+- The detail page gets a **🗑 Junk / ♻ Restore** button beside ＋ Add to Collection (confirm on junking) and a
+  `🗑 junk` badge while binned. `API.setMasterpieceStatus(name, status)`.
+
+### Tests
+- `tests/test_masterpiece_junk.py` (4): status round-trip, members survive junking, endpoint junk/restore on an
+  index-only name, 400/404 validation.
+
+---
+
 ## [2.148.0] - 2026-07-17 - 4 more Overview widgets + Promo Maker censor bars & Send-to-Posts
 
 Backlog **H** (more widgets) and the rest of **I** (Promo Maker follow-ups).
