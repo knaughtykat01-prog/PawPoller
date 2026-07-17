@@ -88,6 +88,47 @@ def masterpiece_duplicates():
         conn.close()
 
 
+@masterpieces_router.get("/match")
+def masterpiece_match(platform: str, submission_id: str):
+    """Does this discovered upload look like an EXISTING Masterpiece?
+
+    Prevents new duplicates forming at promote time (backlog M): before minting a
+    fresh Masterpiece from a discovered piece we check its stored thumbnail hash
+    against every Masterpiece hero hash. Returns the closest match within the
+    near-duplicate threshold, or ``{"match": null}``.
+
+    Deliberately a SUGGESTION, never automatic — near-identical hashes are not
+    proof of sameness (an SFW and NSFW edit of one ref sheet hash the same), so
+    the caller asks the user before linking instead of creating.
+    """
+    from database import image_hash
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT phash FROM image_hashes WHERE platform = ? AND submission_id = ?",
+            (platform, str(submission_id))).fetchone()
+        if not row:
+            return {"match": None}          # not hashed yet → no opinion
+        image_hash.hash_masterpieces(conn)  # make sure hero hashes are current
+        best, best_d = None, 65
+        for r in conn.execute(
+                "SELECT submission_id, phash FROM image_hashes WHERE platform = '__mp__'"):
+            d = image_hash.hamming(row["phash"], r["phash"])
+            if d <= image_hash.HAMMING_THRESHOLD and d < best_d:
+                best, best_d = r["submission_id"], d
+        if not best:
+            return {"match": None}
+        try:
+            art = artwork_reader.load_artwork(best)
+            title = art.title or best
+        except FileNotFoundError:
+            title = best
+        return {"match": {"name": best, "title": title,
+                          "similarity": round(1.0 - best_d / 64.0, 3)}}
+    finally:
+        conn.close()
+
+
 @masterpieces_router.post("/not-duplicate")
 def not_duplicate_ep(body: dict):
     """Remember that these Masterpieces are NOT the same image, so the finder stops

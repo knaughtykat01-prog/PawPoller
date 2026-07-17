@@ -1081,6 +1081,8 @@ const App = {
             Editor.renderEditor(parts.slice(1).join('/'));
         } else if (parts[0] === 'promo') {
             if (window.Promo) window.Promo.render();
+        } else if (parts[0] === 'imagetool') {
+            if (window.ImageTool) window.ImageTool.render();
         } else if (parts[0] === 'artwork' && !parts[1]) {
             if (window.Artwork) window.Artwork.render();
         } else if (parts[0] === 'artwork' && parts[1] === 'new') {

@@ -178,6 +178,9 @@ const API = {
     getMasterpieceSnapshots(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}/snapshots`); },
     getMasterpieceSuggestions(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}/suggestions`); },
     getMasterpieceDuplicates() { return this.get('/api/masterpieces/duplicates'); },
+    matchMasterpiece(platform, submissionId) {
+        return this.get('/api/masterpieces/match', { platform, submission_id: submissionId });
+    },
     mergeMasterpieces(keep, drop) { return this.post('/api/masterpieces/merge', { keep, drop }); },
     dismissMasterpieceDuplicate(names) { return this.post('/api/masterpieces/not-duplicate', { names }); },
     // Junk status: 'junk' hides it from the grid (kept on disk, reversible); '' restores.

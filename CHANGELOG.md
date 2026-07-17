@@ -4,6 +4,39 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.151.0] - 2026-07-17 - Image Tool + stop duplicate Masterpieces forming
+
+Backlog **J** (simple image editor) and **M** (auto-link on import).
+
+### 🖼️ Image Tool — a simple editor (backlog J)
+New **`#/imagetool`** (sidebar **Create → Image Tool**): the "tidy this up before I publish it" step that used to mean
+leaving PawPoller.
+
+- **Crop** (drag a box — everything outside dims so the keep-area reads clearly), **rotate 90°** either way, **flip**,
+  **resize** by longest edge (high-quality smoothing), **⬛ censor** (solid blackout) and **▨ blur** (true pixelate —
+  downscale the region then blow it back up with smoothing off).
+- **Undo** (bounded 12-deep snapshot stack), live `W × H` readout, and a checkerboard stage so transparent PNGs read as
+  transparent rather than white.
+- **Open** from a file or **🗂️ from your library**; **export** as PNG / JPEG / WebP with a quality slider (hidden for
+  lossless PNG).
+- **Three exits:** ⬇ Download · 💬 Send to Posts (reuses the 2.148 hand-off) · ＋ Save as artwork.
+- **Non-destructive by design** — it never overwrites the source; saving creates a *new* artwork via the existing upload
+  endpoint. `_work` (an offscreen canvas) is the single source of truth; pointer coords map back to real image pixels via
+  `_toWork()` so edits are defined in image space, never screen space. Entirely client-side — no upload, no new backend.
+
+### Stop duplicate Masterpieces forming (backlog M)
+The 2.144 finder cleans up duplicates *after the fact*; this heads them off. Promoting a discovered piece (**★ Master**)
+now first checks its stored thumbnail hash against every Masterpiece hero hash (new `GET /api/masterpieces/match`) and,
+on a hit, **offers to link the upload into the existing Masterpiece instead of minting a second record**.
+
+Deliberately a **prompt, never automatic**: near-identical hashes are not proof of sameness — an SFW and an NSFW edit of
+one ref sheet hash identically — so the call stays the user's (*OK* links in, *Cancel* creates a separate Masterpiece
+anyway). The check is best-effort: if it fails or the piece has no hash yet, the promote proceeds exactly as before.
+
+Frontend + one read-only endpoint. `SITE_VERSION` → 2.151.0.
+
+---
+
 ## [2.150.0] - 2026-07-17 - Story detail: tabbed sections (one screen, not ten)
 
 Backlog **K** — the follow-up to 2.141's CSS compaction pass. The Story detail page stacked **ten** sections vertically

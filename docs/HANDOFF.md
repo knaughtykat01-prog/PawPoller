@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.150.0 — **Story detail: tabbed sections (one screen, not ten).**
+**Current version (master):** 2.151.0 — **Image Tool + stop duplicate Masterpieces forming.**
+Backlog **J**: new **`#/imagetool`** (Create → Image Tool) — crop / rotate / flip / resize-by-longest-edge / ⬛ censor /
+▨ pixelate, undo (12-deep), export PNG·JPEG·WebP + quality, exits via Download / Send to Posts / Save as **new** artwork.
+Entirely client-side canvas; `_work` (offscreen canvas) is the source of truth and `_toWork()` maps pointer→image pixels.
+**Non-destructive** — never overwrites the source. Backlog **M**: ★ Master now pre-checks the piece's thumbnail hash
+against Masterpiece hero hashes (`GET /api/masterpieces/match`) and **offers** to link into the existing Masterpiece
+instead of minting a duplicate — a **prompt, never automatic** (SFW/NSFW edits of one ref hash identically), best-effort
+so a failed check never blocks the promote.
+
+**Prior — 2.150.0 — Story detail: tabbed sections (one screen, not ten).**
 Backlog **K** done. The Story detail stacked TEN sections (the real "endless scroll" complaint). Now the hero + pending
 callout + totals stay visible and the rest sit behind tabs — *Platforms · Chapters · Tags · Timeline · History ·
 Formats* (`posting.js renderStoryDetail`). Empty sections are filtered out (no dead tabs). **Platforms is first on

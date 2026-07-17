@@ -29,7 +29,7 @@ split, Option A (**2.142**).
 | I | ~~Promo Maker follow-ups: source excerpt from a story · censor bars · share to Posts~~ | 🟢 **DONE** | Story-excerpt picker **2.147**; censor bars + 💬 Send to Posts **2.148** |
 | K | ~~Detail compaction follow-up: collapse secondary sections into **tabs**~~ | 🟢 **DONE 2.150** | Story detail (the 10-section offender) now hero + pending + totals visible, rest behind tabs. Masterpiece/Artwork left alone on purpose (3–4 sections, already tightened 2.141; their chart needs a visible canvas) |
 | L | **Merge the works hubs** (Option B) — fold Library/Stories/Artwork into one "Submissions" hub with type filters | ⚪ | Rhys chose Option A for the IA reshape; this is the bigger end-state if wanted later |
-| M | **Auto-link on import** — when a newly imported/promoted image matches an existing Masterpiece (pHash), link into it instead of minting a duplicate | ⚪ | 2.144 added the finder+merge for existing dupes; this prevents new ones forming |
+| M | ~~**Auto-link on import**~~ | 🟢 **DONE 2.151** | ★ Master pre-checks the hash vs Masterpiece heroes (`GET /api/masterpieces/match`) and **offers** to link into the existing one. Deliberately a prompt, not automatic — SFW/NSFW edits hash identically |
 
 ## 🔴 Bugs
 
@@ -41,7 +41,7 @@ split, Option A (**2.142**).
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| J | Simple **image editor** (crop / resize / reformat / stickers / blur / censor) before publishing | ⚪ future | Large client-side canvas feature; Rhys did **not** pick it in the last prioritisation |
+| J | ~~Simple **image editor**~~ | 🟢 **DONE 2.151** | `#/imagetool` — crop / rotate / flip / resize / censor / pixelate, undo, PNG·JPEG·WebP export, Download · Send to Posts · Save as new artwork. Non-destructive, all client-side |
 
 ---
 
@@ -80,6 +80,10 @@ split, Option A (**2.142**).
 | Promo Maker: pull an excerpt from a story | **2.147** |
 | Overview widgets +4 (Platforms live, Best platform, Recent comments, Queue) | **2.148** |
 | Promo Maker: censor bars + 💬 Send to Posts | **2.148** |
+| Masterpiece junk bin (kept-but-hidden status) | **2.149** |
+| Story detail tabs (one screen, not ten) | **2.150** |
+| Image Tool (crop/rotate/resize/censor/blur, non-destructive) | **2.151** |
+| Stop duplicate Masterpieces forming (link-instead-of-create prompt) | **2.151** |
 | AO3 525 error logging | (per HANDOFF ledger) |
 | In-app "what's new" changelog popup on update | 2.134 |
 

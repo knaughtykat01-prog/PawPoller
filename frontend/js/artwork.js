@@ -433,6 +433,27 @@ window.Artwork = {
         const platform = btn.dataset.platform, sid = btn.dataset.sid;
         btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Mastering…';
         try {
+            // Stop duplicates forming (2.151.0): if this image already IS a
+            // Masterpiece, offer to link this upload into it instead of minting a
+            // second record. Only ever a prompt — near-identical hashes aren't
+            // proof (an SFW/NSFW pair of one ref sheet hashes the same), so the
+            // call is the user's. Best-effort: a failed check never blocks the promote.
+            let match = null;
+            try {
+                const r = await API.matchMasterpiece(platform, sid);
+                match = r && r.match;
+            } catch (e) { /* no opinion — fall through to a normal promote */ }
+
+            if (match && window.confirm(
+                `This looks like your existing Masterpiece “${match.title}”.\n\n`
+                + `OK — link this upload into it (no duplicate created).\n`
+                + `Cancel — make a separate Masterpiece anyway (e.g. an SFW/NSFW variant).`)) {
+                await API.addMasterpieceMember(match.name, { platform, submission_id: sid });
+                this._toast('success', `Linked into “${match.title}”`);
+                window.location.hash = `#/masterpieces/${encodeURIComponent(match.name)}`;
+                return;
+            }
+
             const res = await API.promoteMasterpiece(platform, sid);
             this._toast('success', 'Made a Masterpiece — opening it');
             window.location.hash = `#/masterpieces/${res.name}`;
