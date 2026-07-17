@@ -4,6 +4,31 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.140.0] - 2026-07-17 - Artwork hub: dedup Masterpiece members, Ignore list, multi-account Overview
+
+Three requested improvements.
+
+**No more duplicate tiles for Masterpiece members.** A discovered piece bundled into a Masterpiece no longer reappears
+as a separate discovered tile. `get_discovered_unlinked` now subtracts every `(platform, submission_id)` that belongs to
+any Masterpiece (new `masterpiece_queries.all_member_pairs`) alongside the existing publication-linked exclusion —
+server-side, so every consumer of the discovered list benefits.
+
+**Ignore list for discovered artwork.** A 🚫 **Ignore** button on each discovered tile hides art you never want in the
+hub (e.g. images the pollers scraped from a tweet). Ignored `(platform, submission_id)` pairs persist in a new
+`ignored_submissions` table (`database/ignored_queries.py`) and are subtracted from the discovered list. New endpoints:
+`POST /api/works/discovered/ignore`, `DELETE …/ignore/{platform}/{submission_id}`, `GET …/ignored`. Fully reversible — a
+new **Ignored** view (`#/artwork/ignored`, button in the Artwork header) lists everything hidden with a **↩ Restore**
+action.
+
+**Multi-account Overview by default.** The "By persona" pooled-stats widget (which already existed but was hidden behind
+⚙ Customize) now appears in the **default** Overview layout when you actually have multiple accounts (2+ personas, or 2+
+accounts pooled across personas) — so the multi-account roll-up is there without hunting for it. `_dashDefaultLayout`
+gained an `includePersonas` flag driven by the persona/account counts.
+
++3 tests (`test_discovered_ignore_dedup.py`). Backend + frontend. `SITE_VERSION` → 2.140.0.
+
+---
+
 ## [2.139.0] - 2026-07-17 - Instagram is now an artwork publish target
 
 Instagram graduated from "Posts-only" to a **first-class artwork publish target** — you can now tick **Instagram** in the

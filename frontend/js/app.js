@@ -1086,6 +1086,8 @@ const App = {
             if (window.Artwork) window.Artwork.renderDetail(parts.slice(2).join('/'));
         } else if (parts[0] === 'artwork' && parts[1] === 'log') {
             if (window.Artwork) window.Artwork.renderLog();
+        } else if (parts[0] === 'artwork' && parts[1] === 'ignored') {
+            if (window.Artwork) window.Artwork.renderIgnored();
         } else if (parts[0] === 'posts' && parts[1] === 'contacts') {
             if (window.Posts) window.Posts.renderContacts();
         } else if (parts[0] === 'posts') {
@@ -2903,7 +2905,12 @@ const App = {
                ids/spans against the catalog and fall back to the default. */
             const validIds = new Set(this._dashWidgetMeta().map(m => m.id));
             const saved = Array.isArray(prefs.dashboard_layout) ? prefs.dashboard_layout : null;
-            let layout = (saved && saved.length ? saved : this._dashDefaultLayout())
+            // Multi-account = 2+ personas, or 2+ accounts pooled across personas.
+            const personaList = (personasResp.personas || []).filter(p => p && p.persona_id);
+            const totalAccounts = personaList.reduce((n, p) => n + ((p.accounts || []).length), 0);
+            const multiAccount = personaList.length >= 2 || totalAccounts >= 2;
+            const defaultLayout = this._dashDefaultLayout(multiAccount);
+            let layout = (saved && saved.length ? saved : defaultLayout)
                 .filter(w => w && validIds.has(w.id))
                 .map(w => {
                     const e = { id: w.id, span: [1, 2, 4].includes(w.span) ? w.span : 1 };
@@ -2911,7 +2918,7 @@ const App = {
                     if (w.cfg && typeof w.cfg === 'object') e.cfg = w.cfg;
                     return e;
                 });
-            if (!layout.length) layout = this._dashDefaultLayout();
+            if (!layout.length) layout = defaultLayout;
             this._dashboardLayout = layout;
             if (this._dashEdit === undefined) this._dashEdit = false;
 
@@ -2943,15 +2950,21 @@ const App = {
      * grid and handle customise-mode (add/remove/resize/drag) cheaply from
      * the cache without re-fetching. */
 
-    _dashDefaultLayout() {
-        return [
+    _dashDefaultLayout(includePersonas = false) {
+        const layout = [
             { id: 'health', span: 4 },
             { id: 'stat-subs', span: 1 }, { id: 'stat-views', span: 1 },
             { id: 'stat-faves', span: 1 }, { id: 'stat-comments', span: 1 },
             { id: 'charts', span: 4 }, { id: 'platforms', span: 4 },
+        ];
+        // Multi-account users get the "By persona" roll-up up top by default, so
+        // the multi-account Overview is there without opening ⚙ Customize.
+        if (includePersonas) layout.push({ id: 'personas', span: 4 });
+        layout.push(
             { id: 'topviewed', span: 2 }, { id: 'topfaved', span: 2 },
             { id: 'activity', span: 2 }, { id: 'topfans', span: 2 },
-        ];
+        );
+        return layout;
     },
 
     _dashWidgetMeta() {

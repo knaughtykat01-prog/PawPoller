@@ -722,6 +722,14 @@ const API = {
     /* ── Submissions hub (unified works library) ──────────────── */
     getWorks(params = {}) { return this.get('/api/works', params); },
     getDiscovered(params = {}) { return this.get('/api/works/discovered', params); },
+    ignoreDiscovered(platform, submissionId) {
+        return this.post('/api/works/discovered/ignore', { platform, submission_id: submissionId });
+    },
+    unignoreDiscovered(platform, submissionId) {
+        return fetch(`/api/works/discovered/ignore/${platform}/${encodeURIComponent(submissionId)}`,
+            { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(`Un-ignore failed: ${r.status}`); return r.json(); });
+    },
+    getIgnoredDiscovered() { return this.get('/api/works/discovered/ignored'); },
     linkSubmission(body) { return this.post('/api/works/link', body); },
     importArtwork(platform, submissionId) {
         return this.post(`/api/artwork/import/${platform}/${encodeURIComponent(submissionId)}`);

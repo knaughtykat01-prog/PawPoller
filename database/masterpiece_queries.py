@@ -73,6 +73,19 @@ def member_pairs(conn: sqlite3.Connection, name: str) -> list[tuple]:
     return [(m["platform"], str(m["submission_id"])) for m in get_members(conn, name)]
 
 
+def all_member_pairs(conn: sqlite3.Connection) -> set[tuple]:
+    """Every `(platform, submission_id)` that belongs to ANY Masterpiece.
+
+    Used by the Artwork hub's discovered list to drop tiles that are already
+    Masterpiece members — a piece bundled into a Masterpiece shouldn't reappear
+    as a duplicate discovered tile (2.140.0)."""
+    return {
+        (r["platform"], str(r["submission_id"]))
+        for r in conn.execute(
+            "SELECT platform, submission_id FROM masterpiece_members")
+    }
+
+
 # ── Rollup ───────────────────────────────────────────────────────
 
 def rollup_members(conn: sqlite3.Connection, name: str) -> dict:

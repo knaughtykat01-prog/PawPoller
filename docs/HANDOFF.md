@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.139.0 — **Instagram is now an artwork publish target.**
+**Current version (master):** 2.140.0 — **Artwork hub: dedup Masterpiece members + Ignore list + multi-account Overview.**
+(1) A discovered piece that's a **Masterpiece member no longer shows as a duplicate tile** — `get_discovered_unlinked`
+subtracts `masterpiece_queries.all_member_pairs`. (2) New **🚫 Ignore** on discovered tiles → `ignored_submissions` table
+(`database/ignored_queries.py`) + `POST/DELETE/GET /api/works/discovered/ignore[d]`; reversible via **Ignored** view
+(`#/artwork/ignored`). (3) The **"By persona" multi-account widget now shows by default** on the Overview when you have 2+
+accounts (was hidden behind ⚙ Customize). +3 tests. See `docs/BACKLOG.md` items B/C/D → Done.
+
+**Prior — 2.139.0 — Instagram is now an artwork publish target.**
 IG graduated from Posts-only to a first-class **artwork** target: new `posting/platforms/instagram.py` `InstagramPoster`
 (wired into `manager._get_poster` + `artwork_reader._ALL_POSTER_IDS`), reusing the Posts module's public-image-hosting
 path (`ig_media`: stash a web-safe JPEG at a public URL / relay to a paired server → Meta cURLs it → publish → cleanup).

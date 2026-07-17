@@ -731,6 +731,21 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
                 ON masterpiece_members(masterpiece_name);
         """)
 
+    # ── Ignored discovered submissions (2.140.0) ────────────────
+    # A user "Ignore" list for discovered artwork tiles they never want in the
+    # Artwork hub (e.g. images the pollers scraped from tweets that aren't real
+    # gallery work). (platform, submission_id)-keyed; the discovered-unlinked
+    # query subtracts these. Reversible — un-ignore deletes the row.
+    if "ignored_submissions" not in tables:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS ignored_submissions (
+                platform      TEXT NOT NULL,
+                submission_id TEXT NOT NULL,
+                ignored_at    TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (platform, submission_id)
+            );
+        """)
+
     # ── Watcher tables ──────────────────────────────────────────
     if "watchers" not in tables:
         conn.execute("""CREATE TABLE IF NOT EXISTS watchers (

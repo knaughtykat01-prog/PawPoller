@@ -64,6 +64,7 @@ window.Artwork = {
                     multiple art sites at once.</p>
                 </div>
                 <div style="display:flex;gap:.5rem;flex-shrink:0;">
+                    <a class="btn" href="#/artwork/ignored">Ignored</a>
                     <a class="btn" href="#/artwork/log">History</a>
                     <a class="btn btn-primary" href="#/artwork/new">+ New artwork</a>
                 </div>
@@ -166,8 +167,32 @@ window.Artwork = {
             // Promote a discovered piece straight into a Masterpiece (import + seed
             // its primary member), then open the master's detail view.
             const mk = e.target.closest('.art-make-mp-btn');
-            if (mk) { e.preventDefault(); this._makeMasterpiece(mk); }
+            if (mk) { e.preventDefault(); this._makeMasterpiece(mk); return; }
+            // Ignore a discovered tile — hide it from the hub (reversible).
+            const ig = e.target.closest('.art-ignore-btn');
+            if (ig) { e.preventDefault(); this._ignoreDiscovered(ig); }
         });
+    },
+
+    /* Ignore a discovered tile: persist it to the Ignore list and drop the card
+     * from the grid immediately (also from the cached _hubItems so a filter
+     * re-render doesn't bring it back). Reversible via the Ignored view. */
+    async _ignoreDiscovered(btn) {
+        const platform = btn.dataset.platform;
+        const sid = btn.dataset.sid;
+        btn.disabled = true;
+        try {
+            await API.ignoreDiscovered(platform, sid);
+            const key = this._key(platform, sid);
+            this._hubItems = (this._hubItems || []).filter(m =>
+                !(m._src === 'disc' && this._key(m.d.platform, m.d.submission_id) === key));
+            const card = btn.closest('.artwork-card');
+            if (card) card.remove();
+            this._toast('success', 'Ignored — hidden from the hub');
+        } catch (err) {
+            btn.disabled = false;
+            this._toast('error', 'Could not ignore: ' + err.message);
+        }
     },
 
     /* Segmented filter + search bar for the Artwork hub. Purely client-side over
@@ -373,6 +398,9 @@ window.Artwork = {
                         <button class="btn btn-sm art-make-mp-btn"
                             title="Import this image and make it a Masterpiece — the master record you sync across every site"
                             data-platform="${this.esc(d.platform)}" data-sid="${this.esc(d.submission_id)}">★ Master</button>
+                        <button class="btn btn-sm art-ignore-btn"
+                            title="Hide this — not real artwork you want (e.g. scraped from a tweet). Reversible from the Ignored view."
+                            data-platform="${this.esc(d.platform)}" data-sid="${this.esc(d.submission_id)}">🚫 Ignore</button>
                     </div>
                 </div>
             </div>`;
@@ -975,5 +1003,58 @@ window.Artwork = {
         document.getElementById('art-log').innerHTML = rows
             ? `<table class="data-table"><thead><tr><th>When</th><th>Platform</th><th>Artwork</th><th>Action</th><th>Status</th><th>Error</th></tr></thead><tbody>${rows}</tbody></table>`
             : '<div class="empty-state"><p class="muted">No artwork posts yet.</p></div>';
+    },
+
+    /* Manage the Ignore list — the discovered tiles the user hid from the hub.
+     * Each row can be restored (un-ignored), which brings it back to the hub on
+     * the next load. Keeps Ignore from being a one-way trap. */
+    async renderIgnored() {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="page-header">
+                <h1>Ignored artwork</h1>
+                <p class="muted"><a href="#/artwork">← Back to Artwork</a> · Hidden discovered tiles. Restore any to
+                bring it back to the hub.</p>
+            </div>
+            <div id="art-ignored"><div class="loading-spinner">Loading…</div></div>`;
+        const wrap = document.getElementById('art-ignored');
+        let data;
+        try {
+            data = await API.getIgnoredDiscovered();
+        } catch (err) {
+            wrap.innerHTML = `<div class="card error">Failed to load: ${this.esc(err.message)}</div>`;
+            return;
+        }
+        const items = data.ignored || [];
+        if (!items.length) {
+            wrap.innerHTML = '<div class="empty-state"><p class="muted">Nothing ignored. '
+                + 'Use 🚫 Ignore on a discovered tile to hide art you don\'t want here.</p></div>';
+            return;
+        }
+        const rows = items.map(e => `
+            <tr>
+                <td>${this._plat(e.platform).emoji || ''} ${this.esc(this._plat(e.platform).label)}</td>
+                <td class="muted">#${this.esc(e.submission_id)}</td>
+                <td class="muted">${this.esc(e.ignored_at || '')}</td>
+                <td><button class="btn btn-sm art-unignore-btn"
+                    data-platform="${this.esc(e.platform)}" data-sid="${this.esc(e.submission_id)}">↩ Restore</button></td>
+            </tr>`).join('');
+        wrap.innerHTML = `<table class="data-table"><thead><tr><th>Platform</th><th>Submission</th>`
+            + `<th>Ignored</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+        wrap.addEventListener('click', async e => {
+            const btn = e.target.closest('.art-unignore-btn');
+            if (!btn) return;
+            btn.disabled = true;
+            try {
+                await API.unignoreDiscovered(btn.dataset.platform, btn.dataset.sid);
+                const tr = btn.closest('tr');
+                if (tr) tr.remove();
+                this._toast('success', 'Restored to the hub');
+                if (!wrap.querySelector('tbody tr')) this.renderIgnored();
+            } catch (err) {
+                btn.disabled = false;
+                this._toast('error', 'Restore failed: ' + err.message);
+            }
+        });
     },
 };

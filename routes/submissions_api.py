@@ -275,13 +275,25 @@ def build_discovered(platform_rows: list[tuple], linked: set) -> list[dict]:
 
 
 def get_discovered_unlinked(conn, platform_filter: str | None = None) -> list[dict]:
-    """Discovered submissions (across platforms) with no publication link."""
+    """Discovered submissions (across platforms) with no publication link.
+
+    Excludes three sets of (platform, submission_id):
+      • already published/linked (a real publication exists),
+      • Masterpiece members — a piece bundled into a Masterpiece must not reappear
+        as a duplicate discovered tile (dedup, 2.140.0),
+      • user-ignored tiles (the Ignore list, 2.140.0).
+    """
     from posting.sync import PLATFORM_TABLES
+    from database import masterpiece_queries, ignored_queries
     linked = {
         (r["platform"], str(r["external_id"]))
         for r in conn.execute(
             "SELECT platform, external_id FROM publications WHERE external_id != ''")
     }
+    # Fold Masterpiece members + the ignore list into the same exclusion set so
+    # both the hub and any other consumer of this list get a clean result.
+    linked |= masterpiece_queries.all_member_pairs(conn)
+    linked |= ignored_queries.all_ignored_pairs(conn)
     platform_rows: list[tuple] = []
     for plat, cfg in PLATFORM_TABLES.items():
         if platform_filter and plat != platform_filter:
@@ -307,6 +319,49 @@ def list_discovered(platform: str | None = Query(None)):
     except Exception as e:
         logger.error("Error listing discovered submissions: %s", e, exc_info=True)
         raise HTTPException(500, detail=str(e))
+
+
+# ── Ignore list for discovered tiles (2.140.0) ────────────────────────────────
+# Lets the user dismiss discovered artwork they never want in the hub (e.g. images
+# scraped from tweets). Reversible via the un-ignore endpoint.
+
+@works_router.post("/works/discovered/ignore")
+def ignore_discovered(body: dict):
+    """Add a discovered (platform, submission_id) to the Ignore list."""
+    from database import ignored_queries
+    platform = body.get("platform")
+    submission_id = str(body.get("submission_id") or "")
+    if not (platform and submission_id):
+        raise HTTPException(400, detail="platform and submission_id are required")
+    conn = get_connection()
+    try:
+        ignored_queries.add_ignored(conn, platform, submission_id)
+    finally:
+        conn.close()
+    return {"status": "ignored", "platform": platform, "submission_id": submission_id}
+
+
+@works_router.delete("/works/discovered/ignore/{platform}/{submission_id:path}")
+def unignore_discovered(platform: str, submission_id: str):
+    """Remove a (platform, submission_id) from the Ignore list (it reappears)."""
+    from database import ignored_queries
+    conn = get_connection()
+    try:
+        ignored_queries.remove_ignored(conn, platform, submission_id)
+    finally:
+        conn.close()
+    return {"status": "unignored", "platform": platform, "submission_id": submission_id}
+
+
+@works_router.get("/works/discovered/ignored")
+def list_ignored_discovered():
+    """The Ignore list (for a manage/restore view)."""
+    from database import ignored_queries
+    conn = get_connection()
+    try:
+        return {"ignored": ignored_queries.list_ignored(conn)}
+    finally:
+        conn.close()
 
 
 @works_router.post("/works/link")

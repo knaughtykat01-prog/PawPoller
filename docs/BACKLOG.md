@@ -4,7 +4,7 @@
 sessions. Update this **every time** a request lands or an item ships. Newest requests go at the top of "Open".
 Cross-reference shipped items to their `CHANGELOG.md` version.
 
-_Last updated: 2026-07-17 (during the 2.139.0 Instagram-artwork work)._
+_Last updated: 2026-07-17 (after 2.140.0 — artwork dedup / ignore / multi-account Overview)._
 
 Legend: 🔴 open · 🟡 in progress · 🟢 done · ⚪ deferred/parked
 
@@ -14,12 +14,11 @@ Legend: 🔴 open · 🟡 in progress · 🟢 done · ⚪ deferred/parked
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| A | **Instagram → artwork upload** (not just Posts) | 🟡 shipping as **2.139.0** | New `InstagramPoster`; tests green; awaiting full-suite pass then deploy |
-| B | **Masterpiece member dedup** — a piece added to a Masterpiece must not still show as a duplicate discovered tile | 🔴 next | Artwork hub: hide discovered tiles that are already Masterpiece members |
-| C | **Ignore function** for discovered artwork (e.g. images scraped from tweets you don't want) | 🔴 next | Needs a persisted "ignored" list + an Ignore button on discovered cards; hidden from the hub |
-| D | **Multi-account Overview** | 🟡 verify | "By persona" widget shipped 2.132/2.137 (opt-in via ⚙ Customize). Confirm it's what Rhys wants / surface it better |
-| E | **Detail compaction** ("poetization / no scrolling") — story, artwork & Masterpiece detail denser, fits without scrolling | 🔴 queued (Rhys pick #2) | Layout/CSS; somewhat subjective — keep the key info above the fold |
+| E | **Detail compaction** ("poetization / no scrolling") — story, artwork & Masterpiece detail denser, fits without scrolling | 🟡 next (Rhys pick #2) | Layout/CSS; somewhat subjective — keep the key info above the fold |
 | F | **IA restructure** — split **Submissions** (stories+art) from **Posts** (microblog catalogue); move post-creation into **Create**; posting-under-Create | 🔴 queued (Rhys pick #3) | Big navigation reshape, touches many screens |
+
+_Recently shipped from this table:_ **A** Instagram → artwork upload (**2.139**); **B** Masterpiece member dedup,
+**C** Ignore function, **D** multi-account Overview default (**2.140**).
 
 ## 🔴 Open (smaller / follow-ups)
 
@@ -58,7 +57,10 @@ Legend: 🔴 open · 🟡 in progress · 🟢 done · ⚪ deferred/parked
 | Artwork tab filters / separations | **2.136** (All / In library / Discovered + search) |
 | Overview clickable stat widgets (part 1: stat cards → library) | **2.135** |
 | Marketing image generator (BookTok excerpt cards, ref IMG_0351.jpg) | **2.138** (Promo Maker `#/promo`) |
-| Instagram as an artwork upload target | **2.139** (this release) |
+| Instagram as an artwork upload target | **2.139** |
+| Masterpiece member dedup (no duplicate discovered tiles) | **2.140** |
+| Ignore function for discovered artwork (+ Ignored/restore view) | **2.140** |
+| Multi-account Overview shown by default ("By persona" widget) | **2.140** |
 | AO3 525 error logging | (per HANDOFF ledger) |
 | In-app "what's new" changelog popup on update | 2.134 |
 
