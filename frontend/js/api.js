@@ -181,6 +181,21 @@ const API = {
     matchMasterpiece(platform, submissionId) {
         return this.get('/api/masterpieces/match', { platform, submission_id: submissionId });
     },
+    /* Swap a Masterpiece's canonical image (keeps metadata + site links; the old
+       file stays in the folder as a gallery alternate). */
+    replaceMasterpieceImage(name, file) {
+        const fd = new FormData();
+        fd.append('file', file);
+        return fetch(`/api/masterpieces/${encodeURIComponent(name)}/image`,
+            { method: 'POST', body: fd })
+            .then(async r => {
+                if (!r.ok) {
+                    const d = await r.json().catch(() => ({}));
+                    throw new Error(d.detail || `Replace failed: ${r.status}`);
+                }
+                return r.json();
+            });
+    },
     mergeMasterpieces(keep, drop) { return this.post('/api/masterpieces/merge', { keep, drop }); },
     dismissMasterpieceDuplicate(names) { return this.post('/api/masterpieces/not-duplicate', { names }); },
     // Junk status: 'junk' hides it from the grid (kept on disk, reversible); '' restores.

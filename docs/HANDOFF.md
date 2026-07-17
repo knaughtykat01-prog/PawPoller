@@ -1,7 +1,26 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.151.0 — **Image Tool + stop duplicate Masterpieces forming.**
+**Current version (master):** 2.153.0 — **Replace a Masterpiece's canonical image.**
+Rhys asked for swapping in a better/higher-res file. `PATCH /images/{name}` is metadata-only, so this is a new
+**`POST /api/masterpieces/{name}/image`** (multipart) + **⇪ Replace image** under the detail hero. **Keeps the record**
+(masterpiece.json + every `masterpiece_members` link → pooled stats carry over); only the hero pointer (`image`) moves.
+**Non-destructive** — the old file stays as a 2.152 gallery alternate, and a colliding filename saves as `name_v1.ext`
+(the hero can never be clobbered). Drops the cached `__mp__` hash so the de-dup finder re-reads the NEW pixels. Same
+50 MB cap + extension allowlist as the uploader. +3 tests.
+**Also confirmed (no code needed):** uploading artwork **without** posting already works — Create → New artwork →
+*"Save to library"* (vs *"Save & publish"*).
+
+**Prior — 2.152.0 — Masterpiece detail gallery (see every image in the set).**
+`GET /api/masterpieces/{name}` now returns `images:[...]` (every folder image, hero first); the detail page renders a
+**gallery strip** under the hero when there are 2+ (click swaps the hero; `.mp-alts` CSS). Shipped alongside the art
+audit's data ops on prod: the **13 recovered multi-image set-images** pushed into their server folders (birthday
+dedication variant, Kinar×Tigress, 2nd Vektorich piece, dash-of-seed, Franubis body-writing) and the **6 duplicate
+pairs merged** (55 → 49 folders; byte-identical verified; cat-censored daki + PFP test render preserved as alts in
+their survivors). +2 tests. NOTE: Self_Serving_Pt_1 / Self_Served_Pt_2 are DIFFERENT images (before/after) that hash
+near-identically — if the dup finder flags them, hit ✗ Not the same.
+
+**Prior — 2.151.0 — Image Tool + stop duplicate Masterpieces forming.**
 Backlog **J**: new **`#/imagetool`** (Create → Image Tool) — crop / rotate / flip / resize-by-longest-edge / ⬛ censor /
 ▨ pixelate, undo (12-deep), export PNG·JPEG·WebP + quality, exits via Download / Send to Posts / Save as **new** artwork.
 Entirely client-side canvas; `_work` (offscreen canvas) is the source of truth and `_toWork()` maps pointer→image pixels.

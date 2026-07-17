@@ -4,7 +4,7 @@
 sessions. Update this **every time** a request lands or an item ships. Newest requests go at the top of "Open".
 Cross-reference shipped items to their `CHANGELOG.md` version.
 
-_Last updated: 2026-07-17 (after 2.140.0 — artwork dedup / ignore / multi-account Overview)._
+_Last updated: 2026-07-17 (after 2.153.0 — replace a Masterpiece's canonical image)._
 
 Legend: 🔴 open · 🟡 in progress · 🟢 done · ⚪ deferred/parked
 
@@ -23,6 +23,7 @@ split, Option A (**2.142**).
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | O | ~~**Art audit: name/describe/tag all 55 Masterpieces**~~ | 🟢 **DONE** | 2026-07-17. All 55 archive images pulled from the server + viewed; titles/descriptions/tags proposed for every piece. Deliverable: `C:\Users\rhysc\claude\art_audit\review.html` (+ `proposals/*.json`). Found: 6 duplicate/variant pairs, 14 junk entries (13 index-only tweets + 1 commission ad), ~7 explicit pieces rated *general*, 12+ artists recovered from in-image signatures. **Multi-image sets recovered** (13 extra images off the tweets' `media_urls`): Bread2Garlic birthday set (incl. the "To Dar, Happy Birthday. Love, Ki" dedication + a 2nd Kinar×Tigress piece), 2nd VektorichArt piece, buffer-Kii "dash of seed" variant, Franubis body-writing variant; Kasscabel confirmed as the harness-daki artist. **DONE 2026-07-17** — Rhys confirmed the audit is complete. |
+| Q | ~~**See the multi-image grabs in the app** ("should i not be able to see the extra images?")~~ | 🟢 **DONE 2.152** | 13 recovered set-images pushed to the server folders + detail-page gallery strip (`images:[...]` on GET /{name}, `.mp-alts` click-to-swap). Also: the 6 dupe pairs merged on prod (55→49, byte-identical verified, variants preserved as alts) |
 | P | ~~**Junk category for Masterpieces** ("for arts it had pulled but is not needed or useful, or archived")~~ | 🟢 **DONE 2.149** | `masterpieces.status` + `POST /api/masterpieces/{name}/status`; grid 🗑 Junk (N) view + ♻ Restore; detail Junk/Restore button. Works for index-only names (the 13 swept-in tweets). Kept-but-hidden, reversible |
 | G | ~~Overview widgets: **per-metric sorted** stat-card destinations~~ | 🟢 **DONE 2.147** | Works now carry pooled stats; Library gained Most viewed/favourited/comments sorts; cards deep-link via `#/library/sort/{key}` |
 | H | Overview: **more widgets** (Rhys said "20 more") | 🟢 **catalog 19 → 23** (2.148) | +4 in 2.137 (Quick actions, Engagement, Milestones, Spotlight), +4 in 2.148 (Platforms live, Best platform, Recent comments, Pending queue). Deliberately useful-over-filler — say the word for more |
@@ -83,6 +84,8 @@ split, Option A (**2.142**).
 | Masterpiece junk bin (kept-but-hidden status) | **2.149** |
 | Story detail tabs (one screen, not ten) | **2.150** |
 | Image Tool (crop/rotate/resize/censor/blur, non-destructive) | **2.151** |
+| Masterpiece detail gallery (every image in the set) | **2.152** |
+| Replace a Masterpiece's canonical image (keeps record + links) | **2.153** |
 | Stop duplicate Masterpieces forming (link-instead-of-create prompt) | **2.151** |
 | AO3 525 error logging | (per HANDOFF ledger) |
 | In-app "what's new" changelog popup on update | 2.134 |

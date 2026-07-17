@@ -89,6 +89,27 @@
 }
 .mp-hero-img { width: 100%; height: 100%; object-fit: contain; }
 .mp-hero-ph { font-size: 3rem; opacity: .4; }
+
+/* Gallery strip (2.152.0) — every image in the folder; click swaps the hero. */
+.mp-hero-col { flex: 0 0 auto; display: flex; flex-direction: column; gap: .45rem; width: min(320px, 42vw); }
+.mp-hero-col .mp-hero { width: 100%; }
+.mp-alts { display: flex; flex-wrap: wrap; gap: .4rem; }
+.mp-alt {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    background: var(--bg-secondary);
+}
+.mp-alt.is-active { border-color: var(--accent); }
+.mp-alt:hover { border-color: var(--card-border, var(--border)); }
+
+/* Replace-canonical-image control under the hero (2.153.0) */
+.mp-hero-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: .2rem; }
+.mp-hero-actions label { cursor: pointer; }
+.mp-hero-actions .muted { font-size: .78rem; }
 .mp-head-info { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: .55rem; }
 .mp-title { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
 .mp-rating {

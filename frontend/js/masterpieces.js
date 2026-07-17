@@ -355,8 +355,19 @@ window.Masterpieces = {
         const t = m.totals || {};
         const heroUrl = this._canonUrl(name, m.image);
         const hero = heroUrl
-            ? `<img class="mp-hero-img" src="${this.esc(heroUrl)}" alt="${this.esc(m.title || name)}">`
+            ? `<img class="mp-hero-img" id="mp-hero-img" src="${this.esc(heroUrl)}" alt="${this.esc(m.title || name)}">`
             : `<div class="mp-hero-ph">🖼️</div>`;
+        // Gallery strip (2.152.0): every image in the folder — multi-image tweet
+        // sets, SFW/NSFW variants — hero first; click swaps the hero.
+        const imgs = m.images || [];
+        const gallery = imgs.length > 1
+            ? `<div class="mp-alts">${imgs.map((f, i) => {
+                const u = this._canonUrl(name, f);
+                return `<img class="mp-alt${i === 0 ? ' is-active' : ''}" src="${this.esc(u)}"
+                    data-mp-img="${this.esc(u)}" alt="" loading="lazy"
+                    title="${this.esc(f)}${i === 0 ? ' (primary)' : ''}">`;
+            }).join('')}</div>`
+            : '';
         const rating = m.rating ? `<span class="${this._ratingCls(m.rating)}">${this.esc(m.rating)}</span>` : '';
         const personas = this._personaChips(m.persona_ids);
         const isJunk = m.status === 'junk';
@@ -421,7 +432,15 @@ window.Masterpieces = {
 
         root.innerHTML = `
             <div class="mp-detail-head">
-                <div class="mp-hero">${hero}</div>
+                <div class="mp-hero-col"><div class="mp-hero">${hero}</div>${gallery}
+                    <div class="mp-hero-actions">
+                        <label class="btn btn-sm" title="Swap in a better/higher-res version — keeps this record, its tags and every site link. The old file stays as a gallery alternate.">
+                            ⇪ Replace image
+                            <input type="file" id="mp-replace-file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+                        </label>
+                        <span id="mp-replace-msg" class="muted"></span>
+                    </div>
+                </div>
                 <div class="mp-head-info">
                     <div class="mp-title">${this.esc(m.title || name)}</div>
                     <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">${rating}${junkBadge}
@@ -509,7 +528,42 @@ window.Masterpieces = {
             if (det) { e.preventDefault(); this._detach(det.dataset.platform, det.dataset.sid); return; }
             const junk = e.target.closest('[data-mp-junk]');
             if (junk) { e.preventDefault(); this._setJunk(junk); return; }
+            const alt = e.target.closest('[data-mp-img]');
+            if (alt) {
+                e.preventDefault();
+                const heroImg = document.getElementById('mp-hero-img');
+                if (heroImg) heroImg.src = alt.dataset.mpImg;
+                document.querySelectorAll('.mp-alt').forEach(x => x.classList.toggle('is-active', x === alt));
+                return;
+            }
         });
+
+        // Replace-image picker. Delegated (not bound in renderDetail) because
+        // _init runs once; `change` bubbles, and this._current tracks the open
+        // Masterpiece.
+        document.addEventListener('change', (e) => {
+            if (!e.target || e.target.id !== 'mp-replace-file') return;
+            const f = e.target.files && e.target.files[0];
+            if (f && this._current) this._replaceImage(this._current, f);
+        });
+    },
+
+    /* Swap the canonical image for a better/higher-res version (2.153.0).
+     * Non-destructive: the record, its tags and every site link survive, and the
+     * OLD file stays in the folder as a gallery alternate. */
+    async _replaceImage(name, file) {
+        const msg = document.getElementById('mp-replace-msg');
+        const set = t => { if (msg) msg.textContent = t || ''; };
+        set('Uploading…');
+        try {
+            const res = await API.replaceMasterpieceImage(name, file);
+            this._cache = null;                      // grid cover is now stale
+            this._toast('success', `Image replaced (was ${res.previous})`);
+            set('');
+            await this.renderDetail(name);           // re-render with the new hero + gallery
+        } catch (err) {
+            set('Replace failed: ' + (err.message || err));
+        }
     },
 
     /* Junk / restore from the detail page (2.149.0). Junking keeps the folder +

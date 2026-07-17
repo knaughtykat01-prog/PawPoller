@@ -10,14 +10,18 @@ lands in Phase 3, so a fresh Masterpiece lists with zeroed pooled stats until
 then (expected).
 """
 import logging
+import re
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from database.db import get_connection
 from database import masterpiece_queries as mq
 from posting import artwork_reader
 
 logger = logging.getLogger(__name__)
+
+# Same archive cap the artwork uploader enforces (routes/artwork_api.py).
+_MAX_IMAGE_BYTES = 50 * 1024 * 1024
 
 masterpieces_router = APIRouter(prefix="/api/masterpieces", tags=["masterpieces"])
 
@@ -172,6 +176,71 @@ def merge_masterpieces_ep(body: dict):
     return {"status": "merged", "keep": keep, "dropped": drop, "members_moved": moved}
 
 
+# ── Replace the canonical image (2.153.0) ────────────────────────────────────
+# "The artist sent the full-res / a fixed version" — swap the image a Masterpiece
+# points at WITHOUT losing the record: masterpiece.json (title/desc/rating/tags)
+# and every masterpiece_members site-link survive untouched, so pooled stats and
+# links carry straight over. Previously the only route was delete + re-import,
+# which threw all of that away.
+#
+# Deliberately NON-DESTRUCTIVE: the old file stays in the folder, so it drops into
+# the 2.152 gallery strip as an alternate rather than being overwritten. This only
+# ever moves the *hero* pointer (`image`) — it never touches the other images.
+
+@masterpieces_router.post("/{name}/image")
+async def replace_masterpiece_image(name: str, file: UploadFile = File(...)):
+    """Replace the canonical (hero) image. Keeps metadata, members and the old file."""
+    from pathlib import Path
+
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in artwork_reader.IMAGE_EXTENSIONS:
+        raise HTTPException(415, detail=(
+            f"Unsupported image type: {ext or '(none)'}. "
+            f"Allowed: {', '.join(artwork_reader.IMAGE_EXTENSIONS)}"))
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, detail="Empty image upload")
+    if len(data) > _MAX_IMAGE_BYTES:
+        raise HTTPException(413, detail="Image exceeds the 50 MB archive cap")
+
+    try:
+        art = artwork_reader.load_artwork(name)
+    except FileNotFoundError:
+        raise HTTPException(404, detail="Masterpiece not found")
+
+    folder = Path(art.path)
+    # Never clobber an existing file (least of all the current hero) — the old
+    # version must survive as a gallery alternate.
+    stem = re.sub(r"[^\w.\-]", "_", Path(file.filename or "image").stem) or "image"
+    target = folder / f"{stem}{ext}"
+    n = 1
+    while target.exists():
+        target = folder / f"{stem}_v{n}{ext}"
+        n += 1
+    target.write_bytes(data)
+
+    previous = art.image
+    artwork_reader.save_artwork_metadata(name, {"image": target.name})
+
+    # The hero changed, so the cached perceptual hash is stale — drop it and let
+    # hash_masterpieces() recompute, or the de-dup finder would compare the OLD
+    # pixels forever.
+    conn = get_connection()
+    try:
+        conn.execute(
+            "DELETE FROM image_hashes WHERE platform = '__mp__' AND submission_id = ?",
+            (name,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    images = sorted(f.name for f in folder.iterdir()
+                    if f.suffix.lower() in artwork_reader.IMAGE_EXTENSIONS)
+    logger.info("Masterpiece %s: hero image %s -> %s", name, previous, target.name)
+    return {"status": "replaced", "name": name, "image": target.name,
+            "previous": previous, "images": images}
+
+
 # ── Junk status (2.149.0) ─────────────────────────────────────────────────────
 # 'junk' = kept-but-hidden: for pulled art that isn't wanted in the grid (memes,
 # other people's ads, retired pieces) without deleting the record/folder.
@@ -219,6 +288,15 @@ def get_masterpiece(name: str):
         art = artwork_reader.load_artwork(name)
     except FileNotFoundError:
         raise HTTPException(404, detail="Masterpiece not found")
+    # Every image file in the folder, hero first (2.152.0) — multi-image tweet
+    # sets and preserved SFW/NSFW variants live beside the hero as image_N.*;
+    # the detail view renders them as a gallery strip via /api/artwork/image.
+    from pathlib import Path
+    images = sorted(f.name for f in Path(art.path).iterdir()
+                    if f.suffix.lower() in artwork_reader.IMAGE_EXTENSIONS)
+    if art.image in images:
+        images.remove(art.image)
+        images.insert(0, art.image)
     conn = get_connection()
     try:
         mq.ensure_indexed(conn, name)
@@ -227,6 +305,7 @@ def get_masterpiece(name: str):
         return {
             "name": art.name,
             "status": mq.get_status(conn, name),
+            "images": images,
             "title": art.title,
             "description": art.description,
             "author": art.author,

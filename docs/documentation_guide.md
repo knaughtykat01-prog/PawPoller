@@ -6340,6 +6340,27 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   The discovered-tile counterpart is the Ignore list (2.140, `ignored_submissions`) — Ignore is for *unpromoted*
   discovered art, Junk is for *Masterpiece records*.
 
+- **Detail gallery (2.152.0) — multi-image sets.** A Masterpiece folder can hold more than one image (multi-image
+  tweet sets recovered from `tw_submissions.media_urls`, SFW/NSFW variants preserved by dupe merges) as
+  `image_N.ext` beside the hero. `GET /api/masterpieces/{name}` returns `images: [...]` (every
+  `IMAGE_EXTENSIONS` file in the folder, hero first); the detail view renders a `.mp-alts` thumbnail strip under
+  the hero when there are 2+ and clicking swaps the hero image in place (served, as ever, by
+  `GET /api/artwork/image?name=&file=` — already path-traversal-guarded for arbitrary folder files). The hero
+  (`masterpiece.json`'s `image` key) remains the ONLY image used for posting and pHash duplicate detection.
+
+- **Replace the canonical image (2.153.0).** "The artist sent the full-res / a fixed version." `PATCH
+  /artwork/images/{name}` is metadata-only, so swapping the file used to mean delete + re-import — which threw away the
+  record, its `masterpiece_members` links and all pooled stats. **`POST /api/masterpieces/{name}/image`** (multipart,
+  `⇪ Replace image` under the detail hero) writes the new file into the existing folder and repoints
+  `masterpiece.json`'s `image` at it. Everything else is deliberately preserved:
+  - **Metadata + members untouched** — only the hero pointer moves, so links/stats carry straight over.
+  - **Non-destructive** — the old file STAYS in the folder and therefore surfaces as a gallery alternate (above). A
+    filename collision is suffixed `_v1`, `_v2`… so the current hero can never be clobbered.
+  - **Only the hero moves** — sibling `image_N.*` (tweet sets, SFW/NSFW variants) are never touched.
+  - **The cached `__mp__` hero hash is DELETED** so `image_hash.hash_masterpieces()` recomputes it. Skipping this would
+    leave the de-dup finder (§ Masterpiece de-duplication) comparing the OLD pixels forever.
+  - Guarded by the same 50 MB cap + `IMAGE_EXTENSIONS` allowlist as the artwork uploader; 404 on an unknown name.
+
 
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)
 

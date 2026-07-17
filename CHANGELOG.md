@@ -4,6 +4,53 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.153.0] - 2026-07-17 - Replace a Masterpiece's canonical image
+
+Rhys: *"say i wanted to replace the file for the masterwork with a better version or better resolution, is that
+something done yet?"* — it wasn't. `PATCH /images/{name}` only ever accepted **metadata**, so swapping the actual file
+meant delete-and-reimport (throwing away the record, its site-links and pooled stats) or editing the archive by hand.
+
+New **⇪ Replace image** button under the hero on any Masterpiece → new
+**`POST /api/masterpieces/{name}/image`** (multipart).
+
+- **The record survives.** `masterpiece.json` (title / description / rating / tags / characters) is untouched, and every
+  `masterpiece_members` site-link stays — so pooled views/faves carry straight over. Only the hero pointer (`image`)
+  moves.
+- **Non-destructive.** The old file is *kept* in the folder, so it drops into the 2.152 gallery strip as an alternate —
+  a "better version" that turns out worse is recoverable. Uploading a file whose name collides with an existing one
+  saves as `name_v1.ext` rather than silently overwriting (the current hero can never be clobbered).
+- **Only the hero moves.** Multi-image tweet sets and preserved SFW/NSFW variants beside the hero are never touched.
+- **The stale perceptual hash is dropped**, so `hash_masterpieces()` recomputes and the de-dup finder compares the NEW
+  pixels instead of the old ones forever.
+- Guarded by the same 50 MB archive cap + extension allowlist as the artwork uploader; 404 on an unknown name.
+
++3 tests (`test_masterpiece_replace_image.py`): metadata + members + old file survive and the hash is invalidated; the
+no-clobber `_v1` path; rejects non-images (415) and unknown names (404). Backend + frontend. `SITE_VERSION` → 2.153.0.
+
+Also answered in passing: **uploading artwork without posting already works** — Create → New artwork's *"Save to
+library"* (vs *"Save & publish"*) stores it locally and posts nowhere. No change needed.
+
+---
+
+## [2.152.0] - 2026-07-17 - Masterpiece detail gallery (see every image in the set)
+
+The art audit recovered 13 set-images off multi-image tweets (`media_urls`) and the dupe merges preserved 2 variant
+alts (cat-censored daki, PFP test render) into their survivors' folders — but the detail page only ever rendered the
+one hero image, so none of them were visible. Now they are.
+
+- **Backend:** `GET /api/masterpieces/{name}` returns `images: [...]` — every image file in the folder, hero first.
+- **Frontend:** when a Masterpiece has 2+ images, a **gallery strip** renders under the hero (`.mp-alts` in
+  `masterpieces.css`); clicking a thumbnail swaps the hero in place (CSP-safe delegate, no inline handlers).
+- **Data:** the 13 recovered set-images shipped to the server's artwork folders (Bread2Garlic birthday set incl. the
+  "To Dar, Happy Birthday. Love, Ki" dedication + the Kinar×Tigress second set, the 2nd VektorichArt piece, the
+  buffer-Kii "dash of seed" variant, the Franubis body-writing variant, Kasscabel + SugarFoxx set copies).
+- Tests: `tests/test_masterpiece_images.py` (2).
+
+Also this session (data ops, no code): the 6 duplicate/variant Masterpiece pairs merged on prod (55 → 49 folders,
+site-links folded into survivors, variant images preserved as alts; verified byte-identical before merging).
+
+---
+
 ## [2.151.0] - 2026-07-17 - Image Tool + stop duplicate Masterpieces forming
 
 Backlog **J** (simple image editor) and **M** (auto-link on import).
