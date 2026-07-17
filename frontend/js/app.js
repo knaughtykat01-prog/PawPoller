@@ -2751,9 +2751,11 @@ const App = {
             // /api/activity/recent doesn't block the rest of the page render.
             // Failures fall back to empty. getPersonas already returns each
             // persona with pooled stats.combined, so no per-persona round-trips.
-            const [systemActivity, personasResp] = await Promise.all([
+            const [systemActivity, personasResp, queueResp] = await Promise.all([
                 API.getRecentActivity(20).catch(() => ({ events: [] })),
                 API.getPersonas().catch(() => ({ personas: [] })),
+                // Feeds the opt-in "Pending queue" widget; additive, never blocks.
+                API.getPostingQueue().catch(() => ({ queue: [] })),
             ]);
 
             const ib = ibSummary || {};
@@ -2889,6 +2891,32 @@ const App = {
                 platformCard('<span class="platform-badge e621">\u{1F43E} e621</span>', 'e621', { total_views: 0, total_favorites: e621.total_favorites || 0, total_submissions: e621.total_submissions || 0 }, 'e621'),
             ].join('');
 
+            /* Compact per-platform roll-up powering the "Platforms live" +
+               "Best platform" widgets. Views are 0 for platforms that don't expose
+               a view count (Itaku/Bluesky/Mastodon/Tumblr/e621 report engagement
+               only), so they simply never win "best by views". */
+            const platRollup = [
+                ['ib', 'Inkbunny', ib.total_submissions, ib.total_views],
+                ['fa', 'FurAffinity', fa.total_submissions, fa.total_views],
+                ['ws', 'Weasyl', ws.total_submissions, ws.total_views],
+                ['sf', 'SoFurry', sf.total_submissions, sf.total_views],
+                ['sqw', 'SquidgeWorld', sqw.total_submissions, sqw.total_views],
+                ['ao3', 'AO3', ao3.total_submissions, ao3.total_views],
+                ['da', 'DeviantArt', da.total_submissions, da.total_views],
+                ['wp', 'Wattpad', wp.total_submissions, wp.total_reads || wp.total_views],
+                ['ik', 'Itaku', ik.total_submissions, 0],
+                ['bsky', 'Bluesky', bsky.total_submissions, 0],
+                ['tw', 'X/Twitter', tw.total_submissions, tw.total_views],
+                ['mast', 'Mastodon', mast.total_submissions, 0],
+                ['tum', 'Tumblr', tum.total_submissions, 0],
+                ['pix', 'Pixiv', pix.total_submissions, pix.total_views],
+                ['thr', 'Threads', thr.total_submissions, thr.total_views],
+                ['ig', 'Instagram', ig.total_submissions, ig.total_views],
+                ['e621', 'e621', e621.total_submissions, 0],
+            ].map(([code, label, subs, views]) => ({
+                code, label, subs: subs || 0, views: views || 0,
+            }));
+
             /* Per-platform aggregate view charts — only those with history. */
             const chartSpecs = [
                 { id: 'chart-ib-views', title: 'Inkbunny Views', snapshots: ibAgg?.snapshots, keys: ['views'] },
@@ -2945,6 +2973,8 @@ const App = {
                 trending: (trending.trending || []),
                 systemActivity: (systemActivity.events || []).slice(0, 20),
                 personas: (personasResp.personas || []),
+                platRollup,
+                queue: (queueResp && queueResp.queue) || [],
             };
 
             this._renderDashboard();
@@ -3000,6 +3030,10 @@ const App = {
             { id: 'engagement', title: 'Engagement rate', icon: '\u{1F4CA}', desc: 'Interactions per view + average views per work', spans: [1, 2] },
             { id: 'milestones', title: 'Milestones', icon: '\u{1F3AF}', desc: 'Progress to your next round-number goal', spans: [2, 4] },
             { id: 'spotlight', title: 'Spotlight', icon: '⭐', desc: 'Your single best-performing work', spans: [2, 4] },
+            { id: 'stat-platforms', title: 'Platforms live', icon: '\u{1F310}', desc: 'How many platforms you have work on', spans: [1, 2] },
+            { id: 'bestplatform', title: 'Best platform', icon: '\u{1F947}', desc: 'Where your work gets the most views', spans: [1, 2] },
+            { id: 'comments', title: 'Recent comments', icon: '\u{1F5E8}', desc: 'Just the comments — people talking to you', spans: [2, 4] },
+            { id: 'queue', title: 'Pending queue', icon: '⏳', desc: 'Uploads waiting to go out', spans: [2, 4] },
         ];
     },
 
@@ -3042,6 +3076,22 @@ const App = {
             case 'engagement': return this._engagementHtml(ctx.totals);
             case 'milestones': return `<div class="wtitle">Milestones</div>${this._milestonesHtml(ctx.totals)}`;
             case 'spotlight': return `<div class="wtitle">Spotlight</div>${this._spotlightHtml(ctx.topViewed)}`;
+            case 'stat-platforms': {
+                const live = (ctx.platRollup || []).filter(p => p.subs > 0);
+                const total = (ctx.platRollup || []).length;
+                return `<div class="wtitle">Platforms live</div>`
+                    + `<a class="dash-stat-link" data-nav="#/platforms" title="Open the Platforms hub">`
+                    + `<div class="w-num">${live.length}<span style="font-size:.45em;color:var(--text-muted)"> / ${total}</span></div>`
+                    + `<div class="dash-sub">${live.length ? live.slice(0, 6).map(p => Utils.escapeHtml(p.label)).join(' · ') : 'Nothing posted yet'}</div></a>`;
+            }
+            case 'bestplatform': return this._bestPlatformHtml(ctx.platRollup);
+            case 'comments': {
+                const only = (ctx.recentActivity || []).filter(a => a._type === 'comment');
+                return `<div class="wtitle">Recent comments</div>`
+                    + (only.length ? Components.overviewRecentActivity(only)
+                        : '<div class="dash-empty">No comments yet — they’ll show here as they land.</div>');
+            }
+            case 'queue': return `<div class="wtitle">Pending queue</div>${this._queueWidgetHtml(ctx.queue)}`;
             default: return '<div class="wtitle">Widget</div>';
         }
     },
@@ -3140,6 +3190,42 @@ const App = {
                 <span><b>${Utils.formatCompact(top.favorites_count || 0)}</b> faves</span>
             </div>
         </div>`;
+    },
+
+    /* "Best platform" — where your work actually gets seen. Ranks by views, so
+     * engagement-only platforms (no view counts) never spuriously win. */
+    _bestPlatformHtml(rollup) {
+        const ranked = (rollup || []).filter(p => p.views > 0).sort((a, b) => b.views - a.views);
+        if (!ranked.length) return '<div class="wtitle">Best platform</div>'
+            + '<div class="dash-empty">No view data yet — it appears after a poll or two.</div>';
+        const top = ranked[0];
+        const P = (window.PLATFORMS || []).find(p => p.code === top.code);
+        const runner = ranked[1];
+        return `<div class="wtitle">Best platform</div>`
+            + `<a class="dash-stat-link" data-nav="#/${top.code}" title="Open ${Utils.escapeHtml(top.label)}">`
+            + `<div class="dash-spot-title">${P && P.emoji ? P.emoji + ' ' : ''}${Utils.escapeHtml(top.label)}</div>`
+            + `<div class="dash-spot-stats"><span><b>${Utils.formatCompact(top.views)}</b> views</span>`
+            + `<span><b>${Utils.formatCompact(top.subs)}</b> works</span></div>`
+            + (runner ? `<div class="dash-sub">Runner-up: ${Utils.escapeHtml(runner.label)} · ${Utils.formatCompact(runner.views)} views</div>` : '')
+            + `</a>`;
+    },
+
+    /* "Pending queue" — what's still waiting to go out (desktop-required posts,
+     * scheduled items, retries). Actionable, so it links to the queue page. */
+    _queueWidgetHtml(queue) {
+        const items = (queue || []).filter(q => q && q.status !== 'completed');
+        if (!items.length) return '<div class="dash-empty">Nothing queued — everything’s out. ✅</div>';
+        const rows = items.slice(0, 6).map(q => {
+            const P = (window.PLATFORMS || []).find(p => p.code === q.platform);
+            const ch = q.chapter_index > 0 ? `Ch${q.chapter_index}` : 'Full';
+            return `<div style="display:flex;justify-content:space-between;gap:.6rem;padding:.4rem .1rem;`
+                + `border-bottom:1px solid var(--border);font-size:.85rem;">`
+                + `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">`
+                + `${P && P.emoji ? P.emoji + ' ' : ''}${Utils.escapeHtml(q.story_name || '')} <span class="muted">${ch}</span></span>`
+                + `<span class="muted">${Utils.escapeHtml(q.status || 'pending')}</span></div>`;
+        }).join('');
+        const more = items.length > 6 ? `<div class="dash-sub">+${items.length - 6} more</div>` : '';
+        return `<a class="dash-stat-link" data-nav="#/posting/queue" title="Open the posting queue">${rows}${more}</a>`;
     },
 
     _dashWidgetMount(id, ctx, w) {

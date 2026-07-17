@@ -89,7 +89,9 @@ window.Promo = {
                         </label>
                         <div class="promo-hint muted">Select some words above, then tap a colour to highlight them.</div>
                         <div class="promo-swatches">${swatches}
-                            <button type="button" class="btn btn-sm" id="promo-clearhl">Clear highlights</button>
+                            <button type="button" class="promo-swatch promo-swatch--censor" id="promo-censor"
+                                title="Black out the selected words (censor bar)"></button>
+                            <button type="button" class="btn btn-sm" id="promo-clearhl">Clear</button>
                         </div>
                     </div>
                     <div class="card">
@@ -117,6 +119,7 @@ window.Promo = {
                     </div>
                     <div class="promo-actions">
                         <button class="btn btn-primary" id="promo-download">⬇ Download PNG</button>
+                        <button class="btn" id="promo-share" title="Open the post composer with this image attached">💬 Send to Posts</button>
                         <span id="promo-warn" class="promo-warn"></span>
                     </div>
                 </div>
@@ -154,6 +157,10 @@ window.Promo = {
         });
 
         $('promo-clearhl').addEventListener('click', () => { s.highlights = []; this.draw(); });
+        // Censor: same selection flow as a colour swatch, but flagged as a blackout.
+        const censor = $('promo-censor');
+        censor.addEventListener('mousedown', e => e.preventDefault());   // keep the textarea selection
+        censor.addEventListener('click', () => this._applyHighlight(true));
 
         $('promo-size').addEventListener('change', e => { s.size = e.target.value; this.draw(); });
         $('promo-font').addEventListener('input', e => { s.font = parseInt(e.target.value, 10); this.draw(); });
@@ -181,7 +188,27 @@ window.Promo = {
         });
 
         $('promo-download').addEventListener('click', () => this._download());
+        $('promo-share').addEventListener('click', () => this._shareToPosts());
         $('promo-from-story').addEventListener('click', () => this._openStoryPicker());
+    },
+
+    /* Hand the rendered card straight to the post composer (Create → New post)
+     * with the image already attached, so a promo can go out without a
+     * download/re-upload round trip. */
+    _shareToPosts() {
+        const canvas = document.getElementById('promo-canvas');
+        if (!canvas) return;
+        if (!window.Posts) {
+            if (window.toast && toast.error) toast.error('Posts module unavailable');
+            return;
+        }
+        canvas.toBlob(blob => {
+            if (!blob) return;
+            const file = new File([blob], `pawpoller-promo-${Date.now()}.png`, { type: 'image/png' });
+            // Picked up by Posts.renderCompose() once the composer has rendered.
+            window.Posts._handoffFiles = [file];
+            window.location.hash = '#/posts/new';
+        }, 'image/png');
     },
 
     /* ── "Pull from a story" picker ─────────────────────────────
@@ -267,7 +294,7 @@ window.Promo = {
     /* Turn the current textarea selection into a highlight range in the active
      * colour. Overlapping ranges of the same colour are merged; a fresh colour
      * over an existing highlight wins (last-write). */
-    _applyHighlight() {
+    _applyHighlight(censor = false) {
         const ta = document.getElementById('promo-text');
         const start = ta.selectionStart, end = ta.selectionEnd;
         if (start === end) {  // nothing selected — just switched colour
@@ -277,7 +304,9 @@ window.Promo = {
         // Drop any existing highlight fully covered by the new one, and trim
         // partial overlaps so colours don't stack ambiguously.
         s.highlights = s.highlights.filter(h => h.end <= start || h.start >= end);
-        s.highlights.push({ start, end, color: s.color });
+        s.highlights.push(censor
+            ? { start, end, color: '#12100f', censor: true }
+            : { start, end, color: s.color });
         this.draw();
     },
 
@@ -299,9 +328,11 @@ window.Promo = {
         return paras;
     },
 
-    _hlColor(word) {
-        const h = this._state.highlights.find(r => word.start < r.end && word.end > r.start);
-        return h ? h.color : null;
+    /* The highlight record covering this word (or null). A record with
+     * `censor: true` is a blackout bar rather than a colour wash. */
+    _hlFor(word) {
+        return this._state.highlights.find(
+            r => word.start < r.end && word.end > r.start) || null;
     },
 
     draw() {
@@ -379,13 +410,18 @@ window.Promo = {
             let x = x0;
             line.words.forEach(w => {
                 const ww = ctx.measureText(w.text).width;
-                const color = this._hlColor(w);
-                if (color) {
-                    ctx.fillStyle = color;
+                const hl = this._hlFor(w);
+                // Colour wash goes BEHIND the words; a censor bar goes OVER them.
+                if (hl && !hl.censor) {
+                    ctx.fillStyle = hl.color;
                     ctx.fillRect(x - 4, y + Math.round(fontPx * 0.06), ww + 8, Math.round(fontPx * 1.12));
                 }
                 ctx.fillStyle = '#171717';
                 ctx.fillText(w.text, x, y);
+                if (hl && hl.censor) {
+                    ctx.fillStyle = '#12100f';
+                    ctx.fillRect(x - 3, y + Math.round(fontPx * 0.14), ww + 6, Math.round(fontPx * 0.92));
+                }
                 x += ww + gap;
             });
             y += lineH;

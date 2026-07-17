@@ -101,6 +101,15 @@ window.Posts = {
         } catch (e) { this._contacts = []; }   // tagging is additive — degrade to none
 
         this._renderCompose(document.getElementById('post-compose'));
+        // An image handed over from the Promo Maker ("💬 Send to Posts"), else
+        // re-sync previews for anything still pending from an earlier visit.
+        if (this._handoffFiles && this._handoffFiles.length) {
+            const files = this._handoffFiles;
+            this._handoffFiles = null;
+            this._addFiles(files);
+        } else {
+            this._renderPreviews();
+        }
     },
 
     _renderCompose(el) {

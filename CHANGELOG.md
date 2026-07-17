@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.148.0] - 2026-07-17 - 4 more Overview widgets + Promo Maker censor bars & Send-to-Posts
+
+Backlog **H** (more widgets) and the rest of **I** (Promo Maker follow-ups).
+
+### Overview: 4 new widgets (catalog 19 → 23) — backlog H
+All opt-in via **⚙ Customize → Add widget**:
+- **🌐 Platforms live** — how many of your 17 platforms actually have work on them (`6 / 17`), naming the top few; links
+  to the Platforms hub.
+- **🥇 Best platform** — where your work gets seen most, with a runner-up line. Ranks by **views**, so engagement-only
+  platforms (Itaku/Bluesky/Mastodon/Tumblr/e621 expose no view count) can't spuriously win.
+- **🗨 Recent comments** — the activity feed filtered to *just* comments: people actually talking to you, without faves
+  drowning them out.
+- **⏳ Pending queue** — uploads still waiting (desktop-required posts, scheduled items, retries); links to the queue.
+
+`Platforms live` / `Best platform` come from a new compact `platRollup` in `_dashCtx` (zero extra fetches); the queue adds
+one additive `getPostingQueue()` call that degrades to empty on failure.
+
+### Promo Maker: censor bars + Send to Posts — backlog I
+- **Censor bars** — a striped black swatch beside the highlighter. Select words, tap it, and a **blackout bar renders
+  over** them (colour washes paint *behind* the text; censors paint *over* it). Stored as a `censor: true` highlight, so
+  it shares the same selection/overlap handling; `_hlColor` → `_hlFor` now returns the whole record.
+- **💬 Send to Posts** — pushes the rendered card straight into the composer (`#/posts/new`) with the image already
+  attached, via a `Posts._handoffFiles` hand-off picked up by `renderCompose()`. No download/re-upload round trip.
+  (`renderCompose` also now re-syncs previews for anything left pending from an earlier visit.)
+
+Frontend-only; backend suite unchanged. `SITE_VERSION` → 2.148.0.
+
+---
+
 ## [2.147.0] - 2026-07-17 - Library performance sorts, per-metric stat links, Promo-from-story
 
 Backlog clean-up: **G** (per-metric stat destinations) and part of **I** (Promo Maker follow-ups).

@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.147.0 — **Library performance sorts, per-metric stat links, Promo-from-story.**
+**Current version (master):** 2.148.0 — **4 more Overview widgets + Promo censor bars & Send-to-Posts.**
+Backlog **H**: catalog 19 → 23 — **🌐 Platforms live**, **🥇 Best platform** (ranks by views so engagement-only platforms
+can't win), **🗨 Recent comments** (activity filtered to comments), **⏳ Pending queue**. First two read a new `platRollup`
+in `_dashCtx` (no extra fetch); queue adds one additive `getPostingQueue()`. Backlog **I** finished: Promo **censor bars**
+(`censor:true` highlight → black bar painted *over* the words; `_hlColor`→`_hlFor`) and **💬 Send to Posts**
+(canvas → `Posts._handoffFiles` → `#/posts/new` with the image attached). Frontend-only.
+
+**Prior — 2.147.0 — Library performance sorts, per-metric stat links, Promo-from-story.**
 Also (backlog **I**, partial): Promo Maker gained **📖 Pull from a story** — picks a story, loads `MASTER.md` via the
 editor API, lifts your selected passage into the excerpt box (`_stripMd` strips metadata/headings/emphasis to clean
 prose; highlights reset since offsets move). Censor bars + share-to-Posts remain open.

@@ -68,6 +68,10 @@
 }
 .promo-swatch:hover { transform: scale(1.12); }
 .promo-swatch.is-active { border-color: var(--text-primary); box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--accent); }
+/* Censor = a blackout bar over the words rather than a colour wash behind them. */
+.promo-swatch--censor {
+    background: repeating-linear-gradient(45deg, #12100f 0 6px, #2b2725 6px 12px);
+}
 
 .promo-bgs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: .4rem; }
 .promo-bg {
