@@ -2969,6 +2969,10 @@ const App = {
             { id: 'topfans', title: 'Top fans', icon: '\u{1F451}', desc: 'Most engaged readers', spans: [2, 4] },
             { id: 'events', title: 'System events', icon: '\u{1F6CE}', desc: 'Polls, posts and alerts', spans: [2, 4] },
             { id: 'personas', title: 'By persona', icon: '\u{1F465}', desc: 'Pooled stats per persona (multi-account)', spans: [2, 4] },
+            { id: 'quicklinks', title: 'Quick actions', icon: '⚡', desc: 'Jump to create a story, artwork or post', spans: [2, 4] },
+            { id: 'engagement', title: 'Engagement rate', icon: '\u{1F4CA}', desc: 'Interactions per view + average views per work', spans: [1, 2] },
+            { id: 'milestones', title: 'Milestones', icon: '\u{1F3AF}', desc: 'Progress to your next round-number goal', spans: [2, 4] },
+            { id: 'spotlight', title: 'Spotlight', icon: '⭐', desc: 'Your single best-performing work', spans: [2, 4] },
         ];
     },
 
@@ -3005,6 +3009,10 @@ const App = {
             case 'topfans': return `<div class="wtitle">Top fans</div>${Components.topFansTable(ctx.topFans)}`;
             case 'events': return `<div class="wtitle">System events</div>${Components.systemEventsFeed(ctx.systemActivity)}`;
             case 'personas': return `<div class="wtitle">By persona <span class="muted" style="font-weight:400;font-size:.8rem">— your accounts, pooled by identity</span></div>${this._personasWidgetHtml(ctx.personas)}`;
+            case 'quicklinks': return `<div class="wtitle">Quick actions</div>${this._quickLinksHtml()}`;
+            case 'engagement': return this._engagementHtml(ctx.totals);
+            case 'milestones': return `<div class="wtitle">Milestones</div>${this._milestonesHtml(ctx.totals)}`;
+            case 'spotlight': return `<div class="wtitle">Spotlight</div>${this._spotlightHtml(ctx.topViewed)}`;
             default: return '<div class="wtitle">Widget</div>';
         }
     },
@@ -3033,6 +3041,76 @@ const App = {
                 + ` · \u{1F441} ${fmt(c.views)} · ❤ ${fmt(c.favorites)} · \u{1F4AC} ${fmt(c.comments)}</span></a>`;
         }).join('');
         return `<div>${rows}</div>`;
+    },
+
+    /* "Quick actions" widget — one-tap jumps to the create flows. Uses the
+     * global [data-nav] delegate; the editing CSS disables inner pointer events
+     * so a drag never fires a nav. */
+    _quickLinksHtml() {
+        const links = [
+            { nav: '#/editor', icon: '✍️', label: 'New story' },
+            { nav: '#/artwork/new', icon: '\u{1F5BC}️', label: 'New artwork' },
+            { nav: '#/posts', icon: '\u{1F4AC}', label: 'New post' },
+            { nav: '#/library', icon: '\u{1F4DA}', label: 'Library' },
+        ];
+        return `<div class="dash-quicklinks">` + links.map(l =>
+            `<a class="dash-ql" data-nav="${l.nav}"><span class="dash-ql-ico">${l.icon}</span>`
+            + `<span>${l.label}</span></a>`).join('') + `</div>`;
+    },
+
+    /* "Engagement rate" widget — interactions (faves + comments) per view, plus
+     * average views per work. Both derived from the cached totals, no fetch. */
+    _engagementHtml(t) {
+        const views = t.views || 0;
+        const interactions = (t.faves || 0) + (t.comments || 0);
+        const rate = views ? (interactions / views * 100) : 0;
+        const avg = t.subs ? Math.round(views / t.subs) : 0;
+        return `<div class="wtitle">Engagement rate</div>`
+            + `<div class="w-num">${rate.toFixed(1)}<span style="font-size:.5em">%</span></div>`
+            + `<div class="dash-sub">${Utils.formatCompact(avg)} avg views/work · ${Utils.formatCompact(interactions)} interactions</div>`;
+    },
+
+    /* Next round-number goal above the current value (for the milestone bars). */
+    _nextMilestone(n) {
+        n = n || 0;
+        const steps = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000,
+            100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000];
+        for (const s of steps) if (s > n) return s;
+        return Math.ceil((n + 1) / 1000000) * 1000000;
+    },
+    _milestoneRow(label, value) {
+        const v = value || 0;
+        const goal = this._nextMilestone(v);
+        const pct = Math.min(100, Math.round((v / goal) * 100));
+        return `<div class="dash-ms">
+            <div class="dash-ms-head"><span>${label}</span>`
+            + `<span class="muted">${Utils.formatCompact(v)} / ${Utils.formatCompact(goal)}</span></div>
+            <div class="dash-ms-bar"><span style="width:${pct}%"></span></div>
+        </div>`;
+    },
+    _milestonesHtml(t) {
+        return `<div class="dash-ms-wrap">`
+            + this._milestoneRow('Views', t.views)
+            + this._milestoneRow('Favourites', t.faves)
+            + this._milestoneRow('Comments', t.comments)
+            + `</div>`;
+    },
+
+    /* "Spotlight" widget — the single best-performing work (top of topViewed). */
+    _spotlightHtml(topViewed) {
+        const top = (topViewed || [])[0];
+        if (!top) return '<div class="dash-empty">No works yet — publish something to see your top performer here.</div>';
+        const P = (window.PLATFORMS || []).find(p => p.code === top._platform);
+        const emoji = P && P.emoji ? P.emoji : '';
+        const label = P ? P.label : (top._platform || '');
+        return `<div class="dash-spot">
+            <div class="dash-spot-title">${Utils.escapeHtml(top.title || 'Untitled')}</div>
+            <div class="dash-spot-plat">${emoji} ${Utils.escapeHtml(label)}</div>
+            <div class="dash-spot-stats">
+                <span><b>${Utils.formatCompact(top.views || 0)}</b> views</span>
+                <span><b>${Utils.formatCompact(top.favorites_count || 0)}</b> faves</span>
+            </div>
+        </div>`;
     },
 
     _dashWidgetMount(id, ctx, w) {

@@ -1,7 +1,13 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.136.0 — **Artwork tab: filter/search + editable metadata.**
+**Current version (master):** 2.137.0 — **Four new Overview widgets.**
+The customisable Overview board grew from 15 → 19 widgets (all opt-in via ⚙ Customize): **⚡ Quick actions** (create-flow
+tiles), **📊 Engagement rate** (interactions/view + avg views/work), **🎯 Milestones** (progress bars to the next
+round-number goal), **⭐ Spotlight** (top-performing work). All render from the cached `_dashCtx` — no new endpoints.
+Frontend-only. (Backlog item 1 "more Overview widgets"; per-metric sorted stat-card destinations still open.)
+
+**Prior — 2.136.0 — Artwork tab: filter/search + editable metadata.**
 The Artwork hub gained a segmented filter (**All · In library · Discovered**, live counts) + a **title search** box
 (`artwork.js render()` now stores `_hubItems`, re-renders via `_applyHubFilters()`). The standalone-artwork **detail page
 is now editable** — Title/Description/**Rating**/Tags edit card PATCHing the existing `/api/artwork/images/{name}` (closes

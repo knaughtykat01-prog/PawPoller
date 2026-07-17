@@ -4,6 +4,26 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.137.0] - 2026-07-17 - Four new Overview widgets
+
+The customisable Overview board gained four new widgets (catalog 15 → 19), all opt-in via **⚙ Customize → Add widget**:
+
+- **⚡ Quick actions** — one-tap tiles into the create flows (New story → `#/editor`, New artwork → `#/artwork/new`,
+  New post → `#/posts`, Library). Uses the global `[data-nav]` delegate.
+- **\u{1F4CA} Engagement rate** — interactions (faves + comments) per view as a headline %, with average views per work
+  and total interactions underneath. Derived from the cached totals, no extra fetch.
+- **\u{1F3AF} Milestones** — progress bars toward your next round-number goal for views / favourites / comments
+  (`_nextMilestone` picks the next step in 100 → 10 M).
+- **⭐ Spotlight** — a hero card for your single best-performing work (top of `topViewed`), with its platform + views/faves.
+
+All four render purely from `this._dashCtx` (no new endpoints, no mount step). New `.dash-quicklinks` / `.dash-ms*` /
+`.dash-spot*` / `.dash-sub` styles track all 8 themes. Continues the "more Overview widgets" backlog item (2.135 did the
+clickable stat cards).
+
+Frontend-only; backend suite unchanged. `SITE_VERSION` → 2.137.0.
+
+---
+
 ## [2.136.0] - 2026-07-17 - Artwork tab: filter/search + editable metadata
 
 Two Artwork-hub improvements from the UI backlog.

@@ -171,6 +171,32 @@
 }
 .dash-w .w-num { font-family: var(--font-display); font-weight: 800; font-size: 34px; letter-spacing: -0.03em; line-height: 1; }
 .dash-empty { color: var(--text-muted); font-size: 13px; padding: 6px 0; }
+.dash-sub { color: var(--text-muted); font-size: 12.5px; margin-top: 8px; }
+
+/* Quick-actions widget — tap tiles into the create flows. */
+.dash-quicklinks { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.dash-ql {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 14px 8px; border-radius: 14px;
+    border: 1px solid var(--border); background: var(--bg-secondary);
+    color: var(--text-primary); text-decoration: none; font-weight: 700; font-size: 13px;
+    transition: border-color 0.16s, background 0.16s, transform 0.16s;
+}
+.dash-ql:hover { border-color: var(--accent); background: var(--bg-hover); transform: translateY(-2px); }
+.dash-ql-ico { font-size: 22px; line-height: 1; }
+
+/* Milestones widget — progress bars to the next round-number goal. */
+.dash-ms-wrap { display: flex; flex-direction: column; gap: 14px; }
+.dash-ms-head { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+.dash-ms-bar { height: 8px; border-radius: 999px; background: var(--bg-secondary); overflow: hidden; }
+.dash-ms-bar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); transition: width 0.5s cubic-bezier(.2,.7,.2,1); }
+
+/* Spotlight widget — the single best-performing work. */
+.dash-spot { display: flex; flex-direction: column; gap: 6px; }
+.dash-spot-title { font-family: var(--font-display); font-weight: 800; font-size: 20px; letter-spacing: -0.02em; line-height: 1.15; }
+.dash-spot-plat { font-size: 13px; color: var(--text-muted); }
+.dash-spot-stats { display: flex; gap: 18px; margin-top: 6px; font-size: 13px; color: var(--text-secondary); }
+.dash-spot-stats b { font-family: var(--font-display); font-weight: 800; font-size: 18px; color: var(--text-primary); }
 .dash-platgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
 
 /* Charts inside a widget shouldn't render their own card chrome. */
