@@ -48,12 +48,21 @@ def _now() -> str:
 def is_importable_post(item: dict) -> bool:
     """Is this discovered item a text post we can import into the Posts module?
 
-    Text-only by design (see the module docstring): an image-bearing item belongs
-    to the artwork/Masterpiece path instead.
+    Microblog platform + no image. That's the whole test, and it deliberately does
+    NOT consult ``kind``.
+
+    ``kind`` is the wrong signal here: ``classify_kind`` lists ``"post"`` among its
+    ART hints (so that an image-bearing Bluesky/Mastodon post is catchable by the
+    artwork import), which means **every** Bluesky post is tagged ``art`` no matter
+    what it contains. Gating on ``kind != "art"`` therefore hid this button from
+    exactly the imageless microblog posts it exists for.
+
+    No image means there is nothing for the artwork path to download — the bulk art
+    import filters on ``thumbnail_url`` for the same reason — so on a microblog
+    that is a text post, whatever the type string happens to say.
     """
     return bool(item) and item.get("platform") in MICROBLOG_PLATFORMS \
-        and not item.get("thumbnail_url") \
-        and item.get("kind") != "art"
+        and not item.get("thumbnail_url")
 
 
 def already_imported(conn, platform: str, submission_id: str) -> int | None:

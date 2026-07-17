@@ -12,6 +12,25 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.157.1] - 2026-07-18 - Bluesky and Mastodon posts get the → Posts button too
+
+> Fix: the new **→ Posts** button was missing on imageless Bluesky and Mastodon posts. It's there now.
+
+Caught by checking 2.157.0 against the live queue rather than trusting it: 55 of 61 items offered → Posts, but a
+Bluesky and a Mastodon item fell through to "neither", leaving Link/Ignore as their only actions.
+
+Cause: `classify_kind` lists **`"post"` among its ART hints** — deliberately, so an image-bearing microblog post is
+catchable by the artwork import. The side effect is that **every** Bluesky post is tagged `kind: "art"` no matter
+what it contains. 2.157.0's gate included `kind != "art"`, so it hid the button from exactly the imageless microblog
+posts it exists for.
+
+`kind` was simply the wrong signal. The gate is now **microblog platform + no image**, full stop: no image means
+there's nothing for the artwork path to download (the bulk art import filters on `thumbnail_url` for the same
+reason), so on a microblog it's a text post whatever the type string says. Image-bearing posts still route to
+artwork — the image decides, not `kind`. +1 test.
+
+---
+
 ## [2.157.0] - 2026-07-18 - Discovered tweets can go into Posts where they belong
 
 > Your Discovered list was mostly tweets with no picture, and the only thing you could do with them was "Import" —

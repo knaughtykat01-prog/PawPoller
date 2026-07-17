@@ -38,8 +38,20 @@ def test_image_bearing_item_is_not_a_post_import():
     assert pi.is_importable_post(_item(thumbnail_url="http://t/1.jpg")) is False
 
 
-def test_art_kind_is_not_a_post_import():
-    assert pi.is_importable_post(_item(kind="art")) is False
+def test_imageless_microblog_post_qualifies_even_when_kind_says_art():
+    # Regression (2.157.1): classify_kind lists "post" among its ART hints, so
+    # EVERY Bluesky post is tagged kind="art" whatever it contains. Gating on
+    # kind hid the button from exactly the imageless posts it exists for — found
+    # on live data, where a bsky and a mast item fell through to "neither".
+    # No image ⇒ nothing for the artwork path to download ⇒ it's a text post.
+    assert pi.is_importable_post(_item(platform="bsky", kind="art")) is True
+    assert pi.is_importable_post(_item(platform="mast", kind="art")) is True
+
+
+def test_image_bearing_microblog_post_still_goes_to_artwork():
+    # The image, not `kind`, is what routes it.
+    assert pi.is_importable_post(
+        _item(platform="bsky", kind="art", thumbnail_url="http://t/1.jpg")) is False
 
 
 def test_gate_handles_empty_input():

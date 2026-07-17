@@ -6399,9 +6399,15 @@ is in the queue before the import and gone after.
 **Text-only, deliberately.** Image-bearing items already have a home (Import → artwork, ★ Master → Masterpiece);
 importing them here would mean either downloading media into `posts_media/` or silently dropping the image. The gate
 (`is_importable_post`, mirrored client-side by `Submissions._canImportPost`) is *microblog platform*
-(`MICROBLOG_PLATFORMS = tw/bsky/mast/thr/tum`) **and** no image **and** not `kind == "art"`. The platform check
-matters: a SquidgeWorld text work or a thumbnail-less DeviantArt piece is a story/artwork that happens to lack an
-image, **not** a post.
+(`MICROBLOG_PLATFORMS = tw/bsky/mast/thr/tum`) **and** no image. The platform check matters: a SquidgeWorld text
+work or a thumbnail-less DeviantArt piece is a story/artwork that happens to lack an image, **not** a post.
+
+**The gate must NOT consult `kind` (2.157.1).** `classify_kind` lists `"post"` among its `_ART_TYPE_HINTS` — on
+purpose, so an image-bearing Bluesky/Mastodon post is catchable by the artwork import — which means **every**
+Bluesky post is tagged `kind: "art"` regardless of content. 2.157.0 gated on `kind != "art"` and so hid the button
+from exactly the imageless microblog posts it exists for (found by checking the live queue: a bsky and a mast item
+fell through to "neither"). No image ⇒ nothing for the artwork path to download (`import_all_discovered_art`
+filters on `thumbnail_url` for the same reason) ⇒ on a microblog it's a text post. The image routes it, not `kind`.
 
 
 ## 20.11 One works hub — the Library (2.155.0, backlog L)

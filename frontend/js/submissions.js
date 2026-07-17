@@ -407,11 +407,16 @@ window.Submissions = {
 
     /* A tweet is a POST, not an artwork. Microblog platforms only: a SquidgeWorld
      * text work or a thumbnail-less DeviantArt piece is a story/artwork that
-     * happens to lack an image, NOT a post. Mirrors post_importer's gate. */
+     * happens to lack an image, NOT a post. Mirrors post_importer's gate.
+     *
+     * Deliberately does NOT check `kind`: the backend's classifier lists "post"
+     * among its ART hints (so image-bearing microblog posts are catchable by the
+     * artwork import), which tags EVERY Bluesky post as art regardless of content.
+     * No image = nothing for the artwork path to download, so on a microblog it's
+     * a text post whatever `kind` says. */
     _MICROBLOG: ['tw', 'bsky', 'mast', 'thr', 'tum'],
     _canImportPost(d) {
-        return !!d && this._MICROBLOG.includes(d.platform)
-            && !d.thumbnail_url && d.kind !== 'art';
+        return !!d && this._MICROBLOG.includes(d.platform) && !d.thumbnail_url;
     },
 
     /* Bulk: every discovered text post → Posts. Refetches rather than splicing —

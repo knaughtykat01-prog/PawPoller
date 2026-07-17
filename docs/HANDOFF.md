@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.157.0 — **Discovered tweets → Posts.**
+**Current version (master):** 2.157.1 — **→ Posts button fix for Bluesky/Mastodon.**
+Checking 2.157.0 against the LIVE queue (not trusting it) showed 55/61 offered → Posts but a bsky + a mast item fell
+to "neither". Cause: `classify_kind` lists `"post"` among ART hints (so image-bearing microblog posts are catchable
+by artwork import) → **every** Bluesky post is `kind:"art"`. The 2.157.0 gate's `kind != "art"` clause hid the button
+from exactly the imageless posts it's for. Gate is now **microblog + no image**, full stop — `kind` was the wrong
+signal (no image = nothing to download = text post). +1 test.
+
+**Prior — 2.157.0 — Discovered tweets → Posts.**
 Rhys: *"its all tweets and stuff without images. So for those, they should be imported into posts no?"* — the live
 queue proved it: **62 discovered, 60 with NO image, 54 tweets** (59 `kind: text`). The only import was
 **as-artwork** (downloads an image, mints a folder) → for ~90% of the queue the only workable action was Ignore.
