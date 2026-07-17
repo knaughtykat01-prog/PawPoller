@@ -155,6 +155,9 @@ window.Bookshelf = {
                     <option value="recent">Most recent</option>
                     <option value="title">Title A–Z</option>
                     <option value="platforms">Most platforms</option>
+                    <option value="views">Most viewed</option>
+                    <option value="favorites">Most favourited</option>
+                    <option value="comments">Most comments</option>
                 </select>
             </div>`;
 
@@ -178,7 +181,12 @@ window.Bookshelf = {
         }
         if (this._sort === 'title') list.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
         else if (this._sort === 'platforms') list.sort((a, b) => (b.platforms || []).length - (a.platforms || []).length);
-        else list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+        // Performance sorts — pooled across every platform the work is live on
+        // (backend supplies w.stats; 2.147.0). Feeds the Overview stat-card links.
+        else if (['views', 'favorites', 'comments'].includes(this._sort)) {
+            const k = this._sort;
+            list.sort((a, b) => ((b.stats || {})[k] || 0) - ((a.stats || {})[k] || 0));
+        } else list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
         return list;
     },
 

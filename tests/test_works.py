@@ -56,6 +56,45 @@ def test_type_filter():
     assert [w["content_type"] for w in _run(type="artwork")["works"]] == ["artwork"]
 
 
+# ── Pooled performance stats + metric sorts (2.147.0) ─────────────
+
+_STAT_STORIES = [{"name": "Quiet", "title": "Quiet"}, {"name": "Hit", "title": "Hit"}]
+_STAT_PUBS = [
+    # Quiet: two platforms → views pool to 15, faves to 3, comments to 3.
+    {"content_type": "story", "story_name": "Quiet", "platform": "fa", "status": "posted",
+     "stats": {"views": 10, "favorites_count": 1, "comments_count": 0}},
+    {"content_type": "story", "story_name": "Quiet", "platform": "ws", "status": "posted",
+     "stats": {"views": 5, "favorites_count": 2, "comments_count": 3}},
+    # Hit: AO3-style naming — `reads`/`kudos` must resolve to views/favourites.
+    {"content_type": "story", "story_name": "Hit", "platform": "ao3", "status": "posted",
+     "stats": {"reads": 100, "kudos": 7, "comments_count": 1}},
+]
+
+
+def _run_stats(**kw):
+    return assemble_works(stories=_STAT_STORIES, artworks=[], pubs=_STAT_PUBS,
+                          acct_to_persona={}, personas={}, **kw)["works"]
+
+
+def test_pools_stats_across_platforms_and_naming_variants():
+    works = {w["name"]: w for w in _run_stats()}
+    assert works["Quiet"]["stats"] == {"views": 15, "favorites": 3, "comments": 3}
+    # reads -> views, kudos -> favourites
+    assert works["Hit"]["stats"] == {"views": 100, "favorites": 7, "comments": 1}
+
+
+def test_sort_by_each_metric():
+    assert [w["name"] for w in _run_stats(sort="views")] == ["Hit", "Quiet"]
+    assert [w["name"] for w in _run_stats(sort="favorites")] == ["Hit", "Quiet"]
+    assert [w["name"] for w in _run_stats(sort="comments")] == ["Quiet", "Hit"]
+
+
+def test_stats_default_to_zero_without_stat_carrying_pubs():
+    # PUBS (the shared fixture) carry no `stats` — pooling must not explode.
+    works = {w["name"]: w for w in _run(type="all")["works"]}
+    assert works["My_Story"]["stats"] == {"views": 0, "favorites": 0, "comments": 0}
+
+
 def test_persona_filter():
     assert [w["name"] for w in _run(type="all", persona=20)["works"]] == ["My_Art"]
 

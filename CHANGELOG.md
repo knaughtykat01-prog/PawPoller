@@ -4,6 +4,35 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.147.0] - 2026-07-17 - Library performance sorts, per-metric stat links, Promo-from-story
+
+Backlog clean-up: **G** (per-metric stat destinations) and part of **I** (Promo Maker follow-ups).
+
+### Promo Maker: pull an excerpt straight from a story (backlog I)
+No more copy-pasting out of the editor. **📖 Pull from a story** opens a picker: choose a story, its `MASTER.md` loads
+read-only (via the existing editor API), you select the passage you want and hit **Use selection** — it lands in the
+excerpt box and the card redraws. Markdown is stripped to clean prose first (`_stripMd`: metadata comments, heading
+marks, bold/italic emphasis, scene-break rules), so the canvas renders words, not markup. Highlights reset on a new
+excerpt (their character offsets no longer map). Frontend-only; reuses `/api/editor/stories[/{name}/content]`.
+
+### Library performance sorts + per-metric Overview stat links (backlog G)
+Closes the rest of the "clickable Overview widgets **by type**" ask (2.135 made the stat cards clickable; they all landed
+on the same plain shelf because the Library had no way to sort by performance).
+
+- **Works now carry pooled stats.** `/api/works` switched to `get_publications_with_stats`, and `assemble_works.enrich`
+  pools **views / favourites / comments** across every platform a work is live on. Platforms name the same metric
+  differently, so each row resolves first (`views|hits|reads`, `favorites_count|kudos|votes`) — an AO3 work's `reads`
+  count as views and its `kudos` as favourites. Publications without stats pool to 0 (no breakage).
+- **Library gained three sorts** — **Most viewed · Most favourited · Most comments** (dropdown + `?sort=` on the API).
+- **Overview stat cards now deep-link *by metric*:** Total views → shelf sorted by views, Favourites → by favourites,
+  Comments → by comments (new `#/library/sort/{key}` route). Submissions/Downloads have no metric sort, so they open the
+  plain shelf.
+
++3 tests (pooling across platforms + naming variants, each metric sort, zero-default safety). Backend + frontend.
+`SITE_VERSION` → 2.147.0.
+
+---
+
 ## [2.146.0] - 2026-07-17 - Fix: SoFurry thumbnails/images now captured
 
 SoFurry submissions were showing with **no thumbnail** everywhere (Artwork hub, cards, Masterpiece covers). Root cause:

@@ -701,6 +701,11 @@ const API = {
     /* ── Posting Module ───────────────────────────────────────── */
     getPostingStories() { return this.get('/api/posting/stories'); },
     getPostingStory(name) { return this.get(`/api/posting/stories/${encodeURIComponent(name)}`); },
+    /* Editor story text — used by the Promo Maker's "pull an excerpt" picker. */
+    getEditorStories() { return this.get('/api/editor/stories'); },
+    getEditorStoryContent(name) {
+        return this.get(`/api/editor/stories/${encodeURIComponent(name)}/content`);
+    },
     postStory(data) { return this.post('/api/posting/post', data); },
     updateStory(data) { return this.post('/api/posting/update', data); },
     getPublications(params = {}) { return this.get('/api/posting/publications', params); },

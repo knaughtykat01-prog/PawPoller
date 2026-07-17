@@ -79,6 +79,10 @@ window.Promo = {
             <div class="promo-layout">
                 <div class="promo-controls">
                     <div class="card">
+                        <div class="promo-src-row">
+                            <button type="button" class="btn btn-sm" id="promo-from-story">📖 Pull from a story</button>
+                            <span class="muted">or paste your own below</span>
+                        </div>
                         <label class="field">Excerpt
                             <textarea id="promo-text" rows="8" spellcheck="false"
                                 placeholder="Paste a passage from your story…">${Utils.escapeHtml(s.text)}</textarea>
@@ -177,6 +181,87 @@ window.Promo = {
         });
 
         $('promo-download').addEventListener('click', () => this._download());
+        $('promo-from-story').addEventListener('click', () => this._openStoryPicker());
+    },
+
+    /* ── "Pull from a story" picker ─────────────────────────────
+     * Loads a story's MASTER.md via the editor API, shows it read-only, and
+     * lifts whatever the user selects into the excerpt box. Markdown/metadata is
+     * stripped so the canvas renders clean prose. */
+    async _openStoryPicker() {
+        let ov = document.getElementById('promo-story-ov');
+        if (!ov) {
+            ov = document.createElement('div');
+            ov.id = 'promo-story-ov';
+            ov.className = 'promo-ov';
+            ov.innerHTML = `
+                <div class="promo-ovbox">
+                    <h3>Pull an excerpt from a story</h3>
+                    <p class="muted">Pick a story, select the passage you want, then hit <strong>Use selection</strong>.</p>
+                    <select id="promo-story-sel" class="promo-sel"><option value="">Loading stories…</option></select>
+                    <textarea id="promo-story-src" class="promo-src" rows="14" readonly
+                        placeholder="Pick a story to load its text…"></textarea>
+                    <div class="promo-ov-actions">
+                        <button class="btn btn-primary btn-sm" id="promo-use-sel">Use selection</button>
+                        <button class="btn btn-sm" id="promo-story-close">Cancel</button>
+                        <span id="promo-story-msg" class="muted"></span>
+                    </div>
+                </div>`;
+            document.body.appendChild(ov);
+        }
+        ov.classList.add('open');
+        const sel = document.getElementById('promo-story-sel');
+        const src = document.getElementById('promo-story-src');
+        const msg = document.getElementById('promo-story-msg');
+        msg.textContent = '';
+        const close = () => ov.classList.remove('open');
+        document.getElementById('promo-story-close').onclick = close;
+        ov.onclick = e => { if (e.target === ov) close(); };
+
+        try {
+            const d = await API.getEditorStories();
+            const list = (d && d.stories) || [];
+            sel.innerHTML = '<option value="">Choose a story…</option>' + list.map(st =>
+                `<option value="${Utils.escapeHtml(st.name)}">${Utils.escapeHtml(st.title || st.name)}</option>`
+            ).join('');
+        } catch (e) {
+            sel.innerHTML = '<option value="">Could not load your stories</option>';
+        }
+
+        sel.onchange = async () => {
+            if (!sel.value) { src.value = ''; return; }
+            src.value = 'Loading…';
+            try {
+                const d = await API.getEditorStoryContent(sel.value);
+                src.value = this._stripMd(d && d.content);
+            } catch (e) {
+                src.value = 'Could not load that story.';
+            }
+        };
+
+        document.getElementById('promo-use-sel').onclick = () => {
+            const chosen = src.value.slice(src.selectionStart, src.selectionEnd).trim();
+            if (!chosen) { msg.textContent = 'Select some text in the story first.'; return; }
+            const s = this._state;
+            s.text = chosen;
+            s.highlights = [];   // character offsets no longer map to the new text
+            document.getElementById('promo-text').value = chosen;
+            close();
+            this.draw();
+        };
+    },
+
+    /* MASTER.md → plain prose: drop metadata comments, headings, emphasis and
+     * scene-break rules so the card renders the words, not the markup. */
+    _stripMd(md) {
+        return String(md || '')
+            .replace(/<!--[\s\S]*?-->/g, '')              // <!-- @title --> metadata
+            .replace(/^#{1,6}\s+/gm, '')                  // headings
+            .replace(/\*\*(.*?)\*\*/g, '$1')              // bold
+            .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1$2')    // italic narration
+            .replace(/^\s*---\s*$/gm, '')                 // scene breaks
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
     },
 
     /* Turn the current textarea selection into a highlight range in the active

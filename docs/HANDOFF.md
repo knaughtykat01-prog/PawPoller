@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.146.0 — **Fix: SoFurry thumbnails/images now captured.**
+**Current version (master):** 2.147.0 — **Library performance sorts, per-metric stat links, Promo-from-story.**
+Also (backlog **I**, partial): Promo Maker gained **📖 Pull from a story** — picks a story, loads `MASTER.md` via the
+editor API, lifts your selected passage into the excerpt box (`_stripMd` strips metadata/headings/emphasis to clean
+prose; highlights reset since offsets move). Censor bars + share-to-Posts remain open.
+Backlog **G** closed. `/api/works` now uses `get_publications_with_stats`; `assemble_works.enrich` pools
+views/favourites/comments per work (resolving `views|hits|reads` + `favorites_count|kudos|votes` per row, so AO3
+reads/kudos land correctly; statless pubs → 0). Library gained **Most viewed / Most favourited / Most comments** sorts;
+Overview stat cards deep-link per metric via the new **`#/library/sort/{key}`** route. +3 tests.
+
+**Prior — 2.146.0 — Fix: SoFurry thumbnails/images now captured.**
 SF submissions had no thumbnail anywhere — `clients/sf/client.py` `get_submission_detail` parsed stats from the beta
 `/s/{id}.data` payload but hard-coded `thumbnail_url=""`. Now extracts the full CDN URL under `/submissions/thumbnails/`
 (distinct from `/users/avatars/`); text works stay blank. CDN is hotlinkable (200, webp, no referer) so it renders direct.

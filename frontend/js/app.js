@@ -1119,6 +1119,9 @@ const App = {
         } else if (parts[0] === 'library' && parts[1] === 'discovered') {
             // Discovered-art bucket, moved under Library (Submissions retired, 2.117.0).
             if (window.Submissions) window.Submissions.renderDiscovered();
+        } else if (parts[0] === 'library' && parts[1] === 'sort' && parts[2]) {
+            // Deep-link to the shelf pre-sorted by a metric (Overview stat cards).
+            if (window.Bookshelf) { window.Bookshelf._sort = parts[2]; window.Bookshelf.render(); }
         } else if (parts[0] === 'library' && parts[1] === 'work' && parts[2]) {
             // Work name may contain slashes — rejoin the tail.
             if (window.Bookshelf) window.Bookshelf.renderWork(parts.slice(2).join('/'));
@@ -3012,10 +3015,12 @@ const App = {
                 : inner;
         };
         switch (id) {
+            // Each metric card lands on the shelf sorted by THAT metric (2.147.0);
+            // Submissions/Downloads have no metric sort, so they open the plain shelf.
             case 'stat-subs': return stat('Submissions', ctx.totals.subs, '#/library');
-            case 'stat-views': return stat('Total views', ctx.totals.views, '#/library');
-            case 'stat-faves': return stat('Favourites', ctx.totals.faves, '#/library');
-            case 'stat-comments': return stat('Comments', ctx.totals.comments, '#/library');
+            case 'stat-views': return stat('Total views', ctx.totals.views, '#/library/sort/views');
+            case 'stat-faves': return stat('Favourites', ctx.totals.faves, '#/library/sort/favorites');
+            case 'stat-comments': return stat('Comments', ctx.totals.comments, '#/library/sort/comments');
             case 'stat-downloads': return stat('Downloads', ctx.totals.downloads, '#/library');
             case 'health': return this._healthStripHtml();
             case 'platforms': return `<div class="wtitle">Platform breakdown</div><div class="dash-platgrid">${ctx.platformsHtml}</div>`;

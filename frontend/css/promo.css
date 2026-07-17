@@ -16,6 +16,47 @@
 
 .promo-hint { font-size: 12.5px; margin: -.3rem 0 .6rem; }
 
+.promo-src-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: .7rem; }
+.promo-src-row .muted { font-size: 12px; }
+
+/* "Pull from a story" picker overlay */
+.promo-ov {
+    position: fixed; inset: 0; z-index: 1300;
+    background: var(--overlay-backdrop, rgba(0, 0, 0, .55));
+    backdrop-filter: blur(4px);
+    display: none; align-items: flex-start; justify-content: center;
+    padding: 6vh 1rem;
+}
+.promo-ov.open { display: flex; }
+.promo-ovbox {
+    width: min(720px, 100%);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-strong, 0 20px 60px rgba(0, 0, 0, .45));
+    padding: 1.2rem;
+    max-height: 84vh; overflow: auto;
+}
+.promo-ovbox h3 { margin: 0 0 .2rem; font-size: 1.05rem; }
+.promo-ovbox > p { margin: 0 0 .9rem; font-size: 12.5px; }
+.promo-sel, .promo-src {
+    width: 100%;
+    padding: .5rem .7rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font: inherit; font-size: .9rem;
+}
+.promo-src {
+    margin-top: .8rem;
+    font-family: Georgia, 'Times New Roman', serif;
+    line-height: 1.6;
+    resize: vertical;
+}
+.promo-sel:focus, .promo-src:focus { outline: none; border-color: var(--accent); }
+.promo-ov-actions { display: flex; align-items: center; gap: .7rem; margin-top: .9rem; flex-wrap: wrap; }
+
 .promo-swatches { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .promo-swatch {
     width: 30px; height: 30px;

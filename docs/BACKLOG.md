@@ -22,9 +22,10 @@ split, Option A (**2.142**).
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| G | Overview widgets: **per-metric sorted** stat-card destinations (views → sorted-by-views, faves → similar) | 🔴 | 2.135 made stat cards → `#/library`; still need sorted landing views |
+| O | **Art audit: name/describe/tag all 55 Masterpieces** | 🟡 awaiting review | 2026-07-17. All 55 archive images pulled from the server + viewed; titles/descriptions/tags proposed for every piece. Deliverable: `C:\Users\rhysc\claude\art_audit\review.html` (+ `proposals/*.json`). Found: 6 duplicate/variant pairs, 14 junk entries (13 index-only tweets + 1 commission ad), ~7 explicit pieces rated *general*, 12+ artists recovered from in-image signatures. NEXT: Rhys reviews → apply via `PATCH /api/masterpieces/{name}`, merge dupes (2.144 finder), delete junk |
+| G | ~~Overview widgets: **per-metric sorted** stat-card destinations~~ | 🟢 **DONE 2.147** | Works now carry pooled stats; Library gained Most viewed/favourited/comments sorts; cards deep-link via `#/library/sort/{key}` |
 | H | Overview: **more widgets** (Rhys said "20 more") | 🟡 ongoing | +4 in 2.137 (Quick actions, Engagement, Milestones, Spotlight); keep adding useful ones |
-| I | Promo Maker follow-ups: source excerpt **from a story/chapter**; per-word **censor bars**; **"share to Posts"** hand-off | ⚪ | 2.138 shipped the core tool |
+| I | Promo Maker follow-ups: ~~source excerpt **from a story**~~ **DONE 2.147**; per-word **censor bars**; **"share to Posts"** hand-off | 🟡 partly done | 2.138 shipped the core tool; 2.147 added the story-excerpt picker. Censor bars + share-to-Posts still open |
 | K | Detail compaction follow-up: collapse secondary sections into **tabs** for even less scroll | ⚪ | 2.141 did the CSS-first pass |
 | L | **Merge the works hubs** (Option B) — fold Library/Stories/Artwork into one "Submissions" hub with type filters | ⚪ | Rhys chose Option A for the IA reshape; this is the bigger end-state if wanted later |
 | M | **Auto-link on import** — when a newly imported/promoted image matches an existing Masterpiece (pHash), link into it instead of minting a duplicate | ⚪ | 2.144 added the finder+merge for existing dupes; this prevents new ones forming |
@@ -73,6 +74,8 @@ split, Option A (**2.142**).
 | Ignore button in the Library's discovered review view (tweet-art) | **2.143** |
 | Merge duplicate Masterpieces (pHash finder + one-click merge) | **2.144** |
 | "Not the same" — dismiss + remember false-positive dup matches | **2.145** |
+| SoFurry thumbnails/images not captured (bug) | **2.146** |
+| Library performance sorts + per-metric Overview stat links | **2.147** |
 | AO3 525 error logging | (per HANDOFF ledger) |
 | In-app "what's new" changelog popup on update | 2.134 |
 

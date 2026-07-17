@@ -84,13 +84,27 @@ def assemble_works(
             for p in wp
             if p.get("account_id") in acct_to_persona
         })
-        return platforms, len(wp), pids
+        # Pool live stats across every publication of this work (2.147.0), so the
+        # Library can sort by performance and the Overview's stat cards can deep-link
+        # to a sorted view. Platforms name the same metric differently
+        # (views/hits/reads, favorites_count/kudos/votes), so resolve per row before
+        # summing — the same convention the story detail uses. Publications carry
+        # `stats` only when fetched via get_publications_with_stats; without it these
+        # stay 0 and sorting simply falls back to a stable order.
+        views = faves = comments = 0
+        for p in wp:
+            st = p.get("stats") or {}
+            views += st.get("views") or st.get("hits") or st.get("reads") or 0
+            faves += st.get("favorites_count") or st.get("kudos") or st.get("votes") or 0
+            comments += st.get("comments_count") or 0
+        return platforms, len(wp), pids, {
+            "views": views, "favorites": faves, "comments": comments}
 
     works: list[dict] = []
 
     if type in ("all", "story"):
         for s in stories:
-            platforms, count, pids = enrich("story", s["name"])
+            platforms, count, pids, stats = enrich("story", s["name"])
             cover = (s.get("images") or {}).get("cover", "")
             wc = s.get("word_count") or 0
             works.append({
@@ -99,6 +113,7 @@ def assemble_works(
                 "title": s.get("title") or s["name"].replace("_", " "),
                 "rating": s.get("rating", ""),
                 "platforms": platforms,
+                "stats": stats,
                 "publication_count": count,
                 "persona_ids": pids,
                 "persona_names": [personas[i]["name"] for i in pids if i in personas],
@@ -113,7 +128,7 @@ def assemble_works(
 
     if type in ("all", "artwork"):
         for a in artworks:
-            platforms, count, pids = enrich("artwork", a["name"])
+            platforms, count, pids, stats = enrich("artwork", a["name"])
             img = a.get("image", "")
             works.append({
                 "content_type": "artwork",
@@ -121,6 +136,7 @@ def assemble_works(
                 "title": a.get("title") or a["name"].replace("_", " "),
                 "rating": a.get("rating", ""),
                 "platforms": platforms,
+                "stats": stats,
                 "publication_count": count,
                 "persona_ids": pids,
                 "persona_names": [personas[i]["name"] for i in pids if i in personas],
@@ -143,6 +159,9 @@ def assemble_works(
         works.sort(key=lambda w: w["title"].lower())
     elif sort == "platforms":
         works.sort(key=lambda w: len(w["platforms"]), reverse=True)
+    elif sort in ("views", "favorites", "comments"):
+        # Performance sorts (2.147.0) — feed the Overview stat cards' deep-links.
+        works.sort(key=lambda w: (w.get("stats") or {}).get(sort, 0), reverse=True)
     else:  # recent
         works.sort(key=lambda w: (w.get("created_at") or ""), reverse=True)
 
@@ -160,7 +179,7 @@ def list_works(
     type: str = Query("all"),          # all | story | artwork
     persona: int | None = Query(None),
     search: str | None = Query(None),
-    sort: str = Query("recent"),       # recent | title | platforms
+    sort: str = Query("recent"),       # recent | title | platforms | views | favorites | comments
 ):
     """Unified per-work list (stories + artwork) for the Submissions hub.
 
@@ -171,8 +190,10 @@ def list_works(
     try:
         conn = get_connection()
         try:
-            # content_type=None returns BOTH stories and artwork.
-            pubs = posting_queries.get_publications(conn, content_type=None)
+            # content_type=None returns BOTH stories and artwork. Use the
+            # stats-carrying variant so each work gets pooled views/faves/comments
+            # (2.147.0) — powers the Library's performance sorts.
+            pubs = posting_queries.get_publications_with_stats(conn, content_type=None)
             acct_to_persona, personas = _persona_maps(conn)
         finally:
             conn.close()
