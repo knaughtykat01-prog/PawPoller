@@ -4,6 +4,18 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.135.0] - 2026-07-17 - Overview stat cards are click-through
+
+The four headline Overview stat cards (Submissions · Total views · Favourites · Comments, plus Downloads) now
+**deep-link into the works library** — click any of them to jump to all your submissions (stories + artwork).
+`app.js` `_dashWidgetHtml` wraps each stat card in a `[data-nav]` link (handled by the global nav delegate) with a
+hover cue (`.dash-stat-link`); the link is suppressed while the dashboard is in ⚙ Customize mode so drag/resize keep
+a plain cell. First step toward per-metric destinations (views → sorted-by-views etc.).
+
+Frontend-only; backend suite unchanged. `SITE_VERSION` → 2.135.0.
+
+---
+
 ## [2.134.0] - 2026-07-17 - In-app "What's new" popup on update + real release notes
 
 When the app updates, it now shows you what changed — and the GitHub Release notes are the real changelog instead of a

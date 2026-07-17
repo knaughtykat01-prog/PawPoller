@@ -1,7 +1,37 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.134.0 — **In-app "What's new" popup on update + real GitHub Release notes.**
+**Current version (master):** 2.135.0 — **Overview stat cards are click-through.**
+The Overview headline stat cards (Submissions/Views/Faves/Comments/Downloads) now deep-link to the works library
+(`#/library`) — `app.js _dashWidgetHtml` wraps each in a `[data-nav]` link (suppressed in ⚙ Customize). First step of the
+"clickable widgets" ask (per-metric sorted destinations still to come). Frontend-only.
+
+**⚠️ BIG-DUMP RE-RAISED (2026-07-17):** the user re-sent the original "enjoy haha" UI dump with 2026-07-16 screenshots
+saying several things are "still" broken. **The screenshots are STALE** (they predate the deploys — proof: the
+Platforms-in-Settings shot shows the OLD stacked list, but the card grid shipped 2.133.0 and is live; editor-centering
+`editor.css:193` and the SquidgeWorld `sqw_author_* OR sqw_*` cred-check `editor_api.py:1286` are both present in current
+code). **Tell the user to hard-refresh (PWA service worker may be caching).** Done-vs-undone ledger against the dump:
+- **DONE + deployed:** choose-image button (2.122), editor toolbar wrap+center (2.122), artwork tag browser = story
+  format (2.123), platforms-in-settings card grid (2.133), SquidgeWorld cred-key lock (2.122), the whole Masterpiece
+  build 0–7, Collections grouping + multi-match suggest, multi-account Overview persona widget (2.132), AO3 525 logging.
+- **GENUINELY UNDONE (backlog):** (1) Overview clickable widgets — *stat cards done in 2.135; per-metric sorted views +
+  20 more widgets NOT done*; (2) Artwork/Gallery filters + separations; (3) story/artwork/Masterpiece detail
+  "poetization" (less scrolling); (4) change rating of STANDALONE artwork (Masterpieces already can via Phase 5);
+  (5) IA: posting under **Create**, split **Submissions** (stories+art) from **Posts** (microblog catalogue), move
+  Create-posts into Create; (6) **Instagram → art upload** (deferred — needs a net-new `IGPoster` adapter); (7)
+  **marketing-image generator** (BookTok-style, doable via Pillow like the cover/scene scripts — see IMG_0351.jpg);
+  (8) simple **image editor** (crop/resize/format/stickers/blur/censor) — future.
+
+**Prior — 2.134.0 — In-app "What's new" popup on update + real GitHub Release notes. DEPLOYED.**
+When the running version differs from the one this browser last saw (a desktop self-update **or** a server redeploy), the
+app pops a changelog modal of what changed. New **`GET /api/whatsnew?since=<ver>`** (`routes/whatsnew_api.py`) parses the
+**bundled** `CHANGELOG.md` (added to `pawpoller.spec` datas) and returns entries newer than the browser's last-seen
+version (capped 12). Frontend (`app.js` `_maybeShowWhatsNew`/`_showWhatsNewModal`/`_mdLite`): tracks last-seen in
+`localStorage['pp_seen_version']`, fires once per session on the first authenticated page (guard in `route()`), renders
+via a **safe** markdown-lite pass (escape-first allow-list — no raw HTML reaches the DOM); first run is silent. Also
+**fixed the GitHub Release notes**: CI (`build.yml`) now sets the Release body from the CHANGELOG entry
+(`installer/changelog_extract.py` → `body_path`) on both build jobs, replacing `generate_release_notes` (which only
+produced a bare compare link on this direct-commit repo). +5 tests (`test_whatsnew.py`). **v2.134.0 release cut** (tag).
 When the running version differs from the one this browser last saw (a desktop self-update **or** a server redeploy), the
 app pops a changelog modal of what changed. New **`GET /api/whatsnew?since=<ver>`** (`routes/whatsnew_api.py`) parses the
 **bundled** `CHANGELOG.md` (added to `pawpoller.spec` datas) and returns entries newer than the browser's last-seen

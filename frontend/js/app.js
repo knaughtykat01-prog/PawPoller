@@ -2973,13 +2973,22 @@ const App = {
     },
 
     _dashWidgetHtml(id, ctx, w) {
-        const stat = (label, value) => `<div class="wtitle">${label}</div><div class="w-num">${Utils.formatCompact(value || 0)}</div>`;
+        // Stat cards deep-link into the works library (all your submissions —
+        // stories + artwork). Not linked while customising the board, so drag /
+        // resize keeps a plain, non-navigating cell. Nav goes through the global
+        // [data-nav] click delegate.
+        const stat = (label, value, nav) => {
+            const inner = `<div class="wtitle">${label}</div><div class="w-num">${Utils.formatCompact(value || 0)}</div>`;
+            return (nav && !this._dashEdit)
+                ? `<a class="dash-stat-link" data-nav="${nav}" title="View your works">${inner}</a>`
+                : inner;
+        };
         switch (id) {
-            case 'stat-subs': return stat('Submissions', ctx.totals.subs);
-            case 'stat-views': return stat('Total views', ctx.totals.views);
-            case 'stat-faves': return stat('Favourites', ctx.totals.faves);
-            case 'stat-comments': return stat('Comments', ctx.totals.comments);
-            case 'stat-downloads': return stat('Downloads', ctx.totals.downloads);
+            case 'stat-subs': return stat('Submissions', ctx.totals.subs, '#/library');
+            case 'stat-views': return stat('Total views', ctx.totals.views, '#/library');
+            case 'stat-faves': return stat('Favourites', ctx.totals.faves, '#/library');
+            case 'stat-comments': return stat('Comments', ctx.totals.comments, '#/library');
+            case 'stat-downloads': return stat('Downloads', ctx.totals.downloads, '#/library');
             case 'health': return this._healthStripHtml();
             case 'platforms': return `<div class="wtitle">Platform breakdown</div><div class="dash-platgrid">${ctx.platformsHtml}</div>`;
             case 'charts': {

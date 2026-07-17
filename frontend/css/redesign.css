@@ -144,6 +144,10 @@
 .dash-w.dragging { opacity: 0.35; }
 .dash-w.dragover { outline: 2px solid var(--accent); outline-offset: 3px; }
 
+/* Stat cards deep-link to the works library (Overview widget click-through). */
+.dash-stat-link { display: block; height: 100%; text-decoration: none; color: inherit; cursor: pointer; }
+.dash-stat-link:hover .w-num { color: var(--accent); }
+
 .dash-wctl { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 4; }
 .dash-wctl button {
     width: 26px; height: 26px;
