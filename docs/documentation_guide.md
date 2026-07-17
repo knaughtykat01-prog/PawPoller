@@ -1851,12 +1851,13 @@ The dashboard is fully responsive with a mobile-first overhaul targeting phone a
 <li class="nav-group">
     <button class="nav-group-label" data-nav-toggle type="button" aria-expanded="false">Publishing<span class="nav-caret" aria-hidden="true">&#9662;</span></button>
     <ul class="nav-sub">
-        <li><a href="#/submissions" class="nav-link" data-page="submissions">📚 Submissions</a></li>
-        <li><a href="#/posting" class="nav-link" data-page="posting">📤 Stories</a></li>
-        <li><a href="#/artwork" class="nav-link" data-page="artwork">🖼 Artwork</a></li>
+        <li><a href="#/posts" class="nav-link" data-page="posts">💬 Posts</a></li>
+        <li><a href="#/collections" class="nav-link" data-page="collections">🗃 Collections</a></li>
     </ul>
 </li>
 ```
+(Shape only — the group's real membership moves. It once held Submissions / Stories / Artwork; all
+three hubs are now the top-level **Library**. See §20.11.)
 The `[data-nav-toggle]` handler (bound once in `App.init()`) toggles `.expanded` on the parent `.nav-group`; `aria-expanded` tracks it. Adding/removing state is the only JS — showing/hiding is pure CSS, so the strict CSP is untouched.
 
 **Nav mode — top bar vs side rail (2.72.0).** The shell defaults to a **horizontal top bar** (`data-navmode="top"` on `<html>`, resolved synchronously by the no-flash boot `<script>` from `localStorage['pawpoller-nav']`, default `'top'`). Settings → Appearance → Navigation (`#nav-mode-picker`) flips to the classic **left side rail** (`'side'`); `App.applyNavMode()` persists the choice and repaints without a reload. Both modes are **desktop-only** — the whole top-bar block is gated on `@media (min-width: 769px)` and `html[data-navmode="top"]:not([data-mobile="1"])`, so phones always get the bottom nav + drawer regardless.
@@ -4147,9 +4148,9 @@ The Telegram bot (`polling/telegram_bot.py`) includes 6 posting-related commands
 
 ### Dashboard UI
 
-The posting module adds a "Stories" section to the dashboard sidebar, implemented in `frontend/js/posting.js` with 4 pages:
+The posting module is implemented in `frontend/js/posting.js`. It no longer has its own sidebar section — see §"One works hub" below.
 
-**1. Stories Hub** (`#/posting`) — Card grid showing all stories in the archive. Each card displays title, author, word count, chapter count, and platform badges for published platforms. Clicking a card navigates to the story detail page.
+**1. Stories Hub** (`#/posting`) — **RETIRED 2.155.0 (backlog L).** It was a card grid of every story in the archive, with no search or sort. That made it `/api/works` filtered to `content_type == "story"` — a strict subset of the Library's Stories segment, linking to the same detail page. The route now **redirects to `#/library/type/story`**, and `Posting.renderUpload()` is unreachable (kept for now as a port source; tracked as backlog L2). Cards live in `bookshelf.js` `_book()`.
 
 **2. Story Detail** (`#/posting/story/{name}`) — Full metadata view with:
 - Story info: title, author, description, word count, rating, warnings
@@ -5940,9 +5941,18 @@ per-platform breakdown + member accounts; each account's "View →" sets
 `App._accountFilter[platform]` and navigates to that platform's dashboard
 pre-scoped. Persona names on the Accounts page link through.
 
-## 20. Artwork hub (PostyBirb-style image posting, 2.31.0)
+## 20. Artwork (PostyBirb-style image posting, 2.31.0)
 
-A standalone image uploader parallel to the Stories hub: drop in an image, set
+> **The `#/artwork` HUB is retired (2.155.0, backlog L)** — it redirects to
+> `#/library/type/artwork`. Its grid was `/api/works` filtered to
+> `content_type == "artwork"`, and its discovered tiles are now the Library's
+> Discovered segment. `Artwork.render()` and ~400 lines of hub-only helpers are
+> unreachable but still present (port source for backlog L1/L2). Everything else
+> in this section — the **uploader** (`#/artwork/new`), **detail**
+> (`#/artwork/image/{name}`), **log**, **ignored** and the whole posting path —
+> is LIVE and unchanged. Merging the hubs did not merge the pages behind them.
+
+A standalone image uploader parallel to the story flow: drop in an image, set
 per-platform metadata, publish to multiple art sites at once. It **reuses the
 posting engine** rather than forking it — the same posters, manager, registry,
 scheduler, and retry/desktop-queue fallbacks carry both stories and artwork.
@@ -6360,6 +6370,87 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   - **The cached `__mp__` hero hash is DELETED** so `image_hash.hash_masterpieces()` recomputes it. Skipping this would
     leave the de-dup finder (§ Masterpiece de-duplication) comparing the OLD pixels forever.
   - Guarded by the same 50 MB cap + `IMAGE_EXTENSIONS` allowlist as the artwork uploader; 404 on an unknown name.
+
+
+## 20.11 One works hub — the Library (2.155.0, backlog L)
+
+**The Library (`#/library`, `frontend/js/bookshelf.js`) is the single hub for your works.** It had
+grown alongside two others that listed the same records, because **`/api/works` has always returned
+both kinds behind a `content_type` discriminator** (`"story"` / `"artwork"`, set in
+`routes/submissions_api.py` `assemble_works`). That made:
+
+- **Stories** (`#/posting`) = `/api/works` filtered to stories, with no search and no sort — a strict
+  subset of the Library's Stories segment, linking to the same detail page;
+- **Artwork** (`#/artwork`) = `/api/works` filtered to artwork, plus a discovered-tile surface.
+
+Both hub routes now **redirect** (`#/posting` → `#/library/type/story`, `#/artwork` →
+`#/library/type/artwork`), as does **`#/submissions`** → `#/library` — that hub lost its nav entry
+in 2.117.0 but never stopped rendering, leaving a *fourth* works hub reachable by URL. Their
+*sub-pages* are untouched and still live — **merging the hubs did not merge the pages behind
+them.** `#/submissions/discovered` still serves the standalone discovered page.
+
+### Segments
+
+`Bookshelf._type` ∈ `Bookshelf.TYPES` = `all | story | artwork | masterpiece | discovered`.
+
+| Segment | Rendered by | Notes |
+|---|---|---|
+| all / story / artwork | `_paint()` → `_book()` over `_works` | client-side filter of the cached `/api/works` list |
+| masterpiece | `Masterpieces.renderGrid(grid, {persona, search, sort})` | its own managed surface (`/api/masterpieces`) |
+| discovered | `Submissions.renderDiscoveredInto(grid)` | the review queue — see below |
+
+**`#/library/type/{t}`** deep-links a segment (router validates against `TYPES`, falling back to
+`all`). Clicking a segment goes through **`Bookshelf.switchType()`**, which switches **in place** and
+writes the URL with **`history.replaceState`** — assigning `location.hash` would fire `hashchange` →
+`route()` → a full `render()` and a second `/api/works` call just to filter data already in memory.
+Bare `#/library` **explicitly resets `_type = 'all'`**: it's module state that survives navigation, so
+without the reset, arriving from `#/masterpieces` or a `type/` deep-link would show that segment while
+the URL claimed the full shelf.
+
+**Discovered** is a *review queue*, not a shelf of your works, so `switchType` hides the
+persona/search/sort controls there (they'd be dead inputs) and the segment carries a count badge fed
+by `_loadDiscovered()`. `renderDiscoveredInto(target)` is a thin entry point beside the standalone
+`Submissions.renderDiscovered()` page (`#/library/discovered`, still routed): both set `_discItems` /
+`_workOptions` then call `_paintDiscovered()`, which targets `#disc-list` — so the rows and **their
+actions (link · import · 🚫 Ignore · the per-platform bulk bar) are the same code**, not a
+reimplementation. The page is just this plus a header.
+
+**`_masterOne()` / `_canMaster()` are a PORT, not a move.** ★ Master (promote-to-Masterpiece, 2.151.0
+backlog M) existed *only* on the Artwork hub's discovered tiles — these rows never had it — so
+retiring that hub without porting would have silently removed the feature. Same flow, same duplicate-
+check prompt. `_canMaster` gates on **image-bearing and not-text**, deliberately NOT on the old hub's
+`_PLATFORMS` allowlist: that list omits X/Threads, which is exactly what hid the Ignore buttons until
+2.143.0 — this is the surface where discovered items get reviewed, and tweet art is a real source of
+Masterpieces.
+
+### What the merge had to carry
+
+`assemble_works` now projects **`description` / `category` / `warnings`** for stories — the retired
+Stories hub showed a blurb, a category chip and a ⚠ tooltip that weren't in the payload, so folding it
+in would have silently dropped them (`tests/test_works.py`). The Ignored + History links moved to the
+Library header (`.shelf-topbar-actions`).
+
+Everything pointing at the dead hubs was repointed rather than left to double-hop through the
+redirect: sidebar (`index.html` — Publish → Stories/Artwork removed; Library is already top-level),
+**bottom nav** (its Stories slot → Library), breadcrumbs + nav-active rules (`app.js` — story detail
+and artwork detail/log/ignored light **Library** now), `command_palette.js`, and Artwork's back-links.
+
+**Tours** (`tour.js`): `#/library` had **no tour at all** despite being the main hub, while three
+toured DOM that no longer renders — `submissions` (hub retired 2.117.0), `stories` and `artwork`. All
+three are replaced by one `library` tour, and `tourForHash` maps `#/library` + `#/library/type/*` to
+it. The registry is consistent both ways (nothing defined-but-unreachable or returned-but-undefined).
+
+### Known gaps (deliberate — backlog L1/L2)
+
+- **Masters-folding of discovered art** went with the Artwork hub. It grouped one piece cross-posted
+  to several sites into a single tile via `submission_links` (`_foldMasters`/`_masterCard`/
+  `_splitMaster`); the Discovered segment lists them as separate rows. Not ported on purpose: it is
+  the older of the **two art-grouping systems** flagged as a "mess" in §20.9 — **Masterpieces
+  supersedes it**, and cross-platform links are slated to merge into Collections.
+- **🗑 delete off an artwork card** is gone; artwork **detail** has always had Delete (one extra click).
+- `Posting.renderUpload` + `Artwork.render` and ~400 lines of hub-only helpers are **unreachable but
+  present** — the port source for the above. Verified reachable only from the dead hub block, so
+  removal is safe once L1 is settled.
 
 
 ## 21. Posts hub (microblog / "tweet-like" publishing, 2.49.0)

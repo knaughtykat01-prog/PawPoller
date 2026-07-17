@@ -1,11 +1,15 @@
 /* ── Posting Module — Frontend Pages ─────────────────────────── */
 /*
- * Five pages:
- *   1. Stories    (#/posting)              — Story card hub (browse all stories)
- *   2. Detail     (#/posting/story/{name}) — Single story detail with platform controls
- *   3. Queue      (#/posting/queue)        — Pending/scheduled items
- *   4. Published  (#/posting/published)    — Registry of what's posted where (legacy, redirects to stories)
- *   5. History    (#/posting/log)          — Audit log of all posting actions
+ *   1. Detail     (#/posting/story/{name}) — Single story detail with platform controls
+ *   2. Queue      (#/posting/queue)        — Pending/scheduled items
+ *   3. Published  (#/posting/published)    — Registry of what's posted where (legacy, redirects to stories)
+ *   4. History    (#/posting/log)          — Audit log of all posting actions
+ *
+ * The Stories HUB (#/posting) is RETIRED (2.155.0, backlog L): it was /api/works
+ * filtered to stories with no search/sort — a strict subset of the Library's
+ * Stories segment, linking to the same detail page below. The route redirects to
+ * #/library/type/story, so `renderUpload()` here is unreachable; it's kept only
+ * as a port source and is tracked for removal (backlog L2).
  */
 
 /* ── File-size formatter ─────────────────────────────────────
@@ -588,7 +592,7 @@ const Posting = {
                     data-panel="${t.id}">${t.html}</div>`).join('');
 
             App._setContent(`
-                <a href="#/posting" class="back-link">&larr; All Stories</a>
+                <a href="#/library/type/story" class="back-link">&larr; All Stories</a>
                 ${infoHtml}
                 ${pendingHtml}
                 ${totalsHtml}
@@ -791,7 +795,7 @@ const Posting = {
     /* ── 4. Published (redirects to Stories hub) ─────────────── */
     async renderPublished() {
         // Redirect to the stories hub — publications are now shown per-story
-        window.location.hash = '#/posting';
+        window.location.hash = '#/library/type/story';
     },
 
     /* ── 5. History / Log Page ───────────────────────────────── */

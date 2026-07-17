@@ -5,13 +5,23 @@
  * each spine), plus a rich per-work detail page (big cover · per-platform
  * "published to" list with live counts · chapter × platform reach).
  *
- * A NEW top-level "Library" destination (#/library), peer to Overview — it does
- * NOT replace the Submissions hub (#/submissions), which stays under Publishing.
- * Path A: reuses the real endpoints, adds no backend —
+ * THE single works hub (2.155.0, backlog L). It began as one of three
+ * overlapping hubs — Library + Stories (#/posting) + Artwork (#/artwork) — which
+ * showed largely the SAME records: /api/works already returns both kinds behind a
+ * `content_type` discriminator, so "Stories" was /api/works filtered to stories
+ * with no sort/search, and "Artwork" was /api/works filtered to artwork plus a
+ * discovered-tile surface. Both are now segments here and their hub routes
+ * redirect in. Deep-link a segment with #/library/type/{story|artwork|
+ * masterpiece|discovered}.
+ *
+ * Reuses the real endpoints, adds almost no backend —
  *   - list          → API.getWorks()            (GET /api/works)
  *   - story detail  → API.getPostingStory(name) (GET /api/posting/stories/{name})
- * Artwork keeps its existing detail route (#/artwork/image/{name}); only the
- * richer STORY detail is rebuilt here (the one with chapters + per-platform).
+ *   - masterpieces  → Masterpieces.renderGrid()     (its own managed surface)
+ *   - discovered    → Submissions.renderDiscoveredInto()  (the review surface)
+ * DETAIL routes are deliberately untouched — merging the hubs doesn't merge the
+ * pages behind them. Artwork keeps #/artwork/image/{name}; only the richer STORY
+ * detail is rebuilt here (the one with chapters + per-platform).
  *
  * Template-string rendering + a document-level click delegate for filters, to
  * match the rest of the SPA (no build step, CSP-safe — no inline handlers).
@@ -19,10 +29,15 @@
 window.Bookshelf = {
     _works: [],
     _personas: [],
-    _type: 'all',      // all | story | artwork | masterpiece
+    _type: 'all',      // all | story | artwork | masterpiece | discovered
     _persona: 0,       // 0 = all
     _search: '',
     _sort: 'recent',   // recent | title | platforms
+    _discCount: 0,     // discovered-segment badge (filled by _loadDiscovered)
+
+    /* Valid #/library/type/{t} targets — guards the deep-link + the redirects
+       from the retired hubs against typos silently showing an empty shelf. */
+    TYPES: ['all', 'story', 'artwork', 'masterpiece', 'discovered'],
 
     esc(s) {
         return (window.Utils && Utils.escapeHtml)
@@ -68,9 +83,13 @@ window.Bookshelf = {
                     <p class="shelf-sub">Every story and piece you've made, on the shelf — each cover
                     carries its own truth: where it's live, and where it isn't yet.</p>
                 </div>
-                <a class="btn btn-secondary shelf-laurels" href="#/laurels" title="Your milestones, medals and trophies">
-                    <span aria-hidden="true">🏅</span> Laurels
-                </a>
+                <div class="shelf-topbar-actions">
+                    <a class="btn btn-secondary shelf-laurels" href="#/laurels" title="Your milestones, medals and trophies">
+                        <span aria-hidden="true">🏅</span> Laurels
+                    </a>
+                    <a class="btn btn-secondary btn-sm" href="#/artwork/ignored" title="Discovered pieces you've dismissed">Ignored</a>
+                    <a class="btn btn-secondary btn-sm" href="#/artwork/log" title="Artwork posting history">History</a>
+                </div>
             </div>
             <div id="shelf-discovered"></div>
             <div id="shelf-controls"></div>
@@ -94,16 +113,27 @@ window.Bookshelf = {
         this._loadDiscovered();   // discovered-art import banner (moved from Submissions)
     },
 
-    /* Discovered-art import banner + link — ported from the retired Submissions
-     * hub. Best-effort; never blocks the shelf. */
+    /* Discovered-art import banner — ported from the retired Submissions hub.
+     * Also feeds the Discovered segment's count badge. Best-effort; never blocks
+     * the shelf (a failed fetch just leaves the banner and badge off).
+     *
+     * Banner vs segment: the banner is the NUDGE plus its one bulk action; the
+     * segment is the review surface. So the banner counts importable ART, while
+     * the badge counts EVERY discovered item — the segment shows stories too. */
     async _loadDiscovered() {
         const slot = document.getElementById('shelf-discovered');
         if (!slot) return;
         let art = [];
         try {
             const disc = await API.getDiscovered();
-            art = ((disc && disc.discovered) || []).filter(d => d.kind === 'art' && d.thumbnail_url);
+            const all = (disc && disc.discovered) || [];
+            this._discCount = all.length;
+            art = all.filter(d => d.kind === 'art' && d.thumbnail_url);
         } catch { return; }
+        // Patch just the badge, not the whole control bar: _renderControls()
+        // rebuilds the search input, which would steal focus and drop the caret
+        // if this fetch lands while you're already typing.
+        this._paintDiscCount();
         if (!art.length) { slot.innerHTML = ''; return; }
         const one = art.length === 1;
         slot.innerHTML = `
@@ -112,11 +142,13 @@ window.Bookshelf = {
                 ${one ? "isn't" : "aren't"} in your library yet — import ${one ? 'it' : 'them'} to manage and re-post.</div>
                 <div class="shelf-discovered-actions">
                     <button class="btn btn-primary btn-sm" id="shelf-import-art">Import all art</button>
-                    <a class="btn btn-sm" href="#/library/discovered">Review →</a>
+                    <button class="btn btn-sm" id="shelf-review-disc" type="button">Review →</button>
                 </div>
             </div>`;
         const b = document.getElementById('shelf-import-art');
         if (b) b.addEventListener('click', () => this._importAllArt());
+        const r = document.getElementById('shelf-review-disc');
+        if (r) r.addEventListener('click', () => this.switchType('discovered'));
     },
 
     async _importAllArt() {
@@ -135,20 +167,34 @@ window.Bookshelf = {
         }
     },
 
+    _discLabel() {
+        return this._discCount
+            ? `Discovered <span class="shelf-seg-count">${this._discCount}</span>` : 'Discovered';
+    },
+
+    /* Write _discCount into the Discovered segment in place. Safe to call before
+       the controls exist (they render the badge from _discCount anyway). */
+    _paintDiscCount() {
+        const b = document.querySelector('[data-shelf-type="discovered"]');
+        if (b) b.innerHTML = this._discLabel();
+    },
+
     _renderControls() {
         const el = document.getElementById('shelf-controls');
         if (!el) return;
         const seg = (val, label) => `
             <button class="shelf-seg ${this._type === val ? 'is-active' : ''}" data-shelf-type="${val}"
                 type="button">${label}</button>`;
-        const personaSel = this._personas.length > 1 ? `
+        // Discovered is a REVIEW queue, not a shelf of your works: it renders its
+        // own rows and its own per-platform bulk bar, so the shelf's persona /
+        // search / sort controls don't apply and would just be dead inputs.
+        const isDisc = this._type === 'discovered';
+        const personaSel = (!isDisc && this._personas.length > 1) ? `
             <select id="shelf-persona" class="shelf-input">
                 <option value="0">All personas</option>
                 ${this._personas.map(p => `<option value="${p.id}"${p.id === this._persona ? ' selected' : ''}>${this.esc(p.name)}</option>`).join('')}
             </select>` : '';
-        el.innerHTML = `
-            <div class="shelf-controls">
-                <div class="shelf-segs">${seg('all', 'All')}${seg('story', 'Stories')}${seg('artwork', 'Artwork')}${seg('masterpiece', 'Masterpieces')}</div>
+        const shelfControls = isDisc ? '' : `
                 ${personaSel}
                 <input id="shelf-search" class="shelf-input" type="search" placeholder="Search the shelf…" value="${this.esc(this._search)}">
                 <select id="shelf-sort" class="shelf-input shelf-sort">
@@ -158,17 +204,37 @@ window.Bookshelf = {
                     <option value="views">Most viewed</option>
                     <option value="favorites">Most favourited</option>
                     <option value="comments">Most comments</option>
-                </select>
+                </select>`;
+        el.innerHTML = `
+            <div class="shelf-controls">
+                <div class="shelf-segs">${seg('all', 'All')}${seg('story', 'Stories')}${seg('artwork', 'Artwork')}${seg('masterpiece', 'Masterpieces')}${seg('discovered', this._discLabel())}</div>
+                ${shelfControls}
             </div>`;
 
         el.querySelectorAll('[data-shelf-type]').forEach(b =>
-            b.addEventListener('click', () => { this._type = b.dataset.shelfType; this._renderControls(); this._paint(); }));
+            b.addEventListener('click', () => this.switchType(b.dataset.shelfType)));
         const ps = el.querySelector('#shelf-persona');
         if (ps) ps.addEventListener('change', () => { this._persona = parseInt(ps.value) || 0; this._paint(); });
         const se = el.querySelector('#shelf-search');
         if (se) se.addEventListener('input', () => { this._search = se.value; this._paint(); });
         const so = el.querySelector('#shelf-sort');
         if (so) { so.value = this._sort; so.addEventListener('change', () => { this._sort = so.value; this._paint(); }); }
+    },
+
+    /* Switch segment IN PLACE — no re-fetch, no router round-trip (the works are
+     * already cached in _works). replaceState, not location.hash: assigning the
+     * hash would fire hashchange → route() → a full render() and another
+     * /api/works call just to show a filter of data we're already holding.
+     * replaceState still leaves a URL you can refresh, bookmark or share. */
+    switchType(t) {
+        if (!this.TYPES.includes(t)) return;
+        this._type = t;
+        try {
+            const url = t === 'all' ? '#/library' : `#/library/type/${t}`;
+            history.replaceState(null, '', url);
+        } catch { /* non-fatal — the segment still switches */ }
+        this._renderControls();
+        this._paint();
     },
 
     _filtered() {
@@ -205,6 +271,19 @@ window.Bookshelf = {
             }
             return;
         }
+        // Discovered — the polled-but-unlinked review queue, folded in from the
+        // retired Artwork hub (2.155.0). Submissions owns the rows AND their
+        // actions (link · import · ★ Master · 🚫 Ignore · per-platform bulk);
+        // we hand it the grid rather than reimplement any of that here.
+        if (this._type === 'discovered') {
+            if (window.Submissions) {
+                Submissions.renderDiscoveredInto(grid);
+            } else {
+                grid.className = '';
+                grid.innerHTML = `<div class="empty-state"><h3>Discovered unavailable</h3></div>`;
+            }
+            return;
+        }
         const list = this._filtered();
         if (!list.length) {
             grid.className = '';
@@ -238,6 +317,14 @@ window.Bookshelf = {
         const rating = w.rating ? `<span class="book-rating">${this.esc(w.rating)}</span>` : '';
         const plats = (w.platforms || []).slice(0, 8).map(c =>
             `<span class="book-plat" title="${this.esc(this._plat(c).label)}">${this._plat(c).emoji || c}</span>`).join('');
+        // Carried over from the retired Stories hub (2.155.0) so folding it in
+        // costs nothing: a ⚠ warnings tooltip, a category chip and a short blurb.
+        const warns = (w.warnings || []).length
+            ? ` <span class="book-warn" title="${this.esc(w.warnings.join(', '))}">⚠</span>` : '';
+        const category = w.category ? `<span class="book-category">${this.esc(w.category)}</span>` : '';
+        const blurb = w.description
+            ? `<div class="book-blurb">${this.esc(w.description.slice(0, 120))}${w.description.length > 120 ? '…' : ''}</div>`
+            : '';
         // ＋ Collection — same affordance the (now-retired) Submissions hub had.
         // The global collections.js click delegate handles [data-add-collection]
         // and preventDefaults the card's own navigation.
@@ -249,8 +336,9 @@ window.Bookshelf = {
                 ${cover}
                 ${collect}
                 <div class="book-spine">
-                    <div class="book-title">${this.esc(w.title || w.name)}</div>
-                    <div class="book-meta">${w.meta ? this.esc(w.meta) : (isStory ? 'Story' : 'Artwork')}${rating ? ' · ' : ''}${rating}${draftTag ? ' ' + draftTag : ''}</div>
+                    <div class="book-title">${this.esc(w.title || w.name)}${warns}</div>
+                    <div class="book-meta">${w.meta ? this.esc(w.meta) : (isStory ? 'Story' : 'Artwork')}${rating ? ' · ' : ''}${rating}${category ? ' ' : ''}${category}${draftTag ? ' ' + draftTag : ''}</div>
+                    ${blurb}
                     <div class="book-plats">${plats}</div>
                 </div>
             </a>`;

@@ -4,6 +4,79 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.155.0] - 2026-07-17 - One works hub: Stories and Artwork fold into the Library
+
+Backlog **L** — the Option B that got deferred when Rhys picked Option A for the IA reshape. There were **three**
+hubs listing your works, and two of them were showing the same records the third already held:
+
+- **`/api/works` has always returned both kinds** behind a `content_type` discriminator (`story` / `artwork`).
+- So the **Stories hub** (`#/posting`) was `/api/works` filtered to stories — with **no search and no sort**, i.e. a
+  strict subset of what the Library's Stories segment already did, linking to the same detail page.
+- And the **Artwork hub** (`#/artwork`) was `/api/works` filtered to artwork, plus a discovered-tile surface.
+
+### The merge
+
+The **Library is now the one works hub**. Both hub routes redirect in — `#/posting` → `#/library/type/story`,
+`#/artwork` → `#/library/type/artwork` — and each segment is deep-linkable via the new **`#/library/type/{story |
+artwork | masterpiece | discovered}`** route. **`#/submissions` redirects too**: that hub lost its nav entry back in
+2.117.0 but never stopped rendering, so it was a *fourth* works hub still reachable by anyone with the URL. "One
+works hub" has to mean by URL as well as by nav. Switching segments in the UI is in-place (no re-fetch, no router
+round-trip) but still writes the URL via `replaceState`, so a segment stays refreshable and shareable.
+
+**Discovered** joins as a fifth segment with a count badge. It delegates to `Submissions.renderDiscoveredInto()` — a
+new thin entry point beside the existing standalone page — so the rows and their actions (link · import · 🚫 Ignore ·
+the per-platform bulk bar) are the **same code**, not a reimplementation. The persona/search/sort controls hide on
+that segment: it's a review queue, not a shelf of your works, and they'd be dead inputs.
+
+**★ Master had to be ported, or the redirect would have quietly killed it.** Promote-to-Masterpiece existed *only* on
+the Artwork hub's discovered tiles — the Library's discovered rows never had it — so retiring that hub would have
+removed a feature shipped four releases ago (2.151.0, backlog M). It's now on the discovered rows, same flow
+including the 2.151 duplicate-check prompt. One deliberate difference: the old button was gated on the Artwork hub's
+`_PLATFORMS` allowlist, which **omits X/Threads** — the exact gap that hid the Ignore buttons until 2.143.0. The new
+gate is "has an image and isn't text", because this is the surface where discovered items actually get reviewed and
+tweet art is a real source of Masterpieces.
+
+**Nothing carried over is lost.** The Stories cards' blurb, category chip and ⚠ warnings tooltip weren't in the
+`/api/works` payload, so `assemble_works` now projects `description` / `category` / `warnings` (+2 tests) and the
+Library's book cards render them (blurb clamped to two lines — the grid only reads as a shelf while the covers stay
+aligned). The Artwork hub's Ignored and History links moved to the Library header.
+
+### Everything that pointed at the retired hubs
+
+Fixed rather than left to double-hop through the redirect: sidebar (Publish → Stories/Artwork removed — Library is
+already top-level), **bottom nav** (its "Stories" slot becomes Library, which wasn't in the bottom nav at all),
+breadcrumbs, command palette (now Stories / Artwork / **Discovered** entries), Artwork's own back-links, and the
+nav-active rules for the surviving sub-pages (story detail, artwork detail/log/ignored light "Library" now).
+
+**Tours.** `#/library` had **no tour at all** despite being the main hub, while three tours pointed at DOM that no
+longer renders: `submissions` (hub retired 2.117.0), `stories` and `artwork` (retired here). The getting-started tour
+had two steps targeting nav links that don't exist. All replaced by one `library` tour over the real page, and the
+registry is now consistent both ways — no tour defined-but-unreachable, none returned-but-undefined.
+
+### Also: a real flaky test, found and fixed
+
+The suite failed once during this release on `test_upload_chapter_to_inkbunny` — then passed in isolation, passed as
+a file, and passed a clean 539 on re-run. Rather than shrug it off as flaky, the cause is concrete: durations come
+from `time.monotonic()`, which on this Python (3.10, Windows) is **`GetTickCount64()` with a 15.625 ms resolution**
+(measured: a sub-tick operation reports exactly `0.0` 2000 times out of 2000). Every HTTP call in that test is mocked
+by respx, so the whole upload routinely completes inside a single clock tick and `duration` is exactly `0.0` —
+failing `assert r["duration"] > 0`. **The faster the machine, the more often it fails.** The assertion's intent is
+"duration is populated and sane", so it's now `>= 0`. Pre-existing, unrelated to this release; it was just the first
+run unlucky enough to land inside a tick.
+
+### Known gaps (deliberate, not oversights)
+
+- **Masters-folding of discovered art is gone** with the Artwork hub — it grouped one piece cross-posted to several
+  sites into a single tile via `submission_links`. The Discovered segment lists those as separate rows. It's the
+  older grouping mechanism that **Masterpieces** supersedes, and cross-platform links are already slated to merge
+  into Collections, so this wasn't ported. Say the word if it's wanted back — the code to port from is still there.
+- **🗑 delete straight off an artwork card** is gone; artwork **detail** has always had a Delete button, so it's one
+  extra click, not a lost capability.
+- The retired hubs' code (`Posting.renderUpload`, `Artwork.render` + ~400 lines of helpers) is now **unreachable but
+  still present** — it's the port source for the above. Excising it is a separate hygiene pass, tracked in the backlog.
+
+---
+
 ## [2.154.0] - 2026-07-17 - Housekeeping: personal data scrub of the public copy
 
 Rhys: *"do a quick housekeeping check in the files being commit no personal data like art titles or anything is

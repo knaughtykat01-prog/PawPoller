@@ -514,7 +514,7 @@ window.Artwork = {
         app.innerHTML = `
             <div class="page-header">
                 <h1>New artwork</h1>
-                <p class="muted"><a href="#/artwork">← Back to Artwork</a></p>
+                <p class="muted"><a href="#/library/type/artwork">← Back to Library</a></p>
             </div>
             <div class="artwork-upload">
                 <div class="artwork-upload-col">
@@ -864,7 +864,7 @@ window.Artwork = {
             <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
                 <div>
                     <h1>${this.esc(data.title || name)}</h1>
-                    <p class="muted"><a href="#/artwork">← Back to Artwork</a></p>
+                    <p class="muted"><a href="#/library/type/artwork">← Back to Library</a></p>
                 </div>
                 <div style="display:flex;gap:.5rem;flex-shrink:0;">
                     <button class="btn btn-danger" id="art-delete">Delete</button>
@@ -988,7 +988,7 @@ window.Artwork = {
         try {
             await API.deleteArtwork(name);
             this._toast('success', 'Deleted');
-            window.location.hash = '#/artwork';
+            window.location.hash = '#/library/type/artwork';
         } catch (err) {
             this._toast('error', 'Delete failed: ' + err.message);
         }
@@ -1001,7 +1001,7 @@ window.Artwork = {
         app.innerHTML = `
             <div class="page-header">
                 <h1>Artwork history</h1>
-                <p class="muted"><a href="#/artwork">← Back to Artwork</a></p>
+                <p class="muted"><a href="#/library/type/artwork">← Back to Library</a></p>
             </div>
             <div id="art-log"><div class="loading-spinner">Loading…</div></div>`;
         let data;
@@ -1034,7 +1034,7 @@ window.Artwork = {
         app.innerHTML = `
             <div class="page-header">
                 <h1>Ignored artwork</h1>
-                <p class="muted"><a href="#/artwork">← Back to Artwork</a> · Hidden discovered tiles. Restore any to
+                <p class="muted"><a href="#/library/type/artwork">← Back to Library</a> · Hidden discovered tiles. Restore any to
                 bring it back to the hub.</p>
             </div>
             <div id="art-ignored"><div class="loading-spinner">Loading…</div></div>`;

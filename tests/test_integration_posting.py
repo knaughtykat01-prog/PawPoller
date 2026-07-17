@@ -81,7 +81,14 @@ class TestInkbunnyFullPipeline:
         assert r["chapter_index"] == 1
         assert r["external_id"] == "55555"
         assert "inkbunny.net" in r["external_url"]
-        assert r["duration"] > 0
+        # `>= 0`, not `> 0` — this was a real intermittent failure. Durations come
+        # from `time.monotonic()`, which on Windows is GetTickCount64() with a
+        # **15.625 ms** resolution. Every HTTP call here is mocked by respx, so the
+        # whole upload routinely finishes inside a single clock tick and measures
+        # EXACTLY 0.0 — the faster the machine, the more often it fails. The
+        # assertion's real intent is "duration is populated and sane", not "took
+        # measurable wall-clock time".
+        assert r["duration"] >= 0
 
         # Verify DB: publication created
         conn = get_connection()

@@ -112,6 +112,12 @@ def assemble_works(
                 "name": s["name"],
                 "title": s.get("title") or s["name"].replace("_", " "),
                 "rating": s.get("rating", ""),
+                # Carried so the merged hub's story cards keep what the retired
+                # Stories hub showed (2.155.0): a blurb, a category chip, and the
+                # ⚠ warnings tooltip. Folding a hub in must not lose its data.
+                "description": s.get("description", ""),
+                "category": s.get("category", ""),
+                "warnings": s.get("warnings") or [],
                 "platforms": platforms,
                 "stats": stats,
                 "publication_count": count,

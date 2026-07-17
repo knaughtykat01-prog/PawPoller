@@ -229,6 +229,32 @@ window.Submissions = {
 
     /* ── Discovered (unlinked) bucket + link-to-work (Phase 2) ──── */
 
+    /* Same discovered review surface, painted into a caller-supplied element
+     * instead of owning the page — this is how the Library's "Discovered"
+     * segment shows it (2.155.0). Everything below (_discRow, link/import/
+     * ★ Master/Ignore, the per-platform bulk bar) is shared: _paintDiscovered
+     * targets #disc-list, so we just need that id to exist inside `target`.
+     * The standalone page keeps working; it's this plus a header. */
+    async renderDiscoveredInto(target) {
+        if (!target) return;
+        target.className = '';
+        target.innerHTML = `<div id="disc-list"><div class="loading-spinner">Loading…</div></div>`;
+        let disc, works;
+        try {
+            [disc, works] = await Promise.all([API.getDiscovered(), API.getWorks()]);
+        } catch (err) {
+            const el = document.getElementById('disc-list');
+            if (el) el.innerHTML = `<div class="card error">Failed to load: ${this.esc(err.message)}</div>`;
+            return;
+        }
+        this._discItems = (disc && disc.discovered) || [];
+        this._workOptions = ((works && works.works) || []).map(w => ({
+            value: `${w.content_type}:${w.name}`,
+            label: `[${w.content_type}] ${w.title}`,
+        }));
+        this._paintDiscovered();
+    },
+
     async renderDiscovered() {
         const app = document.getElementById('app');
         app.innerHTML = `
@@ -286,6 +312,8 @@ window.Submissions = {
             if (ibtn) ibtn.addEventListener('click', () => this._importOne(i));
             const gbtn = document.getElementById(`disc-ignore-btn-${i}`);
             if (gbtn) gbtn.addEventListener('click', () => this._ignoreOne(i));
+            const mbtn = document.getElementById(`disc-master-btn-${i}`);   // art rows only
+            if (mbtn) mbtn.addEventListener('click', () => this._masterOne(i));
         });
         document.querySelectorAll('#disc-list [data-bulk]').forEach(b =>
             b.addEventListener('click', () => this._importAll(b.dataset.bulk)));
@@ -346,8 +374,59 @@ window.Submissions = {
                 </select>
                 <button class="btn btn-primary" id="disc-link-btn-${i}">Link</button>
                 <button class="btn" id="disc-import-btn-${i}" title="Download the image + metadata as a new artwork">Import</button>
+                ${this._canMaster(d) ? `<button class="btn" id="disc-master-btn-${i}" title="Promote to a Masterpiece — the master record for this image">★ Master</button>` : ''}
                 <button class="btn" id="disc-ignore-btn-${i}" title="Hide this — not something you want here (e.g. an image from a tweet). Reversible from the Ignored view.">🚫 Ignore</button>
             </div>`;
+    },
+
+    /* A Masterpiece is the master record for ONE IMAGE, so the row needs an image
+     * and must not be a text work. Deliberately NOT gated on the old Artwork hub's
+     * `_PLATFORMS` allowlist: that list omits X/Threads, which is precisely what
+     * hid the Ignore buttons until 2.143.0 — this is the surface where discovered
+     * items actually get reviewed, and tweet art is a real source of Masterpieces. */
+    _canMaster(d) {
+        return !!d && !!d.thumbnail_url && d.kind !== 'text';
+    },
+
+    /* ★ Master — ported from the retired Artwork hub (2.155.0). It lived ONLY on
+     * that hub's discovered tiles, so redirecting #/artwork here would have
+     * silently killed it. Same flow, image rows only.
+     *
+     * Stop duplicates forming (2.151.0, backlog M): if this image already IS a
+     * Masterpiece, offer to link into it rather than mint a second record. Only
+     * ever a PROMPT — near-identical hashes aren't proof (an SFW/NSFW pair of one
+     * ref sheet hashes the same), so the call is the user's. The match check is
+     * best-effort: if it fails, fall through to a normal promote. */
+    async _masterOne(i) {
+        const d = this._discItems[i];
+        if (!d) return;
+        const btn = document.getElementById(`disc-master-btn-${i}`);
+        const orig = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = 'Mastering…'; }
+        const platform = d.platform, sid = d.submission_id;
+        try {
+            let match = null;
+            try {
+                const r = await API.matchMasterpiece(platform, sid);
+                match = r && r.match;
+            } catch { /* no opinion — fall through to a normal promote */ }
+
+            if (match && window.confirm(
+                `This looks like your existing Masterpiece “${match.title}”.\n\n`
+                + `OK — link this piece into it (no duplicate created).\n`
+                + `Cancel — make a separate Masterpiece anyway (e.g. an SFW/NSFW variant).`)) {
+                await API.addMasterpieceMember(match.name, { platform, submission_id: sid });
+                this._toast('success', `Linked into “${match.title}”`);
+                window.location.hash = `#/masterpieces/${encodeURIComponent(match.name)}`;
+                return;
+            }
+            const res = await API.promoteMasterpiece(platform, sid);
+            this._toast('success', 'Made a Masterpiece — opening it');
+            window.location.hash = `#/masterpieces/${encodeURIComponent(res.name)}`;
+        } catch (err) {
+            if (btn) { btn.disabled = false; btn.textContent = orig; }
+            this._toast('error', 'Make Masterpiece failed: ' + (err.message || err));
+        }
     },
 
     async _ignoreOne(i) {

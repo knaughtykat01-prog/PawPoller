@@ -21,7 +21,8 @@ PERSONAS = {
 }
 STORIES = [
     {"name": "My_Story", "title": "My Story", "rating": "explicit",
-     "images": {"cover": "cover.png"}, "word_count": 1200, "chapters": 3},
+     "images": {"cover": "cover.png"}, "word_count": 1200, "chapters": 3,
+     "description": "A blurb.", "category": "Adventure", "warnings": ["Violence"]},
 ]
 ARTWORKS = [
     {"name": "My_Art", "title": "My Art", "rating": "mature",
@@ -101,6 +102,27 @@ def test_persona_filter():
 
 def test_search_filter():
     assert [w["name"] for w in _run(type="all", search="story")["works"]] == ["My_Story"]
+
+
+# ── 2.155.0: fields the merged works hub needs ────────────────────
+# The Stories hub (#/posting) folded into the Library, whose cards read from
+# /api/works. Its cards showed a blurb, a category chip and a ⚠ warnings
+# tooltip — none of which assemble_works used to project, so merging the hubs
+# would have silently dropped them.
+
+def test_projects_story_blurb_category_and_warnings():
+    works = {w["name"]: w for w in _run(type="all")["works"]}
+    assert works["My_Story"]["description"] == "A blurb."
+    assert works["My_Story"]["category"] == "Adventure"
+    assert works["My_Story"]["warnings"] == ["Violence"]
+
+
+def test_story_card_fields_default_when_absent():
+    # Most stories carry none of these; the card must still render.
+    res = assemble_works(stories=[{"name": "Bare", "title": "Bare"}], artworks=[],
+                         pubs=[], acct_to_persona={}, personas={}, type="all")
+    w = res["works"][0]
+    assert (w["description"], w["category"], w["warnings"]) == ("", "", [])
 
 
 def test_thumb_and_detail_routes():

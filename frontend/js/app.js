@@ -836,17 +836,24 @@ const App = {
             if (isPlatformRoute && href === '#/platforms') active = true;
             /* Persona overview pages live under Accounts — keep it lit. */
             if (parts[0] === 'persona' && href === '#/accounts') active = true;
-            /* Story sub-routes (e.g. #/posting/story/...) keep "Stories" lit. */
-            if (!active && parts[0] === 'posting' && parts[1] !== 'queue'
-                && parts[1] !== 'log' && href === '#/posting') active = true;
-            /* Artwork sub-routes keep "Artwork" (Publish) lit — EXCEPT #/artwork/new,
-               which is the Create → New Artwork item (own highlight). */
-            if (!active && parts[0] === 'artwork' && parts[1] !== 'new' && href === '#/artwork') active = true;
+            /* The Stories and Artwork hubs are gone (2.155.0) — their records live in
+               Library, so their surviving sub-pages light "Library" instead:
+                 - story detail (#/posting/story/...), but NOT queue/log, which are
+                   their own Insights & Tools items;
+                 - artwork detail/log/ignored, but NOT #/artwork/new, which is the
+                   Create → New Artwork item.
+               The bare #/posting and #/artwork routes redirect, so they never land
+               here — these cover only the sub-routes. */
+            if (!active && parts[0] === 'posting' && parts[1] && parts[1] !== 'queue'
+                && parts[1] !== 'log' && href === '#/library') active = true;
+            if (!active && parts[0] === 'artwork' && parts[1] && parts[1] !== 'new'
+                && href === '#/library') active = true;
             /* Posts sub-pages (contacts) keep "Posts" (Publish) lit; #/posts/new is
                the Create → New Post item, so it keeps its own highlight. */
             if (!active && parts[0] === 'posts' && parts[1] && parts[1] !== 'new' && href === '#/posts') active = true;
-            /* Submissions hub sub-routes (#/submissions/discovered, /work/...) keep "Submissions" lit. */
-            if (!active && parts[0] === 'submissions' && href === '#/submissions') active = true;
+            /* #/submissions/discovered is the standalone discovered page; light Library
+               (its hub lost its nav entry in 2.117.0 and its root now redirects). */
+            if (!active && parts[0] === 'submissions' && href === '#/library') active = true;
             /* Library (Bookshelf) work sub-routes (#/library/work/...) keep "Library" lit.
                Masterpieces live inside Library (grid + #/masterpieces/{name} detail), so
                keep "Library" lit for those routes too. */
@@ -1064,7 +1071,12 @@ const App = {
         } else if (parts[0] === 'settings') {
             this.renderSettings();
         } else if (parts[0] === 'posting' && !parts[1]) {
-            Posting.renderUpload();
+            // Stories hub RETIRED (2.155.0, backlog L) — it was /api/works filtered
+            // to stories with no search/sort, i.e. a strict subset of the Library's
+            // Stories segment. Redirect rather than render: old links, bookmarks and
+            // the bottom nav all point here. Story DETAIL (#/posting/story/{name})
+            // is untouched — merging hubs doesn't merge the pages behind them.
+            window.location.replace('#/library/type/story');
         } else if (parts[0] === 'posting' && parts[1] === 'story' && parts[2]) {
             // Story name may contain slashes (e.g. My_Story/Alt_Version)
             Posting.renderStoryDetail(parts.slice(2).join('/'));
@@ -1084,7 +1096,11 @@ const App = {
         } else if (parts[0] === 'imagetool') {
             if (window.ImageTool) window.ImageTool.render();
         } else if (parts[0] === 'artwork' && !parts[1]) {
-            if (window.Artwork) window.Artwork.render();
+            // Artwork hub RETIRED (2.155.0, backlog L) — its library grid was
+            // /api/works filtered to artwork, and its discovered tiles are now the
+            // Library's Discovered segment. Artwork's other pages (new / detail /
+            // log / ignored) all survive below.
+            window.location.replace('#/library/type/artwork');
         } else if (parts[0] === 'artwork' && parts[1] === 'new') {
             if (window.Artwork) window.Artwork.renderUpload();
         } else if (parts[0] === 'artwork' && parts[1] === 'image' && parts[2]) {
@@ -1103,7 +1119,10 @@ const App = {
         } else if (parts[0] === 'submissions' && parts[1] === 'discovered') {
             if (window.Submissions) window.Submissions.renderDiscovered();
         } else if (parts[0] === 'submissions') {
-            if (window.Submissions) window.Submissions.render();
+            // The Submissions hub lost its nav entry in 2.117.0 but kept rendering
+            // for anyone with the URL — a fourth works hub reachable by accident.
+            // "One works hub" (2.155.0, backlog L) has to mean by URL too.
+            window.location.replace('#/library');
         } else if (parts[0] === 'collections' && parts[1]) {
             if (window.Collections) window.Collections.renderDetail(parts[1]);
         } else if (parts[0] === 'collections') {
@@ -1120,7 +1139,16 @@ const App = {
             if (window.Bookshelf) { window.Bookshelf._type = 'masterpiece'; window.Bookshelf.render(); }
         } else if (parts[0] === 'library' && parts[1] === 'discovered') {
             // Discovered-art bucket, moved under Library (Submissions retired, 2.117.0).
+            // Still its own page — it's also a Library segment (2.155.0), but this
+            // route is linked from elsewhere and bookmarked, so it keeps working.
             if (window.Submissions) window.Submissions.renderDiscovered();
+        } else if (parts[0] === 'library' && parts[1] === 'type' && parts[2]) {
+            // Deep-link a Library segment (2.155.0) — how the retired Stories and
+            // Artwork hubs land here, and what the segment bar writes to the URL.
+            if (window.Bookshelf) {
+                window.Bookshelf._type = window.Bookshelf.TYPES.includes(parts[2]) ? parts[2] : 'all';
+                window.Bookshelf.render();
+            }
         } else if (parts[0] === 'library' && parts[1] === 'sort' && parts[2]) {
             // Deep-link to the shelf pre-sorted by a metric (Overview stat cards).
             if (window.Bookshelf) { window.Bookshelf._sort = parts[2]; window.Bookshelf.render(); }
@@ -1128,7 +1156,11 @@ const App = {
             // Work name may contain slashes — rejoin the tail.
             if (window.Bookshelf) window.Bookshelf.renderWork(parts.slice(2).join('/'));
         } else if (parts[0] === 'library') {
-            if (window.Bookshelf) window.Bookshelf.render();
+            // Bare #/library means the whole shelf. Reset the segment explicitly:
+            // _type is module state that survives navigation, so without this,
+            // arriving from #/masterpieces or #/library/type/artwork would land
+            // you on that segment while the URL claims you're on the full shelf.
+            if (window.Bookshelf) { window.Bookshelf._type = 'all'; window.Bookshelf.render(); }
         } else if (parts[0] === 'laurels') {
             if (window.Laurels) window.Laurels.render();
         } else if (parts[0] === 'ledger') {
@@ -1187,11 +1219,11 @@ const App = {
         };
         let crumb;
         if (p0 === 'posting' && parts[1] === 'queue') {
-            crumb = '<a href="#/posting">Stories</a> <span class="sep">›</span> <span class="here">Queue</span>';
+            crumb = '<a href="#/library">Library</a> <span class="sep">›</span> <span class="here">Queue</span>';
         } else if (p0 === 'posting' && parts[1] === 'log') {
-            crumb = '<a href="#/posting">Stories</a> <span class="sep">›</span> <span class="here">History</span>';
+            crumb = '<a href="#/library">Library</a> <span class="sep">›</span> <span class="here">History</span>';
         } else if (p0 === 'posting' && parts[1] === 'story') {
-            crumb = '<a href="#/posting">Stories</a> <span class="sep">›</span> <span class="here">Story</span>';
+            crumb = '<a href="#/library/type/story">Library</a> <span class="sep">›</span> <span class="here">Story</span>';
         } else if (p0 === 'library' && parts[1] === 'work') {
             crumb = '<a href="#/library">Library</a> <span class="sep">›</span> <span class="here">Work</span>';
         } else if (p0 === 'editor' && parts[1]) {

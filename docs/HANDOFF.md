@@ -1,7 +1,33 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.154.0 — **Housekeeping: personal-data scrub of the public copy.**
+**Current version (master):** 2.155.0 — **One works hub: Stories + Artwork fold into the Library** (backlog L).
+Three hubs listed your works and two were redundant: `/api/works` always returned both kinds behind a `content_type`
+discriminator, so **Stories** (`#/posting`) was it filtered to stories with *no search/sort* (a strict subset of the
+Library's Stories segment, same detail page) and **Artwork** (`#/artwork`) was it filtered to artwork + discovered
+tiles. Both hub routes now **redirect** into the Library; segments deep-link via new **`#/library/type/{story|artwork|
+masterpiece|discovered}`**. **`#/submissions` redirects too** — it lost its nav entry in 2.117 but never stopped
+rendering, so it was a 4th works hub still reachable by URL. Segment switching is in-place (no re-fetch) + `replaceState` so URLs stay shareable.
+**Discovered** = 5th segment w/ count badge, delegating to new `Submissions.renderDiscoveredInto()` → rows + actions
+(link · import · Ignore · bulk) are the SAME code; persona/search/sort hide there (review queue, not a shelf).
+**★ Master had to be PORTED** — it existed ONLY on the Artwork hub's tiles, so the redirect would have killed a
+feature shipped in 2.151 (backlog M). Now on the discovered rows, same 2.151 dup-check prompt, but gated on
+"has an image and isn't text" rather than the hub's `_PLATFORMS` allowlist (which omits X/Threads — the exact gap
+that hid the Ignore buttons until 2.143). Nothing else lost: `assemble_works` now projects `description`/`category`/`warnings` (+2 tests) for the story
+cards' blurb/chip/⚠; Ignored + History links moved to the Library header. Repointed everything: sidebar (Publish →
+Stories/Artwork removed), **bottom nav** (Stories slot → Library), breadcrumbs, command palette (+ a Discovered
+entry), artwork back-links, nav-active rules. **Tours:** `#/library` had NO tour while `submissions`/`stories`/
+`artwork` toured dead DOM — replaced by one `library` tour; registry now consistent both directions.
+**FLAKY TEST FIXED (unrelated, found by this release's suite runs):** `test_upload_chapter_to_inkbunny` asserted
+`duration > 0`, but `time.monotonic()` on this Python (3.10/Windows) is `GetTickCount64()` @ **15.625 ms** resolution
+and every HTTP call there is respx-mocked — so the upload routinely finishes inside ONE tick and measures exactly
+`0.0` (verified: 2000/2000 sub-tick ops report 0.0). **Faster machine = fails more often.** Now `>= 0`.
+**KNOWN GAPS (deliberate):** masters-folding of discovered art is gone (superseded by Masterpieces; links are slated
+to merge into Collections — ask if wanted back); 🗑-off-the-card is gone (artwork *detail* still has Delete); and the
+retired hubs' code (`Posting.renderUpload`, `Artwork.render` + ~400 lines) is **unreachable but still present** as
+the port source — excising it is a tracked follow-up.
+
+**Prior — 2.154.0 — Housekeeping: personal-data scrub of the public copy.**
 Rhys asked for a check that no personal data (art titles etc.) ships. Ran the real `deploy/make_public.py` build+scan
 (418 ship / 16,434 excluded) and fixed every hit: **`docs/BACKLOG.md`** now in `EXCLUDE_FILES` (art titles + artist
 handles + local paths); **8 user-facing** scene-break labels in `editor.js` were named after private stories

@@ -4,7 +4,7 @@
 sessions. Update this **every time** a request lands or an item ships. Newest requests go at the top of "Open".
 Cross-reference shipped items to their `CHANGELOG.md` version.
 
-_Last updated: 2026-07-17 (after 2.153.0 — replace a Masterpiece's canonical image)._
+_Last updated: 2026-07-17 (after 2.155.0 — one works hub: Stories + Artwork fold into the Library)._
 
 Legend: 🔴 open · 🟡 in progress · 🟢 done · ⚪ deferred/parked
 
@@ -29,7 +29,9 @@ split, Option A (**2.142**).
 | H | Overview: **more widgets** (Rhys said "20 more") | 🟢 **catalog 19 → 23** (2.148) | +4 in 2.137 (Quick actions, Engagement, Milestones, Spotlight), +4 in 2.148 (Platforms live, Best platform, Recent comments, Pending queue). Deliberately useful-over-filler — say the word for more |
 | I | ~~Promo Maker follow-ups: source excerpt from a story · censor bars · share to Posts~~ | 🟢 **DONE** | Story-excerpt picker **2.147**; censor bars + 💬 Send to Posts **2.148** |
 | K | ~~Detail compaction follow-up: collapse secondary sections into **tabs**~~ | 🟢 **DONE 2.150** | Story detail (the 10-section offender) now hero + pending + totals visible, rest behind tabs. Masterpiece/Artwork left alone on purpose (3–4 sections, already tightened 2.141; their chart needs a visible canvas) |
-| L | **Merge the works hubs** (Option B) — fold Library/Stories/Artwork into one "Submissions" hub with type filters | ⚪ | Rhys chose Option A for the IA reshape; this is the bigger end-state if wanted later |
+| L | ~~**Merge the works hubs** (Option B) — fold Library/Stories/Artwork into one hub with type filters~~ | 🟢 **DONE 2.155** | The **Library** is the one hub. `#/posting` + `#/artwork` redirect in; segments deep-link via `#/library/type/{story\|artwork\|masterpiece\|discovered}`. Discovered = 5th segment reusing `Submissions.renderDiscoveredInto()`. Story blurb/category/⚠ now projected by `assemble_works`. Nav/bottom-nav/breadcrumbs/palette/tours all repointed. See L1–L2 for the two known gaps |
+| L1 | **Masters-folding of discovered art** — lost with the Artwork hub | ⚪ | It grouped one piece cross-posted to several sites into one discovered tile (via `submission_links`); the Discovered segment lists them as separate rows. NOT ported on purpose: **Masterpieces supersedes it** and cross-platform links are slated to merge into Collections. Port source still in `artwork.js` (`_foldMasters`/`_masterCard`/`_splitMaster`). **Say the word if you want it back** |
+| L2 | **Excise the retired hubs' dead code** | ⚪ | `Posting.renderUpload`, `Artwork.render` (+ ~400 lines of hub-only helpers) and `Submissions.render` are unreachable but still present — `Artwork`'s are the port source for L1. Each verified reachable *only* from its own dead hub block, so removal is safe once L1 is settled |
 | M | ~~**Auto-link on import**~~ | 🟢 **DONE 2.151** | ★ Master pre-checks the hash vs Masterpiece heroes (`GET /api/masterpieces/match`) and **offers** to link into the existing one. Deliberately a prompt, not automatic — SFW/NSFW edits hash identically |
 
 ## 🔴 Bugs

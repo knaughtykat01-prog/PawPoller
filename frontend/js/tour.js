@@ -121,8 +121,11 @@ window.Tour = (function () {
         'getting-started': [
             { target: null, title: 'Welcome to PawPoller 👋', body: 'PawPoller tracks and publishes your stories and art across 15 sites from one place. Here’s a quick tour of the essentials — about a minute.' },
             { target: '.nav-link[data-page="platforms"]', title: 'Platforms', body: 'Start here. Connect the sites you use — Inkbunny, FurAffinity, AO3, Bluesky and more. PawPoller only ever tracks the platforms you connect.' },
-            { target: '.nav-link[data-page="submissions"]', title: 'Submissions', body: 'Every work you track — stories and artwork alike — lives here as one library, with views, faves and comments pulled in from each platform.' },
-            { target: '.nav-link[data-page="posting"]', title: 'Stories', body: 'Publish a story to several platforms at once, and keep them in sync when you edit — no re-uploading to each site by hand.' },
+            // One Library step, because there's now one works hub (2.155.0). These
+            // were two steps targeting data-page="submissions" (hub retired 2.117.0)
+            // and data-page="posting" (retired 2.155.0) — both nav entries are gone,
+            // so both steps were silently targeting nothing.
+            { target: '.nav-link[data-page="library"]', title: 'Library', body: 'Every work you track — stories and artwork alike — lives here, with views, faves and comments pulled in from each platform. Filter by type, or review what polling has discovered.' },
             { target: '.nav-link[data-page="editor"]', title: 'Story Editor', body: 'Write or import a story, tag it per platform, then run a Publish Check to catch problems <em>before</em> anything goes live.' },
             { target: '.nav-link[data-page="analytics"]', title: 'Analytics', body: 'Views, favourites and comments over time — combined across every platform, or broken down site by site.' },
             { target: '#poll-status-mini', title: 'Polling', body: 'PawPoller checks your platforms on a schedule and refreshes these numbers on its own. This badge shows the current cycle at a glance.' },
@@ -139,22 +142,18 @@ window.Tour = (function () {
             { target: '.logo-disclaimer', title: 'A quick disclaimer', body: 'PawPoller is independent. Platform names and logos belong to their owners and just help you spot each service.' },
         ],
 
-        'submissions': [
-            { target: null, title: 'Submissions', body: 'Every work PawPoller tracks, with its latest views, favourites and comments — search, filter and open any one for detail.' },
-            { target: '#search-input', title: 'Search your works', body: 'Type a title or keyword to narrow the list instantly — handy once you’re tracking a lot of pieces.' },
-            { target: '#filter-rating', title: 'Filter by rating', body: 'Show only General, Mature or Adult works — leave it on All Ratings to see everything.' },
-            { target: '#filter-type', title: 'Filter by type', body: 'Narrow to just writing, pictures or music when you want to focus on one kind of work.' },
-            { target: '.view-toggle', title: 'Grid or list', body: 'Swap between a visual grid of covers and a compact sortable table, whichever you prefer.' },
-            { target: '#grid-container', title: 'Your works', body: 'Each work appears here with its stats and recent change — click one to open its full per-platform detail.' },
-        ],
-
-        'stories': [
-            { target: null, title: 'Your story library', body: 'The Stories hub publishes a story to several sites at once and keeps every copy in sync — all from one place.' },
-            { target: '.page-header', title: 'Stories', body: 'Each story in your synced archive shows here with its word count, rating and which platforms it’s already on.' },
-            { target: '.empty-state', title: 'Get stories in', body: 'Nothing here yet? Point PawPoller at your archive and run <em>pawsync</em> to pull your stories in.' },
-            { target: '.story-card-grid', title: 'Your stories', body: 'Each story is a card — click one to publish it, update it, or check where it’s already posted.' },
-            { target: '.nav-link[data-page="posting-queue"]', title: 'Queue', body: 'Anything you schedule or send to publish waits in the Queue until the scheduler picks it up.' },
-            { target: '.nav-link[data-page="posting-log"]', title: 'History', body: 'Every finished upload and update is logged in History, with its result and how long it took.' },
+        /* One tour for the one works hub (2.155.0). It replaces three that had
+         * outlived their pages: 'submissions' (hub retired 2.117.0), 'stories'
+         * (#/posting, retired 2.155.0) and 'artwork' (#/artwork, same). All three
+         * pointed at DOM that no longer renders, so they toured nothing. */
+        'library': [
+            { target: null, title: 'Your Library', body: 'Every work you’ve made — stories and artwork alike — on one shelf, with views, favourites and comments pulled in from every platform it’s live on.' },
+            { target: '.shelf-segs', title: 'Filter by type', body: 'All, Stories, Artwork, Masterpieces, or Discovered. <em>Masterpieces</em> group the versions of one piece; <em>Discovered</em> is what polling found that isn’t in your library yet.' },
+            { target: '.shelf-discovered-banner', title: 'Discovered art', body: 'When polling finds art on your accounts that isn’t here yet, this offers to import the lot in one go.' },
+            { target: '#shelf-search', title: 'Search the shelf', body: 'Type a title to narrow the shelf instantly — handy once you’re tracking a lot of pieces.' },
+            { target: '.shelf-sort', title: 'Sort', body: 'Newest, A–Z, most platforms — or by pooled views, favourites and comments to see what’s actually landing.' },
+            { target: '#shelf-grid', title: 'Your works', body: 'Each cover tells the truth: a gilt ribbon means it’s live, and it says on how many platforms. Click one for its full per-platform detail.' },
+            { target: '.empty-state', title: 'Get works in', body: 'Nothing here yet? Run <em>pawsync</em> to pull your story archive in, or upload art via <strong>Create → New Artwork</strong>.' },
         ],
 
         'queue': [
@@ -180,15 +179,6 @@ window.Tour = (function () {
             { target: '#import-story-btn', title: 'Import a story', body: 'Pull in a story you’ve already posted — paste a URL or ID, or pick one from your polled platforms.' },
             { target: '#regen-all-btn', title: 'Regenerate all', body: 'Rebuild every story’s derived formats (BBCode, HTML, EPUB and more) from its MASTER.md in one go.' },
             { target: '.card-grid', title: 'Your stories', body: 'Each story appears here as a card you can open. A new account starts empty — create or import your first.' },
-        ],
-
-        'artwork': [
-            { target: null, title: 'Welcome to Artwork', body: 'Your visual library — art you upload plus pieces the pollers found on your accounts, all in one place.' },
-            { target: '.page-header', title: 'Your artwork hub', body: 'Everything you’ve uploaded and everything the pollers discovered, merged into one gallery.' },
-            { target: '.page-header .btn-primary', title: 'Add new artwork', body: 'Upload an image and publish it to several art sites at once, each with its own tags and account.' },
-            { target: '.btn[href="#/artwork/log"]', title: 'Publishing history', body: 'Open a full log of every artwork post — what went where, when, and whether it succeeded.' },
-            { target: '#artwork-grid', title: 'Your gallery', body: 'Every piece lands here newest-first: uploads are clickable, while discovered art carries <em>View</em> and <em>Import</em>.' },
-            { target: '.empty-state', title: 'Getting started', body: 'Nothing here yet? Upload your first image, or wait for the pollers to surface art from your connected accounts.' },
         ],
 
         'posts': [
@@ -252,7 +242,9 @@ window.Tour = (function () {
         const p0 = parts[0] || '';
         if (!p0 || p0 === 'overview') return GS;
         if (p0 === 'platforms') return 'platforms';
-        if (p0 === 'submissions' && !parts[1]) return 'submissions';
+        // The one works hub — bare #/library and any #/library/type/{segment}.
+        // Not /work/ or /sort/ (deep detail / a pre-sorted deep-link).
+        if (p0 === 'library' && (!parts[1] || parts[1] === 'type')) return 'library';
         if (p0 === 'analytics') return 'analytics';
         if (p0 === 'groups' && !parts[1]) return 'groups';
         if (p0 === 'collections' && !parts[1]) return 'collections';
@@ -263,10 +255,10 @@ window.Tour = (function () {
             if (!parts[1]) return 'posts';
             return null;                                    // contacts etc. — no tour
         }
-        if (p0 === 'artwork' && !parts[1]) return 'artwork';
         if (p0 === 'editor' && !parts[1]) return 'editor';
         if (p0 === 'posting') {
-            if (!parts[1]) return 'stories';
+            // Bare #/posting and #/artwork redirect into Library, so they never
+            // reach here — only these sub-pages still have tours of their own.
             if (parts[1] === 'queue') return 'queue';
             if (parts[1] === 'log') return 'history';
         }
