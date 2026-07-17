@@ -119,13 +119,12 @@
                  group into a dropdown. In the side rail the .nav-sub is always
                  shown (flat, identical to before); in top mode it's a hover/
                  focus/click dropdown panel. -->
+            <!-- IA (2.142.0): Publish = your catalogues (works via Library above,
+                 plus Posts view-only + Collections); every make-new action lives in
+                 Create; Queue/History moved to Insights & Tools. -->
             <li class="nav-group">
-              <button class="nav-group-label" data-nav-toggle type="button" aria-expanded="false">Publishing<span class="nav-caret" aria-hidden="true">&#9662;</span></button>
+              <button class="nav-group-label" data-nav-toggle type="button" aria-expanded="false">Publish<span class="nav-caret" aria-hidden="true">&#9662;</span></button>
               <ul class="nav-sub">
-                <!-- Submissions retired from nav in 2.117.0 — its works list is the
-                     cover-forward Library (#/library), which absorbed ＋Collection, the
-                     discovered-art import banner and the discovered bucket
-                     (#/library/discovered). The #/submissions route is kept (reversible). -->
                 <li><a href="#/posting" class="nav-link" data-page="posting">
                     <span class="nav-icon">&#128228;</span><span class="nav-label">Stories</span>
                 </a></li>
@@ -138,12 +137,6 @@
                 <li><a href="#/collections" class="nav-link" data-page="collections">
                     <span class="nav-icon">&#128451;</span><span class="nav-label">Collections</span>
                 </a></li>
-                <li><a href="#/posting/queue" class="nav-link" data-page="posting-queue">
-                    <span class="nav-icon">&#9203;</span><span class="nav-label">Queue</span>
-                </a></li>
-                <li><a href="#/posting/log" class="nav-link" data-page="posting-log">
-                    <span class="nav-icon">&#128220;</span><span class="nav-label">History</span>
-                </a></li>
               </ul>
             </li>
 
@@ -151,7 +144,13 @@
               <button class="nav-group-label" data-nav-toggle type="button" aria-expanded="false">Create<span class="nav-caret" aria-hidden="true">&#9662;</span></button>
               <ul class="nav-sub">
                 <li><a href="#/editor" class="nav-link" data-page="editor">
-                    <span class="nav-icon">&#9998;</span><span class="nav-label">Story Editor</span>
+                    <span class="nav-icon">&#9998;</span><span class="nav-label">New Story</span>
+                </a></li>
+                <li><a href="#/artwork/new" class="nav-link" data-page="artwork-new">
+                    <span class="nav-icon">&#128444;</span><span class="nav-label">New Artwork</span>
+                </a></li>
+                <li><a href="#/posts/new" class="nav-link" data-page="posts-new">
+                    <span class="nav-icon">&#128172;</span><span class="nav-label">New Post</span>
                 </a></li>
                 <li><a href="#/promo" class="nav-link" data-page="promo">
                     <span class="nav-icon">&#10024;</span><span class="nav-label">Promo Maker</span>
@@ -173,6 +172,12 @@
                 </a></li>
                 <li><a href="#/groups" class="nav-link" data-page="groups">
                     <span class="nav-icon">&#128193;</span><span class="nav-label">Groups</span>
+                </a></li>
+                <li><a href="#/posting/queue" class="nav-link" data-page="posting-queue">
+                    <span class="nav-icon">&#9203;</span><span class="nav-label">Queue</span>
+                </a></li>
+                <li><a href="#/posting/log" class="nav-link" data-page="posting-log">
+                    <span class="nav-icon">&#128220;</span><span class="nav-label">History</span>
                 </a></li>
                 <!-- Cross-Platform Links retired in 2.113.0 — merged into Collections
                      (same idea: one piece across platforms + combined analytics).

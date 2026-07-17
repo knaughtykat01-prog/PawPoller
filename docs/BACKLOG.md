@@ -14,10 +14,9 @@ Legend: 🔴 open · 🟡 in progress · 🟢 done · ⚪ deferred/parked
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| F | **IA restructure** — split **Submissions** (stories+art) from **Posts** (microblog catalogue); move post-creation into **Create**; posting-under-Create | 🔴 next (Rhys pick #3) | Big navigation reshape, touches many screens — **plan with Rhys before executing** |
-
-_Recently shipped from this table:_ **A** Instagram → artwork upload (**2.139**); **B** dedup, **C** Ignore, **D**
-multi-account Overview (**2.140**); **E** detail compaction pass (**2.141**, CSS-first — tabbed-sections follow-up open).
+_All of Rhys's chosen items are shipped._ **A** Instagram → artwork upload (**2.139**); **B** dedup, **C** Ignore, **D**
+multi-account Overview (**2.140**); **E** detail compaction pass (**2.141**); **F** IA restructure — Create hub + Posts
+split, Option A (**2.142**).
 
 ## 🔴 Open (smaller / follow-ups)
 
@@ -26,6 +25,8 @@ multi-account Overview (**2.140**); **E** detail compaction pass (**2.141**, CSS
 | G | Overview widgets: **per-metric sorted** stat-card destinations (views → sorted-by-views, faves → similar) | 🔴 | 2.135 made stat cards → `#/library`; still need sorted landing views |
 | H | Overview: **more widgets** (Rhys said "20 more") | 🟡 ongoing | +4 in 2.137 (Quick actions, Engagement, Milestones, Spotlight); keep adding useful ones |
 | I | Promo Maker follow-ups: source excerpt **from a story/chapter**; per-word **censor bars**; **"share to Posts"** hand-off | ⚪ | 2.138 shipped the core tool |
+| K | Detail compaction follow-up: collapse secondary sections into **tabs** for even less scroll | ⚪ | 2.141 did the CSS-first pass |
+| L | **Merge the works hubs** (Option B) — fold Library/Stories/Artwork into one "Submissions" hub with type filters | ⚪ | Rhys chose Option A for the IA reshape; this is the bigger end-state if wanted later |
 
 ## ⚪ Deferred / future
 
@@ -61,6 +62,7 @@ multi-account Overview (**2.140**); **E** detail compaction pass (**2.141**, CSS
 | Ignore function for discovered artwork (+ Ignored/restore view) | **2.140** |
 | Multi-account Overview shown by default ("By persona" widget) | **2.140** |
 | Detail pages compaction (less scrolling) — CSS-first pass | **2.141** |
+| IA: Create hub + Posts split (view-only feed, composer in Create) | **2.142** |
 | AO3 525 error logging | (per HANDOFF ledger) |
 | In-app "what's new" changelog popup on update | 2.134 |
 

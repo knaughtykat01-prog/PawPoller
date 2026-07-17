@@ -55,7 +55,10 @@ window.Posts = {
         if (window.toast && window.toast[kind]) window.toast[kind](msg);
     },
 
-    /* ── Page: compose + feed ───────────────────────────────── */
+    /* ── Page: feed (catalogue) ─────────────────────────────────
+     * Posts is now a view-only catalogue of what you've published; composing a
+     * new post lives under Create → New post (#/posts/new, renderCompose). This
+     * is the IA split (2.142.0): Submissions vs Posts, create-actions in Create. */
 
     async render() {
         const app = document.getElementById('app');
@@ -63,17 +66,32 @@ window.Posts = {
             <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
                 <div>
                     <h1>Posts</h1>
-                    <p class="muted">Write a short post once and publish it to your microblog accounts
-                    at once. Bluesky, Mastodon and X post text and images (up to 4); Threads and Tumblr
-                    are text-only for now.</p>
+                    <p class="muted">Your published short-form posts across your microblog accounts.
+                    Compose a new one from <a href="#/posts/new">Create → New post</a>.</p>
                 </div>
-                <div style="flex-shrink:0;">
+                <div style="flex-shrink:0;display:flex;gap:.5rem;">
                     <a class="btn" href="#/posts/contacts">Tag contacts</a>
+                    <a class="btn btn-primary" href="#/posts/new">＋ New post</a>
                 </div>
             </div>
-            <div id="post-compose"></div>
             <h2 class="posts-feed-heading">Recent posts</h2>
             <div id="post-feed"><div class="loading-spinner">Loading…</div></div>`;
+        await this._loadFeed();
+    },
+
+    /* ── Page: compose (Create → New post) ──────────────────────
+     * The composer on its own page. After a successful publish it redirects to
+     * the feed (#/posts) so the new post is visible. */
+    async renderCompose() {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="page-header">
+                <h1>New post</h1>
+                <p class="muted"><a href="#/posts">← Back to Posts</a> · Write once, publish to your microblog
+                accounts. Bluesky, Mastodon and X post text and images (up to 4); Threads and Tumblr are text-only;
+                Instagram needs a photo.</p>
+            </div>
+            <div id="post-compose"></div>`;
 
         this._mentionBindings = {};
         this._addForToken = null;
@@ -83,7 +101,6 @@ window.Posts = {
         } catch (e) { this._contacts = []; }   // tagging is additive — degrade to none
 
         this._renderCompose(document.getElementById('post-compose'));
-        await this._loadFeed();
     },
 
     _renderCompose(el) {
@@ -424,7 +441,14 @@ window.Posts = {
             this._closeContactForm();
             this._syncMentions();
             this._clearFiles();
-            await this._loadFeed();
+            // On the standalone composer page (no feed here) a clean success jumps
+            // to the feed so the new post is visible; a partial failure stays put
+            // so the user can retry the failed platforms.
+            if (document.getElementById('post-feed')) {
+                await this._loadFeed();
+            } else if (!fail) {
+                window.location.hash = '#/posts';
+            }
         } catch (err) {
             msg.textContent = 'Failed: ' + (err.message || err);
         } finally {

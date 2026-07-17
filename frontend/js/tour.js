@@ -192,12 +192,15 @@ window.Tour = (function () {
         ],
 
         'posts': [
-            { target: null, title: 'Welcome to Posts', body: 'Compose a short update once and publish it to all your microblog accounts in one go.' },
+            { target: null, title: 'Welcome to Posts', body: 'This is your catalogue of short-form posts across your microblog accounts. To write a new one, head to <strong>Create → New post</strong>.' },
+            { target: '#post-feed', title: 'Recent posts', body: 'Everything you publish lands here, with a per-platform status so you can see what went out where.' },
+        ],
+        'posts-new': [
+            { target: null, title: 'New post', body: 'Compose a short update once and publish it to all your microblog accounts in one go.' },
             { target: '#post-body', title: 'Write your post', body: 'Type your update here. Bluesky caps posts at 300 characters, so keep an eye on the counter.' },
             { target: '.post-compose-row', title: 'Image & rating', body: 'Attach a picture, set the content rating, and watch your live character count — all in this row.' },
             { target: '#post-platforms', title: 'Pick platforms', body: 'Tick which accounts to post to. Bluesky and Mastodon are live; the rest are <em>text-only</em> for now.' },
-            { target: '#post-submit', title: 'Publish it', body: 'Happy with your post? Hit Post to send it to every ticked platform at once.' },
-            { target: '#post-feed', title: 'Recent posts', body: 'Everything you publish lands here, with a per-platform status so you can see what went out where.' },
+            { target: '#post-submit', title: 'Publish it', body: 'Happy with your post? Hit Post to send it to every ticked platform at once. You’ll jump to the feed to see it land.' },
         ],
 
         'analytics': [
@@ -255,7 +258,11 @@ window.Tour = (function () {
         if (p0 === 'collections' && !parts[1]) return 'collections';
         if (p0 === 'accounts' && !parts[1]) return 'accounts';
         if (p0 === 'settings') return 'settings';
-        if (p0 === 'posts') return 'posts';
+        if (p0 === 'posts') {
+            if (parts[1] === 'new') return 'posts-new';   // the composer moved to Create
+            if (!parts[1]) return 'posts';
+            return null;                                    // contacts etc. — no tour
+        }
         if (p0 === 'artwork' && !parts[1]) return 'artwork';
         if (p0 === 'editor' && !parts[1]) return 'editor';
         if (p0 === 'posting') {

@@ -4,6 +4,29 @@ All notable changes to PawPoller are documented here.
 
 ---
 
+## [2.142.0] - 2026-07-17 - Navigation restructure: Create hub + Posts split
+
+The information-architecture reshape (backlog F, Option A): a clear **Create** section, **Posts** becomes view-only, and
+the sidebar is reorganised so *viewing* and *making* are separate. No pages were removed (routes all intact).
+
+- **Create group** now holds every "make new" action: **New Story** (`#/editor`), **New Artwork** (`#/artwork/new`),
+  **New Post** (`#/posts/new`), **Promo Maker** (`#/promo`).
+- **Posts split:** `#/posts` is now a **view-only catalogue/feed**; composing moved to its own page **`#/posts/new`**
+  (`Posts.renderCompose`), reached from Create → New post (and a ＋New post button on the feed). A clean publish redirects
+  to the feed so the new post is visible; a partial failure stays on the composer to retry.
+- **Sidebar reorg:** the old "Publishing" group became **Publish** (Stories · Artwork · Posts · Collections); **Queue**
+  and **History** moved to **Insights & Tools** to declutter. Library (above) remains the unified works catalogue
+  ("Submissions").
+- Housekeeping so nothing points at the old composer location: sidebar active-state (so `#/artwork/new` lights *New
+  Artwork*, not *Artwork*; `#/posts/new` lights *New Post*), the Overview **Quick actions** widget, the **Posts tour**
+  (split into a feed tour + a `posts-new` composer tour), and the **command palette** (added New Story/Artwork/Post +
+  Promo + Posts).
+
+Frontend-only (nav + routing + `posts.js` render split); no backend, backend suite unchanged. `SITE_VERSION` → 2.142.0.
+Deferred (was Option B): merging Library/Stories/Artwork into one hub — left as a future call.
+
+---
+
 ## [2.141.0] - 2026-07-17 - Detail pages: less scrolling (compaction pass)
 
 A conservative density pass on the three detail pages so the key info sits higher and there's less scrolling

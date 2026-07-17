@@ -24,6 +24,12 @@
         { label: 'Overview',           hint: 'Cross-platform dashboard', href: '#/' },
         { label: 'Settings',           hint: 'All preferences',           href: '#/settings' },
         { label: 'Story Editor',       hint: 'Browse and edit stories',   href: '#/editor' },
+        // Create actions (IA 2.142.0)
+        { label: 'New Story',          hint: 'Create — write a story',    href: '#/editor', keywords: 'create write new' },
+        { label: 'New Artwork',        hint: 'Create — upload an image',  href: '#/artwork/new', keywords: 'create upload image art' },
+        { label: 'New Post',           hint: 'Create — compose a post',   href: '#/posts/new', keywords: 'create compose microblog tweet' },
+        { label: 'Promo Maker',        hint: 'Create — excerpt image',    href: '#/promo', keywords: 'create marketing booktok' },
+        { label: 'Posts',              hint: 'Your published posts',      href: '#/posts', keywords: 'microblog feed catalogue' },
         { label: 'Stories Hub',        hint: 'Publishing — story list',   href: '#/posting' },
         { label: 'Posting Queue',      hint: 'Pending uploads',           href: '#/posting/queue' },
         { label: 'Posting History',    hint: 'Audit trail',               href: '#/posting/log' },

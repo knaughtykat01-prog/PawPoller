@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.141.0 — **Detail pages: less scrolling (compaction pass).**
+**Current version (master):** 2.142.0 — **Navigation restructure: Create hub + Posts split.**
+IA reshape (backlog F, Option A): **Create** group = New Story/New Artwork/New Post/Promo Maker; **Posts** is now a
+view-only feed with composing moved to **`#/posts/new`** (`Posts.renderCompose`, redirects to feed on success); sidebar
+"Publishing" → **Publish** (Stories·Artwork·Posts·Collections) with Queue/History moved to Insights & Tools. Library stays
+the unified works catalogue. Also updated: sidebar active-state, Quick-actions widget, Posts tour (split `posts` +
+`posts-new`), command palette. Frontend-only. **Deferred (Option B):** merging Library/Stories/Artwork into one hub.
+
+**Prior — 2.141.0 — Detail pages: less scrolling (compaction pass).**
 Conservative CSS-first density pass (backlog E, "detail poetization / no scrolling"): artwork detail cover column is
 **sticky** (stays in view while reading the right column); story detail info card becomes a **2-col hero** (cover beside
 body) when a cover exists — saves ~a screenful — via `story-detail-info--hascover` + a wide-screen rule (narrow/no-cover

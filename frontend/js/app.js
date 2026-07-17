@@ -839,8 +839,12 @@ const App = {
             /* Story sub-routes (e.g. #/posting/story/...) keep "Stories" lit. */
             if (!active && parts[0] === 'posting' && parts[1] !== 'queue'
                 && parts[1] !== 'log' && href === '#/posting') active = true;
-            /* Artwork sub-routes (#/artwork/new, #/artwork/image/...) keep "Artwork" lit. */
-            if (!active && parts[0] === 'artwork' && href === '#/artwork') active = true;
+            /* Artwork sub-routes keep "Artwork" (Publish) lit — EXCEPT #/artwork/new,
+               which is the Create → New Artwork item (own highlight). */
+            if (!active && parts[0] === 'artwork' && parts[1] !== 'new' && href === '#/artwork') active = true;
+            /* Posts sub-pages (contacts) keep "Posts" (Publish) lit; #/posts/new is
+               the Create → New Post item, so it keeps its own highlight. */
+            if (!active && parts[0] === 'posts' && parts[1] && parts[1] !== 'new' && href === '#/posts') active = true;
             /* Submissions hub sub-routes (#/submissions/discovered, /work/...) keep "Submissions" lit. */
             if (!active && parts[0] === 'submissions' && href === '#/submissions') active = true;
             /* Library (Bookshelf) work sub-routes (#/library/work/...) keep "Library" lit.
@@ -1090,6 +1094,8 @@ const App = {
             if (window.Artwork) window.Artwork.renderIgnored();
         } else if (parts[0] === 'posts' && parts[1] === 'contacts') {
             if (window.Posts) window.Posts.renderContacts();
+        } else if (parts[0] === 'posts' && parts[1] === 'new') {
+            if (window.Posts) window.Posts.renderCompose();
         } else if (parts[0] === 'posts') {
             if (window.Posts) window.Posts.render();
         } else if (parts[0] === 'submissions' && parts[1] === 'discovered') {
@@ -3065,7 +3071,7 @@ const App = {
         const links = [
             { nav: '#/editor', icon: '✍️', label: 'New story' },
             { nav: '#/artwork/new', icon: '\u{1F5BC}️', label: 'New artwork' },
-            { nav: '#/posts', icon: '\u{1F4AC}', label: 'New post' },
+            { nav: '#/posts/new', icon: '\u{1F4AC}', label: 'New post' },
             { nav: '#/library', icon: '\u{1F4DA}', label: 'Library' },
         ];
         return `<div class="dash-quicklinks">` + links.map(l =>
