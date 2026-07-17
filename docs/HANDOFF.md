@@ -1,7 +1,25 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-17
-**Current version (master):** 2.156.0 — **The update popup speaks English now.**
+**Current version (master):** 2.157.0 — **Discovered tweets → Posts.**
+Rhys: *"its all tweets and stuff without images. So for those, they should be imported into posts no?"* — the live
+queue proved it: **62 discovered, 60 with NO image, 54 tweets** (59 `kind: text`). The only import was
+**as-artwork** (downloads an image, mints a folder) → for ~90% of the queue the only workable action was Ignore.
+A tweet is a **post**, and the Posts module already has the shape (`posts.body` + `post_publications` per platform).
+NEW **`posting/post_importer.py`** + `POST /api/posts/import/{platform}/{submission_id}` + `/api/posts/import/
+discovered` (bulk); **→ Posts** button + "Import all N into Posts" bar on the discovered rows. No network call —
+reuses stored metadata (`description` = full text, `title` = truncated display copy → prefers description).
+**account_id is carried** (tweets span KnaughtyKat 12 / KiiKinar 13 / NaughtyKiiKinar 14) so posts land on the right
+persona, not the platform default (the 2.96.0 lumping bug). **CRITICAL:** `get_discovered_unlinked` gained a FOURTH
+exclusion set — **`post_publications`** — because it's a separate registry from `publications`; without it an
+imported tweet would sit in Discovered forever (test covers it). Import is idempotent.
+**Text-only by design:** image-bearing items already have Import→artwork / ★ Master→Masterpiece, so this would mean
+downloading media or silently dropping it. Image → artwork, text → post. Microblog only (`tw/bsky/mast/thr/tum`) —
+a SqW text work / thumbnail-less DA piece is a story/artwork lacking an image, NOT a post. Also killed two dead
+buttons: artwork Import now only renders on rows WITH an image, and the per-platform bulk bar counted every row
+(X offered "Import all 54" when all 54 were text = 54 guaranteed failures). +22 tests.
+
+**Prior — 2.156.0 — The update popup speaks English now.**
 Rhys: *"For the update log, it should just be the simplified version, not so technical."* The in-app What's-new modal
 was rendering the **CHANGELOG entry body verbatim** — so a release popped up talking about `assemble_works` and
 `GetTickCount64()`. Dumbing down CHANGELOG.md was the wrong fix (it's the *engineering* record; HANDOFF +

@@ -295,15 +295,28 @@ window.Submissions = {
                 <p class="muted">Every discovered submission is already linked or imported.</p></div>`;
             return;
         }
-        // Per-platform bulk-import bar.
+        // Per-platform bulk-import bar. Counts only rows that CAN import as
+        // artwork (2.157.0): it counted every row, so X offered "Import all 54"
+        // when all 54 were text tweets with no image to download — 54 guaranteed
+        // failures behind one button.
         const counts = {};
-        this._discItems.forEach(d => { counts[d.platform] = (counts[d.platform] || 0) + 1; });
+        this._discItems.filter(d => this._canImportArt(d))
+            .forEach(d => { counts[d.platform] = (counts[d.platform] || 0) + 1; });
         const bulk = Object.keys(counts).sort().map(p =>
             `<button class="btn" data-bulk="${p}">Import all ${counts[p]} from ${this.esc(this._plat(p).label)}</button>`).join(' ');
-        el.innerHTML = `
+        const artBar = bulk ? `
             <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;">
                 <span class="muted" style="font-size:.85rem;">Bulk import as artwork:</span> ${bulk}
-            </div>
+            </div>` : '';
+        // The text side: microblog posts with no image belong in Posts.
+        const nPosts = this._discItems.filter(d => this._canImportPost(d)).length;
+        const postBar = nPosts ? `
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;">
+                <span class="muted" style="font-size:.85rem;">Text posts (no image):</span>
+                <button class="btn" id="disc-bulk-posts">Import all ${nPosts} into Posts</button>
+            </div>` : '';
+        el.innerHTML = `
+            ${artBar}${postBar}
             ${this._discItems.map((d, i) => this._discRow(d, i)).join('')}`;
         this._discItems.forEach((_d, i) => {
             const lbtn = document.getElementById(`disc-link-btn-${i}`);
@@ -314,9 +327,13 @@ window.Submissions = {
             if (gbtn) gbtn.addEventListener('click', () => this._ignoreOne(i));
             const mbtn = document.getElementById(`disc-master-btn-${i}`);   // art rows only
             if (mbtn) mbtn.addEventListener('click', () => this._masterOne(i));
+            const pbtn = document.getElementById(`disc-post-btn-${i}`);     // text microblog only
+            if (pbtn) pbtn.addEventListener('click', () => this._postOne(i));
         });
         document.querySelectorAll('#disc-list [data-bulk]').forEach(b =>
             b.addEventListener('click', () => this._importAll(b.dataset.bulk)));
+        const bp = document.getElementById('disc-bulk-posts');
+        if (bp) bp.addEventListener('click', () => this._importAllPosts());
     },
 
     async _importAll(platform) {
@@ -373,10 +390,71 @@ window.Submissions = {
                     ${opts}
                 </select>
                 <button class="btn btn-primary" id="disc-link-btn-${i}">Link</button>
-                <button class="btn" id="disc-import-btn-${i}" title="Download the image + metadata as a new artwork">Import</button>
+                ${this._canImportArt(d) ? `<button class="btn" id="disc-import-btn-${i}" title="Download the image + metadata as a new artwork">Import</button>` : ''}
+                ${this._canImportPost(d) ? `<button class="btn" id="disc-post-btn-${i}" title="Bring this in as a post — it's a microblog post with no image, so there's no artwork to make">→ Posts</button>` : ''}
                 ${this._canMaster(d) ? `<button class="btn" id="disc-master-btn-${i}" title="Promote to a Masterpiece — the master record for this image">★ Master</button>` : ''}
                 <button class="btn" id="disc-ignore-btn-${i}" title="Hide this — not something you want here (e.g. an image from a tweet). Reversible from the Ignored view.">🚫 Ignore</button>
             </div>`;
+    },
+
+    /* Import-as-artwork downloads an image and mints an artwork folder, so it
+     * needs an image. It used to show on EVERY row (2.157.0) — including the 54
+     * text tweets, where there was nothing to download and the button could only
+     * fail. Image → artwork; text → post (below); neither → Link or Ignore. */
+    _canImportArt(d) {
+        return !!d && !!d.thumbnail_url;
+    },
+
+    /* A tweet is a POST, not an artwork. Microblog platforms only: a SquidgeWorld
+     * text work or a thumbnail-less DeviantArt piece is a story/artwork that
+     * happens to lack an image, NOT a post. Mirrors post_importer's gate. */
+    _MICROBLOG: ['tw', 'bsky', 'mast', 'thr', 'tum'],
+    _canImportPost(d) {
+        return !!d && this._MICROBLOG.includes(d.platform)
+            && !d.thumbnail_url && d.kind !== 'art';
+    },
+
+    /* Bulk: every discovered text post → Posts. Refetches rather than splicing —
+     * a batch can partially fail, and the server's exclusion set is the truth
+     * about what's left in the queue. */
+    async _importAllPosts() {
+        const b = document.getElementById('disc-bulk-posts');
+        if (b) { b.disabled = true; b.textContent = 'Importing…'; }
+        try {
+            const r = await API.importDiscoveredPosts();
+            const bits = [`imported ${r.imported}`];
+            if (r.skipped) bits.push(`${r.skipped} already in`);
+            if (r.failed) bits.push(`${r.failed} failed`);
+            this._toast(r.imported ? 'success' : (r.failed ? 'warn' : 'info'),
+                `Posts: ${bits.join(', ')}`);
+            const disc = await API.getDiscovered();
+            this._discItems = (disc && disc.discovered) || [];
+            this._paintDiscovered();
+        } catch (err) {
+            if (b) { b.disabled = false; b.textContent = 'Import all into Posts'; }
+            this._toast('error', 'Import failed: ' + (err.message || err));
+        }
+    },
+
+    /* Import one discovered text post into the Posts module. Idempotent server-
+     * side; the row leaves the queue because its post_publications row is one of
+     * the discovered exclusion sets. */
+    async _postOne(i) {
+        const d = this._discItems[i];
+        if (!d) return;
+        const btn = document.getElementById(`disc-post-btn-${i}`);
+        const orig = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = 'Importing…'; }
+        try {
+            const r = await API.importDiscoveredPost(d.platform, d.submission_id);
+            this._toast(r.status === 'skipped' ? 'info' : 'success',
+                r.status === 'skipped' ? 'Already in Posts' : 'Imported into Posts');
+            this._discItems.splice(i, 1);
+            this._paintDiscovered();
+        } catch (err) {
+            if (btn) { btn.disabled = false; btn.textContent = orig; }
+            this._toast('error', 'Import failed: ' + (err.message || err));
+        }
     },
 
     /* A Masterpiece is the master record for ONE IMAGE, so the row needs an image

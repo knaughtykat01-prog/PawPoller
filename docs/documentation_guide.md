@@ -6372,6 +6372,38 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   - Guarded by the same 50 MB cap + `IMAGE_EXTENSIONS` allowlist as the artwork uploader; 404 on an unknown name.
 
 
+## 20.12 Discovered posts → the Posts module (2.157.0)
+
+**`posting/post_importer.py`** — the text-side mirror of `artwork_importer`. The discovered queue only ever
+offered **import-as-artwork** (download an image → mint an artwork folder), but the live queue was **62 items,
+60 with no image, 54 of them tweets**: for ~90% of it there was nothing to download and no workable action but
+Ignore. A tweet is a **post**, and the Posts module already has the shape for one (`posts.body` +
+a `post_publications` row per platform), so this imports the poller's own stored row into it.
+
+- `POST /api/posts/import/{platform}/{submission_id}` (one) and `POST /api/posts/import/discovered` (bulk).
+  Declared **before** the generic `/{post_id}` routes so their literal segments aren't shadowed.
+- **No network call** — reuses stored poller metadata. `description` holds the full post text while `title` is
+  usually a truncated display copy, so it prefers `description` and falls back to `title`.
+- **`account_id` is carried through.** Every poller row records the account it was found under; the tweets span
+  three (KnaughtyKat / KiiKinar / NaughtyKiiKinar). Dropping it is what made every import land on the platform
+  default and lump the personas together until 2.96.0 — see `artwork_importer`, which carries it for the same reason.
+- **Idempotent.** `already_imported()` looks up `post_publications` by `(platform, external_id)` and returns the
+  existing `post_id` instead of minting a duplicate.
+
+**The exclusion set is the load-bearing part.** `get_discovered_unlinked` excluded `publications`, Masterpiece
+members and ignores. `post_publications` is a **separate registry** (`posts_schema.sql` is deliberately not the
+story/artwork `publications` model — a post has no title/chapters/file), so an imported post matches none of those
+and would sit in the queue forever. It's now a fourth exclusion set. `tests/test_post_importer.py` asserts the item
+is in the queue before the import and gone after.
+
+**Text-only, deliberately.** Image-bearing items already have a home (Import → artwork, ★ Master → Masterpiece);
+importing them here would mean either downloading media into `posts_media/` or silently dropping the image. The gate
+(`is_importable_post`, mirrored client-side by `Submissions._canImportPost`) is *microblog platform*
+(`MICROBLOG_PLATFORMS = tw/bsky/mast/thr/tum`) **and** no image **and** not `kind == "art"`. The platform check
+matters: a SquidgeWorld text work or a thumbnail-less DeviantArt piece is a story/artwork that happens to lack an
+image, **not** a post.
+
+
 ## 20.11 One works hub — the Library (2.155.0, backlog L)
 
 **The Library (`#/library`, `frontend/js/bookshelf.js`) is the single hub for your works.** It had

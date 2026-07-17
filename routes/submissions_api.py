@@ -304,11 +304,14 @@ def build_discovered(platform_rows: list[tuple], linked: set) -> list[dict]:
 def get_discovered_unlinked(conn, platform_filter: str | None = None) -> list[dict]:
     """Discovered submissions (across platforms) with no publication link.
 
-    Excludes three sets of (platform, submission_id):
+    Excludes four sets of (platform, submission_id):
       • already published/linked (a real publication exists),
       • Masterpiece members — a piece bundled into a Masterpiece must not reappear
         as a duplicate discovered tile (dedup, 2.140.0),
-      • user-ignored tiles (the Ignore list, 2.140.0).
+      • user-ignored tiles (the Ignore list, 2.140.0),
+      • posts imported into the Posts module (2.157.0) — `post_publications` is a
+        separate registry from `publications` (a post has no title/chapters/file),
+        so without this an imported tweet would sit in the queue forever.
     """
     from posting.sync import PLATFORM_TABLES
     from database import masterpiece_queries, ignored_queries
@@ -321,6 +324,11 @@ def get_discovered_unlinked(conn, platform_filter: str | None = None) -> list[di
     # both the hub and any other consumer of this list get a clean result.
     linked |= masterpiece_queries.all_member_pairs(conn)
     linked |= ignored_queries.all_ignored_pairs(conn)
+    linked |= {
+        (r["platform"], str(r["external_id"]))
+        for r in conn.execute(
+            "SELECT platform, external_id FROM post_publications WHERE external_id != ''")
+    }
     platform_rows: list[tuple] = []
     for plat, cfg in PLATFORM_TABLES.items():
         if platform_filter and plat != platform_filter:

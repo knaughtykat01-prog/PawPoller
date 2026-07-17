@@ -766,6 +766,12 @@ const API = {
     },
     importBulk(platform) { return this.post(`/api/artwork/import/bulk/${platform}`); },
     importDiscoveredArt() { return this.post('/api/artwork/import/discovered-art'); },
+    /* Discovered TEXT posts → the Posts module (2.157.0). The artwork import
+       above downloads an image; these have none — a tweet is a post. */
+    importDiscoveredPost(platform, submissionId) {
+        return this.post(`/api/posts/import/${platform}/${encodeURIComponent(submissionId)}`);
+    },
+    importDiscoveredPosts() { return this.post('/api/posts/import/discovered'); },
 
     /* ── Artwork Hub ──────────────────────────────────────────── */
     getArtworks() { return this.get('/api/artwork/images'); },

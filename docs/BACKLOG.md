@@ -34,10 +34,13 @@ split, Option A (**2.142**).
 | L2 | **Excise the retired hubs' dead code** | ⚪ | `Posting.renderUpload`, `Artwork.render` (+ ~400 lines of hub-only helpers) and `Submissions.render` are unreachable but still present — `Artwork`'s are the port source for L1. Each verified reachable *only* from its own dead hub block, so removal is safe once L1 is settled |
 | M | ~~**Auto-link on import**~~ | 🟢 **DONE 2.151** | ★ Master pre-checks the hash vs Masterpiece heroes (`GET /api/masterpieces/match`) and **offers** to link into the existing one. Deliberately a prompt, not automatic — SFW/NSFW edits hash identically |
 
+| R | ~~**Discovered is all imageless tweets — those should import into Posts**~~ | 🟢 **DONE 2.157** | Confirmed on live data: 62 discovered, **60 with no image, 54 tweets**. Only import was as-*artwork* (needs an image) → Ignore was the only workable action for ~90% of the queue. New `post_importer` + **→ Posts** button + bulk bar; carries `account_id` so posts land on the right persona; `post_publications` added as a 4th discovered-exclusion set so imports actually leave the queue. Text-only by design (image → artwork, text → post) |
+
 ## 🔴 Bugs
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
+| S | ~~Discovered offered **artwork Import on text rows** (and "Import all 54" for X)~~ | 🟢 **FIXED 2.157** | Import-as-artwork downloads an image — on the 54 text tweets it could only fail. Now only renders on rows WITH an image; the per-platform bulk bar counts importable-as-art rows only and hides when there are none |
 | N | ~~**SoFurry not grabbing thumbnails/images**~~ | 🟢 **FIXED 2.146** | `get_submission_detail` never extracted the image from the `.data` payload (`thumbnail_url` hard-coded `""`). Now pulls the `/submissions/thumbnails/` CDN URL. Force an SF poll to backfill. |
 
 ## ⚪ Deferred / future

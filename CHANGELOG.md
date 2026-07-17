@@ -12,6 +12,48 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.157.0] - 2026-07-18 - Discovered tweets can go into Posts where they belong
+
+> Your Discovered list was mostly tweets with no picture, and the only thing you could do with them was "Import" —
+> which makes an artwork, so it had nothing to work with. Text posts now have a **→ Posts** button (and an
+> "Import all into Posts") that brings them in as posts, under the right account. The artwork Import only shows on
+> items that actually have an image now, so it can't be clicked in vain.
+
+Rhys: *"looking at the discovered. its all tweets and stuff without images. So for those, they should be imported
+into posts no?"* — yes. The live queue backed it up exactly: of **62 discovered items, 60 had no image and 54 were
+tweets** (59 were `kind: text`).
+
+The queue only ever offered **import-as-artwork**, which downloads an image and mints an artwork folder. With no
+image there's nothing to download, so for ~90% of the queue the only workable action was Ignore. A tweet is a
+**post** — and the Posts module already has exactly the right shape (`posts.body` + a `post_publications` row per
+platform), so this imports the poller's own row into it. The text-side mirror of `artwork_importer`.
+
+- **NEW `posting/post_importer.py`** + `POST /api/posts/import/{platform}/{submission_id}` and
+  `POST /api/posts/import/discovered` (bulk). No network call — it reuses metadata the pollers already stored.
+  `description` is the full text (`title` is often the truncated display copy), so it prefers description and falls
+  back to title.
+- **The account comes with it.** Each poller row carries the `account_id` it was found under, and the tweets span
+  three (**KnaughtyKat 12 / KiiKinar 13 / NaughtyKiiKinar 14**). Carrying it through is what keeps an imported post
+  on the right persona instead of every one landing on the platform default — the bug that lumped the personas
+  together until 2.96.0.
+- **Imported posts leave the queue.** `get_discovered_unlinked` excluded `publications`, Masterpiece members and
+  ignores — but `post_publications` is a **separate registry** (a post has no title/chapters/file), so without
+  adding it as a fourth exclusion set an imported tweet would have sat in Discovered forever. Test covers exactly
+  this. Import is idempotent from both directions.
+- **Text-only by design.** Image-bearing items already have a home (Import → artwork, ★ Master → Masterpiece), so
+  importing those here would mean either downloading media into `posts_media/` or silently dropping the image.
+  Image → artwork, text → post: no overlap, nothing lost. Microblog platforms only (`tw/bsky/mast/thr/tum`) — a
+  SquidgeWorld text work or a thumbnail-less DeviantArt piece is a story/artwork that lacks an image, not a post.
+
+**Two dead buttons removed while in there.** Import-as-artwork now only renders on rows that *have* an image. And
+the per-platform bulk bar counted **every** row, so X offered *"Import all 54"* when all 54 were text tweets with
+nothing to download — 54 guaranteed failures behind one button. It now counts only importable-as-art rows and hides
+when there are none.
+
++22 tests.
+
+---
+
 ## [2.156.0] - 2026-07-17 - The update popup speaks English now
 
 > The "What's new" box that appears after an update was showing you the developer notes — function names, routes,

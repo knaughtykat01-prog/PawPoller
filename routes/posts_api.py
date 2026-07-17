@@ -122,6 +122,47 @@ def delete_contact(contact_id: int):
         conn.close()
 
 
+# ── Import discovered microblog posts (2.157.0) ───────────────────────────────
+# Declared BEFORE the generic `/{post_id}` routes so their literal path segments
+# aren't shadowed — same ordering rule the artwork + masterpieces routers follow.
+#
+# The discovered queue was mostly text tweets, and its only import made an
+# *artwork* (downloads an image, mints an artwork folder) — meaningless for a
+# post with no image. See posting/post_importer.py for the reasoning.
+
+@posts_router.post("/import/discovered")
+def import_all_discovered_posts():
+    """Import every discovered text post across the microblog platforms.
+
+    One-click "bring my polled posts in". Per-item failures are collected, not
+    fatal. Imported items leave the discovered queue (their `post_publications`
+    row is one of its exclusion sets).
+    """
+    from posting import post_importer
+    try:
+        return post_importer.import_all_discovered_posts()
+    except Exception as e:
+        logger.error("Bulk post import failed: %s", e, exc_info=True)
+        raise HTTPException(500, detail=str(e))
+
+
+@posts_router.post("/import/{platform}/{submission_id}")
+def import_discovered_post(platform: str, submission_id: str):
+    """Import ONE discovered microblog submission as a local post.
+
+    Idempotent — re-importing returns the existing post rather than duplicating.
+    """
+    from posting import post_importer
+    try:
+        return post_importer.import_post(platform, submission_id)
+    except ValueError as e:
+        raise HTTPException(400, detail=str(e))
+    except Exception as e:
+        logger.error("Post import failed for %s/%s: %s", platform, submission_id, e,
+                     exc_info=True)
+        raise HTTPException(500, detail=str(e))
+
+
 @posts_router.get("/{post_id}")
 def get_post(post_id: int):
     conn = get_connection()
