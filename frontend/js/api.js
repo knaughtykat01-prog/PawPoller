@@ -202,6 +202,18 @@ const API = {
     setMasterpieceStatus(name, status) {
         return this.post(`/api/masterpieces/${encodeURIComponent(name)}/status`, { status });
     },
+    // Variants (2.158.0): fold another Masterpiece in as a labeled variant (stats kept),
+    // declare an existing folder image as a variant, demote one, attribute a member.
+    mergeAsVariant(body) { return this.post('/api/masterpieces/merge-as-variant', body); },
+    declareMasterpieceVariant(name, body) {
+        return this.post(`/api/masterpieces/${encodeURIComponent(name)}/variants`, body);
+    },
+    deleteMasterpieceVariant(name, key) {
+        return this.del(`/api/masterpieces/${encodeURIComponent(name)}/variants/${encodeURIComponent(key)}`);
+    },
+    setMasterpieceMemberVariant(name, body) {
+        return this.patch(`/api/masterpieces/${encodeURIComponent(name)}/members/variant`, body);
+    },
 
     // "What's new" changelog since the version this browser last saw (update popup).
     getWhatsNew(since) { return this.get('/api/whatsnew', { since: since || '' }); },

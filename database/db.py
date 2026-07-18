@@ -733,6 +733,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
                 account_id       INTEGER,
                 role             TEXT DEFAULT 'crosspost',
                 linked_via       TEXT DEFAULT 'manual',
+                variant_key      TEXT NOT NULL DEFAULT '',
                 added_at         TEXT DEFAULT (datetime('now')),
                 PRIMARY KEY (masterpiece_name, platform, submission_id)
             );
@@ -741,6 +742,17 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             CREATE INDEX IF NOT EXISTS idx_mp_members_name
                 ON masterpiece_members(masterpiece_name);
         """)
+
+    # Variant attribution (2.158.0, spec docs/specs/masterpiece_variants.md):
+    # which VARIANT of the piece a site-upload is (SFW/NSFW, censored/clean...).
+    # '' = primary/unattributed. Per-variant stats = the normal member rollup
+    # filtered by this key; cohort totals = all members (unchanged). The variant
+    # definitions themselves live in masterpiece.json ("variants" list).
+    try:
+        conn.execute("ALTER TABLE masterpiece_members ADD COLUMN variant_key TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
 
     # ── Ignored discovered submissions (2.140.0) ────────────────
     # A user "Ignore" list for discovered artwork tiles they never want in the

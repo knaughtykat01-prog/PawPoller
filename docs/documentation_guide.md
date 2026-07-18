@@ -6350,6 +6350,27 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   The discovered-tile counterpart is the Ignore list (2.140, `ignored_submissions`) — Ignore is for *unpromoted*
   discovered art, Junk is for *Masterpiece records*.
 
+- **Variants (2.158.0) — one piece, several renders, per-variant stats.** Spec
+  `docs/specs/masterpiece_variants.md`. Definitions in `masterpiece.json` `"variants": [{key,label,image,
+  rating}]` (images share the folder — declared 2.152 alts, effectively); attribution on
+  `masterpiece_members.variant_key` (''=primary, guarded migration). Per-variant stats are the ordinary
+  member rollup filtered by key — `rollup_members(conn, name, variant_key)` — so the cohort totals (no
+  filter) are untouched by construction. Ways in: `POST /api/masterpieces/merge-as-variant` (fold a whole
+  Masterpiece in as a labeled variant: image copied to the keeper's folder, members re-keyed KEEPING their
+  stats, record deleted — `mq.merge_as_variant`; the dup-finder's third button "🖇 Variants of one piece"),
+  `POST /{name}/variants` (declare an existing folder image), `DELETE /{name}/variants/{key}` (demote;
+  members re-key to ''), `PATCH /{name}/members/variant` (attribute one upload). The hero stays the ONLY
+  posting/pHash image. UI: the detail head is a stage (giant blurred `.mp-stage-bg` backdrop following the
+  focused variant) and the gallery strip renders labeled chips + a per-variant stats line.
+
+- **Showcase (2.158.0) — the Library's OPT-IN XMB view.** `frontend/js/showcase.js` (`window.Showcase`): two
+  animated shelves (Stories / Artwork-Masterpieces) with PS3-XMB navigation and an ambient art backdrop.
+  **Never forced**: bare `#/library` opens in the last-chosen view — `localStorage['pp_library_view']`
+  (`classic` default / `shelves`); classic's ▤ Shelf view and the Showcase's ✕ Classic view (or Esc) switch
+  AND persist the choice. `#/library/browse` is the always-classic route (`switchType('all')` writes it;
+  every `type/sort/work/discovered` deep-link still lands classic). Listeners are epoch-guarded so stale
+  key/wheel handlers self-remove after navigation. Reduced-motion respected (`.sc-*` in `masterpieces.css`).
+
 - **Detail gallery (2.152.0) — multi-image sets.** A Masterpiece folder can hold more than one image (multi-image
   tweet sets recovered from `tw_submissions.media_urls`, SFW/NSFW variants preserved by dupe merges) as
   `image_N.ext` beside the hero. `GET /api/masterpieces/{name}` returns `images: [...]` (every

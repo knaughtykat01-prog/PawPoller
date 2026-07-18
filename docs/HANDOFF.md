@@ -1,7 +1,22 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-17
-**Current version (master):** 2.157.1 — **→ Posts button fix for Bluesky/Mastodon.**
+**Last updated:** 2026-07-19
+**Current version (master):** 2.158.0 — **Masterpiece VARIANTS + the two XMB showcase views (backlog S).**
+One piece, several renders: `masterpiece.json` `variants` list + `masterpiece_members.variant_key` (guarded
+migration) → per-variant stats via `rollup_members(..., variant_key)`, cohort totals unchanged. New endpoints:
+`POST /merge-as-variant` (fold a Masterpiece in as a labeled variant — members re-key KEEPING their stats; the
+"different renders" sibling of 2.144's merge), `POST/DELETE /{name}/variants[/{key}]`, `PATCH /{name}/members/variant`;
+dup finder gains **🖇 Variants of one piece**. UI in Rhys's two chosen placements: (1) the piece detail is a
+**stage** — giant blurred translucent art backdrop (`.mp-stage-bg`) + labeled variant chips w/ per-variant stats;
+(2) **the Library gains an OPT-IN Showcase view** (`showcase.js`) — two XMB shelves (Stories top / Artwork below,
+←→ glide, ↑↓ shelf switch, Enter opens, ambient backdrop), per-shelf ⛶ Open shelf → classic grid. **A choice, not a
+takeover (Rhys's call):** bare `#/library` opens in the last-chosen view (`localStorage['pp_library_view']`, default
+classic); ▤ Shelf view / ✕ Classic view (or Esc) switch and persist. All old deep-links land classic;
+`switchType('all')` writes always-classic `#/library/browse`. Spec `docs/specs/masterpiece_variants.md`; approved
+mockups `art_audit/mockup_piece_view.html` + `mockup_library_shelves.html` (PawPoller-token themed). +6 tests.
+**NEXT (spec §4):** import the ~130 new collection pieces as Masterpieces (variant families → one cohort each).
+
+**Prior — 2.157.1 — → Posts button fix for Bluesky/Mastodon.**
 Checking 2.157.0 against the LIVE queue (not trusting it) showed 55/61 offered → Posts but a bsky + a mast item fell
 to "neither". Cause: `classify_kind` lists `"post"` among ART hints (so image-bearing microblog posts are catchable
 by artwork import) → **every** Bluesky post is `kind:"art"`. The 2.157.0 gate's `kind != "art"` clause hid the button

@@ -12,6 +12,47 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.158.0] - 2026-07-19 - Masterpiece variants + the animated showcase views
+
+> One artwork can now hold **labeled variants** (SFW/NSFW, censored/clean, dedication…) — each variant's
+> uploads track their own stats while the piece keeps one combined total. And two new animated views: the
+> piece page gets a glowing full-art backdrop with click-to-swap variant chips, and the Library gains an
+> **optional PS3-style shelf view** — hit **▤ Shelf view** to glide through Stories and Artwork with the
+> arrow keys or wheel. It's a choice, not a takeover: the Library opens in whichever view you last used
+> (classic grid by default; ✕ Classic view or Esc switches back).
+
+Rhys's spec (docs/specs/masterpiece_variants.md), deployed in his two chosen placements.
+
+### Variants (backend)
+- `masterpiece_members.variant_key` (guarded migration; ``''``=primary). Definitions live in
+  `masterpiece.json` `"variants": [{key,label,image,rating}]` — variant images share the piece's folder.
+- Per-variant stats = the member rollup filtered by key (`rollup_members(..., variant_key)`); **cohort totals
+  unchanged** (all members). `GET /{name}` returns `variants` with per-variant totals + member counts.
+- New endpoints: `POST /merge-as-variant` {keep,absorb,key,label} — folds another Masterpiece in as a labeled
+  variant (image copied in, members re-keyed keeping their stats, record removed — the "different renders"
+  sibling of 2.144's identical-image merge); `POST /{name}/variants` (declare an existing folder image);
+  `DELETE /{name}/variants/{key}` (demote to plain alt; members re-key to primary);
+  `PATCH /{name}/members/variant` (attribute a site-upload).
+- The dup finder gains a third option: **🖇 Variants of one piece** (per-absorbed label prompts).
+
+### Placement 1 — the piece view (#/masterpieces/{name})
+The detail head is now a **stage**: a giant blurred translucent copy of the focused image floats behind
+everything (`.mp-stage-bg`, follows variant switches), and the 2.152 gallery strip became **labeled variant
+chips** with a per-variant stats line (falls back to unlabeled folder images when none are declared).
+
+### Placement 2 — the Library (#/library), as an OPTION
+New **Showcase view** (`frontend/js/showcase.js`): two animated shelves — Stories on top, Artwork
+underneath — XMB navigation (←→ glide, ↑↓/click switches shelf, Enter/click opens, wheel scrolls), ambient
+art backdrop, per-shelf **⛶ Open shelf** (→ classic grid filtered to that type). **Opt-in, last-choice
+remembered**: bare `#/library` renders whichever view was last chosen (`localStorage['pp_library_view']`,
+default `classic`); classic's **▤ Shelf view** and the Showcase's **✕ Classic view**/Esc switch AND persist.
+Every existing deep-link (`type/sort/work/discovered`) still lands on the classic grid;
+`Bookshelf.switchType('all')` writes the always-classic `#/library/browse`. Respects `prefers-reduced-motion`.
+
+Tests: `tests/test_masterpiece_variants.py` (6).
+
+---
+
 ## [2.157.1] - 2026-07-18 - Bluesky and Mastodon posts get the → Posts button too
 
 > Fix: the new **→ Posts** button was missing on imageless Bluesky and Mastodon posts. It's there now.

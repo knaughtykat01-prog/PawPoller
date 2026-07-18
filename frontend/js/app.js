@@ -1155,12 +1155,23 @@ const App = {
         } else if (parts[0] === 'library' && parts[1] === 'work' && parts[2]) {
             // Work name may contain slashes — rejoin the tail.
             if (window.Bookshelf) window.Bookshelf.renderWork(parts.slice(2).join('/'));
-        } else if (parts[0] === 'library') {
-            // Bare #/library means the whole shelf. Reset the segment explicitly:
-            // _type is module state that survives navigation, so without this,
-            // arriving from #/masterpieces or #/library/type/artwork would land
-            // you on that segment while the URL claims you're on the full shelf.
+        } else if (parts[0] === 'library' && parts[1] === 'browse') {
+            // The CLASSIC full grid (filters/search/sorts) — the Showcase's
+            // "✕ Classic view" target. Reset the segment (see bare-route note).
             if (window.Bookshelf) { window.Bookshelf._type = 'all'; window.Bookshelf.render(); }
+        } else if (parts[0] === 'library') {
+            // Bare #/library opens in the view the user LAST CHOSE (2.158.0):
+            // classic grid by default; the Showcase shelves once they've hit
+            // "▤ Shelf view" (and "✕ Classic view" switches back). The choice
+            // persists per-browser in localStorage — an option, never forced.
+            let pref = 'classic';
+            try { pref = localStorage.getItem('pp_library_view') || 'classic'; } catch { /* default */ }
+            if (pref === 'shelves' && window.Showcase) {
+                window.Showcase.renderLibrary();
+            } else if (window.Bookshelf) {
+                window.Bookshelf._type = 'all';
+                window.Bookshelf.render();
+            }
         } else if (parts[0] === 'laurels') {
             if (window.Laurels) window.Laurels.render();
         } else if (parts[0] === 'ledger') {

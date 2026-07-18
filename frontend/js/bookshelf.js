@@ -84,6 +84,8 @@ window.Bookshelf = {
                     carries its own truth: where it's live, and where it isn't yet.</p>
                 </div>
                 <div class="shelf-topbar-actions">
+                    <button class="btn btn-secondary btn-sm" id="shelf-view-btn" type="button"
+                        title="Switch to the animated shelf view — the Library will open there until you switch back">▤ Shelf view</button>
                     <a class="btn btn-secondary shelf-laurels" href="#/laurels" title="Your milestones, medals and trophies">
                         <span aria-hidden="true">🏅</span> Laurels
                     </a>
@@ -94,6 +96,17 @@ window.Bookshelf = {
             <div id="shelf-discovered"></div>
             <div id="shelf-controls"></div>
             <div id="shelf-grid"><div class="loading-spinner">Loading your shelf…</div></div>`;
+
+        // "▤ Shelf view" — switch to the Showcase AND remember it as the
+        // Library's opening view (2.158.0; "✕ Classic view" remembers back).
+        const shelfBtn = document.getElementById('shelf-view-btn');
+        if (shelfBtn) shelfBtn.addEventListener('click', () => {
+            try { localStorage.setItem('pp_library_view', 'shelves'); } catch { /* still switches */ }
+            if (window.Showcase) {
+                try { history.replaceState(null, '', '#/library'); } catch { /* non-fatal */ }
+                window.Showcase.renderLibrary();
+            }
+        });
 
         let data;
         try {
@@ -230,7 +243,9 @@ window.Bookshelf = {
         if (!this.TYPES.includes(t)) return;
         this._type = t;
         try {
-            const url = t === 'all' ? '#/library' : `#/library/type/${t}`;
+            // 'all' writes /browse, not bare #/library — the bare route is the
+            // Showcase shelves (2.158.0); this keeps refreshes on the classic grid.
+            const url = t === 'all' ? '#/library/browse' : `#/library/type/${t}`;
             history.replaceState(null, '', url);
         } catch { /* non-fatal — the segment still switches */ }
         this._renderControls();

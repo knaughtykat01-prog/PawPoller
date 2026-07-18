@@ -59,27 +59,76 @@ def statuses(conn: sqlite3.Connection) -> dict[str, str]:
     return {r[0]: (r[1] or "") for r in conn.execute("SELECT name, status FROM masterpieces")}
 
 
-def get_members(conn: sqlite3.Connection, name: str) -> list[dict]:
-    return [dict(r) for r in conn.execute(
-        "SELECT masterpiece_name, platform, submission_id, account_id, role, "
-        "linked_via, added_at FROM masterpiece_members "
-        "WHERE masterpiece_name = ? ORDER BY added_at, platform", (name,)).fetchall()]
+def get_members(conn: sqlite3.Connection, name: str,
+                variant_key: str | None = None) -> list[dict]:
+    """Members of a Masterpiece; pass ``variant_key`` to filter to one variant
+    (''=primary/unattributed). None = the whole cohort (default, unchanged)."""
+    sql = ("SELECT masterpiece_name, platform, submission_id, account_id, role, "
+           "linked_via, variant_key, added_at FROM masterpiece_members "
+           "WHERE masterpiece_name = ?")
+    params: list = [name]
+    if variant_key is not None:
+        sql += " AND variant_key = ?"
+        params.append(variant_key)
+    sql += " ORDER BY added_at, platform"
+    return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
 def add_member(conn: sqlite3.Connection, name: str, platform: str, submission_id,
                *, account_id: int | None = None, role: str = "crosspost",
-               linked_via: str = "manual") -> None:
+               linked_via: str = "manual", variant_key: str = "") -> None:
     """Link one platform upload to a Masterpiece (idempotent on the PK). Ensures
     the name is indexed first so a Masterpiece always has an index row."""
     ensure_indexed(conn, name)
     conn.execute(
         "INSERT OR IGNORE INTO masterpiece_members "
-        "(masterpiece_name, platform, submission_id, account_id, role, linked_via) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "(masterpiece_name, platform, submission_id, account_id, role, linked_via, variant_key) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (name, platform, str(submission_id), account_id, role or "crosspost",
-         linked_via or "manual"))
+         linked_via or "manual", variant_key or ""))
     conn.execute("UPDATE masterpieces SET updated_at = datetime('now') WHERE name = ?",
                  (name,))
+
+
+def set_member_variant(conn: sqlite3.Connection, name: str, platform: str,
+                       submission_id, variant_key: str) -> None:
+    """Attribute an existing member to a variant (''=primary)."""
+    conn.execute(
+        "UPDATE masterpiece_members SET variant_key = ? WHERE masterpiece_name = ? "
+        "AND platform = ? AND submission_id = ?",
+        (variant_key or "", name, platform, str(submission_id)))
+
+
+def clear_variant_members(conn: sqlite3.Connection, name: str, variant_key: str) -> None:
+    """Re-key a deleted variant's members back to primary ('')."""
+    conn.execute(
+        "UPDATE masterpiece_members SET variant_key = '' WHERE masterpiece_name = ? "
+        "AND variant_key = ?", (name, variant_key))
+
+
+def merge_as_variant(conn: sqlite3.Connection, keep: str, absorb: str,
+                     variant_key: str) -> int:
+    """Fold ``absorb`` into ``keep`` as a VARIANT: members move over carrying
+    ``variant_key`` (their stats stay attributed to that variant), and absorb's
+    index row is removed. Unlike :func:`merge_masterpieces` (same image, amnesia)
+    this is for different renders of one piece — nothing is discarded except
+    PK-colliding members already on ``keep``. Returns members moved. The caller
+    handles the on-disk side (copy absorb's image into keep's folder + append
+    the variants entry in masterpiece.json) before deleting absorb's folder."""
+    ensure_indexed(conn, keep)
+    moved = 0
+    for m in get_members(conn, absorb):
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO masterpiece_members "
+            "(masterpiece_name, platform, submission_id, account_id, role, linked_via, variant_key) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (keep, m["platform"], m["submission_id"], m["account_id"],
+             m["role"], m["linked_via"], variant_key or ""))
+        moved += cur.rowcount
+    conn.execute("DELETE FROM masterpiece_members WHERE masterpiece_name = ?", (absorb,))
+    conn.execute("DELETE FROM masterpieces WHERE name = ?", (absorb,))
+    conn.execute("UPDATE masterpieces SET updated_at = datetime('now') WHERE name = ?", (keep,))
+    return moved
 
 
 def remove_member(conn: sqlite3.Connection, name: str, platform: str, submission_id) -> None:
@@ -160,16 +209,17 @@ def all_member_pairs(conn: sqlite3.Connection) -> set[tuple]:
 
 # ── Rollup ───────────────────────────────────────────────────────
 
-def rollup_members(conn: sqlite3.Connection, name: str) -> dict:
+def rollup_members(conn: sqlite3.Connection, name: str,
+                   variant_key: str | None = None) -> dict:
     """Resolve a Masterpiece's members into live locations and pool the stats.
 
     Mirrors collections_queries.rollup_collection: sum non-None metrics, union
     tags, collect the personas + platforms spanned. Returns pooled data ONLY —
     the canonical masterpiece.json (title/desc/rating/characters) is merged in by
-    the API layer. In Phase 1 members are usually empty (no promote flow yet), so
-    this returns zeroed totals for a freshly-indexed name — expected."""
+    the API layer. ``variant_key`` filters the rollup to ONE variant's members
+    (2.158.0 — per-variant stats); None = the whole cohort, unchanged."""
     a2p = _acct_to_persona(conn)
-    members = get_members(conn, name)
+    members = get_members(conn, name, variant_key)
 
     locations: list[dict] = []
     for m in members:

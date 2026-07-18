@@ -176,6 +176,156 @@ def merge_masterpieces_ep(body: dict):
     return {"status": "merged", "keep": keep, "dropped": drop, "members_moved": moved}
 
 
+# ── Variants (2.158.0, spec docs/specs/masterpiece_variants.md) ──────────────
+# One piece of art, several renders (SFW/NSFW, censored/clean, dedication...).
+# Definitions live in masterpiece.json "variants"; site-uploads carry
+# masterpiece_members.variant_key so each variant's stats track separately while
+# the cohort total stays the plain all-members rollup.
+
+_VARIANT_KEY_RE = re.compile(r"^[a-z0-9_\-]{1,32}$")
+
+
+def _raw_variants(name: str) -> list[dict]:
+    try:
+        raw = artwork_reader.read_raw_metadata(name) or {}
+    except FileNotFoundError:
+        return []
+    out = []
+    for v in raw.get("variants") or []:
+        if isinstance(v, dict) and v.get("key") is not None and v.get("image"):
+            out.append({"key": str(v["key"]), "label": v.get("label") or str(v["key"]),
+                        "image": v["image"], "rating": v.get("rating") or ""})
+    return out
+
+
+def _write_variants(name: str, variants: list[dict]) -> None:
+    artwork_reader.save_artwork_metadata(name, {"variants": variants})
+
+
+@masterpieces_router.post("/merge-as-variant")
+def merge_as_variant_ep(body: dict):
+    """Fold ``absorb`` into ``keep`` as a labeled VARIANT of the same piece:
+    absorb's image is copied into keep's folder, a variants entry is appended,
+    and absorb's members move over re-keyed (their stats stay attributed).
+    Body: {keep, absorb, key, label?, rating?}. The dup-finder's third option —
+    for different RENDERS of one piece, where /merge (identical image) is wrong."""
+    keep = (body.get("keep") or "").strip()
+    absorb = (body.get("absorb") or "").strip()
+    key = (body.get("key") or "").strip().lower()
+    if not keep or not absorb or keep == absorb:
+        raise HTTPException(400, detail="keep and absorb (distinct) are required")
+    if not _VARIANT_KEY_RE.match(key):
+        raise HTTPException(400, detail="key must be a short slug (a-z0-9_-)")
+    try:
+        art_keep = artwork_reader.load_artwork(keep)
+        art_absorb = artwork_reader.load_artwork(absorb)
+    except FileNotFoundError:
+        raise HTTPException(404, detail="Masterpiece not found")
+    variants = _raw_variants(keep)
+    if any(v["key"] == key for v in variants):
+        raise HTTPException(409, detail=f"variant key '{key}' already exists on {keep}")
+
+    # Copy absorb's hero image in as the variant image.
+    from pathlib import Path
+    import shutil
+    src = Path(art_absorb.path) / art_absorb.image
+    if not src.is_file():
+        raise HTTPException(422, detail=f"{absorb} has no hero image to absorb")
+    i = 2
+    while (Path(art_keep.path) / f"image_{i}{src.suffix.lower()}").exists():
+        i += 1
+    dst = Path(art_keep.path) / f"image_{i}{src.suffix.lower()}"
+    shutil.copy2(src, dst)
+
+    # Seed keep's own primary as an explicit variant on first use, so the set is
+    # self-describing (primary '' + the new one).
+    if not variants:
+        variants = [{"key": "", "label": body.get("primary_label") or "Primary",
+                     "image": art_keep.image, "rating": ""}]
+    variants.append({"key": key, "label": (body.get("label") or key).strip(),
+                     "image": dst.name, "rating": (body.get("rating") or "").strip().lower()})
+    _write_variants(keep, variants)
+
+    conn = get_connection()
+    try:
+        moved = mq.merge_as_variant(conn, keep, absorb, key)
+        conn.execute("DELETE FROM image_hashes WHERE platform = '__mp__' AND submission_id = ?", (absorb,))
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        shutil.rmtree(art_absorb.path)
+    except OSError:
+        logger.warning("merge-as-variant: could not remove folder for %s", absorb)
+    return {"status": "merged-as-variant", "keep": keep, "absorbed": absorb,
+            "key": key, "members_moved": moved, "variant_image": dst.name}
+
+
+@masterpieces_router.post("/{name}/variants")
+def declare_variant(name: str, body: dict):
+    """Declare an EXISTING folder image as a labeled variant.
+    Body: {key, image, label?, rating?}. Upgrades a 2.152 unlabeled alt in place."""
+    key = (body.get("key") or "").strip().lower()
+    image = (body.get("image") or "").strip()
+    if not _VARIANT_KEY_RE.match(key):
+        raise HTTPException(400, detail="key must be a short slug (a-z0-9_-)")
+    try:
+        art = artwork_reader.load_artwork(name)
+    except FileNotFoundError:
+        raise HTTPException(404, detail="Masterpiece not found")
+    from pathlib import Path
+    target = (Path(art.path) / image)
+    if not image or not target.is_file() or \
+            target.suffix.lower() not in artwork_reader.IMAGE_EXTENSIONS:
+        raise HTTPException(422, detail="image must be an existing image file in this folder")
+    variants = _raw_variants(name)
+    if any(v["key"] == key for v in variants):
+        raise HTTPException(409, detail=f"variant key '{key}' already exists")
+    if not variants:
+        variants = [{"key": "", "label": "Primary", "image": art.image, "rating": ""}]
+    variants.append({"key": key, "label": (body.get("label") or key).strip(),
+                     "image": image, "rating": (body.get("rating") or "").strip().lower()})
+    _write_variants(name, variants)
+    return {"status": "declared", "key": key}
+
+
+@masterpieces_router.delete("/{name}/variants/{key}")
+def delete_variant(name: str, key: str):
+    """Demote a variant back to a plain alt image (file stays; members re-key
+    to primary '')."""
+    variants = _raw_variants(name)
+    if not any(v["key"] == key for v in variants):
+        raise HTTPException(404, detail="variant not found")
+    _write_variants(name, [v for v in variants if v["key"] != key])
+    conn = get_connection()
+    try:
+        mq.clear_variant_members(conn, name, key)
+        conn.commit()
+    finally:
+        conn.close()
+    return {"status": "removed", "key": key}
+
+
+@masterpieces_router.patch("/{name}/members/variant")
+def set_member_variant_ep(name: str, body: dict):
+    """Attribute a linked site-upload to a variant.
+    Body: {platform, submission_id, variant_key} (''=primary)."""
+    platform = (body.get("platform") or "").strip()
+    sid = str(body.get("submission_id") or "").strip()
+    if not platform or not sid:
+        raise HTTPException(400, detail="platform and submission_id are required")
+    vkey = str(body.get("variant_key") or "")
+    if vkey and not any(v["key"] == vkey for v in _raw_variants(name)):
+        raise HTTPException(422, detail=f"no such variant '{vkey}' on {name}")
+    conn = get_connection()
+    try:
+        mq.set_member_variant(conn, name, platform, sid, vkey)
+        conn.commit()
+    finally:
+        conn.close()
+    return {"status": "attributed", "variant_key": vkey}
+
+
 # ── Replace the canonical image (2.153.0) ────────────────────────────────────
 # "The artist sent the full-res / a fixed version" — swap the image a Masterpiece
 # points at WITHOUT losing the record: masterpiece.json (title/desc/rating/tags)
@@ -302,10 +452,18 @@ def get_masterpiece(name: str):
         mq.ensure_indexed(conn, name)
         conn.commit()
         roll = mq.rollup_members(conn, name)
+        # Per-variant stats (2.158.0): each declared variant's members rolled up
+        # alone; the cohort totals below stay the all-members rollup.
+        variants = []
+        for v in _raw_variants(name):
+            vroll = mq.rollup_members(conn, name, v["key"])
+            variants.append({**v, "totals": vroll["totals"],
+                             "member_count": len(vroll["members"])})
         return {
             "name": art.name,
             "status": mq.get_status(conn, name),
             "images": images,
+            "variants": variants,
             "title": art.title,
             "description": art.description,
             "author": art.author,

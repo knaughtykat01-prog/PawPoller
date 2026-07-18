@@ -204,6 +204,8 @@ window.Masterpieces = {
             btn.addEventListener('click', () => this._mergeGroup(parseInt(btn.dataset.merge, 10), groups)));
         wrap.querySelectorAll('[data-notdup]').forEach(btn =>
             btn.addEventListener('click', () => this._notDuplicate(parseInt(btn.dataset.notdup, 10), groups)));
+        wrap.querySelectorAll('[data-vardup]').forEach(btn =>
+            btn.addEventListener('click', () => this._mergeGroupAsVariants(parseInt(btn.dataset.vardup, 10), groups)));
     },
 
     /* "Not the same" — remember that this group's images are actually different,
@@ -221,6 +223,41 @@ window.Masterpieces = {
         } catch (err) {
             if (msg) msg.textContent = 'Failed: ' + err.message;
         }
+    },
+
+    /* "Variants of one piece" (2.158.0) — the dup-finder's third option. Folds
+     * every non-keep member of the group into the keeper as a LABELED variant:
+     * image copied in, members re-keyed (stats stay attributed), record removed. */
+    async _mergeGroupAsVariants(gi, groups) {
+        const items = groups[gi];
+        const groupEl = document.querySelector(`.mp-dup-group[data-group="${gi}"]`);
+        const msg = groupEl ? groupEl.querySelector(`[data-msg="${gi}"]`) : null;
+        let keepIdx = 0;
+        const picked = groupEl && groupEl.querySelector(`input[name="dup-keep-${gi}"]:checked`);
+        if (picked) keepIdx = parseInt(picked.value, 10);
+        const keep = items[keepIdx];
+        const absorbs = items.filter((_m, i) => i !== keepIdx);
+        const jobs = [];
+        for (const a of absorbs) {
+            const label = window.prompt(
+                `Variant label for “${a.title || a.name}” (e.g. NSFW, Censored, No BG)?`, 'NSFW');
+            if (label === null) return;   // user backed out — do nothing at all
+            const key = label.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'variant';
+            jobs.push({ absorb: a.name, key, label: label.trim() || key });
+        }
+        if (!window.confirm(`Fold ${absorbs.length} piece${absorbs.length === 1 ? '' : 's'} into “${keep.title || keep.name}” `
+            + `as labeled variants? Their images move in and their site-links keep their own stats.`)) return;
+        if (msg) msg.textContent = 'Folding in…';
+        let ok = 0, fail = 0;
+        for (const j of jobs) {
+            try { await API.mergeAsVariant({ keep: keep.name, absorb: j.absorb, key: j.key, label: j.label }); ok++; }
+            catch (e) { fail++; }
+        }
+        this._cache = null;
+        if (msg) msg.textContent = fail ? `Folded ${ok}, ${fail} failed` : 'Folded into one cohort ✓';
+        if (groupEl) groupEl.style.opacity = '.55';
+        this._toast(fail ? 'error' : 'success',
+            fail ? `Folded ${ok}, ${fail} failed` : `${keep.title || keep.name} now has ${ok} labeled variant${ok === 1 ? '' : 's'}`);
     },
 
     _dupGroup(items, gi) {
@@ -249,6 +286,8 @@ window.Masterpieces = {
                 <div class="mp-dup-row">${cards}</div>
                 <div class="mp-dup-actions">
                     <button class="btn btn-primary btn-sm" data-merge="${gi}">Merge ${items.length} into one</button>
+                    <button class="btn btn-sm" data-vardup="${gi}"
+                        title="Different renders of ONE piece (SFW/NSFW, censored/clean…) — fold them into one Masterpiece as labeled variants, each keeping its own stats">🖇 Variants of one piece</button>
                     <button class="btn btn-sm" data-notdup="${gi}"
                         title="These are different images — don't flag them as duplicates again">✗ Not the same</button>
                     <span class="mp-dup-msg muted" data-msg="${gi}"></span>
@@ -357,17 +396,29 @@ window.Masterpieces = {
         const hero = heroUrl
             ? `<img class="mp-hero-img" id="mp-hero-img" src="${this.esc(heroUrl)}" alt="${this.esc(m.title || name)}">`
             : `<div class="mp-hero-ph">🖼️</div>`;
-        // Gallery strip (2.152.0): every image in the folder — multi-image tweet
-        // sets, SFW/NSFW variants — hero first; click swaps the hero.
+        // Variant chips (2.158.0): declared variants render labeled with their OWN
+        // stats (the cohort total stays in the headline); pieces without declared
+        // variants fall back to the 2.152 unlabeled gallery of folder images.
         const imgs = m.images || [];
-        const gallery = imgs.length > 1
-            ? `<div class="mp-alts">${imgs.map((f, i) => {
-                const u = this._canonUrl(name, f);
-                return `<img class="mp-alt${i === 0 ? ' is-active' : ''}" src="${this.esc(u)}"
-                    data-mp-img="${this.esc(u)}" alt="" loading="lazy"
-                    title="${this.esc(f)}${i === 0 ? ' (primary)' : ''}">`;
-            }).join('')}</div>`
+        const variants = m.variants || [];
+        const chips = variants.length
+            ? variants.map(v => ({
+                u: this._canonUrl(name, v.image),
+                label: v.label || v.key || 'Primary',
+                st: `👁 ${this._fmt((v.totals || {}).views)} · ❤ ${this._fmt((v.totals || {}).favorites)}`
+                    + ` · 💬 ${this._fmt((v.totals || {}).comments)} · ${v.member_count || 0} site${(v.member_count || 0) === 1 ? '' : 's'}`,
+            }))
+            : imgs.map((f, i) => ({ u: this._canonUrl(name, f), label: i === 0 ? 'Primary' : `Alt ${i}`, st: '' }));
+        const gallery = chips.length > 1
+            ? `<div class="mp-alts">${chips.map((c, i) => `
+                <div class="mp-altwrap${i === 0 ? ' is-active' : ''}" data-mp-img="${this.esc(c.u)}"
+                     data-vstats="${this.esc(c.st)}" role="button" tabindex="0">
+                    <img class="mp-alt" src="${this.esc(c.u)}" alt="" loading="lazy">
+                    <div class="mp-alt-label">${this.esc(c.label)}</div>
+                </div>`).join('')}</div>`
             : '';
+        const vstatsLine = chips.length > 1
+            ? `<div class="mp-vstats muted" id="mp-vstats">${this.esc(chips[0].st)}</div>` : '';
         const rating = m.rating ? `<span class="${this._ratingCls(m.rating)}">${this.esc(m.rating)}</span>` : '';
         const personas = this._personaChips(m.persona_ids);
         const isJunk = m.status === 'junk';
@@ -432,7 +483,8 @@ window.Masterpieces = {
 
         root.innerHTML = `
             <div class="mp-detail-head">
-                <div class="mp-hero-col"><div class="mp-hero">${hero}</div>${gallery}
+                ${heroUrl ? `<img class="mp-stage-bg" id="mp-stage-bg" src="${this.esc(heroUrl)}" alt="" aria-hidden="true">` : ''}
+                <div class="mp-hero-col"><div class="mp-hero">${hero}</div>${gallery}${vstatsLine}
                     <div class="mp-hero-actions">
                         <label class="btn btn-sm" title="Swap in a better/higher-res version — keeps this record, its tags and every site link. The old file stays as a gallery alternate.">
                             ⇪ Replace image
@@ -533,7 +585,13 @@ window.Masterpieces = {
                 e.preventDefault();
                 const heroImg = document.getElementById('mp-hero-img');
                 if (heroImg) heroImg.src = alt.dataset.mpImg;
-                document.querySelectorAll('.mp-alt').forEach(x => x.classList.toggle('is-active', x === alt));
+                // The giant ambient backdrop follows the focused variant (2.158.0).
+                const bg = document.getElementById('mp-stage-bg');
+                if (bg) bg.src = alt.dataset.mpImg;
+                const vs = document.getElementById('mp-vstats');
+                if (vs) vs.textContent = alt.dataset.vstats || '';
+                document.querySelectorAll('.mp-altwrap, .mp-alt').forEach(x =>
+                    x.classList.toggle('is-active', x === alt));
                 return;
             }
         });

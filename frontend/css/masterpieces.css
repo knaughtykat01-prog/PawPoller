@@ -69,12 +69,33 @@
 .mp-personas-inline { display: flex; gap: .3rem; flex-wrap: wrap; margin-top: .1rem; }
 
 /* ── Detail view ── */
+/* 2.158.0: the head is a STAGE — a giant blurred/translucent copy of the
+   focused variant floats behind everything (the "ambient backdrop"). */
 .mp-detail-head {
     display: flex;
     gap: 1.25rem;
     flex-wrap: wrap;
     margin-bottom: 1.25rem;
+    position: relative;
+    overflow: hidden;
+    border-radius: 16px;
+    padding: 1.2rem;
 }
+.mp-stage-bg {
+    position: absolute;
+    inset: -8%;
+    width: 116%;
+    height: 116%;
+    object-fit: cover;
+    filter: blur(46px) saturate(1.25);
+    opacity: .22;
+    z-index: 0;
+    pointer-events: none;
+    transition: opacity .35s ease;
+}
+.mp-detail-head > .mp-hero-col,
+.mp-detail-head > .mp-head-info { position: relative; z-index: 1; }
+@media (prefers-reduced-motion: reduce) { .mp-stage-bg { transition: none } }
 .mp-hero {
     flex: 0 0 auto;
     width: min(320px, 42vw);
@@ -105,6 +126,18 @@
 }
 .mp-alt.is-active { border-color: var(--accent); }
 .mp-alt:hover { border-color: var(--card-border, var(--border)); }
+
+/* Labeled variant chips (2.158.0) — wrap + label; per-variant stats line below. */
+.mp-altwrap { width: 62px; text-align: center; cursor: pointer; transition: transform .22s ease; }
+.mp-altwrap.is-active { transform: translateY(-3px) scale(1.08); }
+.mp-altwrap.is-active .mp-alt { border-color: var(--accent); }
+.mp-alt-label {
+    font-size: .6rem; color: var(--text-muted); margin-top: 2px;
+    text-transform: uppercase; letter-spacing: .04em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mp-altwrap.is-active .mp-alt-label { color: var(--accent); font-weight: 700; }
+.mp-vstats { font-size: .8rem; margin-top: .3rem; }
 
 /* Replace-canonical-image control under the hero (2.153.0) */
 .mp-hero-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: .2rem; }
@@ -254,3 +287,41 @@ textarea.mp-input { resize: vertical; }
 
 /* Empty / loading states */
 .mp-empty { color: var(--text-muted); padding: 2rem 0; text-align: center; }
+
+/* ── Showcase — the Library XMB shelves (2.158.0, showcase.js) ──────────── */
+.sc-root { position: relative; min-height: calc(100vh - 120px); overflow: hidden; border-radius: 16px; }
+.sc-bg {
+    position: absolute; inset: -8%; width: 116%; height: 116%;
+    object-fit: cover; filter: blur(52px) saturate(1.25); opacity: .2;
+    z-index: 0; pointer-events: none; transition: opacity .4s ease;
+}
+.sc-top { display: flex; justify-content: space-between; align-items: flex-end;
+    position: relative; z-index: 2; padding: .8rem 1.2rem 0; flex-wrap: wrap; gap: .6rem; }
+.sc-title { margin: 0; }
+.sc-top-actions { display: flex; align-items: center; gap: .8rem; }
+.sc-hint { color: var(--text-muted); font-size: .78rem; }
+.sc-shelf { position: relative; z-index: 1; padding: .4rem 1.2rem .9rem; opacity: .55;
+    transition: opacity .3s ease; }
+.sc-shelf.is-active { opacity: 1; }
+.sc-shelf-head { display: flex; justify-content: space-between; align-items: center; }
+.sc-shelf-label { font-weight: 700; font-size: 1.05rem; color: var(--text); }
+.sc-strip { position: relative; height: 230px; overflow: hidden; }
+.sc-item {
+    position: absolute; left: 50%; top: 14px; width: 150px; height: 185px; cursor: pointer;
+    transition: transform .32s cubic-bezier(.22,.9,.28,1), opacity .32s ease;
+}
+.sc-item img, .sc-ph {
+    width: 100%; height: 100%; object-fit: cover; border-radius: 12px;
+    background: var(--bg-secondary); box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    display: flex; align-items: center; justify-content: center; font-size: 2rem;
+}
+.sc-item.is-focus img, .sc-item.is-focus .sc-ph {
+    box-shadow: 0 0 0 3px var(--accent), 0 16px 44px rgba(0,0,0,.5);
+}
+.sc-caption { text-align: center; min-height: 2.2rem; margin-top: .2rem; }
+.sc-cap-title { display: block; font-weight: 700; color: var(--text); font-size: .98rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-cap-sub { color: var(--text-muted); font-size: .78rem; }
+@media (prefers-reduced-motion: reduce) {
+    .sc-item, .sc-shelf, .sc-bg { transition: none !important; }
+}
