@@ -12,6 +12,20 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.159.1] - 2026-07-19 - Shelf view is desktop-only
+
+> On phones the Library now always opens in the classic grid — the animated shelf view needs arrow keys
+> and a wide screen, so mobile hides the "▤ Shelf view" switch. Your desktop choice is untouched: pick
+> shelves there and it's still waiting when you're back at a keyboard.
+
+Rhys's call. Two small pieces: `Showcase.renderLibrary()` opens with an `App.isMobileLayoutActive()` guard
+that falls through to `Bookshelf.render()` (classic) WITHOUT touching `localStorage['pp_library_view']` —
+the phone visit doesn't clobber the desktop preference — and `masterpieces.css` hides `#shelf-view-btn`
+under `html[data-mobile="1"]` (tracks the mobile-mode override live, not just viewport width). The guard
+lives in showcase.js alone so the app.js route dispatch stays single-purpose.
+
+---
+
 ## [2.159.0] - 2026-07-19 - Errors pop like achievements — with a Send-to-dev button
 
 > When something breaks, you now get a proper popup in the same style as the achievement cards — a plain

@@ -1,7 +1,13 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-19
-**Current version (master):** 2.159.0 — **Achievement-style ERROR popups + Send-to-dev (backlog AB).**
+**Current version (master):** 2.159.1 — **Shelf view is desktop-only.** Mobile mode always gets the classic
+grid: `Showcase.renderLibrary()` guards on `App.isMobileLayoutActive()` → `Bookshelf.render()` (does NOT touch
+the stored `pp_library_view` preference — desktop keeps shelves), and `html[data-mobile="1"]` hides
+`#shelf-view-btn`. Live-verified 2.159.0's error popup on prod end-to-end (real 400 → card → Send to dev →
+Telegram delivered, Rhys confirmed).
+
+**Prior — 2.159.0 — Achievement-style ERROR popups + Send-to-dev (backlog AB).**
 Failed POST/PATCH/DELETE now pops a Laurels-anatomy card on `--danger` (`error_popup.js`/`.css`, new): plain title
 from status, FastAPI `detail` as the message, collapsed technical `<pre>` (route/status/version/time/raw body),
 **📋 Copy report** + **📨 Send to dev**. Send posts to NEW `POST /api/report-error` (`routes/report_api.py`) →

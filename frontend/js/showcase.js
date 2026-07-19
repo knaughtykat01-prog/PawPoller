@@ -34,6 +34,15 @@ window.Showcase = {
     _num(n) { return (window.Utils && Utils.formatNumber) ? Utils.formatNumber(n || 0) : String(n || 0); },
 
     async renderLibrary() {
+        // Desktop-only (2.159.1): the showcase is keyboard/wheel-driven and its
+        // shelf layout has no phone answer, so mobile mode always gets the
+        // classic grid instead. Deliberately does NOT touch the stored
+        // preference — a desktop that chose shelves stays on shelves; the same
+        // account on a phone just lands classic for the visit.
+        if (typeof App !== 'undefined' && App.isMobileLayoutActive && App.isMobileLayoutActive()) {
+            if (window.Bookshelf) { window.Bookshelf._type = 'all'; window.Bookshelf.render(); }
+            return;
+        }
         const app = document.getElementById('app');
         const epoch = ++this._epoch;
         app.innerHTML = `

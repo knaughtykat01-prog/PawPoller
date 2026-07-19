@@ -289,6 +289,9 @@ textarea.mp-input { resize: vertical; }
 .mp-empty { color: var(--text-muted); padding: 2rem 0; text-align: center; }
 
 /* ── Showcase — the Library XMB shelves (2.158.0, showcase.js) ──────────── */
+/* Desktop-only (2.159.1): mobile mode hides the switch; showcase.js also
+   falls back to the classic grid if the shelves route is reached on mobile. */
+html[data-mobile="1"] #shelf-view-btn { display: none; }
 .sc-root { position: relative; min-height: calc(100vh - 120px); overflow: hidden; border-radius: 16px; }
 .sc-bg {
     position: absolute; inset: -8%; width: 116%; height: 116%;
