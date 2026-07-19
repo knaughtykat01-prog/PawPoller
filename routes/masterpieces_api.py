@@ -92,6 +92,69 @@ def masterpiece_duplicates():
         conn.close()
 
 
+@masterpieces_router.get("/variant-suggestions")
+def masterpiece_variant_suggestions():
+    """Likely VARIANT families grouped by TITLE — the complement to /duplicates.
+
+    /duplicates finds the same IMAGE cross-posted; this finds the same PIECE in
+    different renders (``Foo`` + ``Foo (Rough)``, SFW + NSFW), which hash-matching
+    can't — they're different images. Each family suggests a hero + per-member
+    variant key/label derived from the title suffix, ready for /merge-as-variant.
+
+    A title heuristic is fuzzy, so this only SUGGESTS; the UI reviews each family.
+    """
+    from database import variant_suggest
+    conn = get_connection()
+    try:
+        arts = artwork_reader.list_artworks()
+        # Views feed hero selection + ordering; summarize is the same source the
+        # dup finder uses, so the two review lists rank consistently.
+        items = []
+        summaries = {}
+        for a in arts:
+            s = mq.summarize(conn, a["name"])
+            summaries[a["name"]] = s
+            items.append({"name": a["name"], "title": a.get("title") or a["name"],
+                          "views": (s.get("totals") or {}).get("views", 0)})
+        dismissed = variant_suggest.not_variant_pairs(conn)
+        families = variant_suggest.suggest_families(items, dismissed=dismissed)
+
+        by_name = {a["name"]: a for a in arts}
+        out = []
+        for fam in families:
+            members = []
+            for m in fam["members"]:
+                art = by_name.get(m["name"], {})
+                s = summaries.get(m["name"], {})
+                members.append({
+                    **m,
+                    "image": art.get("image", ""),
+                    "cover_thumb": s.get("cover_thumb", ""),
+                    "cover_platform": s.get("cover_platform", ""),
+                    "sites": s.get("member_count", 0),
+                })
+            out.append({"base": fam["base"], "members": members})
+        return {"families": out}
+    finally:
+        conn.close()
+
+
+@masterpieces_router.post("/not-variant")
+def masterpiece_not_variant(body: dict):
+    """Remember that a suggested family is NOT variants of one piece, so the
+    by-title finder stops offering it. Separate from /not-duplicate on purpose."""
+    from database import variant_suggest
+    names = [n for n in (body.get("names") or []) if isinstance(n, str) and n.strip()]
+    if len(names) < 2:
+        raise HTTPException(400, detail="names must list 2+ Masterpieces")
+    conn = get_connection()
+    try:
+        added = variant_suggest.add_not_variant(conn, names)
+        return {"status": "dismissed", "pairs_added": added}
+    finally:
+        conn.close()
+
+
 @masterpieces_router.get("/match")
 def masterpiece_match(platform: str, submission_id: str):
     """Does this discovered upload look like an EXISTING Masterpiece?

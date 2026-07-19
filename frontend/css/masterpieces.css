@@ -26,6 +26,17 @@
 .mp-dup-actions { display: flex; align-items: center; gap: .8rem; margin-top: .8rem; flex-wrap: wrap; }
 .mp-dup-msg { font-size: .82rem; }
 
+/* ── Section headers on the tidy-up screen + variant families (2.160.0) ── */
+.mp-sec-h { font-size: 1.15rem; margin: .2rem 0 .1rem; }
+.mp-sec-sub { font-size: .82rem; font-weight: 400; }
+.mp-sec-note { font-size: .84rem; margin: 0 0 .8rem; max-width: 70ch; }
+/* The derived variant label (e.g. "Rough", "NSFW") beside a member's title. */
+.mp-var-key {
+    display: inline-block; font-size: .68rem; font-weight: 700; vertical-align: middle;
+    padding: .05rem .4rem; border-radius: 999px; margin-left: .25rem;
+    background: var(--accent); color: #fff; text-transform: uppercase; letter-spacing: .03em;
+}
+
 /* ── Grid + cards (rendered inside Library under the type filter) ── */
 .mp-grid {
     display: grid;

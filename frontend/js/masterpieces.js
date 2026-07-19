@@ -174,13 +174,131 @@ window.Masterpieces = {
         const app = document.getElementById('app');
         app.innerHTML = `
             <div class="page-header">
-                <h1>Merge duplicate Masterpieces</h1>
-                <p class="muted"><a href="#/masterpieces">← Back to Masterpieces</a> · Same image, more than one
-                Masterpiece? Pick the one to keep and merge the rest into it — their site-links move over and the
-                duplicate record is removed (the image is identical, so nothing is lost).</p>
+                <h1>Tidy up Masterpieces</h1>
+                <p class="muted"><a href="#/masterpieces">← Back to Masterpieces</a> · Two ways your library ends up
+                with more cards than pieces — the same image posted to several sites, and the same piece in different
+                renders (rough/final, SFW/NSFW). Review each below and fold them into one.</p>
             </div>
+
+            <h2 class="mp-sec-h">Same piece, different renders <span class="muted mp-sec-sub">grouped by title</span></h2>
+            <p class="muted mp-sec-note">A rough sketch and the finished colour aren't the same <em>image</em>, so the
+            duplicate scan can't catch them — but the titles line up. Folding one in keeps every image as a labeled
+            variant, each with its own stats.</p>
+            <div id="mp-variants"><div class="loading-spinner">Looking for variant families…</div></div>
+
+            <h2 class="mp-sec-h" style="margin-top:2rem">Same image, more than one Masterpiece <span class="muted mp-sec-sub">by image match</span></h2>
+            <p class="muted mp-sec-note">Pick the one to keep and merge the rest into it — their site-links move over
+            and the duplicate record is removed (the image is identical, so nothing is lost).</p>
             <div id="mp-dups"><div class="loading-spinner">Scanning your images…</div></div>`;
+        this._loadVariantSuggestions();
         this._loadDuplicates();
+    },
+
+    /* ── Variant families (by title, 2.160.0) ─────────────────────────────────
+     * The complement to the hash duplicate finder. suggest_families already
+     * derived a hero + per-member key/label from each title, so unlike the dup
+     * screen's "Variants of one piece" (which prompts for every label), this
+     * folds a whole family in one click with the labels pre-filled. */
+    async _loadVariantSuggestions() {
+        const wrap = document.getElementById('mp-variants');
+        if (!wrap) return;
+        let families;
+        try {
+            const d = await API.getVariantSuggestions();
+            families = (d && d.families) || [];
+        } catch (err) {
+            wrap.innerHTML = `<div class="card error">Couldn’t look for variants: ${this.esc(err.message)}</div>`;
+            return;
+        }
+        if (!families.length) {
+            wrap.innerHTML = `<div class="empty-state"><h3>No variant families found</h3>
+                <p class="muted">No two Masterpieces share a title once render tags like “(Rough)” are set aside.</p></div>`;
+            return;
+        }
+        wrap.innerHTML = families.map((f, fi) => this._variantFamily(f, fi)).join('');
+        wrap.querySelectorAll('[data-varmerge]').forEach(btn =>
+            btn.addEventListener('click', () => this._mergeVariantFamily(parseInt(btn.dataset.varmerge, 10), families)));
+        wrap.querySelectorAll('[data-varnot]').forEach(btn =>
+            btn.addEventListener('click', () => this._notVariantFamily(parseInt(btn.dataset.varnot, 10), families)));
+    },
+
+    _variantFamily(fam, fi) {
+        const cards = fam.members.map((m, i) => {
+            const src = m.cover_thumb
+                ? this._thumbSrc(m.cover_platform, m.cover_thumb)
+                : this._canonUrl(m.name, m.image);
+            const thumb = src
+                ? `<img class="mp-dup-thumb" src="${this.esc(src)}" alt="" loading="lazy">`
+                : `<span class="mp-dup-thumb mp-dup-thumb--none">🖼️</span>`;
+            // The suggested hero is pre-checked; any member can be chosen instead.
+            const heroPick = `<label class="mp-dup-pick"><input type="radio" name="var-keep-${fi}" value="${i}"${m.is_hero ? ' checked' : ''}> keep as main</label>`;
+            const tag = m.is_hero ? '' : `<span class="mp-var-key">${this.esc(m.label)}</span>`;
+            return `
+                <div class="mp-dup-card${m.is_hero ? ' is-keep' : ''}" data-idx="${i}">
+                    ${thumb}
+                    <div class="mp-dup-meta">
+                        <div class="mp-dup-title">${this.esc(m.title || m.name)} ${tag}</div>
+                        <div class="mp-dup-stats muted">${this._fmt(m.views)} views</div>
+                        ${heroPick}
+                    </div>
+                </div>`;
+        }).join('');
+        return `
+            <div class="mp-dup-group card" data-varfam="${fi}">
+                <div class="mp-dup-row">${cards}</div>
+                <div class="mp-dup-actions">
+                    <button class="btn btn-primary btn-sm" data-varmerge="${fi}">Fold ${fam.members.length} into one piece</button>
+                    <button class="btn btn-sm" data-varnot="${fi}"
+                        title="These are separate pieces that happen to share a title — stop suggesting them">✗ Not variants</button>
+                    <span class="mp-dup-msg muted" data-varmsg="${fi}"></span>
+                </div>
+            </div>`;
+    },
+
+    async _mergeVariantFamily(fi, families) {
+        const fam = families[fi];
+        const groupEl = document.querySelector(`.mp-dup-group[data-varfam="${fi}"]`);
+        const msg = groupEl ? groupEl.querySelector(`[data-varmsg="${fi}"]`) : null;
+        let keepIdx = fam.members.findIndex(m => m.is_hero);
+        const picked = groupEl && groupEl.querySelector(`input[name="var-keep-${fi}"]:checked`);
+        if (picked) keepIdx = parseInt(picked.value, 10);
+        if (keepIdx < 0) keepIdx = 0;
+        const keep = fam.members[keepIdx];
+        const absorbs = fam.members.filter((_m, i) => i !== keepIdx);
+        if (!window.confirm(`Fold ${absorbs.length} piece${absorbs.length === 1 ? '' : 's'} into “${keep.title || keep.name}” `
+            + `as labeled variants? Each image moves into one Masterpiece and keeps its own stats. This can’t be undone.`)) return;
+        if (msg) msg.textContent = 'Folding in…';
+        let ok = 0, fail = 0;
+        for (const a of absorbs) {
+            // The chosen keeper takes the primary slot; every absorbed piece uses
+            // the key/label suggest_families derived from its title suffix. If the
+            // user re-picked the hero, the ex-hero has key '' → fall back to a slug.
+            const key = a.key || (a.label || 'variant').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'variant';
+            try {
+                await API.mergeAsVariant({ keep: keep.name, absorb: a.name, key, label: a.label || key });
+                ok++;
+            } catch (e) { fail++; }
+        }
+        this._cache = null;   // grid is stale after folding
+        if (msg) msg.textContent = fail ? `Folded ${ok}, ${fail} failed` : 'Folded into one ✓';
+        if (groupEl) groupEl.style.opacity = '.55';
+        this._toast(fail ? 'error' : 'success',
+            fail ? `Folded ${ok}, ${fail} failed` : `${keep.title || keep.name} now has ${ok} variant${ok === 1 ? '' : 's'}`);
+    },
+
+    async _notVariantFamily(fi, families) {
+        const fam = families[fi];
+        const groupEl = document.querySelector(`.mp-dup-group[data-varfam="${fi}"]`);
+        const msg = groupEl ? groupEl.querySelector(`[data-varmsg="${fi}"]`) : null;
+        if (msg) msg.textContent = 'Remembering…';
+        try {
+            await API.dismissVariantFamily(fam.members.map(m => m.name));
+            if (groupEl) { groupEl.style.opacity = '.5'; groupEl.querySelectorAll('button').forEach(b => b.disabled = true); }
+            if (msg) msg.textContent = 'Won’t suggest these again ✓';
+            this._toast('success', 'Marked as separate pieces');
+        } catch (err) {
+            if (msg) msg.textContent = 'Failed: ' + err.message;
+        }
     },
 
     async _loadDuplicates() {

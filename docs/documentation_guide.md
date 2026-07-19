@@ -6394,6 +6394,21 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   posting/pHash image. UI: the detail head is a stage (giant blurred `.mp-stage-bg` backdrop following the
   focused variant) and the gallery strip renders labeled chips + a per-variant stats line.
 
+- **By-TITLE variant suggester (2.160.0) — the complement to the hash de-dup finder.** The dedup finder groups by
+  perceptual hash = the same *image* on several sites. But a rough vs final, or SFW vs NSFW, are *different images*,
+  so it can't group them — the tie is the **title**. `database/variant_suggest.py` (pure, tested): `base_title()`
+  peels a conservative allow-list of stage/edit qualifiers off a title's end (`Midnight Snack (Rough)` → `midnight
+  snack`) and `suggest_families()` groups folders sharing a base, deriving a hero (unqualified member, else
+  most-viewed) + a per-member `key`/`label` from the suffix. **Conservative on purpose:** a word not on the list
+  (`…for the Night`) stays part of the title, so distinct pieces don't merge on a coincidental suffix. `GET
+  /api/masterpieces/variant-suggestions` feeds a **"Same piece, different renders" section on `#/masterpieces/
+  duplicates`** ("Tidy up Masterpieces"); one button folds a family via the existing `POST /merge-as-variant` with
+  labels pre-filled (no per-item prompt, unlike the dup screen's "🖇 Variants of one piece"). Dismiss = `POST
+  /not-variant` → **`masterpiece_not_variant`, a SEPARATE lazily-created table** from `masterpiece_not_duplicate`:
+  an SFW/NSFW pair are different images (dismissable there) yet ARE variants, so one dismissal must not imply the
+  other. Review-only, never automatic — a title heuristic is fuzzy and it's the user's art (same rationale as the
+  2.151 on-import prompt).
+
 - **Showcase (2.158.0) — the Library's OPT-IN XMB view.** `frontend/js/showcase.js` (`window.Showcase`): two
   animated shelves (Stories / Artwork-Masterpieces) with PS3-XMB navigation and an ambient art backdrop.
   **Never forced**: bare `#/library` opens in the last-chosen view — `localStorage['pp_library_view']`

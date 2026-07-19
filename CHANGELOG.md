@@ -12,6 +12,43 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.160.0] - 2026-07-19 - Group rough/final & SFW/NSFW into one piece, by title
+
+> After importing your collection you had ~200 Masterpieces, and the "merge duplicates" screen couldn't group the
+> rough-and-final or SFW-and-NSFW versions of a piece — because it matches on the *picture*, and those are different
+> pictures. The Masterpieces tidy-up screen now has a second list that spots them by their **titles** (e.g. "Midnight
+> Snack" + "Midnight Snack (Rough)") and folds a whole family into one piece in a click, keeping every image as a
+> labeled variant. Nothing merges on its own — you review each one.
+
+Rhys, after the import: *"i now have 198 masterpieces. i thought we implemented them into variants … it didnt merge
+the variants."* It didn't, and the existing tooling *couldn't*: the de-dup finder (2.144.0) groups by **perceptual
+hash** — the same image cross-posted to several sites. A rough sketch and the finished colour piece, or an SFW and an
+NSFW edit, are genuinely **different images**, so hash-matching correctly never groups them. Diagnosed on the live
+library: 196 folders, and a hash scan found essentially nothing to merge — but **8 families share a title** once you
+set aside the render tag (`(Rough)`, `(SFW)`, `(NSFW)`, `(Sketch)`, `(Lines)`…). The signal was the title all along.
+
+- **NEW `database/variant_suggest.py`** — pure, tested. `base_title()` peels a conservative allow-list of stage/edit
+  qualifiers off the end of a title (`Midnight Snack (Rough)` → `midnight snack`) and groups folders that share a
+  base. Deliberately conservative: a word not on the list (e.g. `Buddies Sharing a Bed **for the Night**`) is treated
+  as part of the real title, so two genuinely different pieces never merge on a coincidental suffix. Each family gets
+  a suggested hero (the unqualified member, else most-viewed) and a per-member variant **key + label derived from the
+  suffix**, so the merge needs no typing.
+- **`GET /api/masterpieces/variant-suggestions`** returns the families with covers; **the tidy-up screen
+  (`#/masterpieces/duplicates`) gains a "Same piece, different renders" section** above the existing image-match one.
+  One button folds a family in via the existing `POST /merge-as-variant` (2.158.0) — every image kept as a variant,
+  each with its own stats. Pick a different hero with the radios; dismiss a false grouping with **✗ Not variants**.
+- **"Not variants" is its own dismissal** (`masterpiece_not_variant`, a lazily-created table), *separate* from the
+  hash finder's "not the same image". They're different judgments: an SFW and an NSFW edit ARE different images (so
+  they may be dismissed there) yet ARE variants — conflating them would hide exactly what this finder surfaces.
+- **Why review, never auto-merge:** a title heuristic is fuzzy (it won't catch a final that was retitled), and it's
+  your art — only you know a true variant from a coincidence. Consistent with why 2.151.0's on-import match is a
+  prompt, not automatic.
+
+Scope note: this collapses the 8 title-families (~11 cards). Your ~196 pieces are otherwise genuinely distinct — the
+count wasn't inflated by hidden duplicates. +11 tests.
+
+---
+
 ## [2.159.2] - 2026-07-19 - Fix: a piece can no longer "suggest" its own hash record
 
 > The "same image elsewhere" suggestions could offer a phantom entry that was really the piece's own

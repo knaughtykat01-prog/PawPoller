@@ -1,7 +1,22 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-19
-**Current version (master):** 2.159.2 — **pHash LINKING RUN (spec §4.3) + suggestion self-match fix.**
+**Current version (master):** 2.160.0 — **By-TITLE variant suggester (group rough/final & SFW/NSFW).**
+Rhys after importing the collection: *"i now have 198 masterpieces … it didnt merge the variants."* The de-dup
+finder (2.144) matches by perceptual HASH = same image cross-posted; a rough vs final, or SFW vs NSFW, are
+DIFFERENT images so hash-matching correctly can't group them. Diagnosed on prod: 196 folders, hash scan finds ~0 to
+merge, but **8 families share a title** once render tags are peeled. NEW **`database/variant_suggest.py`** (pure,
+tested): `base_title()` strips a conservative allow-list of qualifiers (`(Rough)/(SFW)/(NSFW)/(Sketch)/(Lines)…`) —
+deliberately conservative so `…for the Night` stays a distinct piece. `GET /api/masterpieces/variant-suggestions`;
+the tidy-up screen (`#/masterpieces/duplicates`, now titled "Tidy up Masterpieces") gains a **"Same piece, different
+renders"** section above the image-match one — one button folds a family via existing `POST /merge-as-variant`
+(2.158), labels pre-derived from the suffix, hero pickable. **"✗ Not variants"** dismiss is a SEPARATE table
+(`masterpiece_not_variant`) from the hash finder's not-duplicate — SFW/NSFW are different images yet ARE variants, so
+conflating would hide them. Review-only, never auto (fuzzy heuristic + it's his art). +11 tests. **Also:** 13 orphan
+tweet-named index rows (no folder/members, from an earlier op) — cleaned on prod. NOTE: parallel session left
+`SITE_VERSION` drifted at 2.157.1 → resynced to 2.160.0.
+
+**Prior — 2.159.2 — pHash LINKING RUN (spec §4.3) + suggestion self-match fix.**
 The imports' stats are connected: `art_audit/link_phash.py` (container-side) hashed the 151 new heroes +
 variant images (`hash_masterpieces` + per-variant `dhash_from_path`) and the 16 e621 thumbs (policy UA,
 1 req/s — e621 is outside `CDN_ALLOWLIST`), then auto-linked at **hamming ≤4 with a unique-piece guard**:

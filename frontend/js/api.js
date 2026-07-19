@@ -192,6 +192,10 @@ const API = {
     getMasterpieceSnapshots(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}/snapshots`); },
     getMasterpieceSuggestions(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}/suggestions`); },
     getMasterpieceDuplicates() { return this.get('/api/masterpieces/duplicates'); },
+    /* Likely variant families grouped by TITLE (2.160.0) — the complement to the
+       hash-based duplicates finder, for rough/final & SFW/NSFW of one piece. */
+    getVariantSuggestions() { return this.get('/api/masterpieces/variant-suggestions'); },
+    dismissVariantFamily(names) { return this.post('/api/masterpieces/not-variant', { names }); },
     matchMasterpiece(platform, submissionId) {
         return this.get('/api/masterpieces/match', { platform, submission_id: submissionId });
     },
