@@ -173,10 +173,31 @@ async def _resolve_ib_full_url(submission_id: str) -> str:
         subs = resp.json().get("submissions", [])
         if subs:
             files = subs[0].get("files", [])
-            if files:
-                return files[0].get("file_url_full", "") or files[0].get("file_url_screen", "")
+            # Only IMAGE files qualify — a Writing submission's file is the
+            # manuscript (text/plain), which must never replace the thumb.
+            for f in files:
+                if str(f.get("mimetype", "")).lower().startswith("image/"):
+                    return f.get("file_url_full", "") or f.get("file_url_screen", "")
+            return ""
     finally:
         await client.close()
+    return ""
+
+
+# Submission types that are text/audio, not images — the artwork importer must
+# refuse these with a CLEAR message instead of downloading a .txt/.pdf and
+# failing with "content-type: text/plain" (the ib/3811835 incident: a Writing
+# submission's file_url is the manuscript itself).
+_NON_IMAGE_TYPE_HINTS = ("writing", "story", "document", "poetry", "prose",
+                         "journal", "music", "audio", "text")
+
+
+def _non_image_type_label(row: dict) -> str:
+    """The submission's type label if it is clearly NOT an image, else ''."""
+    for key in ("type_name", "content_type", "type", "category"):
+        v = str(row.get(key) or "").strip()
+        if v and any(h in v.lower() for h in _NON_IMAGE_TYPE_HINTS):
+            return v
     return ""
 
 
@@ -205,6 +226,12 @@ def import_artwork(platform: str, submission_id: str) -> dict:
         raise ValueError(f"Submission {submission_id} not found for {platform}")
 
     d = dict(row)
+    kind = _non_image_type_label(d)
+    if kind:
+        raise ValueError(
+            f"This is a '{kind}' submission — a story/text piece, not an image, so the "
+            "artwork importer can't ingest it. Link it to the matching story instead "
+            "(or import it from the story side).")
     urls = media_url_list(d)
     # Upgrade to full resolution where a per-platform re-fetch is available.
     # FA/Weasyl already store a full-res URL; Inkbunny stores only a thumbnail

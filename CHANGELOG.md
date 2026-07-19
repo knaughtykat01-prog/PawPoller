@@ -12,6 +12,23 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.158.1] - 2026-07-19 - Fix: importing a story submission as artwork now says so
+
+> Trying to import a **Writing/story submission** from the discovered bucket used to fail with a confusing
+> "IB may not expose a direct image URL" error. It now tells you plainly: this is a story, not an image —
+> link it to the matching story instead.
+
+The ib/3811835 incident: a "Writing - Document" submission's `file_url` IS the manuscript (text/plain), so the
+image download failed with the misleading fallback message. Two fixes in `posting/artwork_importer.py`:
+(1) `_non_image_type_label` gates `import_artwork` up front — type fields (`type_name`/`content_type`/`type`/
+`category`) matching writing/story/document/music/audio/text raise a clear, actionable error;
+(2) `_resolve_ib_full_url` now only returns `files[]` entries whose **mimetype is image/\*** (a Writing piece's
+manuscript file can never replace the thumbnail again). Same class covers the fa PDF case from the same log.
++7 tests (`test_import_type_gate.py`). Follow-up queued as backlog V: flag story submissions on discovered tiles
+instead of offering artwork import at all.
+
+---
+
 ## [2.158.0] - 2026-07-19 - Masterpiece variants + the animated showcase views
 
 > One artwork can now hold **labeled variants** (SFW/NSFW, censored/clean, dedication…) — each variant's

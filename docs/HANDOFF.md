@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-19
-**Current version (master):** 2.158.0 — **Masterpiece VARIANTS + the two XMB showcase views (backlog S).**
+**Current version (master):** 2.158.1 — **Fix: story-submission artwork imports get a clear refusal.**
+ib/3811835 ("Writing - Document" = a Velvet & Vice chapter) imported-as-artwork failed with the misleading "IB may
+not expose a direct image URL". Now: `_non_image_type_label` gate (writing/story/document/music/audio/text types →
+plain "this is a story, link it to the story instead") + `_resolve_ib_full_url` only accepts image/* mimetypes.
++7 tests. Backlog grew rows U–AB (product-analysis easy wins: quick-publish, triage inbox, cred-expiry warnings,
+perf guardrails, backup/restore, SCHEDULING; Rhys's retro-2005 theme; achievement-style error popups — his message
+cut off at the send-to destination, assumed Telegram, CONFIRM). Product analysis delivered:
+`C:\Users\rhysc\claude\outputs\pawpoller_product_analysis.md` (backlog T).
+
+**Prior — 2.158.0 — Masterpiece VARIANTS + the two XMB showcase views (backlog S).**
 One piece, several renders: `masterpiece.json` `variants` list + `masterpiece_members.variant_key` (guarded
 migration) → per-variant stats via `rollup_members(..., variant_key)`, cohort totals unchanged. New endpoints:
 `POST /merge-as-variant` (fold a Masterpiece in as a labeled variant — members re-key KEEPING their stats; the
