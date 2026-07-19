@@ -37,6 +37,12 @@
     background: var(--accent); color: #fff; text-transform: uppercase; letter-spacing: .03em;
 }
 
+/* ── "Fold this piece into another" — per-piece dup/variant (2.161.0) ── */
+.mp-fold { display: flex; flex-direction: column; gap: .6rem; max-width: 46ch; }
+.mp-fold-kinds { display: flex; flex-direction: column; gap: .35rem; }
+.mp-fold-kinds label { font-size: .86rem; display: flex; gap: .4rem; align-items: baseline; cursor: pointer; }
+.mp-fold-vlabel { margin: 0; }
+
 /* ── Grid + cards (rendered inside Library under the type filter) ── */
 .mp-grid {
     display: grid;

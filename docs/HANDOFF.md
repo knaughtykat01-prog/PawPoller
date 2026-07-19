@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-19
-**Current version (master):** 2.160.0 — **By-TITLE variant suggester (group rough/final & SFW/NSFW).**
+**Current version (master):** 2.161.0 — **Per-piece "mark as duplicate/variant of another".**
+Rhys: *"is there a way i can just go into an art piece and say this is a dup, this is a variant without going into
+[the] masterpiece tidy-up screen?"* The merge actions only lived on `#/masterpieces/duplicates`; now the Masterpiece
+detail (`Masterpieces._paintDetail`) has a **"Same piece as another?"** section — a `<datalist>` title picker of every
+OTHER piece (lazy `getMasterpieces`, title→name) + duplicate/variant choice (variant reveals a label field).
+Duplicate → `POST /merge` (keep=picked, drop=this; folder removed, same image); Variant → `POST /merge-as-variant`
+(this image kept as a labeled alternate). Direction is always "fold THIS into THAT" → navigates to the target after.
+**Frontend-only** (masterpieces.js + css) — reuses existing endpoints, no backend/test change. Complements 2.160's
+bulk by-title finder.
+
+**Prior — 2.160.0 — By-TITLE variant suggester (group rough/final & SFW/NSFW).**
 Rhys after importing the collection: *"i now have 198 masterpieces … it didnt merge the variants."* The de-dup
 finder (2.144) matches by perceptual HASH = same image cross-posted; a rough vs final, or SFW vs NSFW, are
 DIFFERENT images so hash-matching correctly can't group them. Diagnosed on prod: 196 folders, hash scan finds ~0 to

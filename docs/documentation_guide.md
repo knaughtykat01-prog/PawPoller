@@ -6409,6 +6409,14 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   other. Review-only, never automatic — a title heuristic is fuzzy and it's the user's art (same rationale as the
   2.151 on-import prompt).
 
+- **Per-piece "fold into another" (2.161.0) — dup/variant from the detail page, not just the bulk screen.** The merge
+  actions used to live only on `#/masterpieces/duplicates`. `Masterpieces._paintDetail` now renders a **"Same piece
+  as another?"** section: a `<datalist>` title picker of every OTHER Masterpiece (`_loadFoldPicker` → `getMasterpieces`,
+  title→folder-name map, self excluded) + a duplicate/variant radio (variant reveals a label field). `_foldIntoAnother`
+  folds **this** piece into the picked one — duplicate via `POST /merge` (keep=picked, drop=this; this folder removed,
+  same image), variant via `POST /merge-as-variant` (this image copied into the target as a labeled alternate). Always
+  "fold this into that", then navigates to the target. **Frontend-only** — both endpoints already existed.
+
 - **Showcase (2.158.0) — the Library's OPT-IN XMB view.** `frontend/js/showcase.js` (`window.Showcase`): two
   animated shelves (Stories / Artwork-Masterpieces) with PS3-XMB navigation and an ambient art backdrop.
   **Never forced**: bare `#/library` opens in the last-chosen view — `localStorage['pp_library_view']`

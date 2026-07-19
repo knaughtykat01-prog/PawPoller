@@ -668,6 +668,31 @@ window.Masterpieces = {
                 <div id="mp-suggest-body"><div class="muted">Looking for the same image on other sites…</div></div>
             </div>
 
+            <div class="mp-section">
+                <div class="mp-section-title">Same piece as another?
+                    <span class="muted" style="font-weight:400;font-size:.8rem">— fold <strong>this</strong> piece into another Masterpiece</span>
+                </div>
+                <div class="mp-fold">
+                    <input list="mp-fold-list" id="mp-fold-target" class="mp-input"
+                        placeholder="Type the other piece's title…" autocomplete="off">
+                    <datalist id="mp-fold-list"></datalist>
+                    <div class="mp-fold-kinds">
+                        <label><input type="radio" name="mp-fold-kind" value="dup" checked> It's a <strong>duplicate</strong>
+                            <span class="muted">(same image — this copy is removed)</span></label>
+                        <label><input type="radio" name="mp-fold-kind" value="var"> It's a <strong>variant</strong>
+                            <span class="muted">(different render — this image is kept as an alternate)</span></label>
+                    </div>
+                    <label class="mp-field mp-fold-vlabel" id="mp-fold-vlabel-wrap" style="display:none">
+                        <span>Variant label</span>
+                        <input class="mp-input" id="mp-fold-vlabel" placeholder="e.g. NSFW, Rough, Sketch">
+                    </label>
+                    <div class="mp-edit-actions">
+                        <button class="btn btn-primary btn-sm" data-mp-fold type="button">Fold this piece in</button>
+                        <span class="mp-edit-msg muted" id="mp-fold-msg"></span>
+                    </div>
+                </div>
+            </div>
+
             <div class="mp-section" id="mp-chart-card" style="display:none">
                 <div class="mp-section-title">Combined growth <span class="muted" style="font-weight:400">— summed across every site</span></div>
                 <div class="mp-chart-wrap"><canvas id="mp-combined-chart"></canvas></div>
@@ -676,6 +701,7 @@ window.Masterpieces = {
         // Same-image suggestions (native pHash) + combined time-series (≥2 points).
         this._loadSuggestions();
         this._loadChart(name);
+        this._loadFoldPicker(name);   // "fold this piece into another" title picker
     },
 
     /* ── Membership management (Phase 3) ── */
@@ -698,6 +724,8 @@ window.Masterpieces = {
             if (det) { e.preventDefault(); this._detach(det.dataset.platform, det.dataset.sid); return; }
             const junk = e.target.closest('[data-mp-junk]');
             if (junk) { e.preventDefault(); this._setJunk(junk); return; }
+            const fold = e.target.closest('[data-mp-fold]');
+            if (fold) { e.preventDefault(); this._foldIntoAnother(); return; }
             const alt = e.target.closest('[data-mp-img]');
             if (alt) {
                 e.preventDefault();
@@ -718,10 +746,88 @@ window.Masterpieces = {
         // _init runs once; `change` bubbles, and this._current tracks the open
         // Masterpiece.
         document.addEventListener('change', (e) => {
-            if (!e.target || e.target.id !== 'mp-replace-file') return;
-            const f = e.target.files && e.target.files[0];
-            if (f && this._current) this._replaceImage(this._current, f);
+            if (!e.target) return;
+            if (e.target.id === 'mp-replace-file') {
+                const f = e.target.files && e.target.files[0];
+                if (f && this._current) this._replaceImage(this._current, f);
+                return;
+            }
+            // Fold picker: show the label field only for the "variant" choice.
+            if (e.target.name === 'mp-fold-kind') {
+                const wrap = document.getElementById('mp-fold-vlabel-wrap');
+                if (wrap) wrap.style.display = e.target.value === 'var' ? '' : 'none';
+            }
         });
+    },
+
+    /* Populate the "fold into another piece" datalist — every OTHER Masterpiece's
+     * title. Lazy + best-effort: a failed fetch just leaves the picker empty (the
+     * typed value still resolves against whatever loaded). Title→name because the
+     * folder slug isn't what the user reads. */
+    async _loadFoldPicker(name) {
+        const list = document.getElementById('mp-fold-list');
+        if (!list) return;
+        this._foldMap = {};
+        let items = [];
+        try {
+            const d = await API.getMasterpieces();
+            items = (d && d.masterpieces) || [];
+        } catch { return; }
+        const opts = [];
+        for (const it of items) {
+            if (it.name === name) continue;               // never fold into itself
+            const title = it.title || it.name;
+            this._foldMap[title.toLowerCase()] = it.name;
+            opts.push(`<option value="${this.esc(title)}"></option>`);
+        }
+        list.innerHTML = opts.join('');
+    },
+
+    /* Fold THIS piece into a chosen other Masterpiece — the per-piece counterpart
+     * of the bulk tidy-up screen. Duplicate → /merge (this image removed, same as
+     * the target); Variant → /merge-as-variant (this image kept as an alternate).
+     * Either way "this" folder is absorbed, so we navigate to the target after. */
+    async _foldIntoAnother() {
+        const msg = document.getElementById('mp-fold-msg');
+        const set = t => { if (msg) msg.textContent = t || ''; };
+        const input = document.getElementById('mp-fold-target');
+        const typed = (input && input.value || '').trim();
+        if (!typed) { set('Pick a piece to fold into.'); return; }
+        // Resolve the typed title to a folder name (case-insensitive); fall back to
+        // treating the typed value as a name if it isn't a known title.
+        const target = (this._foldMap && this._foldMap[typed.toLowerCase()]) || typed;
+        if (target === this._current) { set("That's this same piece."); return; }
+        const kindEl = document.querySelector('input[name="mp-fold-kind"]:checked');
+        const kind = kindEl ? kindEl.value : 'dup';
+
+        if (kind === 'dup') {
+            if (!window.confirm(`Fold “${this._current}” into “${target}” as a DUPLICATE?\n\n`
+                + `This piece's site-links move over and THIS copy is removed (its image is the same as the other). `
+                + `This can't be undone.`)) return;
+            set('Merging…');
+            try {
+                await API.mergeMasterpieces(target, this._current);   // keep=target, drop=this
+                this._cache = null;
+                this._toast('success', `Merged into ${target}`);
+                window.location.hash = `#/masterpieces/${encodeURIComponent(target)}`;
+            } catch (e) { set('Failed: ' + (e.message || e)); }
+            return;
+        }
+
+        // Variant.
+        const vlabel = (document.getElementById('mp-fold-vlabel') || {}).value || '';
+        const label = vlabel.trim();
+        if (!label) { set('Give the variant a label (e.g. NSFW, Rough).'); return; }
+        const key = label.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'variant';
+        if (!window.confirm(`Fold “${this._current}” into “${target}” as the “${label}” VARIANT?\n\n`
+            + `This image moves into that Masterpiece as a labeled alternate and keeps its own stats. This can't be undone.`)) return;
+        set('Folding in…');
+        try {
+            await API.mergeAsVariant({ keep: target, absorb: this._current, key, label });
+            this._cache = null;
+            this._toast('success', `Folded into ${target} as “${label}”`);
+            window.location.hash = `#/masterpieces/${encodeURIComponent(target)}`;
+        } catch (e) { set('Failed: ' + (e.message || e)); }
     },
 
     /* Swap the canonical image for a better/higher-res version (2.153.0).

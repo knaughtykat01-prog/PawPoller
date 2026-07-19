@@ -12,6 +12,33 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.161.0] - 2026-07-19 - Mark a piece as a duplicate/variant right from its own page
+
+> You no longer have to use the bulk "Tidy up" screen to combine pieces. Open any Masterpiece and there's a new
+> **"Same piece as another?"** box — type the other piece's title, choose **duplicate** (same image, this copy is
+> removed) or **variant** (different render, kept as a labeled alternate), and it folds this one into that. You land
+> on the combined piece.
+
+Rhys: *"is there a way i can just go into an art piece and say, this is a dup, this is a variant without going into
+[the] masterpiece [tidy-up screen]?"* — there wasn't; the merge actions only lived on `#/masterpieces/duplicates`.
+Now they're on the piece detail too.
+
+**Frontend-only** — it reuses the endpoints that already do the work, so there was no backend to add:
+- A **"Same piece as another?"** section on the Masterpiece detail (`Masterpieces._paintDetail`). A title picker
+  (`<datalist>` of every *other* Masterpiece, lazy-loaded via `getMasterpieces`, resolved title→folder-name) + a
+  duplicate/variant choice; the variant path reveals a label field.
+- **Duplicate** → `POST /merge` (keep = the picked piece, drop = this) — this copy's site-links move over and its
+  folder is removed (same image). **Variant** → `POST /merge-as-variant` — this image is copied into the target as a
+  labeled alternate keeping its own stats. Either way "this" folder is absorbed, so it navigates to the target
+  afterward.
+- Guarded by a clear confirm each way (the duplicate confirm spells out that this copy is removed); the direction is
+  always "fold **this** into **that**", matching how you'd say it out loud.
+
+Complements 2.160.0's by-title finder: that one surfaces families in bulk; this one is for when you're already
+looking at a piece and know exactly what it belongs with.
+
+---
+
 ## [2.160.0] - 2026-07-19 - Group rough/final & SFW/NSFW into one piece, by title
 
 > After importing your collection you had ~200 Masterpieces, and the "merge duplicates" screen couldn't group the
