@@ -12,6 +12,20 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.159.2] - 2026-07-19 - Fix: a piece can no longer "suggest" its own hash record
+
+> The "same image elsewhere" suggestions could offer a phantom entry that was really the piece's own
+> internal hash record — clicking it added a junk link that pointed nowhere. Fixed, and the three junk
+> links it had already created were removed.
+
+Found while running the §4.3 pHash linking: 3 `masterpiece_members` rows with platform `__mp__`.
+`masterpiece_queries.suggestions()` scans `image_hash.all_hashes()`, which includes the synthetic `__mp__`
+namespace (Masterpiece hero hashes, 2.144's dup-finder store) — a piece's own row sits at distance 0, so it
+always topped the suggestion list, and attaching minted a member on a "platform" that no rollup can resolve.
+Fix: skip `platform == '__mp__'` rows in the scan. Prod cleanup: the 3 bogus members deleted. +1 test.
+
+---
+
 ## [2.159.1] - 2026-07-19 - Shelf view is desktop-only
 
 > On phones the Library now always opens in the classic grid — the animated shelf view needs arrow keys

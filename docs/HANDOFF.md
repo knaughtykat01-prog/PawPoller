@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-19
-**Current version (master):** 2.159.1 — **Shelf view is desktop-only.** Mobile mode always gets the classic
+**Current version (master):** 2.159.2 — **pHash LINKING RUN (spec §4.3) + suggestion self-match fix.**
+The imports' stats are connected: `art_audit/link_phash.py` (container-side) hashed the 151 new heroes +
+variant images (`hash_masterpieces` + per-variant `dhash_from_path`) and the 16 e621 thumbs (policy UA,
+1 req/s — e621 is outside `CDN_ALLOWLIST`), then auto-linked at **hamming ≤4 with a unique-piece guard**:
+**60 uploads linked across ~46 pieces** (fa 28, tw 15, e621 13, +bsky/da/ib/ig), `linked_via='phash'`,
+account_id carried from the submission row. 1 ambiguous case resolved by hand (fa/32576990 → Kitty_made_milk,
+d=0 vs next-best d=7). **The fix:** `suggestions()` scanned `all_hashes()` incl. the synthetic `__mp__` rows →
+every piece offered its own hero hash at distance 0; attaching minted `__mp__` members (3 on prod, deleted).
+Now skipped. +1 test.
+
+**Prior — 2.159.1 — Shelf view is desktop-only.** Mobile mode always gets the classic
 grid: `Showcase.renderLibrary()` guards on `App.isMobileLayoutActive()` → `Bookshelf.render()` (does NOT touch
 the stored `pp_library_view` preference — desktop keeps shelves), and `html[data-mobile="1"]` hides
 `#shelf-view-btn`. Live-verified 2.159.0's error popup on prod end-to-end (real 400 → card → Send to dev →

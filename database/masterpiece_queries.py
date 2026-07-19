@@ -364,6 +364,11 @@ def suggestions(conn: sqlite3.Connection, name: str) -> list[dict]:
 
     out: dict[tuple, dict] = {}
     for row in image_hash.all_hashes(conn):
+        # The synthetic '__mp__' rows are Masterpiece HERO hashes, not platform
+        # uploads — without this skip every piece suggests its own hash record
+        # (distance 0) and attaching it mints a bogus '__mp__' member (2.159.2).
+        if row["platform"] == "__mp__":
+            continue
         key = (row["platform"], str(row["submission_id"]))
         if key in members:
             continue

@@ -71,6 +71,33 @@ def _mk(arch, name, images):
         (d / img).write_bytes(b"\x89PNG\r\n\x1a\nfake")
 
 
+def test_suggestions_never_offer_the_synthetic_mp_hash_rows(artwork_archive):
+    """'__mp__' rows in image_hashes are Masterpiece hero hashes, not uploads.
+
+    Before 2.159.2 they leaked into suggestions() — every piece suggested its
+    OWN hash record at distance 0, and attaching it minted a bogus '__mp__'
+    member (3 found on prod)."""
+    from database import image_hash
+    _mk(artwork_archive, "SelfSuggest", ["image.png"])
+    conn = get_connection()
+    image_hash.ensure_table(conn)
+    ph = image_hash.dhash_from_path(str(artwork_archive / "SelfSuggest" / "image.png"))
+    # PIL can't decode the fake PNG, so seed the store directly with one
+    # '__mp__' row + one real platform row at the same (zero-distance) hash.
+    ph = ph or "0" * 16
+    image_hash.store(conn, "__mp__", "SelfSuggest", ph, source="mp")
+    image_hash.store(conn, "fa", "424242", ph, source="thumb")
+    conn.commit()
+    mq.add_member(conn, "SelfSuggest", "ib", "1")   # a member whose hash seeds the scan
+    image_hash.store(conn, "ib", "1", ph, source="thumb")
+    conn.commit()
+    got = mq.suggestions(conn, "SelfSuggest")
+    platforms = {s["platform"] for s in got}
+    assert "__mp__" not in platforms
+    assert "fa" in platforms                        # real cross-platform hit survives
+    conn.close()
+
+
 def test_declare_and_delete_variant_endpoints(artwork_archive):
     _mk(artwork_archive, "DecPiece", ["image.png", "image_2.png"])
     from dashboard import app
