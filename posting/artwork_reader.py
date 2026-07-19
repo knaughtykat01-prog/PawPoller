@@ -69,7 +69,10 @@ def get_artwork_archive_path() -> Path:
       1. artwork_archive_path setting (explicit override)
       2. /app/data/artwork (Docker server — on the existing persistent volume
          that already holds settings.json, so no docker-compose change needed)
-      3. ../m_x/Archives/Artwork/ (relative to PawPoller, for desktop)
+      3. ../m_x/Archives/Artwork/ (maintainer's dev checkout — ONLY if it exists
+         beside the source; never present in a shipped install)
+      4. <user data>/artwork — the generic per-user default, created on first use
+         (mirrors the Docker /app/data/artwork layout).
     """
     settings = config.get_settings()
     custom = settings.get("artwork_archive_path", "")
@@ -79,9 +82,14 @@ def get_artwork_archive_path() -> Path:
     data_dir = Path("/app/data")
     if data_dir.is_dir():
         return data_dir / "artwork"
-    # Desktop: sibling of Complete_Stories.
-    default = Path(config.resource_path(".")).parent / "m_x" / "Archives" / "Artwork"
-    return Path(custom) if custom else default
+    # Maintainer's dev checkout only — skipped on every real install.
+    dev = Path(config.resource_path(".")).parent / "m_x" / "Archives" / "Artwork"
+    if dev.is_dir():
+        return dev
+    # Generic per-user default (mirrors the Docker /app/data/artwork convention).
+    default = config.DATA_DIR / "artwork"
+    default.mkdir(parents=True, exist_ok=True)
+    return default
 
 
 @dataclass

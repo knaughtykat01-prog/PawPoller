@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-19
-**Current version (master):** 2.161.0 — **Per-piece "mark as duplicate/variant of another".**
+**Last updated:** 2026-07-20
+**Current version (master):** 2.161.1 — **Fix: fresh installs' archive path pointed at the maintainer's `m_x` dev folder.**
+Rhys saw it in a desktop log: `Story archive not found at …\PawPoller\m_x\Archives\Complete_Stories`. Both
+`story_reader.get_archive_path()` and `artwork_reader.get_artwork_archive_path()` fell back to the `m_x/Archives/…`
+DEV convention (only exists in a source checkout) → every shipped install warned. Now they fall through to a GENERIC
+per-user default — `APPDATA_DIR/story-archive` + `DATA_DIR/artwork`, **created on resolve** (mirrors Docker
+`/app/story-archive` + `/app/data/artwork`); the `m_x` path is kept but **guarded by `is_dir()`** so only a
+maintainer checkout hits it. Server (Docker bind mount) + custom override unaffected. +2 tests.
+**RE: the desktop UPDATE PROMPT (Rhys installed 2.134, sees no update):** not a bug — the updater (`updater.py` →
+public repo `knaughtykat01-prog/PawPoller` `/releases/latest`, frontend banner wired) works, but the newest GitHub
+**release is v2.134.0** = what he installed. Code/VM are at 2.161 but **no tag past v2.134.0 was ever pushed** (CI
+`build.yml` only builds installers on a `vX.Y.Z` tag; `/pp-release` deploys the VM but does NOT tag). Fix = cut a
+release (push `v2.161.1` after the release-verifier) → CI builds 3 assets + publishes → his app's next check shows
+"v2.161.1 available". **Pending Rhys's go-ahead** (outward publish).
+
+**Prior — 2.161.0 — Per-piece "mark as duplicate/variant of another".**
 Rhys: *"is there a way i can just go into an art piece and say this is a dup, this is a variant without going into
 [the] masterpiece tidy-up screen?"* The merge actions only lived on `#/masterpieces/duplicates`; now the Masterpiece
 detail (`Masterpieces._paintDetail`) has a **"Same piece as another?"** section — a `<datalist>` title picker of every

@@ -4,6 +4,33 @@ import pytest
 from posting import story_reader
 
 
+class TestArchivePathFallback:
+    """The archive path must resolve to a GENERIC per-user folder on a shipped
+    install — not the maintainer's `m_x/Archives/Complete_Stories` dev path, which
+    isn't there and logged a "Story archive not found" warning for every user
+    (2.162.0)."""
+
+    def test_generic_default_when_no_custom_no_docker_no_dev(self, tmp_path, monkeypatch):
+        import config
+        config.save_settings({"posting_story_archive_path": ""})
+        # Force the dev-checkout branch absent: point resource_path's parent at an
+        # empty temp dir (no m_x sibling), and pin the per-user data dir.
+        src = tmp_path / "src"; src.mkdir()
+        monkeypatch.setattr(config, "resource_path", lambda rel=".": src / rel)
+        monkeypatch.setattr(config, "APPDATA_DIR", tmp_path / "appdata")
+
+        path = story_reader.get_archive_path()
+        assert path == tmp_path / "appdata" / "story-archive"
+        assert path.is_dir()          # created on resolve, so no "not found" warning
+
+    def test_valid_custom_override_still_wins(self, tmp_path, monkeypatch):
+        import config
+        custom = tmp_path / "my-stories"; custom.mkdir()
+        config.save_settings({"posting_story_archive_path": str(custom)})
+        monkeypatch.setattr(config, "APPDATA_DIR", tmp_path / "appdata")
+        assert story_reader.get_archive_path() == custom
+
+
 class TestListStories:
 
     def test_list_stories_from_archive(self, story_archive):

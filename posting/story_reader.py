@@ -124,7 +124,11 @@ def get_archive_path() -> Path:
     Resolution order:
       1. posting_story_archive_path setting (explicit override)
       2. /app/story-archive (Docker bind mount on GCP server)
-      3. ../m_x/Archives/Complete_Stories/ (relative to PawPoller, for desktop)
+      3. ../m_x/Archives/Complete_Stories/ (maintainer's dev checkout — ONLY if it
+         actually exists beside the source; never present in a shipped install)
+      4. <user data>/story-archive — the generic per-user default, created on first
+         use so a fresh install has a real empty archive to sync/drop stories into,
+         instead of resolving to a dev path that isn't there.
     """
     settings = config.get_settings()
     custom = settings.get("posting_story_archive_path", "")
@@ -134,11 +138,15 @@ def get_archive_path() -> Path:
     docker_mount = Path("/app/story-archive")
     if docker_mount.is_dir() and any(docker_mount.iterdir()):
         return docker_mount
-    # Desktop: relative to PawPoller project
-    default = Path(config.resource_path(".")).parent / "m_x" / "Archives" / "Complete_Stories"
-    if default.is_dir():
-        return default
-    return Path(custom) if custom else default
+    # Maintainer's dev checkout only — the m_x story pipeline, if it happens to sit
+    # beside the source. Guarded by is_dir() so it's skipped on every real install.
+    dev = Path(config.resource_path(".")).parent / "m_x" / "Archives" / "Complete_Stories"
+    if dev.is_dir():
+        return dev
+    # Generic per-user default (mirrors the Docker /app/story-archive convention).
+    default = config.APPDATA_DIR / "story-archive"
+    default.mkdir(parents=True, exist_ok=True)
+    return default
 
 
 def list_stories() -> list[dict]:

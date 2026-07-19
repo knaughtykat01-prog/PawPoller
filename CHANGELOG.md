@@ -12,6 +12,27 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.161.1] - 2026-07-20 - Fix: fresh installs looked for stories in a path that isn't there
+
+> On a new install the app looked for your stories and artwork in a folder that only exists on the developer's
+> machine, and logged a warning about it. It now uses a proper per-user folder (created for you), so a fresh install
+> starts with a real, empty archive instead of a missing one.
+
+Rhys spotted it in a desktop log: `Story archive not found at C:\…\PawPoller\m_x\Archives\Complete_Stories`. The
+archive-path resolver's final fallback was the **maintainer's `m_x/Archives/Complete_Stories` dev convention** — a
+folder that only exists in a source checkout, never in a shipped install. So every fresh desktop user resolved to a
+path that isn't there and got the warning on every story list/poll.
+
+- `story_reader.get_archive_path()` and `artwork_reader.get_artwork_archive_path()` now fall through to a **generic
+  per-user default** — `APPDATA_DIR/story-archive` and `DATA_DIR/artwork` — **created on resolve**, mirroring the
+  Docker layout (`/app/story-archive`, `/app/data/artwork`). A fresh install gets a real empty archive to sync or
+  drop files into, and the "not found" warning is gone.
+- The `m_x` dev path is kept, but now **only when it actually exists** (`is_dir()` guard) — so a maintainer's
+  checkout still resolves to it, and nobody else ever sees it. Custom-path override and the Docker branch are
+  unchanged, so the GCP server (which resolves via the bind mount) is unaffected. +2 tests.
+
+---
+
 ## [2.161.0] - 2026-07-19 - Mark a piece as a duplicate/variant right from its own page
 
 > You no longer have to use the bulk "Tidy up" screen to combine pieces. Open any Masterpiece and there's a new
