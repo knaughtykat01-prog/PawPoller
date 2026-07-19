@@ -7,6 +7,19 @@ the stored `pp_library_view` preference — desktop keeps shelves), and `html[da
 `#shelf-view-btn`. Live-verified 2.159.0's error popup on prod end-to-end (real 400 → card → Send to dev →
 Telegram delivered, Rhys confirmed).
 
+**DATA OP 2026-07-19 — the 165-image collection is IMPORTED (spec masterpiece_variants.md §4): 49 → 200
+Masterpieces on prod.** 151 new pieces created server-side through `artwork_reader.create_artwork` +
+`save_artwork_metadata` (canonical writers — zero failures, zero name collisions), straight from
+`art_audit/full_metadata.json`. **9 variant families imported as ONE piece each** (2.158 shape, primary key `""`
+first): Tasteful Lounging (rendered/flat), Back Door (clean/messy), Tiger Tits (base/milk), For Every Occasion
+(base/dildo/plug/both), Roped (clean/cum), **Kinar — Reference Sheet (SFW hero/NSFW/Futa/Herm)**, Mimic's Catch
+(full/cutout), Gnaw Gnaw Gnaw (full/cutout), Held Up (base/cum/cum-no-lace). Two hash-collision families
+deliberately kept SEPARATE (mergeable later via 🖇): The Butt Is His vs Pressed Close (distinct compositions) +
+the 3 Mimic's Catch sequence frames (narrative, not renders). HEIC + process video stayed archive-only (spec).
+Plan/script provenance: `art_audit/import_plan.json` + `run_import.py`. **Still queued from spec §4:** pHash
+auto-suggest linking discovered site-uploads to the imports; junk the 14 server junk pieces; sync-to-sites push
+of audit metadata (needs Rhys's go); ART-export writeback.
+
 **Prior — 2.159.0 — Achievement-style ERROR popups + Send-to-dev (backlog AB).**
 Failed POST/PATCH/DELETE now pops a Laurels-anatomy card on `--danger` (`error_popup.js`/`.css`, new): plain title
 from status, FastAPI `detail` as the message, collapsed technical `<pre>` (route/status/version/time/raw body),
