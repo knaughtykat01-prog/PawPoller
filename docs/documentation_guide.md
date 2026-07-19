@@ -5678,6 +5678,37 @@ styled by `frontend/css/tour.css`. Introduced 2.56.0 (single getting-started tou
   persists the current tour's "seen" on both completion and dismissal — it writes the `localStorage` flag **and**
   fire-and-forget POSTs to `/api/settings/tour-seen` (a lost request just retries via `hydrate()`'s reconcile
   next login).
+
+#### `frontend/js/error_popup.js` + `routes/report_api.py` (achievement-style error cards, 2.159.0)
+
+Every failed **mutating** API call pops a card in the Laurels celebration's visual language (same
+rays/ico/label/name/desc anatomy, restyled on `--danger` in `frontend/css/error_popup.css`), with
+**📋 Copy report** and **📨 Send to dev** actions. `window.ErrorPopup = { show, onApiError }`.
+
+- **Wiring lives in api.js, not per screen.** `_popError(method, path, status, text)` is called from the
+  POST error path (including its network-error catch — status 0), PATCH, and DELETE. GETs are deliberately
+  NOT hooked: screens poll and prefetch constantly, and a flaky read shouldn't pop a card.
+  `_maybeAuthModal()` now returns a bool; when the session-expired modal takes the error, the card is
+  suppressed (one surface per failure).
+- **Guards** (in `onApiError`): `/api/report-error` itself (a failing report must never recurse),
+  `/api/auth/*` and connect/validate paths (login + credential flows have their own inline messaging),
+  8-second same-`method+path+status` dedup, and one open card at a time (first error wins — it's usually
+  the root cause). Inline per-screen error messages still render where they exist; the card adds the
+  copy/report affordance on top.
+- **Card content.** Title maps from status (0 → "Server unreachable", 401/403 → "Not authorised",
+  404 → "Not found", 5xx → "Server error", else "That didn't work"); the message is the FastAPI `detail`
+  (parsed like api.js `_cleanErr`); a collapsed `<details>` holds the full plain-text report (route,
+  status, screen hash, version, ISO time, raw body). The app version is parsed from api.js's own
+  `?v=X.Y.Z` cache-buster — free, and always matches the serving backend. Esc / tap-outside dismisses.
+- **`POST /api/report-error`** (`routes/report_api.py`, registered in `dashboard.py`): accepts
+  `{context, message, detail, url, version, ua}`, **always** writes the report to the server log, then
+  HTML-escapes + clips every field (context 200 / message 500 / detail 1200 / url+ua 200 — keeps the
+  message under Telegram's 4096-char cap) and forwards via `polling/telegram.py` `send_telegram`.
+  Returns `{sent: bool}` so the button can show "Sent to dev ✓" vs "Telegram not set up". Self-host
+  model: **"the dev" = the instance owner** — the report rides the instance's own Telegram bot; no
+  third-party telemetry, nothing leaves the box unless Telegram is configured. The Send button uses a
+  raw `fetch`, not `API.post` — a report about a failing API must not route back through it.
+  Tests: `tests/test_report_error.py` (forwarding, sent:false, HTML escaping, clipping, version stamp).
 - **Submissions caveat.** The `submissions` tour is keyed to `#/submissions`, which the router resolves to the
   legacy IB analytics view (`renderSubmissions` in app.js) — its un-prefixed route shadows the unified hub
   (`Submissions.render`). The tour therefore targets the IB view's controls (`#search-input`, `#filter-rating`,

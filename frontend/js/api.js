@@ -39,14 +39,23 @@ function _cleanErr(text) {
     return String(text || '').slice(0, 300);
 }
 function _maybeAuthModal(path, status, text) {
-    if (!window.errorModal) return;
-    if (!_isActionPath(path) || !_looksLikeSessionAuthError(status, text)) return;
+    if (!window.errorModal) return false;
+    if (!_isActionPath(path) || !_looksLikeSessionAuthError(status, text)) return false;
     window.errorModal({
         title: 'Action failed — session expired',
         message: _cleanErr(text),
         actionLabel: 'Fix in Settings',
         actionHref: '#/settings/platforms',
     });
+    return true;
+}
+
+/* Achievement-style error card (2.159.0, error_popup.js). Every failed
+ * MUTATING request surfaces one — with copy-report + send-to-dev — unless the
+ * auth modal above already took it. GETs are deliberately not hooked: screens
+ * poll and prefetch constantly, and a flaky read shouldn't pop a card. */
+function _popError(method, path, status, text) {
+    if (window.ErrorPopup) window.ErrorPopup.onApiError(method, path, status, text);
 }
 
 const API = {
@@ -96,6 +105,7 @@ const API = {
             });
         } catch (err) {
             console.error('[API] Network error:', err);
+            _popError('POST', path, 0, err.message);
             throw new Error(`Network error: ${err.message}`);
         }
         if (!resp.ok) {
@@ -104,7 +114,9 @@ const API = {
             // If an action the user just triggered (a post / upload) died on an
             // expired platform session, escalate to a blocking modal — a toast
             // is too easy to miss for something that needs credentials re-entered.
-            _maybeAuthModal(path, resp.status, text);
+            if (!_maybeAuthModal(path, resp.status, text)) {
+                _popError('POST', path, resp.status, text);
+            }
             throw new Error(`API ${resp.status}: ${text}`);
         }
         return resp.json();
@@ -123,6 +135,7 @@ const API = {
         });
         if (!resp.ok) {
             const text = await resp.text();
+            _popError('PATCH', path, resp.status, text);
             throw new Error(`API ${resp.status}: ${text}`);
         }
         return resp.json();
@@ -133,6 +146,7 @@ const API = {
         const resp = await fetch(path, { method: 'DELETE' });
         if (!resp.ok) {
             const text = await resp.text();
+            _popError('DELETE', path, resp.status, text);
             throw new Error(`API ${resp.status}: ${text}`);
         }
         return resp.json();

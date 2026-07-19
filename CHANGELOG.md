@@ -12,6 +12,37 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.159.0] - 2026-07-19 - Errors pop like achievements — with a Send-to-dev button
+
+> When something breaks, you now get a proper popup in the same style as the achievement cards — a plain
+> explanation of what went wrong, an expandable technical readout, and two buttons: **📋 Copy report** and
+> **📨 Send to dev**, which delivers the full report straight to the developer's Telegram. No more cryptic
+> `API 400: {"detail":...}` alerts.
+
+Backlog AB. Three pieces:
+
+- **`frontend/js/error_popup.js`** (new) — `ErrorPopup.show()` / `ErrorPopup.onApiError()`. The card reuses the
+  Laurels celebration anatomy (`laurels.js` → rays/ico/label/name/desc) restyled on `--danger`
+  (`frontend/css/error_popup.css`, new; Brut + reduced-motion variants included). Title maps from status
+  (0 → "Server unreachable", 5xx → "Server error", …); message = the FastAPI `detail`; the raw body, route,
+  version (parsed from api.js's `?v=` cache-buster) and timestamp live in a collapsed "Technical details"
+  `<pre>`. Esc / tap-outside dismisses.
+- **api.js hook** — the mutating transports (POST incl. its network-error catch, PATCH, DELETE) call
+  `_popError()` on failure, so every broken action gets the card without per-screen opt-in; GETs are
+  deliberately NOT hooked (prefetch/poll noise). `_maybeAuthModal` now returns a bool and suppresses the
+  card when the session-expired modal already took the error. Guards in `onApiError`: `/api/report-error`
+  itself, `/api/auth/*`, connect/validate paths, 8s same-error dedup, one card at a time.
+- **`POST /api/report-error`** (new `routes/report_api.py`) — accepts {context, message, detail, url, version,
+  ua}, always writes the report to the server log, HTML-escapes + clips every field (Telegram's 4096-char
+  cap), and forwards via the instance's own `polling/telegram.py` `send_telegram`. Returns `{sent: bool}` so
+  the button can say "Sent ✓" vs "Telegram not set up". Self-host model: "the dev" = the instance owner —
+  no third-party telemetry, nothing leaves the box unless Telegram is configured.
+
++5 tests (`test_report_error.py`). Inline per-screen error messages still show where they exist — the card
+adds the copy/report affordance on top rather than replacing contextual handling.
+
+---
+
 ## [2.158.1] - 2026-07-19 - Fix: importing a story submission as artwork now says so
 
 > Trying to import a **Writing/story submission** from the discovered bucket used to fail with a confusing

@@ -1,14 +1,23 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-19
-**Current version (master):** 2.158.1 — **Fix: story-submission artwork imports get a clear refusal.**
+**Current version (master):** 2.159.0 — **Achievement-style ERROR popups + Send-to-dev (backlog AB).**
+Failed POST/PATCH/DELETE now pops a Laurels-anatomy card on `--danger` (`error_popup.js`/`.css`, new): plain title
+from status, FastAPI `detail` as the message, collapsed technical `<pre>` (route/status/version/time/raw body),
+**📋 Copy report** + **📨 Send to dev**. Send posts to NEW `POST /api/report-error` (`routes/report_api.py`) →
+always server-logged, HTML-escaped + clipped, forwarded via the instance's own `send_telegram` (self-host: "the
+dev" = instance owner; Rhys confirmed *"send it to say me the dev"*). `{sent: bool}` drives the button feedback.
+api.js: `_popError()` on all mutating failures incl. network errors; `_maybeAuthModal` returns bool (auth modal
+wins); guards = report path itself, `/api/auth/*`, connect/validate, 8s dedup, one card at a time. GETs deliberately
+unhooked. +5 tests (`test_report_error.py`). Verified against the harness page (both collapsed + expanded states).
+
+**Prior — 2.158.1 — Fix: story-submission artwork imports get a clear refusal.**
 ib/3811835 ("Writing - Document" = a Velvet & Vice chapter) imported-as-artwork failed with the misleading "IB may
 not expose a direct image URL". Now: `_non_image_type_label` gate (writing/story/document/music/audio/text types →
 plain "this is a story, link it to the story instead") + `_resolve_ib_full_url` only accepts image/* mimetypes.
 +7 tests. Backlog grew rows U–AB (product-analysis easy wins: quick-publish, triage inbox, cred-expiry warnings,
-perf guardrails, backup/restore, SCHEDULING; Rhys's retro-2005 theme; achievement-style error popups — his message
-cut off at the send-to destination, assumed Telegram, CONFIRM). Product analysis delivered:
-`C:\Users\rhysc\claude\outputs\pawpoller_product_analysis.md` (backlog T).
+perf guardrails, backup/restore, SCHEDULING; Rhys's retro-2005 theme; achievement-style error popups). Product
+analysis delivered: `C:\Users\rhysc\claude\outputs\pawpoller_product_analysis.md` (backlog T).
 
 **Prior — 2.158.0 — Masterpiece VARIANTS + the two XMB showcase views (backlog S).**
 One piece, several renders: `masterpiece.json` `variants` list + `masterpiece_members.variant_key` (guarded
