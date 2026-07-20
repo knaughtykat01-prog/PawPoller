@@ -664,6 +664,8 @@ window.Masterpieces = {
                 <div class="mp-section-title">Link the same image elsewhere
                     <button class="btn btn-sm mp-scan-btn" data-mp-scan
                         title="Hash platform thumbnails to find this exact image on other sites (native, no AI)">↻ Scan for matches</button>
+                    <button class="btn btn-sm" data-mp-linkpick type="button"
+                        title="Pick a discovered post/upload to link by hand — for when the auto-scan misses it">🔍 Link one by hand…</button>
                 </div>
                 <div id="mp-suggest-body"><div class="muted">Looking for the same image on other sites…</div></div>
             </div>
@@ -673,9 +675,10 @@ window.Masterpieces = {
                     <span class="muted" style="font-weight:400;font-size:.8rem">— fold <strong>this</strong> piece into another Masterpiece</span>
                 </div>
                 <div class="mp-fold">
-                    <input list="mp-fold-list" id="mp-fold-target" class="mp-input"
-                        placeholder="Type the other piece's title…" autocomplete="off">
-                    <datalist id="mp-fold-list"></datalist>
+                    <div class="mp-fold-pick">
+                        <button class="btn btn-sm" data-mp-fold-pick type="button">🔍 Choose a piece…</button>
+                        <span class="mp-fold-chosen muted" id="mp-fold-chosen">No piece chosen yet</span>
+                    </div>
                     <div class="mp-fold-kinds">
                         <label><input type="radio" name="mp-fold-kind" value="dup" checked> It's a <strong>duplicate</strong>
                             <span class="muted">(same image — this copy is removed)</span></label>
@@ -701,7 +704,7 @@ window.Masterpieces = {
         // Same-image suggestions (native pHash) + combined time-series (≥2 points).
         this._loadSuggestions();
         this._loadChart(name);
-        this._loadFoldPicker(name);   // "fold this piece into another" title picker
+        this._foldTarget = null;      // reset the "fold into" choice per detail open
     },
 
     /* ── Membership management (Phase 3) ── */
@@ -718,12 +721,16 @@ window.Masterpieces = {
             if (tb) { e.preventDefault(); this._openTagBrowse(); return; }
             const scan = e.target.closest('[data-mp-scan]');
             if (scan) { e.preventDefault(); this._scanForMatches(scan); return; }
+            const linkpick = e.target.closest('[data-mp-linkpick]');
+            if (linkpick) { e.preventDefault(); this._pickLinkTarget(); return; }
             const att = e.target.closest('[data-mp-attach]');
             if (att) { e.preventDefault(); this._attach(att); return; }
             const det = e.target.closest('[data-mp-detach]');
             if (det) { e.preventDefault(); this._detach(det.dataset.platform, det.dataset.sid); return; }
             const junk = e.target.closest('[data-mp-junk]');
             if (junk) { e.preventDefault(); this._setJunk(junk); return; }
+            const foldPick = e.target.closest('[data-mp-fold-pick]');
+            if (foldPick) { e.preventDefault(); this._pickFoldTarget(); return; }
             const fold = e.target.closest('[data-mp-fold]');
             if (fold) { e.preventDefault(); this._foldIntoAnother(); return; }
             const alt = e.target.closest('[data-mp-img]');
@@ -760,27 +767,27 @@ window.Masterpieces = {
         });
     },
 
-    /* Populate the "fold into another piece" datalist — every OTHER Masterpiece's
-     * title. Lazy + best-effort: a failed fetch just leaves the picker empty (the
-     * typed value still resolves against whatever loaded). Title→name because the
-     * folder slug isn't what the user reads. */
-    async _loadFoldPicker(name) {
-        const list = document.getElementById('mp-fold-list');
-        if (!list) return;
-        this._foldMap = {};
-        let items = [];
-        try {
-            const d = await API.getMasterpieces();
-            items = (d && d.masterpieces) || [];
-        } catch { return; }
-        const opts = [];
-        for (const it of items) {
-            if (it.name === name) continue;               // never fold into itself
-            const title = it.title || it.name;
-            this._foldMap[title.toLowerCase()] = it.name;
-            opts.push(`<option value="${this.esc(title)}"></option>`);
-        }
-        list.innerHTML = opts.join('');
+    /* Choose the target piece via the visual WorkPicker (2.162.0) — replaces the
+     * old type-a-title datalist. Masterpieces only (you fold a piece into another
+     * PIECE); single-select. Stores {name,title} + reflects it in the UI. */
+    _pickFoldTarget() {
+        if (!window.WorkPicker) { this._toast('error', 'Picker unavailable'); return; }
+        WorkPicker.open({
+            title: 'Fold this piece into…',
+            confirmLabel: 'Choose',
+            multi: false,
+            filters: ['masterpiece'],
+            onConfirm: (items) => {
+                const it = items[0];
+                if (!it || it.member_ref === this._current) {
+                    if (it) this._toast('info', "That's this same piece.");
+                    return;
+                }
+                this._foldTarget = { name: it.member_ref, title: it.title };
+                const chosen = document.getElementById('mp-fold-chosen');
+                if (chosen) { chosen.textContent = `→ ${it.title}`; chosen.classList.remove('muted'); }
+            },
+        });
     },
 
     /* Fold THIS piece into a chosen other Masterpiece — the per-piece counterpart
@@ -790,12 +797,8 @@ window.Masterpieces = {
     async _foldIntoAnother() {
         const msg = document.getElementById('mp-fold-msg');
         const set = t => { if (msg) msg.textContent = t || ''; };
-        const input = document.getElementById('mp-fold-target');
-        const typed = (input && input.value || '').trim();
-        if (!typed) { set('Pick a piece to fold into.'); return; }
-        // Resolve the typed title to a folder name (case-insensitive); fall back to
-        // treating the typed value as a name if it isn't a known title.
-        const target = (this._foldMap && this._foldMap[typed.toLowerCase()]) || typed;
+        if (!this._foldTarget) { set('Choose a piece to fold into first.'); return; }
+        const target = this._foldTarget.name;
         if (target === this._current) { set("That's this same piece."); return; }
         const kindEl = document.querySelector('input[name="mp-fold-kind"]:checked');
         const kind = kindEl ? kindEl.value : 'dup';
@@ -985,6 +988,31 @@ window.Masterpieces = {
         } finally {
             btn.disabled = false; btn.textContent = orig;
         }
+    },
+
+    /* Manually link a discovered submission as a same-image member — the picker
+     * counterpart to the pHash auto-suggestions (2.162.0). For when the scan
+     * misses a copy (thumbnail not hashed, cropped, etc.). */
+    _pickLinkTarget() {
+        if (!this._current) return;
+        if (!window.WorkPicker) { this._toast('error', 'Picker unavailable'); return; }
+        const name = this._current;
+        WorkPicker.open({
+            title: 'Link a copy from another site',
+            confirmLabel: 'Link',
+            multi: false,
+            filters: ['discovered'],
+            onConfirm: async (items) => {
+                const it = items[0];
+                if (!it) return;
+                const idx = it.member_ref.indexOf(':');
+                const platform = it.member_ref.slice(0, idx);
+                const sid = it.member_ref.slice(idx + 1);
+                await API.addMasterpieceMember(name, { platform, submission_id: sid, linked_via: 'manual' });
+                this._toast('success', 'Linked');
+                await this.renderDetail(name);
+            },
+        });
     },
 
     async _attach(btn) {

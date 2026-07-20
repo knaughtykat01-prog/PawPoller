@@ -115,3 +115,7 @@
     .promo-layout { grid-template-columns: 1fr; }
     .promo-preview { position: static; }
 }
+
+/* Story-excerpt picker row (2.162.0) — WorkPicker "Choose a story…" button. */
+.promo-story-pickrow { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-bottom: .5rem; }
+#promo-story-chosen:not(.muted) { color: var(--accent); font-weight: 600; }

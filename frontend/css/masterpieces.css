@@ -42,6 +42,10 @@
 .mp-fold-kinds { display: flex; flex-direction: column; gap: .35rem; }
 .mp-fold-kinds label { font-size: .86rem; display: flex; gap: .4rem; align-items: baseline; cursor: pointer; }
 .mp-fold-vlabel { margin: 0; }
+/* Visual-picker row (2.162.0) — the "Choose a piece…" button + chosen name. */
+.mp-fold-pick { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.mp-fold-chosen { font-size: .85rem; }
+.mp-fold-chosen:not(.muted) { color: var(--accent); font-weight: 600; }
 
 /* ── Grid + cards (rendered inside Library under the type filter) ── */
 .mp-grid {

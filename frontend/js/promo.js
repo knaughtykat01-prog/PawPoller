@@ -225,7 +225,10 @@ window.Promo = {
                 <div class="promo-ovbox">
                     <h3>Pull an excerpt from a story</h3>
                     <p class="muted">Pick a story, select the passage you want, then hit <strong>Use selection</strong>.</p>
-                    <select id="promo-story-sel" class="promo-sel"><option value="">Loading stories…</option></select>
+                    <div class="promo-story-pickrow">
+                        <button class="btn btn-sm" id="promo-story-pick" type="button">🔍 Choose a story…</button>
+                        <span id="promo-story-chosen" class="muted">No story chosen yet</span>
+                    </div>
                     <textarea id="promo-story-src" class="promo-src" rows="14" readonly
                         placeholder="Pick a story to load its text…"></textarea>
                     <div class="promo-ov-actions">
@@ -237,33 +240,38 @@ window.Promo = {
             document.body.appendChild(ov);
         }
         ov.classList.add('open');
-        const sel = document.getElementById('promo-story-sel');
         const src = document.getElementById('promo-story-src');
         const msg = document.getElementById('promo-story-msg');
+        const chosen = document.getElementById('promo-story-chosen');
         msg.textContent = '';
         const close = () => ov.classList.remove('open');
         document.getElementById('promo-story-close').onclick = close;
         ov.onclick = e => { if (e.target === ov) close(); };
 
-        try {
-            const d = await API.getEditorStories();
-            const list = (d && d.stories) || [];
-            sel.innerHTML = '<option value="">Choose a story…</option>' + list.map(st =>
-                `<option value="${Utils.escapeHtml(st.name)}">${Utils.escapeHtml(st.title || st.name)}</option>`
-            ).join('');
-        } catch (e) {
-            sel.innerHTML = '<option value="">Could not load your stories</option>';
-        }
-
-        sel.onchange = async () => {
-            if (!sel.value) { src.value = ''; return; }
-            src.value = 'Loading…';
-            try {
-                const d = await API.getEditorStoryContent(sel.value);
-                src.value = this._stripMd(d && d.content);
-            } catch (e) {
-                src.value = 'Could not load that story.';
-            }
+        // Story chosen via the visual WorkPicker (2.162.0) — replaces the old
+        // dropdown. Single-select, stories only; on confirm we load that story's
+        // text into the read-only pane for the user to lift a passage from.
+        document.getElementById('promo-story-pick').onclick = () => {
+            if (!window.WorkPicker) { msg.textContent = 'Picker unavailable.'; return; }
+            WorkPicker.open({
+                title: 'Pick a story',
+                confirmLabel: 'Load story',
+                multi: false,
+                filters: ['story'],
+                onConfirm: async (items) => {
+                    const it = items[0];
+                    if (!it) return;
+                    const name = it.member_ref.split(':').slice(1).join(':') || it.member_ref;
+                    if (chosen) { chosen.textContent = it.title; chosen.classList.remove('muted'); }
+                    src.value = 'Loading…';
+                    try {
+                        const d = await API.getEditorStoryContent(name);
+                        src.value = this._stripMd(d && d.content);
+                    } catch (e) {
+                        src.value = 'Could not load that story.';
+                    }
+                },
+            });
         };
 
         document.getElementById('promo-use-sel').onclick = () => {

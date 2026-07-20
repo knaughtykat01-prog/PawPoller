@@ -1,7 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-20
-**Current version (master):** 2.161.1 — **Fix: fresh installs' archive path pointed at the maintainer's `m_x` dev folder.**
+**Current version (master):** 2.162.0 — **The visual WorkPicker everywhere you select a story/art/tweet.**
+Rhys: *"It should be attached to anything, anywhere it's a selectable for an art, a story, a tweet."* `WorkPicker`
+(thumbnail-grid modal, 2.111.0) was only in Collections add-member. An Explore sweep found every other content-item
+selector; all swapped: **Discovered "Link to work"** (`submissions.js`, was `<select>` → 🔗 button, dead
+`_workOptions` removed), **fold-a-Masterpiece** (`masterpieces.js`, was the 2.161.0 `<datalist>` → 🔍 button),
+**Promo story excerpt** (`promo.js`, `<select>` → 🔍 button), **Groups Add Submission** (`app.js`, was TWO `prompt()`s
+→ picker, discovered filter), + a new **🔍 Link one by hand** on the masterpiece "link same image" flow beside the
+pHash auto-scan. **WorkPicker gained `opts.filters`** to restrict which type chips show (hides the row when 1);
+no `filters` = all five (back-compat, Collections unchanged). Left alone: editor Import-from-Platform (arbitrary URLs)
++ dormant Cross-Platform Create-Link (retired). **Frontend-only** — each swap reuses the API that spot already called;
+no backend/test change.
+
+**Prior — 2.161.1 — Fix: fresh installs' archive path pointed at the maintainer's `m_x` dev folder.**
 Rhys saw it in a desktop log: `Story archive not found at …\PawPoller\m_x\Archives\Complete_Stories`. Both
 `story_reader.get_archive_path()` and `artwork_reader.get_artwork_archive_path()` fell back to the `m_x/Archives/…`
 DEV convention (only exists in a source checkout) → every shipped install warned. Now they fall through to a GENERIC

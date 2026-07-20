@@ -12,6 +12,40 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.162.0] - 2026-07-20 - The visual picker everywhere you select a story, art or tweet
+
+> Anywhere you pick a piece — linking a discovered tweet to a work, folding one Masterpiece into another, pulling a
+> story excerpt in the Promo Maker, adding to a group, linking a copy from another site — now opens the same visual
+> thumbnail picker (the one Collections already used), instead of a dropdown, a type-to-search box, or a pop-up
+> asking you to type a platform and an ID. Same picker, same feel, everywhere.
+
+Rhys: *"It should be attached to anything, anywhere it's a selectable for an art, a story, a tweet."* The `WorkPicker`
+modal (searchable thumbnail grid, 2.111.0) was only wired into Collections' add-member. A sweep found every other
+place you select a content item using something older, and swapped them all to it.
+
+**WorkPicker gained a `filters` option** so each caller shows only the relevant type chips (and hides the chip row
+entirely when there's just one) — e.g. "link this tweet to a work" offers Stories / Artwork / Masterpieces but not
+other tweets. Backward compatible: no `filters` = all five chips, as before.
+
+Converted:
+- **Discovered → "Link to work"** (`submissions.js`) — was a per-row `<select>` rebuilt from a full works list on
+  every render. Now a **🔗 Link to work…** button opening the picker (Stories/Artwork/Masterpieces, single-select).
+  The dead `_workOptions` fetch/build is gone.
+- **Fold a Masterpiece into another** (`masterpieces.js`) — replaced the type-a-title `<datalist>` (added in 2.161.0)
+  with a **🔍 Choose a piece…** button (Masterpieces only). Same duplicate/variant choice after.
+- **Promo Maker story excerpt** (`promo.js`) — the story `<select>` is now a **🔍 Choose a story…** button (Stories
+  only); picking loads that story's text to lift a passage from, as before.
+- **Groups → "Add Submission"** (`app.js`) — replaced the **two `prompt()`s** (type the platform, then the ID) with
+  the picker (Discovered filter — pick the actual tweet/upload from a grid).
+- **"Link the same image elsewhere"** (`masterpieces.js`) — added a **🔍 Link one by hand…** button beside the pHash
+  auto-scan, so you can attach a copy the scan missed by picking it, instead of only from proposed matches.
+
+Left as-is on purpose: the editor's *Import from Platform* wizard (it takes arbitrary URLs the picker can't browse),
+and the dormant Cross-Platform "Create Link" screen (retired, no nav entry). Frontend-only — every swap reuses the
+API each spot already called; no backend change.
+
+---
+
 ## [2.161.1] - 2026-07-20 - Fix: fresh installs looked for stories in a path that isn't there
 
 > On a new install the app looked for your stories and artwork in a folder that only exists on the developer's

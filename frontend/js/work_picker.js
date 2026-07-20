@@ -103,12 +103,18 @@
         const confirmLabel = opts.confirmLabel || (multi ? 'Add selected' : 'Select');
         const selected = new Map();   // member_ref -> item
         let byRef = new Map();        // member_ref -> item (current results)
-        let filterKey = 'all';
+        // Restrict which type chips show (2.162.0): a caller like "link this tweet
+        // to a work" wants stories/artwork/masterpieces but NOT other tweets. An
+        // unknown key is dropped; empty/absent = every filter (the old behaviour).
+        // A single allowed filter hides the chip row entirely — nothing to switch.
+        const allowed = (Array.isArray(opts.filters) && opts.filters.length)
+            ? opts.filters.filter(k => FILTERS[k]) : Object.keys(FILTERS);
+        let filterKey = allowed[0] || 'all';
         let searchTimer = null;
 
-        const chips = Object.keys(FILTERS).map(k =>
+        const chips = allowed.length > 1 ? allowed.map(k =>
             `<button type="button" class="tag-browser-chip${k === filterKey ? ' tag-browser-chip-active' : ''}" data-wp-filter="${k}">
-                <span class="tag-browser-chip-label">${esc(FILTERS[k].label)}</span></button>`).join('');
+                <span class="tag-browser-chip-label">${esc(FILTERS[k].label)}</span></button>`).join('') : '';
 
         const root = document.createElement('div');
         root.className = 'wp-root';

@@ -239,19 +239,15 @@ window.Submissions = {
         if (!target) return;
         target.className = '';
         target.innerHTML = `<div id="disc-list"><div class="loading-spinner">Loading…</div></div>`;
-        let disc, works;
+        let disc;
         try {
-            [disc, works] = await Promise.all([API.getDiscovered(), API.getWorks()]);
+            disc = await API.getDiscovered();
         } catch (err) {
             const el = document.getElementById('disc-list');
             if (el) el.innerHTML = `<div class="card error">Failed to load: ${this.esc(err.message)}</div>`;
             return;
         }
         this._discItems = (disc && disc.discovered) || [];
-        this._workOptions = ((works && works.works) || []).map(w => ({
-            value: `${w.content_type}:${w.name}`,
-            label: `[${w.content_type}] ${w.title}`,
-        }));
         this._paintDiscovered();
     },
 
@@ -271,19 +267,15 @@ window.Submissions = {
             </div>
             <div id="disc-list"><div class="loading-spinner">Loading…</div></div>`;
 
-        let disc, works;
+        let disc;
         try {
-            [disc, works] = await Promise.all([API.getDiscovered(), API.getWorks()]);
+            disc = await API.getDiscovered();
         } catch (err) {
             document.getElementById('disc-list').innerHTML =
                 `<div class="card error">Failed to load: ${this.esc(err.message)}</div>`;
             return;
         }
         this._discItems = (disc && disc.discovered) || [];
-        this._workOptions = ((works && works.works) || []).map(w => ({
-            value: `${w.content_type}:${w.name}`,
-            label: `[${w.content_type}] ${w.title}`,
-        }));
         this._paintDiscovered();
     },
 
@@ -373,8 +365,6 @@ window.Submissions = {
             ? `<img src="${this.esc(d.thumbnail_url)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0;">`
             : `<div style="width:56px;height:56px;border-radius:8px;background:var(--bg-elev);flex-shrink:0;"></div>`;
         const plat = this._plat(d.platform);
-        const opts = this._workOptions.map(o =>
-            `<option value="${this.esc(o.value)}">${this.esc(o.label)}</option>`).join('');
         return `
             <div class="card" style="display:flex;gap:1rem;align-items:center;padding:.85rem 1rem;margin-bottom:.6rem;flex-wrap:wrap;">
                 ${thumb}
@@ -385,11 +375,8 @@ window.Submissions = {
                         &middot; <a href="${this.esc(Utils.safeUrl(d.url) || '#')}" target="_blank" rel="noopener">view &#8599;</a>
                     </div>
                 </div>
-                <select id="disc-sel-${i}" style="${this._inputStyle}max-width:220px;">
-                    <option value="">Link to work…</option>
-                    ${opts}
-                </select>
-                <button class="btn btn-primary" id="disc-link-btn-${i}">Link</button>
+                <button class="btn btn-primary" id="disc-link-btn-${i}"
+                    title="Link this to one of your works — opens the visual picker">🔗 Link to work…</button>
                 ${this._canImportArt(d) ? `<button class="btn" id="disc-import-btn-${i}" title="Download the image + metadata as a new artwork">Import</button>` : ''}
                 ${this._canImportPost(d) ? `<button class="btn" id="disc-post-btn-${i}" title="Bring this in as a post — it's a microblog post with no image, so there's no artwork to make">→ Posts</button>` : ''}
                 ${this._canMaster(d) ? `<button class="btn" id="disc-master-btn-${i}" title="Promote to a Masterpiece — the master record for this image">★ Master</button>` : ''}
@@ -527,22 +514,41 @@ window.Submissions = {
         }
     },
 
+    /* Link a discovered submission to an existing work — via the visual picker
+     * (2.162.0). Works/masterpieces only: you link a tweet TO a work, not to
+     * another tweet, so the discovered filter is deliberately omitted. */
     async _linkOne(i) {
-        const sel = document.getElementById(`disc-sel-${i}`);
-        if (!sel || !sel.value) { this._toast('error', 'Pick a work to link to first'); return; }
         const d = this._discItems[i];
-        const [content_type, ...rest] = sel.value.split(':');
-        const name = rest.join(':');
-        try {
-            await API.linkSubmission({
-                platform: d.platform, submission_id: d.submission_id,
-                content_type, name, title: d.title, url: d.url,
-            });
-            this._toast('success', `Linked to ${name}`);
-            this._discItems.splice(i, 1);
-            this._paintDiscovered();
-        } catch (err) {
-            this._toast('error', `Link failed: ${err.message}`);
-        }
+        if (!d) return;
+        if (!window.WorkPicker) { this._toast('error', 'Picker unavailable'); return; }
+        WorkPicker.open({
+            title: `Link “${d.title || d.submission_id}” to…`,
+            confirmLabel: 'Link',
+            multi: false,
+            filters: ['story', 'artwork', 'masterpiece'],
+            onConfirm: async (items) => {
+                const it = items[0];
+                if (!it) return;
+                // Work items carry member_ref "content_type:name"; a masterpiece
+                // carries a bare name (its folder == an artwork work of that name).
+                let content_type, name;
+                if (it.member_type === 'masterpiece') {
+                    content_type = 'artwork';
+                    name = it.member_ref;
+                } else {
+                    const p = it.member_ref.split(':');
+                    content_type = p[0];
+                    name = p.slice(1).join(':');
+                }
+                await API.linkSubmission({
+                    platform: d.platform, submission_id: d.submission_id,
+                    content_type, name, title: d.title, url: d.url,
+                });
+                this._toast('success', `Linked to ${name}`);
+                const idx = this._discItems.indexOf(d);
+                if (idx >= 0) this._discItems.splice(idx, 1);
+                this._paintDiscovered();
+            },
+        });
     },
 };

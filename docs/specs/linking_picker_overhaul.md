@@ -32,6 +32,14 @@ search.
   selected strip, footer), reuse its CSS.
 - Replaces: collections `_addMemberBrowser` (currently text list capped at 200),
   the cross-platform `prompt("platform:id,…")`, and any future "link to work".
+- **Wired app-wide in 2.162.0** — every remaining content-item selector now opens
+  `WorkPicker` (Rhys: "attached to anything selectable for an art/story/tweet"):
+  Discovered "Link to work" (`submissions.js`, was `<select>`), fold-a-Masterpiece
+  (`masterpieces.js`, was a `<datalist>`), Promo story excerpt (`promo.js`), Groups
+  Add-Submission (`app.js`, was two `prompt()`s), + manual "Link one by hand" on the
+  masterpiece same-image flow. Gained `opts.filters` to restrict the type chips per
+  caller. Not converted: editor Import-from-Platform (arbitrary URLs) + dormant
+  Cross-Platform Create-Link.
 
 ### 2. Tag browser in the Art module (#2) — ✅ DONE (2.112.0)
 The tag browser works in the story editor; wire the **same** browser into the

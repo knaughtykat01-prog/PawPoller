@@ -9025,20 +9025,29 @@ const App = {
 
             this._setContent(html);
 
-            // "Add Submission" button: prompt for platform (ib/fa/ws/sf) then
-            // submission ID, add to group via API, and re-render
-            document.getElementById('add-member-btn').addEventListener('click', async () => {
-                const platform = prompt('Platform (ib, fa, ws, sf, sqw, ao3, da, wp, ik):');
-                if (!platform || !['ib', 'fa', 'ws', 'sf', 'sqw', 'ao3', 'da', 'wp', 'ik'].includes(platform)) { alert('Invalid platform'); return; }
-                const subId = prompt('Submission ID:');
-                if (!subId) { alert('Invalid ID'); return; }
-                if (platform !== 'sf' && isNaN(subId)) { alert('Invalid ID'); return; }
-                try {
-                    await API.addGroupMember(groupId, { platform, submission_id: platform === 'sf' ? subId.trim() : parseInt(subId) });
-                    this.renderGroupDetail(groupId);
-                } catch (err) {
-                    alert('Failed: ' + err.message);
-                }
+            // "Add Submission" — pick a discovered submission via the visual
+            // WorkPicker (2.162.0), replacing the old platform-then-ID prompt pair.
+            document.getElementById('add-member-btn').addEventListener('click', () => {
+                if (!window.WorkPicker) { alert('Picker unavailable'); return; }
+                WorkPicker.open({
+                    title: 'Add a submission to this group',
+                    confirmLabel: 'Add',
+                    multi: false,
+                    filters: ['discovered'],
+                    onConfirm: async (items) => {
+                        const it = items[0];
+                        if (!it) return;
+                        // Discovered items carry member_ref "platform:submission_id".
+                        const idx = it.member_ref.indexOf(':');
+                        const platform = it.member_ref.slice(0, idx);
+                        const sid = it.member_ref.slice(idx + 1);
+                        await API.addGroupMember(groupId, {
+                            platform,
+                            submission_id: platform === 'sf' ? String(sid).trim() : parseInt(sid),
+                        });
+                        this.renderGroupDetail(groupId);
+                    },
+                });
             });
 
             // "Delete Group" button: confirmation dialog, then delete and navigate
