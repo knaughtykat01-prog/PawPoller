@@ -3170,10 +3170,29 @@ is for incremental upgrades of an already-installed app, so it picks:
 
 **Per-OS apply path**:
 
-- **Windows** (`apply_update`): extracts the zip to a temp dir then
-  writes a `_update.bat` that sleeps 2s, runs `robocopy /MIR /XD data
-  logs` against the install dir, restarts the .exe, and self-deletes.
+- **Windows** (`apply_update`): extracts the zip to a temp dir,
+  resolves the mirror source via `_resolve_source_dir`, then writes a
+  `_update.bat` that sleeps 2s, runs `robocopy <source> <install-dir>
+  /MIR /XD data logs /R:2 /W:2`, restarts the .exe, and self-deletes.
   `os.startfile` launches the .bat detached.
+
+  > **PACKAGING INVARIANT (learned the hard way, 2.162.1).** `robocopy
+  > /MIR` makes the install dir *identical* to its source — it also
+  > **deletes** install-dir entries absent from the source. So the
+  > source MUST be the tree that directly holds `PawPoller.exe` +
+  > `_internal/`. The CI zip is built **flat** (`ZipFile.
+  > CreateFromDirectory` → contents at the root, NOT wrapped in a
+  > `PawPoller/` folder); `Compress-Archive -Path PawPoller` produced
+  > that wrapper, and mirroring the extract-root then **nested** the new
+  > build under `install\PawPoller\` while **purging** the real
+  > `install\_internal\` → a launch-time `schema.sql` FileNotFound.
+  > `_resolve_source_dir` is the belt-and-braces: it descends into a
+  > lone top-level wrapper dir, uses a flat payload as-is, and **raises
+  > before `/MIR`** if the resolved source has no `.exe` — never purge a
+  > working install from a malformed payload. `/R:2 /W:2` bounds
+  > robocopy's retries (default `/R:1000000 /W:30` would hang the whole
+  > update on one locked file). Keep the zip flat **and** the resolver;
+  > either alone is a single point of failure.
 - **Linux** (`_apply_update_linux`): reads the current AppImage path
   from the `APPIMAGE` env var (standard, set by the AppImage runtime),
   writes a `_update.sh` that sleeps 2s, `mv -f`'s the new file over

@@ -139,6 +139,30 @@ def download_update(download_url: str) -> Path:
     return zip_path
 
 
+def _resolve_source_dir(extract_dir: Path, exe_name: str) -> Path:
+    """The tree that robocopy /MIR should mirror onto the install dir.
+
+    Must be the folder that directly holds ``exe_name`` (+ ``_internal/``). A
+    release zip may wrap those in ONE top-level folder (the PyInstaller onedir
+    name, e.g. ``PawPoller/``); a flat zip has them at the root. Descend into a
+    lone wrapper dir so the mirror lands ON the install dir instead of nesting the
+    build under ``app_dir\\PawPoller\\`` while /MIR purges the real ``_internal`` —
+    the corruption that shipped a schema.sql-less install in ≤2.162.0.
+
+    Raises if the resolved tree has no executable — better to abort than let /MIR
+    purge a working install from a malformed payload.
+    """
+    source = extract_dir
+    entries = list(extract_dir.iterdir())
+    if len(entries) == 1 and entries[0].is_dir():
+        source = entries[0]
+    if not (source / exe_name).is_file():
+        raise RuntimeError(
+            f"Update payload missing {exe_name} at its root ({source}); "
+            f"aborting to avoid corrupting the install.")
+    return source
+
+
 def apply_update(zip_path: Path) -> None:
     """Apply the downloaded update.
 
@@ -175,6 +199,8 @@ def apply_update(zip_path: Path) -> None:
     app_dir = Path(sys.executable).parent
     exe_name = Path(sys.executable).name
 
+    source_dir = _resolve_source_dir(extract_dir, exe_name)
+
     # Self-update batch script mechanism:
     # The running .exe can't overwrite itself, so we write a .bat script that:
     #   1. `timeout /t 2` — waits 2 seconds for the current process to exit
@@ -187,10 +213,13 @@ def apply_update(zip_path: Path) -> None:
     #      never deleted or overwritten during an update.
     #   4. `start` — launches the updated .exe.
     #   5. `del "%~f0"` — the batch script deletes itself (cleanup).
+    # /R:2 /W:2 — bound robocopy's retries. Its default is /R:1000000 /W:30, so a
+    # single locked file (AV scan, a DLL held a beat too long) would hang the
+    # updater for effectively forever instead of failing fast.
     bat_path = zip_path.parent / "_update.bat"
     bat_content = f"""@echo off
 timeout /t 2 /nobreak > nul
-robocopy "{extract_dir}" "{app_dir}" /MIR /XD data logs
+robocopy "{source_dir}" "{app_dir}" /MIR /XD data logs /R:2 /W:2 /NP
 start "" "{app_dir}\\{exe_name}"
 del "%~f0"
 """

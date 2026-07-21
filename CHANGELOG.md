@@ -12,6 +12,39 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.162.1] - 2026-07-21 - Fix: the in-app updater corrupted the install (missing schema.sql)
+
+> **Important if you updated through the app and it now won't open** (crash mentioning `schema.sql`): the update was
+> packaged wrong and left the app broken. Your stories, links, tags and settings are **completely safe** — they live
+> in a separate folder the update never touched. To fix it, download and run the latest installer from the releases
+> page once; after that, in-app updates work normally again. This release makes sure this can't happen again.
+
+Rhys updated 2.134 → 2.162.0 through the app and it crashed on launch:
+`FileNotFoundError: …\PawPoller\_internal\database\schema.sql`. The build was fine (the zip contained all 20 schema
+files); the **self-updater** was the culprit, and it had been broken for every self-update — Rhys was the first to try
+one.
+
+**Root cause.** CI packaged the Windows zip with `Compress-Archive -Path PawPoller`, which wraps everything in a
+top-level `PawPoller/` folder. The updater then `robocopy …/MIR`'d the *extracted root* straight onto the install dir
+without descending into that wrapper — so `/MIR` **nested** the new build under `install\PawPoller\` **and purged** the
+real `install\_internal\` (mirror-delete of "extra" entries). Result: a half-present `_internal` missing the schema
+files → crash on the next launch.
+
+**Two independent fixes, so it's covered both ways:**
+1. **CI now builds a FLAT zip** (`ZipFile.CreateFromDirectory` → `PawPoller.exe` + `_internal/` at the root, no
+   wrapper). This is what lets **users still on 2.134 self-update safely** — their already-shipped (unfixed) updater
+   mirrors a flat zip correctly. Verified the flat layout locally.
+2. **The updater is hardened** (`updater._resolve_source_dir`): it descends into a lone top-level wrapper folder when
+   present, uses a flat payload as-is, and **aborts before `/MIR` if the payload has no executable** — never again
+   purging a working install from a malformed download. Also bounded robocopy's retries (`/R:2 /W:2`) so a locked
+   file can't hang the update forever. +5 tests.
+
+**Your data was never at risk.** On desktop, the database and settings live in `%APPDATA%\PawPoller\data`, a different
+location from the install dir (`%LOCALAPPDATA%\Programs\PawPoller`) — the update only damaged the program files, not
+your content. Reinstalling restores the program; your library comes back exactly as it was.
+
+---
+
 ## [2.162.0] - 2026-07-20 - The visual picker everywhere you select a story, art or tweet
 
 > Anywhere you pick a piece — linking a discovered tweet to a work, folding one Masterpiece into another, pulling a

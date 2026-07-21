@@ -28,9 +28,20 @@ jobs:
         run: python -m PyInstaller pawpoller.spec --noconfirm
 
       - name: Package release
+        # FLAT zip — contents (`PawPoller.exe`, `_internal/…`) at the ROOT, NOT
+        # wrapped in a top-level `PawPoller/` folder. The in-app self-updater
+        # robocopy-/MIRs the extracted zip straight onto the install dir; a
+        # wrapper folder made it nest the new build under `PawPoller\` AND purge
+        # the real `_internal`, corrupting the install (missing schema.sql on next
+        # launch — 2.162.1). `Compress-Archive -Path PawPoller` produced that
+        # wrapper; `ZipFile.CreateFromDirectory` archives the folder's CONTENTS at
+        # the root, deterministically across PowerShell versions.
         run: |
-          cd dist
-          Compress-Archive -Path PawPoller -DestinationPath PawPoller-windows-x64.zip
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $src = Join-Path $PWD 'dist\PawPoller'
+          $zip = Join-Path $PWD 'dist\PawPoller-windows-x64.zip'
+          if (Test-Path $zip) { Remove-Item $zip }
+          [System.IO.Compression.ZipFile]::CreateFromDirectory($src, $zip)
 
       # Read APP_VERSION from config.py so the installer filename + the
       # Add/Remove Programs entry both carry the real version without

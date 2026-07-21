@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-20
-**Current version (master):** 2.162.0 — **The visual WorkPicker everywhere you select a story/art/tweet.**
+**Last updated:** 2026-07-21
+**Current version (master):** 2.162.1 — **CRITICAL FIX: the self-updater corrupted the install (missing schema.sql).**
+Rhys self-updated 2.134→2.162.0 in-app → crash `FileNotFoundError …\_internal\database\schema.sql`. Build was fine (zip
+had all 20 schemas); the **self-updater** was broken for EVERY self-update (he was first to try). **Root cause:** CI
+zipped with `Compress-Archive -Path PawPoller` → a top-level `PawPoller/` **wrapper**; `updater.apply_update` then
+`robocopy /MIR`'d the extract ROOT onto the install dir without descending → `/MIR` nested the build under
+`install\PawPoller\` AND purged the real `install\_internal\`. **Two fixes:** (1) **CI now builds a FLAT zip**
+(`ZipFile.CreateFromDirectory`, no wrapper) — this is what lets **2.134 users self-update safely** (their unfixed
+updater mirrors a flat zip correctly); (2) **`updater._resolve_source_dir`** descends into a lone wrapper, uses a flat
+payload as-is, and **aborts before /MIR if no exe** in the payload (never purge a good install from junk); robocopy
+now `/R:2 /W:2` (no infinite hang on a locked file). +5 tests.
+**USER DATA IS SAFE** — DB+settings live in `%APPDATA%\PawPoller\data`, separate from the install dir
+(`%LOCALAPPDATA%\Programs\PawPoller`); only program files were damaged. **RECOVERY for an already-broken install: run
+the Setup.exe once** (data intact); after that in-app updates work. Cutting **v2.162.1** re-publishes with the flat zip.
+
+**Prior — 2.162.0 — The visual WorkPicker everywhere you select a story/art/tweet.**
 Rhys: *"It should be attached to anything, anywhere it's a selectable for an art, a story, a tweet."* `WorkPicker`
 (thumbnail-grid modal, 2.111.0) was only in Collections add-member. An Explore sweep found every other content-item
 selector; all swapped: **Discovered "Link to work"** (`submissions.js`, was `<select>` → 🔗 button, dead
