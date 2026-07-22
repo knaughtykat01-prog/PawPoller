@@ -135,8 +135,19 @@ window.Posts = {
                 </div>
                 <div class="post-platforms" id="post-platforms"></div>
                 <div class="post-compose-actions">
-                    <button class="btn btn-primary" id="post-submit">Post</button>
+                    <button class="btn btn-primary" id="post-submit">Post now</button>
+                    <button class="btn btn-outline" id="post-schedule-toggle">🕐 Schedule…</button>
                     <span id="post-msg" class="muted"></span>
+                </div>
+                <div class="schedule-form" id="post-schedule-form" style="display:none">
+                    <div class="schedule-form-inner">
+                        <label class="schedule-label" for="post-schedule-datetime">Publish the ticked platforms at:</label>
+                        <input type="datetime-local" class="schedule-datetime" id="post-schedule-datetime">
+                        <div class="schedule-form-actions">
+                            <button class="btn btn-sm btn-primary" id="post-schedule-confirm">Confirm schedule</button>
+                            <button class="btn btn-sm btn-outline" id="post-schedule-cancel">Cancel</button>
+                        </div>
+                    </div>
                 </div>
             </div>`;
 
@@ -211,7 +222,29 @@ window.Posts = {
             if (rm) this._removeFileAt(parseInt(rm.dataset.idx, 10));
         });
         document.getElementById('post-submit').addEventListener('click', () => this._submit());
+
+        // Scheduling: toggle the picker, confirm (create + queue), cancel.
+        const schedForm = document.getElementById('post-schedule-form');
+        const schedInput = document.getElementById('post-schedule-datetime');
+        document.getElementById('post-schedule-toggle').addEventListener('click', () => {
+            const showing = schedForm.style.display !== 'none';
+            schedForm.style.display = showing ? 'none' : '';
+            if (!showing && !schedInput.value) schedInput.value = this._defaultScheduleLocal();
+        });
+        document.getElementById('post-schedule-cancel').addEventListener('click', () => {
+            schedForm.style.display = 'none';
+        });
+        document.getElementById('post-schedule-confirm').addEventListener('click', () => this._submit(schedInput.value));
+
         this._syncMentions();
+    },
+
+    /* datetime-local wants 'YYYY-MM-DDTHH:MM' in LOCAL time; default one hour out. */
+    _defaultScheduleLocal() {
+        const d = new Date(Date.now() + 60 * 60 * 1000);
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+            `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     },
 
     /* ── @mentions (handle-book) ─────────────────────────────────
@@ -409,7 +442,9 @@ window.Posts = {
         return ids;
     },
 
-    async _submit() {
+    /* Compose + publish. Pass a datetime-local string (from the Schedule picker)
+     * to queue it for later instead of posting now. */
+    async _submit(scheduledLocal) {
         const msg = document.getElementById('post-msg');
         const body = document.getElementById('post-body').value.trim();
         const rating = document.getElementById('post-rating').value;
@@ -418,9 +453,18 @@ window.Posts = {
         if (!body && !this._pendingFiles.length) { msg.textContent = 'Write something or attach an image.'; return; }
         if (!platforms.length) { msg.textContent = 'Pick at least one platform.'; return; }
 
+        // When scheduling, validate the time before we create anything.
+        let scheduledIso = null;
+        if (scheduledLocal) {
+            const when = new Date(scheduledLocal);
+            if (isNaN(when.getTime())) { msg.textContent = 'Invalid date/time.'; return; }
+            if (when.getTime() < Date.now()) { msg.textContent = 'Pick a time in the future.'; return; }
+            scheduledIso = when.toISOString();   // LOCAL picker → UTC instant
+        }
+
         const btn = document.getElementById('post-submit');
         btn.disabled = true;
-        msg.textContent = 'Posting…';
+        msg.textContent = scheduledIso ? 'Scheduling…' : 'Posting…';
 
         try {
             const fd = new FormData();
@@ -431,17 +475,29 @@ window.Posts = {
             this._pendingFiles.forEach(f => fd.append('files', f));
             const { post_id } = await API.createPost(fd);
 
-            const res = await API.publishPost(post_id, {
-                platforms, account_ids: this._accountIds(platforms),
-            });
-            const ok = res.successes || 0, fail = res.failures || 0;
-            this._toast(fail ? 'error' : 'success', `Posted: ${ok} ok, ${fail} failed`);
-            if (fail) {
-                const errs = (res.results || []).filter(r => !r.success)
-                    .map(r => `${this._plat(r.platform).label}: ${r.error}`).join(' · ');
-                msg.textContent = errs;
-            } else {
+            let fail = 0;
+            if (scheduledIso) {
+                await API.schedulePost(post_id, {
+                    platforms, account_ids: this._accountIds(platforms), scheduled_at: scheduledIso,
+                });
+                const when = new Date(scheduledIso);
+                this._toast('success', `Scheduled for ${when.toLocaleString()}`);
                 msg.textContent = '';
+                const sf = document.getElementById('post-schedule-form');
+                if (sf) sf.style.display = 'none';
+            } else {
+                const res = await API.publishPost(post_id, {
+                    platforms, account_ids: this._accountIds(platforms),
+                });
+                const ok = res.successes || 0; fail = res.failures || 0;
+                this._toast(fail ? 'error' : 'success', `Posted: ${ok} ok, ${fail} failed`);
+                if (fail) {
+                    const errs = (res.results || []).filter(r => !r.success)
+                        .map(r => `${this._plat(r.platform).label}: ${r.error}`).join(' · ');
+                    msg.textContent = errs;
+                } else {
+                    msg.textContent = '';
+                }
             }
             // Reset the composer, keep platform selection.
             document.getElementById('post-body').value = '';
@@ -452,7 +508,8 @@ window.Posts = {
             this._clearFiles();
             // On the standalone composer page (no feed here) a clean success jumps
             // to the feed so the new post is visible; a partial failure stays put
-            // so the user can retry the failed platforms.
+            // so the user can retry the failed platforms. A scheduled post has no
+            // feed entry yet, so it always navigates on success.
             if (document.getElementById('post-feed')) {
                 await this._loadFeed();
             } else if (!fail) {

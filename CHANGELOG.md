@@ -12,6 +12,53 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.164.0] - 2026-07-22 - Schedule posts for later too (SCHEDULING Phase 2)
+
+> **You can now schedule your Posts — the tweet-style updates — to go out later, just like stories and artwork.** In the
+> composer, write your post, tick the sites, then hit **🕐 Schedule…** instead of Post now, pick a date and time, and
+> it publishes itself. Everything you've scheduled — stories, artwork, and now posts — shows up together on the **Queue
+> & Schedule** page where you can reschedule or cancel it. Same as before: scheduled things run on the server, so this
+> is best for the sites that post over the internet (Bluesky, Mastodon, Threads, Tumblr, X, Instagram).
+
+Phase 2 of SCHEDULING (backlog Z). The microblog **Posts** module published synchronously (`post_publisher.publish_post`)
+with no queue — it was the last content type that couldn't be scheduled. Rather than build a second scheduler, posts now
+ride the **same `posting_queue`** as stories/artwork, so the daemon, the Queue & Schedule agenda, reschedule and cancel
+all work unchanged.
+
+**Approach — posts reuse the shared queue.** A scheduled post becomes one `posting_queue` row per platform with
+`content_type='post'`, `story_name` = the post_id, and a body snippet stashed in `title_override` (so the agenda shows
+something readable, not a bare number). No schema change — `content_type` is a plain `TEXT` column with no CHECK, and
+posts record their outcome in `post_publications`, never the story/artwork `publications` UNIQUE.
+
+**Backend.**
+- `posting/scheduler.py`: `_process_queue_item` gains a **`content_type == "post"` branch** — parses the post_id back
+  out of `story_name` and calls `post_publisher.publish_post(post_id, [platform], {platform: account_id})`. The
+  publications-registry lookup is skipped for posts (they have no row there → `pub_id=None`). A malformed (non-numeric)
+  post row is marked failed, not crashed. `_notify_completion` gained a `content_type` arg so a post's Telegram line
+  reads as a snippet with no "ChN"/"Full".
+- `routes/posts_api.py`: **`POST /api/posts/{post_id}/schedule`** — validates the post exists + the time (shared
+  `_to_utc_sql`: ISO → naive-as-UTC → reject-past → UTC `YYYY-MM-DD HH:MM:SS`), then queues one row per platform with
+  the snippet + `requires` from `get_platform_requires` (all microblog platforms resolve to `any` → they fire on the
+  server).
+
+**Frontend.**
+- `frontend/js/posts.js`: the composer gains **Post now** + **🕐 Schedule…** (a `datetime-local` picker). `_submit`
+  now takes an optional local datetime — when set, it creates the post then calls the schedule endpoint instead of
+  publishing; the local value goes out as `toISOString()` (UTC). A scheduled post always navigates to the feed on
+  success (it has no feed entry yet).
+- `frontend/js/posting.js`: the **Queue & Schedule** table now renders post rows (💬 icon, the `title_override`
+  snippet as the label, links to `#/posts`). Cancel/reschedule already work by queue_id.
+- `frontend/js/api.js`: `schedulePost(id, {platforms, account_ids, scheduled_at})`.
+
+**Tests.** +7 (`tests/test_post_scheduling.py`): scheduler post-branch dispatch + completion, malformed-row-fails-safe,
+schedule endpoint one-row-per-platform, 404 on unknown post, 400 on missing platform/time + past time, and the global
+agenda query surfacing post rows.
+
+**Now schedulable:** stories, artwork, **posts** — all three content types. **Deferred to Phase 3+:** recurring
+schedules ("every Friday"), best-time-to-post suggestions, calendar drag-drop.
+
+---
+
 ## [2.163.0] - 2026-07-22 - Schedule artwork for later + a Queue & Schedule page
 
 > **You can now schedule artwork to publish later, and see everything that's lined up in one place.** Open any piece of

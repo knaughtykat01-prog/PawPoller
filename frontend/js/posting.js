@@ -772,13 +772,27 @@ const Posting = {
             const ordered = scheduled.concat(rest);
 
             const rowHtml = (item) => {
-                const isArt = item.content_type === 'artwork';
-                const href = isArt
-                    ? `#/artwork/image/${encodeURIComponent(item.story_name)}`
-                    : `#/posting/story/${encodeURIComponent(item.story_name)}`;
-                const name = Utils.escapeHtml((item.story_name || '').replace(/_/g, ' '));
-                const typeIcon = isArt ? '&#128444;&#65039;' : '&#128214;';
-                const chap = isArt ? '&mdash;' : (item.chapter_index || 'Full');
+                const ct = item.content_type || 'story';
+                const isArt = ct === 'artwork';
+                const isPost = ct === 'post';
+                let href, name, typeIcon, chap;
+                if (isPost) {
+                    // story_name is a bare post_id; the readable label rides in title_override.
+                    href = '#/posts';
+                    name = Utils.escapeHtml(item.title_override || `Post #${item.story_name}`);
+                    typeIcon = '&#128172;';            // 💬
+                    chap = '&mdash;';
+                } else if (isArt) {
+                    href = `#/artwork/image/${encodeURIComponent(item.story_name)}`;
+                    name = Utils.escapeHtml((item.story_name || '').replace(/_/g, ' '));
+                    typeIcon = '&#128444;&#65039;';    // 🖼️
+                    chap = '&mdash;';
+                } else {
+                    href = `#/posting/story/${encodeURIComponent(item.story_name)}`;
+                    name = Utils.escapeHtml((item.story_name || '').replace(/_/g, ' '));
+                    typeIcon = '&#128214;';            // 📖
+                    chap = (item.chapter_index || 'Full');
+                }
                 const whenLabel = item.scheduled_at
                     ? Utils.escapeHtml(this._schedInstant(item.scheduled_at).toLocaleString())
                     : '<span class="muted">Immediate</span>';

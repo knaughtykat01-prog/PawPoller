@@ -34,6 +34,24 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _to_utc_sql(scheduled_at: str) -> str:
+    """Parse an ISO 8601 string → UTC 'YYYY-MM-DD HH:MM:SS' (SQLite shape).
+
+    Naive datetimes are treated as UTC; a time >30s in the past is rejected
+    (30s grace for clock skew). Same contract as the story/artwork schedulers,
+    so a post scheduled for 8pm local fires at 8pm local. Raises HTTPException.
+    """
+    try:
+        dt = datetime.fromisoformat(scheduled_at)
+    except ValueError:
+        raise HTTPException(400, detail="Invalid datetime format — use ISO 8601")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    if (dt - datetime.now(timezone.utc)).total_seconds() < -30:
+        raise HTTPException(400, detail="Scheduled time must be in the future")
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _media_dir() -> Path:
     d = config.DATA_DIR / "posts_media"
     d.mkdir(parents=True, exist_ok=True)
@@ -265,6 +283,61 @@ async def publish_post(post_id: int, payload: dict):
         raise HTTPException(500, str(e))
     successes = sum(1 for r in results if r.get("success"))
     return {"results": results, "successes": successes, "failures": len(results) - successes}
+
+
+@posts_router.post("/{post_id}/schedule")
+async def schedule_post(post_id: int, payload: dict):
+    """Schedule a composed post to publish to the chosen platforms at a future time.
+
+    Body: { "platforms": ["bsky","mast"], "account_ids": {"bsky": 3},
+            "scheduled_at": "2026-07-25T20:00:00.000Z" }
+
+    One `posting_queue` row per platform (`content_type='post'`, `story_name` =
+    the post_id, a body snippet stashed as `title_override` so the Queue &
+    Schedule page shows something readable). The posting-scheduler daemon fires
+    each row when due via `post_publisher.publish_post`.
+    """
+    from posting.manager import get_platform_requires
+    from database import posting_queries
+
+    platforms = payload.get("platforms") or []
+    account_ids = payload.get("account_ids") or {}
+    scheduled_at = payload.get("scheduled_at")
+    if not platforms:
+        raise HTTPException(400, "Pick at least one platform")
+    if not scheduled_at:
+        raise HTTPException(400, "scheduled_at is required")
+
+    conn = get_connection()
+    try:
+        post = posts_queries.get_post(conn, post_id)
+    finally:
+        conn.close()
+    if not post:
+        raise HTTPException(404, "Post not found")
+
+    scheduled_str = _to_utc_sql(scheduled_at)
+    snippet = " ".join((post.get("body") or "").split())[:60] or f"Post #{post_id}"
+
+    queue_ids = []
+    conn = get_connection()
+    try:
+        for platform in platforms:
+            qid = posting_queries.add_to_queue(
+                conn, str(post_id), 0, platform, action="post",
+                account_id=account_ids.get(platform),
+                content_type="post",
+                scheduled_at=scheduled_str,
+                title_override=snippet,
+                requires=get_platform_requires(platform),
+            )
+            queue_ids.append(qid)
+    finally:
+        conn.close()
+
+    logger.info("Scheduled post #%d to %s at %s (queue %s)",
+                post_id, ",".join(platforms), scheduled_str, queue_ids)
+    return {"ok": True, "queue_ids": queue_ids, "scheduled_at": scheduled_str}
 
 
 @posts_router.delete("/{post_id}")

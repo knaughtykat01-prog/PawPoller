@@ -3467,10 +3467,16 @@ row, set `scheduled_at`". Entry points, one per content type, both mirroring the
 - **Artwork:** `POST /api/artwork/schedule` + `GET /api/artwork/scheduled?name=` + `DELETE
   /api/artwork/scheduled/{id}?name=` (2.163.0; artwork detail page). The name rides in the **body/query, not the
   path** — nesting under the greedy `/images/{name:path}` GET would let the detail route swallow `.../scheduled`.
+- **Posts (microblog):** `POST /api/posts/{id}/schedule` (2.164.0; Posts composer). Posts reuse the SAME
+  `posting_queue` with `content_type='post'`, `story_name` = the post_id, and a body snippet in `title_override`. The
+  scheduler daemon's `_process_queue_item` has a `content_type=='post'` branch that parses the id back out and calls
+  `post_publisher.publish_post(post_id, [platform], …)`; posts record in `post_publications`, not the story/artwork
+  `publications` registry, so the pub_id lookup is skipped (`pub_id=None`). No schema change — `content_type` is a plain
+  `TEXT` column with no CHECK.
 - **Global:** `POST /api/posting/queue/{id}/reschedule` moves any pending row by id; `GET /api/posting/queue` now
   defaults `content_type=None` so the **Queue & Schedule** page (`posting.js:renderQueue`, `#/posting/queue`) and the
-  Overview "Pending queue" widget list stories *and* artwork. `posting_queries.reschedule_queue_item` /
-  `get_scheduled_items` back these.
+  Overview "Pending queue" widget list stories, artwork *and* posts (💬 rows link to `#/posts`).
+  `posting_queries.reschedule_queue_item` / `get_scheduled_items` back these.
 
 **Timezone contract (get this wrong and every scheduled post fires at the wrong hour).** User-facing times are
 **local**; stored times are **UTC**. The frontend `datetime-local` value is local wall-clock; `toISOString()` sends a
@@ -3480,8 +3486,9 @@ the scheduler string-compares against SQLite `datetime('now')` (also UTC). Reads
 Date(utc.replace(' ','T')+'Z').toLocaleString()`. **Do not** store an ISO-8601 `...T..Z` string in `scheduled_at`: the
 `T`/`Z` shape sorts *after* the space-delimited `datetime('now')` for the same instant, so it would never come due.
 
-**Not yet scheduled:** the microblog **Posts** module publishes synchronously (`post_publisher.publish_post`, no
-queue) — deferred to Phase 2.
+**All three content types are schedulable** (stories + artwork 2.163.0, posts 2.164.0). Posts still publish
+*synchronously* on the immediate path (`post_publisher.publish_post`); scheduling just wraps that call in a queue row
+the daemon fires when due. **Deferred (Phase 3+):** recurring schedules, best-time suggestions, calendar drag-drop.
 
 **Cross-reference**: §15 documents the v2.21.0 Per-Cell Publish
 Controls (Set URL manually, Forget publication, Cancel scheduled bulk)

@@ -861,6 +861,8 @@ const API = {
             });
     },
     publishPost(id, body) { return this.post(`/api/posts/${id}/publish`, body); },
+    /* Schedule a post for later. body = { platforms, account_ids?, scheduled_at }. */
+    schedulePost(id, body) { return this.post(`/api/posts/${id}/schedule`, body); },
     deletePost(id) {
         return fetch(`/api/posts/${id}`, { method: 'DELETE' })
             .then(r => { if (!r.ok) throw new Error(`Delete failed: ${r.status}`); return r.json(); });

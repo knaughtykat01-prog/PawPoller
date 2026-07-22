@@ -116,13 +116,21 @@ async def _process_queue_item(item: dict) -> None:
     # "default account" (None lets the manager resolve the platform default).
     account_id = item["account_id"] if "account_id" in item.keys() else None
     account_id = account_id or None
-    # Artwork rows reuse this queue with content_type='artwork'; older rows
-    # predate the column and are stories.
+    # Artwork rows reuse this queue with content_type='artwork'; microblog
+    # posts reuse it with content_type='post' (story_name = the post_id).
+    # Older rows predate the column and are stories.
     content_type = item["content_type"] if "content_type" in item.keys() else "story"
 
+    # For posts the story_name is a bare post_id — use the snippet stashed in
+    # title_override as the human label in Telegram notifications.
+    notify_name = story_name
+    if content_type == "post":
+        snip = item["title_override"] if "title_override" in item.keys() else None
+        notify_name = snip or f"post {story_name}"
+
     logger.info(
-        "Processing queue item #%d: %s %s ch%d on %s (account %s)",
-        queue_id, action, story_name, chapter_index, platform, account_id,
+        "Processing queue item #%d: %s %s ch%d on %s (account %s, %s)",
+        queue_id, action, story_name, chapter_index, platform, account_id, content_type,
     )
 
     # Mark as processing
@@ -133,7 +141,19 @@ async def _process_queue_item(item: dict) -> None:
         conn.close()
 
     try:
-        if action == "post" and content_type == "artwork":
+        if content_type == "post":
+            # Microblog post: story_name is the post_id; publish this one
+            # platform via the Posts engine (records in post_publications).
+            from posting import post_publisher
+            try:
+                post_id = int(story_name)
+            except (TypeError, ValueError):
+                raise ValueError(f"post queue row has a non-numeric id: {story_name!r}")
+            results = await post_publisher.publish_post(
+                post_id, [platform],
+                {platform: account_id} if account_id else None,
+            )
+        elif action == "post" and content_type == "artwork":
             results = await manager.post_artwork(
                 story_name, [platform],
                 account_ids={platform: account_id} if account_id else None,
@@ -155,12 +175,17 @@ async def _process_queue_item(item: dict) -> None:
         if results and results[0].get("success"):
             conn = get_connection()
             try:
-                # Find the pub_id that was created/updated
-                pub = posting_queries.get_publication_by_story(
-                    conn, story_name, chapter_index, platform, account_id,
-                    content_type=content_type,
-                )
-                pub_id = pub["pub_id"] if pub else None
+                if content_type == "post":
+                    # Posts record their outcome in post_publications, not the
+                    # story/artwork publications registry — no pub_id to link.
+                    pub_id = None
+                else:
+                    # Find the pub_id that was created/updated
+                    pub = posting_queries.get_publication_by_story(
+                        conn, story_name, chapter_index, platform, account_id,
+                        content_type=content_type,
+                    )
+                    pub_id = pub["pub_id"] if pub else None
                 posting_queries.update_queue_status(
                     conn, queue_id, "completed", pub_id=pub_id
                 )
@@ -169,7 +194,8 @@ async def _process_queue_item(item: dict) -> None:
             logger.info("Queue item #%d completed successfully", queue_id)
 
             # Send Telegram notification
-            await _notify_completion(story_name, chapter_index, platform, action, True)
+            await _notify_completion(notify_name, chapter_index, platform, action, True,
+                                     content_type=content_type)
         else:
             error = results[0].get("error", "Unknown error") if results else "No results"
             # 2.22.10c: manager.post_story / update_story already call
@@ -211,7 +237,8 @@ async def _process_queue_item(item: dict) -> None:
                                queue_id, item["attempts"], item["max_attempts"], error)
             else:
                 logger.warning("Queue item #%d failed permanently: %s", queue_id, error)
-                await _notify_completion(story_name, chapter_index, platform, action, False, error)
+                await _notify_completion(notify_name, chapter_index, platform, action, False, error,
+                                         content_type=content_type)
 
     except Exception as e:
         conn = get_connection()
@@ -220,12 +247,14 @@ async def _process_queue_item(item: dict) -> None:
         finally:
             conn.close()
         logger.error("Queue item #%d exception: %s", queue_id, e, exc_info=True)
-        await _notify_completion(story_name, chapter_index, platform, action, False, str(e))
+        await _notify_completion(notify_name, chapter_index, platform, action, False, str(e),
+                                 content_type=content_type)
 
 
 async def _notify_completion(
     story_name: str, chapter_index: int, platform: str,
     action: str, success: bool, error: str | None = None,
+    content_type: str = "story",
 ) -> None:
     """Send a Telegram notification about queue item completion."""
     try:
@@ -235,13 +264,17 @@ async def _notify_completion(
 
         from polling.telegram import send_telegram
         emoji = manager.PLATFORM_EMOJIS.get(platform, "📦")
-        ch_label = f"Ch{chapter_index}" if chapter_index > 0 else "Full"
-        story_display = story_name.replace("_", " ")
+        if content_type == "post":
+            # story_name is already a readable snippet; a post has no chapter.
+            label = story_name
+        else:
+            ch_label = f"Ch{chapter_index}" if chapter_index > 0 else "Full"
+            label = f"{story_name.replace('_', ' ')} {ch_label}"
 
         if success:
-            text = f"✅ {action.title()} complete: {emoji} {platform.upper()} {story_display} {ch_label}"
+            text = f"✅ {action.title()} complete: {emoji} {platform.upper()} {label}"
         else:
-            text = f"❌ {action.title()} failed: {emoji} {platform.upper()} {story_display} {ch_label}\n{error or ''}"
+            text = f"❌ {action.title()} failed: {emoji} {platform.upper()} {label}\n{error or ''}"
 
         await send_telegram(text)
     except Exception:

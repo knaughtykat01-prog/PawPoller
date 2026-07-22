@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-22
-**Current version (master):** 2.163.0 — **Schedule artwork for later + a Queue & Schedule page (SCHEDULING Phase 1, backlog Z).**
+**Current version (master):** 2.164.0 — **Schedule Posts for later too (SCHEDULING Phase 2, backlog Z).**
+The microblog **Posts** module was the last content type that couldn't be scheduled (it published synchronously via
+`post_publisher.publish_post`, no queue). Rather than a second scheduler, posts now ride the **same `posting_queue`**:
+one row per platform, `content_type='post'`, `story_name`=the post_id, body snippet in `title_override`. **Backend:**
+`scheduler._process_queue_item` gained a `content_type=='post'` branch (parse post_id from story_name → `publish_post`;
+skip the publications lookup; malformed row → failed not crash); `_notify_completion` takes `content_type`; **`POST
+/api/posts/{id}/schedule`** validates the post + time (shared `_to_utc_sql`) and queues one row/platform (`requires`
+from `get_platform_requires` = `any` for all microblog platforms → fire on server). No schema change (`content_type` is
+plain TEXT, no CHECK; posts record in `post_publications` not the `publications` UNIQUE). **Frontend:** composer gains
+**Post now** + **🕐 Schedule…** (`posts.js` `_submit(scheduledLocal)` branches create+schedule vs create+publish);
+**Queue & Schedule** page renders post rows (💬, snippet label, links `#/posts`); `api.js schedulePost`. +7 tests.
+**All three content types now schedulable** (stories 2.163 · artwork 2.163 · posts 2.164). **Deferred Phase 3+:**
+recurring schedules, best-time suggestions, calendar drag-drop.
+
+**Prior — 2.163.0 — Schedule artwork for later + a Queue & Schedule page (SCHEDULING Phase 1, backlog Z).**
 The story scheduling path already existed end-to-end (publish-check panel → `POST /api/editor/stories/{name}/schedule`
 → `posting_queue.scheduled_at` → the `posting/scheduler.py` daemon, which already honours `scheduled_at <=
 datetime('now')`). This release brings **artwork to parity** and adds a **global agenda + reschedule**. No new
