@@ -3459,6 +3459,30 @@ publish matrix. Treat as a planned-but-unbuilt path.
 
 FurAffinity requires `desktop` mode because FA blocks datacenter IP ranges. When a server-mode post to FA fails, the scheduler automatically queues it for desktop pickup.
 
+**Scheduling (deferred publish, SCHEDULING Phase 1 — 2.163.0).** A `posting_queue` row with a future `scheduled_at`
+is a *scheduled* post; the daemon's `get_pending_queue` gate (`scheduled_at IS NULL OR scheduled_at <=
+datetime('now')`) simply skips it until its time. There is **no separate scheduling engine** — scheduling is "queue a
+row, set `scheduled_at`". Entry points, one per content type, both mirroring the same validation:
+- **Stories:** `POST /api/editor/stories/{name}/schedule` (pre-existing; publish-check panel per cell).
+- **Artwork:** `POST /api/artwork/schedule` + `GET /api/artwork/scheduled?name=` + `DELETE
+  /api/artwork/scheduled/{id}?name=` (2.163.0; artwork detail page). The name rides in the **body/query, not the
+  path** — nesting under the greedy `/images/{name:path}` GET would let the detail route swallow `.../scheduled`.
+- **Global:** `POST /api/posting/queue/{id}/reschedule` moves any pending row by id; `GET /api/posting/queue` now
+  defaults `content_type=None` so the **Queue & Schedule** page (`posting.js:renderQueue`, `#/posting/queue`) and the
+  Overview "Pending queue" widget list stories *and* artwork. `posting_queries.reschedule_queue_item` /
+  `get_scheduled_items` back these.
+
+**Timezone contract (get this wrong and every scheduled post fires at the wrong hour).** User-facing times are
+**local**; stored times are **UTC**. The frontend `datetime-local` value is local wall-clock; `toISOString()` sends a
+UTC instant; the backend helper (`_to_utc_sql` in `artwork_api`, inline twins in `editor_api`/`posting_api`) parses the
+ISO string, treats a *naive* datetime as UTC, rejects >30s-past times, and formats the UTC `YYYY-MM-DD HH:MM:SS` string
+the scheduler string-compares against SQLite `datetime('now')` (also UTC). Reads convert back with `new
+Date(utc.replace(' ','T')+'Z').toLocaleString()`. **Do not** store an ISO-8601 `...T..Z` string in `scheduled_at`: the
+`T`/`Z` shape sorts *after* the space-delimited `datetime('now')` for the same instant, so it would never come due.
+
+**Not yet scheduled:** the microblog **Posts** module publishes synchronously (`post_publisher.publish_post`, no
+queue) — deferred to Phase 2.
+
 **Cross-reference**: §15 documents the v2.21.0 Per-Cell Publish
 Controls (Set URL manually, Forget publication, Cancel scheduled bulk)
 which act directly on rows in this module's `publications` registry

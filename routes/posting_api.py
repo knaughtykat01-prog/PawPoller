@@ -732,11 +732,18 @@ def add_to_queue(body: dict):
 
 
 @posting_router.get("/queue")
-def get_queue(include_completed: bool = Query(False)):
-    """List posting queue items."""
+def get_queue(include_completed: bool = Query(False),
+              content_type: str = Query(None)):
+    """List posting queue items.
+
+    content_type=None (the default) returns every type — stories AND artwork
+    — so the Queue & Schedule page and the Pending-queue widget show all
+    pending work, not just stories. Pass 'story'/'artwork' to scope.
+    """
     conn = get_connection()
     try:
-        items = posting_queries.get_queue(conn, include_completed=include_completed)
+        items = posting_queries.get_queue(
+            conn, include_completed=include_completed, content_type=content_type)
         return {"queue": items}
     finally:
         conn.close()
@@ -752,6 +759,40 @@ def cancel_queue_item(queue_id: int):
         raise HTTPException(404, detail="Queue item not found or not pending")
     finally:
         conn.close()
+
+
+@posting_router.post("/queue/{queue_id}/reschedule")
+def reschedule_queue_item(queue_id: int, body: dict):
+    """Move a scheduled item to a new time. Body: {"scheduled_at": ISO8601}.
+
+    Works for any content type (story or artwork) — the queue row is
+    addressed by id. Mirrors the schedule endpoints' timezone handling:
+    parse the ISO string, treat naive as UTC, store a UTC
+    'YYYY-MM-DD HH:MM:SS' string matching SQLite datetime('now').
+    """
+    from datetime import datetime, timezone
+
+    raw = (body or {}).get("scheduled_at")
+    if not raw:
+        raise HTTPException(400, detail="scheduled_at is required")
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        raise HTTPException(400, detail="Invalid datetime format — use ISO 8601")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    if (dt - datetime.now(timezone.utc)).total_seconds() < -30:
+        raise HTTPException(400, detail="Scheduled time must be in the future")
+    scheduled_str = dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_connection()
+    try:
+        ok = posting_queries.reschedule_queue_item(conn, queue_id, scheduled_str)
+    finally:
+        conn.close()
+    if not ok:
+        raise HTTPException(404, detail="Queue item not found or not pending")
+    return {"status": "rescheduled", "queue_id": queue_id, "scheduled_at": scheduled_str}
 
 
 # ── Log ───────────────────────────────────────────────────────

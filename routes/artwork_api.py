@@ -378,6 +378,114 @@ async def publish_artwork(body: dict):
         raise HTTPException(500, detail=str(e))
 
 
+# ── Scheduling (deferred publish via posting_queue) ───────────
+# Mirrors the story scheduler (routes/editor_api.py) but for artwork. Rows go
+# into the SAME posting_queue with content_type='artwork'; the posting-scheduler
+# daemon already knows how to fire them (posting/scheduler.py). The artwork name
+# rides in the body/query rather than the path — nesting under the greedy
+# /images/{name:path} route risks the detail GET swallowing '.../scheduled'.
+
+def _to_utc_sql(scheduled_at: str) -> str:
+    """Parse an ISO 8601 string → UTC 'YYYY-MM-DD HH:MM:SS' (SQLite shape).
+
+    Naive datetimes are treated as UTC; a time more than 30s in the past is
+    rejected (30s grace for clock skew). Raises HTTPException on bad input.
+    """
+    from datetime import datetime, timezone
+    try:
+        dt = datetime.fromisoformat(scheduled_at)
+    except ValueError:
+        raise HTTPException(400, detail="Invalid datetime format — use ISO 8601")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    if (dt - datetime.now(timezone.utc)).total_seconds() < -30:
+        raise HTTPException(400, detail="Scheduled time must be in the future")
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+@artwork_router.post("/schedule")
+async def schedule_artwork(body: dict):
+    """Schedule an artwork to publish to one platform at a future time.
+
+    Body: {
+        "artwork_name": "Autumn_Study",
+        "platform": "ib",
+        "scheduled_at": "2026-07-25T20:00:00.000Z",   // ISO 8601
+        "account_id": 5                                // optional
+    }
+
+    One row per platform, so "post Friday 8pm to these five sites" is five
+    schedule calls (same as the immediate multi-platform publish fans out).
+    """
+    from posting.manager import get_platform_requires
+
+    name = body.get("artwork_name")
+    platform = body.get("platform")
+    scheduled_at = body.get("scheduled_at")
+    account_id = body.get("account_id")
+    if not name:
+        raise HTTPException(400, detail="artwork_name is required")
+    if not platform:
+        raise HTTPException(400, detail="platform is required")
+    if not scheduled_at:
+        raise HTTPException(400, detail="scheduled_at is required")
+
+    # Artwork must exist (load_artwork raises if it doesn't).
+    try:
+        artwork_reader.load_artwork(name)
+    except Exception as e:
+        raise HTTPException(404, detail=f"Artwork not found: {e}")
+
+    scheduled_str = _to_utc_sql(scheduled_at)
+
+    conn = get_connection()
+    try:
+        queue_id = posting_queries.add_to_queue(
+            conn, name, 0, platform, action="post",
+            account_id=account_id,
+            content_type="artwork",
+            scheduled_at=scheduled_str,
+            requires=get_platform_requires(platform),
+        )
+    finally:
+        conn.close()
+
+    logger.info("Scheduled artwork queue item #%d: %s on %s at %s",
+                queue_id, name, platform, scheduled_str)
+    return {"ok": True, "queue_id": queue_id,
+            "scheduled_at": scheduled_str, "platform": platform}
+
+
+@artwork_router.get("/scheduled")
+def get_artwork_scheduled(name: str = Query(...)):
+    """Pending queue items (scheduled or immediate) for one artwork."""
+    conn = get_connection()
+    try:
+        items = posting_queries.get_queue(
+            conn, include_completed=False, story_name=name, content_type="artwork")
+    finally:
+        conn.close()
+    return {"ok": True, "items": items}
+
+
+@artwork_router.delete("/scheduled/{queue_id}")
+def cancel_artwork_scheduled(queue_id: int, name: str = Query(...)):
+    """Cancel one pending item, scoped to this artwork (stops cancelling a
+    stranger's queue_id by guessing the number)."""
+    conn = get_connection()
+    try:
+        items = posting_queries.get_queue(
+            conn, include_completed=False, story_name=name, content_type="artwork")
+        if not any(i["queue_id"] == queue_id for i in items):
+            raise HTTPException(404, detail=f"Queue item #{queue_id} not found for '{name}'")
+        ok = posting_queries.cancel_queue_item(conn, queue_id)
+    finally:
+        conn.close()
+    if not ok:
+        raise HTTPException(409, detail="Item is no longer pending")
+    return {"ok": True, "queue_id": queue_id}
+
+
 # ── Publications + log (artwork-scoped) ───────────────────────
 
 @artwork_router.get("/publications")

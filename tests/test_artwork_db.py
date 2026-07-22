@@ -86,3 +86,40 @@ def test_log_filters_by_content_type(db_conn):
                for e in posting_queries.get_posting_log(conn))
     assert all(e["content_type"] == "artwork"
                for e in posting_queries.get_posting_log(conn, content_type="artwork"))
+
+
+# ── Artwork scheduling timezone normalisation (Phase 1) ──────────────
+# _to_utc_sql is the single point where a picker's ISO string becomes the
+# UTC 'YYYY-MM-DD HH:MM:SS' string the scheduler compares against
+# datetime('now'). Getting this wrong fires every scheduled post at the
+# wrong hour, so it's tested directly.
+
+from datetime import datetime, timedelta, timezone
+from fastapi import HTTPException
+from routes.artwork_api import _to_utc_sql
+
+
+def test_to_utc_sql_naive_treated_as_utc():
+    future = (datetime.now(timezone.utc) + timedelta(days=1)).replace(microsecond=0)
+    naive_iso = future.strftime("%Y-%m-%dT%H:%M:%S")  # no tz suffix
+    assert _to_utc_sql(naive_iso) == future.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def test_to_utc_sql_converts_offset_to_utc():
+    # 20:00 at +10:00 (AEST) is 10:00 UTC — the shift must be applied.
+    future_date = (datetime.now(timezone.utc) + timedelta(days=2)).strftime("%Y-%m-%d")
+    got = _to_utc_sql(f"{future_date}T20:00:00+10:00")
+    assert got == f"{future_date} 10:00:00"
+
+
+def test_to_utc_sql_rejects_past():
+    past = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
+    with pytest.raises(HTTPException) as exc:
+        _to_utc_sql(past)
+    assert exc.value.status_code == 400
+
+
+def test_to_utc_sql_rejects_garbage():
+    with pytest.raises(HTTPException) as exc:
+        _to_utc_sql("not-a-date")
+    assert exc.value.status_code == 400

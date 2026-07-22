@@ -420,6 +420,40 @@ def cancel_all_for(conn: sqlite3.Connection, *, platform: str | None = None,
     return cursor.rowcount
 
 
+def reschedule_queue_item(
+    conn: sqlite3.Connection, queue_id: int, scheduled_at: str
+) -> bool:
+    """Move a still-pending queue item to a new scheduled time.
+
+    Only touches rows that are still 'pending' — a row already
+    processing/completed/failed/cancelled can't be moved (the work is
+    done or in flight). ``scheduled_at`` is a UTC 'YYYY-MM-DD HH:MM:SS'
+    string, the same shape the scheduler compares against datetime('now').
+    Returns True if a row was moved.
+    """
+    cursor = conn.execute(
+        "UPDATE posting_queue SET scheduled_at = ? "
+        "WHERE queue_id = ? AND status = 'pending'",
+        (scheduled_at, queue_id),
+    )
+    conn.commit()
+    return cursor.rowcount > 0
+
+
+def get_scheduled_items(conn: sqlite3.Connection) -> list[dict]:
+    """All pending queue items carrying a scheduled_at, across every
+    content_type, soonest first. Backs the global "what's going out and
+    when" agenda. Items with no scheduled_at (they fire on the next tick)
+    are excluded — they're queued, not scheduled.
+    """
+    rows = conn.execute(
+        "SELECT * FROM posting_queue "
+        "WHERE status = 'pending' AND scheduled_at IS NOT NULL "
+        "ORDER BY scheduled_at ASC, priority DESC, created_at ASC"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def delete_publication(
     conn: sqlite3.Connection,
     story_name: str,

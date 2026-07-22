@@ -226,7 +226,7 @@ const Posting = {
                     const emoji = PLATFORM_EMOJI[q.platform] || '📦';
                     const ch = q.chapter_index > 0 ? `Ch${q.chapter_index}` : 'Full';
                     const sched = q.scheduled_at
-                        ? `scheduled for ${Utils.escapeHtml(q.scheduled_at)}`
+                        ? `scheduled for ${Utils.escapeHtml(this._schedInstant(q.scheduled_at).toLocaleString())}`
                         : 'next scheduler tick';
                     const status = Utils.escapeHtml(q.status || 'pending');
                     return `<li>${emoji} <strong>${Utils.escapeHtml(q.action)}</strong> ${ch} → ${Utils.escapeHtml((PLATFORM_LABELS[q.platform] || q.platform).replace(/^.+\s/, ''))} <span class="muted">(${status}, ${sched})</span></li>`;
@@ -738,48 +738,124 @@ const Posting = {
     },
 
     /* ── 3. Queue Page ───────────────────────────────────────── */
+    /* A stored scheduled_at is UTC 'YYYY-MM-DD HH:MM:SS'. Turn it into a real
+     * instant for display / for a datetime-local input's LOCAL value. */
+    _schedInstant(utcStr) {
+        return new Date((utcStr || '').replace(' ', 'T') + 'Z');
+    },
+    _toLocalInput(utcStr) {
+        const d = this._schedInstant(utcStr);
+        if (isNaN(d.getTime())) return '';
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+            `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    },
+
     async renderQueue() {
-        App._setContent('<div class="page-header"><h2>Posting Queue</h2></div><div class="loading">Loading queue...</div>');
+        App._setContent('<div class="page-header"><h2>Queue &amp; Schedule</h2></div><div class="loading">Loading queue...</div>');
 
         try {
+            // content_type omitted → the endpoint returns stories AND artwork.
             const { queue } = await API.getPostingQueue({ include_completed: true });
             if (!queue.length) {
                 App._setContent(`
-                    <div class="page-header"><h2>Posting Queue</h2></div>
-                    <div class="empty-state"><h3>Queue is empty</h3><p>Upload or update stories to add items.</p></div>`);
+                    <div class="page-header"><h2>Queue &amp; Schedule</h2></div>
+                    <div class="empty-state"><h3>Nothing queued</h3><p>Schedule a story or artwork, or upload one, and it shows up here.</p></div>`);
                 return;
             }
 
-            const rows = queue.map(item => `
-                <tr>
-                    <td data-label="Story"><a href="#/posting/story/${Utils.escapeHtml(item.story_name)}">${Utils.escapeHtml(item.story_name.replace(/_/g, ' '))}</a></td>
-                    <td data-label="Ch">${item.chapter_index || 'Full'}</td>
+            // Scheduled-for-the-future items first (soonest first), then the rest.
+            const isSched = q => q.status === 'pending' && q.scheduled_at;
+            const scheduled = queue.filter(isSched)
+                .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+            const rest = queue.filter(q => !isSched(q));
+            const ordered = scheduled.concat(rest);
+
+            const rowHtml = (item) => {
+                const isArt = item.content_type === 'artwork';
+                const href = isArt
+                    ? `#/artwork/image/${encodeURIComponent(item.story_name)}`
+                    : `#/posting/story/${encodeURIComponent(item.story_name)}`;
+                const name = Utils.escapeHtml((item.story_name || '').replace(/_/g, ' '));
+                const typeIcon = isArt ? '&#128444;&#65039;' : '&#128214;';
+                const chap = isArt ? '&mdash;' : (item.chapter_index || 'Full');
+                const whenLabel = item.scheduled_at
+                    ? Utils.escapeHtml(this._schedInstant(item.scheduled_at).toLocaleString())
+                    : '<span class="muted">Immediate</span>';
+                const pending = item.status === 'pending';
+                let actions = '';
+                if (pending && item.scheduled_at) {
+                    actions += `<button class="btn btn-sm btn-outline" data-q-resched="${item.queue_id}">Reschedule</button> `;
+                }
+                if (pending) {
+                    actions += `<button class="btn btn-sm btn-danger" data-q-cancel="${item.queue_id}">Cancel</button>`;
+                }
+                return `
+                <tr data-q-row="${item.queue_id}">
+                    <td data-label="Type">${typeIcon}</td>
+                    <td data-label="Item"><a href="${href}">${name}</a></td>
+                    <td data-label="Ch">${chap}</td>
                     <td data-label="Platform">${PLATFORM_LABELS[item.platform] || item.platform}</td>
                     <td data-label="Action">${item.action}</td>
+                    <td data-label="When" class="q-when">
+                        <span class="q-when-label">${whenLabel}</span>
+                        <span class="q-when-edit" style="display:none">
+                            <input type="datetime-local" class="q-when-input" value="${this._toLocalInput(item.scheduled_at)}">
+                            <button class="btn btn-xs btn-primary" data-q-save="${item.queue_id}">Save</button>
+                            <button class="btn btn-xs btn-outline" data-q-editcancel="${item.queue_id}">&times;</button>
+                        </span>
+                    </td>
                     <td data-label="Status"><span class="status-badge status-${item.status}">${item.status}</span></td>
-                    <td data-label="Created">${Utils.escapeHtml(item.created_at || '')}</td>
-                    <td data-label="Actions">${item.status === 'pending'
-                        ? `<button class="btn btn-sm btn-danger" data-post-action="cancel-queue" data-post-queue="${item.queue_id}">Cancel</button>`
-                        : ''
-                    }</td>
-                </tr>`).join('');
+                    <td data-label="Actions">${actions}</td>
+                </tr>`;
+            };
+
+            const schedNote = scheduled.length
+                ? `<p class="page-subtitle">${scheduled.length} scheduled &middot; ${queue.length} total. Scheduled items publish automatically at their time (server runs them; desktop-only platforms fire next time the app is open).</p>`
+                : `<p class="page-subtitle">${queue.length} items</p>`;
 
             App._setContent(`
-                <div class="page-header"><h2>Posting Queue</h2>
-                    <p class="page-subtitle">${queue.length} items</p>
+                <div class="page-header"><h2>Queue &amp; Schedule</h2>
+                    ${schedNote}
                 </div>
                 <div class="card">
                     <table class="data-table" data-mobile-cards>
                         <thead><tr>
-                            <th>Story</th><th>Ch</th><th>Platform</th><th>Action</th>
-                            <th>Status</th><th>Created</th><th>Actions</th>
+                            <th>Type</th><th>Item</th><th>Ch</th><th>Platform</th><th>Action</th>
+                            <th>When</th><th>Status</th><th>Actions</th>
                         </tr></thead>
-                        <tbody>${rows}</tbody>
+                        <tbody>${ordered.map(rowHtml).join('')}</tbody>
                     </table>
                 </div>`);
+
+            this._wireQueueActions();
         } catch (err) {
             App._setContent(`<div class="error-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
         }
+    },
+
+    /* Wire the queue table's cancel / reschedule controls. Local listeners
+     * (not the global data-post-action delegation) so the inline reschedule
+     * editor can toggle within its own row. */
+    _wireQueueActions() {
+        document.querySelectorAll('[data-q-cancel]').forEach(btn =>
+            btn.addEventListener('click', () => this._cancelQueue(Number(btn.dataset.qCancel))));
+
+        const rowOf = id => document.querySelector(`[data-q-row="${id}"]`);
+        const toggleEdit = (id, on) => {
+            const row = rowOf(id);
+            if (!row) return;
+            const label = row.querySelector('.q-when-label');
+            const edit = row.querySelector('.q-when-edit');
+            if (label) label.style.display = on ? 'none' : '';
+            if (edit) edit.style.display = on ? '' : 'none';
+        };
+        document.querySelectorAll('[data-q-resched]').forEach(btn =>
+            btn.addEventListener('click', () => toggleEdit(btn.dataset.qResched, true)));
+        document.querySelectorAll('[data-q-editcancel]').forEach(btn =>
+            btn.addEventListener('click', () => toggleEdit(btn.dataset.qEditcancel, false)));
+        document.querySelectorAll('[data-q-save]').forEach(btn =>
+            btn.addEventListener('click', () => this._rescheduleQueue(Number(btn.dataset.qSave))));
     },
 
     async _cancelQueue(queueId) {
@@ -789,6 +865,24 @@ const Posting = {
             this.renderQueue();
         } catch (err) {
             alert('Cancel failed: ' + err.message);
+        }
+    },
+
+    async _rescheduleQueue(queueId) {
+        const row = document.querySelector(`[data-q-row="${queueId}"]`);
+        const input = row && row.querySelector('.q-when-input');
+        const val = input && input.value;
+        if (!val) { alert('Pick a date and time.'); return; }
+        const when = new Date(val);
+        if (isNaN(when.getTime())) { alert('Invalid date/time.'); return; }
+        if (when.getTime() < Date.now()) { alert('Pick a time in the future.'); return; }
+        try {
+            // toISOString() converts the LOCAL picker value to a UTC instant.
+            await API.reschedulePostingQueue(queueId, { scheduled_at: when.toISOString() });
+            if (window.toast) window.toast.success(`Rescheduled for ${when.toLocaleString()}`);
+            this.renderQueue();
+        } catch (err) {
+            alert('Reschedule failed: ' + err.message);
         }
     },
 

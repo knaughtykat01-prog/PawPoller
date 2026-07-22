@@ -12,6 +12,55 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.163.0] - 2026-07-22 - Schedule artwork for later + a Queue & Schedule page
+
+> **You can now schedule artwork to publish later, and see everything that's lined up in one place.** Open any piece of
+> art, hit **Schedule…**, pick a date and time, and tick the sites — it goes out on its own at that time. (Stories could
+> already be scheduled from their publish panel.) The old "Posting Queue" page is now **Queue & Schedule**: it lists
+> every story and artwork waiting to go out, shows *when* each one is due in your local time, and lets you **reschedule
+> or cancel** any of them. One thing to know: scheduled posts run on the server, so anything that can only post from the
+> desktop app (like FurAffinity) goes out the next time the desktop app is open, not exactly on the clock.
+
+Phase 1 of SCHEDULING (backlog Z). The story path already existed end-to-end (publish-check panel → `POST
+/api/editor/stories/{name}/schedule` → `posting_queue.scheduled_at` → the `posting/scheduler.py` daemon, which already
+honours `scheduled_at <= datetime('now')`). This release brings **artwork** up to parity and adds a **global agenda +
+reschedule** across both content types. No new scheduler — it already fires artwork rows (`content_type='artwork'`).
+
+**Backend.**
+- `database/posting_queries.py`: **`reschedule_queue_item(conn, queue_id, scheduled_at)`** (moves a still-`pending`
+  row; refuses processing/completed/cancelled) + **`get_scheduled_items(conn)`** (all pending rows with a
+  `scheduled_at`, any content_type, soonest first — backs the agenda).
+- `routes/artwork_api.py`: **`POST /api/artwork/schedule`**, **`GET /api/artwork/scheduled?name=`**,
+  **`DELETE /api/artwork/scheduled/{queue_id}?name=`**. The artwork name rides in the body/query, *not* the path —
+  nesting under the greedy `/images/{name:path}` GET would let the detail route swallow `.../scheduled`. Shared helper
+  **`_to_utc_sql`** parses the ISO string, treats naive as UTC, rejects past times (30s skew grace), and formats the
+  UTC `YYYY-MM-DD HH:MM:SS` string the scheduler compares against `datetime('now')`.
+- `routes/posting_api.py`: **`POST /api/posting/queue/{queue_id}/reschedule`** (same timezone handling, works for any
+  content type — addressed by id) and **`GET /api/posting/queue` now defaults `content_type=None`** so the queue page
+  and the Overview "Pending queue" widget show artwork too, not just stories.
+
+**Frontend.**
+- `frontend/js/artwork.js`: the detail page's "Publish to more" card gains **Publish now** + **🕐 Schedule…** (reveals
+  a `datetime-local` picker) and a live **Scheduled** list with per-item cancel. Reuses the ticked platforms/accounts,
+  so scheduling fans out exactly like an immediate multi-site publish.
+- `frontend/js/posting.js`: **`renderQueue` rebuilt as "Queue & Schedule"** — Type/Item/Ch/Platform/Action/**When**/
+  Status columns, scheduled items sorted soonest-first, an inline `datetime-local` reschedule editor per row, and
+  cancel. New `_schedInstant`/`_toLocalInput` helpers convert the stored UTC string to local time for display and for
+  the picker's value. The story-detail pending card now shows scheduled times in local time too (was raw UTC).
+- `frontend/js/api.js`: `reschedulePostingQueue`, `scheduleArtwork`, `getArtworkScheduled`, `cancelArtworkScheduled`.
+
+**Timezone.** Everything user-facing is local; everything stored is UTC. The picker's `datetime-local` value is local,
+`toISOString()` sends a UTC instant, the backend normalises to the SQLite comparison shape, and reads convert back with
+`new Date(utc.replace(' ','T')+'Z').toLocaleString()`. This is the same contract the story scheduler already used.
+
+**Tests.** +9 (`tests/test_posting_db.py` reschedule + agenda query across content types; `tests/test_artwork_db.py`
+`_to_utc_sql` naive-as-UTC / offset-conversion / past-rejection / garbage-rejection).
+
+**Deliberately deferred to later phases:** scheduling for the microblog **Posts** module (it publishes synchronously
+with no queue — Phase 2), and recurring schedules / "best time to post" / calendar drag-drop (Phase 3+).
+
+---
+
 ## [2.162.1] - 2026-07-21 - Fix: the in-app updater corrupted the install (missing schema.sql)
 
 > **Important if you updated through the app and it now won't open** (crash mentioning `schema.sql`): the update was

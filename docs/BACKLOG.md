@@ -4,7 +4,7 @@
 sessions. Update this **every time** a request lands or an item ships. Newest requests go at the top of "Open".
 Cross-reference shipped items to their `CHANGELOG.md` version.
 
-_Last updated: 2026-07-17 (after 2.155.0 — one works hub: Stories + Artwork fold into the Library)._
+_Last updated: 2026-07-22 (after 2.163.0 — SCHEDULING Phase 1: artwork scheduling + a Queue & Schedule page)._
 
 Legend: 🔴 open · 🟡 in progress · 🟢 done · ⚪ deferred/parked
 
@@ -27,7 +27,7 @@ split, Option A (**2.142**).
 | W | **Proactive credential-expiry warnings** ("your Mastodon token expires in 6 days") where platforms expose it | 🔴 | Analysis easy-win; today's amber states are reactive-after-failure |
 | X | **Perf guardrails** — pagination + cached rollups on the list endpoints (Masterpieces list = live rollup × N) | 🔴 | MUST land before any user with 1000s of works (public-readiness prerequisite) |
 | Y | **Backup/restore UX** — user-facing "download my everything" / "restore from file" pair | 🔴 | Analysis easy-win; top self-host objection |
-| Z | **SCHEDULING** — "publish this Friday 8pm across these sites"; the missing core feature of a publishing tool | 🔴 | Analysis: most conspicuous gap. Queue/retry exists; add time-based dispatch |
+| Z | **SCHEDULING** — "publish this Friday 8pm across these sites"; the missing core feature of a publishing tool | 🟡 **Phase 1 DONE 2.163** | Analysis: most conspicuous gap. **Phase 1 (2.163):** artwork scheduling (was stories-only) + a global **Queue & Schedule** page (When column, local-time, reschedule + cancel across stories & artwork). `posting_queries.reschedule_queue_item`/`get_scheduled_items`; artwork `POST/GET/DELETE /api/artwork/schedule[d]`; `POST /api/posting/queue/{id}/reschedule`. Timezone: local UI / UTC stored. **Phase 2 (TODO):** microblog **Posts** module has no queue — publishes synchronously; needs `scheduled_at` + a scheduler branch. **Phase 3+ (TODO):** recurring schedules, best-time suggestions, calendar drag-drop. FA/desktop-only platforms fire next time desktop is open (warned in UI, not blocked) |
 | AA | **Retro "2005 web" theme** — early-2000s style: beveled buttons, gradient headers, boxy tables, Verdana energy | 🔴 | Rhys 2026-07-19. Fits the existing tokens.css multi-theme system (Default/parchment/etc.) as a new theme entry |
 | AB | ~~**Achievement-style ERROR popups + send/report action**~~ | 🟢 **DONE 2.159.0 (2026-07-19)** | Rhys confirmed destination: *"send it to say me the dev"* = the instance's Telegram. Shipped: Laurels-style card on every failed mutating call (`error_popup.js`/`.css`), Copy report + Send to dev → `POST /api/report-error` → `send_telegram`, always server-logged, `{sent}` feedback. Follow-up polish still open: tag-format display at post time ("will post as: …") |
 | T | ~~**Whole-app product/business analysis** (opportunities, gaps, refinement, ease-of-use)~~ | 🟢 **DONE 2026-07-19** | Deliverable: `C:\Users\rhysc\claude\outputs\pawpoller_product_analysis.md` (outside repo — strategy stays out of the public copy). Verdict: pursue community self-host release (B) + BA-portfolio framing (D); hosted SaaS not yet. Top blockers: first-run wizard (§3), connect-flow pain, ToS/docs (§5), signing decision (§4), then SCHEDULING as the missing core feature |

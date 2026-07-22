@@ -1,7 +1,24 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-21
-**Current version (master):** 2.162.1 — **CRITICAL FIX: the self-updater corrupted the install (missing schema.sql).**
+**Last updated:** 2026-07-22
+**Current version (master):** 2.163.0 — **Schedule artwork for later + a Queue & Schedule page (SCHEDULING Phase 1, backlog Z).**
+The story scheduling path already existed end-to-end (publish-check panel → `POST /api/editor/stories/{name}/schedule`
+→ `posting_queue.scheduled_at` → the `posting/scheduler.py` daemon, which already honours `scheduled_at <=
+datetime('now')`). This release brings **artwork to parity** and adds a **global agenda + reschedule**. No new
+scheduler — it already fires `content_type='artwork'` rows. **Backend:** `posting_queries.reschedule_queue_item` +
+`get_scheduled_items`; artwork `POST /api/artwork/schedule` · `GET /api/artwork/scheduled?name=` · `DELETE
+/api/artwork/scheduled/{id}?name=` (name in body/query, NOT path — the greedy `/images/{name:path}` GET would swallow
+`.../scheduled`); `POST /api/posting/queue/{id}/reschedule` (any content type, by id); `GET /api/posting/queue` now
+defaults `content_type=None` so the queue page + Overview widget show artwork too. Shared `_to_utc_sql` helper =
+parse ISO → naive-as-UTC → reject past → UTC `YYYY-MM-DD HH:MM:SS`. **Frontend:** artwork detail "Publish to more" gains
+**Publish now** + **🕐 Schedule…** + a live Scheduled list; `posting.js` `renderQueue` rebuilt as **Queue & Schedule**
+(When column, soonest-first, inline `datetime-local` reschedule + cancel; `_schedInstant`/`_toLocalInput` UTC↔local).
+**Timezone contract:** user-facing local, stored UTC — `datetime-local` value → `toISOString()` → backend normalise →
+read back with `new Date(utc.replace(' ','T')+'Z')`. **Caveat surfaced in the UI:** scheduled posts run on the server,
+so desktop-only platforms (FA) fire next time the desktop app is open, not on the clock. +9 tests. **Deferred:** Posts
+(microblog) scheduling = Phase 2 (it publishes synchronously, no queue); recurring/best-time/calendar = Phase 3+.
+
+**Prior — 2.162.1 — CRITICAL FIX: the self-updater corrupted the install (missing schema.sql).**
 Rhys self-updated 2.134→2.162.0 in-app → crash `FileNotFoundError …\_internal\database\schema.sql`. Build was fine (zip
 had all 20 schemas); the **self-updater** was broken for EVERY self-update (he was first to try). **Root cause:** CI
 zipped with `Compress-Archive -Path PawPoller` → a top-level `PawPoller/` **wrapper**; `updater.apply_update` then

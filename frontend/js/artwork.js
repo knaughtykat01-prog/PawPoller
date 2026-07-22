@@ -905,9 +905,21 @@ window.Artwork = {
                         <h3>Publish to more</h3>
                         <div id="art-detail-platforms"></div>
                         <div class="artwork-actions">
-                            <button class="btn btn-primary" id="art-detail-publish">Publish</button>
+                            <button class="btn btn-primary" id="art-detail-publish">Publish now</button>
+                            <button class="btn btn-outline" id="art-detail-schedule-toggle">&#128340; Schedule&hellip;</button>
                             <span id="art-detail-msg" class="muted"></span>
                         </div>
+                        <div class="schedule-form" id="art-schedule-form" style="display:none">
+                            <div class="schedule-form-inner">
+                                <label class="schedule-label" for="art-schedule-datetime">Publish the ticked platforms at:</label>
+                                <input type="datetime-local" class="schedule-datetime" id="art-schedule-datetime">
+                                <div class="schedule-form-actions">
+                                    <button class="btn btn-sm btn-primary" id="art-schedule-confirm">Confirm schedule</button>
+                                    <button class="btn btn-sm btn-outline" id="art-schedule-cancel">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="schedule-pending" id="art-scheduled-list"></div>
                     </div>
                 </div>
             </div>`;
@@ -930,6 +942,106 @@ window.Artwork = {
         document.getElementById('art-detail-publish').addEventListener('click', () => this._publishMore(name));
         document.getElementById('art-edit-save').addEventListener('click', () => this._saveMeta(name, data));
         document.getElementById('art-edit-tagbrowse').addEventListener('click', () => this._openTagLibrary('art-edit-tags'));
+
+        // Scheduling: toggle the picker, confirm, and list what's already queued.
+        const schedForm = document.getElementById('art-schedule-form');
+        const schedInput = document.getElementById('art-schedule-datetime');
+        document.getElementById('art-detail-schedule-toggle').addEventListener('click', () => {
+            const showing = schedForm.style.display !== 'none';
+            schedForm.style.display = showing ? 'none' : '';
+            if (!showing && !schedInput.value) schedInput.value = this._defaultScheduleLocal();
+        });
+        document.getElementById('art-schedule-cancel').addEventListener('click', () => {
+            schedForm.style.display = 'none';
+        });
+        document.getElementById('art-schedule-confirm').addEventListener('click', () => this._confirmSchedule(name));
+        this._loadArtScheduled(name);
+    },
+
+    /* datetime-local wants 'YYYY-MM-DDTHH:MM' in LOCAL time. Default to one
+     * hour out so the picker opens on a sane, in-the-future value. */
+    _defaultScheduleLocal() {
+        const d = new Date(Date.now() + 60 * 60 * 1000);
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+            `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    },
+
+    /* Schedule the ticked (not-yet-posted) platforms for a future time. One
+     * request per platform — the immediate publish fans out the same way. The
+     * datetime-local value is LOCAL; toISOString() hands the backend a UTC
+     * instant, so a schedule set at 8pm AEST fires at 8pm AEST. */
+    async _confirmSchedule(name) {
+        const msg = document.getElementById('art-detail-msg');
+        const val = document.getElementById('art-schedule-datetime').value;
+        if (!val) { msg.textContent = 'Pick a date and time.'; return; }
+        const when = new Date(val);
+        if (isNaN(when.getTime())) { msg.textContent = 'Invalid date/time.'; return; }
+        if (when.getTime() < Date.now()) { msg.textContent = 'Pick a time in the future.'; return; }
+
+        const checked = Array.from(document.querySelectorAll('#art-detail-platforms .art-plat-check:checked'))
+            .map(c => c.value);
+        if (!checked.length) { msg.textContent = 'Tick at least one platform.'; return; }
+        const accountIds = {};
+        document.querySelectorAll('#art-detail-platforms .art-acct-select').forEach(sel => {
+            if (checked.includes(sel.dataset.platform)) accountIds[sel.dataset.platform] = parseInt(sel.value, 10);
+        });
+
+        const isoStr = when.toISOString();
+        msg.textContent = 'Scheduling…';
+        let ok = 0, fail = 0;
+        for (const platform of checked) {
+            try {
+                await API.scheduleArtwork({
+                    artwork_name: name, platform, scheduled_at: isoStr,
+                    account_id: accountIds[platform],
+                });
+                ok++;
+            } catch (err) {
+                fail++;
+                console.warn('Schedule failed for', platform, err);
+            }
+        }
+        this._toast(fail ? 'error' : 'success',
+            `Scheduled ${ok} platform${ok === 1 ? '' : 's'} for ${when.toLocaleString()}` +
+            (fail ? `, ${fail} failed` : ''));
+        document.getElementById('art-schedule-form').style.display = 'none';
+        msg.textContent = '';
+        this._loadArtScheduled(name);
+    },
+
+    async _loadArtScheduled(name) {
+        const box = document.getElementById('art-scheduled-list');
+        if (!box) return;
+        let items = [];
+        try {
+            const resp = await API.getArtworkScheduled(name);
+            items = (resp.items || []).filter(i => i.status === 'pending' && i.scheduled_at);
+        } catch { return; }
+        if (!items.length) { box.innerHTML = ''; return; }
+        items.sort((a, b) => (a.scheduled_at || '').localeCompare(b.scheduled_at || ''));
+        let html = '<div class="schedule-pending-header">Scheduled</div>';
+        for (const it of items) {
+            // Stored 'YYYY-MM-DD HH:MM:SS' is UTC; make it a real instant then localise.
+            const when = new Date(it.scheduled_at.replace(' ', 'T') + 'Z').toLocaleString();
+            const plat = (window.PLATFORMS || []).find(p => p.code === it.platform);
+            html += '<div class="schedule-pending-item">' +
+                '<span class="schedule-pending-icon">&#128340;</span> ' +
+                this.esc(plat ? plat.name : it.platform) + ' &mdash; ' + this.esc(when) +
+                ' <button class="btn btn-xs btn-outline" data-art-sched-cancel="' + it.queue_id + '">Cancel</button>' +
+                '</div>';
+        }
+        box.innerHTML = html;
+        box.querySelectorAll('[data-art-sched-cancel]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                try {
+                    await API.cancelArtworkScheduled(name, parseInt(btn.dataset.artSchedCancel, 10));
+                    this._loadArtScheduled(name);
+                } catch (err) {
+                    this._toast('error', 'Cancel failed: ' + err.message);
+                }
+            });
+        });
     },
 
     /* Save canonical metadata edits (rating / title / description / tags) on a

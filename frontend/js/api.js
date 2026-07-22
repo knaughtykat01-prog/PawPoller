@@ -771,6 +771,11 @@ const API = {
             return r.json();
         });
     },
+    /* Move a scheduled queue item (story or artwork) to a new time.
+       data = { scheduled_at: <ISO 8601 string> }. */
+    reschedulePostingQueue(queueId, data) {
+        return this.post(`/api/posting/queue/${queueId}/reschedule`, data);
+    },
     getPostingLog(params = {}) { return this.get('/api/posting/log', params); },
     getPostingSettings() { return this.get('/api/posting/settings'); },
     savePostingSettings(data) { return this.post('/api/posting/settings', data); },
@@ -826,6 +831,17 @@ const API = {
     },
     createArtworkFromPath(data) { return this.post('/api/artwork/create-from-path', data); },
     publishArtwork(data) { return this.post('/api/artwork/publish', data); },
+    /* Schedule an artwork to publish later. One call per platform.
+       data = { artwork_name, platform, scheduled_at, account_id? }. */
+    scheduleArtwork(data) { return this.post('/api/artwork/schedule', data); },
+    getArtworkScheduled(name) { return this.get('/api/artwork/scheduled', { name }); },
+    cancelArtworkScheduled(name, queueId) {
+        return fetch(`/api/artwork/scheduled/${queueId}?name=${encodeURIComponent(name)}`,
+            { method: 'DELETE' }).then(r => {
+                if (!r.ok) throw new Error(`Cancel failed: ${r.status}`);
+                return r.json();
+            });
+    },
     getArtworkPublications() { return this.get('/api/artwork/publications'); },
     getArtworkLog(params = {}) { return this.get('/api/artwork/log', params); },
     getArtworkSettings() { return this.get('/api/artwork/settings'); },

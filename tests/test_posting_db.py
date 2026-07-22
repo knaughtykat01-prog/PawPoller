@@ -183,6 +183,60 @@ class TestPostingQueue:
         assert items[0]["story_name"] == "Now"
 
 
+class TestScheduling:
+    """Reschedule + the global scheduled-items agenda query (Phase 1)."""
+
+    def test_reschedule_moves_pending(self, db_conn):
+        qid = posting_queries.add_to_queue(
+            db_conn, "S", 0, "ib", "post", scheduled_at="2099-01-01 08:00:00")
+        assert posting_queries.reschedule_queue_item(db_conn, qid, "2099-06-15 20:00:00") is True
+
+        row = db_conn.execute(
+            "SELECT scheduled_at FROM posting_queue WHERE queue_id = ?", (qid,)).fetchone()
+        assert row["scheduled_at"] == "2099-06-15 20:00:00"
+
+    def test_reschedule_refuses_non_pending(self, db_conn):
+        qid = posting_queries.add_to_queue(
+            db_conn, "S", 0, "ib", "post", scheduled_at="2099-01-01 08:00:00")
+        posting_queries.update_queue_status(db_conn, qid, "completed")
+        # A completed row must not be movable — the work is already done.
+        assert posting_queries.reschedule_queue_item(db_conn, qid, "2099-06-15 20:00:00") is False
+        row = db_conn.execute(
+            "SELECT scheduled_at FROM posting_queue WHERE queue_id = ?", (qid,)).fetchone()
+        assert row["scheduled_at"] == "2099-01-01 08:00:00"
+
+    def test_reschedule_unknown_id(self, db_conn):
+        assert posting_queries.reschedule_queue_item(db_conn, 999999, "2099-06-15 20:00:00") is False
+
+    def test_get_scheduled_items_only_future_pending(self, db_conn):
+        posting_queries.add_to_queue(
+            db_conn, "Later", 0, "ib", "post", scheduled_at="2099-12-31 23:59:59")
+        posting_queries.add_to_queue(
+            db_conn, "Sooner", 0, "sf", "post", scheduled_at="2099-01-01 08:00:00")
+        # Immediate (no scheduled_at) — queued, not scheduled; excluded.
+        posting_queries.add_to_queue(db_conn, "Immediate", 0, "ib", "post")
+        # Cancelled scheduled row — excluded.
+        qid = posting_queries.add_to_queue(
+            db_conn, "Gone", 0, "ib", "post", scheduled_at="2099-03-03 03:03:03")
+        posting_queries.cancel_queue_item(db_conn, qid)
+
+        items = posting_queries.get_scheduled_items(db_conn)
+        names = [i["story_name"] for i in items]
+        assert names == ["Sooner", "Later"]  # soonest first
+
+    def test_get_scheduled_items_spans_content_types(self, db_conn):
+        posting_queries.add_to_queue(
+            db_conn, "A_Story", 1, "ib", "post",
+            content_type="story", scheduled_at="2099-01-01 08:00:00")
+        posting_queries.add_to_queue(
+            db_conn, "An_Artwork", 0, "fa", "post",
+            content_type="artwork", scheduled_at="2099-01-02 08:00:00")
+
+        items = posting_queries.get_scheduled_items(db_conn)
+        types = {i["content_type"] for i in items}
+        assert types == {"story", "artwork"}
+
+
 class TestPostingLog:
 
     def test_log_action(self, db_conn):
