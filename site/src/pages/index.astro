@@ -5,6 +5,7 @@ import Hero from '../components/Hero.astro';
 import Stats from '../components/Stats.astro';
 import Explore from '../components/Explore.astro';
 import PlatformStrip from '../components/PlatformStrip.astro';
+import WhatsNew from '../components/WhatsNew.astro';
 import CtaBand from '../components/CtaBand.astro';
 import Footer from '../components/Footer.astro';
 
@@ -30,6 +31,8 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
         </div>
       </div>
     </section>
+
+    <WhatsNew />
 
     <CtaBand />
   </main>

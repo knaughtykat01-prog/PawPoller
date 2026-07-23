@@ -1,0 +1,75 @@
+---
+// Recently shipped — a curated, newest-first highlight reel drawn from
+// CHANGELOG.md. This is marketing copy: plain-language blurbs mirroring each
+// release's `>` summary, no function names or routes. Keep it in step when a
+// notable user-facing feature ships — trim the tail so the list stays to the
+// last handful of headline additions, not an exhaustive log (that's what the
+// linked CHANGELOG is for).
+const releases = [
+  {
+    version: '2.179',
+    title: 'Safe mode',
+    blurb:
+      'A one-click SFW/NSFW toggle blurs every adult cover and thumbnail across the whole app, so you can open PawPoller when you are not alone at the screen. Click any blurred item to peek at just that one.',
+  },
+  {
+    version: '2.168',
+    title: 'Scheduling',
+    blurb:
+      'Queue a story, an art piece or a social post to publish at a set date and time, then see everything pending laid out on a calendar. The core feature a publishing tool is supposed to have.',
+  },
+  {
+    version: '2.118',
+    title: 'e621, the seventeenth platform',
+    blurb:
+      'Poll and post to e621 over its official API. PawPoller now tracks seventeen platforms and posts to eleven of them.',
+  },
+  {
+    version: '2.97',
+    title: 'Collections',
+    blurb:
+      'Bundle one piece — its story, every gallery post and announcement across all seventeen sites — into a single master, with pooled analytics, merged tags and every cross-platform link in one place.',
+  },
+  {
+    version: '2.64',
+    title: 'Posts, plus Instagram',
+    blurb:
+      'A dedicated hub for tweet-style posts across Bluesky, Mastodon, Threads, Tumblr and X — plus photo-and-caption posting to Instagram, with likes, reach and saves tracked back.',
+  },
+];
+---
+<section id="whats-new" class="border-t border-ink-800/60 py-24">
+  <div class="container-prose">
+    <div class="max-w-2xl">
+      <span class="chip mb-6 border-copper-700/50 text-copper-300">
+        <span class="h-1.5 w-1.5 rounded-full bg-copper-400"></span>
+        Recently shipped
+      </span>
+      <h2 class="text-4xl text-ink-50 md:text-5xl">Always moving.</h2>
+      <p class="mt-6 text-lg text-ink-300">
+        PawPoller ships constantly. A few of the latest additions below — the
+        full <a
+          href="https://github.com/knaughtykat01-prog/PawPoller/blob/master/CHANGELOG.md"
+          class="text-copper-300 underline-offset-4 transition hover:underline"
+          >changelog</a
+        > has everything.
+      </p>
+    </div>
+
+    <ol class="mt-16 space-y-8">
+      {releases.map((r) => (
+        <li class="flex flex-col gap-2 border-l border-ink-800 pl-6 sm:flex-row sm:gap-8 sm:pl-8">
+          <div class="shrink-0 sm:w-24">
+            <span class="chip border-copper-700/50 font-mono text-xs text-copper-300">
+              v{r.version}
+            </span>
+          </div>
+          <div>
+            <h3 class="text-xl text-ink-50">{r.title}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-ink-300">{r.blurb}</p>
+          </div>
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>
