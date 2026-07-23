@@ -12,6 +12,34 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.175.0] - 2026-07-23 - Snappier: the app feels quicker everywhere
+
+> **The app feels faster now.** Buttons, hovers and toggles respond instantly, big libraries paint and scroll more
+> smoothly, and pop-ups open crisply. Nothing works differently — it just feels quicker. (If you have "reduce motion" on
+> in your system, animations are skipped entirely.)
+
+A perceived-performance / GPU-acceleration pass — theme-independent, purely rendering, no behaviour or layout change.
+New `frontend/css/perf.css` (loaded right after `tokens.css`).
+
+- **Snappier micro-interactions:** the transition tokens drop from 0.2s / 0.3s to **0.12s / 0.2s**, so every hover /
+  press / toggle feels instant while staying smooth.
+- **Off-screen grid cards skip render work** (`content-visibility: auto` + a `contain-intrinsic-size` reserve) on the
+  Library shelf, Masterpieces, Artwork, Collections, hub and platform grids. The browser lays out + paints (and
+  GPU-composites) only the cards near the viewport, reserving each one's rough size so the scrollbar stays honest — the
+  biggest paint + scroll win on libraries with hundreds of works, on top of the JS windowing from 2.167.
+- **Transient overlays get their own GPU compositor layer** (`transform: translateZ(0)` on modals, toasts, the command
+  palette, chart modal, guide modal, error card) so they open smoothly and don't repaint the page behind. Deliberately
+  *not* the main scroll column — a transform there would re-root `position: fixed` descendants and misplace them.
+- **Momentum scrolling** in the scroll panes; **`prefers-reduced-motion`** honoured (transitions/animations reduced to
+  ~0 for users who ask).
+
+Note: the Retro 2005 theme's removal of `backdrop-filter` blur is itself a rendering-cost win — that theme is now also
+the lightest to render.
+
+Cosmetic/rendering only, no tests.
+
+---
+
 ## [2.174.0] - 2026-07-23 - Retro 2005: every single page, no exceptions
 
 > **Retro 2005 now covers every page.** The makeover reaches into every corner of the app — the Library shelf,

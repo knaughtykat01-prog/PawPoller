@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.174.0 — **Retro 2005: full-app coverage (every module, no page left modern).**
+**Current version (master):** 2.175.0 — **Snappier: app-wide perceived-performance / GPU pass (Rhys: "feel so much more quicker").**
+Theme-independent, purely rendering. New `frontend/css/perf.css` (after tokens.css): (1) transition tokens 0.2/0.3s →
+**0.12/0.2s** (instant micro-interactions); (2) **`content-visibility:auto` + `contain-intrinsic-size:220px 300px`** on
+the big grids (mp-grid/shelf-grid/artwork-grid/card-grid/coll-grid/hub-grid/dash-platgrid/lr-medals) — off-screen cards
+skip layout+paint, GPU-composite only near-viewport (biggest win, complements 2.167 JS windowing); (3)
+`transform:translateZ(0)` GPU-layers on transient overlays only (modal-panel/pp-toast/cmdk-panel/chart-modal-wrap/
+guide-modal-card/ep-card) — NOT #main-col (would re-root position:fixed descendants); (4) momentum scroll +
+`prefers-reduced-motion` honoured. Used plain `contain-intrinsic-size` values (not `auto` keyword) so an unsupported
+build can't collapse offscreen items → scrollbar jump. Cosmetic/rendering only, no tests.
+
+**Prior — 2.174.0 — Retro 2005: full-app coverage (every module, no page left modern).**
 Follow-up to 2.173's makeover, extending it to every module's own components. **Universal square + de-blur** —
 `html[data-theme="retro_2005"] * { border-radius:0; backdrop-filter:none }` — squares + de-glasses the WHOLE app in one
 rule (also a render-cost win). Then a big beveled-window pass over every module panel (Library/book, Masterpieces mp-*,

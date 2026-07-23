@@ -51,6 +51,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Crimson+Pro:wght@400;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
     <link rel="stylesheet" href="/css/tokens.css?v=__APP_VERSION__">
+    <!-- Perceived-performance / GPU pass: snappier transitions, off-screen grid
+         cards skip render work, overlays get their own compositor layer. After
+         tokens so its :root transition override wins; before components. -->
+    <link rel="stylesheet" href="/css/perf.css?v=__APP_VERSION__">
     <link rel="stylesheet" href="/css/components.css?v=__APP_VERSION__">
     <link rel="stylesheet" href="/css/layout.css?v=__APP_VERSION__">
     <link rel="stylesheet" href="/css/redesign.css?v=__APP_VERSION__">
