@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.176.0 — **Fix: Library shelf covers no longer crop / size unevenly (2.175.0 regression).**
+**Current version (master):** 2.177.0 — **Fix: story editor toolbar buttons line up again (every theme).**
+`.editor-actions-secondary` (CSS/Regenerate/Downloads/Publish/Format + status readouts + format-tabs) had NO desktop
+layout rule → fell back to a block, so its inline-block buttons + ▾ dropdowns baseline-aligned → ragged, staggered row
+(Rhys: "the misalignment... its every theme"). Fix: `.editor-actions-secondary { display:flex; align-items:center;
+flex-wrap:wrap; gap:8px }` on desktop in `frontend/css/editor.css`. Mobile rules (html[data-mobile="1"], higher
+specificity) still win → ⋯-collapse untouched. Cosmetic/layout, no tests.
+
+**Prior — 2.176.0 — Fix: Library shelf covers no longer crop / size unevenly (2.175.0 regression).**
 `content-visibility:auto` + `contain-intrinsic-size` from 2.175.0 size-contained the shelf cards, fighting the covers'
 `aspect-ratio:3/4` → uneven heights + mis-cropped covers (Rhys screenshot, "image cut off... in shelve view"). Fix:
 **removed the whole content-visibility block from `frontend/css/perf.css`** — the big grids are already JS-windowed

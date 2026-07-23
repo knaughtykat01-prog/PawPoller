@@ -195,6 +195,20 @@ html:not([data-mobile="1"]) .editor-actions {
     justify-content: center;
 }
 
+/* The secondary cluster (CSS / Regenerate / Downloads / Publish / Format /
+   status readouts / format-tabs) had NO desktop layout rule, so it fell back to
+   a plain block: its buttons and the ▾ dropdowns laid out as inline-blocks that
+   align on the text baseline, not centered — a ragged, staggered row in every
+   theme. Make it a centered flex row so everything sits on one line. The
+   mobile rules (html[data-mobile="1"] …, higher specificity) still win on
+   phones, so the ⋯-collapse behaviour is untouched. (2.177.0) */
+.editor-actions-secondary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .editor-status {
     color: var(--text-secondary);
     font-size: 0.8rem;

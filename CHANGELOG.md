@@ -12,6 +12,25 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.177.0] - 2026-07-23 - Fix: Story editor toolbar buttons line up again
+
+> **The buttons along the top of the story editor now sit in a neat row.** They'd become staggered and uneven; that's
+> fixed, in every theme.
+
+The editor toolbar's secondary action cluster — CSS, Regenerate ▾, Downloads ▾, Publish, Format, the status/word-count
+readouts and the format tabs — had **no desktop layout rule**. It fell back to a plain block, so its buttons and the ▾
+dropdowns rendered as inline-blocks that align on the **text baseline** rather than centered, producing a ragged,
+staggered row. Theme-independent (base CSS), which is why it showed under every theme including default dark.
+
+- **`.editor-actions-secondary` is now `display:flex; align-items:center; flex-wrap:wrap; gap:8px` on desktop**
+  (`frontend/css/editor.css`), so every control sits on one centered line.
+- The mobile rules (`html[data-mobile="1"] …`, higher specificity) still win on phones — the ⋯-collapse behaviour is
+  untouched.
+
+Cosmetic/layout only, no tests.
+
+---
+
 ## [2.176.0] - 2026-07-23 - Fix: Library covers no longer crop or size unevenly
 
 > **Book covers on the Library shelf are back to normal.** A speed change in the last update was squashing and cropping
