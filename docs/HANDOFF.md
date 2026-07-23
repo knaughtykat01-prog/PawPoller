@@ -1,15 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.175.0 — **Snappier: app-wide perceived-performance / GPU pass (Rhys: "feel so much more quicker").**
+**Current version (master):** 2.176.0 — **Fix: Library shelf covers no longer crop / size unevenly (2.175.0 regression).**
+`content-visibility:auto` + `contain-intrinsic-size` from 2.175.0 size-contained the shelf cards, fighting the covers'
+`aspect-ratio:3/4` → uneven heights + mis-cropped covers (Rhys screenshot, "image cut off... in shelve view"). Fix:
+**removed the whole content-visibility block from `frontend/css/perf.css`** — the big grids are already JS-windowed
+(2.167), so off-screen cards weren't painting anyway; the perf win was redundant. All other 2.175.0 wins kept (snappy
+transitions, GPU-layer overlays, momentum scroll, reduced-motion). Cosmetic/rendering only, no tests.
+
+**Prior — 2.175.0 — Snappier: app-wide perceived-performance / GPU pass (Rhys: "feel so much more quicker").**
 Theme-independent, purely rendering. New `frontend/css/perf.css` (after tokens.css): (1) transition tokens 0.2/0.3s →
-**0.12/0.2s** (instant micro-interactions); (2) **`content-visibility:auto` + `contain-intrinsic-size:220px 300px`** on
-the big grids (mp-grid/shelf-grid/artwork-grid/card-grid/coll-grid/hub-grid/dash-platgrid/lr-medals) — off-screen cards
-skip layout+paint, GPU-composite only near-viewport (biggest win, complements 2.167 JS windowing); (3)
-`transform:translateZ(0)` GPU-layers on transient overlays only (modal-panel/pp-toast/cmdk-panel/chart-modal-wrap/
+**0.12/0.2s** (instant micro-interactions); (2) content-visibility on the big grids — **REVERTED in 2.176.0** (see above);
+(3) `transform:translateZ(0)` GPU-layers on transient overlays only (modal-panel/pp-toast/cmdk-panel/chart-modal-wrap/
 guide-modal-card/ep-card) — NOT #main-col (would re-root position:fixed descendants); (4) momentum scroll +
-`prefers-reduced-motion` honoured. Used plain `contain-intrinsic-size` values (not `auto` keyword) so an unsupported
-build can't collapse offscreen items → scrollbar jump. Cosmetic/rendering only, no tests.
+`prefers-reduced-motion` honoured. Cosmetic/rendering only, no tests.
 
 **Prior — 2.174.0 — Retro 2005: full-app coverage (every module, no page left modern).**
 Follow-up to 2.173's makeover, extending it to every module's own components. **Universal square + de-blur** —

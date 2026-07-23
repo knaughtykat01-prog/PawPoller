@@ -12,6 +12,25 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.176.0] - 2026-07-23 - Fix: Library covers no longer crop or size unevenly
+
+> **Book covers on the Library shelf are back to normal.** A speed change in the last update was squashing and cropping
+> the cover images on the shelf; that's fixed — covers show fully and at even heights again. Everything still feels just
+> as snappy.
+
+The `content-visibility` optimisation from 2.175.0 was size-containing the shelf cards, which fought the covers'
+`aspect-ratio: 3 / 4` — the browser reserved a fixed intrinsic box that didn't match the aspect ratio, so covers
+rendered at uneven heights and mis-cropped ("image cut off" in shelf view).
+
+- **Removed the `content-visibility` block from `frontend/css/perf.css` entirely.** The big grids (Library, Masterpieces,
+  Artwork, Collections, hub, platform) are already virtualised by the JS windowing from 2.167, so off-screen cards
+  weren't doing meaningful paint work anyway — the perf win was redundant and correctness wins.
+- All the other 2.175.0 wins stay: snappier transitions, GPU-layered overlays, momentum scrolling, `prefers-reduced-motion`.
+
+Cosmetic/rendering only, no tests.
+
+---
+
 ## [2.175.0] - 2026-07-23 - Snappier: the app feels quicker everywhere
 
 > **The app feels faster now.** Buttons, hovers and toggles respond instantly, big libraries paint and scroll more
