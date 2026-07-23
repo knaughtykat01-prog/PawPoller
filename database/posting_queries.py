@@ -158,26 +158,43 @@ def get_publications_with_stats(
         "wp": ("wp_submissions", "submission_id", ["reads", "votes", "comments_count"]),
     }
 
+    # Perf guardrail (2.165.0): the old code ran ONE stat query per publication —
+    # O(pubs) queries, which the Library's /api/works list paid on every load.
+    # Batch it: group external_ids by platform and fetch each platform's stats in
+    # one query (chunked under SQLite's variable cap), then assign in Python.
+    ids_by_plat: dict[str, set] = {}
+    for pub in pubs:
+        plat = pub["platform"]
+        ext = pub["external_id"]
+        if plat in stat_tables and ext:
+            ids_by_plat.setdefault(plat, set()).add(ext)
+
+    stats_map: dict[tuple, dict] = {}     # (platform, str(external_id)) -> stats
+    for plat, ids in ids_by_plat.items():
+        table, id_col, cols = stat_tables[plat]
+        col_str = ", ".join(cols)
+        id_list = list(ids)
+        for i in range(0, len(id_list), 900):
+            chunk = id_list[i:i + 900]
+            # Match the old single-row path: digit ids compared as ints (some
+            # submission tables store the id as INTEGER).
+            norm = [int(x) if str(x).isdigit() else x for x in chunk]
+            ph = ",".join("?" * len(norm))
+            try:
+                rows = conn.execute(
+                    f"SELECT {id_col}, {col_str} FROM {table} WHERE {id_col} IN ({ph})",
+                    norm,
+                ).fetchall()
+            except Exception:
+                continue  # Table doesn't exist / column mismatch
+            for r in rows:
+                stats_map[(plat, str(r[id_col]))] = {c: r[c] for c in cols}
+
     enriched = []
     for pub in pubs:
         pub_dict = dict(pub) if not isinstance(pub, dict) else pub
-        plat = pub_dict["platform"]
-        ext_id = pub_dict["external_id"]
-
-        pub_dict["stats"] = None
-        if plat in stat_tables and ext_id:
-            table, id_col, cols = stat_tables[plat]
-            col_str = ", ".join(cols)
-            try:
-                row = conn.execute(
-                    f"SELECT {col_str} FROM {table} WHERE {id_col} = ?",
-                    (int(ext_id) if ext_id.isdigit() else ext_id,),
-                ).fetchone()
-                if row:
-                    pub_dict["stats"] = {cols[i]: row[i] for i in range(len(cols))}
-            except Exception:
-                pass  # Table doesn't exist or ID mismatch
-
+        pub_dict["stats"] = stats_map.get(
+            (pub_dict["platform"], str(pub_dict["external_id"] or "")))
         enriched.append(pub_dict)
 
     return enriched

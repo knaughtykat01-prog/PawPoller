@@ -27,25 +27,40 @@ masterpieces_router = APIRouter(prefix="/api/masterpieces", tags=["masterpieces"
 
 
 @masterpieces_router.get("")
-def list_masterpieces():
+def list_masterpieces(limit: int | None = None, offset: int = 0):
     """Every Masterpiece (one per artwork folder) + a light pooled rollup.
 
     The canonical fields come from disk (masterpiece.json); ``summary`` carries the
     live cross-site pooling (totals / personas / member count / cover). We adopt
-    each name into the thin ``masterpieces`` index on the way past so Phase 3's
-    linker always has a row to hang members off.
+    each name into the thin ``masterpieces`` index so Phase 3's linker always has a
+    row to hang members off.
+
+    **Perf guardrail (2.165.0):** the rollup is batched — one bulk member fetch +
+    one submission fetch per platform + one persona map + one bulk index-ensure —
+    instead of the old per-name fan-out (a rollup query per member AND a write per
+    name, on every load). Optional ``limit``/``offset`` cap the response for very
+    large libraries; the default returns everything (the grid caches + filters
+    client-side), and ``total`` is always the full count.
     """
     conn = get_connection()
     try:
-        out = []
+        arts_all = artwork_reader.list_artworks()
+        # Preserve the "every artwork has an index row" invariant cheaply: one
+        # read + a write only for names not yet indexed (usually none).
+        mq.ensure_indexed_bulk(conn, [a["name"] for a in arts_all])
+        total = len(arts_all)
+
+        page = arts_all
+        if limit is not None:
+            start = max(0, offset)
+            page = arts_all[start:start + max(0, limit)]
+
         st = mq.statuses(conn)
-        for art in artwork_reader.list_artworks():
-            name = art["name"]
-            mq.ensure_indexed(conn, name)
-            out.append({**art, "summary": mq.summarize(conn, name),
-                        "status": st.get(name, "")})
+        summaries = mq.summarize_many(conn, [a["name"] for a in page])
+        out = [{**art, "summary": summaries.get(art["name"], {}),
+                "status": st.get(art["name"], "")} for art in page]
         conn.commit()
-        return {"masterpieces": out}
+        return {"masterpieces": out, "total": total}
     finally:
         conn.close()
 

@@ -149,10 +149,14 @@ def _stats_from_row(platform: str, row: dict) -> dict:
     }
 
 
-def _location_from_submission(conn, platform: str, sid: str, *, url: str = "",
-                              account_id=None, source: str = "submission") -> dict | None:
-    """Resolve one platform submission into a location dict (stats + link + tags)."""
-    row = _submission_row(conn, platform, sid)
+def _location_from_row(platform: str, sid: str, row: dict | None, *, url: str = "",
+                       account_id=None, source: str = "submission") -> dict | None:
+    """Build a location dict from an ALREADY-FETCHED submission row (or None).
+
+    Pure — no DB access — so callers that bulk-fetch rows (``_submission_rows_bulk``)
+    can resolve every location in Python instead of one query per member. This is
+    the split that lets the Masterpiece/Collection/Works rollups batch.
+    """
     if not row:
         # Still surface the location even if the poller hasn't stored it (link only).
         if not url:
@@ -174,6 +178,54 @@ def _location_from_submission(conn, platform: str, sid: str, *, url: str = "",
         "thumbnail_url": row.get("thumbnail_url") or "",
         "source": source,
     }
+
+
+def _location_from_submission(conn, platform: str, sid: str, *, url: str = "",
+                              account_id=None, source: str = "submission") -> dict | None:
+    """Resolve one platform submission into a location dict (stats + link + tags).
+
+    Single-row convenience wrapper. Hot paths that resolve many members should
+    bulk-fetch with ``_submission_rows_bulk`` and call ``_location_from_row``.
+    """
+    return _location_from_row(
+        platform, sid, _submission_row(conn, platform, sid),
+        url=url, account_id=account_id, source=source)
+
+
+# SQLite's default SQLITE_MAX_VARIABLE_NUMBER is 999 (older builds); chunk well
+# under it so a large IN(...) never trips a "too many variables" error.
+_IN_CHUNK = 900
+
+
+def _submission_rows_bulk(conn, pairs) -> dict:
+    """Bulk-fetch submission rows for many ``(platform, submission_id)`` pairs.
+
+    ONE query per platform table (chunked under SQLite's variable limit) instead
+    of one per pair. Returns ``{(platform, str(sid)): row_dict}``; pairs with no
+    stored row are simply absent. This is the batching that keeps the Masterpiece
+    / Collection / Works rollups O(platforms) rather than O(members) — the
+    per-member ``_location_from_submission`` fan-out was the "live rollup × N"
+    cost that made large libraries crawl.
+    """
+    by_platform: dict[str, set] = {}
+    for platform, sid in pairs:
+        if platform in _TABLE_MAP:
+            by_platform.setdefault(platform, set()).add(str(sid))
+    out: dict[tuple, dict] = {}
+    for platform, sids in by_platform.items():
+        tbl = _TABLE_MAP[platform]
+        sid_list = list(sids)
+        for i in range(0, len(sid_list), _IN_CHUNK):
+            chunk = sid_list[i:i + _IN_CHUNK]
+            ph = ",".join("?" * len(chunk))
+            try:
+                rows = conn.execute(
+                    f"SELECT * FROM {tbl} WHERE submission_id IN ({ph})", chunk).fetchall()
+            except Exception:
+                continue
+            for r in rows:
+                out[(platform, str(r["submission_id"]))] = dict(r)
+    return out
 
 
 def rollup_collection(conn: sqlite3.Connection, cid: int) -> dict | None:

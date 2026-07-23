@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import sqlite3
 
-from database.collections_queries import _acct_to_persona, _location_from_submission, _submission_row
+from database.collections_queries import (
+    _acct_to_persona, _location_from_submission, _location_from_row,
+    _submission_row, _submission_rows_bulk,
+)
 
 
 # ── Index + membership CRUD ──────────────────────────────────────
@@ -273,6 +276,110 @@ def summarize(conn: sqlite3.Connection, name: str) -> dict:
         "cover_thumb": cover_thumb,
         "cover_platform": cover_platform,
     }
+
+
+# ── Batched rollup for the grid (perf guardrail) ─────────────────
+# summarize() per masterpiece was O(members) queries EACH — the "live rollup × N"
+# cost the list endpoint paid on every load (plus a write per name). These fold
+# the whole grid into a handful of queries: one bulk member fetch, one
+# _submission_rows_bulk (one query per platform table), one persona map.
+
+def get_members_bulk(conn: sqlite3.Connection, names) -> dict:
+    """All members for many Masterpieces in one query → ``{name: [member dicts]}``.
+
+    Each name's members stay in ``added_at, platform`` order (a name never spans
+    two chunks, so its slice is fully ordered) — cover selection depends on it.
+    """
+    names = list(names)
+    out: dict[str, list] = {n: [] for n in names}
+    for i in range(0, len(names), 900):
+        chunk = names[i:i + 900]
+        ph = ",".join("?" * len(chunk))
+        rows = conn.execute(
+            "SELECT masterpiece_name, platform, submission_id, account_id, role, "
+            "linked_via, variant_key, added_at FROM masterpiece_members "
+            f"WHERE masterpiece_name IN ({ph}) ORDER BY added_at, platform", chunk).fetchall()
+        for r in rows:
+            d = dict(r)
+            out.setdefault(d["masterpiece_name"], []).append(d)
+    return out
+
+
+def ensure_indexed_bulk(conn: sqlite3.Connection, names) -> int:
+    """Register any not-yet-indexed names in ONE write (or none). Returns the
+    count inserted.
+
+    Replaces the per-name ``ensure_indexed`` loop in the list endpoint, which
+    issued N writes — and took an exclusive write lock — on every read. We look
+    up which names already exist, then executemany only the missing ones, so a
+    steady-state grid load takes zero writes.
+    """
+    names = list(names)
+    if not names:
+        return 0
+    existing: set = set()
+    for i in range(0, len(names), 900):
+        chunk = names[i:i + 900]
+        ph = ",".join("?" * len(chunk))
+        existing.update(r[0] for r in conn.execute(
+            f"SELECT name FROM masterpieces WHERE name IN ({ph})", chunk).fetchall())
+    missing = [(n,) for n in names if n not in existing]
+    if missing:
+        conn.executemany("INSERT OR IGNORE INTO masterpieces (name) VALUES (?)", missing)
+    return len(missing)
+
+
+def summarize_many(conn: sqlite3.Connection, names) -> dict:
+    """Batched :func:`summarize` for the whole grid → ``{name: summary}``.
+
+    Same per-name output as ``summarize(conn, name)`` but resolves ALL members,
+    submission rows and the persona map in O(platforms) queries instead of
+    O(total members). Names with no members yield the zeroed summary.
+    """
+    names = list(names)
+    a2p = _acct_to_persona(conn)
+    members_by_name = get_members_bulk(conn, names)
+    all_pairs = {(m["platform"], str(m["submission_id"]))
+                 for ms in members_by_name.values() for m in ms}
+    rows = _submission_rows_bulk(conn, all_pairs)
+
+    out: dict[str, dict] = {}
+    for name in names:
+        members = members_by_name.get(name, [])
+        locs: list[dict] = []
+        for m in members:
+            loc = _location_from_row(
+                m["platform"], str(m["submission_id"]),
+                rows.get((m["platform"], str(m["submission_id"]))),
+                account_id=m.get("account_id"), source="masterpiece")
+            if loc:
+                locs.append(loc)
+
+        tot = {"views": 0, "favorites": 0, "comments": 0}
+        persona_ids: set = set()
+        platforms: set = set()
+        cover_thumb, cover_platform = "", ""
+        for l in locs:
+            for k in tot:
+                v = l["stats"].get(k)
+                if v:
+                    tot[k] += v
+            platforms.add(l["platform"])
+            aid = l.get("account_id")
+            if aid in a2p:
+                persona_ids.add(a2p[aid])
+            if not cover_thumb and l.get("thumbnail_url"):
+                cover_thumb, cover_platform = l["thumbnail_url"], l["platform"]
+
+        out[name] = {
+            "totals": {**tot, "platforms": len(platforms), "locations": len(locs)},
+            "persona_ids": sorted(persona_ids),
+            "member_count": len(members),
+            "platforms": sorted(platforms),
+            "cover_thumb": cover_thumb,
+            "cover_platform": cover_platform,
+        }
+    return out
 
 
 # ── Promote (create a Masterpiece from a discovered/imported submission) ──

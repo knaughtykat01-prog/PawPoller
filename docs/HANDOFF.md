@@ -1,7 +1,22 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-22
-**Current version (master):** 2.164.0 — **Schedule Posts for later too (SCHEDULING Phase 2, backlog Z).**
+**Last updated:** 2026-07-23
+**Current version (master):** 2.165.0 — **Perf guardrails: batch the big list-screen rollups (backlog X, public-readiness blocker).**
+Two list endpoints had an N+1 fan-out. **Masterpieces grid** (`GET /api/masterpieces`): per piece it ran `summarize` →
+one `_location_from_submission` **per member**, recomputed the persona map, AND did an `ensure_indexed` **write per
+name** (a read taking a write lock N times) — prod measured ~460 queries + ~196 writes + 196 file reads per load (196
+pieces/68 members). **Works list** (`GET /api/works`): `get_publications_with_stats` = one stat query **per
+publication**. **Fix — batch the per-row submission lookups (one query per platform table):**
+`collections_queries` split `_location_from_submission` → pure `_location_from_row` + new `_submission_rows_bulk`;
+`masterpiece_queries` gained `summarize_many` (byte-for-byte == per-name `summarize`), `get_members_bulk`,
+`ensure_indexed_bulk`; `list_masterpieces` uses them (~460q+196w → ~20q+≤1w; O(platforms) not O(members)) + optional
+`limit`/`offset` guardrail (default = all, grid unaffected) + a `total`; `get_publications_with_stats` batched
+(O(pubs)→O(platforms)). **Pure speedup** — tests lock EQUIVALENCE (`summarize_many`==per-item; batched stats==old,
+incl. missing→None) + the QUERY BOUND (trace callback: 3 members/2 platforms → 2 submission SELECTs, not 3). +5 tests.
+**Not changed:** grid still reads one `masterpiece.json`/folder off disk (O(N) files — fine now, DB-cache is next lever
+if folders hit 5 figures); server-side sort/filter + frontend consuming `limit`/`offset` = follow-up.
+
+**Prior — 2.164.0 — Schedule Posts for later too (SCHEDULING Phase 2, backlog Z).**
 The microblog **Posts** module was the last content type that couldn't be scheduled (it published synchronously via
 `post_publisher.publish_post`, no queue). Rather than a second scheduler, posts now ride the **same `posting_queue`**:
 one row per platform, `content_type='post'`, `story_name`=the post_id, body snippet in `title_override`. **Backend:**

@@ -6333,6 +6333,16 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   `collections_queries`**, so a Masterpiece and a Collection pool stats through the identical per-platform
   normalisation (`_METRICS`) — one source of truth. In Phase 1 members start empty (no promote flow until Phase 3),
   so a fresh Masterpiece rolls up to zeroed totals — expected.
+- **Perf: batch the grid rollup (2.165.0).** `summarize` per-name is O(members) queries — the grid endpoint's old
+  loop (`summarize` + `ensure_indexed` per name) was the "live rollup × N" wall: a submission query per member AND a
+  write per name, on every load. **`summarize_many(conn, names)`** folds the whole grid into a handful of queries —
+  `get_members_bulk` (all members, one query, per-name order kept) + `collections_queries._submission_rows_bulk` (one
+  query per platform table, chunked under SQLite's 999-var cap) + one `_acct_to_persona`. It's **byte-for-byte equal**
+  to calling `summarize` per name (locked by `tests/test_perf_batching.py`). `ensure_indexed_bulk` collapses the N
+  writes into one (only the not-yet-indexed names). `list_masterpieces` uses both + optional `limit`/`offset` (default
+  = all) + a `total`. **When you add a field to `summarize`, add it to `summarize_many` too** — the equivalence test
+  will fail loudly otherwise, which is the point. The same batching primitive (`_submission_rows_bulk`) also backs the
+  batched `posting_queries.get_publications_with_stats` behind `/api/works`.
 - **Read API — `routes/masterpieces_api.py`** (`/api/masterpieces`, registered in `dashboard.py`): `GET ""` (every
   artwork folder + a light pooled `summary`, adopting each name into the `masterpieces` index on the way past),
   `GET /{name}` (canonical `masterpiece.json` **merged** with the live member rollup — `canonical_tags` = the master

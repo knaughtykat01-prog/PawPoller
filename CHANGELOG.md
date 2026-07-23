@@ -12,6 +12,52 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.165.0] - 2026-07-23 - Make the big library screens fast (perf guardrails)
+
+> **The Library and Masterpieces screens now load fast even with hundreds or thousands of pieces.** Nothing looks
+> different — the same grids, the same numbers — they just don't slow down as your library grows. This clears the way
+> for sharing PawPoller with other people, who might have far bigger libraries than a test setup.
+
+Backlog item X — the public-readiness performance blocker. Two list screens recomputed a live cross-site rollup the slow
+way on every load, with per-row database queries that multiplied with the library size. Same output, far fewer queries.
+
+**The problem.** Both hot list endpoints had an N+1 fan-out:
+- **Masterpieces grid** (`GET /api/masterpieces`): for *every* piece it ran `mq.summarize` → one `_location_from_submission`
+  query **per member**, recomputed the account→persona map, AND issued an `ensure_indexed` **write per name** — so a
+  read took an exclusive write lock N times. Measured on prod (196 pieces / 68 members): ~460 queries + ~196 writes +
+  196 file reads *per load*. At thousands of pieces this is the wall.
+- **Library / works list** (`GET /api/works`): `get_publications_with_stats` ran **one stat query per publication**.
+
+**The fix — batch the per-row submission lookups (one query per platform table).**
+- `database/collections_queries.py`: split `_location_from_submission` into a pure `_location_from_row` (builds a
+  location from an already-fetched row) + a new **`_submission_rows_bulk(conn, pairs)`** that fetches every needed
+  submission in one query per platform table (chunked under SQLite's 999-variable cap). This is the shared primitive.
+- `database/masterpiece_queries.py`: **`summarize_many(conn, names)`** — a batched `summarize` for the whole grid
+  (bulk members + bulk submissions + one persona map), byte-for-byte equal to calling `summarize` per name.
+  **`get_members_bulk`** (all members in one query, per-name order preserved) and **`ensure_indexed_bulk`** (indexes
+  only the not-yet-indexed names in one write, or none) back it.
+- `routes/masterpieces_api.py`: `list_masterpieces` now uses the batched path. Result: ~460 queries + 196 writes →
+  **~20 queries + ≤1 write** at current scale, and O(platforms) rather than O(members) as the library grows. Added
+  optional **`limit`/`offset`** guardrail params (default returns everything so the client-side-caching grid is
+  unaffected) and a `total` count.
+- `database/posting_queries.py`: `get_publications_with_stats` batched — group external_ids by platform, one stat query
+  per platform (chunked), assign in Python. O(publications) queries → O(platforms).
+
+**Correctness.** These are pure speedups — the batched code returns the same data as the per-row code it replaces. Two
+guarantees are locked in by tests: **equivalence** (`summarize_many(names)[n] == summarize(n)`, and the batched stats
+match the old per-pub lookup, including a missing row → `None`) and the **query bound** (via sqlite3's trace callback:
+3 members across 2 platforms issue exactly 2 submission-table queries, not 3).
+
+**Tests.** +5 (`tests/test_perf_batching.py`): summarize_many equivalence, summarize_many query bound, ensure_indexed_bulk
+inserts-only-missing, get_publications_with_stats batched-equivalence + query bound, missing-row → None.
+
+**Not changed (noted for later):** the grid still reads one `masterpiece.json` per folder off disk (O(N) file reads) —
+fine at these sizes, a DB-backed metadata cache is the next lever if folder counts reach five figures. Server-side
+sort/filter + the frontend consuming `limit`/`offset` (true pagination) is a follow-up; the batching already removes the
+query-count wall.
+
+---
+
 ## [2.164.0] - 2026-07-22 - Schedule posts for later too (SCHEDULING Phase 2)
 
 > **You can now schedule your Posts — the tweet-style updates — to go out later, just like stories and artwork.** In the
