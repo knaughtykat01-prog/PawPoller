@@ -825,6 +825,12 @@ const Posting = {
                 } else {
                     href = `#/posting/story/${encodeURIComponent(item.story_name)}`;
                     name = Utils.escapeHtml((item.story_name || '').replace(/_/g, ' '));
+                    // Drip rows (gap G1) carry their "💧 drip i/N" label in
+                    // title_override — display-only (the scheduler never passes
+                    // story-row overrides into the actual post).
+                    if (item.drip_group && item.title_override) {
+                        name += ` <span class="muted" style="font-size:.85em">${Utils.escapeHtml(item.title_override)}</span>`;
+                    }
                     typeIcon = '&#128214;';            // 📖
                     chap = (item.chapter_index || 'Full');
                 }
@@ -838,6 +844,12 @@ const Posting = {
                 }
                 if (pending) {
                     actions += `<button class="btn btn-sm btn-danger" data-q-cancel="${item.queue_id}">Cancel</button>`;
+                }
+                // Drip rows (gap G1): one extra action that cancels the whole
+                // campaign — every row sharing this drip_group.
+                if (pending && item.drip_group) {
+                    actions += ` <button class="btn btn-sm btn-outline" data-q-dripcancel="${Utils.escapeHtml(item.drip_group)}"
+                        title="Cancel every item in this drip">💧 Cancel drip</button>`;
                 }
                 return `
                 <tr data-q-row="${item.queue_id}">
@@ -953,6 +965,21 @@ const Posting = {
     _wireQueueActions() {
         document.querySelectorAll('[data-q-cancel]').forEach(btn =>
             btn.addEventListener('click', () => this._cancelQueue(Number(btn.dataset.qCancel))));
+        // Drip group cancel (gap G1) — one click cancels the whole campaign.
+        document.querySelectorAll('[data-q-dripcancel]').forEach(btn =>
+            btn.addEventListener('click', async () => {
+                if (!confirm('Cancel EVERY item in this drip?')) return;
+                try {
+                    const resp = await fetch(`/api/posting/drip/${encodeURIComponent(btn.dataset.qDripcancel)}`,
+                        { method: 'DELETE' });
+                    const data = await resp.json();
+                    if (!resp.ok) throw new Error(data.detail || 'HTTP ' + resp.status);
+                    if (window.toast) window.toast.success(`Drip cancelled (${data.cancelled} items)`);
+                    this.renderQueue();
+                } catch (err) {
+                    alert('Cancel drip failed: ' + (err.message || err));
+                }
+            }));
 
         const rowOf = id => document.querySelector(`[data-q-row="${id}"]`);
         const toggleEdit = (id, on) => {

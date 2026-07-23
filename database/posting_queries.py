@@ -244,6 +244,7 @@ def add_to_queue(
     file_path_override: str | None = None,
     priority: int = 0,
     requires: str = "any",
+    drip_group: str | None = None,
 ) -> int:
     """Add an item to the posting queue. Returns queue_id.
 
@@ -254,6 +255,9 @@ def add_to_queue(
         requires: Runtime mode needed — 'any', 'desktop', or 'server'.
             Desktop-only platforms (FA) should be queued with 'desktop' so the
             server scheduler skips them and they're picked up when the desktop app opens.
+        drip_group: Campaign id shared by all rows of one "drip schedule"
+            (gap G1) so the whole drip can be cancelled as a unit. None for
+            ordinary one-off schedules.
     """
     if account_id is None:
         from database import accounts as _accts
@@ -262,11 +266,11 @@ def add_to_queue(
         """INSERT INTO posting_queue
             (content_type, story_name, chapter_index, platform, account_id, action,
              scheduled_at, title_override, description_override, tags_override,
-             rating_override, file_path_override, priority, requires)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             rating_override, file_path_override, priority, requires, drip_group)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (content_type, story_name, chapter_index, platform, account_id, action,
          scheduled_at, title_override, description_override, tags_override,
-         rating_override, file_path_override, priority, requires),
+         rating_override, file_path_override, priority, requires, drip_group),
     )
     conn.commit()
     return cursor.lastrowid
@@ -405,7 +409,8 @@ def cancel_queue_item(conn: sqlite3.Connection, queue_id: int) -> bool:
 def cancel_all_for(conn: sqlite3.Connection, *, platform: str | None = None,
                    story_name: str | None = None,
                    chapter_index: int | None = None,
-                   content_type: str | None = None) -> int:
+                   content_type: str | None = None,
+                   drip_group: str | None = None) -> int:
     """Bulk-cancel queue items matching the filter. Used by the editor's
     'cancel all retries for X' affordance and the diagnostics cleanup
     flow when a poster bug spams the queue.
@@ -432,6 +437,9 @@ def cancel_all_for(conn: sqlite3.Connection, *, platform: str | None = None,
     if content_type is not None:
         sql += " AND content_type = ?"
         params.append(content_type)
+    if drip_group is not None:
+        sql += " AND drip_group = ?"
+        params.append(drip_group)
     cursor = conn.execute(sql, params)
     conn.commit()
     return cursor.rowcount

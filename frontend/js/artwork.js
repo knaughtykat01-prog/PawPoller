@@ -543,6 +543,9 @@ window.Artwork = {
                         <label class="field">Description
                             <textarea id="art-desc" rows="4" placeholder="Caption / description"></textarea>
                         </label>
+                        <label class="field">Alt text <span class="muted">(describes the image for screen readers; used on Bluesky)</span>
+                            <input type="text" id="art-alt" placeholder="e.g. A grey wolf in a red jacket grins at the viewer">
+                        </label>
                         <div class="field-row">
                             <label class="field">Rating
                                 <select id="art-rating">
@@ -739,6 +742,7 @@ window.Artwork = {
     _collectMetadata() {
         const title = document.getElementById('art-title').value.trim();
         const description = document.getElementById('art-desc').value;
+        const altText = document.getElementById('art-alt')?.value.trim() || '';
         const rating = document.getElementById('art-rating').value;
         const defaultTags = this._parseTags(document.getElementById('art-tags').value);
 
@@ -761,6 +765,7 @@ window.Artwork = {
 
         return {
             title, description, rating, tags,
+            alt_text: altText,
             platforms: checked,
             _accountIds: accountIds,
         };
@@ -883,6 +888,9 @@ window.Artwork = {
                         </label>
                         <label class="field">Description
                             <textarea id="art-edit-desc" rows="4" placeholder="Caption / description">${this.esc(data.description || '')}</textarea>
+                        </label>
+                        <label class="field">Alt text <span class="muted">(for screen readers; used on Bluesky)</span>
+                            <input type="text" id="art-edit-alt" value="${this.esc(data.alt_text || '')}" placeholder="e.g. A grey wolf in a red jacket grins at the viewer">
                         </label>
                         <div class="field-row">
                             <label class="field">Rating
@@ -1064,6 +1072,7 @@ window.Artwork = {
             title,
             description: document.getElementById('art-edit-desc').value,
             rating: document.getElementById('art-edit-rating').value,
+            alt_text: document.getElementById('art-edit-alt')?.value.trim() || '',
             tags,
         };
         btn.disabled = true;

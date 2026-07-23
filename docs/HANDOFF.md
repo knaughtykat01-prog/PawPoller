@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.180.0 — **Three quick wins from the gap analysis: G4 Discord announcements + G5 full data export + G7 auto-backups.**
+**Current version (master):** 2.181.0 — **Gap wave 2: G1 drip scheduling + G2 wizard upgrades + G6 alt-text + the "Posted via PawPoller" credit line.** Spec-first (`docs/specs/gap_wave2.md`, three scout passes).
+**Attribution:** `posting/attribution.py` `maybe_append()` at the two description choke points (`story_reader.build_package`
+~672, `artwork_reader.build_artwork_package` ~231) → every posting path/platform; skips bsky (295-char announcement);
+idempotent; `pawpoller_attribution` (absent=ON) via `/api/posting/settings`; self-saving toggle in Settings→General→
+Publishing with the plea modal on untick. NOT on microblog Posts. **G1:** `drip_group` column (migration db.py +
+posting_schema.sql); `POST /api/editor/stories/{name}/drip` (validates every ch×plat up front, whole-abort; expands to
+ordinary queue rows, per-chapter slots) + `DELETE /api/posting/drip/{group}` (`cancel_all_for(drip_group=)`); UI = 💧
+button in Publish Check footer + 💧 badge + "Cancel whole drip" on Queue page. Rows independent (no ch-dependency gate,
+documented). **G2:** CORRECTION — a `#/setup` wizard already existed (survey wrong); extended with a "Your persona" step
+(`POST /api/personas`, skippable, standalone+server paths) + Done-step "Run my first poll" (loops per-platform
+`/api/poll/trigger/{code}`; global trigger is IB-only). **G6:** `alt_text` through ArtworkInfo/json/upload/create-from-
+path/PATCH/GET + upload+edit form inputs + `package.extra` → **Bluesky** `image_alt = alt_text or title` (Mastodon is
+Posts-only; gallery sites have no alt). +9 tests (test_attribution, test_drip); full suite pre-deploy.
+
+**Prior — 2.180.0 — Three quick wins from the gap analysis: G4 Discord announcements + G5 full data export + G7 auto-backups.**
 **G4:** `posting/discord.py` (async httpx embed sender) + `routes/discord_api.py` (`/api/discord` config/test/announce);
 webhook + "announce on publish" toggle in Settings→Data→Discord announcements. Auto-announce wired into the SHARED
 publishers (`post_publisher.publish_post` + `manager.post_artwork`) → fires once per publish for BOTH interactive +

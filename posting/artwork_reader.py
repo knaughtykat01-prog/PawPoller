@@ -110,6 +110,10 @@ class ArtworkInfo:
     platforms: list[str] = field(default_factory=list)   # target platforms
     characters: list[str] = field(default_factory=list)  # canonical characters (parity with story.json)
     created_at: str = ""
+    # Image description for screen readers (gap G6). Used by platforms that
+    # support per-image alt (Bluesky today); falls back to the title at post
+    # time so alt is never regressed to empty.
+    alt_text: str = ""
 
     @property
     def image_path(self) -> str | None:
@@ -200,6 +204,7 @@ def load_artwork(name: str) -> ArtworkInfo:
         platforms=data.get("platforms", []),
         characters=list(data.get("characters", []) or []),
         created_at=data.get("created_at", ""),
+        alt_text=data.get("alt_text", ""),
     )
 
 
@@ -230,6 +235,12 @@ def build_artwork_package(
     else:
         description = artwork.descriptions_by_platform.get("default", artwork.description)
 
+    # "Posted via PawPoller" credit line (gap-wave-2 §1) — appended here, the
+    # choke point every artwork posting path flows through. Self-gates on the
+    # pawpoller_attribution setting, skips bsky, never double-appends.
+    from posting import attribution
+    description = attribution.maybe_append(description, platform)
+
     if tags_override is not None:
         tags = tags_override
     else:
@@ -257,7 +268,10 @@ def build_artwork_package(
         file_type=file_type,
         word_count=0,
         thumbnail_path=artwork.thumbnail_path,
-        extra=dict(artwork.categories_by_platform.get(platform, {})),
+        # Categories are the platform's submission params; alt_text rides along
+        # for posters that support per-image alt (bluesky.py reads it, G6).
+        extra={**dict(artwork.categories_by_platform.get(platform, {})),
+               **({"alt_text": artwork.alt_text} if artwork.alt_text else {})},
     )
 
 
@@ -313,6 +327,7 @@ def create_artwork(
     thumbnail_filename: str | None = None,
     thumbnail_bytes: bytes | None = None,
     source: dict | None = None,
+    alt_text: str = "",
 ) -> str:
     """Create a new artwork folder (image + masterpiece.json). Returns its name.
 
@@ -346,6 +361,7 @@ def create_artwork(
         "categories": categories or {},
         "characters": characters or [],
         "platforms": platforms or [],
+        "alt_text": alt_text,
         "import_source": source or {},
         "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
     }

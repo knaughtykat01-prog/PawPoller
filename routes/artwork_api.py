@@ -99,6 +99,7 @@ def get_artwork_detail(name: str):
         "descriptions": artwork.descriptions_by_platform,
         "categories": artwork.categories_by_platform,
         "platforms": artwork.platforms,
+        "alt_text": artwork.alt_text,
         "created_at": artwork.created_at,
         "publications": pubs,
     }
@@ -160,6 +161,7 @@ async def upload_artwork(
         platforms=meta.get("platforms"),
         thumbnail_filename=thumb_name,
         thumbnail_bytes=thumb_bytes,
+        alt_text=meta.get("alt_text", ""),
     )
     return {"status": "created", "name": name}
 
@@ -221,6 +223,7 @@ def create_artwork_from_path(body: dict):
         platforms=meta.get("platforms"),
         thumbnail_filename=thumb_name,
         thumbnail_bytes=thumb_bytes,
+        alt_text=meta.get("alt_text", ""),
     )
     return {"status": "created", "name": name}
 
@@ -229,7 +232,7 @@ def create_artwork_from_path(body: dict):
 def update_artwork(name: str, body: dict):
     """Merge metadata updates into an existing artwork.json (edit flow)."""
     allowed = {"title", "description", "author", "rating", "tags",
-               "titles", "descriptions", "categories", "platforms"}
+               "titles", "descriptions", "categories", "platforms", "alt_text"}
     updates = {k: v for k, v in (body or {}).items() if k in allowed}
     try:
         artwork_reader.save_artwork_metadata(name, updates)

@@ -56,6 +56,7 @@ window.PublishCheck = (function () {
                         <span class="cell-legend cell-no-creds">🔒</span> No creds
                         <span class="cell-legend cell-error">⚠</span> Error
                     </span>
+                    <button class="btn btn-sm btn-outline" id="publish-check-drip" title="Drip schedule: chapter 1 at a start time, then one chapter every N days">💧 Drip…</button>
                     <button class="btn btn-sm btn-outline" id="publish-check-verify" title="Probe each platform to detect deletions">Verify posted</button>
                     <button class="btn btn-sm btn-outline" id="publish-check-drafts" title="Probe each platform to detect drafts (FA: Scraps)">Check drafts</button>
                     <button class="btn btn-sm btn-outline" id="bulk-all-new" title="Post every ready cell">Publish all new</button>
@@ -80,6 +81,9 @@ window.PublishCheck = (function () {
             if (!_currentStory) return;
             e.currentTarget.disabled = true;
             load(_currentStory).finally(() => { e.currentTarget.disabled = false; });
+        });
+        modal.querySelector('#publish-check-drip').addEventListener('click', () => {
+            if (_currentStory) _toggleDripPanel();
         });
         modal.querySelector('#publish-check-verify').addEventListener('click', () => {
             if (_currentStory) verify(_currentStory);
@@ -1536,6 +1540,96 @@ window.PublishCheck = (function () {
         return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' +
             pad(date.getDate()) + 'T' + pad(date.getHours()) + ':' +
             pad(date.getMinutes());
+    }
+
+    // ── Drip scheduling (gap G1, gap-wave-2 §3) ──────────────────────────────
+    // "Post chapter 1 at T, then one chapter every N days." Inline panel above
+    // the matrix; the local preview mirrors what the server computes (server is
+    // authoritative + validates every chapter × platform before enqueuing).
+    function _toggleDripPanel() {
+        const existing = document.getElementById('drip-panel');
+        if (existing) { existing.remove(); return; }
+        const body = document.getElementById('publish-check-body');
+        if (!body || !_lastMatrixData) return;
+        const chapters = _lastMatrixData.matrix.filter(r => r.chapter_index > 0);
+        if (!chapters.length) {
+            if (window.toast) window.toast.info('Drip scheduling needs a chaptered story');
+            return;
+        }
+        const plats = _lastMatrixData.platforms.map(p =>
+            '<label style="font-size:12px;white-space:nowrap"><input type="checkbox" class="drip-plat-check" value="' +
+            _escape(p.id) + '"> ' + _escape(p.name) + '</label>').join(' ');
+        // Default start: tomorrow 20:00 local.
+        const start = new Date();
+        start.setDate(start.getDate() + 1);
+        start.setHours(20, 0, 0, 0);
+        const pad = n => String(n).padStart(2, '0');
+        const startVal = start.getFullYear() + '-' + pad(start.getMonth() + 1) + '-' + pad(start.getDate()) +
+            'T' + pad(start.getHours()) + ':' + pad(start.getMinutes());
+        const panel = document.createElement('div');
+        panel.id = 'drip-panel';
+        panel.className = 'card';
+        panel.style.cssText = 'margin-bottom:12px;padding:12px';
+        panel.innerHTML =
+            '<h3 style="margin:0 0 6px">💧 Drip schedule — ' + chapters.length + ' chapters</h3>' +
+            '<p class="muted" style="font-size:12px;margin:0 0 8px">Chapter 1 posts at the start time, then one ' +
+            'chapter every N days at the same time. Every chapter is validated first; the rows land in ' +
+            'Queue &amp; Schedule and the whole drip can be cancelled as one.</p>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px">' + plats + '</div>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">' +
+            '<label style="font-size:12px">Start <input type="datetime-local" id="drip-start" value="' + startVal + '"></label>' +
+            '<label style="font-size:12px">every <input type="number" id="drip-interval" min="1" max="60" value="7" style="width:56px"> day(s)</label>' +
+            '<button class="btn btn-sm btn-primary" id="drip-go">Start drip</button>' +
+            '<button class="btn btn-sm btn-outline" id="drip-cancel">Cancel</button>' +
+            '<span id="drip-msg" class="muted" style="font-size:12px"></span>' +
+            '</div>' +
+            '<div id="drip-preview" class="muted" style="font-size:12px;margin-top:8px"></div>';
+        body.prepend(panel);
+        const upd = () => _updateDripPreview(chapters);
+        panel.querySelector('#drip-start').addEventListener('input', upd);
+        panel.querySelector('#drip-interval').addEventListener('input', upd);
+        panel.querySelector('#drip-cancel').addEventListener('click', () => panel.remove());
+        panel.querySelector('#drip-go').addEventListener('click', () => _submitDrip());
+        upd();
+    }
+
+    function _updateDripPreview(chapters) {
+        const box = document.getElementById('drip-preview');
+        const startVal = document.getElementById('drip-start')?.value;
+        const days = parseInt(document.getElementById('drip-interval')?.value, 10) || 7;
+        if (!box) return;
+        const start = new Date(startVal);
+        if (!startVal || isNaN(start.getTime())) { box.textContent = ''; return; }
+        box.innerHTML = chapters.map((r, i) => {
+            const d = new Date(start.getTime() + i * days * 86400000);
+            return 'Ch ' + r.chapter_index + ' → ' + _escape(d.toLocaleString());
+        }).join(' &nbsp;·&nbsp; ');
+    }
+
+    async function _submitDrip() {
+        const msg = document.getElementById('drip-msg');
+        const platforms = Array.from(document.querySelectorAll('.drip-plat-check:checked')).map(c => c.value);
+        const startVal = document.getElementById('drip-start')?.value;
+        const days = parseInt(document.getElementById('drip-interval')?.value, 10);
+        if (!platforms.length) { if (msg) msg.textContent = 'Pick at least one platform.'; return; }
+        const start = new Date(startVal);
+        if (!startVal || isNaN(start.getTime())) { if (msg) msg.textContent = 'Invalid start time.'; return; }
+        if (msg) msg.textContent = 'Validating every chapter…';
+        try {
+            const resp = await fetch('/api/editor/stories/' + encodeURIComponent(_currentStory) + '/drip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ platforms, start: start.toISOString(), interval_days: days || 7 }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || 'HTTP ' + resp.status);
+            document.getElementById('drip-panel')?.remove();
+            if (window.toast) window.toast.success(
+                '💧 Drip scheduled — ' + data.rows + ' item(s) across ' + data.slots.length +
+                ' slot(s). See Queue & Schedule.');
+        } catch (err) {
+            if (msg) msg.textContent = 'Failed: ' + (err.message || err);
+        }
     }
 
     async function _submitSchedule(action, platId, platName, chIdx, chTitle, datetimeLocalVal) {

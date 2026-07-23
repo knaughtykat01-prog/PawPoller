@@ -90,6 +90,10 @@ CREATE TABLE IF NOT EXISTS posting_queue (
     scheduled_at        TEXT,
     priority            INTEGER DEFAULT 0,
     requires            TEXT DEFAULT 'any',
+    -- Drip campaigns (gap G1): rows created together by one "drip schedule"
+    -- share a group id so the campaign can be cancelled as a unit. NULL for
+    -- ordinary one-off schedules. (Older DBs gain this via _run_migrations.)
+    drip_group          TEXT,
 
     -- State
     status              TEXT NOT NULL DEFAULT 'pending',

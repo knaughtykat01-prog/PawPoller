@@ -92,7 +92,9 @@ class BlueskyPoster(PlatformPoster):
                 result = await client.create_post(
                     text=text,
                     image_path=image_path,
-                    image_alt=package.title,
+                    # Dedicated alt text when the artwork carries one (gap G6);
+                    # the title stays the fallback so alt never regresses to "".
+                    image_alt=package.extra.get("alt_text") or package.title,
                     labels=labels,
                 )
             finally:

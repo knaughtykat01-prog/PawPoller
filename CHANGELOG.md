@@ -12,6 +12,51 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.181.0] - 2026-07-23 - Wave 2: drip scheduling, setup-wizard upgrades, alt text, and a credit line
+
+> **Four new things.** (1) **Drip scheduling** — in a story's Publish Check there's now a 💧 Drip button: post chapter 1
+> at a start time, then one chapter every N days, automatically; the whole drip can be cancelled with one click on the
+> Queue page. (2) The **setup wizard** now helps you create your first persona and offers to run your first poll right
+> at the end. (3) Artwork uploads gain an **alt text** field — a description for screen readers, used on Bluesky.
+> (4) Story and artwork descriptions now include a small **"Posted via PawPoller"** credit line — it's on by default and
+> it's how other creators discover the app; you can turn it off in Settings → Publishing (but it would mean a lot if you
+> kept it on 🐾).
+
+Gap-wave-2 (`docs/specs/gap_wave2.md`): G1 + G2 + G6 + the attribution ask, all spec'd from three scout passes first.
+
+**Attribution line.** New `posting/attribution.py` `maybe_append()` — called at the two description choke points every
+posting path flows through (`story_reader.build_package`, `artwork_reader.build_artwork_package`), so post/edit/update/
+retry/scheduler all get it on every platform. Plain text + bare URL (survives BBCode/HTML/plain fields); **skips
+Bluesky** (its "description" is a 295-char announcement post); **idempotent** (never double-appends on re-builds or
+over a hand-typed credit). Setting `pawpoller_attribution` (absent = ON) rides `/api/posting/settings`; the toggle in
+Settings → General → Publishing is **self-saving**, and unticking it opens the plea modal ("Keep it on 💛" / "Turn off
+anyway") built on the app's `.modal-overlay` convention. NOT applied to microblog Posts by design.
+
+**G1 — drip scheduling.** A finite drip: `POST /api/editor/stories/{name}/drip` validates EVERY chapter × platform up
+front (aborts whole, never half-enqueues), then expands into ordinary `posting_queue` rows — one per chapter × platform,
+per-chapter slots start + i×interval_days — which the scheduler daemon fires unchanged. New nullable `drip_group`
+column (migration + schema) groups a campaign: `cancel_all_for(drip_group=…)` + `DELETE /api/posting/drip/{group}`
+cancel it as a unit. UI: "💧 Drip…" in the Publish Check footer (platform picks, start, interval, live slot preview);
+Queue & Schedule rows carry the 💧 title badge + a "Cancel whole drip" action. Rows are independent (ch3 still fires if
+ch2 failed — the scheduler's retry handles transients); dependency-gating is a possible v2.
+
+**G2 — setup wizard upgrades.** Correction from the scout pass: a first-run wizard already existed (`#/setup`,
+`setup_complete`-gated, re-runnable from Settings) — the gap survey's "no operational wizard" was wrong. Extended it:
+a new **"Your persona"** step (create via the real `POST /api/personas`; skippable) on the standalone + server paths,
+and the Done step now offers **"Run my first poll now"** when platforms are connected (loops per-platform
+`POST /api/poll/trigger/{code}` — the global trigger is IB-only).
+
+**G6 — artwork alt text.** New `alt_text` on artwork metadata (`ArtworkInfo` + json round-trip + upload/create-from-
+path/PATCH endpoints + GET detail), an "Alt text" input on the upload + edit forms, carried via `package.extra` and
+used by the **Bluesky** poster (`image_alt = alt_text or title` — title stays the fallback, never empty). Mastodon
+isn't an artwork poster (Posts-only, already has alt); gallery sites have no alt concept.
+
+Tests: `tests/test_attribution.py` (gating/skip/idempotency + package integration + alt pass-through),
+`tests/test_drip.py` (group sharing, group-scoped cancel, null group on ordinary rows). +9 tests; full suite run
+pre-deploy (attribution touches every package build).
+
+---
+
 ## [2.180.0] - 2026-07-23 - Three quick wins: Discord announcements, full data export, auto-backups
 
 > **Three new things.** (1) **Discord announcements** — paste a channel webhook in Settings and PawPoller can post an

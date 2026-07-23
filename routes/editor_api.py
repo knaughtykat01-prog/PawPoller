@@ -1876,6 +1876,113 @@ async def schedule_publish(story_name: str, req: ScheduleRequest):
     }
 
 
+class DripRequest(BaseModel):
+    platforms: list[str]          # e.g. ["ib", "sf"]
+    start: str                    # ISO 8601 — chapter 1's slot
+    interval_days: int            # 1..60 — days between chapters
+    chapters: list[int] | None = None   # default: every chapter (1..N)
+
+
+@editor_router.post("/stories/{story_name:path}/drip")
+async def drip_schedule(story_name: str, req: DripRequest):
+    """Drip-schedule a chaptered story (gap G1, gap-wave-2 §3).
+
+    "Post chapter 1 at T, then one chapter every N days at the same time."
+    A FINITE drip: expands into N ordinary one-off posting_queue rows at
+    creation — one per chapter × platform, all platforms of a chapter sharing
+    its slot — which the scheduler daemon fires unchanged. Every chapter ×
+    platform is validated up front and a single failure aborts the whole drip
+    (never half-enqueues a campaign). Rows share a drip_group id so the
+    campaign can be cancelled as a unit (DELETE /api/posting/drip/{group}).
+    """
+    import uuid
+    from datetime import datetime, timedelta, timezone
+    from posting import story_reader, manager
+    from database.db import get_connection
+    from database import posting_queries
+
+    story_dir = _resolve_story_dir(story_name)
+    canonical = str(story_dir.relative_to(get_archive_path()))
+
+    if not req.platforms:
+        raise HTTPException(status_code=400, detail="Pick at least one platform")
+    if not (1 <= req.interval_days <= 60):
+        raise HTTPException(status_code=400, detail="interval_days must be 1-60")
+
+    try:
+        start_dt = datetime.fromisoformat(req.start)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid start datetime — use ISO 8601")
+    now = datetime.now(timezone.utc)
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=timezone.utc)
+    if (start_dt - now).total_seconds() < -30:
+        raise HTTPException(status_code=400, detail="Start time must be in the future")
+
+    try:
+        story = story_reader.load_story(canonical)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Story not found: {e}")
+    if story.total_chapters < 1:
+        raise HTTPException(status_code=400, detail="Drip scheduling needs a chaptered story")
+
+    chapters = sorted(set(req.chapters)) if req.chapters else list(range(1, story.total_chapters + 1))
+    bad = [c for c in chapters if not (1 <= c <= story.total_chapters)]
+    if bad:
+        raise HTTPException(status_code=400,
+                            detail=f"Chapters out of range (1-{story.total_chapters}): {bad}")
+
+    # Validate EVERY chapter × platform before enqueuing anything.
+    posters = {}
+    failures = []
+    for platform in req.platforms:
+        try:
+            posters[platform] = manager._get_poster(platform)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Unknown platform '{platform}': {e}")
+    for platform in req.platforms:
+        for ch in chapters:
+            try:
+                package = story_reader.build_package(story, ch, platform)
+            except Exception as e:
+                failures.append(f"{platform} ch{ch}: package build failed — {e}")
+                continue
+            errors = posters[platform].validate(package)
+            if errors:
+                failures.append(f"{platform} ch{ch}: {'; '.join(errors)}")
+    if failures:
+        raise HTTPException(status_code=400,
+                            detail="Drip aborted — fix these first: " + " | ".join(failures))
+
+    drip_group = uuid.uuid4().hex[:12]
+    total = len(chapters)
+    slots = []
+    queue_ids = []
+    conn = get_connection()
+    try:
+        for i, ch in enumerate(chapters):
+            slot_dt = start_dt + timedelta(days=req.interval_days * i)
+            slot_str = slot_dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            slots.append({"chapter": ch, "scheduled_at": slot_str})
+            for platform in req.platforms:
+                qid = posting_queries.add_to_queue(
+                    conn, canonical, ch, platform,
+                    action="post",
+                    scheduled_at=slot_str,
+                    requires=getattr(posters[platform], "requires_mode", "any"),
+                    drip_group=drip_group,
+                    title_override=f"💧 drip {i + 1}/{total}",
+                )
+                queue_ids.append(qid)
+    finally:
+        conn.close()
+
+    logger.info("Drip %s: %s — %d chapters × %d platforms, every %dd from %s (%d rows)",
+                drip_group, canonical, total, len(req.platforms),
+                req.interval_days, req.start, len(queue_ids))
+    return {"ok": True, "drip_group": drip_group, "rows": len(queue_ids), "slots": slots}
+
+
 @editor_router.get("/stories/{story_name:path}/scheduled")
 async def get_scheduled(story_name: str):
     """Return pending/scheduled queue items for this story."""

@@ -671,6 +671,13 @@ def build_package(
             prefix_word = "Chapter"
         description = f"{prefix_word} {chapter_index} of {story.total_chapters}. {description.lstrip()}"
 
+    # "Posted via PawPoller" credit line (gap-wave-2 §1) — appended here, the
+    # choke point every story posting path flows through (post/edit/update/
+    # retry/scheduler). Self-gates on the pawpoller_attribution setting, skips
+    # bsky (announcement post, 295-char truncation), never double-appends.
+    from posting import attribution
+    description = attribution.maybe_append(description, platform)
+
     # Tags
     if tags_override:
         tags = tags_override

@@ -761,6 +761,20 @@ def cancel_queue_item(queue_id: int):
         conn.close()
 
 
+@posting_router.delete("/drip/{drip_group}")
+def cancel_drip(drip_group: str):
+    """Cancel a whole drip campaign (gap G1) — every non-terminal row that
+    shares the drip_group id. Returns the cancelled count."""
+    conn = get_connection()
+    try:
+        n = posting_queries.cancel_all_for(conn, drip_group=drip_group)
+    finally:
+        conn.close()
+    if n == 0:
+        raise HTTPException(404, detail="No pending items for that drip")
+    return {"status": "cancelled", "drip_group": drip_group, "cancelled": n}
+
+
 @posting_router.post("/queue/{queue_id}/reschedule")
 def reschedule_queue_item(queue_id: int, body: dict):
     """Move a scheduled item to a new time. Body: {"scheduled_at": ISO8601}.
@@ -822,6 +836,9 @@ def get_posting_settings():
         "posting_story_archive_path": settings.get("posting_story_archive_path", ""),
         "posting_default_platforms": settings.get("posting_default_platforms", []),
         "posting_default_rating": settings.get("posting_default_rating", "adult"),
+        # "Posted via PawPoller" credit line on story/artwork descriptions
+        # (gap-wave-2 §1). Absent = ON by design.
+        "pawpoller_attribution": settings.get("pawpoller_attribution", True),
     }
 
 
@@ -832,6 +849,7 @@ def save_posting_settings(body: dict):
         "posting_enabled", "posting_story_archive_path",
         "posting_default_platforms", "posting_default_rating",
         "posting_server_url", "posting_server_api_key",
+        "pawpoller_attribution",
     }
     filtered = {k: v for k, v in body.items() if k in allowed_keys}
     config.save_settings(filtered)

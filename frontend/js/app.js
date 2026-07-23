@@ -2286,13 +2286,14 @@ const App = {
          * "skip archive + platforms" branch falls out naturally. */
         const stepOrder = () => {
             if (runtimeMode === 'server') {
-                return ['welcome', 'archive', 'platforms', 'done'];
+                return ['welcome', 'archive', 'platforms', 'persona', 'done'];
             }
             if (selectedMode === 'paired_desktop') {
+                // Paired installs read the server's data — personas live there.
                 return ['welcome', 'mode', 'pairing', 'done'];
             }
             // standalone (or undecided) — full flow
-            return ['welcome', 'mode', 'archive', 'platforms', 'done'];
+            return ['welcome', 'mode', 'archive', 'platforms', 'persona', 'done'];
         };
 
         const stepIndex = () => {
@@ -2406,12 +2407,36 @@ const App = {
                         <button class="btn btn-primary login-btn" id="setup-next" style="flex:1">Next</button>
                         <button class="btn" id="setup-skip" style="flex:0 0 auto;background:transparent;color:var(--text-muted);border:1px solid var(--border)">Skip for now</button>
                     </div>`;
+            } else if (currentStep === 'persona') {
+                /* ── Your persona (gap G2) — name the creative identity that
+                   groups your accounts + analytics. Skippable; more can be
+                   added on the Accounts page any time. ────────────────── */
+                body = `
+                    <h2 style="font-size:20px;font-weight:700;color:var(--text-primary);margin-bottom:8px">Your persona</h2>
+                    <p style="color:var(--text-secondary);margin-bottom:16px;font-size:13px">A persona is the creative identity your accounts belong to — your fursona or pen name. It groups your accounts and pools their analytics across platforms. You can add more later on the Accounts page.</p>
+                    <div class="login-field">
+                        <label>Persona name</label>
+                        <input type="text" id="setup-persona-name" class="search-input" placeholder="e.g. your fursona or pen name" style="width:100%">
+                    </div>
+                    <div id="setup-persona-msg" style="font-size:12px;margin:6px 0 0;color:var(--danger)"></div>
+                    <div style="display:flex;gap:8px;margin-top:16px">
+                        <button class="btn" id="setup-back" style="flex:0 0 auto;background:transparent;color:var(--text-muted);border:1px solid var(--border)">Back</button>
+                        <button class="btn btn-primary login-btn" id="setup-persona-create" style="flex:1">Create persona</button>
+                        <button class="btn" id="setup-skip" style="flex:0 0 auto;background:transparent;color:var(--text-muted);border:1px solid var(--border)">Skip</button>
+                    </div>`;
             } else if (currentStep === 'done') {
                 const summaryByMode = {
                     'standalone': 'PawPoller is set up to run locally. It\'ll poll and post from this machine.',
                     'paired_desktop': 'Paired with your server. Settings will sync automatically; the server handles polling.',
                     'server': 'Server is ready. Pair a desktop install with the API key generated in Settings.',
                 };
+                // First-poll offer (gap G2): only when at least one platform is
+                // actually connected — polls each connected platform's enabled
+                // accounts (the global trigger endpoint is IB-only, so loop).
+                const connectedCodes = Object.entries(authStatus).filter(([, v]) => !!v).map(([k]) => k);
+                const firstPoll = connectedCodes.length ? `
+                    <button class="btn" id="setup-first-poll" style="margin-bottom:10px;width:100%">&#128202; Run my first poll now (${connectedCodes.length} platform${connectedCodes.length === 1 ? '' : 's'})</button>
+                    <div id="setup-first-poll-msg" style="font-size:12px;color:var(--text-muted);margin-bottom:10px"></div>` : '';
                 body = `
                     <h2 style="font-size:20px;font-weight:700;color:var(--accent);margin-bottom:8px">You're all set!</h2>
                     <p style="color:var(--text-secondary);margin-bottom:16px;font-size:13px">${Utils.escapeHtml(summaryByMode[selectedMode] || 'PawPoller is ready.')}</p>
@@ -2420,6 +2445,7 @@ const App = {
                         <li style="padding:6px 0;border-bottom:1px solid var(--border)">Check your <strong style="color:var(--text-primary)">analytics</strong> on the dashboard</li>
                         <li style="padding:6px 0">Configure more platforms in <strong style="color:var(--text-primary)">Settings</strong></li>
                     </ul>
+                    ${firstPoll}
                     <button class="btn btn-primary login-btn" id="setup-finish">Go to Dashboard</button>`;
             }
 
@@ -2481,6 +2507,37 @@ const App = {
             });
 
             document.getElementById('setup-skip')?.addEventListener('click', goNext);
+
+            /* Persona step (gap G2) — create via the real personas API, then
+             * advance. Skip is the plain setup-skip button above. */
+            document.getElementById('setup-persona-create')?.addEventListener('click', async () => {
+                const nameEl = document.getElementById('setup-persona-name');
+                const msgEl = document.getElementById('setup-persona-msg');
+                const name = nameEl?.value.trim();
+                if (!name) { if (msgEl) msgEl.textContent = 'Give your persona a name (or Skip).'; return; }
+                try {
+                    await API.createPersona({ name });
+                    goNext();
+                } catch (err) {
+                    if (msgEl) msgEl.textContent = 'Could not create persona: ' + (err.message || err);
+                }
+            });
+
+            /* First-poll offer on the Done step (gap G2) — fire one poll per
+             * connected platform (all its enabled accounts); fire-and-forget,
+             * the dashboard fills in as results land. */
+            document.getElementById('setup-first-poll')?.addEventListener('click', async () => {
+                const btn = document.getElementById('setup-first-poll');
+                const msgEl = document.getElementById('setup-first-poll-msg');
+                const codes = Object.entries(authStatus).filter(([, v]) => !!v).map(([k]) => k);
+                if (!codes.length) return;
+                btn.disabled = true;
+                btn.textContent = 'Polling…';
+                await Promise.allSettled(codes.map(c => API.triggerAccountPoll(c)));
+                btn.textContent = 'Poll started ✓';
+                if (msgEl) msgEl.textContent =
+                    'First poll running — your dashboard will fill in over the next few minutes.';
+            });
 
             /* Pairing test — validate credentials, save mode + creds, advance to 'done' */
             document.getElementById('setup-pair-test')?.addEventListener('click', async () => {
@@ -10244,6 +10301,13 @@ const App = {
                         <label style="font-size:13px;color:var(--text-muted)">Default Platforms (comma-separated: ib,fa,ws,sf,bsky)</label>
                         <input type="text" id="posting-default-platforms" class="search-input" value="${Utils.escapeHtml((postingSettings.posting_default_platforms || []).join(','))}" placeholder="ib,fa,sf" style="max-width:300px">
                     </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:12px">
+                        <label class="settings-toggle-row">
+                            <span>🐾 "Posted via PawPoller" credit line</span>
+                            <input type="checkbox" id="posting-attribution-toggle" ${postingSettings.pawpoller_attribution !== false ? 'checked' : ''}>
+                        </label>
+                        <p style="font-size:12px;color:var(--text-muted);margin:2px 0 0">Adds a small credit line to story and artwork descriptions when you publish. It's how other creators discover PawPoller. (Never added to short microblog posts.)</p>
+                    </div>
                     </div>
                 </details>
 
@@ -13931,6 +13995,51 @@ const App = {
                     status.style.color = 'var(--danger)';
                 }
                 btn.disabled = false;
+            });
+
+            // "Posted via PawPoller" credit line — self-saving toggle (gap-wave-2 §1).
+            // Checking it saves immediately. UNchecking asks nicely first: a small
+            // modal (the app's .modal-overlay convention — there's no shared confirm
+            // helper) with "Keep it on 💛" (reverts, saves nothing) / "Turn off
+            // anyway" (saves off).
+            const _attribToggle = document.getElementById('posting-attribution-toggle');
+            _attribToggle?.addEventListener('change', async () => {
+                if (_attribToggle.checked) {
+                    try { await API.savePostingSettings({ pawpoller_attribution: true }); } catch (e) { /* ignore */ }
+                    window.toast?.success('Credit line on — thank you! 🐾');
+                    return;
+                }
+                // Unchecking → the plea.
+                const ov = document.createElement('div');
+                ov.className = 'modal-overlay open';
+                ov.innerHTML = `
+                    <div class="modal" role="dialog" aria-modal="true" style="max-width:440px">
+                        <div class="modal-header"><h3>Before you turn this off…</h3></div>
+                        <div class="modal-body">
+                            <p>We understand why — it's your art, your page, your description.</p>
+                            <p style="margin-top:8px">But that one small line is how other creators find PawPoller.
+                            No company, no ads — the credit line is the whole marketing budget.
+                            <strong>It would mean a lot if you kept it on.</strong> 🐾</p>
+                        </div>
+                        <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end">
+                            <button class="btn btn-outline" id="attrib-off-anyway">Turn off anyway</button>
+                            <button class="btn btn-primary" id="attrib-keep-on">Keep it on 💛</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(ov);
+                ov.querySelector('#attrib-keep-on').addEventListener('click', () => {
+                    _attribToggle.checked = true;      // revert; nothing saved
+                    ov.remove();
+                });
+                ov.querySelector('#attrib-off-anyway').addEventListener('click', async () => {
+                    try { await API.savePostingSettings({ pawpoller_attribution: false }); } catch (e) { /* ignore */ }
+                    ov.remove();
+                    window.toast?.info('Credit line off. (You can re-enable it here any time.)');
+                });
+                // Backdrop click = "keep it on" (the safe default).
+                ov.addEventListener('click', (e) => {
+                    if (e.target === ov) { _attribToggle.checked = true; ov.remove(); }
+                });
             });
 
         } catch (err) {
