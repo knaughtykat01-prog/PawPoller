@@ -12,6 +12,39 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.173.0] - 2026-07-23 - Retro 2005, now a FULL makeover
+
+> **Retro 2005 is now a total transformation, not just a colour swap.** Switch it on (Settings → Appearance) and the
+> whole app becomes an early-2000s website: every panel is a beveled "window" with a blue gradient title bar, buttons are
+> 3D and press in when clicked, form fields are sunken, the sidebar is a Windows-style task pane, tables have gridlines
+> and a blue header, tabs look like folder tabs, links are underlined blue, scrollbars are chunky, and it's Verdana top
+> to bottom. It really does feel like logging into a 2000s site.
+
+2.172.0 shipped a light retint of the tokens; Rhys wanted the real thing — "every single surface, completely reconfiged."
+This makes it a full component skin.
+
+**New `frontend/css/retro_2005.css`** — a comprehensive skin scoped to `html[data-theme="retro_2005"]`, modelled on the
+existing `brut.css` display-mode override and **loaded last** in `index.html` so its component rules win over the base
+CSS (the earlier version put them in `tokens.css`, which loads *before* `components.css`, so ties lost — that's why it
+looked weak). It rebuilds the *chrome* on every surface, verified against a rendered preview:
+- **Windows everywhere:** cards / stat-cards / settings-sections / dash widgets / chart-containers / hub-tiles /
+  work-cards / empty-states / calendar get a white body, a raised bevel border and a hard offset shadow; their first
+  heading becomes a **full-bleed blue gradient title bar** (window caption).
+- **Page header** → a big app-window title bar. **Sidebar** → a beige task-pane with a gradient header, an uppercase
+  gradient "section label", blue nav links and a gradient-highlighted active item. **Buttons** → 3D beveled with a
+  gradient face that inverts (press-in) on `:active`; primary/danger/success get period-appropriate blue/red/green
+  faces. **Inputs/selects/textareas** → sunken inset white. **Tables** → collapsed gridlines, blue gradient header,
+  zebra rows, hover highlight. **Tabs** (settings/work/detail) → folder tabs. **Modals** → dialog boxes with a title
+  bar. **Toasts** → dialog pop-ups. **Login/setup/loading** → a portal sign-in dialog. **Chips/badges/status** → boxy
+  tags. **Scrollbars** → chunky classic WebKit scrollbars with bevelled thumb + buttons. Links → underlined
+  `#0000ee` / visited `#551a8b` / active red.
+- Layout metrics are untouched (only borders/backgrounds/type), so charts don't re-measure and nothing reflows.
+
+`tokens.css` keeps only the theme's palette + boxy radii + Verdana stack (the component rules moved out to the new file).
+Cosmetic, theme-scoped, no tests. `THEMES` registry + backend allowlist unchanged from 2.172.0.
+
+---
+
 ## [2.172.0] - 2026-07-23 - A "Retro 2005" theme, just for fun
 
 > **New theme: Retro 2005.** In **Settings → Appearance**, pick "Retro 2005" for an early-2000s throwback — silver

@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.172.0 — **"Retro 2005" theme (backlog AA) — the LAST open backlog feature.**
+**Current version (master):** 2.173.0 — **Retro 2005 → FULL makeover (Rhys: "every single surface, completely reconfiged").**
+2.172.0 was a light token retint; this makes it a total early-2000s-web transformation. **New
+`frontend/css/retro_2005.css`** — a comprehensive component skin scoped to `html[data-theme="retro_2005"]`, modelled on
+`brut.css` and **loaded LAST in index.html** so it beats the base component CSS (the 2.172 mistake: rules lived in
+tokens.css which loads *before* components.css, so ties lost → looked weak). Rebuilds chrome on every surface: cards →
+beveled white "windows" with **full-bleed blue gradient title bars** (heading = window caption); page-header → app title
+bar; sidebar → beige task-pane w/ gradient header + section labels + blue active nav; buttons → 3D beveled press-in
+(blue/red/green faces); inputs → sunken inset; tables → gridlines + blue header + zebra; folder tabs; dialog-box modals +
+toasts; portal login; boxy chips/badges; chunky WebKit scrollbars; underlined blue/purple links; Verdana. Layout metrics
+untouched (charts don't re-measure). **Verified against a rendered preview (chrome-devtools screenshot) — it genuinely
+reads as a 2000s site.** tokens.css keeps only the palette; component rules moved to the new file. THEMES + backend
+allowlist unchanged. Cosmetic, no tests. **All backlog features done (V/W/Y/AA); tagged desktop release v2.172.0 is out
+(2.173 is a same-day follow-up, not yet tagged).**
+
+**Prior — 2.172.0 — "Retro 2005" theme (backlog AA) — light token retint, superseded by the 2.173 full makeover.**
 New entry in the existing `data-theme` system, no new machinery. `tokens.css`: `[data-theme="retro_2005"]` token block
 (silver/beige chrome, white cards, web-blue `#0a52c9`, near-0 radii, Verdana/Tahoma+Times+Courier fonts, hard offset
 shadows, `--blur:0`, no glows) + theme-scoped component rules (beveled outset→inset buttons, blue gradient `.page-header`

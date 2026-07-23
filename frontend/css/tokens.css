@@ -447,50 +447,10 @@
     --font-serif:    'Times New Roman', Times, serif;
     --font-mono:     'Courier New', Courier, monospace;
 }
-
-/* Component flavor — scoped to the theme so nothing else is touched. */
-[data-theme="retro_2005"] .btn {
-    border: 2px outset #dedbd2;
-    border-radius: 0;
-    background: linear-gradient(#fdfdfc, #d6d2c8);
-    color: #000;
-    box-shadow: none;
-    font-weight: normal;
-}
-[data-theme="retro_2005"] .btn:active { border-style: inset; }
-[data-theme="retro_2005"] .btn-primary {
-    background: linear-gradient(#e8f1ff, #a9c9f5);
-    border-color: #7ba7e0 #2c5aa0 #2c5aa0 #7ba7e0;
-    color: #002b6b;
-}
-[data-theme="retro_2005"] .btn-danger {
-    background: linear-gradient(#ffe6e6, #f3a9a9);
-    border-color: #e08a8a #a02c2c #a02c2c #e08a8a;
-    color: #6b0000;
-}
-/* Gradient "title bar" page headings, straight out of a 2005 app window. */
-[data-theme="retro_2005"] .page-header h1,
-[data-theme="retro_2005"] .page-header h2 {
-    background: linear-gradient(#3a7bd5, #1c4a9e);
-    color: #fff;
-    padding: 6px 12px;
-    border: 1px solid #16386f;
-    border-radius: 2px;
-}
-/* Boxy tables with a blue header row. */
-[data-theme="retro_2005"] .data-table th {
-    background: linear-gradient(#3a7bd5, #1c4a9e);
-    color: #fff;
-    border: 1px solid #16386f;
-}
-[data-theme="retro_2005"] .data-table td { border: 1px solid #cfccc4; }
-[data-theme="retro_2005"] .card {
-    border: 1px solid #808080;
-    border-radius: 2px;
-}
-/* Underlined blue links, purple when visited. */
-[data-theme="retro_2005"] a { color: #0000ee; text-decoration: underline; }
-[data-theme="retro_2005"] a:visited { color: #551a8b; }
+/* The full early-2000s component makeover (beveled windows, gradient title
+   bars, sunken inputs, folder tabs, chunky scrollbars) lives in retro_2005.css,
+   loaded LAST so it wins over the base component CSS. This block is only the
+   palette. */
 
 /* ── Vibe Pack: typography + brand mark ──────────────────── */
 /* Body element gets its theme-aware radial-glow background defined in
