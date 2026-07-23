@@ -200,6 +200,7 @@ async def create_post(
     rating: str = Form("general"),
     image_alt: str = Form(""),
     mentions: str = Form(""),   # JSON [{token, contact_id}] — @alias → contact bindings
+    parts: str = Form(""),      # JSON [string] — thread parts 2+ (text-only, gap-wave-3 §4)
     files: list[UploadFile] | None = File(None),
     file: UploadFile | None = File(None),   # legacy single-image field, still accepted
 ):
@@ -221,6 +222,18 @@ async def create_post(
     try:
         post_id = posts_queries.create_post(
             conn, body=body, rating=rating, image_alt=image_alt, now=_now())
+        # Thread parts (gap-wave-3 §4): each part is a child post row, text-only.
+        if parts:
+            try:
+                part_texts = json.loads(parts)
+            except (ValueError, TypeError):
+                part_texts = []
+            if isinstance(part_texts, list):
+                for i, txt in enumerate([t for t in part_texts
+                                         if isinstance(t, str) and t.strip()][:24]):
+                    posts_queries.create_post(
+                        conn, body=txt.strip(), rating=rating, now=_now(),
+                        parent_post_id=post_id, thread_ordinal=i + 1)
         bindings = []
         if mentions:
             try:

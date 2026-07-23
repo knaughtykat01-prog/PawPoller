@@ -447,7 +447,45 @@ window.Accounts = {
                 <h3>Accounts in this persona</h3>
                 ${acctRows ? `<table class="data-table"><tbody>${acctRows}</tbody></table>`
                            : '<p class="muted">No accounts assigned. Assign some on the <a href="#/accounts">Accounts</a> page.</p>'}
+            </div>
+            <div class="card" style="margin-top:1rem;">
+                <h3>Posting defaults <span class="muted" style="font-weight:400;font-size:.8rem">— synced, used by ⚡ Quick Publish</span></h3>
+                <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:.5rem 0;" id="pdef-plats">
+                    ${(window.PLATFORMS || []).map(pl => `
+                        <label style="font-size:12px;white-space:nowrap;cursor:pointer">
+                            <input type="checkbox" class="pdef-plat" value="${this.esc(pl.code)}"
+                                ${(p.default_platforms || '').split(',').includes(pl.code) ? 'checked' : ''}>
+                            ${pl.emoji || ''} ${this.esc(pl.label)}</label>`).join('')}
+                </div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+                    <label style="font-size:12px">Rating
+                        <select id="pdef-rating">
+                            <option value="" ${!p.default_rating ? 'selected' : ''}>(no default)</option>
+                            ${['general', 'mature', 'adult'].map(r =>
+                                `<option value="${r}" ${p.default_rating === r ? 'selected' : ''}>${r}</option>`).join('')}
+                        </select></label>
+                    <label style="font-size:12px">Preferred posting time
+                        <input type="time" id="pdef-time" value="${this.esc(p.preferred_post_time || '')}"></label>
+                    <button class="btn btn-sm btn-primary" id="pdef-save">Save defaults</button>
+                    <span id="pdef-msg" class="muted" style="font-size:12px"></span>
+                </div>
             </div>`;
+
+        // Posting defaults save (gap-wave-3 §1).
+        document.getElementById('pdef-save')?.addEventListener('click', async () => {
+            const msg = document.getElementById('pdef-msg');
+            const plats = Array.from(document.querySelectorAll('.pdef-plat:checked')).map(c => c.value);
+            try {
+                await API.updatePersona(id, {
+                    default_platforms: plats.join(','),
+                    default_rating: document.getElementById('pdef-rating')?.value || '',
+                    preferred_post_time: document.getElementById('pdef-time')?.value || '',
+                });
+                if (msg) { msg.textContent = 'Saved.'; msg.style.color = 'var(--success)'; }
+            } catch (err) {
+                if (msg) { msg.textContent = 'Failed: ' + (err.message || err); msg.style.color = 'var(--danger)'; }
+            }
+        });
 
         // "View →" opens the platform dashboard pre-scoped to that account.
         document.querySelectorAll('[data-view-acct]').forEach(btn =>

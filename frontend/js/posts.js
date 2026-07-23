@@ -22,6 +22,9 @@ window.Posts = {
     /* Bluesky caps a post at 300 graphemes; Mastodon's default is 500. Warn at
      * the tighter limit so a cross-post to Bluesky won't silently truncate. */
     _SOFT_LIMIT: 300,
+    // Per-platform text caps (gap-wave-3 §4) — bsky 300 graphemes, mastodon's
+    // default 500. Threads chain on these two platforms only.
+    _PLAT_LIMITS: { bsky: 300, mast: 500 },
     _MAX_IMAGES: 4,       // X / Bluesky / Mastodon all cap a post at 4 images
 
     _pendingFiles: [],    // Files awaiting upload (ordered)
@@ -132,6 +135,9 @@ window.Posts = {
                         </select>
                     </label>
                     <span id="post-count" class="post-count muted">0/${this._SOFT_LIMIT}</span>
+                    <div id="post-parts"></div>
+                    <button type="button" class="btn btn-sm btn-outline" id="post-addpart"
+                        title="Thread: each part posts as a reply to the previous (Bluesky + Mastodon; other platforms get part 1 only)">🧵 + Add part</button>
                 </div>
                 <div class="post-platforms" id="post-platforms"></div>
                 <div class="post-compose-actions">
@@ -193,6 +199,21 @@ window.Posts = {
     },
 
     _wireCompose() {
+        // Thread parts (gap-wave-3 §4): text-only parts 2+, each with a counter.
+        document.getElementById('post-addpart')?.addEventListener('click', () => {
+            const box = document.getElementById('post-parts');
+            if (!box) return;
+            const n = box.children.length + 2;
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'margin:6px 0;display:flex;gap:6px;align-items:flex-start';
+            wrap.innerHTML = `<span class="muted" style="font-size:11px;margin-top:8px">${n}.</span>
+                <textarea class="search-input post-part-text" rows="2" style="flex:1"
+                    placeholder="Part ${n} (posts as a reply — Bluesky/Mastodon)"></textarea>
+                <button type="button" class="btn btn-sm btn-outline post-part-del" title="Remove part">×</button>`;
+            wrap.querySelector('.post-part-del').addEventListener('click', () => wrap.remove());
+            box.appendChild(wrap);
+            wrap.querySelector('textarea').focus();
+        });
         const body = document.getElementById('post-body');
         const count = document.getElementById('post-count');
         const updateCount = () => {
@@ -472,6 +493,9 @@ window.Posts = {
             fd.append('rating', rating);
             const mentions = this._collectMentions();
             if (mentions.length) fd.append('mentions', JSON.stringify(mentions));
+            const partTexts = Array.from(document.querySelectorAll('.post-part-text'))
+                .map(t => t.value.trim()).filter(Boolean);
+            if (partTexts.length) fd.append('parts', JSON.stringify(partTexts));
             this._pendingFiles.forEach(f => fd.append('files', f));
             const { post_id } = await API.createPost(fd);
 
@@ -564,7 +588,7 @@ window.Posts = {
                 <div class="post-card-main">
                     <div class="post-card-body">
                         ${rating}
-                        <p class="post-card-text">${this.esc(p.body) || '<span class="muted">(image only)</span>'}</p>
+                        <p class="post-card-text">${this.esc(p.body) || '<span class="muted">(image only)</span>'}${p.thread_count ? ` <span class="muted" style="font-size:11px">🧵 ${p.thread_count + 1} parts</span>` : ''}</p>
                         <div class="post-card-pubs">${pubs || '<span class="muted">not published</span>'}</div>
                         <div class="post-card-meta muted">${this.esc(p.created_at)}</div>
                     </div>

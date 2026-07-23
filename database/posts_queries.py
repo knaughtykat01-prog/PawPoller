@@ -13,12 +13,16 @@ import sqlite3
 # ── posts ──────────────────────────────────────────────────────────
 
 def create_post(conn: sqlite3.Connection, *, body: str, rating: str = "general",
-                image_path: str = "", image_alt: str = "", now: str = "") -> int:
-    """Insert a draft post and return its post_id."""
+                image_path: str = "", image_alt: str = "", now: str = "",
+                parent_post_id: int = 0, thread_ordinal: int = 0) -> int:
+    """Insert a draft post and return its post_id. parent_post_id/thread_ordinal
+    make the row a thread PART (gap-wave-3 §4); 0 = a top-level post."""
     cur = conn.execute(
-        "INSERT INTO posts (body, rating, image_path, image_alt, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (body, rating, image_path, image_alt, now, now),
+        "INSERT INTO posts (body, rating, image_path, image_alt, created_at, updated_at,"
+        " parent_post_id, thread_ordinal) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (body, rating, image_path, image_alt, now, now,
+         int(parent_post_id or 0), int(thread_ordinal or 0)),
     )
     conn.commit()
     return int(cur.lastrowid)
@@ -81,8 +85,13 @@ def get_post_media(conn: sqlite3.Connection, post_id: int) -> list[dict]:
 
 def list_posts(conn: sqlite3.Connection, limit: int = 100) -> list[dict]:
     """Posts newest-first, each with its publications list attached."""
+    # Thread parts (parent_post_id != 0) never appear as their own feed rows —
+    # the parent carries a thread_count instead (gap-wave-3 §4).
     rows = conn.execute(
-        "SELECT * FROM posts ORDER BY post_id DESC LIMIT ?", (limit,)
+        "SELECT p.*, (SELECT COUNT(*) FROM posts c WHERE c.parent_post_id = p.post_id)"
+        "   AS thread_count "
+        "FROM posts p WHERE COALESCE(p.parent_post_id, 0) = 0 "
+        "ORDER BY p.post_id DESC LIMIT ?", (limit,)
     ).fetchall()
     posts = [dict(r) for r in rows]
     if not posts:
@@ -232,5 +241,14 @@ def upsert_post_publication(conn: sqlite3.Connection, *, post_id: int, platform:
 def get_post_publications(conn: sqlite3.Connection, post_id: int) -> list[dict]:
     rows = conn.execute(
         "SELECT * FROM post_publications WHERE post_id = ? ORDER BY id", (post_id,)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_thread_parts(conn: sqlite3.Connection, post_id: int) -> list[dict]:
+    """A post's thread parts (children), in order (gap-wave-3 §4)."""
+    rows = conn.execute(
+        "SELECT * FROM posts WHERE parent_post_id = ? ORDER BY thread_ordinal, post_id",
+        (post_id,),
     ).fetchall()
     return [dict(r) for r in rows]

@@ -173,6 +173,8 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
             if r and r.get("uri"):
                 result.update(success=True, external_id=r.get("uri", ""),
                               external_url=r.get("url", ""))
+                # Thread chaining refs (gap-wave-3 §4) — in-memory only.
+                result["_refs"] = {"uri": r.get("uri", ""), "cid": r.get("cid", "")}
             else:
                 result["error"] = "Bluesky rejected the post (check the app password / logs)"
 
@@ -319,6 +321,67 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
     return result
 
 
+async def _publish_thread_parts(parts: list[dict], platform: str,
+                                account_id: int | None, settings: dict | None,
+                                parent_res: dict) -> list[dict]:
+    """Post thread parts as a reply chain (gap-wave-3 §4). bsky + mast only —
+    each part replies to the previous; part refs come from the client returns
+    (bsky uri+cid via parent_res["_refs"], mast numeric id via external_id).
+    One result dict per part; a failed part stops the chain (no orphaned tails).
+    """
+    out: list[dict] = []
+    account_id, creds = _resolve_creds(platform, account_id, settings)
+    if platform == "bsky":
+        from clients.bsky.client import BskyClient
+        root = parent_res.get("_refs") or {}
+        if not (root.get("uri") and root.get("cid")):
+            return out
+        client = BskyClient(identifier=creds.get("bsky_identifier", ""),
+                            app_password=creds.get("bsky_app_password", ""))
+        prev = dict(root)
+        try:
+            for part in parts:
+                r = await client.create_post(part["body"], reply={
+                    "root": {"uri": root["uri"], "cid": root["cid"]},
+                    "parent": {"uri": prev["uri"], "cid": prev["cid"]},
+                })
+                res = {"platform": platform, "account_id": account_id,
+                       "success": bool(r and r.get("uri")), "part": part["post_id"],
+                       "external_id": (r or {}).get("uri", ""),
+                       "external_url": (r or {}).get("url", ""),
+                       "error": "" if r else "Bluesky rejected a thread part"}
+                out.append(res)
+                if not res["success"]:
+                    break
+                prev = {"uri": r["uri"], "cid": r.get("cid", "")}
+        finally:
+            await client.close()
+    elif platform == "mast":
+        from clients.mast.client import MastClient
+        prev_id = parent_res.get("external_id", "")
+        if not prev_id:
+            return out
+        client = MastClient(instance_url=creds.get("mast_instance_url", ""),
+                            access_token=creds.get("mast_access_token", ""))
+        try:
+            for part in parts:
+                r = await client.create_status(
+                    part["body"], in_reply_to_id=str(prev_id),
+                    idempotency_key=f"pp-{part['post_id']}-mast")
+                res = {"platform": platform, "account_id": account_id,
+                       "success": bool(r and r.get("id")), "part": part["post_id"],
+                       "external_id": str((r or {}).get("id", "")),
+                       "external_url": (r or {}).get("url", ""),
+                       "error": "" if r else "Mastodon rejected a thread part"}
+                out.append(res)
+                if not res["success"]:
+                    break
+                prev_id = r["id"]
+        finally:
+            await client.close()
+    return out
+
+
 async def publish_post(post_id: int, platforms: list[str],
                        account_ids: dict[str, int] | None = None,
                        settings: dict | None = None) -> list[dict[str, Any]]:
@@ -351,6 +414,41 @@ async def publish_post(post_id: int, platforms: list[str],
             )
         finally:
             conn.close()
+
+    # Thread parts (gap-wave-3 §4): chain replies on bsky/mast after the parent
+    # posted; other platforms get the parent only + a note. Each part records
+    # its own publication row (part post_ids are real post rows).
+    conn = get_connection()
+    try:
+        parts = posts_queries.get_thread_parts(conn, post_id)
+    finally:
+        conn.close()
+    if parts:
+        for res in list(results):
+            if not res.get("success"):
+                continue
+            plat = res["platform"]
+            if plat in ("bsky", "mast"):
+                part_results = await _publish_thread_parts(
+                    parts, plat, account_ids.get(plat), settings, res)
+                conn = get_connection()
+                try:
+                    for pr in part_results:
+                        posts_queries.upsert_post_publication(
+                            conn, post_id=pr["part"], platform=plat,
+                            account_id=pr["account_id"],
+                            status="posted" if pr["success"] else "failed",
+                            external_id=pr.get("external_id", ""),
+                            external_url=pr.get("external_url", ""),
+                            error=pr.get("error", ""), now=_now())
+                finally:
+                    conn.close()
+                ok = sum(1 for pr in part_results if pr["success"])
+                res["thread_parts"] = f"{ok}/{len(parts)} parts posted"
+                if ok < len(parts):
+                    res["error"] = (res.get("error") or "") or "some thread parts failed"
+            else:
+                res["thread_parts"] = f"first part only ({plat} threads unsupported)"
 
     # Discord announce (gap G4) — fire once per publish if any platform succeeded.
     # Best-effort; announce_publish self-gates on config + never raises.

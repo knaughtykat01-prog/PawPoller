@@ -15145,10 +15145,60 @@ const App = {
 
     // ── Analytics Page ──────────────────────────────────────────
 
+    /* Benchmarks + best-time sections (gap-wave-3 §2+3). Relative-engagement
+     * buckets: 1.0 = a typical post on that platform; buckets with < 3 posts
+     * are greyed (thin evidence, not advice). */
+    _insightsHtml(ins) {
+        if (!ins || !Object.keys(ins.platforms || {}).length) return '';
+        const esc = Utils.escapeHtml;
+        const over = (ins.overperformers || []).map(o => `<tr>
+            <td>${esc(o.platform)}</td><td>${esc(o.title)}</td>
+            <td>${Utils.formatNumber(o.value)} ${esc(o.metric)}</td>
+            <td><strong>${o.ratio}×</strong> median</td></tr>`).join('');
+        const plats = Object.entries(ins.platforms).map(([c, p]) => `<tr>
+            <td>${esc(c)}</td><td>${Utils.formatNumber(p.median)} ${esc(p.metric)}</td>
+            <td class="muted">${p.count} pieces</td></tr>`).join('');
+        const bar = (b, label) => {
+            const thin = b.count < 3;
+            const w = Math.min(100, Math.round((b.median || 0) * 50));
+            return `<div style="display:flex;align-items:center;gap:6px;font-size:11px;${thin ? 'opacity:.35' : ''}"
+                title="${b.count} post(s)"><span style="width:32px;text-align:right">${label}</span>
+                <div style="flex:1;background:var(--bg-hover);border-radius:3px;height:10px">
+                    <div style="width:${w}%;height:10px;border-radius:3px;background:var(--accent)"></div>
+                </div><span class="muted" style="width:58px">${b.median || 0}× · n=${b.count}</span></div>`;
+        };
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const weekdayBars = (ins.weekday || []).map((b, i) => bar(b, days[i])).join('');
+        const hourBars = (ins.hour || []).map((b, i) => bar(b, String(i).padStart(2, '0'))).join('');
+        return `
+            <div class="chart-container">
+                <h3>Benchmarks</h3>
+                ${over ? `<h4 style="margin:.4rem 0">Overperformers (vs their platform's median)</h4>
+                <div class="table-scroll"><table class="data-table">
+                    <thead><tr><th>Platform</th><th>Title</th><th>Engagement</th><th>vs median</th></tr></thead>
+                    <tbody>${over}</tbody></table></div>` : ''}
+                <h4 style="margin:.8rem 0 .4rem">Platform medians</h4>
+                <div class="table-scroll"><table class="data-table">
+                    <thead><tr><th>Platform</th><th>Median per piece</th><th>Sample</th></tr></thead>
+                    <tbody>${plats}</tbody></table></div>
+            </div>
+            <div class="chart-container">
+                <h3>When your audience responds <span class="muted" style="font-size:.7em">relative engagement by local posting time; greyed = under 3 posts</span></h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+                    <div><h4 style="margin:.2rem 0">By weekday</h4>${weekdayBars}</div>
+                    <div><h4 style="margin:.2rem 0">By hour posted</h4>${hourBars}</div>
+                </div>
+            </div>`;
+    },
+
     async renderAnalytics() {
         this._loading();
         try {
-            const data = await API.getHistoricalAnalytics({ weeks: 12 });
+            const [data, insights] = await Promise.all([
+                API.getHistoricalAnalytics({ weeks: 12 }),
+                fetch('/api/analytics/insights?tz_offset=' + (-new Date().getTimezoneOffset()))
+                    .then(r => r.ok ? r.json() : null).catch(() => null),
+            ]);
 
             const bestMonth = data.best_month || {};
             const fastest = data.fastest_growing || [];
@@ -15200,6 +15250,7 @@ const App = {
                     <h3>Weekly Growth (Last 12 Weeks)</h3>
                     <div class="chart-wrap" style="min-height:300px"><canvas id="chart-weekly-growth"></canvas></div>
                 </div>` : ''}
+                ${this._insightsHtml(insights)}
             `;
 
             this._setContent(html);

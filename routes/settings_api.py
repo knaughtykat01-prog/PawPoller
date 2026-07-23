@@ -605,6 +605,10 @@ class PersonaUpdate(BaseModel):
     name: str | None = None
     color: str | None = None
     sort_order: int | None = None
+    # Per-persona posting defaults (gap-wave-3 §1)
+    default_platforms: str | None = None    # CSV of platform codes
+    default_rating: str | None = None       # general | mature | adult | ''
+    preferred_post_time: str | None = None  # "HH:MM" local, '' = none
 
 
 @personas_router.get("")
@@ -666,7 +670,10 @@ async def update_persona_endpoint(persona_id: int, req: PersonaUpdate):
         if not pdb.get_persona(conn, persona_id):
             raise HTTPException(status_code=404, detail="Persona not found")
         pdb.update_persona(conn, persona_id, name=req.name, color=req.color,
-                           sort_order=req.sort_order)
+                           sort_order=req.sort_order,
+                           default_platforms=req.default_platforms,
+                           default_rating=req.default_rating,
+                           preferred_post_time=req.preferred_post_time)
         persona = pdb.get_persona(conn, persona_id)
     finally:
         conn.close()

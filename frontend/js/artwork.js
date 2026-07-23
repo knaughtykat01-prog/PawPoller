@@ -972,6 +972,18 @@ window.Artwork = {
     /* datetime-local wants 'YYYY-MM-DDTHH:MM' in LOCAL time. Default to one
      * hour out so the picker opens on a sane, in-the-future value. */
     _defaultScheduleLocal() {
+        // Persona preferred posting time (gap-wave-3 §1): tomorrow at HH:MM.
+        const opt = this._qpState && this._qpState.options
+            && this._qpState.options.find(o => o.id === this._qpState.presetId);
+        const t = opt && opt.defaults && opt.defaults.time;
+        if (t && /^\d{2}:\d{2}$/.test(t)) {
+            const d = new Date();
+            d.setDate(d.getDate() + 1);
+            d.setHours(parseInt(t.slice(0, 2), 10), parseInt(t.slice(3), 10), 0, 0);
+            const pad = n => String(n).padStart(2, '0');
+            return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+                + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+        }
         const d = new Date(Date.now() + 60 * 60 * 1000);
         const pad = n => String(n).padStart(2, '0');
         return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
@@ -1413,7 +1425,16 @@ window.Artwork = {
         for (const p of personas) {
             const id = 'p' + p.persona_id;
             if (per[id] && Object.keys(per[id]).length) {
-                options.push({ id, label: p.name, color: p.color || '#6c8cff', map: per[id] });
+                options.push({
+                    id, label: p.name, color: p.color || '#6c8cff', map: per[id],
+                    // Server-side persona posting defaults (gap-wave-3 §1) —
+                    // seed the preset when this browser has no saved one.
+                    defaults: {
+                        platforms: (p.default_platforms || '').split(',').filter(Boolean),
+                        rating: p.default_rating || '',
+                        time: p.preferred_post_time || '',
+                    },
+                });
             }
         }
         if (Object.keys(all).length) {
@@ -1462,9 +1483,17 @@ window.Artwork = {
         });
 
         const saved = this._qpLoadPreset(presetId);
-        if (saved.rating) document.getElementById('qp-rating').value = saved.rating;
+        const pdef = opt.defaults || {};
+        // localStorage (this browser's memory) wins; the persona's synced
+        // server-side defaults seed a fresh browser (gap-wave-3 §1).
+        const rating = saved.rating || pdef.rating;
+        if (rating) document.getElementById('qp-rating').value = rating;
         if (typeof saved.tags === 'string') document.getElementById('qp-tags').value = saved.tags;
-        const off = new Set(saved.off || []);
+        let off = new Set(saved.off || []);
+        if (!saved.off && (pdef.platforms || []).length) {
+            // No browser preset: default ON = the persona's chosen platforms.
+            off = new Set(Object.keys(opt.map).filter(c => !pdef.platforms.includes(c)));
+        }
 
         // Platform toggle chips = this preset's platforms, in the hub's display order.
         const codes = this._PLATFORMS.filter(c => c in opt.map);

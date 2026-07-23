@@ -1003,6 +1003,17 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             raise
     conn.execute("CREATE INDEX IF NOT EXISTS idx_accounts_persona ON accounts(persona_id)")
 
+    # Migration: per-persona posting defaults (gap-wave-3 §1) — plain additive
+    # columns; also in ensure_personas_table for fresh installs.
+    for _col in ("default_platforms TEXT NOT NULL DEFAULT ''",
+                 "default_rating TEXT NOT NULL DEFAULT ''",
+                 "preferred_post_time TEXT NOT NULL DEFAULT ''"):
+        try:
+            conn.execute(f"ALTER TABLE personas ADD COLUMN {_col}")
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+
     # Migration: content_type discriminator on the posting registry. Lets the
     # Artwork hub reuse publications/posting_queue/posting_log for image posts
     # without colliding with stories. Additive column (DEFAULT 'story' → every
@@ -1030,6 +1041,17 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError as e:
             if "duplicate column" not in str(e).lower():
                 raise
+
+    # Migration: threads (gap-wave-3 §4 / G8) — thread parts are child post
+    # rows. Plain additive columns; also in posts_schema.sql for fresh installs.
+    if "posts" in tables:
+        for _col in ("parent_post_id INTEGER NOT NULL DEFAULT 0",
+                     "thread_ordinal INTEGER NOT NULL DEFAULT 0"):
+            try:
+                conn.execute(f"ALTER TABLE posts ADD COLUMN {_col}")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
 
     # Migration: cross-platform follower/watcher counts. Account-level follower
     # counts are a single uniform integer per account, so they live in ONE shared

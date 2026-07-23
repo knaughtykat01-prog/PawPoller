@@ -35,7 +35,12 @@ def ensure_personas_table(conn: sqlite3.Connection) -> None:
             name        TEXT NOT NULL,
             color       TEXT NOT NULL DEFAULT '#6c8cff',
             sort_order  INTEGER NOT NULL DEFAULT 0,
-            created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            -- Per-persona posting defaults (gap-wave-3 §1). Existing installs
+            -- gain these via guarded ALTERs in db.py _run_migrations.
+            default_platforms   TEXT NOT NULL DEFAULT '',
+            default_rating      TEXT NOT NULL DEFAULT '',
+            preferred_post_time TEXT NOT NULL DEFAULT ''
         );
         """
     )
@@ -69,7 +74,8 @@ def create_persona(conn: sqlite3.Connection, name: str, color: str = DEFAULT_COL
 
 def update_persona(conn: sqlite3.Connection, persona_id: int, **fields) -> bool:
     """Update name/color/sort_order on a persona. Returns True if a row changed."""
-    allowed = {"name", "color", "sort_order"}
+    allowed = {"name", "color", "sort_order",
+               "default_platforms", "default_rating", "preferred_post_time"}
     sets, params = [], []
     for key, val in fields.items():
         if key not in allowed or val is None:
@@ -144,8 +150,12 @@ def persona_stats(conn: sqlite3.Connection, persona_id: int) -> dict:
 # persona_id field. Additive upsert (never deletes), preserves persona_id.
 
 def get_manifest(conn: sqlite3.Connection) -> list[dict]:
+    # r.keys() guard: a peer that predates the posting-defaults columns
+    # (gap-wave-3) still produces a valid manifest.
+    fields = ("persona_id", "name", "color", "sort_order",
+              "default_platforms", "default_rating", "preferred_post_time")
     return [
-        {k: r[k] for k in ("persona_id", "name", "color", "sort_order")}
+        {k: r[k] for k in fields if k in r.keys()}
         for r in conn.execute("SELECT * FROM personas ORDER BY persona_id").fetchall()
     ]
 
@@ -167,12 +177,19 @@ def apply_manifest(conn: sqlite3.Connection, manifest) -> int:
         except (KeyError, TypeError, ValueError):
             continue
         conn.execute(
-            "INSERT INTO personas (persona_id, name, color, sort_order)"
-            " VALUES (?, ?, ?, ?)"
+            "INSERT INTO personas (persona_id, name, color, sort_order,"
+            "   default_platforms, default_rating, preferred_post_time)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)"
             " ON CONFLICT(persona_id) DO UPDATE SET"
-            "   name=excluded.name, color=excluded.color, sort_order=excluded.sort_order",
+            "   name=excluded.name, color=excluded.color, sort_order=excluded.sort_order,"
+            "   default_platforms=excluded.default_platforms,"
+            "   default_rating=excluded.default_rating,"
+            "   preferred_post_time=excluded.preferred_post_time",
             (pid, p.get("name", "Persona"), p.get("color", DEFAULT_COLOR),
-             int(p.get("sort_order", 0))),
+             int(p.get("sort_order", 0)),
+             # Absent on manifests from pre-wave-3 peers → keep sensible blanks.
+             p.get("default_platforms", ""), p.get("default_rating", ""),
+             p.get("preferred_post_time", "")),
         )
         n += 1
     conn.commit()

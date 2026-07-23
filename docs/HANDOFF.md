@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.183.0 — **Housekeeping: Pydantic v3-proofing.** `clients/ib/models.py` `SearchSubmission`
+**Current version (master):** 2.184.0 — **Wave 3: threads (G8) + posting insights + persona defaults** (spec
+`docs/specs/gap_wave3.md`). Persona defaults: additive persona columns + manifest sync + detail-page card + Quick
+Publish seeding. Insights: `/api/analytics/insights` (INSIGHT_* module maps in analytics_queries — use these, not the
+4 older local copies); relative-engagement buckets; date-only platforms weekday-only. Threads: child post rows
+(`parent_post_id`), bsky/mast reply-chaining via `_publish_thread_parts` (bsky `_refs` uri+cid now kept), per-part
+publication rows, 🧵 compose + feed badge; X deferred. +4 tests (chain-refs property). Installers on v2.182.0.
+
+**Prior — 2.183.0 — Housekeeping: Pydantic v3-proofing.** `clients/ib/models.py` `SearchSubmission`
 class-based `class Config:` → `model_config = ConfigDict(populate_by_name=True)` (the deprecated form is removed in
 Pydantic V3; this was the suite's last warning). Verified attribute+alias population unchanged; import warning-clean
 under `-W error`. Desktop installers are on **v2.182.0** (2.183 is web-only until the next tag).

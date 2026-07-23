@@ -2492,6 +2492,19 @@ async def stream_logs(
 
 # ── Historical Analytics ──────────────────────────────────────
 
+@router.get("/analytics/insights")
+def get_analytics_insights(tz_offset: int = 0):
+    """Benchmarks + best-time-to-post (gap-wave-3 §2+3). tz_offset = the
+    client's minutes-east-of-UTC (JS: -new Date().getTimezoneOffset()) so the
+    weekday/hour buckets land in the user's local clock."""
+    from database import analytics_queries
+    conn = get_connection()
+    try:
+        return analytics_queries.get_posting_insights(conn, tz_offset_minutes=tz_offset)
+    finally:
+        conn.close()
+
+
 @router.get("/analytics/historical")
 def get_historical_analytics(weeks: int = Query(12)):
     """Return historical analytics: best periods, fastest growing, weekly growth."""

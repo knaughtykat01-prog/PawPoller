@@ -655,3 +655,107 @@ def _title_similarity(a: str, b: str) -> float:
     intersection = words_a & words_b
     union = words_a | words_b
     return len(intersection) / len(union)
+
+
+# ── Posting insights: benchmarks + best-time (gap-wave-3 §2+3) ───────────────
+# Module-level maps (the route-local/function-local copies above predate these;
+# new analytics code should use THESE — consolidation seed, see gap_wave3.md).
+INSIGHT_TABLES = {
+    "ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions",
+    "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions",
+    "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions",
+    "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions",
+    "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions",
+    "ig": "ig_submissions", "e621": "e621_submissions",
+}
+INSIGHT_PRIMARY = {   # the platform's headline engagement column
+    "ib": "views", "fa": "views", "ws": "views", "sf": "views", "sqw": "views",
+    "ao3": "views", "da": "views", "wp": "reads", "ik": "likes", "bsky": "likes",
+    "tw": "views", "mast": "likes", "tum": "notes", "pix": "views",
+    "thr": "views", "ig": "views", "e621": "score",
+}
+INSIGHT_DATE_COL = {"ib": "create_datetime"}   # everything else: posted_at
+
+
+def _parse_posted(raw):
+    """Best-effort posted-at parse → (datetime|None, has_time). ISO first, then
+    the scraped formats (FA's human-readable string); date-only rows (SQW/AO3)
+    parse but carry has_time=False → weekday histogram only. Unparseable rows
+    are dropped, never guessed."""
+    from datetime import datetime
+    if not raw:
+        return None, False
+    s = str(raw).strip()
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")), len(s) > 10
+    except ValueError:
+        pass
+    for fmt, has_time in (("%Y-%m-%d %H:%M:%S", True), ("%b %d, %Y %I:%M %p", True),
+                          ("%B %d, %Y %I:%M %p", True), ("%b %d, %Y, %I:%M %p", True),
+                          ("%d %b %Y %H:%M", True), ("%Y-%m-%d", False)):
+        try:
+            return datetime.strptime(s, fmt), has_time
+        except ValueError:
+            continue
+    return None, False
+
+
+def get_posting_insights(conn: sqlite3.Connection, tz_offset_minutes: int = 0) -> dict:
+    """Benchmarks + best-time in one pass over the 17 submission tables.
+
+    - platforms: per-platform {metric, count, median} of the headline metric.
+    - overperformers: pieces ≥1.5× their OWN platform's median (within-platform
+      ratios only — views and likes are never compared to each other).
+    - weekday/hour: histograms of RELATIVE engagement (each post ÷ its
+      platform's median → cross-platform comparable; 1.0 = typical), bucketed
+      in the caller's timezone via tz_offset_minutes. Each bucket carries its
+      sample count so the UI can grey out thin evidence.
+    """
+    import statistics
+    from datetime import timedelta
+
+    per_platform: dict = {}
+    weekday = [[] for _ in range(7)]     # Mon..Sun
+    hour = [[] for _ in range(24)]
+    overperformers: list[dict] = []
+
+    for code, table in INSIGHT_TABLES.items():
+        primary = INSIGHT_PRIMARY[code]
+        date_col = INSIGHT_DATE_COL.get(code, "posted_at")
+        try:
+            rows = conn.execute(
+                f"SELECT title, {primary} AS m, {date_col} AS d FROM {table}"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            continue   # table/column missing on this install — skip platform
+        vals = [(r["m"] or 0) for r in rows]
+        if not vals:
+            continue
+        med = statistics.median(vals)
+        per_platform[code] = {"metric": primary, "count": len(vals),
+                              "median": round(med, 1)}
+        if med <= 0:
+            continue
+        for r in rows:
+            m = r["m"] or 0
+            ratio = m / med
+            if len(vals) >= 5 and ratio >= 1.5:
+                overperformers.append({
+                    "platform": code, "title": r["title"] or "(untitled)",
+                    "value": m, "metric": primary, "ratio": round(ratio, 1)})
+            dt, has_time = _parse_posted(r["d"])
+            if not dt:
+                continue
+            local = dt + timedelta(minutes=tz_offset_minutes)
+            weekday[local.weekday()].append(ratio)
+            if has_time:
+                hour[local.hour].append(ratio)
+
+    overperformers.sort(key=lambda x: -x["ratio"])
+
+    def _buckets(groups):
+        return [{"median": round(statistics.median(g), 2) if g else 0,
+                 "count": len(g)} for g in groups]
+
+    return {"platforms": per_platform, "overperformers": overperformers[:10],
+            "weekday": _buckets(weekday), "hour": _buckets(hour)}

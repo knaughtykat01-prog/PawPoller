@@ -14,6 +14,11 @@ CREATE TABLE IF NOT EXISTS posts (
     rating       TEXT NOT NULL DEFAULT 'general', -- general | mature | adult
     image_path   TEXT NOT NULL DEFAULT '',        -- optional local media (DATA_DIR/posts_media/…)
     image_alt    TEXT NOT NULL DEFAULT '',        -- alt text for the image
+    -- Threads (gap-wave-3 §4 / G8): a part row points at its parent post; 0 =
+    -- a top-level post. Parts are full post rows so post_media/post_publications
+    -- work unchanged. Older DBs gain these via _run_migrations.
+    parent_post_id INTEGER NOT NULL DEFAULT 0,
+    thread_ordinal INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT NOT NULL DEFAULT '',
     updated_at   TEXT NOT NULL DEFAULT ''
 );

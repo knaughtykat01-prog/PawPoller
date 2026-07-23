@@ -12,6 +12,31 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.184.0] - 2026-07-24 - Wave 3: threads, posting insights, and persona defaults
+
+> **Three new things.** (1) **Threads** — in Posts, "🧵 + Add part" builds a multi-part thread; on Bluesky and Mastodon
+> each part posts as a reply to the one before (other platforms get part 1). (2) The Analytics page gains
+> **Benchmarks** (which pieces beat your median, per-platform medians) and **"When your audience responds"** — weekday
+> and hour-of-day charts of when your posts do best, in your local time. (3) A persona now carries **posting
+> defaults** (platforms, rating, preferred time) that sync between desktop and server and seed ⚡ Quick Publish on any
+> fresh browser.
+
+Gap-wave-3 (`docs/specs/gap_wave3.md`, three scout passes). **Persona defaults:** additive columns
+(`default_platforms`/`default_rating`/`preferred_post_time`) on personas + manifest sync w/ old-client tolerance +
+PersonaUpdate plumbing + a "Posting defaults" card on the persona detail page; Quick Publish seeds from them when no
+localStorage preset exists (browser preset stays the override) and `_defaultScheduleLocal` uses the preferred time.
+**Insights:** `GET /api/analytics/insights?tz_offset=` → `analytics_queries.get_posting_insights` — one pass over 17
+tables (new module-level INSIGHT_* maps, the consolidation seed); within-platform overperformer ratios (views never
+compared to likes); weekday/hour buckets hold RELATIVE engagement (post ÷ platform median, 1.0 = typical); SQW/AO3
+date-only → weekday only; FA's scraped date best-effort parsed, unparseable rows dropped; buckets carry sample counts
+(UI greys n<3). **Threads (G8):** `parent_post_id`/`thread_ordinal` child rows (media/publications tables unchanged);
+create accepts `parts` JSON (parts 2+ text-only); `_publish_thread_parts` chains bsky (uri+cid refs — `_publish_one`
+now keeps `_refs`) and mast (`in_reply_to_id` + per-part idempotency keys); failed part stops the chain; per-part
+publication rows; feed hides children + shows a 🧵 badge; X deferred (fragility). +4 tests incl. the chain-refs
+property (part N replies to N-1, rooted at part 1). Full suite pre-deploy.
+
+---
+
 ## [2.183.0] - 2026-07-23 - Housekeeping: future-proofed a library usage
 
 > **Nothing visible changes.** A small internal cleanup that keeps PawPoller compatible with a future version of one of
