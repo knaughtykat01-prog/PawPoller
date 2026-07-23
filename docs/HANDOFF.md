@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.167.0 — **Windowed grids: Library + Masterpieces stay smooth at any size (completes backlog X).**
+**Current version (master):** 2.168.0 — **Queue & Schedule calendar view (rounds out backlog Z).**
+Scheduling core (create/reschedule/cancel across stories/artwork/posts + sorted agenda) shipped 2.163–2.164; this adds
+the at-a-glance calendar. **Frontend only:** `posting.js` `renderQueue` now caches the queue + `_paintQueue` renders the
+chosen view (☰ List | 📅 Calendar), toggle doesn't refetch. Table → `_renderQueueList`; new `_renderQueueCalendar`
+buckets pending scheduled items by LOCAL day (`_schedInstant` UTC→local) onto a month grid — today outlined, ‹ › page
+months (`_calMonth`), item chips show time+platform + link to detail; view+month persist. `.qcal-*` CSS in `editor.css`
+(scrolls on narrow screens, `color-mix(var(--accent))` tints). **Z core done.** Explicitly NOT built (new features, not
+completion, with rationale in CHANGELOG): drag-to-reschedule (inline editor already does it), recurring schedules
+(re-posting the same one-off art weekly isn't useful; the real version is a slot-based content calendar), best-time
+suggestions (needs an engagement model — its own analytics feature). Baseline tests unchanged (625, frontend-only).
+
+**Prior — 2.167.0 — Windowed grids: Library + Masterpieces stay smooth at any size (completes backlog X).**
 2.165 batched the DB rollups (O(platforms)); this closes the browser half — both grids built every card + cover `<img>`
 up front, janking a 1000s-piece library. **Windowed render (frontend only):** paint the first ~60 cards, then stream the
 rest a page at a time via an `IntersectionObserver` sentinel (600px prefetch) as you scroll. Data is still fully

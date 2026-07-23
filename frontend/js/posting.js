@@ -753,25 +753,60 @@ const Posting = {
 
     async renderQueue() {
         App._setContent('<div class="page-header"><h2>Queue &amp; Schedule</h2></div><div class="loading">Loading queue...</div>');
-
         try {
-            // content_type omitted → the endpoint returns stories AND artwork.
+            // content_type omitted → the endpoint returns stories, artwork AND posts.
             const { queue } = await API.getPostingQueue({ include_completed: true });
-            if (!queue.length) {
-                App._setContent(`
-                    <div class="page-header"><h2>Queue &amp; Schedule</h2></div>
-                    <div class="empty-state"><h3>Nothing queued</h3><p>Schedule a story or artwork, or upload one, and it shows up here.</p></div>`);
-                return;
-            }
+            this._queueData = queue;
+            if (!this._queueView) this._queueView = 'list';
+            this._paintQueue();
+        } catch (err) {
+            App._setContent(`<div class="error-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
 
-            // Scheduled-for-the-future items first (soonest first), then the rest.
-            const isSched = q => q.status === 'pending' && q.scheduled_at;
-            const scheduled = queue.filter(isSched)
-                .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
-            const rest = queue.filter(q => !isSched(q));
-            const ordered = scheduled.concat(rest);
+    /* Paint the Queue & Schedule page in the chosen view (list | calendar) from
+     * the cached queue data, so toggling views doesn't refetch. */
+    _paintQueue() {
+        const queue = this._queueData || [];
+        if (!queue.length) {
+            App._setContent(`
+                <div class="page-header"><h2>Queue &amp; Schedule</h2></div>
+                <div class="empty-state"><h3>Nothing queued</h3><p>Schedule a story, artwork or post, or upload one, and it shows up here.</p></div>`);
+            return;
+        }
+        const view = this._queueView;
+        const scheduled = queue.filter(q => q.status === 'pending' && q.scheduled_at);
+        const schedNote = scheduled.length
+            ? `<p class="page-subtitle">${scheduled.length} scheduled &middot; ${queue.length} total. Scheduled items publish automatically at their time (server runs them; desktop-only platforms fire next time the app is open).</p>`
+            : `<p class="page-subtitle">${queue.length} items</p>`;
+        const toggle = `<div class="q-viewtoggle" style="display:inline-flex;gap:.3rem;flex-shrink:0;">
+            <button class="btn btn-sm${view === 'list' ? ' btn-primary' : ' btn-outline'}" data-q-view="list">&#9776; List</button>
+            <button class="btn btn-sm${view === 'calendar' ? ' btn-primary' : ' btn-outline'}" data-q-view="calendar">&#128197; Calendar</button>
+        </div>`;
+        const body = view === 'calendar' ? this._renderQueueCalendar(queue) : this._renderQueueList(queue);
 
-            const rowHtml = (item) => {
+        App._setContent(`
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+                <div><h2>Queue &amp; Schedule</h2>${schedNote}</div>
+                ${toggle}
+            </div>
+            ${body}`);
+
+        document.querySelectorAll('[data-q-view]').forEach(b =>
+            b.addEventListener('click', () => { this._queueView = b.dataset.qView; this._paintQueue(); }));
+        if (view === 'calendar') this._wireQueueCalendar();
+        else this._wireQueueActions();
+    },
+
+    _renderQueueList(queue) {
+        // Scheduled-for-the-future items first (soonest first), then the rest.
+        const isSched = q => q.status === 'pending' && q.scheduled_at;
+        const scheduled = queue.filter(isSched)
+            .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+        const rest = queue.filter(q => !isSched(q));
+        const ordered = scheduled.concat(rest);
+
+        const rowHtml = (item) => {
                 const ct = item.content_type || 'story';
                 const isArt = ct === 'artwork';
                 const isPost = ct === 'post';
@@ -824,28 +859,92 @@ const Posting = {
                 </tr>`;
             };
 
-            const schedNote = scheduled.length
-                ? `<p class="page-subtitle">${scheduled.length} scheduled &middot; ${queue.length} total. Scheduled items publish automatically at their time (server runs them; desktop-only platforms fire next time the app is open).</p>`
-                : `<p class="page-subtitle">${queue.length} items</p>`;
+        return `
+            <div class="card">
+                <table class="data-table" data-mobile-cards>
+                    <thead><tr>
+                        <th>Type</th><th>Item</th><th>Ch</th><th>Platform</th><th>Action</th>
+                        <th>When</th><th>Status</th><th>Actions</th>
+                    </tr></thead>
+                    <tbody>${ordered.map(rowHtml).join('')}</tbody>
+                </table>
+            </div>`;
+    },
 
-            App._setContent(`
-                <div class="page-header"><h2>Queue &amp; Schedule</h2>
-                    ${schedNote}
-                </div>
-                <div class="card">
-                    <table class="data-table" data-mobile-cards>
-                        <thead><tr>
-                            <th>Type</th><th>Item</th><th>Ch</th><th>Platform</th><th>Action</th>
-                            <th>When</th><th>Status</th><th>Actions</th>
-                        </tr></thead>
-                        <tbody>${ordered.map(rowHtml).join('')}</tbody>
-                    </table>
-                </div>`);
+    /* Read-only month calendar of what's scheduled (backlog Z completion). Lays
+     * the pending scheduled items onto their local-time days; ‹ › page months,
+     * click an item to jump to its detail. Drag-to-reschedule is deliberately
+     * out of scope — reschedule lives in the List view's inline editor. */
+    _renderQueueCalendar(queue) {
+        const items = queue
+            .filter(q => q.status === 'pending' && q.scheduled_at)
+            .map(q => ({ ...q, _dt: this._schedInstant(q.scheduled_at) }))
+            .filter(q => !isNaN(q._dt.getTime()))
+            .sort((a, b) => a._dt - b._dt);
 
-            this._wireQueueActions();
-        } catch (err) {
-            App._setContent(`<div class="error-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        if (!this._calMonth) {
+            const anchor = items.length ? items[0]._dt : new Date();
+            this._calMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
         }
+        const y = this._calMonth.getFullYear(), m = this._calMonth.getMonth();
+        const key = d => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        const byDay = {};
+        for (const it of items) { const k = key(it._dt); (byDay[k] = byDay[k] || []).push(it); }
+
+        const firstDow = new Date(y, m, 1).getDay();          // 0 = Sunday
+        const daysInMonth = new Date(y, m + 1, 0).getDate();
+        const todayKey = key(new Date());
+        const cells = [];
+        for (let i = 0; i < firstDow; i++) cells.push('<div class="qcal-cell qcal-empty"></div>');
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dayItems = byDay[`${y}-${m}-${d}`] || [];
+            const chips = dayItems.map(it => {
+                const ct = it.content_type || 'story';
+                const icon = ct === 'post' ? '&#128172;' : (ct === 'artwork' ? '&#128444;&#65039;' : '&#128214;');
+                const time = it._dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                const label = ct === 'post'
+                    ? (it.title_override || ('Post #' + it.story_name))
+                    : (it.story_name || '').replace(/_/g, ' ');
+                const plat = PLATFORM_LABELS[it.platform] || it.platform;
+                const tip = `${label} → ${plat} at ${it._dt.toLocaleString()}`;
+                return `<div class="qcal-item" data-q-goto="${it.queue_id}" title="${Utils.escapeHtml(tip)}">`
+                    + `${icon} ${Utils.escapeHtml(time)} ${Utils.escapeHtml(plat)}</div>`;
+            }).join('');
+            cells.push(`<div class="qcal-cell${(`${y}-${m}-${d}`) === todayKey ? ' qcal-today' : ''}">`
+                + `<div class="qcal-daynum">${d}</div>${chips}</div>`);
+        }
+
+        const monthName = this._calMonth.toLocaleString([], { month: 'long', year: 'numeric' });
+        const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+            .map(x => `<div class="qcal-dow">${x}</div>`).join('');
+        return `
+            <div class="card qcal-card">
+                <div class="qcal-head">
+                    <button class="btn btn-sm btn-outline" data-cal-nav="-1" aria-label="Previous month">&lsaquo;</button>
+                    <strong>${Utils.escapeHtml(monthName)}</strong>
+                    <button class="btn btn-sm btn-outline" data-cal-nav="1" aria-label="Next month">&rsaquo;</button>
+                </div>
+                <div class="qcal-grid">${dow}${cells.join('')}</div>
+                ${items.length ? '' : '<p class="muted" style="margin-top:.6rem;">Nothing scheduled yet — schedule a story, artwork or post and it lands here.</p>'}
+            </div>`;
+    },
+
+    _wireQueueCalendar() {
+        document.querySelectorAll('[data-cal-nav]').forEach(b =>
+            b.addEventListener('click', () => {
+                const delta = parseInt(b.dataset.calNav, 10) || 0;
+                this._calMonth = new Date(this._calMonth.getFullYear(), this._calMonth.getMonth() + delta, 1);
+                this._paintQueue();
+            }));
+        document.querySelectorAll('[data-q-goto]').forEach(el =>
+            el.addEventListener('click', () => {
+                const it = (this._queueData || []).find(q => q.queue_id === Number(el.dataset.qGoto));
+                if (!it) return;
+                const ct = it.content_type || 'story';
+                if (ct === 'post') window.location.hash = '#/posts';
+                else if (ct === 'artwork') window.location.hash = `#/artwork/image/${encodeURIComponent(it.story_name)}`;
+                else window.location.hash = `#/posting/story/${encodeURIComponent(it.story_name)}`;
+            }));
     },
 
     /* Wire the queue table's cancel / reschedule controls. Local listeners

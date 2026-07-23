@@ -2957,6 +2957,67 @@ html[data-mobile="1"] .wp-grid { grid-template-columns: repeat(auto-fill, minmax
     flex-shrink: 0;
 }
 
+/* Queue & Schedule — month calendar view (2.168.0). Read-only; lays scheduled
+   items on their local-time days. Horizontally scrolls on narrow screens. */
+.qcal-card { overflow-x: auto; }
+.qcal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-bottom: .6rem;
+}
+.qcal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    min-width: 460px;
+}
+.qcal-dow {
+    text-align: center;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 2px 0;
+}
+.qcal-cell {
+    min-height: 76px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+}
+.qcal-cell.qcal-empty {
+    border: none;
+    background: transparent;
+}
+.qcal-cell.qcal-today {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+.qcal-daynum {
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+.qcal-item {
+    font-size: .7rem;
+    line-height: 1.35;
+    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    border-radius: 4px;
+    padding: 1px 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.qcal-item:hover {
+    background: color-mix(in srgb, var(--accent) 26%, var(--surface));
+}
+
 /* Phase 6d — Bulk publish */
 
 .bulk-col { width: 40px; text-align: center; }

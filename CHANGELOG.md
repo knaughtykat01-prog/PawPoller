@@ -12,6 +12,36 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.168.0] - 2026-07-23 - See what's scheduled on a calendar
+
+> **The Queue & Schedule page now has a calendar view.** Flip between **☰ List** and **📅 Calendar** at the top —
+> the calendar lays everything you've scheduled onto its day, so you can see your week or month at a glance. Page
+> between months with ‹ ›, and click any item to jump to it. To reschedule, use the List view's inline editor.
+
+Rounds out backlog Z (scheduling). The core — schedule / reschedule / cancel across stories, artwork and posts, plus a
+sorted agenda — shipped in 2.163–2.164; this adds the at-a-glance calendar that a publishing tool is expected to have.
+
+**Calendar view (frontend only).** `posting.js`: `renderQueue` now caches the fetched queue and paints the chosen view,
+so toggling doesn't refetch. The existing table moved to `_renderQueueList`; the new `_renderQueueCalendar` buckets the
+pending scheduled items by their **local-time** day and lays them on a month grid (`_schedInstant` converts the stored
+UTC → local, same contract as the rest of scheduling). Today is outlined; ‹ › page months (`_calMonth` state); each
+item chip shows its time + platform and links to the item's detail. The chosen view + month persist across visits.
+Empty months render cleanly with a hint. CSS: `.qcal-*` in `editor.css` (scrolls horizontally on narrow screens;
+selected/today tints via `color-mix(var(--accent))`, theme-aware).
+
+**Deliberately NOT built — and why (these are new features, not "completion"):**
+- **Drag-to-reschedule on the calendar** — reschedule already exists (List view's inline `datetime-local` editor); a
+  drag surface is a lot of interaction code for a second path to the same action.
+- **Recurring schedules ("every Friday")** — for one-off creative pieces this would just re-post the *same* work weekly,
+  which isn't useful. The genuinely useful version is a content-calendar with posting *slots* fed by a queue — a real
+  feature to design deliberately, not a loose end to tie off.
+- **"Best time to post" suggestions** — needs a defensible model of per-account engagement-by-hour; speculative
+  heuristic territory, better scoped as its own analytics feature.
+
+With this, Z's core + agenda + calendar are done; the above are logged as future ideas rather than left "in progress."
+
+---
+
 ## [2.167.0] - 2026-07-23 - Big grids stay smooth at any size (windowed render)
 
 > **The Library and Masterpieces grids now stay smooth even with thousands of pieces.** They fill in a screenful at a
