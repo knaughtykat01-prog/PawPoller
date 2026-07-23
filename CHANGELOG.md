@@ -12,6 +12,28 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.179.0] - 2026-07-23 - Safe mode: click a blurred item to peek
+
+> **In safe mode you can now click a blurred cover to peek at just that one.** The first click reveals it (without
+> opening it); click it again to open it as normal. So you no longer have to turn safe mode off entirely to check a
+> single piece. Peeked items re-hide when you move to another page or switch safe mode back on.
+
+Follow-up to 2.178.0's SFW toggle. Adds per-item click-to-reveal so safe mode isn't all-or-nothing.
+
+- **One delegated capture-phase click listener** (`app.js`) covers every blurred surface — current and future — with
+  no per-card markup. In safe mode, the first click on a still-blurred tile adds `.sfw-revealed` to that element and
+  `preventDefault()` + `stopPropagation()` so the card/link doesn't navigate; the next click on the now-revealed tile
+  falls through to normal navigation. Capture phase so it intercepts before the link/card handlers.
+- **`.sfw-revealed { filter: none !important }`** (`safe_mode.css`) — `!important` because the blur selectors carry an
+  extra `:not()` and would otherwise win the cascade. Blurred tiles also get `cursor: zoom-in` as the "click to peek"
+  affordance.
+- Peeks **reset naturally** on SPA navigation (the grid re-renders); re-enabling safe mode also clears any lingering
+  reveals. The enable toast now mentions the peek.
+
+Client-only, no backend/DB change, no tests.
+
+---
+
 ## [2.178.0] - 2026-07-23 - Safe mode: one-click SFW toggle across the whole app
 
 > **New 🔒 button in the sidebar hides adult content everywhere at once.** Click it and every cover, thumbnail and

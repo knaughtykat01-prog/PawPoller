@@ -436,14 +436,47 @@ const App = {
         _syncSfwBtn();
         _sfwBtn?.addEventListener('click', () => {
             const on = document.documentElement.dataset.sfw !== '1';
-            if (on) document.documentElement.dataset.sfw = '1';
-            else delete document.documentElement.dataset.sfw;
+            if (on) {
+                document.documentElement.dataset.sfw = '1';
+                // Re-enabling re-hides everything: clear any lingering peeks.
+                document.querySelectorAll('.sfw-revealed')
+                    .forEach(el => el.classList.remove('sfw-revealed'));
+            } else {
+                delete document.documentElement.dataset.sfw;
+            }
             try { localStorage.setItem('pawpoller-sfw', on ? '1' : '0'); } catch (e) { /* ignore */ }
             _syncSfwBtn();
             window.toast?.info(on
-                ? 'Safe mode on — adult content hidden'
+                ? 'Safe mode on — adult content hidden (click any blurred item to peek)'
                 : 'Safe mode off — showing all content');
         });
+
+        /* Click-to-reveal "peek". One delegated capture-phase listener covers
+           every blurred surface — current and future — with no per-card markup.
+           In safe mode the first click on a still-blurred tile reveals just that
+           one (and swallows the click so the card/link doesn't navigate); the
+           next click on the now-revealed tile falls through to normal navigation.
+           The selector mirrors safe_mode.css's blur set; `.mp-alts img` matches
+           the alt thumbnails whose rating lives on the .mp-alts wrapper. Peeks
+           reset naturally on SPA navigation (the grid re-renders). */
+        const _sfwPeekSel = [
+            '.book-cover:not([data-rating="general"])',
+            '.artwork-card-cover:not([data-rating="general"])',
+            '.mp-cover:not([data-rating="general"])',
+            '.coll-cover:not([data-rating="general"])',
+            '.mp-alts:not([data-rating="general"]) img',
+            'img.artwork-detail-img:not([data-rating="general"])',
+            'img.mp-hero-img:not([data-rating="general"])',
+            'img.post-card-img:not([data-rating="general"])',
+        ].join(', ');
+        document.addEventListener('click', (e) => {
+            if (document.documentElement.dataset.sfw !== '1') return;
+            const el = e.target.closest?.(_sfwPeekSel);
+            if (!el || el.classList.contains('sfw-revealed')) return;  // already peeked → let it through
+            e.preventDefault();
+            e.stopPropagation();
+            el.classList.add('sfw-revealed');
+        }, true);  // capture: intercept before the link/card navigation handlers
 
         /* Guided tours — the sidebar "?" runs the tour for wherever you are:
            the getting-started shell tour on the overview, or that page's own

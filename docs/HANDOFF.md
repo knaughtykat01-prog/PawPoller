@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.178.0 — **Safe mode: global one-click SFW/NSFW toggle (Rhys: "across the entire platform").**
+**Current version (master):** 2.179.0 — **Safe mode: click-to-peek on blurred items.**
+Follow-up to 2.178. One delegated **capture-phase** click listener in app.js: in safe mode, first click on a
+still-blurred tile adds `.sfw-revealed` + `preventDefault`/`stopPropagation` (no navigation); next click on the revealed
+tile navigates normally. `.sfw-revealed { filter:none !important }` (needs `!important` — blur selectors carry an extra
+`:not()`); blurred tiles get `cursor:zoom-in`. Peeks reset on SPA nav + on re-enabling safe mode. Selector mirrors the
+blur set (incl. `.mp-alts img`). Client-only, no tests.
+
+**Prior — 2.178.0 — Safe mode: global one-click SFW/NSFW toggle (Rhys: "across the entire platform").**
 New 🔒 sidebar-footer button (`#sfw-toggle-btn`) blurs every non-`general` cover/thumbnail app-wide. State in
 `localStorage['pawpoller-sfw']`, applied as `html[data-sfw="1"]` **pre-paint** in index.html (no flash), per-device
 (NOT a server setting). New `frontend/css/safe_mode.css` (loaded last): `html[data-sfw="1"] <cover>:not([data-rating="general"])`

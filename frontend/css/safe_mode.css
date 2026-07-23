@@ -36,6 +36,19 @@ html[data-sfw="1"] img.post-card-img:not([data-rating="general"]) {
     filter: blur(22px) saturate(0.75);
     /* Keep blurred pixels from bleeding past the frame edge. */
     overflow: hidden;
+    /* Signals the tile is click-to-peek (the delegated handler in app.js
+       reveals it on first click and swallows that click's navigation). */
+    cursor: zoom-in;
+}
+
+/* Click-to-reveal "peek" — app.js adds .sfw-revealed to the blurred element on
+   the first click. !important because the blur selectors above are more
+   specific (an extra :not()), so a plain override would lose the cascade. The
+   next click on a revealed tile falls through to normal navigation, and the
+   peek resets on page navigation or when safe mode is re-enabled. */
+html[data-sfw="1"] .sfw-revealed {
+    filter: none !important;
+    cursor: auto;
 }
 
 /* ── Sidebar-footer toggle button ──────────────────────────────────────────
