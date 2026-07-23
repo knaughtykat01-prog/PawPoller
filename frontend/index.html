@@ -41,6 +41,9 @@
         else if (m === 'off') resolved = '0';
         else resolved = window.matchMedia('(max-width: 768px)').matches ? '1' : '0';
         document.documentElement.dataset.mobile = resolved;
+        // Safe (SFW) mode — read here too so adult covers are blurred before the
+        // first paint, never flashing un-blurred on load. '1' = safe mode on.
+        if (localStorage.getItem('pawpoller-sfw') === '1') document.documentElement.dataset.sfw = '1';
       })();
     </script>
     <!-- Vibe Pack typography (matches pawpoller.pages.dev). Crimson Pro
@@ -80,6 +83,9 @@
     <!-- Retro 2005 full makeover — loaded LAST so its [data-theme] component
          overrides win over the base component CSS. Inert unless the theme is on. -->
     <link rel="stylesheet" href="/css/retro_2005.css?v=__APP_VERSION__">
+    <!-- Safe (SFW) mode — global adult-content blur. After everything so its
+         [data-sfw="1"] blur wins over any theme. Inert unless safe mode is on. -->
+    <link rel="stylesheet" href="/css/safe_mode.css?v=__APP_VERSION__">
     <script src="/js/vendor/chart.umd.min.js"></script>
     <script src="/js/vendor/chartjs-plugin-annotation.min.js"></script>
     <script src="/js/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -213,6 +219,7 @@
 
         <div class="sidebar-footer">
             <div id="poll-status-mini" class="poll-badge">--</div>
+            <button class="btn-sfw-toggle" id="sfw-toggle-btn" type="button" aria-pressed="false" title="Safe mode: off — adult content visible. Click to hide adult content (SFW).">&#128274;</button>
             <button class="btn-help-tour" id="help-tour-btn" type="button" title="Getting-started tour" aria-label="Getting-started tour">?</button>
             <button class="btn-theme-toggle" id="theme-toggle-btn" title="Choose theme (opens Settings → Appearance)">&#127912;</button>
             <button class="btn-logout" id="logout-btn" title="Sign out">&#x2190;</button>

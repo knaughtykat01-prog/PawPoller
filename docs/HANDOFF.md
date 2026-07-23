@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.177.0 — **Fix: story editor toolbar buttons line up again (every theme).**
+**Current version (master):** 2.178.0 — **Safe mode: global one-click SFW/NSFW toggle (Rhys: "across the entire platform").**
+New 🔒 sidebar-footer button (`#sfw-toggle-btn`) blurs every non-`general` cover/thumbnail app-wide. State in
+`localStorage['pawpoller-sfw']`, applied as `html[data-sfw="1"]` **pre-paint** in index.html (no flash), per-device
+(NOT a server setting). New `frontend/css/safe_mode.css` (loaded last): `html[data-sfw="1"] <cover>:not([data-rating="general"])`
+→ `filter:blur(22px)`. Covers now emit `data-rating` (bookshelf `.book-cover`, artwork `.artwork-card-cover` +
+`.artwork-detail-img`, masterpieces `.mp-cover`/`.mp-hero-img`/`.mp-alts`). **Fail-safe:** `:not([data-rating="general"])`
+also matches un-tagged elements → Collections, discovered/scraped tiles, post-card images all blur by default (over-blur
+OK, never leaks). Toggle wiring in app.js init; `.btn-sfw-toggle` style in layout.css. Client-only, no backend/DB, no tests.
+
+**Prior — 2.177.0 — Fix: story editor toolbar buttons line up again (every theme).**
 `.editor-actions-secondary` (CSS/Regenerate/Downloads/Publish/Format + status readouts + format-tabs) had NO desktop
 layout rule → fell back to a block, so its inline-block buttons + ▾ dropdowns baseline-aligned → ragged, staggered row
 (Rhys: "the misalignment... its every theme"). Fix: `.editor-actions-secondary { display:flex; align-items:center;

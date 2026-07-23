@@ -464,9 +464,11 @@ window.Artwork = {
     },
 
     _card(a) {
+        // data-rating drives the SFW/safe-mode blur (safe_mode.css); unknown → blurred.
+        const rAttr = ` data-rating="${this.esc((a.rating || '').toLowerCase())}"`;
         const cover = a.image
-            ? `<div class="artwork-card-cover" style="background-image:url('${this._imgUrl(a.name, a.image)}')"></div>`
-            : `<div class="artwork-card-cover artwork-card-cover--empty">no image</div>`;
+            ? `<div class="artwork-card-cover"${rAttr} style="background-image:url('${this._imgUrl(a.name, a.image)}')"></div>`
+            : `<div class="artwork-card-cover artwork-card-cover--empty"${rAttr}>no image</div>`;
         const rating = a.rating
             ? `<span class="artwork-badge artwork-badge--${this.esc(a.rating)}">${this.esc(a.rating)}</span>` : '';
         const plats = (a.platforms || []).map(c =>
@@ -832,7 +834,7 @@ window.Artwork = {
             return;
         }
         const cover = data.image
-            ? `<img class="artwork-detail-img" src="${this._imgUrl(name, data.image)}" alt="${this.esc(data.title)}">` : '';
+            ? `<img class="artwork-detail-img" data-rating="${this.esc((data.rating || '').toLowerCase())}" src="${this._imgUrl(name, data.image)}" alt="${this.esc(data.title)}">` : '';
         const pubRows = (data.publications || []).map(p => {
             const plat = this._plat(p.platform);
             const st = p.stats || {};

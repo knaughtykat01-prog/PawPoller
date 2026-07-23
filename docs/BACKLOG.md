@@ -70,6 +70,8 @@ split, Option A (**2.142**).
 
 | Item | Shipped |
 |------|---------|
+| **Global SFW/NSFW toggle** ("across the entire platform, can i have a toggle button for sfw and nsfw") | 2.178 — 🔒 sidebar button blurs every non-`general` cover app-wide (Library/Artwork/Masterpieces/Collections/Posts); `data-sfw` pre-paint, per-device, fail-safe (un-tagged → blurred). `safe_mode.css` + `data-rating` on covers |
+| Retro theme: shelf covers cropped/uneven + editor toolbar misaligned | 2.176 (removed `content-visibility` fighting cover `aspect-ratio`) + 2.177 (`.editor-actions-secondary` → flex row; was baseline-staggered in every theme) |
 | "Choose image" button on artwork upload | 2.122 |
 | Editor toolbar buttons wrap + centre on screen | 2.122 (`editor.css`) |
 | SquidgeWorld credential-key lock ("still locked despite redone configs") | 2.122 (`editor_api.py` `sqw_author_* OR sqw_*`) |

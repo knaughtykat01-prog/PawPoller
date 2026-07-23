@@ -189,7 +189,8 @@
 }
 .sidebar.collapsed .poll-badge { display: none; }
 .btn-logout,
-.btn-theme-toggle {
+.btn-theme-toggle,
+.btn-sfw-toggle {
     width: 30px;
     height: 30px;
     flex-shrink: 0;
@@ -204,7 +205,8 @@
     cursor: pointer;
     transition: all 0.15s;
 }
-.btn-theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.btn-theme-toggle:hover,
+.btn-sfw-toggle:hover { border-color: var(--accent); color: var(--accent); }
 .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
 /* The theme button is icon-only in the new footer. */
 .btn-theme-toggle .nav-label { display: none; }

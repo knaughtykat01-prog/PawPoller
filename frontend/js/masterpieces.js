@@ -511,7 +511,7 @@ window.Masterpieces = {
         // encodes once when fetching — mirrors Bookshelf's #/library/work/{name}.
         return `
             <a class="mp-card" href="#/masterpieces/${this.esc(m.name)}">
-                <div class="mp-cover">${this._cover(m, 'mp-cover-img')}</div>
+                <div class="mp-cover" data-rating="${this.esc((m.rating || '').toLowerCase())}">${this._cover(m, 'mp-cover-img')}</div>
                 <div class="mp-body">
                     <div class="mp-name" title="${this.esc(m.title || m.name)}">${this.esc(m.title || m.name)}</div>
                     <div class="mp-meta">${badges}<span class="muted">· ${nSites} site${nSites === 1 ? '' : 's'}</span></div>
@@ -557,8 +557,9 @@ window.Masterpieces = {
 
         const t = m.totals || {};
         const heroUrl = this._canonUrl(name, m.image);
+        const _mpRating = this.esc((m.rating || '').toLowerCase());  // drives SFW blur
         const hero = heroUrl
-            ? `<img class="mp-hero-img" id="mp-hero-img" src="${this.esc(heroUrl)}" alt="${this.esc(m.title || name)}">`
+            ? `<img class="mp-hero-img" id="mp-hero-img" data-rating="${_mpRating}" src="${this.esc(heroUrl)}" alt="${this.esc(m.title || name)}">`
             : `<div class="mp-hero-ph">🖼️</div>`;
         // Variant chips (2.158.0): declared variants render labeled with their OWN
         // stats (the cohort total stays in the headline); pieces without declared
@@ -574,7 +575,7 @@ window.Masterpieces = {
             }))
             : imgs.map((f, i) => ({ u: this._canonUrl(name, f), label: i === 0 ? 'Primary' : `Alt ${i}`, st: '' }));
         const gallery = chips.length > 1
-            ? `<div class="mp-alts">${chips.map((c, i) => `
+            ? `<div class="mp-alts" data-rating="${_mpRating}">${chips.map((c, i) => `
                 <div class="mp-altwrap${i === 0 ? ' is-active' : ''}" data-mp-img="${this.esc(c.u)}"
                      data-vstats="${this.esc(c.st)}" role="button" tabindex="0">
                     <img class="mp-alt" src="${this.esc(c.u)}" alt="" loading="lazy">

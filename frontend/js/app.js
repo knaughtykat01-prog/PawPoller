@@ -417,6 +417,34 @@ const App = {
             this.navigate('/settings/appearance');
         });
 
+        /* Safe (SFW) mode — the 🔒 footer button blurs every adult (non-general)
+           cover across the app. `data-sfw` is already applied pre-paint in
+           index.html; here we just sync the button state on boot and flip it on
+           click, persisting to localStorage. A per-device viewing preference,
+           deliberately NOT a server setting — it's about who's looking at THIS
+           screen right now, not an account-wide policy. */
+        const _sfwBtn = document.getElementById('sfw-toggle-btn');
+        const _syncSfwBtn = () => {
+            if (!_sfwBtn) return;
+            const on = document.documentElement.dataset.sfw === '1';
+            _sfwBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            _sfwBtn.innerHTML = on ? '&#128737;&#65039;' : '&#128274;';  // 🛡️ on / 🔒 off
+            _sfwBtn.title = on
+                ? 'Safe mode: on — adult content is blurred. Click to show all (NSFW).'
+                : 'Safe mode: off — adult content visible. Click to hide adult content (SFW).';
+        };
+        _syncSfwBtn();
+        _sfwBtn?.addEventListener('click', () => {
+            const on = document.documentElement.dataset.sfw !== '1';
+            if (on) document.documentElement.dataset.sfw = '1';
+            else delete document.documentElement.dataset.sfw;
+            try { localStorage.setItem('pawpoller-sfw', on ? '1' : '0'); } catch (e) { /* ignore */ }
+            _syncSfwBtn();
+            window.toast?.info(on
+                ? 'Safe mode on — adult content hidden'
+                : 'Safe mode off — showing all content');
+        });
+
         /* Guided tours — the sidebar "?" runs the tour for wherever you are:
            the getting-started shell tour on the overview, or that page's own
            tour elsewhere (Tour.startHere resolves it from the current hash).

@@ -12,6 +12,37 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.178.0] - 2026-07-23 - Safe mode: one-click SFW toggle across the whole app
+
+> **New 🔒 button in the sidebar hides adult content everywhere at once.** Click it and every cover, thumbnail and
+> preview that isn't rated *General* is blurred — across the Library, Artwork, Masterpieces, Collections and Posts — so
+> you can open PawPoller when you're not alone at the screen. The button glows amber while it's on; click again to show
+> everything. It's per-device and remembers your choice; nothing is deleted or changed, it's just a viewing filter.
+
+A global SFW/NSFW viewing toggle (Rhys: "across the entire platform, can i have a toggle button for sfw and nsfw").
+Rating-aware, not a blunt blur-everything: only content that isn't `general` gets blurred.
+
+- **Toggle button** in the sidebar footer (`#sfw-toggle-btn`, beside the theme + logout buttons). Reflects state
+  (🔒 off / 🛡️ on + amber highlight + `aria-pressed`), flips on click, toasts the change.
+- **State** persists in `localStorage['pawpoller-sfw']` and is applied as `html[data-sfw="1"]` **pre-paint** in
+  `index.html`'s inline boot script, so blurred covers never flash un-blurred on load. Deliberately a **per-device
+  viewing preference, not a server/account setting** — it's about who's looking at *this* screen right now.
+- **Rating-aware blur** (`frontend/css/safe_mode.css`, loaded last so it wins over every theme):
+  `html[data-sfw="1"] <cover>:not([data-rating="general"])` blurs it. Content surfaces now emit
+  `data-rating="<general|mature|adult>"` on their covers — bookshelf `.book-cover`, artwork `.artwork-card-cover` +
+  `.artwork-detail-img`, masterpieces `.mp-cover` + `.mp-hero-img` + `.mp-alts`.
+- **Fail-safe by design:** `:not([data-rating="general"])` also matches elements with *no* `data-rating` — so anything
+  unrated, plus surfaces with no single rating (Collections bundle many pieces; discovered/scraped art tiles; Post-card
+  images), is blurred by default. Safe mode can over-blur, but it never leaks an adult image.
+- Blur is purely visual (`filter: blur(22px) saturate(.75)`): titles, metadata, navigation and clicks all still work;
+  toggling off restores everything instantly.
+
+New file `frontend/css/safe_mode.css` (+ `<link>`), `.btn-sfw-toggle` styling in `layout.css`, toggle wiring in
+`app.js` init, `data-rating` emission in `bookshelf.js` / `artwork.js` / `masterpieces.js`. Cosmetic/client-only, no
+backend or DB change, no tests.
+
+---
+
 ## [2.177.0] - 2026-07-23 - Fix: Story editor toolbar buttons line up again
 
 > **The buttons along the top of the story editor now sit in a neat row.** They'd become staggered and uneven; that's

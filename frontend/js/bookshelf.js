@@ -362,9 +362,12 @@ window.Bookshelf = {
         else if (w.publication_count) ribbon = `<span class="book-ribbon" title="Published">published</span>`;
         const draftTag = (!nPlat && !w.publication_count) ? `<span class="book-draft">Draft</span>` : '';
         const initials = this.esc((w.title || w.name || '?').trim().charAt(0).toUpperCase());
+        // data-rating drives the SFW/safe-mode blur (safe_mode.css). Lower-cased
+        // so "General" matches; missing/unknown → blurred by default in safe mode.
+        const rAttr = ` data-rating="${this.esc((w.rating || '').toLowerCase())}"`;
         const cover = w.thumb_url
-            ? `<div class="book-cover" style="background-image:url('${this.esc(w.thumb_url)}')">${ribbon}</div>`
-            : `<div class="book-cover book-cover--blank"><span class="book-initial">${initials}</span>${ribbon}</div>`;
+            ? `<div class="book-cover"${rAttr} style="background-image:url('${this.esc(w.thumb_url)}')">${ribbon}</div>`
+            : `<div class="book-cover book-cover--blank"${rAttr}><span class="book-initial">${initials}</span>${ribbon}</div>`;
         const rating = w.rating ? `<span class="book-rating">${this.esc(w.rating)}</span>` : '';
         const plats = (w.platforms || []).slice(0, 8).map(c =>
             `<span class="book-plat" title="${this.esc(this._plat(c).label)}">${this._plat(c).emoji || c}</span>`).join('');
