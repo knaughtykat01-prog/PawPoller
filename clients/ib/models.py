@@ -12,7 +12,7 @@ models to match the raw API response, and perform int conversion only when neede
 """
 
 from __future__ import annotations
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LoginResponse(BaseModel):
@@ -45,12 +45,13 @@ class SearchSubmission(BaseModel):
     favorites_count: str = "0"
     comments_count: str = "0"
 
-    class Config:
-        # populate_by_name allows fields to be set using either their Python attribute
-        # name or their alias. This is needed because Pydantic v2 by default only
-        # accepts the alias when parsing from dict/JSON. With this enabled, both
-        # `thumbnail_url_medium_noncustom` and the alias work as field names.
-        populate_by_name = True
+    # populate_by_name allows fields to be set using either their Python attribute
+    # name or their alias. This is needed because Pydantic v2 by default only
+    # accepts the alias when parsing from dict/JSON. With this enabled, both
+    # `thumbnail_url_medium_noncustom` and the alias work as field names.
+    # (ConfigDict, not the class-based `class Config:` — that form is deprecated
+    # in Pydantic v2 and removed in v3.)
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class SearchResponse(BaseModel):

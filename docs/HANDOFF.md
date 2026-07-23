@@ -1,7 +1,12 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.182.0 — **G3 COMPLETE: unified comment Inbox (`#/inbox`) + native reply (bsky/mast/e621).**
+**Current version (master):** 2.183.0 — **Housekeeping: Pydantic v3-proofing.** `clients/ib/models.py` `SearchSubmission`
+class-based `class Config:` → `model_config = ConfigDict(populate_by_name=True)` (the deprecated form is removed in
+Pydantic V3; this was the suite's last warning). Verified attribute+alias population unchanged; import warning-clean
+under `-W error`. Desktop installers are on **v2.182.0** (2.183 is web-only until the next tag).
+
+**Prior — 2.182.0 — G3 COMPLETE: unified comment Inbox (`#/inbox`) + native reply (bsky/mast/e621).**
 Full A0+A1+B build off the audit. **A0:** `database/inbox_queries.py` — `platform_comments` (+`meta` JSON w/ bsky
 uri/cid reply refs) + `inbox_state` (handled flags, no legacy ALTERs); `get_inbox()` UNIONs IB `comments` +
 `fa_comments` (constructed permalinks, mod-deleted hidden) + `platform_comments`; tables via `_run_migrations`.

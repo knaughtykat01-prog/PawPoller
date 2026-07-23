@@ -12,6 +12,18 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.183.0] - 2026-07-23 - Housekeeping: future-proofed a library usage
+
+> **Nothing visible changes.** A small internal cleanup that keeps PawPoller compatible with a future version of one of
+> its libraries. No features, no fixes you'll notice.
+
+The last remaining Pydantic v2 deprecation: `clients/ib/models.py` `SearchSubmission` used the class-based
+`class Config:` form (removed in Pydantic V3) — now `model_config = ConfigDict(populate_by_name=True)`. Verified
+equivalent (attribute name AND alias still populate `thumbnail_url_medium_noncustom`), import is warning-clean under
+`-W error::DeprecationWarning`, and the full-suite warning count drops to zero. 22 IB/poller tests pass.
+
+---
+
 ## [2.182.0] - 2026-07-23 - Inbox: every comment on your work, one place — and reply without leaving
 
 > **New Inbox in the sidebar.** Every comment on your work — across Inkbunny, FurAffinity, Bluesky, Mastodon, e621 and
