@@ -84,6 +84,9 @@ window.Masterpieces = {
 
     async renderGrid(gridEl, filters) {
         if (!gridEl) return;
+        // Tear down the previous window's scroll observer before re-rendering
+        // (filter change / junk toggle re-enters here).
+        if (this._gridObserver) { this._gridObserver.disconnect(); this._gridObserver = null; }
         filters = filters || {};
         this._lastGrid = { el: gridEl, filters };
         await this._loadPersonas();
@@ -135,10 +138,46 @@ window.Masterpieces = {
                     ? 'Nothing junked. Use 🗑 Junk on a masterpiece’s page to move it here.'
                     : 'Every artwork folder is a masterpiece. Create one, or promote a gallery image (★ Master) to link its copies across sites and pool their stats.'}</p></div>`;
         } else {
+            // Windowed render (perf guardrail): only the first page of cards goes
+            // into the DOM; the rest stream in as you scroll. Keeps a 1000s-piece
+            // library from building thousands of image nodes up front. The data is
+            // already fully fetched + filtered above — this only paces the DOM.
             gridEl.innerHTML = `${bar}
-                <div class="mp-grid">${list.map(m => this._card(m)).join('')}</div>`;
+                <div class="mp-grid"></div>
+                <div class="mp-grid-sentinel" aria-hidden="true" style="height:1px"></div>`;
+            this._windowInto(gridEl.querySelector('.mp-grid'),
+                             gridEl.querySelector('.mp-grid-sentinel'), list);
         }
         this._wireGridBar(gridEl);
+    },
+
+    /* Stream `list` into `grid` a page at a time, appending the next page when
+     * `sentinel` nears the viewport. Renders the first page synchronously so the
+     * grid is never empty. */
+    _windowInto(grid, sentinel, list) {
+        const PAGE = 60;
+        let i = 0;
+        const renderNext = () => {
+            const slice = list.slice(i, i + PAGE);
+            if (slice.length) {
+                grid.insertAdjacentHTML('beforeend', slice.map(m => this._card(m)).join(''));
+                i += slice.length;
+            }
+            if (i >= list.length) {
+                if (this._gridObserver) { this._gridObserver.disconnect(); this._gridObserver = null; }
+                if (sentinel) sentinel.remove();
+            }
+        };
+        renderNext();                                   // first page, synchronously
+        if (i < list.length && 'IntersectionObserver' in window) {
+            this._gridObserver = new IntersectionObserver(entries => {
+                if (entries.some(e => e.isIntersecting)) renderNext();
+            }, { rootMargin: '600px' });                // prefetch before it's visible
+            this._gridObserver.observe(sentinel);
+        } else if (i < list.length) {
+            // No IntersectionObserver (very old browser) — render the rest now.
+            while (i < list.length) renderNext();
+        }
     },
 
     _wireGridBar(gridEl) {
@@ -148,8 +187,14 @@ window.Masterpieces = {
             const g = this._lastGrid || {};
             this.renderGrid(g.el || gridEl, g.filters);
         });
-        gridEl.querySelectorAll('[data-mp-restore]').forEach(btn =>
-            btn.addEventListener('click', async (e) => {
+        // Restore is delegated (once per grid element) so cards streamed in later
+        // by _windowInto still get it. gridEl persists across re-renders, hence the
+        // guard against stacking listeners.
+        if (!gridEl.dataset.mpRestoreWired) {
+            gridEl.dataset.mpRestoreWired = '1';
+            gridEl.addEventListener('click', async (e) => {
+                const btn = e.target.closest('[data-mp-restore]');
+                if (!btn || !gridEl.contains(btn)) return;
                 e.preventDefault(); e.stopPropagation();   // card is an <a> — don't navigate
                 btn.disabled = true;
                 try {
@@ -162,7 +207,8 @@ window.Masterpieces = {
                     btn.disabled = false;
                     this._toast('error', 'Restore failed: ' + (err.message || err));
                 }
-            }));
+            });
+        }
     },
 
     /* ── Duplicate finder / merge (2.144.0) ─────────────────────

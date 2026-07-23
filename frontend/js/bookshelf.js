@@ -274,6 +274,8 @@ window.Bookshelf = {
     _paint() {
         const grid = document.getElementById('shelf-grid');
         if (!grid) return;
+        // Tear down the previous window's scroll observer (segment/filter change).
+        if (this._gridObserver) { this._gridObserver.disconnect(); this._gridObserver = null; }
         // Masterpieces are their own managed surface (master-record-per-image, from
         // /api/masterpieces) — hand the grid to the Masterpieces module, passing the
         // shared shelf filters so persona/search/sort keep working across segments.
@@ -307,7 +309,41 @@ window.Bookshelf = {
             return;
         }
         grid.className = 'shelf-grid';
-        grid.innerHTML = list.map(w => this._book(w)).join('');
+        grid.innerHTML = '';
+        this._windowInto(grid, list);
+    },
+
+    /* Stream books into the shelf grid a page at a time (perf guardrail): the
+     * first page renders now, the rest as you scroll — so a 1000s-work library
+     * doesn't build every cover node up front. The sentinel is a full-row grid
+     * item so it never steals a book's cell. */
+    _windowInto(grid, list) {
+        const PAGE = 60;
+        let i = 0;
+        const sentinel = document.createElement('div');
+        sentinel.setAttribute('aria-hidden', 'true');
+        sentinel.style.cssText = 'grid-column:1/-1;height:1px';
+        const renderNext = () => {
+            const slice = list.slice(i, i + PAGE);
+            if (slice.length) {
+                sentinel.insertAdjacentHTML('beforebegin', slice.map(w => this._book(w)).join(''));
+                i += slice.length;
+            }
+            if (i >= list.length) {
+                if (this._gridObserver) { this._gridObserver.disconnect(); this._gridObserver = null; }
+                sentinel.remove();
+            }
+        };
+        grid.appendChild(sentinel);
+        renderNext();                                   // first page, synchronously
+        if (i < list.length && 'IntersectionObserver' in window) {
+            this._gridObserver = new IntersectionObserver(es => {
+                if (es.some(e => e.isIntersecting)) renderNext();
+            }, { rootMargin: '600px' });
+            this._gridObserver.observe(sentinel);
+        } else {
+            while (i < list.length) renderNext();       // no observer → render all
+        }
     },
 
     /* A single "book" on the shelf. The cover is the hero; a small gilt ribbon

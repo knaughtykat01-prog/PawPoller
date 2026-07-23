@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.166.0 — **Quick Publish: drop an image, pick a persona, go (backlog U, product-analysis easy-win).**
+**Current version (master):** 2.167.0 — **Windowed grids: Library + Masterpieces stay smooth at any size (completes backlog X).**
+2.165 batched the DB rollups (O(platforms)); this closes the browser half — both grids built every card + cover `<img>`
+up front, janking a 1000s-piece library. **Windowed render (frontend only):** paint the first ~60 cards, then stream the
+rest a page at a time via an `IntersectionObserver` sentinel (600px prefetch) as you scroll. Data is still fully
+fetched/filtered/sorted first (cheap post-batching) so search/sort/persona are unchanged — only DOM insertion is paced.
+`masterpieces.js` + `bookshelf.js` each get `_windowInto`; observer torn down on re-render; Masterpieces **Restore**
+moved to event delegation so streamed-in cards keep it; bookshelf sentinel is a full-row grid item. No-IO fallback
+renders all. **X DONE** (parked as marginal: a DB cache of the per-folder `masterpiece.json` reads — ~tens of ms,
+OS-cached, not worth the invalidation surface). Frontend only → baseline tests unchanged (625).
+
+**Prior — 2.166.0 — Quick Publish: drop an image, pick a persona, go (backlog U, product-analysis easy-win).**
 One-screen fast path for posting art. Key insight: **a persona already IS the preset** — its connected accounts define
 which art sites + which account — so NO new storage/endpoints; it's a frontend screen over the existing artwork
 upload/publish/schedule APIs. New `#/artwork/quick` (`Artwork.renderQuick`): drop/pick image → persona chips (from

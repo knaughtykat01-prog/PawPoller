@@ -12,6 +12,33 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.167.0] - 2026-07-23 - Big grids stay smooth at any size (windowed render)
+
+> **The Library and Masterpieces grids now stay smooth even with thousands of pieces.** They fill in a screenful at a
+> time as you scroll instead of drawing everything at once, so opening a huge library no longer stutters. Nothing about
+> how you use them changes.
+
+Completes backlog X. 2.165 killed the *database* fan-out (batched rollups → O(platforms)); this closes the other half —
+the *browser* side. Both big grids built every card's DOM (and every cover `<img>`) up front, so a 1000s-piece library
+janked the render even though the data arrived fast.
+
+**Windowed render (frontend only).** Both grids now paint the first ~60 cards synchronously, then stream the rest a page
+at a time via an `IntersectionObserver` sentinel (600px prefetch margin) as you scroll. The data is still fetched +
+filtered + sorted in full first (cheap after the batching), so search/sort/persona filters are unchanged — this only
+paces DOM insertion.
+- `frontend/js/masterpieces.js`: `_windowInto(grid, sentinel, list)`; the observer is torn down on every re-render
+  (filter/junk-toggle). The Junk **Restore** button moved to **event delegation** (once per grid element) so cards
+  streamed in later still get it.
+- `frontend/js/bookshelf.js`: same `_windowInto` for the Library shelf; its sentinel is a full-row grid item
+  (`grid-column: 1 / -1`) so it never steals a book's cell.
+- Graceful fallback: no `IntersectionObserver` (ancient browser) → render everything at once, as before.
+
+**Deliberately parked (marginal):** a DB-backed cache of the per-folder `masterpiece.json` reads. At realistic sizes the
+O(N) file reads are ~tens of ms and OS-cached; a cache would add real write-invalidation surface for little gain. The
+two things that actually scaled badly — the query fan-out and the DOM node count — are both handled now, so X is done.
+
+---
+
 ## [2.166.0] - 2026-07-23 - Quick Publish: drop an image, pick a persona, go
 
 > **New one-screen way to post art fast.** Open **⚡ Quick Publish** (in the Create menu), drop an image, tap which
