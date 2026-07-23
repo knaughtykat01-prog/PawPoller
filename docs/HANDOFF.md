@@ -1,7 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.173.0 — **Retro 2005 → FULL makeover (Rhys: "every single surface, completely reconfiged").**
+**Current version (master):** 2.174.0 — **Retro 2005: full-app coverage (every module, no page left modern).**
+Follow-up to 2.173's makeover, extending it to every module's own components. **Universal square + de-blur** —
+`html[data-theme="retro_2005"] * { border-radius:0; backdrop-filter:none }` — squares + de-glasses the WHOLE app in one
+rule (also a render-cost win). Then a big beveled-window pass over every module panel (Library/book, Masterpieces mp-*,
+Accounts acct-*, Laurels lr-*, Collections, Posts, guides, diagnostics, editor, promo, imagetool, reconnect, cmdk), plus
+boxy badges/chips/status pills, inset photo-frame covers, and beveled module toolbars. All in `frontend/css/retro_2005.css`,
+theme-scoped, layout untouched. Verified the core visual approach via chrome-devtools screenshots (2.173); the 2.174
+additions reuse the same proven bevel/shadow patterns. Cosmetic, no tests.
+**NEXT (Rhys asked):** an app-wide "feel quicker" / GPU-acceleration pass (snappy transitions, GPU compositing via
+transform/opacity, `content-visibility:auto` on long grids, trimming expensive effects) — applies to ALL themes, not
+just retro; not started yet.
+
+**Prior — 2.173.0 — Retro 2005 → FULL makeover (Rhys: "every single surface, completely reconfiged").**
 2.172.0 was a light token retint; this makes it a total early-2000s-web transformation. **New
 `frontend/css/retro_2005.css`** — a comprehensive component skin scoped to `html[data-theme="retro_2005"]`, modelled on
 `brut.css` and **loaded LAST in index.html** so it beats the base component CSS (the 2.172 mistake: rules lived in

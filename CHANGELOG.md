@@ -12,6 +12,32 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.174.0] - 2026-07-23 - Retro 2005: every single page, no exceptions
+
+> **Retro 2005 now covers every page.** The makeover reaches into every corner of the app — the Library shelf,
+> Masterpieces, Accounts, Laurels, Collections, Posts, the guides, diagnostics — all of it. Every panel is a beveled
+> window, every badge is a boxy tag, every cover has an inset frame, nothing is round, and nothing is glassy.
+
+Follow-up to 2.173's makeover. That covered the shared surfaces (cards, buttons, tables, sidebar…); this extends it to
+every module's own components so no screen is left looking modern.
+
+- **Universal square + de-blur:** one rule (`html[data-theme="retro_2005"] *`) zeroes `border-radius` and kills
+  `backdrop-filter` across the whole app, so even a surface this file never names individually still reads
+  period-correct (boxy corners, no glass). This also removes every blur effect — a genuine rendering-cost win.
+- **Every module's panels → beveled windows** (border + hard shadow; backgrounds already come from the retro token
+  palette): `.work-card`, `.book`, `.acct-card`/`.acct-plat-card`/`.acct-section`, `.artwork-*` panels, `.coll-card`,
+  `.comment-card`, `.goal-card`, `.guide-hub-card`, `.diag-summary-card`, `.mp-card`/`.mp-hero`/`.mp-dup-*`,
+  `.post-card`/`.post-compose`, the Laurels `.lr-hero`/`.lr-persona`/`.lr-medal`/`.lr-rhythm-card`, the command palette,
+  editor panels, promo + image-tool panels, reconnect, and more. Their first heading becomes a blue title bar.
+- **Every badge / chip / status pill → a boxy tag** (`.badge`, `.artwork-status`, `.drift-badge`, `.format-badge`,
+  `.active-pill`, `[class^="chip-"]`, `.book-ribbon`, …). **Image covers/thumbnails → inset photo frames**
+  (`.book-cover`, `.mp-cover`, `.artwork-card-cover`, `.coll-cover`, …). **Module toolbars / segmented controls / grid
+  bars → beveled bars.** Laurels progress bar sunken; ledger nodes squared.
+
+All still theme-scoped in `frontend/css/retro_2005.css`; layout metrics untouched. Cosmetic, no tests.
+
+---
+
 ## [2.173.0] - 2026-07-23 - Retro 2005, now a FULL makeover
 
 > **Retro 2005 is now a total transformation, not just a colour swap.** Switch it on (Settings → Appearance) and the
