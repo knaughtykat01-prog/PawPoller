@@ -847,7 +847,7 @@ const App = {
             if (!active && parts[0] === 'posting' && parts[1] && parts[1] !== 'queue'
                 && parts[1] !== 'log' && href === '#/library') active = true;
             if (!active && parts[0] === 'artwork' && parts[1] && parts[1] !== 'new'
-                && href === '#/library') active = true;
+                && parts[1] !== 'quick' && href === '#/library') active = true;
             /* Posts sub-pages (contacts) keep "Posts" (Publish) lit; #/posts/new is
                the Create → New Post item, so it keeps its own highlight. */
             if (!active && parts[0] === 'posts' && parts[1] && parts[1] !== 'new' && href === '#/posts') active = true;
@@ -1101,6 +1101,8 @@ const App = {
             // Library's Discovered segment. Artwork's other pages (new / detail /
             // log / ignored) all survive below.
             window.location.replace('#/library/type/artwork');
+        } else if (parts[0] === 'artwork' && parts[1] === 'quick') {
+            if (window.Artwork) window.Artwork.renderQuick();
         } else if (parts[0] === 'artwork' && parts[1] === 'new') {
             if (window.Artwork) window.Artwork.renderUpload();
         } else if (parts[0] === 'artwork' && parts[1] === 'image' && parts[2]) {
@@ -3172,6 +3174,7 @@ const App = {
      * so a drag never fires a nav. */
     _quickLinksHtml() {
         const links = [
+            { nav: '#/artwork/quick', icon: '⚡', label: 'Quick publish' },
             { nav: '#/editor', icon: '✍️', label: 'New story' },
             { nav: '#/artwork/new', icon: '\u{1F5BC}️', label: 'New artwork' },
             { nav: '#/posts/new', icon: '\u{1F4AC}', label: 'New post' },

@@ -514,7 +514,8 @@ window.Artwork = {
         app.innerHTML = `
             <div class="page-header">
                 <h1>New artwork</h1>
-                <p class="muted"><a href="#/library/type/artwork">← Back to Library</a></p>
+                <p class="muted"><a href="#/library/type/artwork">← Back to Library</a>
+                    · <a href="#/artwork/quick">⚡ Quick publish</a> for the one-screen version</p>
             </div>
             <div class="artwork-upload">
                 <div class="artwork-upload-col">
@@ -1189,5 +1190,384 @@ window.Artwork = {
                 this._toast('error', 'Restore failed: ' + err.message);
             }
         });
+    },
+
+    /* ── Quick Publish (#/artwork/quick) ─────────────────────────
+     * The 80% case on one screen: drop an image, pick a persona, publish.
+     * A persona IS the preset — its accounts define which art sites to post to
+     * and as which account. Rating + tags (and any platforms you switch off) are
+     * remembered per persona in localStorage, so the second time you pick a
+     * persona it comes back configured. Reuses the same upload + publish
+     * endpoints as the full form; the full form (#/artwork/new) stays the escape
+     * hatch for per-platform overrides.
+     */
+
+    _qpState: null,   // { map: {presetId: {platform: account_id}}, personas, presetId }
+
+    _qpPresetKey(id) { return 'pp-quickpub-preset:' + id; },
+
+    _qpLoadPreset(id) {
+        try { return JSON.parse(localStorage.getItem(this._qpPresetKey(id))) || {}; }
+        catch (e) { return {}; }
+    },
+    _qpSavePreset(id, data) {
+        try { localStorage.setItem(this._qpPresetKey(id), JSON.stringify(data)); } catch (e) { /* quota */ }
+    },
+
+    /* Group enabled art accounts into per-persona presets + an "All accounts"
+     * catch-all. Each preset maps a platform → the account to post as (the
+     * persona's default account on that platform, else its first). */
+    _qpBuildMap(accounts) {
+        const artset = new Set(this._PLATFORMS);
+        const enabled = (accounts || []).filter(a => a.enabled && artset.has(a.platform));
+        const per = {};        // presetId -> {platform: account_id}
+        const all = {};
+        const put = (bag, a) => {
+            if (!(a.platform in bag) || a.is_default) bag[a.platform] = a.account_id;
+        };
+        for (const a of enabled) {
+            const pid = a.persona_id ? ('p' + a.persona_id) : null;
+            if (pid) { (per[pid] = per[pid] || {}); put(per[pid], a); }
+            put(all, a);
+        }
+        return { per, all };
+    },
+
+    async renderQuick() {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="page-header">
+                <h1>⚡ Quick publish</h1>
+                <p class="muted">Drop an image, pick who's posting, go. Need per-site tweaks?
+                    <a href="#/artwork/new">Use the full form</a>.</p>
+            </div>
+            <div class="qp-wrap" style="max-width:640px;display:flex;flex-direction:column;gap:1rem;">
+                <div class="card">
+                    <div id="qp-drop" class="artwork-drop" tabindex="0">
+                        <img id="qp-preview" hidden style="max-width:100%;max-height:340px;border-radius:8px;">
+                        <div id="qp-drop-inner" class="artwork-drop-inner">
+                            <div class="artwork-drop-ico">🖼️</div>
+                            <div>Drop an image here or <label for="qp-file" style="text-decoration:underline;cursor:pointer;color:var(--accent);">choose a file</label>
+                                ${this._isDesktop() ? '· <button type="button" class="btn btn-sm" id="qp-pick-local">Pick from computer</button>' : ''}</div>
+                            <div class="artwork-drop-hint muted">PNG, JPG, GIF or WebP</div>
+                        </div>
+                        <input type="file" id="qp-file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+                    </div>
+                    <button type="button" class="btn btn-sm" id="qp-remove" hidden style="margin-top:.5rem;">Remove image</button>
+                    <label class="field" style="margin-top:.6rem;">Title
+                        <input type="text" id="qp-title" placeholder="(defaults to the file name)">
+                    </label>
+                </div>
+
+                <div class="card">
+                    <h3 style="margin-top:0;">Publish as</h3>
+                    <div id="qp-personas" class="qp-personas" style="display:flex;flex-wrap:wrap;gap:.4rem;"></div>
+                    <div style="margin-top:.7rem;">
+                        <div class="muted" style="font-size:.85rem;margin-bottom:.3rem;">Going to (tap to toggle):</div>
+                        <div id="qp-platforms" class="qp-platforms" style="display:flex;flex-wrap:wrap;gap:.4rem;"></div>
+                    </div>
+                    <div class="field-row" style="margin-top:.7rem;display:flex;gap:.8rem;flex-wrap:wrap;">
+                        <label class="field" style="flex:0 0 auto;">Rating
+                            <select id="qp-rating">
+                                <option value="general">General</option>
+                                <option value="mature">Mature</option>
+                                <option value="adult" selected>Adult</option>
+                            </select>
+                        </label>
+                        <label class="field" style="flex:1 1 200px;">Tags <span class="muted">(comma-separated)</span>
+                            <textarea id="qp-tags" rows="2" placeholder="tag one, tag two"></textarea>
+                        </label>
+                    </div>
+                    <button type="button" class="btn btn-sm" id="qp-tag-browse">🏷️ Browse tag library</button>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:.8rem;">
+                    <button class="btn btn-primary" id="qp-go" style="padding:.6rem 1.4rem;font-size:1.02rem;">Publish now</button>
+                    <button class="btn btn-outline" id="qp-schedule">🕐 Schedule…</button>
+                    <span id="qp-msg" class="muted"></span>
+                </div>
+                <div class="schedule-form" id="qp-schedule-form" style="display:none">
+                    <div class="schedule-form-inner">
+                        <label class="schedule-label" for="qp-schedule-dt">Publish at:</label>
+                        <input type="datetime-local" class="schedule-datetime" id="qp-schedule-dt">
+                        <div class="schedule-form-actions">
+                            <button class="btn btn-sm btn-primary" id="qp-schedule-confirm">Confirm schedule</button>
+                            <button class="btn btn-sm btn-outline" id="qp-schedule-cancel">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        this._pendingFile = this._pendingPath = null;
+        this._wireQuick();
+        await this._loadQuickPresets();
+    },
+
+    _wireQuick() {
+        const file = document.getElementById('qp-file');
+        const drop = document.getElementById('qp-drop');
+        file.addEventListener('change', () => {
+            if (file.files && file.files[0]) this._qpSetFile(file.files[0]);
+        });
+        ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => {
+            e.preventDefault(); drop.classList.add('dragover');
+        }));
+        ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => {
+            e.preventDefault(); drop.classList.remove('dragover');
+        }));
+        drop.addEventListener('drop', e => {
+            const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+            if (f) this._qpSetFile(f);
+        });
+        const local = document.getElementById('qp-pick-local');
+        if (local) local.addEventListener('click', () => this._qpPickDesktop());
+        document.getElementById('qp-remove').addEventListener('click', () => this._qpClearFile());
+        document.getElementById('qp-tag-browse').addEventListener('click', () => this._openTagLibrary('qp-tags'));
+        document.getElementById('qp-go').addEventListener('click', () => this._qpPublish(null));
+
+        const sform = document.getElementById('qp-schedule-form');
+        const sdt = document.getElementById('qp-schedule-dt');
+        document.getElementById('qp-schedule').addEventListener('click', () => {
+            const showing = sform.style.display !== 'none';
+            sform.style.display = showing ? 'none' : '';
+            if (!showing && !sdt.value) sdt.value = this._defaultScheduleLocal();
+        });
+        document.getElementById('qp-schedule-cancel').addEventListener('click', () => { sform.style.display = 'none'; });
+        document.getElementById('qp-schedule-confirm').addEventListener('click', () => this._qpPublish(sdt.value));
+
+        const title = document.getElementById('qp-title');
+        title.dataset.touched = '';
+        title.addEventListener('input', () => { title.dataset.touched = '1'; });
+    },
+
+    _qpSetFile(f) {
+        if (!/\.(png|jpe?g|gif|webp)$/i.test(f.name)) {
+            this._toast('error', 'Please choose a PNG, JPG, GIF or WebP image.'); return;
+        }
+        this._pendingFile = f; this._pendingPath = null;
+        if (this._previewUrl) URL.revokeObjectURL(this._previewUrl);
+        this._previewUrl = URL.createObjectURL(f);
+        this._qpShowPreview(this._previewUrl, f.name);
+    },
+    async _qpPickDesktop() {
+        try {
+            const r = await window.pywebview.api.open_image_dialog();
+            const path = Array.isArray(r) ? r[0] : r;
+            if (!path) return;
+            this._pendingPath = path; this._pendingFile = null;
+            this._qpShowPreview('', String(path).split(/[\\/]/).pop());
+        } catch (e) { this._toast('error', 'File dialog failed: ' + (e.message || e)); }
+    },
+    _qpShowPreview(url, label) {
+        const img = document.getElementById('qp-preview');
+        const inner = document.getElementById('qp-drop-inner');
+        const title = document.getElementById('qp-title');
+        if (title && !title.dataset.touched && !title.value) {
+            title.value = (label || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
+        }
+        if (url) { img.src = url; img.hidden = false; inner.style.display = 'none'; }
+        else {
+            img.hidden = true; inner.style.display = '';
+            inner.querySelector('.artwork-drop-hint').textContent = 'Selected: ' + (label || 'file');
+        }
+        document.getElementById('qp-remove').hidden = false;
+    },
+    _qpClearFile() {
+        this._pendingFile = this._pendingPath = null;
+        if (this._previewUrl) { URL.revokeObjectURL(this._previewUrl); this._previewUrl = null; }
+        const img = document.getElementById('qp-preview');
+        const inner = document.getElementById('qp-drop-inner');
+        if (img) { img.hidden = true; img.src = ''; }
+        if (inner) {
+            inner.style.display = '';
+            const h = inner.querySelector('.artwork-drop-hint');
+            if (h) h.textContent = 'PNG, JPG, GIF or WebP';
+        }
+        document.getElementById('qp-file').value = '';
+        document.getElementById('qp-remove').hidden = true;
+    },
+
+    async _loadQuickPresets() {
+        const chipBox = document.getElementById('qp-personas');
+        let personas = [], accounts = [];
+        try {
+            const [pRes, aRes] = await Promise.all([API.getPersonas(), API.getAccounts()]);
+            personas = (pRes && pRes.personas) || [];
+            accounts = (aRes && aRes.accounts) || [];
+        } catch (e) { /* fall through to empty */ }
+
+        const { per, all } = this._qpBuildMap(accounts);
+        // Presets to offer: each persona that has ≥1 art account, then "All accounts".
+        const options = [];
+        for (const p of personas) {
+            const id = 'p' + p.persona_id;
+            if (per[id] && Object.keys(per[id]).length) {
+                options.push({ id, label: p.name, color: p.color || '#6c8cff', map: per[id] });
+            }
+        }
+        if (Object.keys(all).length) {
+            options.push({ id: 'all', label: 'All accounts', color: '#888', map: all });
+        }
+
+        if (!options.length) {
+            chipBox.innerHTML = `<p class="muted">No art accounts connected yet.
+                <a href="#/accounts">Connect an account</a> to publish, or
+                <a href="#/artwork/new">use the full form</a>.</p>`;
+            document.getElementById('qp-go').disabled = true;
+            document.getElementById('qp-schedule').disabled = true;
+            return;
+        }
+
+        this._qpState = { options, presetId: null };
+        chipBox.innerHTML = options.map(o =>
+            `<button type="button" class="qp-persona-chip" data-preset="${o.id}"
+                style="display:inline-flex;align-items:center;gap:.4rem;padding:.35rem .7rem;border-radius:999px;
+                border:1px solid var(--border);background:var(--surface);cursor:pointer;">
+                <span style="width:10px;height:10px;border-radius:50%;background:${this.esc(o.color)};"></span>
+                ${this.esc(o.label)}
+                <span class="muted" style="font-size:.8rem;">${Object.keys(o.map).length}</span>
+            </button>`).join('');
+        chipBox.querySelectorAll('[data-preset]').forEach(btn =>
+            btn.addEventListener('click', () => this._qpSelectPreset(btn.dataset.preset)));
+
+        // Restore the last-used preset, else the first option.
+        let last = null;
+        try { last = localStorage.getItem('pp-quickpub-last'); } catch (e) { /* ignore */ }
+        const start = options.find(o => o.id === last) ? last : options[0].id;
+        this._qpSelectPreset(start);
+    },
+
+    _qpSelectPreset(presetId) {
+        const st = this._qpState;
+        const opt = st && st.options.find(o => o.id === presetId);
+        if (!opt) return;
+        st.presetId = presetId;
+
+        document.querySelectorAll('#qp-personas .qp-persona-chip').forEach(c => {
+            const on = c.dataset.preset === presetId;
+            c.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
+            c.style.background = on ? 'color-mix(in srgb, var(--accent) 16%, var(--surface))' : 'var(--surface)';
+            c.style.fontWeight = on ? '600' : '400';
+        });
+
+        const saved = this._qpLoadPreset(presetId);
+        if (saved.rating) document.getElementById('qp-rating').value = saved.rating;
+        if (typeof saved.tags === 'string') document.getElementById('qp-tags').value = saved.tags;
+        const off = new Set(saved.off || []);
+
+        // Platform toggle chips = this preset's platforms, in the hub's display order.
+        const codes = this._PLATFORMS.filter(c => c in opt.map);
+        const box = document.getElementById('qp-platforms');
+        box.innerHTML = codes.map(code => {
+            const p = this._plat(code);
+            const on = !off.has(code);
+            return `<button type="button" class="qp-plat-chip" data-plat="${code}" data-on="${on ? '1' : '0'}"
+                style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .65rem;border-radius:999px;
+                border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};
+                background:${on ? 'color-mix(in srgb, var(--accent) 16%, var(--surface))' : 'var(--surface)'};
+                opacity:${on ? '1' : '.5'};cursor:pointer;">
+                ${p.emoji || ''} ${this.esc(p.label)}</button>`;
+        }).join('');
+        box.querySelectorAll('[data-plat]').forEach(chip =>
+            chip.addEventListener('click', () => {
+                const on = chip.dataset.on !== '1';
+                chip.dataset.on = on ? '1' : '0';
+                chip.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
+                chip.style.background = on ? 'color-mix(in srgb, var(--accent) 16%, var(--surface))' : 'var(--surface)';
+                chip.style.opacity = on ? '1' : '.5';
+            }));
+    },
+
+    _qpCheckedPlatforms() {
+        return Array.from(document.querySelectorAll('#qp-platforms .qp-plat-chip'))
+            .filter(c => c.dataset.on === '1').map(c => c.dataset.plat);
+    },
+
+    /* Publish (or schedule when a datetime-local value is passed). Reuses the
+     * artwork upload + publish/schedule endpoints — the persona's map supplies
+     * the per-platform account. */
+    async _qpPublish(scheduledLocal) {
+        const msg = document.getElementById('qp-msg');
+        const st = this._qpState;
+        if (!st || !st.presetId) { msg.textContent = 'Pick who’s posting.'; return; }
+        if (!this._pendingFile && !this._pendingPath) { msg.textContent = 'Choose an image first.'; return; }
+        const platforms = this._qpCheckedPlatforms();
+        if (!platforms.length) { msg.textContent = 'Keep at least one site ticked.'; return; }
+
+        let scheduledIso = null;
+        if (scheduledLocal) {
+            const when = new Date(scheduledLocal);
+            if (isNaN(when.getTime())) { msg.textContent = 'Invalid date/time.'; return; }
+            if (when.getTime() < Date.now()) { msg.textContent = 'Pick a time in the future.'; return; }
+            scheduledIso = when.toISOString();
+        }
+
+        const opt = st.options.find(o => o.id === st.presetId);
+        const rating = document.getElementById('qp-rating').value;
+        const tagsRaw = document.getElementById('qp-tags').value;
+        const tags = this._parseTags(tagsRaw);
+        // Always send a real title — fall back to the file name so an emptied
+        // field can't create an untitled folder.
+        let title = (document.getElementById('qp-title').value || '').trim();
+        if (!title) {
+            const fname = this._pendingFile ? this._pendingFile.name
+                : (this._pendingPath ? String(this._pendingPath).split(/[\\/]/).pop() : '');
+            title = (fname || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'Untitled';
+        }
+        const meta = {
+            title, description: '', rating,
+            tags: tags.length ? { default: tags } : {}, platforms,
+        };
+        const accountIds = {};
+        for (const code of platforms) accountIds[code] = opt.map[code];
+
+        const go = document.getElementById('qp-go');
+        const sch = document.getElementById('qp-schedule');
+        go.disabled = sch.disabled = true;
+        msg.textContent = scheduledIso ? 'Scheduling…' : 'Publishing…';
+
+        let name;
+        try {
+            if (this._pendingPath) {
+                name = (await API.createArtworkFromPath({ path: this._pendingPath, metadata: meta })).name;
+            } else {
+                name = (await API.uploadArtwork(this._pendingFile, meta, null,
+                    pct => { msg.textContent = `Uploading… ${pct}%`; })).name;
+            }
+        } catch (err) {
+            msg.textContent = 'Upload failed: ' + err.message;
+            go.disabled = sch.disabled = false;
+            return;
+        }
+
+        // Remember this preset's choices + that it was the last one used.
+        this._qpSavePreset(st.presetId, {
+            rating, tags: tagsRaw,
+            off: this._PLATFORMS.filter(c => (c in opt.map) && !platforms.includes(c)),
+        });
+        try { localStorage.setItem('pp-quickpub-last', st.presetId); } catch (e) { /* ignore */ }
+
+        try {
+            if (scheduledIso) {
+                let ok = 0, fail = 0;
+                for (const code of platforms) {
+                    try {
+                        await API.scheduleArtwork({ artwork_name: name, platform: code,
+                            scheduled_at: scheduledIso, account_id: accountIds[code] });
+                        ok++;
+                    } catch (e) { fail++; }
+                }
+                this._toast(fail ? 'error' : 'success',
+                    `Scheduled ${ok} site${ok === 1 ? '' : 's'}` + (fail ? `, ${fail} failed` : ''));
+            } else {
+                const res = await API.publishArtwork({ artwork_name: name, platforms, account_ids: accountIds });
+                const ok = res.successes || 0, fail = res.failures || 0;
+                this._toast(fail ? 'error' : 'success', `Published: ${ok} ok, ${fail} failed`);
+            }
+            window.location.hash = `#/artwork/image/${encodeURIComponent(name)}`;
+        } catch (err) {
+            msg.textContent = 'Saved, but publish failed: ' + err.message;
+            go.disabled = sch.disabled = false;
+        }
     },
 };

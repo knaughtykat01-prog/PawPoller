@@ -1,7 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.165.0 — **Perf guardrails: batch the big list-screen rollups (backlog X, public-readiness blocker).**
+**Current version (master):** 2.166.0 — **Quick Publish: drop an image, pick a persona, go (backlog U, product-analysis easy-win).**
+One-screen fast path for posting art. Key insight: **a persona already IS the preset** — its connected accounts define
+which art sites + which account — so NO new storage/endpoints; it's a frontend screen over the existing artwork
+upload/publish/schedule APIs. New `#/artwork/quick` (`Artwork.renderQuick`): drop/pick image → persona chips (from
+`GET /api/accounts` grouped by `persona_id`, + an "All accounts" option) pre-select that persona's art platforms +
+per-platform account (default, else first) → toggle sites off with a tap → **Publish now** or **🕐 Schedule…** (reuses
+2.163 artwork scheduler). **Per-persona memory in localStorage** (rating + tags + switched-off platforms; last-used
+persona reselected). Entry points: Create nav (first, ⚡), Overview Quick-actions widget, New-Artwork form link. Frontend
+ONLY — `artwork.js` (screen), `app.js` (route + quick-link + nav highlight), `index.html` (nav). Selected-chip tint uses
+`color-mix(var(--accent))` (theme-aware). No backend change → no new tests (reuses tested endpoints). **Deferred:** named
+multi-presets; a quick path for stories/posts.
+
+**Prior — 2.165.0 — Perf guardrails: batch the big list-screen rollups (backlog X, public-readiness blocker).**
 Two list endpoints had an N+1 fan-out. **Masterpieces grid** (`GET /api/masterpieces`): per piece it ran `summarize` →
 one `_location_from_submission` **per member**, recomputed the persona map, AND did an `ensure_indexed` **write per
 name** (a read taking a write lock N times) — prod measured ~460 queries + ~196 writes + 196 file reads per load (196

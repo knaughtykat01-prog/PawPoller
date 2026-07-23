@@ -4,7 +4,7 @@
 sessions. Update this **every time** a request lands or an item ships. Newest requests go at the top of "Open".
 Cross-reference shipped items to their `CHANGELOG.md` version.
 
-_Last updated: 2026-07-23 (after 2.165.0 — perf guardrails: batched the Masterpieces + Works list rollups, O(members)→O(platforms))._
+_Last updated: 2026-07-23 (after 2.166.0 — Quick Publish: one-screen drop-image → pick-persona → go for artwork)._
 
 Legend: 🔴 open · 🟡 in progress · 🟢 done · ⚪ deferred/parked
 
@@ -22,7 +22,7 @@ split, Option A (**2.142**).
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| U | **Quick-publish path** — drop image → pick per-persona preset → go; one screen for the 80% case | 🔴 | From the product analysis "easy wins" (Rhys: add to list 2026-07-19) |
+| U | ~~**Quick-publish path** — drop image → pick per-persona preset → go; one screen for the 80% case~~ | 🟢 **DONE 2.166** | From the product analysis "easy wins". `#/artwork/quick` (`Artwork.renderQuick`): a persona IS the preset (its accounts → art platforms + per-platform account). Drop image → persona chip → toggle sites → Publish now / 🕐 Schedule. Per-persona rating/tags/off-platforms remembered in localStorage; last-used persona reselected. Entry: Create nav (⚡, first), Overview Quick-actions, New-Artwork link. **Frontend only** — reuses the artwork upload/publish/schedule endpoints, no backend change. Deferred: named multi-presets, quick path for stories/posts |
 | V | **Discovered triage inbox** — one card at a time: keep / variant-of / ignore / →Posts; collapses discovered/ignored/masters/suggestions into one flow | 🔴 | Analysis easy-win. Also: discovered tiles should FLAG story/writing submissions (see bug fix 2.158.1) instead of offering artwork import |
 | W | **Proactive credential-expiry warnings** ("your Mastodon token expires in 6 days") where platforms expose it | 🔴 | Analysis easy-win; today's amber states are reactive-after-failure |
 | X | **Perf guardrails** — pagination + cached rollups on the list endpoints (Masterpieces list = live rollup × N) | 🟡 **Batched 2.165** | MUST land before any user with 1000s of works (public-readiness prerequisite). **Done (2.165):** killed the N+1 fan-out on both hot list endpoints. Masterpieces `summarize` was 1 submission query PER MEMBER + a write PER NAME (~460q+196w/load on prod) → **batched** `summarize_many` (bulk members + `_submission_rows_bulk` one query/platform + `ensure_indexed_bulk`) = ~20q+≤1w, O(platforms) not O(members). `/api/works` `get_publications_with_stats` batched the same way. Pure speedup (equivalence + query-bound tests). Added optional `limit`/`offset` + `total`. **Still open (lower priority):** disk = one `masterpiece.json`/folder read (O(N) files); frontend consuming `limit`/`offset` + server-side sort/filter for TRUE pagination |

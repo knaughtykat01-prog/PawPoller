@@ -12,6 +12,42 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.166.0] - 2026-07-23 - Quick Publish: drop an image, pick a persona, go
+
+> **New one-screen way to post art fast.** Open **⚡ Quick Publish** (in the Create menu), drop an image, tap which
+> persona is posting, and hit Publish — it goes out to all that persona's art sites at once. The rating and tags you use
+> are remembered per persona, so next time it comes back ready. You can still switch individual sites off with a tap, or
+> schedule it for later. For per-site tweaks, the full New Artwork form is one click away.
+
+Backlog item U — the product-analysis "easy win" for the 80% case (drop → preset → go). The insight: **a persona already
+IS the preset** — its connected accounts define which art sites to post to and as which account — so no new storage or
+endpoints were needed. This is a frontend screen over the existing upload + publish + schedule APIs.
+
+**New screen — `#/artwork/quick` (`Artwork.renderQuick`).**
+- Drop/pick an image (browser file input + drag-drop; desktop native picker), title auto-fills from the file name.
+- **Persona chips** built from `GET /api/accounts` grouped by `persona_id` (+ an "All accounts" catch-all). Picking one
+  pre-selects that persona's art-capable platforms and the account to post as (its default account per platform, else
+  first). Platforms are toggle chips — tap any off to skip that site.
+- **Per-persona memory (localStorage):** rating + tags + which platforms you switched off are saved under the persona
+  and restored next time you pick it; the last-used persona is reselected on open. No backend persistence — the "preset"
+  is remembered client-side.
+- **Publish now** or **🕐 Schedule…** (reuses the 2.163 artwork scheduler). One upload → `POST /api/artwork/publish`
+  (or one `POST /api/artwork/schedule` per platform), with the persona's per-platform `account_id`s.
+- Reuses the existing artwork upload/publish/schedule endpoints untouched; the full form (`#/artwork/new`) stays the
+  escape hatch for per-platform title/description/tag overrides, cross-linked both ways.
+
+**Entry points.** Create nav group (first item, ⚡), the Overview "Quick actions" widget, and a link on the New Artwork
+form. Route added in `app.js`; `#/artwork/quick` is a Create flow (doesn't light the Library nav).
+
+**No backend change.** Frontend only — `frontend/js/artwork.js` (+ the screen), `frontend/js/app.js` (route + quick-link
++ nav highlight), `frontend/index.html` (nav entry). Selected-chip tint uses `color-mix(... var(--accent) ...)` so it's
+theme-aware in light + dark.
+
+**Deferred:** named/multiple saved presets per persona (beyond the one remembered set), and a quick path for stories/
+posts (this covers artwork, the drop-an-image case the analysis called out).
+
+---
+
 ## [2.165.0] - 2026-07-23 - Make the big library screens fast (perf guardrails)
 
 > **The Library and Masterpieces screens now load fast even with hundreds or thousands of pieces.** Nothing looks
