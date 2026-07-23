@@ -243,6 +243,35 @@ class DAClient:
             logger.error("DA: API GET %s parse error: %s", path, e)
             return None
 
+    async def get_deviation_comments(self, deviationid: str,
+                                     deviation_url: str = "") -> list[dict]:
+        """Comments on a deviation via the official API (gap G3 inbox capture).
+
+        ``GET /comments/deviation/{deviationid}`` with the same app token the
+        stats polling uses (client-credentials; mature deviations may need a
+        user token — degrade to empty rather than erroring). Returns one dict
+        per comment: {comment_id, author, body, commented_at, permalink}.
+        """
+        data = await self._api_get(f"/comments/deviation/{deviationid}",
+                                   {"maxdepth": 5, "limit": 50})
+        if not isinstance(data, dict):
+            return []
+        out = []
+        for c in data.get("thread") or []:
+            cid = c.get("commentid")
+            if not cid:
+                continue
+            user = c.get("user") or {}
+            out.append({
+                "comment_id": str(cid),
+                "author": user.get("username", ""),
+                "body": c.get("body", ""),
+                "commented_at": c.get("posted", ""),
+                # DA has no stable per-comment anchor — land on the deviation.
+                "permalink": deviation_url or "",
+            })
+        return out
+
     async def validate_credentials(self) -> bool:
         """Validate the configured credentials.
 
@@ -411,6 +440,8 @@ class DAClient:
         subm = m.get("submission") or {}
         return {
             "deviation_id": deviation_id,
+            # Official-API UUID — the comments endpoint (gap G3) is keyed by it.
+            "uuid": cached.get("uuid", ""),
             "title": m.get("title") or cached.get("title", ""),
             "username": (m.get("author") or {}).get("username")
                         or cached.get("username", self.target_user),

@@ -208,6 +208,30 @@ async def run_bsky_poll_cycle(account_id: int | None = None, force_full: bool = 
 
         conn.commit()
 
+        # ── Inbox capture (gap G3 Stage A1) ───────────────────
+        # Reply content for posts whose reply count exceeds what's captured.
+        # After the commit (no write txn across an await); capped per cycle.
+        try:
+            from polling.inbox_capture import capture as _inbox_capture
+
+            async def _fetch_thread(c):
+                rows = await client.get_post_thread(c["submission_id"])
+                for r in rows:
+                    r["meta"] = {"cid": r.pop("cid", ""),
+                                 "root_uri": r.pop("root_uri", ""),
+                                 "root_cid": r.pop("root_cid", "")}
+                return rows
+
+            await _inbox_capture(
+                conn, "bsky",
+                [{"submission_id": d.get("post_uri", ""),
+                  "fresh_count": d.get("replies", 0) or 0,
+                  "title": d.get("title", "")} for d in details],
+                _fetch_thread, account_id=account_id,
+                own_author=getattr(client, "_handle", "") or "")
+        except Exception as ce:  # noqa: BLE001 — capture never fails the poll
+            logger.warning("BSKY inbox capture failed: %s", ce)
+
         # ── Notifications ─────────────────────────────────────
         if is_first:
             logger.info("First BSKY poll for account %s -- suppressing %d activity notifications",

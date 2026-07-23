@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.181.0 — **Gap wave 2: G1 drip scheduling + G2 wizard upgrades + G6 alt-text + the "Posted via PawPoller" credit line.** Spec-first (`docs/specs/gap_wave2.md`, three scout passes).
+**Current version (master):** 2.182.0 — **G3 COMPLETE: unified comment Inbox (`#/inbox`) + native reply (bsky/mast/e621).**
+Full A0+A1+B build off the audit. **A0:** `database/inbox_queries.py` — `platform_comments` (+`meta` JSON w/ bsky
+uri/cid reply refs) + `inbox_state` (handled flags, no legacy ALTERs); `get_inbox()` UNIONs IB `comments` +
+`fa_comments` (constructed permalinks, mod-deleted hidden) + `platform_comments`; tables via `_run_migrations`.
+**A1:** shared `polling/inbox_capture.py` in the bsky/mast/e621/da pollers post-commit (fresh-count > captured-count →
+fetch thread; cap 25/platform/cycle; own comments stored-but-auto-handled). New client methods: bsky `get_post_thread`,
+mast `get_status_context`, e621 `get_comments`, da `get_deviation_comments` (needs UUID deviationid — now on the
+OAuth detail dict; cookie-path skips). **B:** `POST /api/inbox/reply` (creds via post_publisher's `_resolve_creds` +
+row's account_id) → bsky `create_post(reply={root,parent})` / mast `create_status(in_reply_to_id=)` (read-scope token
+403 surfaced) / e621 `post_comment`; success auto-handles. UI `frontend/js/inbox.js` + sidebar 💬 entry. +5 tests
+(FK-enforced seeding gotcha: IB comment seeds need a parent submissions row). Scrape platforms stay "reply on-site";
+DA/thr/ig replies need extra scopes (future).
+
+**Prior — 2.181.0 — Gap wave 2: G1 drip scheduling + G2 wizard upgrades + G6 alt-text + the "Posted via PawPoller" credit line.** Spec-first (`docs/specs/gap_wave2.md`, three scout passes).
 **Attribution:** `posting/attribution.py` `maybe_append()` at the two description choke points (`story_reader.build_package`
 ~672, `artwork_reader.build_artwork_package` ~231) → every posting path/platform; skips bsky (295-char announcement);
 idempotent; `pawpoller_attribution` (absent=ON) via `/api/posting/settings`; self-saving toggle in Settings→General→

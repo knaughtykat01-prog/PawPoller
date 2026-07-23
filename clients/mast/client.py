@@ -348,6 +348,33 @@ class MastClient:
             "embed_type": "",
         }
 
+    async def get_status_context(self, status_id: str) -> list[dict]:
+        """All replies under one of our statuses (gap G3 inbox capture).
+
+        One official ``GET /api/v1/statuses/{id}/context`` call; descendants are
+        every reply in the thread. Returns one dict per reply:
+        {comment_id, author, body, commented_at, permalink}.
+        """
+        if not await self.ensure_logged_in():
+            return []
+        data = await self._get_json(f"/api/v1/statuses/{status_id}/context")
+        if not isinstance(data, dict):
+            return []
+        out = []
+        for st in data.get("descendants") or []:
+            sid = str(st.get("id") or "")
+            if not sid:
+                continue
+            acct = (st.get("account") or {})
+            out.append({
+                "comment_id": sid,
+                "author": acct.get("acct") or acct.get("username", ""),
+                "body": _strip_html(st.get("content", "")),
+                "commented_at": st.get("created_at", ""),
+                "permalink": st.get("url") or st.get("uri", ""),
+            })
+        return out
+
     # -- Posting (Posts module) -----------------------------------------------
 
     async def _upload_media(self, image_path: str, description: str = "") -> str | None:
@@ -382,11 +409,13 @@ class MastClient:
                             image_alt: str = "", image_paths: list[str] | None = None,
                             image_alts: list[str] | None = None, sensitive: bool = False,
                             visibility: str = "public",
-                            idempotency_key: str = "") -> dict | None:
+                            idempotency_key: str = "",
+                            in_reply_to_id: str = "") -> dict | None:
         """Publish a status (a "toot"). Returns {id, uri, url} on success.
 
         Requires a token with a **write** scope (the poll-only token minted with
         scope=read will 403 here — surfaced to the caller as an error).
+        ``in_reply_to_id`` threads the status as a reply (gap G3 native reply).
         """
         if not await self.ensure_logged_in():
             logger.error("MAST: not logged in, cannot post")
@@ -408,6 +437,8 @@ class MastClient:
             payload["sensitive"] = "true"
         if media_ids:
             payload["media_ids[]"] = media_ids
+        if in_reply_to_id:
+            payload["in_reply_to_id"] = in_reply_to_id
 
         headers = {"Authorization": f"Bearer {self.access_token}"}
         if idempotency_key:

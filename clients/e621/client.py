@@ -140,6 +140,60 @@ class E621Client:
             logger.error("e621: JSON parse error for %s: %s", path, e)
             return None
 
+    # -- Comments (gap G3 inbox) ----------------------------------------------
+
+    async def get_comments(self, post_id: str | int) -> list[dict]:
+        """All comments on one of our posts (gap G3 inbox capture).
+
+        One official ``GET /comments.json?search[post_id]=…`` call. Returns one
+        dict per comment: {comment_id, author, body, commented_at, permalink}.
+        Skips our own comments' capture filtering to the caller.
+        """
+        data = await self._get_json(
+            "/comments.json",
+            params={"search[post_id]": str(post_id), "limit": 75,
+                    "search[order]": "id_asc"},
+        )
+        # e621 returns a bare list of comment objects (or {"comments": []} when
+        # empty on some deployments) — tolerate both shapes.
+        comments = data if isinstance(data, list) else (data or {}).get("comments", [])
+        out = []
+        for c in comments or []:
+            cid = c.get("id")
+            if cid is None:
+                continue
+            out.append({
+                "comment_id": str(cid),
+                "author": c.get("creator_name", "") or str(c.get("creator_id", "")),
+                "body": c.get("body", ""),
+                "commented_at": c.get("created_at", ""),
+                "permalink": f"{_API_BASE}/posts/{post_id}#comment-{cid}",
+            })
+        return out
+
+    async def post_comment(self, post_id: str | int, body: str) -> bool:
+        """Post a comment (reply) on a post — gap G3 native reply.
+
+        Official ``POST /comments.json`` with the same HTTP-Basic username +
+        API-key auth the whole client uses. Returns True on success.
+        """
+        if not (self.username and self.api_key and body.strip()):
+            return False
+        try:
+            resp = await self._http.post(
+                f"{_API_BASE}/comments.json",
+                data={"comment[post_id]": str(post_id), "comment[body]": body},
+                headers=self._headers(), auth=self._auth(),
+            )
+            if resp.status_code in (200, 201):
+                return True
+            logger.warning("e621: comment post rejected (%s): %s",
+                           resp.status_code, resp.text[:200])
+            return False
+        except httpx.HTTPError as e:
+            logger.error("e621: comment post failed: %s", e)
+            return False
+
     # -- Auth -----------------------------------------------------------------
 
     async def validate_session(self) -> str | None:

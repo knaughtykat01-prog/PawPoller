@@ -1040,6 +1040,12 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     from database import followers as _followers
     _followers.ensure_follower_tables(conn)
 
+    # Migration: unified comment inbox (gap G3). platform_comments (Stage-A1
+    # capture for bsky/mast/e621/da) + inbox_state (handled flags for ALL
+    # sources incl. the legacy IB/FA comment tables). Additive, idempotent.
+    from database import inbox_queries as _inbox
+    _inbox.ensure_inbox_tables(conn)
+
     # Migration: fold Cross-Platform links into Collections (they are the same
     # idea — one piece across platforms). Adds a provenance column so the fold is
     # idempotent and reversible (the submission_links rows are NOT deleted), then

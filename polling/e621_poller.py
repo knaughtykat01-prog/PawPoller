@@ -201,6 +201,25 @@ async def run_e621_poll_cycle(account_id: int | None = None, force_full: bool = 
 
         conn.commit()
 
+        # ── Inbox capture (gap G3 Stage A1) ───────────────────
+        # /comments.json per behind-looking post (post_uri IS the numeric id).
+        # Client enforces the ~1 req/s pacing; capture is capped per cycle.
+        try:
+            from polling.inbox_capture import capture as _inbox_capture
+
+            async def _fetch_comments(c):
+                return await client.get_comments(c["submission_id"])
+
+            await _inbox_capture(
+                conn, "e621",
+                [{"submission_id": d.get("post_uri", ""),
+                  "fresh_count": d.get("comments_count", 0) or 0,
+                  "title": d.get("title", "")} for d in details],
+                _fetch_comments, account_id=account_id,
+                own_author=getattr(client, "username", "") or "")
+        except Exception as ce:  # noqa: BLE001 — capture never fails the poll
+            logger.warning("e621 inbox capture failed: %s", ce)
+
         # ── Notifications ─────────────────────────────────────
         if is_first:
             logger.info("First e621 poll for account %s -- suppressing %d activity notifications",

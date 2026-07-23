@@ -209,6 +209,28 @@ async def run_mast_poll_cycle(account_id: int | None = None, force_full: bool = 
 
         conn.commit()
 
+        # ── Inbox capture (gap G3 Stage A1) ───────────────────
+        # /statuses/{id}/context per behind-looking status. The numeric status
+        # id is the tail of the ActivityPub uri/URL (both shapes end /{id}).
+        try:
+            from polling.inbox_capture import capture as _inbox_capture
+
+            async def _fetch_context(c):
+                sid = str(c["submission_id"]).rstrip("/").rsplit("/", 1)[-1]
+                if not sid.isdigit():
+                    return []
+                return await client.get_status_context(sid)
+
+            await _inbox_capture(
+                conn, "mast",
+                [{"submission_id": d.get("post_uri", ""),
+                  "fresh_count": d.get("replies", 0) or 0,
+                  "title": d.get("title", "")} for d in details],
+                _fetch_context, account_id=account_id,
+                own_author=getattr(client, "_username", "") or "")
+        except Exception as ce:  # noqa: BLE001 — capture never fails the poll
+            logger.warning("MAST inbox capture failed: %s", ce)
+
         # ── Notifications ─────────────────────────────────────
         if is_first:
             logger.info("First MAST poll for account %s -- suppressing %d activity notifications",

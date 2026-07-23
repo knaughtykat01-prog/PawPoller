@@ -236,6 +236,32 @@ async def run_da_poll_cycle(account_id: int | None = None, force_full: bool = Fa
 
         conn.commit()
 
+        # ── Inbox capture (gap G3 Stage A1) ───────────────────
+        # Official /comments/deviation/{uuid} per behind-looking deviation.
+        # Only OAuth-path details carry the uuid (legacy cookie path doesn't —
+        # those simply skip). App token; mature deviations may return empty.
+        try:
+            from polling.inbox_capture import capture as _inbox_capture
+
+            _uuid_by_id = {str(d.get("deviation_id")): (d.get("uuid", ""), d.get("link", ""))
+                           for d in details}
+
+            async def _fetch_da_comments(c):
+                uuid, link = _uuid_by_id.get(str(c["submission_id"]), ("", ""))
+                if not uuid:
+                    return []
+                return await client.get_deviation_comments(uuid, link)
+
+            await _inbox_capture(
+                conn, "da",
+                [{"submission_id": str(d.get("deviation_id", "")),
+                  "fresh_count": d.get("comments_count", 0) or 0,
+                  "title": d.get("title", "")} for d in details if d.get("uuid")],
+                _fetch_da_comments, account_id=account_id,
+                own_author=getattr(client, "target_user", "") or "")
+        except Exception as ce:  # noqa: BLE001 — capture never fails the poll
+            logger.warning("DA inbox capture failed: %s", ce)
+
         # ── Notifications ─────────────────────────────────────
         if is_first:
             logger.info("First DA poll for account %s -- suppressing %d activity notifications",

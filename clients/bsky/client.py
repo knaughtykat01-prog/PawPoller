@@ -399,6 +399,52 @@ class BskyClient:
 
         return details
 
+    async def get_post_thread(self, uri: str, depth: int = 6) -> list[dict]:
+        """All replies under one of our posts, flattened (gap G3 inbox capture).
+
+        One ``app.bsky.feed.getPostThread`` call. Returns one dict per reply:
+        {comment_id (=reply uri), author, body, commented_at, permalink,
+         cid, root_uri, root_cid} — the uri/cid pairs are exactly what a native
+        threaded reply needs (create_post's ``reply`` refs).
+        """
+        if not await self.ensure_logged_in():
+            return []
+        data = await self._get_json(
+            f"{_API_BASE}/app.bsky.feed.getPostThread",
+            params={"uri": uri, "depth": depth},
+        )
+        thread = (data or {}).get("thread") if isinstance(data, dict) else None
+        if not thread:
+            return []
+        root_post = thread.get("post", {}) or {}
+        root_uri = root_post.get("uri", uri)
+        root_cid = root_post.get("cid", "")
+        out: list[dict] = []
+
+        def _walk(node: dict):
+            for child in node.get("replies") or []:
+                post = child.get("post") or {}
+                p_uri = post.get("uri", "")
+                if not p_uri:
+                    continue
+                author = (post.get("author") or {})
+                handle = author.get("handle", "")
+                rkey = p_uri.rsplit("/", 1)[-1]
+                out.append({
+                    "comment_id": p_uri,
+                    "author": handle or author.get("displayName", ""),
+                    "body": (post.get("record") or {}).get("text", ""),
+                    "commented_at": (post.get("record") or {}).get("createdAt", ""),
+                    "permalink": f"https://bsky.app/profile/{handle}/post/{rkey}" if handle else "",
+                    "cid": post.get("cid", ""),
+                    "root_uri": root_uri,
+                    "root_cid": root_cid,
+                })
+                _walk(child)
+
+        _walk(thread)
+        return out
+
     # -- Parsing Helpers ------------------------------------------------------
 
     def _parse_post(self, post: dict) -> dict:
@@ -642,6 +688,7 @@ class BskyClient:
         image_alts: list[str] | None = None,
         labels: list[str] | None = None,
         mention_handles: list[str] | None = None,
+        reply: dict | None = None,
     ) -> dict | None:
         """Create a new Bluesky post.
 
@@ -656,6 +703,9 @@ class BskyClient:
             mention_handles: Bluesky handles (e.g. ["name.bsky.social"]) present
                 in ``text`` as ``@handle`` that should become clickable mention
                 facets. Each is resolved to a DID; unresolvable ones are skipped.
+            reply: Optional reply refs (gap G3 native reply) —
+                ``{"root": {"uri", "cid"}, "parent": {"uri", "cid"}}``. Root is
+                the thread's first post, parent is the comment being answered.
 
         Returns:
             Dict with 'uri' and 'cid' on success, None on failure.
@@ -672,6 +722,8 @@ class BskyClient:
             "text": text,
             "createdAt": now,
         }
+        if reply and reply.get("root") and reply.get("parent"):
+            record["reply"] = reply
 
         # Rich-text facets: links + #hashtags + @mentions. Bluesky (unlike
         # X/Mastodon) does NOT auto-link these — without facets a #tag/@handle is

@@ -12,6 +12,43 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.182.0] - 2026-07-23 - Inbox: every comment on your work, one place — and reply without leaving
+
+> **New Inbox in the sidebar.** Every comment on your work — across Inkbunny, FurAffinity, Bluesky, Mastodon, e621 and
+> DeviantArt — lands in one newest-first feed. Tick comments off as handled, and on Bluesky, Mastodon and e621 you can
+> **reply right from PawPoller** as the right account. Everything else has an "Open ↗" link straight to the comment.
+> Comments fill in as polling runs; your own replies show as already-handled context.
+
+The full G3 build (`user_gap_analysis.md` §2.3, staged A0+A1+B off the 17-platform audit).
+
+**Storage (A0).** New `database/inbox_queries.py`: `platform_comments` (unified capture for the A1 platforms; `meta`
+JSON holds bsky's uri/cid reply refs) + `inbox_state` (handled flags for every source — no legacy-table ALTERs).
+`get_inbox()` UNIONs the legacy IB `comments` + `fa_comments` tables (permalinks constructed:
+`inkbunny.net/s/{sid}#commentid_{cid}`, `furaffinity.net/view/{sid}/#cid:{cid}`; FA's mod-deleted rows hidden) with
+`platform_comments`, one row shape, newest-first by first-seen. Tables created in `_run_migrations` (followers pattern).
+
+**Capture (A1).** Shared `polling/inbox_capture.py` used by the **bsky / mast / e621 / da** pollers after their
+post-loop commit (no write txn across an await): fetch a thread when the platform's fresh count exceeds captured rows —
+snapshot-decoupled + self-healing, capped at 25 fetches/platform/cycle so first-run backfill spreads out. Our own
+comments are stored (keeps counts aligned, no re-fetch loop) but auto-marked handled. New client methods:
+`BskyClient.get_post_thread` (flattened replies + uri/cid/root refs), `MastClient.get_status_context` (descendants,
+HTML-stripped), `E621Client.get_comments`, `DAClient.get_deviation_comments` (official API; needs the **UUID**
+deviationid, now carried on the OAuth-path detail dict — legacy cookie-path details skip).
+
+**Reply (B).** `POST /api/inbox/reply` resolves creds like the Posts publisher (comment rows remember their
+`account_id`) and dispatches: **bsky** `create_post` gains a `reply={root,parent}` refs param; **mast** `create_status`
+gains `in_reply_to_id` (a poll-only read-scope token 403s → surfaced plainly); **e621** new `post_comment`
+(`POST /comments.json`, same HTTP-Basic creds). Success auto-marks handled. FA/IB/everything-else = "Open ↗ (reply
+on-site)" by design (scrape-fragile; DA/Threads/IG replies need extra OAuth scopes — future).
+
+**UI.** New `frontend/js/inbox.js` at `#/inbox` + sidebar "💬 Inbox" entry: platform filter, show-handled toggle,
+per-comment Reply box / Open ↗ / Handled toggle, unanswered count in the header.
+
+Tests: `tests/test_inbox.py` (dedupe + delta count, IB∪platform union + permalink construction + reply-ref survival,
+handled filter, API feed/toggle, reply validation incl. FK-enforced seeding). +5; full suite pre-deploy.
+
+---
+
 ## [2.181.0] - 2026-07-23 - Wave 2: drip scheduling, setup-wizard upgrades, alt text, and a credit line
 
 > **Four new things.** (1) **Drip scheduling** — in a story's Publish Check there's now a 💧 Drip button: post chapter 1

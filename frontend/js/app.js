@@ -1125,6 +1125,8 @@ const App = {
             // Retired in 2.113.0 — folded into Collections. Redirect old links.
             location.hash = '#/collections';
             return;
+        } else if (parts[0] === 'inbox') {
+            window.Inbox.render();
         } else if (parts[0] === 'analytics') {
             this.renderAnalytics();
         } else if (parts[0] === 'accounts') {
@@ -1292,7 +1294,7 @@ const App = {
         const labels = {
             '': 'Overview', overview: 'Overview', platforms: 'Platforms',
             library: 'Library', posting: 'Stories', editor: 'Story Editor',
-            analytics: 'Analytics', laurels: 'Laurels', ledger: 'Activity', groups: 'Groups', 'cross-platform': 'Cross-Platform',
+            analytics: 'Analytics', inbox: 'Inbox', laurels: 'Laurels', ledger: 'Activity', groups: 'Groups', 'cross-platform': 'Cross-Platform',
             accounts: 'Accounts', settings: 'Settings',
         };
         let crumb;

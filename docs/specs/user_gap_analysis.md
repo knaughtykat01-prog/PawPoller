@@ -67,7 +67,7 @@ Ranked by value-to-build. Effort: **S** ≈ a session, **M** ≈ a few, **L** �
 **Data:** `first_run_completed: bool` in settings.
 **Open Qs:** desktop vs server first-run differ (server has no local file pickers) — branch the "connect" step on `setup_mode`.
 
-### 2.3 Reply-to-comments inbox — **AUDIT COMPLETE 2026-07-23** — cheaper than feared; stage as A0 → A1 → B
+### 2.3 Reply-to-comments inbox — ✅ **BUILT 2.182.0 (full A0+A1+B)** — audit 2026-07-23 held up; staging below shipped as one release
 **Problem:** managing three personas' comment sections means opening every site.
 
 **AUDIT VERDICT (17-platform sweep + DB audit; anchors in the sweep report):**
