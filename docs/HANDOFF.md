@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.179.0 — **Safe mode: click-to-peek on blurred items.**
+**Current version (master):** 2.180.0 — **Three quick wins from the gap analysis: G4 Discord announcements + G5 full data export + G7 auto-backups.**
+**G4:** `posting/discord.py` (async httpx embed sender) + `routes/discord_api.py` (`/api/discord` config/test/announce);
+webhook + "announce on publish" toggle in Settings→Data→Discord announcements. Auto-announce wired into the SHARED
+publishers (`post_publisher.publish_post` + `manager.post_artwork`) → fires once per publish for BOTH interactive +
+scheduled posts/artwork, only on success; adult ratings drop the inline thumbnail; never raises. **G5:** `GET
+/api/works/export.csv` (`submissions_api.py`) streams one row per publication (work×platform + all stats via
+`get_publications_with_stats`) — "↓ Full data CSV" button on Analytics header. NB the page ALREADY had client-side
+Fastest/Weekly CSV export (my gap-survey missed it). **G7:** `backup_api.py` shared `write_backup_zip()` +
+`run_auto_backup()` (timestamped zip → configured folder + prune-to-keep) + `run_auto_backup_scheduler()` daemon
+started from main.py + server.py (30-min tick, self-throttles on `last_auto_backup_at`); `GET`/`POST /api/backup/auto`;
+Settings→Data→Backup "Automatic backups" row. Off by default. +9 tests. Deferred: per-piece manual Discord button
+(endpoint exists), story auto-announce.
+
+**Prior — 2.179.0 — Safe mode: click-to-peek on blurred items.**
 Follow-up to 2.178. One delegated **capture-phase** click listener in app.js: in safe mode, first click on a
 still-blurred tile adds `.sfw-revealed` + `preventDefault`/`stopPropagation` (no navigation); next click on the revealed
 tile navigates normally. `.sfw-revealed { filter:none !important }` (needs `!important` — blur selectors carry an extra

@@ -476,6 +476,17 @@ async def post_artwork(
             "duration": result.duration_seconds,
         })
 
+    # Discord announce (gap G4) — once per publish if any platform succeeded.
+    # Best-effort; announce_publish self-gates on config + never raises.
+    succeeded = [r["platform"] for r in results if r.get("success")]
+    if succeeded:
+        from posting import discord
+        first_url = next((r.get("external_url") for r in results
+                          if r.get("success") and r.get("external_url")), None)
+        await discord.announce_publish(
+            kind="artwork", title=getattr(artwork, "title", "") or artwork_name,
+            url=first_url, rating=getattr(artwork, "rating", ""), platforms=succeeded,
+        )
     return results
 
 

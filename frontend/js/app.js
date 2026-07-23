@@ -10343,7 +10343,51 @@ const App = {
                             <button class="btn btn-danger" id="backup-restore-btn" disabled>Restore</button>
                         </div>
                     </div>
+                    <hr style="border:none;border-top:1px solid var(--card-border-inner);margin:14px 0">
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label"><label style="cursor:pointer"><input type="checkbox" id="autobk-enabled" style="margin-right:6px;vertical-align:middle">Automatic backups</label></span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
+                                Write a backup on a schedule so you never forget. Stored in
+                                <code id="autobk-dir">…</code>; the oldest are pruned automatically. <span id="autobk-last"></span>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+                            <label style="font-size:12px;color:var(--text-muted)">every <input type="number" id="autobk-interval" min="1" max="720" value="24" style="width:56px"> h</label>
+                            <label style="font-size:12px;color:var(--text-muted)">keep <input type="number" id="autobk-keep" min="1" max="100" value="7" style="width:48px"></label>
+                            <button class="btn btn-sm btn-secondary" id="autobk-save">Save</button>
+                            <button class="btn btn-sm btn-outline" id="autobk-now">Back up now</button>
+                        </div>
+                    </div>
+                    <span id="autobk-msg" style="font-size:12px;margin-top:4px;display:block"></span>
                     <span id="backup-msg" style="font-size:13px;margin-top:8px;display:block"></span>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Discord announcements</h3>
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
+                        Post an announcement to a Discord channel whenever you publish. Paste a channel
+                        <strong>webhook URL</strong> (Discord → Channel → Edit → Integrations → Webhooks → New Webhook → Copy URL).
+                        Adult pieces announce as a link without the image preview.
+                    </div>
+                    <div class="settings-row">
+                        <div style="flex:1">
+                            <span class="settings-label">Webhook URL</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px" id="discord-hint"></div>
+                        </div>
+                        <input type="password" id="discord-webhook" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" style="flex:2;min-width:220px;font-size:12px">
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label"><label style="cursor:pointer"><input type="checkbox" id="discord-auto" style="margin-right:6px;vertical-align:middle">Announce automatically when I publish</label></span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Fires once per publish (posts + artwork), interactive or scheduled.</div>
+                        </div>
+                        <div style="display:flex;gap:8px">
+                            <button class="btn btn-sm btn-secondary" id="discord-save">Save</button>
+                            <button class="btn btn-sm btn-outline" id="discord-test">Send test</button>
+                        </div>
+                    </div>
+                    <span id="discord-msg" style="font-size:12px;margin-top:6px;display:block"></span>
                 </div>
 
                 <div class="settings-section">
@@ -13572,6 +13616,92 @@ const App = {
                 window.location.href = '/api/backup/export';
             });
 
+            // Auto-backup (gap G7) — load current config, wire enable / save / run-now.
+            const _autobkFill = (s) => {
+                if (!s) return;
+                const en = document.getElementById('autobk-enabled'); if (en) en.checked = !!s.enabled;
+                const iv = document.getElementById('autobk-interval'); if (iv) iv.value = s.interval_hours || 24;
+                const kp = document.getElementById('autobk-keep'); if (kp) kp.value = s.keep || 7;
+                const dir = document.getElementById('autobk-dir'); if (dir) dir.textContent = s.dir || '';
+                const last = document.getElementById('autobk-last');
+                if (last) last.textContent = s.last_at ? ('Last run: ' + new Date(s.last_at).toLocaleString()) : 'No auto-backup yet.';
+            };
+            fetch('/api/backup/auto').then(r => r.json()).then(_autobkFill).catch(() => {});
+            const _autobkSave = async (runNow) => {
+                const msg = document.getElementById('autobk-msg');
+                const body = {
+                    enabled: !!document.getElementById('autobk-enabled')?.checked,
+                    interval_hours: parseInt(document.getElementById('autobk-interval')?.value, 10) || 24,
+                    keep: parseInt(document.getElementById('autobk-keep')?.value, 10) || 7,
+                    run_now: !!runNow,
+                };
+                if (msg) { msg.textContent = runNow ? 'Backing up…' : 'Saving…'; msg.style.color = 'var(--text-muted)'; }
+                try {
+                    const res = await fetch('/api/backup/auto', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+                    }).then(r => r.json());
+                    _autobkFill(res);
+                    if (msg) {
+                        msg.style.color = 'var(--success)';
+                        msg.textContent = runNow
+                            ? ('Backed up' + (res.ran ? ` (${(res.ran.bytes / 1048576).toFixed(1)} MB)` : '') + '.')
+                            : (body.enabled ? 'Automatic backups on.' : 'Saved.');
+                    }
+                } catch (err) {
+                    if (msg) { msg.style.color = 'var(--danger)'; msg.textContent = 'Error: ' + (err.message || err); }
+                }
+            };
+            document.getElementById('autobk-save')?.addEventListener('click', () => _autobkSave(false));
+            document.getElementById('autobk-now')?.addEventListener('click', () => _autobkSave(true));
+            document.getElementById('autobk-enabled')?.addEventListener('change', () => _autobkSave(false));
+
+            // Discord announcements (gap G4) — webhook + auto-toggle + test.
+            const _discordFill = (s) => {
+                if (!s) return;
+                const auto = document.getElementById('discord-auto'); if (auto) auto.checked = !!s.announce_on_publish;
+                const hint = document.getElementById('discord-hint');
+                if (hint) hint.textContent = s.configured
+                    ? ('Configured: ' + (s.webhook_hint || '') + ' — leave blank to keep it.')
+                    : 'Not configured yet.';
+            };
+            fetch('/api/discord').then(r => r.json()).then(_discordFill).catch(() => {});
+            const _discordSave = async () => {
+                const msg = document.getElementById('discord-msg');
+                const wh = document.getElementById('discord-webhook')?.value.trim();
+                const body = { announce_on_publish: !!document.getElementById('discord-auto')?.checked };
+                if (wh) body.webhook_url = wh;
+                if (msg) { msg.textContent = 'Saving…'; msg.style.color = 'var(--text-muted)'; }
+                try {
+                    const res = await fetch('/api/discord', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+                    }).then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || 'failed'); return r.json(); });
+                    _discordFill(res);
+                    const el = document.getElementById('discord-webhook'); if (el) el.value = '';
+                    if (msg) { msg.style.color = 'var(--success)'; msg.textContent = 'Saved.'; }
+                    return true;
+                } catch (err) {
+                    if (msg) { msg.style.color = 'var(--danger)'; msg.textContent = 'Error: ' + (err.message || err); }
+                    return false;
+                }
+            };
+            document.getElementById('discord-save')?.addEventListener('click', _discordSave);
+            document.getElementById('discord-auto')?.addEventListener('change', _discordSave);
+            document.getElementById('discord-test')?.addEventListener('click', async () => {
+                const msg = document.getElementById('discord-msg');
+                // Persist a freshly-typed webhook first so the test uses it.
+                if (document.getElementById('discord-webhook')?.value.trim()) {
+                    if (!await _discordSave()) return;
+                }
+                if (msg) { msg.textContent = 'Sending test…'; msg.style.color = 'var(--text-muted)'; }
+                try {
+                    const r = await fetch('/api/discord/test', { method: 'POST' });
+                    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || 'failed');
+                    if (msg) { msg.style.color = 'var(--success)'; msg.textContent = 'Test sent — check your Discord channel.'; }
+                } catch (err) {
+                    if (msg) { msg.style.color = 'var(--danger)'; msg.textContent = 'Test failed: ' + (err.message || err); }
+                }
+            });
+
             // Restore from a full backup .zip.
             const restoreFileInput = document.getElementById('restore-file-input');
             const restoreBtn = document.getElementById('backup-restore-btn');
@@ -14918,6 +15048,7 @@ const App = {
                 <div class="page-header">
                     <h2>Analytics</h2>
                     <div style="margin-left:auto;display:flex;gap:0.5em">
+                        <button class="btn btn-sm btn-primary" id="analytics-export-all" title="Download the complete dataset: every work × platform with all its stats">&darr; Full data CSV</button>
                         <button class="btn btn-sm btn-outline" id="analytics-export-fastest" ${fastest.length ? '' : 'disabled'} title="Download fastest-growing table as CSV">&darr; Fastest CSV</button>
                         <button class="btn btn-sm btn-outline" id="analytics-export-weekly" ${weekly.length ? '' : 'disabled'} title="Download weekly growth as CSV">&darr; Weekly CSV</button>
                         <button class="btn btn-sm btn-outline" id="analytics-export-chart" ${weekly.length ? '' : 'disabled'} title="Download the chart as PNG">&darr; Chart PNG</button>
@@ -14967,7 +15098,12 @@ const App = {
                 weeklyChart = Charts.weeklyGrowthBar('chart-weekly-growth', weekly);
             }
 
-            // Export wiring — pure client-side, no new backend endpoints.
+            // Complete dataset → server-built CSV (every work × platform + all
+            // stats). Same-origin navigation so the session cookie rides (gap G5).
+            document.getElementById('analytics-export-all')?.addEventListener('click', () => {
+                window.location.href = '/api/works/export.csv';
+            });
+            // Export wiring — the summary tables export client-side via Utils.downloadCSV.
             // Fastest-growing table → CSV via Utils.downloadCSV.
             document.getElementById('analytics-export-fastest')?.addEventListener('click', () => {
                 Utils.downloadCSV(

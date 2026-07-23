@@ -1,6 +1,6 @@
 # User Gap Analysis — what a user could still want
 
-**Status:** SURVEY + specs, nothing built yet · **Author:** Rhys + Claude (fable) · **Date:** 2026-07-23
+**Status:** SURVEY + specs · **G4 + G5 + G7 BUILT 2.180.0** · **Author:** Rhys + Claude (fable) · **Date:** 2026-07-23
 
 > A use-case-persona sweep of PawPoller (as of 2.179.0) looking for what a real user would reach for and not find.
 > Every "gap" below was checked against the source — claims the app *already* covers new-comment/fave/milestone
@@ -83,8 +83,12 @@ Ranked by value-to-build. Effort: **S** ≈ a session, **M** ≈ a few, **L** �
 **Data:** `discord_webhooks` (list; optional `persona_id` + "announce on publish" toggle) in settings/vault.
 **Open Qs:** rate-limit/backoff on the webhook; SFW/NSFW embeds (respect rating — spoiler/omit thumbnail for adult).
 
-### 2.5 Analytics CSV / report export — **S**
-**Problem:** no way to get your numbers into a spreadsheet or a year-in-review.
+### 2.5 Analytics CSV / report export — **S** — ✅ BUILT 2.180.0
+**Correction (found while building):** the Analytics page *already* exported its two summary tables client-side
+(Fastest-growing CSV, Weekly-growth CSV) — the survey's "no export" was wrong (the grep only checked `routes/analytics*`).
+The real gap was a **complete** export, which is what shipped: `GET /api/works/export.csv` (one row per work × platform
+with all stats) + a "Full data CSV" button.
+**Problem:** no way to get the *full* dataset into a spreadsheet or a year-in-review.
 **Approach:** an **Export** button on Analytics → streams a CSV. Two shapes: (a) per-work snapshot (one row per work × platform with current pooled + per-platform stats); (b) time-series (snapshot history for a date range). Reuse existing rollup queries; stream server-side.
 **Touch-points:** `routes/analytics_api.py` new `GET /api/analytics/export.csv?shape=…&range=…`; button in `frontend/js/analytics.js`.
 **Open Qs:** printable "year in review" is a nice follow-on but out of scope for v1.

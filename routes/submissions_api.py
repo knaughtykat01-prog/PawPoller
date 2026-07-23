@@ -11,10 +11,14 @@ to the existing per-work detail views).
 """
 from __future__ import annotations
 
+import csv
+import io
 import logging
+from datetime import datetime, timezone
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 
 from database.db import get_connection
 from database import accounts as accounts_db
@@ -178,6 +182,74 @@ def assemble_works(
             for p in personas.values()
         ],
     }
+
+
+# Stable column order for the complete export. Different platforms report
+# different metrics (AO3/SQW use hits+kudos+bookmarks, Wattpad uses reads+votes),
+# so every metric gets its own column and rows fill only what applies.
+_EXPORT_COLUMNS = [
+    "content_type", "work", "title", "chapter", "platform",
+    "account", "external_id", "url", "posted_at", "updated_at", "status", "rating", "words",
+    "views", "favorites", "comments", "kudos", "bookmarks", "hits", "reads", "votes",
+]
+
+# stats dict key → CSV column (keys vary per platform table; see
+# posting_queries.get_publications_with_stats).
+_STAT_KEY_TO_COL = {
+    "views": "views", "favorites_count": "favorites", "comments_count": "comments",
+    "kudos": "kudos", "bookmarks": "bookmarks", "hits": "hits",
+    "reads": "reads", "votes": "votes",
+}
+
+
+@works_router.get("/works/export.csv")
+def export_works_csv():
+    """Complete analytics export: one row per publication (work × platform) with
+    all its current stats. Complements the Analytics page's summary CSVs (fastest
+    / weekly) with the full dataset a spreadsheet user actually wants (gap G5).
+    Downloaded via a same-origin navigation so the session cookie rides."""
+    conn = get_connection()
+    try:
+        # content_type=None → every publication (story, artwork, post); stat
+        # enrichment maps by platform, so all rows are enriched where a stats
+        # table exists (posts simply have no stats and export blank).
+        pubs = posting_queries.get_publications_with_stats(conn, content_type=None)
+        accounts = {a["account_id"]: (a.get("label") or a["account_id"])
+                    for a in accounts_db.list_accounts(conn)}
+    finally:
+        conn.close()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(_EXPORT_COLUMNS)
+    for pub in pubs:
+        stats = pub.get("stats") or {}
+        row = {
+            "content_type": pub.get("content_type", ""),
+            "work": pub.get("story_name", ""),
+            "title": pub.get("title_used") or pub.get("story_name", ""),
+            "chapter": pub.get("chapter_index", ""),
+            "platform": pub.get("platform", ""),
+            "account": accounts.get(pub.get("account_id"), pub.get("account_id") or ""),
+            "external_id": pub.get("external_id", ""),
+            "url": pub.get("external_url", ""),
+            "posted_at": pub.get("first_posted_at", ""),
+            "updated_at": pub.get("last_updated_at", ""),
+            "status": pub.get("status", ""),
+            "rating": pub.get("rating_used", ""),
+            "words": pub.get("word_count", ""),
+        }
+        for key, col in _STAT_KEY_TO_COL.items():
+            if key in stats and stats[key] is not None:
+                row[col] = stats[key]
+        writer.writerow([row.get(c, "") for c in _EXPORT_COLUMNS])
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="pawpoller-analytics-{stamp}.csv"'},
+    )
 
 
 @works_router.get("/works")

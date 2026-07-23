@@ -1138,6 +1138,14 @@ def main():
     posting_thread = threading.Thread(target=start_posting_scheduler, daemon=True, name="Posting scheduler")
     posting_thread.start()
 
+    # Auto-backup (gap G7) — runs regardless of polling ownership; the local
+    # instance's own data (DB + settings + media) is worth protecting even when
+    # paired. Self-throttles on the enabled flag + last_auto_backup_at.
+    logger.info("Starting auto-backup scheduler...")
+    from routes.backup_api import run_auto_backup_scheduler
+    autobackup_thread = threading.Thread(target=run_auto_backup_scheduler, daemon=True, name="Auto-backup")
+    autobackup_thread.start()
+
     # --- Step 3: System tray icon (initially hidden) ---
     _tray_icon = _create_tray_icon()
     # pystray's default setup callback sets visible=True, which would show

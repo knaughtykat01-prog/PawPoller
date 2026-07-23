@@ -12,6 +12,44 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.180.0] - 2026-07-23 - Three quick wins: Discord announcements, full data export, auto-backups
+
+> **Three new things.** (1) **Discord announcements** — paste a channel webhook in Settings and PawPoller can post an
+> announcement to Discord every time you publish. (2) **Full data export** — a new "Full data CSV" button on the
+> Analytics page downloads every work on every platform with all its stats, for your own spreadsheet. (3) **Automatic
+> backups** — switch on scheduled backups in Settings → Data and PawPoller quietly saves a backup on a timer and keeps
+> the most recent few, so you never have to remember.
+
+Builds gap-analysis items G4, G5, G7 (`docs/specs/user_gap_analysis.md`).
+
+**G4 — Discord announce webhook.** New `posting/discord.py` (async httpx) + `routes/discord_api.py`
+(`/api/discord` config, `/test`, `/announce`). A webhook URL + "announce on publish" toggle live in settings
+(Settings → Data → Discord announcements, with a Send-test button). Auto-announce is wired into the **shared**
+publishers — `post_publisher.publish_post` and `manager.post_artwork` — so it fires once per publish for **both
+interactive and scheduled** posts + artwork, only when a platform actually succeeded. The embed is colour-coded by
+rating; **adult/mature/explicit pieces announce as a link with no inline image** (never pushes an explicit preview into
+a channel). Best-effort: `announce_publish` self-gates on config and never raises, so it can't break a publish.
+*Deferred:* a per-piece manual "Announce" button (the `/api/discord/announce` endpoint already exists for it); story
+auto-announce.
+
+**G5 — complete analytics export.** The Analytics page already exported its two summary tables client-side; this adds
+the **full dataset**. New `GET /api/works/export.csv` (`routes/submissions_api.py`) streams one row per publication
+(work × platform) with title, url, rating, word count and every platform's metrics (views/faves/comments +
+kudos/bookmarks/hits/reads/votes), reusing `get_publications_with_stats`. New "↓ Full data CSV" button on the Analytics
+header (same-origin download so the cookie rides).
+
+**G7 — scheduled automatic backups.** `routes/backup_api.py` gains a shared `write_backup_zip()` (refactored out of the
+export endpoint), plus `run_auto_backup()` (timestamped zip into a configured folder + prune to a retention count),
+`auto_backup_due()`, `maybe_run_auto_backup()` and a `run_auto_backup_scheduler()` daemon started from **both**
+`main.py` and `server.py` (independent of poll/digest cadence; ticks every 30 min and self-throttles on
+`last_auto_backup_at`). Config via `GET`/`POST /api/backup/auto`; Settings → Data → Backup & Restore gains an
+"Automatic backups" row (enable, interval hours, keep-count, "Back up now", last-run line). Off by default.
+
+Tests: `tests/test_discord.py` (embed rules + auto-gate + adult-thumbnail drop), `tests/test_auto_backup.py`
+(due-check + write + prune-to-keep), `tests/test_analytics_export.py` (header, empty, seeded row). +9 tests.
+
+---
+
 ## [2.179.0] - 2026-07-23 - Safe mode: click a blurred item to peek
 
 > **In safe mode you can now click a blurred cover to peek at just that one.** The first click reveals it (without

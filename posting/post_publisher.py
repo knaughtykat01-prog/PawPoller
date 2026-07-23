@@ -351,4 +351,17 @@ async def publish_post(post_id: int, platforms: list[str],
             )
         finally:
             conn.close()
+
+    # Discord announce (gap G4) — fire once per publish if any platform succeeded.
+    # Best-effort; announce_publish self-gates on config + never raises.
+    succeeded = [platforms[i] for i, r in enumerate(results) if r.get("success")]
+    if succeeded:
+        from posting import discord
+        first_url = next((r.get("external_url") for r in results
+                          if r.get("success") and r.get("external_url")), None)
+        await discord.announce_publish(
+            kind="post",
+            title=" ".join((post.get("body") or "").split())[:80] or "New post",
+            url=first_url, rating=post.get("rating"), platforms=succeeded,
+        )
     return results
