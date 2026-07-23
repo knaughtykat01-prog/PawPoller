@@ -1275,7 +1275,8 @@ def save_preferences(body: dict):
     if "theme" in body:
         theme_val = str(body["theme"])
         if theme_val in {"dark", "light", "ink_copper", "parchment",
-                         "midnight_press", "forest", "velvet", "high_contrast"}:
+                         "midnight_press", "forest", "velvet", "high_contrast",
+                         "retro_2005"}:
             update["theme"] = theme_val
     # Mobile UX override. `auto` (default) follows viewport via matchMedia;
     # `on` forces the mobile layout on every screen size; `off` suppresses

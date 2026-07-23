@@ -404,6 +404,94 @@
     --bg-glow-cool:   transparent;
 }
 
+/* ── Retro 2005 (early-2000s web: silver chrome, white pages, beveled
+      buttons, gradient title bars, boxy tables, Verdana) ──────────────
+   A fun opt-in throwback. Tokens set the palette + boxy radii + Verdana;
+   the scoped component rules below add the beveled/gradient chrome that
+   made 2005 look the way it did. */
+[data-theme="retro_2005"] {
+    --bg-primary:    #d4d0c8;   /* silver window chrome */
+    --bg-secondary:  #ece9d8;   /* Luna beige panel */
+    --bg-card:       #ffffff;   /* white content, like a 2005 page body */
+    --bg-tertiary:   #e8e6de;
+    --bg-hover:      #d8e8f8;   /* XP selection blue */
+    --bg-glass:      rgba(236, 233, 216, 0.94);
+    --border:             #808080;
+    --card-border-inner:  rgba(0, 0, 0, 0.12);
+    --overlay-backdrop:   rgba(0, 0, 0, 0.45);
+    --text-primary:  #000000;
+    --text-secondary:#333333;
+    --text-muted:    #666666;
+    --accent:        #0a52c9;   /* classic web/XP blue */
+    --accent-dim:    #003d99;
+    --accent-warm:   #ff6600;   /* 2000s orange */
+    --success:       #008000;
+    --warning:       #d07000;
+    --danger:        #cc0000;
+    --info:          #0000cc;
+    /* Hard, offset shadows — no soft glow, no blur in 2005. */
+    --shadow:         2px 2px 0 rgba(0, 0, 0, 0.20);
+    --shadow-strong:  3px 3px 0 rgba(0, 0, 0, 0.28);
+    --shadow-glass:   1px 1px 0 rgba(0, 0, 0, 0.16);
+    --blur:           0px;
+    --bg-glow-warm:   transparent;
+    --bg-glow-cool:   transparent;
+    /* Boxy: kill the rounded corners + pills. */
+    --radius:        2px;
+    --radius-lg:     2px;
+    --radius-sm:     1px;
+    --radius-pill:   2px;
+    /* Verdana/Tahoma everywhere; Times for serif; Courier for mono. */
+    --font-sans:     Verdana, Tahoma, Geneva, sans-serif;
+    --font-display:  'Trebuchet MS', Verdana, Tahoma, sans-serif;
+    --font-serif:    'Times New Roman', Times, serif;
+    --font-mono:     'Courier New', Courier, monospace;
+}
+
+/* Component flavor — scoped to the theme so nothing else is touched. */
+[data-theme="retro_2005"] .btn {
+    border: 2px outset #dedbd2;
+    border-radius: 0;
+    background: linear-gradient(#fdfdfc, #d6d2c8);
+    color: #000;
+    box-shadow: none;
+    font-weight: normal;
+}
+[data-theme="retro_2005"] .btn:active { border-style: inset; }
+[data-theme="retro_2005"] .btn-primary {
+    background: linear-gradient(#e8f1ff, #a9c9f5);
+    border-color: #7ba7e0 #2c5aa0 #2c5aa0 #7ba7e0;
+    color: #002b6b;
+}
+[data-theme="retro_2005"] .btn-danger {
+    background: linear-gradient(#ffe6e6, #f3a9a9);
+    border-color: #e08a8a #a02c2c #a02c2c #e08a8a;
+    color: #6b0000;
+}
+/* Gradient "title bar" page headings, straight out of a 2005 app window. */
+[data-theme="retro_2005"] .page-header h1,
+[data-theme="retro_2005"] .page-header h2 {
+    background: linear-gradient(#3a7bd5, #1c4a9e);
+    color: #fff;
+    padding: 6px 12px;
+    border: 1px solid #16386f;
+    border-radius: 2px;
+}
+/* Boxy tables with a blue header row. */
+[data-theme="retro_2005"] .data-table th {
+    background: linear-gradient(#3a7bd5, #1c4a9e);
+    color: #fff;
+    border: 1px solid #16386f;
+}
+[data-theme="retro_2005"] .data-table td { border: 1px solid #cfccc4; }
+[data-theme="retro_2005"] .card {
+    border: 1px solid #808080;
+    border-radius: 2px;
+}
+/* Underlined blue links, purple when visited. */
+[data-theme="retro_2005"] a { color: #0000ee; text-decoration: underline; }
+[data-theme="retro_2005"] a:visited { color: #551a8b; }
+
 /* ── Vibe Pack: typography + brand mark ──────────────────── */
 /* Body element gets its theme-aware radial-glow background defined in
    components.css. Here we just set the heading typography, brand mark,

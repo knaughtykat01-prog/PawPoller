@@ -12,6 +12,27 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.172.0] - 2026-07-23 - A "Retro 2005" theme, just for fun
+
+> **New theme: Retro 2005.** In **Settings → Appearance**, pick "Retro 2005" for an early-2000s throwback — silver
+> window chrome, white pages, beveled buttons, blue gradient title bars, boxy tables, underlined blue links and Verdana
+> everywhere. Purely cosmetic; switch back any time.
+
+Backlog item AA. A new entry in the existing `data-theme` system — no new machinery.
+
+- **`frontend/css/tokens.css`:** a `[data-theme="retro_2005"]` token block (silver/beige chrome, white cards, classic
+  web-blue accent `#0a52c9`, near-zero radii for boxy corners, Verdana/Tahoma sans + Times serif + Courier mono, hard
+  offset shadows, `--blur: 0`, no background glows) plus a small set of **theme-scoped component rules** for the
+  authentic chrome: beveled (`outset`→`inset`) buttons, blue gradient `.page-header` title bars, blue-header boxy
+  `.data-table`s, and underlined `#0000ee` / visited-`#551a8b` links. All scoped to the theme, so nothing else changes.
+- **`frontend/js/app.js`:** registered in the `THEMES` picker (with a swatch).
+- **`routes/api.py`:** added `retro_2005` to the theme allowlist in the preferences endpoint so the choice persists +
+  syncs.
+
+Cosmetic only; no tests. That's the last of the open backlog features (V, W, Y, AA all shipped).
+
+---
+
 ## [2.171.0] - 2026-07-23 - Download your everything (full backup & restore)
 
 > **You can now back up everything in one file, and restore it.** In **Settings → Data → Backup & Restore**, "Download

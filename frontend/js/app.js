@@ -504,6 +504,8 @@ const App = {
           swatch: ['#1a1018', '#2e1f30', '#c47a9a', '#e5a060', '#f5e8ee'] },
         { id: 'high_contrast',  name: 'High Contrast',  desc: 'Pure black/white + saturated yellow (a11y)',
           swatch: ['#000000', '#0a0a0a', '#ffeb3b', '#ff9800', '#ffffff'] },
+        { id: 'retro_2005',     name: 'Retro 2005',     desc: 'Early-2000s web: silver chrome, beveled buttons, Verdana',
+          swatch: ['#d4d0c8', '#ffffff', '#0a52c9', '#ff6600', '#000000'] },
     ],
 
     applyTheme(themeId) {

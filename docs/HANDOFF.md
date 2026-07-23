@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.171.0 — **Full backup & restore: "download my everything" (backlog Y).**
+**Current version (master):** 2.172.0 — **"Retro 2005" theme (backlog AA) — the LAST open backlog feature.**
+New entry in the existing `data-theme` system, no new machinery. `tokens.css`: `[data-theme="retro_2005"]` token block
+(silver/beige chrome, white cards, web-blue `#0a52c9`, near-0 radii, Verdana/Tahoma+Times+Courier fonts, hard offset
+shadows, `--blur:0`, no glows) + theme-scoped component rules (beveled outset→inset buttons, blue gradient `.page-header`
+title bars, blue-header boxy `.data-table`, underlined `#0000ee`/visited `#551a8b` links). `app.js` THEMES picker entry
++ swatch. `routes/api.py` theme allowlist += `retro_2005` (persists/syncs). Cosmetic, no tests. **ALL open backlog
+features done: V (triage), W (cred-age), Y (backup/restore), AA (retro theme).** Backlog now: only deferred cleanup
+(L1/L2) + un-cut desktop releases (2.164–2.172 live on web, not yet tagged for the installer).
+
+**Prior — 2.171.0 — Full backup & restore: "download my everything" (backlog Y).**
 Top self-host trust objection. Replaces the old DB-only backup. **`routes/backup_api.py`** (`/api/backup/*`):
 `GET /export` streams a `.zip` of everything under `DATA_DIR` (pawpoller.db + settings.json + encrypted vault + media
 dirs artwork/posts_media/story-archive) + a manifest; logs/caches excluded; temp-file + `BackgroundTask` cleanup.
