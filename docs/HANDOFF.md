@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.168.0 — **Queue & Schedule calendar view (rounds out backlog Z).**
+**Current version (master):** 2.169.0 — **Triage inbox: clear the discovered queue one card at a time (backlog V).**
+`#/submissions/triage` (`Submissions.renderTriage`) — frontend-only single-card review over the discovered queue,
+reusing the list view's endpoints (ignore/importPost/importArtwork/matchMasterpiece+promote/addMasterpieceMember/
+linkSubmission), no backend change. One big card (hero/title/platform/view-link) + progress + contextual actions
+(Import-art on image rows, →Posts on text microblog, ★Master on image-non-text, 🔗Link, 🚫Ignore, Skip). **Keyboard
+A/P/M/L/I/→**; handler ignores input fields + self-removes on leaving. **Writing flag:** no-image non-microblog item
+(SF/DA/AO3/WS) → "looks like writing, link don't import" (the backlog note). ★Master + 🔗Link advance in-flow (vs the
+list view navigating away). Forward-only over a snapshot. Entry: ⚡ button on Discovered header + Library Discovered
+segment top. Baseline tests unchanged (625, frontend-only). **Deferred:** folding Ignored/Masterpieces/suggestions into
+the same one-card flow. **Remaining backlog: W, Y, AA.**
+
+**Prior — 2.168.0 — Queue & Schedule calendar view (rounds out backlog Z).**
 Scheduling core (create/reschedule/cancel across stories/artwork/posts + sorted agenda) shipped 2.163–2.164; this adds
 the at-a-glance calendar. **Frontend only:** `posting.js` `renderQueue` now caches the queue + `_paintQueue` renders the
 chosen view (☰ List | 📅 Calendar), toggle doesn't refetch. Table → `_renderQueueList`; new `_renderQueueCalendar`

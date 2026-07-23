@@ -12,6 +12,38 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.169.0] - 2026-07-23 - Triage: clear the discovered queue one card at a time
+
+> **New fast way to clear your "Discovered" queue.** Open **⚡ Triage one-by-one** and review each found post on its own
+> big card: keep it as art, send it to Posts, make it a Masterpiece, link it to a work, or ignore it — then it jumps to
+> the next. Keyboard shortcuts (A / P / M / L / I / →) make it quick. It even flags items that look like writing so you
+> link them instead of importing them as art.
+
+Backlog item V — the analysis "easy win". The discovered list is great for bulk actions but tedious for judgement calls
+one at a time; triage is the focused single-card flow for exactly that.
+
+**New view — `#/submissions/triage` (`Submissions.renderTriage`).** Frontend only; reuses the list view's endpoints
+(`ignoreDiscovered` / `importDiscoveredPost` / `importArtwork` / `matchMasterpiece`+`promoteMasterpiece`/
+`addMasterpieceMember` / `linkSubmission`), so there's no new backend.
+- One big card at a time (hero image or platform glyph, title, platform, type, view-link), a progress counter, and
+  contextual actions — **Import as art** (image rows), **→ Posts** (text microblog), **★ Master** (image, non-text),
+  **🔗 Link**, **🚫 Ignore**, **Skip**. Forward-only over a snapshot: acted items are done server-side, so it just
+  advances the cursor.
+- **Keyboard shortcuts:** A / P / M / L / I(or X) / → (skip). The handler ignores typing in inputs and self-removes when
+  you leave the view (no off-screen firing, no double-bind).
+- **Writing flag:** a no-image item on a non-microblog platform (SF/DA/AO3/WS) is almost certainly a story, so the card
+  says so and steers you to **Link** rather than a doomed art-import — the exact gap the backlog noted.
+- ★ Master and 🔗 Link **stay in the flow** (promote/link then advance) instead of navigating away like the list view's
+  versions do, so a triage session isn't interrupted.
+
+**Entry points:** a prominent **⚡ Triage one-by-one** button on the Discovered page header and atop the Library's
+Discovered segment. Route added in `app.js`.
+
+**Deferred:** folding Ignored / Masterpieces / dup-suggestions into the same one-card flow (V's "collapse everything"
+stretch) — the discovered queue is the high-traffic case; the rest have their own good surfaces already.
+
+---
+
 ## [2.168.0] - 2026-07-23 - See what's scheduled on a calendar
 
 > **The Queue & Schedule page now has a calendar view.** Flip between **☰ List** and **📅 Calendar** at the top —

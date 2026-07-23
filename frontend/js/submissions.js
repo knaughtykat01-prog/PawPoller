@@ -238,7 +238,12 @@ window.Submissions = {
     async renderDiscoveredInto(target) {
         if (!target) return;
         target.className = '';
-        target.innerHTML = `<div id="disc-list"><div class="loading-spinner">Loading…</div></div>`;
+        target.innerHTML = `
+            <div style="display:flex;justify-content:flex-end;margin-bottom:.6rem;">
+                <a class="btn btn-primary btn-sm" href="#/submissions/triage"
+                    title="Review discovered items one at a time, with keyboard shortcuts">⚡ Triage one-by-one</a>
+            </div>
+            <div id="disc-list"><div class="loading-spinner">Loading…</div></div>`;
         let disc;
         try {
             disc = await API.getDiscovered();
@@ -261,6 +266,7 @@ window.Submissions = {
                     local work yet. Link one to an existing work to fold it into the hub.</p>
                 </div>
                 <div style="display:flex;gap:.5rem;flex-shrink:0;">
+                    <a class="btn btn-primary" href="#/submissions/triage" title="Review discovered items one at a time, with keyboard shortcuts">⚡ Triage one-by-one</a>
                     <a class="btn" href="#/artwork/ignored">Ignored</a>
                     <a class="btn" href="#/library">&larr; Library</a>
                 </div>
@@ -548,6 +554,198 @@ window.Submissions = {
                 const idx = this._discItems.indexOf(d);
                 if (idx >= 0) this._discItems.splice(idx, 1);
                 this._paintDiscovered();
+            },
+        });
+    },
+
+    /* ── Triage inbox (backlog V) ────────────────────────────────
+     * The discovered queue, one card at a time with big/quick actions +
+     * keyboard shortcuts — a fast keep / →Posts / master / link / ignore flow
+     * instead of scanning a long list. Reuses the list view's endpoints;
+     * forward-only over a snapshot (acted items are done server-side, so we
+     * just advance the cursor). */
+    async renderTriage() {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+                <div>
+                    <h1>Triage</h1>
+                    <p class="muted">Clear your discovered queue one at a time — keep it, send it to Posts,
+                    make it a Masterpiece, link it to a work, or ignore it, then on to the next.</p>
+                </div>
+                <a class="btn" href="#/submissions/discovered" style="flex-shrink:0;">&#9776; List view</a>
+            </div>
+            <div id="triage-body"><div class="loading-spinner">Loading…</div></div>`;
+        let disc;
+        try { disc = await API.getDiscovered(); }
+        catch (err) {
+            const b = document.getElementById('triage-body');
+            if (b) b.innerHTML = `<div class="card error">Failed to load: ${this.esc(err.message)}</div>`;
+            return;
+        }
+        this._triageItems = (disc && disc.discovered) || [];
+        this._triageIdx = 0;
+        this._triageCount = 0;
+        this._wireTriageKeys();
+        this._paintTriage();
+    },
+
+    /* Keyboard triage: attach once. The handler self-removes when the triage DOM
+     * is gone (route changed), so it never acts off-screen or double-binds. */
+    _wireTriageKeys() {
+        if (this._triageKeyHandler) return;
+        this._triageKeyHandler = (e) => {
+            if (!document.getElementById('triage-body')) {
+                document.removeEventListener('keydown', this._triageKeyHandler);
+                this._triageKeyHandler = null;
+                return;
+            }
+            if (e.target && e.target.matches && e.target.matches('input,textarea,select')) return;
+            const d = this._triageItems[this._triageIdx];
+            if (!d) return;
+            const k = (e.key || '').toLowerCase();
+            if (k === 'i' || k === 'x') { e.preventDefault(); this._triageAct('ignore'); }
+            else if (k === 'p' && this._canImportPost(d)) { e.preventDefault(); this._triageAct('post'); }
+            else if (k === 'a' && this._canImportArt(d)) { e.preventDefault(); this._triageAct('art'); }
+            else if (k === 'm' && this._canMaster(d)) { e.preventDefault(); this._triageMaster(); }
+            else if (k === 'l') { e.preventDefault(); this._triageLink(); }
+            else if (k === 'arrowright' || k === 's') { e.preventDefault(); this._triageAct('skip'); }
+        };
+        document.addEventListener('keydown', this._triageKeyHandler);
+    },
+
+    /* No image + not a microblog → almost certainly a story/writing submission
+     * (SF/DA/AO3/WS text), not art. Surfaces the "link, don't import as art" hint
+     * the backlog called for. */
+    _looksLikeWriting(d) {
+        return !!d && !d.thumbnail_url && !this._MICROBLOG.includes(d.platform);
+    },
+
+    _paintTriage() {
+        const body = document.getElementById('triage-body');
+        if (!body) return;
+        const total = this._triageItems.length;
+        if (this._triageIdx >= total) {
+            body.innerHTML = `<div class="empty-state" style="text-align:center;">
+                <h3>${this._triageCount ? '✅ Inbox cleared' : 'Nothing to triage'}</h3>
+                <p class="muted">${this._triageCount
+                    ? `You triaged ${this._triageCount} item${this._triageCount === 1 ? '' : 's'}. Nice.`
+                    : 'No unlinked discovered submissions right now.'}</p>
+                <a class="btn btn-primary" href="#/library">&larr; Back to Library</a></div>`;
+            return;
+        }
+        const d = this._triageItems[this._triageIdx];
+        const plat = this._plat(d.platform);
+        const hero = d.thumbnail_url
+            ? `<img src="${this.esc(d.thumbnail_url)}" alt="" style="max-width:100%;max-height:360px;border-radius:10px;object-fit:contain;">`
+            : `<div style="font-size:3rem;opacity:.5;padding:2.5rem 0;">${plat.emoji || '📄'}</div>`;
+        const writingFlag = this._looksLikeWriting(d)
+            ? `<div style="background:color-mix(in srgb, var(--accent) 10%, var(--surface));border-radius:8px;padding:.5rem .8rem;font-size:.85rem;margin:.7rem 0 0;">
+                📝 Looks like a <strong>writing submission</strong> (no image) — link it to a story rather than importing as art.</div>`
+            : '';
+
+        const btn = (id, cls, label, title) =>
+            `<button class="btn ${cls}" data-triage="${id}" title="${this.esc(title)}">${label}</button>`;
+        const actions = [
+            this._canImportArt(d) ? btn('art', 'btn-primary', 'Import as art <kbd>A</kbd>', 'Download the image + metadata as a new artwork') : '',
+            this._canImportPost(d) ? btn('post', '', '&rarr; Posts <kbd>P</kbd>', 'Bring this in as a microblog post') : '',
+            this._canMaster(d) ? btn('master', '', '★ Master <kbd>M</kbd>', 'Promote to a Masterpiece') : '',
+            btn('link', '', '🔗 Link <kbd>L</kbd>', 'Link this to one of your works'),
+            btn('ignore', 'btn-danger', '🚫 Ignore <kbd>I</kbd>', 'Hide this — reversible from Ignored'),
+            btn('skip', 'btn-outline', 'Skip <kbd>→</kbd>', 'Leave it and move on'),
+        ].filter(Boolean).join(' ');
+        const keyHint = `${this._canImportArt(d) ? '<kbd>A</kbd> import · ' : ''}`
+            + `${this._canImportPost(d) ? '<kbd>P</kbd> posts · ' : ''}`
+            + `${this._canMaster(d) ? '<kbd>M</kbd> master · ' : ''}<kbd>L</kbd> link · <kbd>I</kbd> ignore · <kbd>→</kbd> skip`;
+
+        body.innerHTML = `
+            <div style="max-width:560px;margin:0 auto;">
+                <div class="muted" style="text-align:center;margin-bottom:.5rem;">
+                    ${this._triageIdx + 1} of ${total}${this._triageCount ? ` · ${this._triageCount} triaged` : ''}</div>
+                <div class="card" style="text-align:center;padding:1.2rem;">
+                    ${hero}
+                    <div style="font-weight:700;font-size:1.1rem;margin-top:.7rem;">${this.esc(d.title || d.submission_id)}</div>
+                    <div class="muted" style="font-size:.85rem;margin-top:.2rem;">
+                        ${plat.emoji || ''} ${this.esc(plat.label)}${d.type ? ` · ${this.esc(d.type)}` : ''}
+                        · <a href="${this.esc(Utils.safeUrl(d.url) || '#')}" target="_blank" rel="noopener">view ↗</a></div>
+                    ${writingFlag}
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center;margin-top:.9rem;">${actions}</div>
+                <div class="muted" style="text-align:center;font-size:.78rem;margin-top:.8rem;">Keyboard: ${keyHint}</div>
+            </div>`;
+
+        body.querySelectorAll('[data-triage]').forEach(b =>
+            b.addEventListener('click', () => {
+                const a = b.dataset.triage;
+                if (a === 'master') this._triageMaster();
+                else if (a === 'link') this._triageLink();
+                else this._triageAct(a);
+            }));
+    },
+
+    async _triageAct(kind) {
+        const d = this._triageItems[this._triageIdx];
+        if (!d) return;
+        try {
+            if (kind === 'ignore') { await API.ignoreDiscovered(d.platform, d.submission_id); this._toast('success', 'Ignored'); }
+            else if (kind === 'post') { await API.importDiscoveredPost(d.platform, d.submission_id); this._toast('success', 'Sent to Posts'); }
+            else if (kind === 'art') { const r = await API.importArtwork(d.platform, d.submission_id); this._toast('success', `Imported as ${r.name}`); }
+            // 'skip' does nothing server-side.
+            if (kind !== 'skip') this._triageCount++;
+            this._triageIdx++;
+            this._paintTriage();
+        } catch (err) {
+            this._toast('error', `${kind} failed: ${err.message || err}`);
+        }
+    },
+
+    async _triageMaster() {
+        const d = this._triageItems[this._triageIdx];
+        if (!d) return;
+        const platform = d.platform, sid = d.submission_id;
+        try {
+            let match = null;
+            try { const r = await API.matchMasterpiece(platform, sid); match = r && r.match; } catch { /* no opinion */ }
+            if (match && window.confirm(
+                `This looks like your existing Masterpiece “${match.title}”.\n\n`
+                + `OK — link this piece into it (no duplicate).\nCancel — make a separate Masterpiece anyway.`)) {
+                await API.addMasterpieceMember(match.name, { platform, submission_id: sid });
+                this._toast('success', `Linked into “${match.title}”`);
+            } else {
+                const res = await API.promoteMasterpiece(platform, sid);
+                this._toast('success', `Made a Masterpiece: ${res.name}`);
+            }
+            this._triageCount++;
+            this._triageIdx++;
+            this._paintTriage();
+        } catch (err) {
+            this._toast('error', 'Make Masterpiece failed: ' + (err.message || err));
+        }
+    },
+
+    _triageLink() {
+        const d = this._triageItems[this._triageIdx];
+        if (!d) return;
+        if (!window.WorkPicker) { this._toast('error', 'Picker unavailable'); return; }
+        WorkPicker.open({
+            title: `Link “${d.title || d.submission_id}” to…`,
+            confirmLabel: 'Link',
+            multi: false,
+            filters: ['story', 'artwork', 'masterpiece'],
+            onConfirm: async (items) => {
+                const it = items[0];
+                if (!it) return;
+                let content_type, name;
+                if (it.member_type === 'masterpiece') { content_type = 'artwork'; name = it.member_ref; }
+                else { const p = it.member_ref.split(':'); content_type = p[0]; name = p.slice(1).join(':'); }
+                await API.linkSubmission({
+                    platform: d.platform, submission_id: d.submission_id,
+                    content_type, name, title: d.title, url: d.url,
+                });
+                this._toast('success', `Linked to ${name}`);
+                this._triageCount++;
+                this._triageIdx++;
+                this._paintTriage();
             },
         });
     },

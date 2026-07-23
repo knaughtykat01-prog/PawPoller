@@ -1118,6 +1118,8 @@ const App = {
             if (window.Posts) window.Posts.renderCompose();
         } else if (parts[0] === 'posts') {
             if (window.Posts) window.Posts.render();
+        } else if (parts[0] === 'submissions' && parts[1] === 'triage') {
+            if (window.Submissions) window.Submissions.renderTriage();
         } else if (parts[0] === 'submissions' && parts[1] === 'discovered') {
             if (window.Submissions) window.Submissions.renderDiscovered();
         } else if (parts[0] === 'submissions') {
