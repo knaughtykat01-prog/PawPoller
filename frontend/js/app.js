@@ -10259,20 +10259,24 @@ const App = {
 
                 <div class="settings-section">
                     <h3>Backup &amp; Restore</h3>
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
+                        Download <strong>everything</strong> — your database, settings, saved logins and uploaded
+                        media — as one <code>.zip</code>, or restore from one. <span id="backup-size"></span>
+                    </div>
                     <div class="settings-row">
                         <div>
-                            <span class="settings-label">Download database backup</span>
-                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Download a complete copy of your database</div>
+                            <span class="settings-label">Download a full backup</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">One file with all your data. ⚠️ It contains your saved logins — keep it somewhere safe.</div>
                         </div>
                         <button class="btn btn-secondary" id="backup-download-btn">Download Backup</button>
                     </div>
                     <div class="settings-row" style="margin-top:8px">
                         <div>
-                            <span class="settings-label">Restore from backup</span>
-                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Replace current database with a backup file</div>
+                            <span class="settings-label">Restore from a backup</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Replaces your current data with the backup's. A safety copy of your current data is kept, and you'll need to restart afterwards.</div>
                         </div>
                         <div style="display:flex;align-items:center;gap:8px">
-                            <input type="file" id="restore-file-input" accept=".db,.sqlite,.sqlite3" style="font-size:12px">
+                            <input type="file" id="restore-file-input" accept=".zip" style="font-size:12px">
                             <button class="btn btn-danger" id="backup-restore-btn" disabled>Restore</button>
                         </div>
                     </div>
@@ -13492,10 +13496,20 @@ const App = {
                 this._showUninstallDialog();
             });
 
-            // Backup Download
-            document.getElementById('backup-download-btn')?.addEventListener('click', () => API.downloadBackup());
+            // Full backup (db + settings + logins + media). Show its size, and
+            // download via a same-origin navigation so the session cookie rides.
+            API.getBackupInfo().then(info => {
+                const el = document.getElementById('backup-size');
+                if (el && info && info.total_bytes) {
+                    const mb = info.total_bytes / (1024 * 1024);
+                    el.textContent = `Current size: ~${mb < 1 ? (info.total_bytes / 1024).toFixed(0) + ' KB' : mb.toFixed(1) + ' MB'}.`;
+                }
+            }).catch(() => { /* size is a nicety */ });
+            document.getElementById('backup-download-btn')?.addEventListener('click', () => {
+                window.location.href = '/api/backup/export';
+            });
 
-            // Backup Restore
+            // Restore from a full backup .zip.
             const restoreFileInput = document.getElementById('restore-file-input');
             const restoreBtn = document.getElementById('backup-restore-btn');
             if (restoreFileInput && restoreBtn) {
@@ -13503,18 +13517,17 @@ const App = {
                     restoreBtn.disabled = !restoreFileInput.files.length;
                 });
                 restoreBtn.addEventListener('click', async () => {
-                    if (!confirm('Replace current database with this backup? This cannot be undone.')) return;
+                    if (!confirm('Restore from this backup? It replaces your current database, settings and logins '
+                        + '(a safety copy of your current data is kept first). You\'ll need to restart afterwards.')) return;
                     const msg = document.getElementById('backup-msg');
                     restoreBtn.disabled = true;
-                    restoreBtn.textContent = 'Restoring...';
+                    restoreBtn.textContent = 'Restoring…';
                     try {
-                        const formData = new FormData();
-                        formData.append('file', restoreFileInput.files[0]);
-                        await API.restoreBackup(formData);
-                        msg.textContent = 'Restored! Reloading...'; msg.style.color = 'var(--success)';
-                        setTimeout(() => window.location.reload(), 1500);
+                        const res = await API.importBackup(restoreFileInput.files[0]);
+                        msg.textContent = (res && res.message) || 'Restored. Please restart PawPoller.';
+                        msg.style.color = 'var(--success)';
                     } catch (err) {
-                        msg.textContent = 'Error: ' + err.message; msg.style.color = 'var(--danger)';
+                        msg.textContent = 'Error: ' + (err.message || err); msg.style.color = 'var(--danger)';
                         restoreBtn.textContent = 'Restore';
                         restoreBtn.disabled = false;
                     }

@@ -43,6 +43,7 @@ from routes.posts_api import posts_router
 from routes.collections_api import collections_router
 from routes.masterpieces_api import masterpieces_router
 from routes.whatsnew_api import whatsnew_router
+from routes.backup_api import backup_router
 from routes.report_api import report_router
 from routes.submissions_api import works_router
 from routes.editor_api import editor_router
@@ -463,6 +464,7 @@ app.include_router(works_router)    # Unified Submissions hub (/api/works)
 app.include_router(collections_router)  # Collections (master container) routes (/api/collections/*)
 app.include_router(masterpieces_router)  # Masterpieces (master image record) routes (/api/masterpieces/*)
 app.include_router(whatsnew_router)  # In-app "What's new" changelog popup (/api/whatsnew)
+app.include_router(backup_router)    # Backup & restore (/api/backup/*)
 app.include_router(report_router)    # Error-report → Telegram forwarder (/api/report-error)
 app.include_router(editor_router)   # Story editor routes (/api/editor/*)
 app.include_router(settings_router)  # Settings sync routes (/api/settings/*)

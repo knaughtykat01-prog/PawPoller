@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.170.0 — **Proactive credential-age warnings: a heads-up before a login expires (backlog W).**
+**Current version (master):** 2.171.0 — **Full backup & restore: "download my everything" (backlog Y).**
+Top self-host trust objection. Replaces the old DB-only backup. **`routes/backup_api.py`** (`/api/backup/*`):
+`GET /export` streams a `.zip` of everything under `DATA_DIR` (pawpoller.db + settings.json + encrypted vault + media
+dirs artwork/posts_media/story-archive) + a manifest; logs/caches excluded; temp-file + `BackgroundTask` cleanup.
+`POST /import` = **destructive restore, safety-first:** validates manifest kind, **zip-slip guard**, writes a
+timestamped `restore-safety-<ts>/` copy of current DB+settings+vault BEFORE overwriting, replaces critical files +
+**merges** media (never blind-deletes), 2 GB cap, returns "restart to finish". `GET /info` = size/contents for the UI.
+**Frontend:** Settings→Data→Backup & Restore upgraded to full backup (size line, Download via same-origin nav so the
+auth cookie rides, Restore accepts `.zip` + strong confirm); `api.js getBackupInfo/importBackup`. Old
+`/api/backup/database` left intact but unused. **Restart note:** `get_settings()` re-reads from disk + `get_connection()`
+opens fresh, so reads pick up a restore immediately, but module-level constants/singletons need a restart (UI says so).
++6 tests (`tests/test_backup.py`: export contents, /info, non-backup + wrong-kind rejection, round-trip + safety copy,
+zip-slip). **Remaining backlog: AA (last).**
+
+**Prior — 2.170.0 — Proactive credential-age warnings: a heads-up before a login expires (backlog W).**
 Today's status only reddens AFTER a poll/post fails (reactive); this warns as a finite-lifetime, no-refresh cookie login
 ages. **Deliberately narrow** (never cry wolf): only **X (30d) / FA (45d) / DA (45d)** cookies — IG/Threads omitted
 (auto-refresh → 'valid' is truth), Mastodon/Tumblr/Bluesky/e621 omitted (don't expire). No fragile expiry-API calls; the

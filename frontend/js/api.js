@@ -292,6 +292,12 @@ const API = {
     getPlatformSessions() { return this.get('/api/platforms/sessions'); },
     triggerSessionCheck() { return this.post('/api/platforms/sessions/check', {}); },
     getCredentialAge() { return this.get('/api/platforms/credential-age'); },
+    getBackupInfo() { return this.get('/api/backup/info'); },
+    importBackup(file, onProgress) {
+        const fd = new FormData();
+        fd.append('file', file);
+        return this._upload('/api/backup/import', fd, onProgress);
+    },
     // Mute/unmute a platform's session-health alert (auto-clears on recovery).
     muteSessionAlert(code, muted) { return this.post('/api/platforms/sessions/mute', { code, muted }); },
     getNotifications(limit) { return this.get('/api/notifications', limit ? { limit } : {}); },

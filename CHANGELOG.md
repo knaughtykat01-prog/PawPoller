@@ -12,6 +12,43 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.171.0] - 2026-07-23 - Download your everything (full backup & restore)
+
+> **You can now back up everything in one file, and restore it.** In **Settings → Data → Backup & Restore**, "Download
+> Backup" gives you a single `.zip` with your database, settings, saved logins and uploaded media. "Restore" brings it
+> all back from that file — it keeps a safety copy of your current data first, and you just restart afterwards. Great
+> before moving to a new computer, or just for peace of mind. (The backup file contains your saved logins, so keep it
+> somewhere safe.)
+
+Backlog item Y — the top self-host trust objection ("what if I lose my data / want to move machines?"). Replaces the old
+database-only backup with a full one.
+
+**New module `routes/backup_api.py`** (`/api/backup/*`):
+- **`GET /export`** streams a `.zip` of everything under `DATA_DIR`: `pawpoller.db`, `settings.json`, the encrypted
+  `settings.vault.json`, and the media dirs (`artwork/`, `posts_media/`, and `story-archive/` when it lives under
+  `DATA_DIR`), plus a `manifest.json` (kind / app_version / created_at / contents). Logs and transient caches are
+  excluded. Built to a temp file and streamed, cleaned up via a `BackgroundTask`.
+- **`POST /import`** restores from an uploaded backup. **Safety-first, since restore is destructive:** it validates the
+  manifest (`kind == "pawpoller-backup"`), guards against **zip-slip** (refuses any member that would escape the extract
+  dir), writes a timestamped **`restore-safety-<ts>/` copy of the current DB + settings + vault before overwriting**,
+  then replaces the critical files and **merges** media (restored files overwrite same-named; existing extras are never
+  blind-deleted). 2 GB upload cap. Returns the safety-copy name + a "restart to finish" message.
+- **`GET /info`** reports what a backup would contain + its rough size, for the UI.
+
+**Frontend.** Settings → Data → **Backup & Restore** upgraded from database-only to the full backup: shows the current
+backup size, "Download Backup" (same-origin navigation so the auth cookie rides), and Restore (accepts `.zip`, strong
+confirm, keeps the old handler's shape). `api.js`: `getBackupInfo`, `importBackup`. The old `/api/backup/database`
+endpoint is left intact but unused by the UI.
+
+**Restart note.** `get_settings()` re-reads from disk and `get_connection()` opens the DB fresh, so most reads pick up a
+restore immediately — but module-level constants and long-lived singletons only re-read on restart, so the UI says to
+restart, and that's the honest guarantee.
+
+**Tests.** +6 (`tests/test_backup.py`): export contents + manifest, `/info`, non-backup + wrong-kind rejection, the full
+round-trip (export → mutate → restore-back) with the safety copy verified, and the zip-slip guard.
+
+---
+
 ## [2.170.0] - 2026-07-23 - A heads-up before a login expires
 
 > **PawPoller now warns you before a login goes stale — not after it breaks.** Some sites (X, FurAffinity, DeviantArt)
