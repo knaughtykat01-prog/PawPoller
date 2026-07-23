@@ -57,9 +57,22 @@ split, Option A (**2.142**).
 
 ## ⚪ Deferred / future
 
+> **Gap sweep (2026-07-23):** a use-case-persona review found these missing. Full survey + implementation-ready specs
+> in `docs/specs/user_gap_analysis.md`. Verified against source (dropped false gaps — notifications + follower tracking
+> already exist). G1–G7 are the recommended builds (ranked); G8+ are parked. Effort: S≈a session, M≈a few, L≈multi.
+
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | J | ~~Simple **image editor**~~ | 🟢 **DONE 2.151** | `#/imagetool` — crop / rotate / flip / resize / censor / pixelate, undo, PNG·JPEG·WebP export, Download · Send to Posts · Save as new artwork. Non-destructive, all client-side |
+| G1 | **Serialized / "drip" scheduling** — post Ch.1 now, a chapter every Friday 8pm | ⚪ **M** | Scheduling is one-off only. Expand a finite drip into N ordinary `posting_queue` items at creation time (reuses the scheduler daemon, no recurring logic). Add `drip_group_id`/`drip_seq` to group+cancel a campaign. Spec §2.1 |
+| G2 | **First-run setup wizard** — connect-first-account → first-post | ⚪ **M** | Onboarding today is educational (tours), not operational. Gate on a `first_run_completed` flag; wizard shell reuses the existing per-platform connect flows. Public-readiness §3. Spec §2.2 |
+| G3 | **Reply-to-comments inbox** — unified `#/inbox` across personas | ⚪ **L** | Comments are surfaced + notified but not repliable. Stage A: read inbox (needs comment text+author+permalink stored — audit pollers first). Stage B: native reply where the API allows (Bluesky/Mastodon/e621; FA/DA stay "reply on site ↗"). Spec §2.3 |
+| G4 | **Discord announce webhook** — POST an embed on publish | ⚪ **S** | Best value/cost — build first. Per-persona webhook URL (no OAuth), formatted embed on publish + manual 📣 button + per-post opt-out; respect SFW/NSFW. Spec §2.4 |
+| G5 | **Analytics CSV / report export** | ⚪ **S** | No export today (only the backup zip). Export button → streamed CSV (per-work snapshot + time-series shapes), reuses rollup queries. Spec §2.5 |
+| G6 | **Alt-text on gallery uploads** | ⚪ **S/M** | Posts carry `image_alt`; the Artwork path has none. Add a description/alt field mapped to each platform's alt/description on post. Spec §2.6 |
+| G7 | **Scheduled automatic backups** | ⚪ **S** | Restore only helps if a backup exists; nobody clicks Export. Scheduler job runs the existing export on a cadence to a configured folder w/ retention. Spec §2.7 |
+| G8 | **Multi-post threads** (tweetstorms) | ⚪ | Posts fans a single post; no thread composer + per-platform reply-chain posting. Spec §3 |
+| G9 | **Commission workflow / client queue** · **cross-platform series** · **beta-reader draft share** · **per-persona posting defaults** · **comparative/benchmark analytics** · **best-time-to-post** · **multi-user + 2FA** · **watermark on export** | ⚪ | Parked batch — see `docs/specs/user_gap_analysis.md` §3 |
 
 ---
 
