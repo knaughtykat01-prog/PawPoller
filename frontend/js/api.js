@@ -291,6 +291,7 @@ const API = {
     getPlatformsHealth() { return this.get('/api/platforms/health'); },
     getPlatformSessions() { return this.get('/api/platforms/sessions'); },
     triggerSessionCheck() { return this.post('/api/platforms/sessions/check', {}); },
+    getCredentialAge() { return this.get('/api/platforms/credential-age'); },
     // Mute/unmute a platform's session-health alert (auto-clears on recovery).
     muteSessionAlert(code, muted) { return this.post('/api/platforms/sessions/mute', { code, muted }); },
     getNotifications(limit) { return this.get('/api/notifications', limit ? { limit } : {}); },

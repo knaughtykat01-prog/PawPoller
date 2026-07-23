@@ -331,7 +331,20 @@ def save_settings(data: dict) -> None:
     import tempfile
     with _settings_lock:
         current = _load_settings()
+        _before = dict(current)               # snapshot for credential-age stamping
         current.update(data)  # Overlay new values on top of existing ones
+
+        # Proactive credential-age (W): stamp when a platform's credentials are
+        # (re)connected, so the UI can warn before a finite-lifetime cookie/token
+        # goes stale. credential_set_at is a plain (non-secret) dict → plaintext.
+        _changed_creds = _platforms_with_changed_creds(_before, data)
+        if _changed_creds:
+            from datetime import datetime as _dt, timezone as _tz
+            _stamps = dict(current.get("credential_set_at") or {})
+            _now = _dt.now(_tz.utc).strftime("%Y-%m-%d %H:%M:%S")
+            for _p in _changed_creds:
+                _stamps[_p] = _now
+            current["credential_set_at"] = _stamps
 
         # Split credentials into vault vs plaintext. is_credential_key()
         # also catches account-namespaced secrets (acct_<id>_<field>), so
@@ -649,6 +662,92 @@ PLATFORM_CREDENTIAL_FIELDS = {
     "e621": ["e621_username", "e621_api_key"],
 }
 
+# ── Proactive credential-age tracking (backlog W) ──────────────────
+# Cookie/token logins that expire on a schedule AND don't auto-refresh benefit
+# from a heads-up BEFORE they die (today's status only goes red once a poll/post
+# has already failed). Values are conservative soft lifetimes in DAYS — we warn
+# as the stored credential's age approaches them. Deliberately narrow:
+#   • Instagram / Threads are OMITTED — their tokens auto-refresh on the session-
+#     check cadence, so a 'valid' session is the truth; age would cry wolf.
+#   • Mastodon / Tumblr / Bluesky / e621 tokens/app-passwords/keys don't expire.
+# Only cookie sessions with no refresh path are tracked, so a warning is real.
+CREDENTIAL_SOFT_TTL_DAYS = {
+    "tw": 30,   # X (Twitter) auth_token / ct0 cookie session
+    "fa": 45,   # FurAffinity cookies (a, b)
+    "da": 45,   # DeviantArt cookie
+}
+
+
+def _platforms_with_changed_creds(before: dict, data: dict) -> list:
+    """Platforms whose credential fields were just SET/changed to a non-empty
+    value in this save (i.e. a (re)connect) — for credential-age stamping.
+    Only the default account's bare fields are considered; that's the account
+    whose expiry the proactive warning is about."""
+    out = []
+    for platform, fields in PLATFORM_CREDENTIAL_FIELDS.items():
+        for f in fields:
+            if f in data and data.get(f) and (data.get(f) or "") != (before.get(f) or ""):
+                out.append(platform)
+                break
+    return out
+
+
+def _credential_configured(code: str, settings: dict) -> bool:
+    """A tracked platform is 'configured' if any of its credential fields is set."""
+    return any(settings.get(f) for f in PLATFORM_CREDENTIAL_FIELDS.get(code, []))
+
+
+def backfill_credential_stamps(settings: dict | None = None) -> bool:
+    """Give every configured-but-unstamped tracked platform a set_at of NOW, once.
+
+    Existing installs connected their accounts before credential-age tracking
+    existed, so they have no stamp. We can't know the real age, and assuming
+    'old' would cry wolf — so we start the clock at now (idempotent; only fills
+    gaps). Returns True if anything was written. Called lazily by the report
+    endpoint so tracking begins the first time the user looks."""
+    s = settings if settings is not None else get_settings()
+    stamps = dict(s.get("credential_set_at") or {})
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    changed = False
+    for code in CREDENTIAL_SOFT_TTL_DAYS:
+        if code not in stamps and _credential_configured(code, s):
+            stamps[code] = now
+            changed = True
+    if changed:
+        save_settings({"credential_set_at": stamps})
+    return changed
+
+
+def credential_age_report(settings: dict | None = None) -> list:
+    """Per-platform credential-age report for the tracked (finite-lifetime, no-
+    refresh) platforms. Each entry: ``{code, set_at, age_days, ttl_days, level}``.
+
+    level: 'ok' (<70% of ttl) · 'aging' (70–99%) · 'stale' (>=100%). Only
+    CONFIGURED platforms appear."""
+    from datetime import datetime, timezone
+    s = settings if settings is not None else get_settings()
+    stamps = s.get("credential_set_at") or {}
+    now = datetime.now(timezone.utc)
+    out = []
+    for code, ttl in CREDENTIAL_SOFT_TTL_DAYS.items():
+        if not _credential_configured(code, s):
+            continue
+        set_at = stamps.get(code)
+        age_days, level = None, "ok"
+        if set_at:
+            try:
+                dt = datetime.strptime(set_at, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                age_days = max(0, int((now - dt).total_seconds() // 86400))
+                frac = (age_days / ttl) if ttl else 0
+                level = "stale" if frac >= 1 else ("aging" if frac >= 0.7 else "ok")
+            except ValueError:
+                pass
+        out.append({"code": code, "set_at": set_at, "age_days": age_days,
+                    "ttl_days": ttl, "level": level})
+    return out
+
+
 # Matches an account-namespaced settings key: acct_<id>_<canonical_field>.
 _ACCT_KEY_RE = re.compile(r"^acct_(\d+)_(.+)$")
 
@@ -940,7 +1039,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.169.0"
+APP_VERSION = "2.170.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

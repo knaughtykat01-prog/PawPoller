@@ -411,6 +411,21 @@ def get_platform_sessions():
     return {"sessions": get_session_health(), "checkable": list(CHECKABLE)}
 
 
+@router.get("/platforms/credential-age")
+def get_credential_age():
+    """Proactive credential-age report (backlog W): warns before a finite-lifetime
+    cookie/token login (X/FA/DA) goes stale, rather than after it fails.
+
+    Returns ``{report: [{code, set_at, age_days, ttl_days, level}], warnings: [...]}``
+    where ``warnings`` is the aging/stale subset the UI surfaces. Backfills a
+    'now' stamp for any configured-but-unstamped tracked platform on first call
+    so tracking starts immediately on existing installs."""
+    config.backfill_credential_stamps()
+    report = config.credential_age_report()
+    warnings = [r for r in report if r["level"] in ("aging", "stale")]
+    return {"report": report, "warnings": warnings}
+
+
 @router.post("/platforms/sessions/check")
 async def trigger_session_check():
     """Force an immediate re-validation of every configured session.

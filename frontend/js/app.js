@@ -1578,10 +1578,10 @@ const App = {
         const DOT = { valid: 'connected', expired: 'disconnected', error: 'warn', unconfigured: 'muted' };
         const WORD = { valid: 'Valid', expired: 'Expired', error: 'Unverified', unconfigured: 'Not configured' };
 
-        const renderList = (sessions) => {
+        const renderList = (sessions, credReport) => {
             const list = document.getElementById('session-status-list');
             if (!list) return;
-            list.innerHTML = CHECKABLE.map((code) => {
+            const sessionRows = CHECKABLE.map((code) => {
                 const s = sessions[code];
                 const status = (s && s.status) || 'unchecked';
                 const dot = DOT[status] || 'muted';
@@ -1597,6 +1597,27 @@ const App = {
                     ${detail}
                 </div>`;
             }).join('');
+            // Proactive credential-age warnings (W): cookie/token logins that
+            // don't auto-refresh (X/FA/DA) getting close to their typical lifetime
+            // — flagged BEFORE they fail, unlike the session dots above.
+            const warns = (credReport || []).filter(r => r.level !== 'ok');
+            const credRows = warns.length ? (
+                `<div class="ssl-row" style="margin-top:.5rem;opacity:.75;font-size:.78rem;letter-spacing:.03em;text-transform:uppercase;">
+                    <span class="ssl-name">Login age — reconnect before these expire</span></div>`
+                + warns.map(r => {
+                    const label = this._platformLabels[r.code] || r.code.toUpperCase();
+                    const age = r.age_days != null ? `~${r.age_days} day${r.age_days === 1 ? '' : 's'} old` : 'aging';
+                    const msg = r.level === 'stale'
+                        ? `${age}, past its ~${r.ttl_days}-day typical lifetime — reconnect to avoid a break`
+                        : `${age} — may expire soon, reconnect when convenient`;
+                    return `<div class="ssl-row">
+                        <span class="status-dot ${r.level === 'stale' ? 'disconnected' : 'warn'}"></span>
+                        <span class="ssl-name">${Utils.escapeHtml(label)}</span>
+                        <span class="ssl-status">&#8987; ${Utils.escapeHtml(msg)}</span>
+                    </div>`;
+                }).join('')
+            ) : '';
+            list.innerHTML = sessionRows + credRows;
             // Summary dot on the accordion header: red if any expired, amber if
             // any unverified, else green.
             const dotEl = document.getElementById('session-health-dot');
@@ -1609,8 +1630,11 @@ const App = {
 
         const load = async () => {
             try {
-                const resp = await API.getPlatformSessions();
-                renderList((resp && resp.sessions) || {});
+                const [resp, cred] = await Promise.all([
+                    API.getPlatformSessions(),
+                    API.getCredentialAge().catch(() => ({ report: [] })),
+                ]);
+                renderList((resp && resp.sessions) || {}, (cred && cred.report) || []);
             } catch (e) { /* leave the placeholder */ }
         };
 

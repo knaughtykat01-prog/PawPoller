@@ -12,6 +12,43 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.170.0] - 2026-07-23 - A heads-up before a login expires
+
+> **PawPoller now warns you before a login goes stale — not after it breaks.** Some sites (X, FurAffinity, DeviantArt)
+> log you in with a cookie that quietly expires after a few weeks and can't refresh itself. In **Settings → Platforms →
+> Session health** you'll now see a gentle "this login is ~28 days old, reconnect soon" note as one of those approaches
+> its typical lifetime, so you can reconnect on your terms instead of discovering it the next time a post fails.
+
+Backlog item W. Today's connection status only turns red *after* a poll or post has already failed (reactive); this adds
+a proactive nudge as a finite-lifetime login ages.
+
+**Deliberately narrow, so it never cries wolf.** Only cookie/token logins that expire on a schedule AND have no
+auto-refresh are tracked — **X (30d), FurAffinity (45d), DeviantArt (45d)** cookies. Instagram/Threads are omitted (their
+tokens auto-refresh on the session-check cadence, so a 'valid' session is the truth); Mastodon/Tumblr/Bluesky/e621 are
+omitted (their tokens/app-passwords/keys don't expire). No fragile per-platform expiry API calls — the signal is the
+credential's own age.
+
+**Backend (`config.py`).** `save_settings` now stamps `credential_set_at[platform]` whenever a platform's credential
+fields are (re)connected (compared against the pre-save snapshot; only a change to a non-empty value counts).
+`credential_age_report()` turns that into `{code, set_at, age_days, ttl_days, level}` where level is ok (<70% of ttl) /
+aging (70–99%) / stale (≥100%). `backfill_credential_stamps()` gives existing installs a 'now' stamp for any
+configured-but-unstamped tracked platform (idempotent) so tracking starts immediately without assuming a false age.
+`CREDENTIAL_SOFT_TTL_DAYS` holds the soft lifetimes; reuses the existing `PLATFORM_CREDENTIAL_FIELDS` map.
+
+**API.** `GET /api/platforms/credential-age` → `{report, warnings}` (backfills on first call).
+
+**Frontend.** The Session-health card (`app.js:_initSessionHealthCard`) now fetches credential-age alongside the session
+dots and appends an "⏳ reconnect before these expire" section for any aging/stale login (amber for aging, red for
+stale). `api.js:getCredentialAge`.
+
+**Tests.** +8 (`tests/test_credential_age.py`): stamping on change / not on non-credential save / not on unchanged value,
+configured-only report, ok/aging/stale level boundaries, and idempotent backfill.
+
+**Deferred:** true remaining-lifetime via Meta's token-debug (would give exact days for IG/Threads but those auto-refresh
+anyway); per-extra-account ages (this tracks the default account).
+
+---
+
 ## [2.169.0] - 2026-07-23 - Triage: clear the discovered queue one card at a time
 
 > **New fast way to clear your "Discovered" queue.** Open **⚡ Triage one-by-one** and review each found post on its own

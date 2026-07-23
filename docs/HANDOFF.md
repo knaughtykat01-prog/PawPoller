@@ -1,7 +1,19 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.169.0 — **Triage inbox: clear the discovered queue one card at a time (backlog V).**
+**Current version (master):** 2.170.0 — **Proactive credential-age warnings: a heads-up before a login expires (backlog W).**
+Today's status only reddens AFTER a poll/post fails (reactive); this warns as a finite-lifetime, no-refresh cookie login
+ages. **Deliberately narrow** (never cry wolf): only **X (30d) / FA (45d) / DA (45d)** cookies — IG/Threads omitted
+(auto-refresh → 'valid' is truth), Mastodon/Tumblr/Bluesky/e621 omitted (don't expire). No fragile expiry-API calls; the
+signal is credential AGE. **Backend (`config.py`):** `save_settings` stamps `credential_set_at[platform]` on a
+(re)connect (diff vs pre-save snapshot, non-empty change only); `credential_age_report()` → `{code,set_at,age_days,
+ttl_days,level}` (ok<70% / aging 70–99% / stale ≥100% of `CREDENTIAL_SOFT_TTL_DAYS`); `backfill_credential_stamps()`
+stamps configured-but-unstamped = now (idempotent) so existing installs track from now. Reuses `PLATFORM_CREDENTIAL_FIELDS`.
+**API:** `GET /api/platforms/credential-age` → `{report, warnings}`. **Frontend:** Session-health card
+(`_initSessionHealthCard`) appends an "⏳ reconnect before these expire" section (amber aging / red stale);
+`api.js:getCredentialAge`. +8 tests. **Remaining backlog: Y, AA.** Deferred: Meta token-debug exact days; per-extra-account.
+
+**Prior — 2.169.0 — Triage inbox: clear the discovered queue one card at a time (backlog V).**
 `#/submissions/triage` (`Submissions.renderTriage`) — frontend-only single-card review over the discovered queue,
 reusing the list view's endpoints (ignore/importPost/importArtwork/matchMasterpiece+promote/addMasterpieceMember/
 linkSubmission), no backend change. One big card (hero/title/platform/view-link) + progress + contextual actions
