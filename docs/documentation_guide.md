@@ -6448,6 +6448,22 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   (known limitation, spec §9). This completes the Masterpiece build (phases 0–7): a single image now has the full
   master lifecycle a story always had.
 
+- **Variant separate + rename (2.189.0, spec `docs/specs/masterpiece_variant_split.md`).** Closes two gaps in the
+  2.158 variants feature. **Rename — `PATCH /{name}/variants/{key}`** `{label?, key?, rating?}`: a `key` change
+  migrates `masterpiece_members.variant_key` (`mq.rename_variant_key`) so per-variant stats follow. This matters —
+  the only previous way to rename was DELETE + re-declare, and `DELETE /{name}/variants/{key}` calls
+  `clear_variant_members`, so a cosmetic edit silently dropped every per-variant attribution. The primary (`''`) is
+  re-labelable but **never re-keyable** (400): `''` is the anchor the scheme keys off. **Separate —
+  `POST /{name}/variants/{key}/split`** is the true inverse of `/merge-as-variant`, which deletes the absorbed folder
+  and was therefore a one-way door (bad, since `variant_suggest` is deliberately fuzzy). It mints a new Masterpiece
+  via `artwork_reader.create_artwork` from the variant's image, inheriting the parent's
+  description/author/tags/characters (rating = the variant's own else the parent's), titled `"<parent> (<label>)"` —
+  the shape `variant_suggest` recognises, so the pair still reads as a family. Members move re-keyed to `''`
+  (`mq.move_variant_members`); the entry + image file leave the parent (**never the hero** — guarded 422); a lone
+  leftover primary collapses to `[]`; the new hero is `ensure_indexed` + dHashed under `__mp__` (mirrors promote) so
+  the finders see it at once. `key=''` refused (400). Frontend: a collapsed **Manage variants** `<details>` panel
+  under the chip gallery in `masterpieces.js` — the chips remain a *viewer*, this is the *manager* (inline rename,
+  Separate; primary has no Separate), on the existing `data-mp-*` click delegate.
 - **Junk bin (2.149.0) — kept-but-hidden status.** `masterpieces.status` (`''` active / `'junk'`, guarded ADD-COLUMN
   migration) marks pulled art the user doesn't want in the grid — memes, other people's commission ads, retired
   pieces — **without deleting** the folder, metadata or members (softer than the 2.144 merge, which deletes the

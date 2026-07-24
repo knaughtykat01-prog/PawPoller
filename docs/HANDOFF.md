@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-24
-**Current version (master):** 2.188.1 — **Form-field fix (CSS only).** `.field` control styling was scoped to
+**Current version (master):** 2.189.0 — **Masterpiece variants: separate + rename** (spec
+`docs/specs/masterpiece_variant_split.md`). Closed two 2.158 gaps. `PATCH /api/masterpieces/{name}/variants/{key}`
+(label/key/rating; a key change migrates `masterpiece_members.variant_key` via `mq.rename_variant_key` so per-variant
+stats follow — previously renaming meant DELETE+re-declare, which cleared attribution; primary `''` re-labelable but
+never re-keyable). `POST /{name}/variants/{key}/split` = the inverse of `/merge-as-variant` (which deleted the absorbed
+folder, so folding was a one-way door): `create_artwork` from the variant image inheriting parent metadata, title
+`"<parent> (<label>)"`, members moved re-keyed to `''` (`mq.move_variant_members`), entry+file removed from the parent
+(hero guarded), new hero indexed + dHashed under `__mp__`. Frontend: collapsed **Manage variants** panel on the detail
+(inline rename, Separate). +10 tests incl. a merge→split round-trip.
+
+**Prior — 2.188.1 — Form-field fix (CSS only).** `.field` control styling was scoped to
 `.artwork-upload`, so the Artwork **Details** panel (+ Image Tool, Promo Maker, which had no `.field` CSS at all)
 rendered browser-default controls: ~150px wide, no padding/border, and monospace textareas (`font-size` was set but
 never `font-family`). Promoted `.field` to a shared primitive in `components.css` (label above, full-width control,

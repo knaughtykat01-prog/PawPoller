@@ -384,6 +384,134 @@ def delete_variant(name: str, key: str):
     return {"status": "removed", "key": key}
 
 
+@masterpieces_router.patch("/{name}/variants/{key}")
+def rename_variant(name: str, key: str, body: dict):
+    """Rename/re-label a variant (2.189.0). Body: {label?, key?, rating?}.
+
+    Renaming used to mean DELETE + re-declare, and DELETE re-keys the variant's
+    members to primary — so a cosmetic edit silently threw away every
+    per-variant stat attribution. Changing `key` here migrates the members
+    instead. The primary ('') may be re-labelled but never re-keyed: '' is the
+    anchor the whole variant scheme keys off.
+    """
+    variants = _raw_variants(name)
+    target = next((v for v in variants if v["key"] == key), None)
+    if target is None:
+        raise HTTPException(404, detail=f"no such variant '{key}' on {name}")
+
+    new_label = body.get("label")
+    new_key = body.get("key")
+    new_rating = body.get("rating")
+    if new_label is None and new_key is None and new_rating is None:
+        raise HTTPException(400, detail="one of label, key or rating is required")
+
+    if new_key is not None:
+        new_key = str(new_key).strip().lower()
+        if key == "":
+            raise HTTPException(400, detail="the primary variant's key cannot be changed")
+        if not _VARIANT_KEY_RE.match(new_key):
+            raise HTTPException(400, detail="key must be a short slug (a-z0-9_-)")
+        if new_key != key and any(v["key"] == new_key for v in variants):
+            raise HTTPException(409, detail=f"variant key '{new_key}' already exists")
+
+    for v in variants:
+        if v["key"] != key:
+            continue
+        if new_label is not None:
+            v["label"] = str(new_label).strip() or v["key"] or "Primary"
+        if new_rating is not None:
+            v["rating"] = str(new_rating).strip().lower()
+        if new_key is not None:
+            v["key"] = new_key
+        break
+    _write_variants(name, variants)
+
+    moved = 0
+    if new_key is not None and new_key != key:
+        conn = get_connection()
+        try:
+            moved = mq.rename_variant_key(conn, name, key, new_key)
+            conn.commit()
+        finally:
+            conn.close()
+    return {"status": "renamed", "key": new_key if new_key is not None else key,
+            "members_rekeyed": moved}
+
+
+@masterpieces_router.post("/{name}/variants/{key}/split")
+def split_variant(name: str, key: str, body: dict | None = None):
+    """Separate a variant OUT into its own standalone Masterpiece (2.189.0).
+
+    The true inverse of /merge-as-variant, which deletes the absorbed folder and
+    was therefore a one-way door. The variant's image moves to a new folder, its
+    members move with it (re-keyed to primary, so stats survive the round-trip),
+    and the entry leaves the parent. Body: {new_name?}.
+    """
+    body = body or {}
+    if key == "":
+        raise HTTPException(400, detail="the primary variant IS the master — nothing to separate")
+    variants = _raw_variants(name)
+    target = next((v for v in variants if v["key"] == key), None)
+    if target is None:
+        raise HTTPException(404, detail=f"no such variant '{key}' on {name}")
+
+    try:
+        art = artwork_reader.load_artwork(name)
+    except FileNotFoundError:
+        raise HTTPException(404, detail="Masterpiece not found")
+
+    from pathlib import Path
+    src = Path(art.path) / target["image"]
+    if not src.is_file():
+        raise HTTPException(422, detail=f"variant image '{target['image']}' is missing on disk")
+    # Never cannibalise the parent's hero (a variant should never point at it,
+    # but a hand-edited masterpiece.json could).
+    if target["image"] == art.image:
+        raise HTTPException(422, detail="this variant points at the parent's hero image")
+
+    raw = artwork_reader.read_raw_metadata(name) or {}
+    label = target.get("label") or key
+    title = (body.get("new_name") or "").strip() or f"{art.title or name} ({label})"
+    new_name = artwork_reader.create_artwork(
+        title=title,
+        image_filename=src.name,
+        image_bytes=src.read_bytes(),
+        description=raw.get("description", "") or "",
+        author=raw.get("author", "") or "",
+        rating=(target.get("rating") or raw.get("rating") or ""),
+        tags=raw.get("tags") or None,
+        characters=raw.get("characters") or None,
+    )
+
+    # Members follow the variant, re-keyed to the new record's primary. The new
+    # hero is hashed so the de-dup / variant finders see it straight away
+    # (mirrors promote_from_submission).
+    from database import image_hash
+    new_art = artwork_reader.load_artwork(new_name)
+    conn = get_connection()
+    try:
+        moved = mq.move_variant_members(conn, name, key, new_name)
+        phash = image_hash.dhash_from_path(str(Path(new_art.path) / new_art.image))
+        if phash:
+            image_hash.store(conn, "__mp__", new_name, phash, source="split")
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Drop the entry from the parent; a lone leftover primary is meaningless.
+    remaining = [v for v in variants if v["key"] != key]
+    if len(remaining) <= 1 and all(v["key"] == "" for v in remaining):
+        remaining = []
+    _write_variants(name, remaining)
+    try:
+        src.unlink()
+    except OSError:
+        logger.warning("split-variant: could not remove %s from %s", target["image"], name)
+
+    return {"status": "split", "from": name, "key": key,
+            "new_name": new_name, "members_moved": moved}
+
+
 @masterpieces_router.patch("/{name}/members/variant")
 def set_member_variant_ep(name: str, body: dict):
     """Attribute a linked site-upload to a variant.

@@ -584,6 +584,32 @@ window.Masterpieces = {
             : '';
         const vstatsLine = chips.length > 1
             ? `<div class="mp-vstats muted" id="mp-vstats">${this.esc(chips[0].st)}</div>` : '';
+        // Variant manager (2.189.0). The chips above are a VIEWER; this is where
+        // you rename one or separate it back out into its own Masterpiece.
+        // Only for declared variants — unlabeled 2.152 alts have nothing to manage.
+        const variantAdmin = variants.length ? `
+            <details class="mp-vadmin">
+                <summary class="mp-vadmin-sum">Manage variants <span class="muted">(${variants.length})</span></summary>
+                <div class="mp-vadmin-body">
+                    ${variants.map(v => {
+                        const isPrimary = !v.key;
+                        const sites = (v.member_count || 0);
+                        return `<div class="mp-vrow" data-vkey="${this.esc(v.key)}">
+                            <span class="mp-vname">${this.esc(v.label || v.key || 'Primary')}${isPrimary
+                                ? ' <span class="muted mp-vprimary">primary</span>' : ''}</span>
+                            <span class="muted mp-vmeta">${sites} site${sites === 1 ? '' : 's'}</span>
+                            <span class="mp-vacts">
+                                <button class="btn btn-sm" type="button" data-mp-vrename="${this.esc(v.key)}"
+                                    title="Rename this variant">&#9998; Rename</button>
+                                ${isPrimary ? '' : `<button class="btn btn-sm" type="button" data-mp-vsplit="${this.esc(v.key)}"
+                                    title="Separate this variant into its own Masterpiece — its image and site-links go with it">&#10548; Separate</button>`}
+                            </span>
+                        </div>`;
+                    }).join('')}
+                    <p class="muted mp-vadmin-note">Separating undoes a variant merge: the image moves to a new
+                    Masterpiece and its site-links follow, keeping their stats.</p>
+                </div>
+            </details>` : '';
         const rating = m.rating ? `<span class="${this._ratingCls(m.rating)}">${this.esc(m.rating)}</span>` : '';
         const personas = this._personaChips(m.persona_ids);
         const isJunk = m.status === 'junk';
@@ -649,7 +675,7 @@ window.Masterpieces = {
         root.innerHTML = `
             <div class="mp-detail-head">
                 ${heroUrl ? `<img class="mp-stage-bg" id="mp-stage-bg" src="${this.esc(heroUrl)}" alt="" aria-hidden="true">` : ''}
-                <div class="mp-hero-col"><div class="mp-hero">${hero}</div>${gallery}${vstatsLine}
+                <div class="mp-hero-col"><div class="mp-hero">${hero}</div>${gallery}${vstatsLine}${variantAdmin}
                     <div class="mp-hero-actions">
                         <label class="btn btn-sm" title="Swap in a better/higher-res version — keeps this record, its tags and every site link. The old file stays as a gallery alternate.">
                             ⇪ Replace image
@@ -780,6 +806,14 @@ window.Masterpieces = {
             if (foldPick) { e.preventDefault(); this._pickFoldTarget(); return; }
             const fold = e.target.closest('[data-mp-fold]');
             if (fold) { e.preventDefault(); this._foldIntoAnother(); return; }
+            const vren = e.target.closest('[data-mp-vrename]');
+            if (vren) { e.preventDefault(); this._renameVariant(vren.dataset.mpVrename); return; }
+            const vsplit = e.target.closest('[data-mp-vsplit]');
+            if (vsplit) { e.preventDefault(); this._splitVariant(vsplit.dataset.mpVsplit); return; }
+            const vsave = e.target.closest('[data-mp-vsave]');
+            if (vsave) { e.preventDefault(); this._saveVariantName(vsave.dataset.mpVsave); return; }
+            const vcancel = e.target.closest('[data-mp-vcancel]');
+            if (vcancel) { e.preventDefault(); this.renderDetail(this._current); return; }
             const alt = e.target.closest('[data-mp-img]');
             if (alt) {
                 e.preventDefault();
@@ -915,6 +949,59 @@ window.Masterpieces = {
             btn.disabled = false;
             this._toast('error', 'Failed: ' + (err.message || err));
         }
+    },
+
+    /* ── Variant management (2.189.0) ── */
+
+    /* Swap the name cell for an inline input — no modal, CSP-safe. */
+    _renameVariant(key) {
+        const row = document.querySelector(`.mp-vrow[data-vkey="${CSS.escape(key)}"]`);
+        if (!row || row.querySelector('.mp-vedit')) return;
+        const nameEl = row.querySelector('.mp-vname');
+        const current = (nameEl.textContent || '').replace(/\s*primary\s*$/i, '').trim();
+        nameEl.innerHTML = `<input class="mp-vedit" type="text" value="${this.esc(current)}"
+            maxlength="60" aria-label="Variant label">`;
+        row.querySelector('.mp-vacts').innerHTML =
+            `<button class="btn btn-sm btn-primary" type="button" data-mp-vsave="${this.esc(key)}">Save</button>
+             <button class="btn btn-sm" type="button" data-mp-vcancel>Cancel</button>`;
+        const inp = row.querySelector('.mp-vedit');
+        inp.focus(); inp.select();
+        inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); this._saveVariantName(key); }
+            if (e.key === 'Escape') { e.preventDefault(); this.renderDetail(this._current); }
+        });
+    },
+
+    async _saveVariantName(key) {
+        const row = document.querySelector(`.mp-vrow[data-vkey="${CSS.escape(key)}"]`);
+        const inp = row && row.querySelector('.mp-vedit');
+        const label = (inp ? inp.value : '').trim();
+        if (!label) { this._toast('error', 'Give the variant a label.'); return; }
+        try {
+            await API.renameMasterpieceVariant(this._current, key, { label });
+            this._toast('success', 'Variant renamed');
+            await this.renderDetail(this._current);
+        } catch (err) { this._toast('error', 'Rename failed: ' + (err.message || err)); }
+    },
+
+    /* Separate a variant back out into its own Masterpiece — undoes a merge. */
+    async _splitVariant(key) {
+        if (!this._current) return;
+        const row = document.querySelector(`.mp-vrow[data-vkey="${CSS.escape(key)}"]`);
+        const label = row ? (row.querySelector('.mp-vname').textContent || key).trim() : key;
+        if (!window.confirm(`Separate “${label}” into its own Masterpiece?\n\n`
+            + `Its image moves to a new record and its site-links go with it, keeping their stats. `
+            + `This piece keeps everything else.`)) return;
+        try {
+            const r = await API.splitMasterpieceVariant(this._current, key);
+            this._cache = null;   // the grid gained a record
+            this._toast('success', `Separated into “${r.new_name}” (${r.members_moved} site-link${r.members_moved === 1 ? '' : 's'} moved)`);
+            if (window.confirm(`Created “${r.new_name}”. Open it now?`)) {
+                location.hash = `#/masterpieces/${encodeURIComponent(r.new_name)}`;
+            } else {
+                await this.renderDetail(this._current);
+            }
+        } catch (err) { this._toast('error', 'Separate failed: ' + (err.message || err)); }
     },
 
     _toast(kind, msg) {

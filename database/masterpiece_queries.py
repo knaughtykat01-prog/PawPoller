@@ -109,6 +109,43 @@ def clear_variant_members(conn: sqlite3.Connection, name: str, variant_key: str)
         "AND variant_key = ?", (name, variant_key))
 
 
+def rename_variant_key(conn: sqlite3.Connection, name: str, old_key: str,
+                       new_key: str) -> int:
+    """Re-key a variant's members so per-variant stat attribution follows a
+    rename (2.189.0). Returns rows moved. The caller edits masterpiece.json."""
+    cur = conn.execute(
+        "UPDATE masterpiece_members SET variant_key = ? WHERE masterpiece_name = ? "
+        "AND variant_key = ?", (new_key or "", name, old_key))
+    conn.execute("UPDATE masterpieces SET updated_at = datetime('now') WHERE name = ?",
+                 (name,))
+    return cur.rowcount
+
+
+def move_variant_members(conn: sqlite3.Connection, from_name: str, variant_key: str,
+                         to_name: str) -> int:
+    """Move ONE variant's members out to their own Masterpiece, re-keyed to the
+    primary '' (they're that record's own uploads now). The inverse of
+    :func:`merge_as_variant`'s member half — so folding a piece in is no longer a
+    one-way door. Returns members moved; the caller handles the on-disk split
+    (new folder + image + variants-entry removal). 2.189.0."""
+    ensure_indexed(conn, to_name)
+    moved = 0
+    for m in get_members(conn, from_name, variant_key):
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO masterpiece_members "
+            "(masterpiece_name, platform, submission_id, account_id, role, linked_via, variant_key) "
+            "VALUES (?, ?, ?, ?, ?, ?, '')",
+            (to_name, m["platform"], m["submission_id"], m["account_id"],
+             m["role"], m["linked_via"]))
+        moved += cur.rowcount
+    conn.execute(
+        "DELETE FROM masterpiece_members WHERE masterpiece_name = ? AND variant_key = ?",
+        (from_name, variant_key))
+    conn.execute("UPDATE masterpieces SET updated_at = datetime('now') WHERE name IN (?, ?)",
+                 (from_name, to_name))
+    return moved
+
+
 def merge_as_variant(conn: sqlite3.Connection, keep: str, absorb: str,
                      variant_key: str) -> int:
     """Fold ``absorb`` into ``keep`` as a VARIANT: members move over carrying

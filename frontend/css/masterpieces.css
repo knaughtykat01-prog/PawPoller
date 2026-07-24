@@ -161,6 +161,34 @@
 .mp-vstats { font-size: .8rem; margin-top: .3rem; }
 
 /* Replace-canonical-image control under the hero (2.153.0) */
+/* Variant manager (2.189.0) — collapsed by default; the chips above stay the
+   viewer, this is the rename / separate surface. */
+.mp-vadmin {
+    margin-top: .5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+}
+.mp-vadmin-sum { cursor: pointer; padding: .45rem .6rem; font-size: .82rem; user-select: none; }
+.mp-vadmin-sum::marker { color: var(--text-muted); }
+.mp-vadmin-body { padding: .1rem .6rem .6rem; }
+.mp-vrow {
+    display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+    padding: .4rem 0; border-top: 1px solid var(--border);
+}
+.mp-vrow:first-child { border-top: none; }
+.mp-vname { font-size: .86rem; font-weight: 600; flex: 1 1 8rem; min-width: 0; }
+.mp-vprimary { font-weight: 400; font-size: .72rem; }
+.mp-vmeta { font-size: .76rem; white-space: nowrap; }
+.mp-vacts { display: flex; gap: .35rem; flex-wrap: wrap; }
+.mp-vedit {
+    width: 100%; max-width: 16rem; box-sizing: border-box;
+    padding: .3rem .4rem; font: inherit; font-weight: 400;
+    background: var(--bg-primary); color: var(--text-primary);
+    border: 1px solid var(--accent); border-radius: var(--radius-sm);
+}
+.mp-vadmin-note { font-size: .76rem; margin: .5rem 0 0; line-height: 1.4; }
+
 .mp-hero-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: .2rem; }
 .mp-hero-actions label { cursor: pointer; }
 .mp-hero-actions .muted { font-size: .78rem; }

@@ -12,6 +12,46 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.189.0] - 2026-07-24 - Masterpieces: separate a variant from its master + rename variants
+
+> **Folding a variant in is no longer a one-way door.** On a Masterpiece with variants there's now a **Manage
+> variants** panel: **✎ Rename** any variant (including the primary), and **⤴ Separate** a variant back out into its
+> own Masterpiece — its image moves to a new record and its site-links go with it, keeping their stats. Handy when
+> the variant suggester folds in the wrong piece, or when a "variant" turns out to be its own artwork. Renaming is
+> also now safe: it used to quietly lose that variant's stat attribution.
+
+Rhys: *"i need a method to seperate from master and a way to rename varients"*. Spec:
+`docs/specs/masterpiece_variant_split.md`. Both were real gaps in the 2.158 variants feature.
+
+**Gap 1 — no way back out.** `DELETE /{name}/variants/{key}` only *demotes* a variant to an unlabeled alt image in
+the same folder; nothing could make it a standalone Masterpiece again. So `POST /merge-as-variant` — which deletes the
+absorbed folder — was irreversible, despite the title-based variant suggester being deliberately fuzzy ("suggests,
+never auto-merges").
+
+**Gap 2 — no rename.** Nothing edited a variant's `label`. Renaming meant `DELETE` + re-declare, and `DELETE` calls
+`clear_variant_members`, so a cosmetic edit **silently dropped every per-variant stat attribution**.
+
+- **`PATCH /api/masterpieces/{name}/variants/{key}`** — `{label?, key?, rating?}`. Changing `key` migrates
+  `masterpiece_members.variant_key` via new `masterpiece_queries.rename_variant_key`, so stats follow the rename;
+  409 on collision, 404 on unknown. The primary (`''`) is re-labelable but never re-keyable (400) — `''` is the anchor
+  the whole scheme keys off.
+- **`POST /api/masterpieces/{name}/variants/{key}/split`** — the true inverse of `merge-as-variant`. Mints a new
+  Masterpiece via `artwork_reader.create_artwork` from the variant's image, inheriting the parent's
+  description/author/tags/characters (rating = the variant's own, else the parent's), titled
+  `"<parent> (<label>)"` — deliberately the shape `variant_suggest` recognises, so the pair still reads as a family.
+  Members move re-keyed to `''` (new `masterpiece_queries.move_variant_members`); the entry and its image file leave
+  the parent (never the hero — guarded); a lone leftover primary collapses to `[]`; the new hero is indexed + dHashed
+  under `__mp__` so the de-dup/variant finders see it immediately. Refuses `key=''` (400).
+- **Frontend** (`masterpieces.js`, `masterpieces.css`): a collapsed **Manage variants** panel under the chip gallery —
+  the chips stay a viewer, this is the manager. Per row: label · site count · ✎ Rename (inline input, Enter/Esc, no
+  modal) · ⤴ Separate (confirm → toast → offer to open the new record). Primary has no Separate. CSP-safe
+  `data-mp-v*` hooks on the existing delegate. `api.js`: `renameMasterpieceVariant`, `splitMasterpieceVariant`.
+
+**Tests:** `tests/test_masterpiece_variant_split.py` (10) — rename label/key + member migration, collision 409,
+primary-key guard, unknown 404; split creates the record with inherited metadata, moves members re-keyed, strips the
+parent's entry + file, explicit `new_name`, primary refused; and a **merge → split round-trip** proving a fold is now
+undoable with its site-link attribution intact. Masterpiece/collections regression suite (39) green.
+
 ## [2.188.1] - 2026-07-24 - Fix cramped, monospace form fields on Artwork details (+ Image Tool, Promo Maker)
 
 > **The edit forms look right now.** On an artwork's **Details** panel the boxes were tiny, the labels sat jammed

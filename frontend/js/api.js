@@ -247,6 +247,16 @@ const API = {
     deleteMasterpieceVariant(name, key) {
         return this.del(`/api/masterpieces/${encodeURIComponent(name)}/variants/${encodeURIComponent(key)}`);
     },
+    /* Rename/re-label a variant (2.189.0). Changing `key` migrates the members'
+       variant_key, so per-variant stats survive the rename. */
+    renameMasterpieceVariant(name, key, body) {
+        return this.patch(`/api/masterpieces/${encodeURIComponent(name)}/variants/${encodeURIComponent(key)}`, body);
+    },
+    /* Separate a variant out into its own Masterpiece — the inverse of
+       mergeAsVariant. Its image and members move with it (2.189.0). */
+    splitMasterpieceVariant(name, key, body = {}) {
+        return this.post(`/api/masterpieces/${encodeURIComponent(name)}/variants/${encodeURIComponent(key)}/split`, body);
+    },
     setMasterpieceMemberVariant(name, body) {
         return this.patch(`/api/masterpieces/${encodeURIComponent(name)}/members/variant`, body);
     },
