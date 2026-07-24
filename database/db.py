@@ -1087,6 +1087,9 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError as e:
             if "duplicate column" not in str(e).lower():
                 raise
+        # Index created here (not in the schema file) so it runs AFTER the column
+        # exists on both fresh installs and upgrades.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_commissions_archived ON commissions(archived)")
 
     # Migration: fold Cross-Platform links into Collections (they are the same
     # idea — one piece across platforms). Adds a provenance column so the fold is

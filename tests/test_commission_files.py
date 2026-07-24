@@ -30,6 +30,51 @@ def test_archive_hides_from_default_list():
         conn.close()
 
 
+def test_archived_migration_on_pre_2188_table():
+    """Regression: an upgrade DB has `commissions` WITHOUT `archived` (the 2.187
+    table). init_db's schema-load must not index a missing column, and the
+    migration must add the column + index. The 2.188 deploy crash-looped on
+    exactly this ('no such column: archived')."""
+    from database.db import get_connection, init_db
+    conn = get_connection()
+    try:
+        # Recreate the pre-2.188 table shape (no `archived`, no archived index).
+        conn.executescript("""
+            DROP TABLE IF EXISTS commissions;
+            CREATE TABLE commissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_name TEXT NOT NULL DEFAULT '',
+                description TEXT DEFAULT '',
+                price REAL DEFAULT 0,
+                currency TEXT DEFAULT 'USD',
+                status TEXT NOT NULL DEFAULT 'quote',
+                due_date TEXT DEFAULT '',
+                artwork_name TEXT DEFAULT '',
+                deliver_sites TEXT DEFAULT '[]',
+                notes TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+            INSERT INTO commissions (client_name) VALUES ('legacy');
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+    # Re-run init_db (idempotent) — must NOT raise, and must add archived + index.
+    init_db()
+    conn = get_connection()
+    try:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(commissions)").fetchall()]
+        assert "archived" in cols
+        assert conn.execute(
+            "SELECT archived FROM commissions WHERE client_name='legacy'").fetchone()["archived"] == 0
+        assert conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND name='idx_commissions_archived'").fetchone() is not None
+    finally:
+        conn.close()
+
+
 def test_archived_via_update_allowed_set():
     conn = get_connection()
     try:

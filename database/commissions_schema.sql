@@ -21,4 +21,8 @@ CREATE TABLE IF NOT EXISTS commissions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_commissions_status ON commissions(status);
-CREATE INDEX IF NOT EXISTS idx_commissions_archived ON commissions(archived);
+-- NB: the idx_commissions_archived index is created in db.py._run_migrations,
+-- NOT here. On an upgrade the commissions table predates the `archived` column
+-- (CREATE TABLE IF NOT EXISTS won't recreate it), so indexing archived from the
+-- schema file — which loads BEFORE the ALTER migration — would fail. The
+-- migration adds the column then the index, covering both fresh + upgrade.
