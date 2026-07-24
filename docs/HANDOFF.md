@@ -1,7 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-24
-**Current version (master):** 2.189.0 — **Masterpiece variants: separate + rename** (spec
+**Current version (master):** 2.189.1 — **Fix: merge-as-variant key collision.** Live 409 (`variant key 'nsfw'
+already exists`). Cause: the frontend slugifies the typed label into the key, and 2.189.0's rename edits the label but
+keeps the key — so label/key drift, and a fresh "NSFW" label collided with a stale `nsfw` key whose label read
+"SFW Nude". Nothing corrupt (server state inspected). Fix: `merge-as-variant` **uniquifies** (`nsfw` → `nsfw-2`, base
+truncated to 28 so it stays inside the 32-char key regex) instead of 409 — a merge always appends a NEW variant, so a
+derived-key clash is never a user error. `POST /{name}/variants` (declare) keeps its 409 (deliberate key). Manage
+variants now shows each key as a muted `<code>` chip so drift is visible. +1 regression test.
+
+**Prior — 2.189.0 — Masterpiece variants: separate + rename** (spec
 `docs/specs/masterpiece_variant_split.md`). Closed two 2.158 gaps. `PATCH /api/masterpieces/{name}/variants/{key}`
 (label/key/rating; a key change migrates `masterpiece_members.variant_key` via `mq.rename_variant_key` so per-variant
 stats follow — previously renaming meant DELETE+re-declare, which cleared attribution; primary `''` re-labelable but

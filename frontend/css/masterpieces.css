@@ -179,6 +179,16 @@
 .mp-vrow:first-child { border-top: none; }
 .mp-vname { font-size: .86rem; font-weight: 600; flex: 1 1 8rem; min-width: 0; }
 .mp-vprimary { font-weight: 400; font-size: .72rem; }
+/* The internal key, surfaced so label/key drift is visible (2.189.1) — the
+   invisible mismatch is what made a merge collide for no apparent reason. */
+.mp-vkey {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: .68rem; font-weight: 400;
+    color: var(--text-muted);
+    background: var(--bg-primary);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 0 .25rem; margin-left: .15rem;
+}
 .mp-vmeta { font-size: .76rem; white-space: nowrap; }
 .mp-vacts { display: flex; gap: .35rem; flex-wrap: wrap; }
 .mp-vedit {

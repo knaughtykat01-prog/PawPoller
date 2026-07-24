@@ -192,6 +192,38 @@ def test_split_honours_explicit_new_name(client):
     assert artwork_reader.load_artwork(r.json()["new_name"]).title == "Totally Separate"
 
 
+def test_merge_uniquifies_a_colliding_key(client):
+    """Regression (2.189.1): a merge must not dead-end on a derived-key clash.
+
+    The key comes from the label the frontend slugifies — the user never picks
+    one — and renaming a variant leaves its key stale, so a fresh "NSFW" label
+    can collide with an old 'nsfw' key whose label now reads something else.
+    Reported from live on Tricia_Reference_Sheet_*.
+    """
+    keep = _make_art(title="Tricia Clothed")
+    _declare(client, keep, "nsfw", "SFW Nude")   # stale key, drifted label
+
+    absorb = _make_art(title="Tricia NSFW", colour=(20, 200, 90))
+    conn = get_connection()
+    mq.add_member(conn, absorb, "fa", "777")
+    conn.commit()
+    conn.close()
+
+    r = client.post("/api/masterpieces/merge-as-variant",
+                    json={"keep": keep, "absorb": absorb, "key": "nsfw", "label": "NSFW"})
+    assert r.status_code == 200, r.text
+    assert r.json()["key"] == "nsfw-2"          # uniquified, not 409
+
+    keys = {v["key"]: v["label"] for v in client.get(f"/api/masterpieces/{keep}").json()["variants"]}
+    assert keys["nsfw"] == "SFW Nude"           # the existing one is untouched
+    assert keys["nsfw-2"] == "NSFW"
+    conn = get_connection()
+    try:
+        assert [m["submission_id"] for m in mq.get_members(conn, keep, "nsfw-2")] == ["777"]
+    finally:
+        conn.close()
+
+
 def test_merge_then_split_round_trips(client):
     """The property that makes folding safe: merge-as-variant is now undoable."""
     keep = _make_art(title="Keeper")

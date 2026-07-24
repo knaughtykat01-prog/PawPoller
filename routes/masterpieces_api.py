@@ -300,8 +300,19 @@ def merge_as_variant_ep(body: dict):
     except FileNotFoundError:
         raise HTTPException(404, detail="Masterpiece not found")
     variants = _raw_variants(keep)
-    if any(v["key"] == key for v in variants):
-        raise HTTPException(409, detail=f"variant key '{key}' already exists on {keep}")
+    # Uniquify rather than 409 (2.189.1). The key is DERIVED mechanically from
+    # the label the user typed — they never choose one — and a merge always
+    # APPENDS a new variant, it never targets an existing one. So a clash is an
+    # artifact of that derivation, not a user mistake, and dead-ending on it just
+    # blocks a legitimate merge. Hit for real: re-labelling a variant leaves its
+    # key stale, so a fresh "NSFW" label collided with an existing 'nsfw' key
+    # whose label by then read "SFW Nude" — invisible, since the UI shows labels.
+    existing = {v["key"] for v in variants}
+    if key in existing:
+        base, n = key[:28], 2
+        while f"{base}-{n}" in existing:
+            n += 1
+        key = f"{base}-{n}"
 
     # Copy absorb's hero image in as the variant image.
     from pathlib import Path

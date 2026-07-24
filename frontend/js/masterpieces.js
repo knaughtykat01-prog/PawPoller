@@ -596,7 +596,8 @@ window.Masterpieces = {
                         const sites = (v.member_count || 0);
                         return `<div class="mp-vrow" data-vkey="${this.esc(v.key)}">
                             <span class="mp-vname">${this.esc(v.label || v.key || 'Primary')}${isPrimary
-                                ? ' <span class="muted mp-vprimary">primary</span>' : ''}</span>
+                                ? ' <span class="muted mp-vprimary">primary</span>'
+                                : ` <code class="mp-vkey" title="Internal key — set when the variant was created and kept on rename, so it can differ from the label">${this.esc(v.key)}</code>`}</span>
                             <span class="muted mp-vmeta">${sites} site${sites === 1 ? '' : 's'}</span>
                             <span class="mp-vacts">
                                 <button class="btn btn-sm" type="button" data-mp-vrename="${this.esc(v.key)}"

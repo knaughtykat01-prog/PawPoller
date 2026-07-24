@@ -12,6 +12,42 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.189.1] - 2026-07-24 - Fix: folding a variant in no longer fails with "variant key already exists"
+
+> **Merging a variant won't dead-end any more.** Folding a piece in could fail with *"variant key 'nsfw' already
+> exists"* even when nothing on screen looked like a duplicate — because each variant has a hidden internal name that
+> stays put when you rename its label, so a new "NSFW" could clash with an old one now labelled something else. Merges
+> now just pick a free name and carry on. Manage variants also shows each variant's internal name, so the mismatch
+> can't hide.
+
+Reported from live (2.189.0): `POST /merge-as-variant → 409`, `variant key 'nsfw' already exists on
+Tricia_Reference_Sheet_Clothed`.
+
+**Diagnosis (server state inspected, nothing corrupt).** `Tricia_Reference_Sheet_Clothed` held
+`('', 'Primary')` + `('nsfw', 'SFW Nude')` — a variant whose **key** was `nsfw` but whose **label** read "SFW Nude" —
+while `Tricia_Reference_Sheet_NSFW` was intact and untouched. So: a genuine key collision, invisible to the user. The
+frontend slugifies the typed label into the key (the user never picks one), and 2.189.0's rename edits the label but
+deliberately keeps the key, so label and key drift apart. A fresh "NSFW" label then derived `nsfw` and hit the stale
+key. The UI only ever rendered labels, so there was no way to see why.
+
+- **`merge-as-variant` uniquifies instead of 409.** A merge always *appends* a new variant — it never targets an
+  existing one — so a derived-key clash is an artifact of the derivation, not a user error. The key now gets a numeric
+  suffix (`nsfw` → `nsfw-2`, base truncated to 28 chars so it stays inside `_VARIANT_KEY_RE`'s 32) and the response
+  reports the key actually used. `POST /{name}/variants` (declare) **keeps** its 409 — there the caller supplies a
+  deliberate key.
+- **Keys are now visible.** The Manage variants panel renders each non-primary variant's key as a small muted `<code>`
+  chip beside its label, with a tooltip explaining it's set at creation and kept on rename. Label/key drift is now
+  legible rather than a silent trap.
+
+**Tests:** +1 (`test_merge_uniquifies_a_colliding_key`) reproducing the exact live shape — a stale `nsfw` key labelled
+"SFW Nude", merging a piece labelled "NSFW" — asserting it lands as `nsfw-2`, leaves the existing variant untouched,
+and carries its member across. Suite 11 green.
+
+**Not changed:** `merge_as_variant_ep` still writes `masterpiece.json` before the DB move, so a crash mid-merge can
+leave a variant entry whose absorb folder survives. That was previously *blocking* (retry → 409); with uniquify a
+retry now succeeds, so it degrades to a stray entry rather than a dead end. Left alone deliberately — reordering is a
+separate, riskier change than this fix warrants.
+
 ## [2.189.0] - 2026-07-24 - Masterpieces: separate a variant from its master + rename variants
 
 > **Folding a variant in is no longer a one-way door.** On a Masterpiece with variants there's now a **Manage
