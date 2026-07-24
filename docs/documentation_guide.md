@@ -5443,6 +5443,24 @@ this is a frontend + thin-API addition that makes existing state
 visible. If you're chasing a "why didn't anything happen when I
 clicked?" bug, this section is where it lives.
 
+### 18.0 The `.field` form primitive (shared — `components.css`, 2.188.1)
+
+**Markup:** `<label class="field">Caption <span class="muted">(hint)</span> <input|textarea|select></label>`, with
+`.field-row` to sit two fields side by side. The label text renders above its control; the control goes full-width.
+Used by `artwork.js` (upload, Details, quick-publish), `imagetool.js` and `promo.js`.
+
+**Do not re-scope this per module.** It was originally scoped to `.artwork-upload .field …`, which silently left every
+other user of `.field` on browser defaults — ~150px-wide inputs (truncated placeholders) and, because a bare
+`<textarea>` defaults to monospace and the rule set `font-size` but never `font-family`, monospace body text. That was
+the 2.188.1 bug. It now lives once, unscoped, in `components.css`.
+
+**Theme interaction (why it's safe to leave unscoped):** the primitive deliberately declares only *layout* +
+baseline chrome at LOW specificity — `.field textarea` is (0,1,1), while theme overrides like
+`html[data-theme="retro_2005"] textarea` / `html[data-mode="brut"] textarea` are (0,1,2) and therefore win. Themes keep
+owning background / border / radius / font-family; the primitive contributes `display:block`, `width:100%`, margin,
+padding, `box-sizing`, and the focus ring. If you add a field rule, keep it at or below this specificity or you will
+start overriding the themes.
+
 ### 18.1 Architecture
 
 ```

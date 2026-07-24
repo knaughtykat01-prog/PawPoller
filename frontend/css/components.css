@@ -531,6 +531,73 @@ a.stat-card:hover {
 .filter-select { min-width: 120px; }
 .filter-select option { background: var(--bg-secondary); }
 
+/* ── Form Fields (shared `.field` primitive) ─────────────────
+   `<label class="field">Caption <input|textarea|select></label>` — the label
+   text sits ABOVE its control, which goes full-width.
+
+   This used to be scoped to `.artwork-upload .field`, so every OTHER user of
+   `.field` (the artwork Details panel, Image Tool, Promo Maker) rendered with
+   unstyled controls: browser-default width (~150px, so placeholders were cut
+   off), no padding/border, and — because a bare <textarea> defaults to
+   monospace — monospace body text. Promoted here as a shared primitive so all
+   of them match. Token-driven, so it retones with every theme. */
+.field {
+    display: block;
+    margin-bottom: .8rem;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    color: var(--text-secondary);
+}
+/* The muted parenthetical hint some labels carry ("(comma-separated default)") */
+.field > .muted { font-weight: 400; letter-spacing: 0; }
+
+.field input[type="text"],
+.field input[type="number"],
+.field input[type="url"],
+.field input[type="date"],
+.field textarea,
+.field select {
+    display: block;
+    width: 100%;
+    margin-top: .3rem;
+    padding: .55rem .65rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    /* inherit the UI face — without this a <textarea> falls back to monospace */
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: 1.5;
+    box-sizing: border-box;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.field input::placeholder,
+.field textarea::placeholder { color: var(--text-muted); opacity: 1; }
+
+.field input[type="text"]:focus,
+.field input[type="number"]:focus,
+.field input[type="url"]:focus,
+.field input[type="date"]:focus,
+.field textarea:focus,
+.field select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.field textarea { resize: vertical; min-height: 4.5rem; }
+.field select { cursor: pointer; }
+/* A lone dropdown (e.g. Rating) shouldn't stretch the full column. */
+.field select:not([multiple]) { max-width: 240px; }
+.field select option { background: var(--bg-secondary); }
+
+.field-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+.field-row .field { flex: 1; min-width: 140px; }
+
 /* ── Buttons ─────────────────────────────────────────────── */
 .btn {
     /* inline-flex (not the label/anchor default of inline) so a `<label class="btn">`

@@ -219,31 +219,11 @@
    "Choose image" column. Respect the attribute. (2.122.0) */
 .artwork-preview[hidden] { display: none; }
 
-/* Form fields */
-.artwork-upload .field,
-.artwork-detail .field {
-    display: block;
-    margin-bottom: .75rem;
-    font-size: 13px;
-    color: var(--text-secondary);
-}
-.artwork-upload .field input[type="text"],
-.artwork-upload .field textarea,
-.artwork-upload .field select {
-    display: block;
-    width: 100%;
-    margin-top: .25rem;
-    padding: .5rem .6rem;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-size: 14px;
-    box-sizing: border-box;
-}
-.artwork-upload .field textarea { resize: vertical; }
-.field-row { display: flex; gap: 1rem; flex-wrap: wrap; }
-.field-row .field { flex: 1; min-width: 140px; }
+/* Form fields — the `.field` primitive (label above, full-width control) now
+   lives in components.css so the Details panel, Image Tool and Promo Maker all
+   share it. Only artwork-specific tweaks belong here. */
+/* The per-platform tag boxes are the one place a taller default helps. */
+.artwork-plat-adv .field textarea { min-height: 3.5rem; }
 
 /* Platform rows */
 .artwork-plat-row {

@@ -12,6 +12,36 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.188.1] - 2026-07-24 - Fix cramped, monospace form fields on Artwork details (+ Image Tool, Promo Maker)
+
+> **The edit forms look right now.** On an artwork's **Details** panel the boxes were tiny, the labels sat jammed
+> against them, long placeholders got cut off, and the Description/Tags boxes used a typewriter font. Labels now sit
+> above their box, every box fills the width, and they use the normal app font. The same fix reaches the **Image Tool**
+> and **Promo Maker** forms, which had the identical problem.
+
+Reported with a screenshot of the Artwork → Details panel.
+
+**Root cause.** The `.field` control styling in `artwork.css` was scoped to `.artwork-upload .field input|textarea|
+select` — it never matched `.artwork-detail .field`. The label wrapper *was* styled (that rule listed both containers),
+so only the controls fell back to browser defaults: no `width:100%` (inputs sat at the ~150px default, truncating the
+alt-text placeholder), no padding/border/background, and — because a bare `<textarea>` defaults to monospace and the
+rule set `font-size` but never `font-family` — monospace body text. `imagetool.css` and `promo.css` had **no** `.field`
+rules at all, so those forms were unstyled the same way.
+
+**Fix.** Promoted `.field` to a shared form primitive in `components.css` (label above, full-width control), and
+deleted the superseded `.artwork-upload`-scoped copy from `artwork.css` so there's one source of truth. Adds
+`font-family: inherit` (kills the monospace fallback), a focus ring matching `.search-input`, muted placeholders,
+`resize: vertical` + `min-height` on textareas, and a `max-width` on lone selects so the Rating dropdown doesn't
+stretch the column. Covers `input[type=text|number|url|date]`, `textarea`, `select`.
+
+**Theme-safe by specificity.** Theme rules (`html[data-theme="retro_2005"] textarea` = 0,1,2; the brut-mode
+equivalents) outrank `.field textarea` (0,1,1), so themes keep owning the chrome — background, border bevel, radius,
+font — while the primitive supplies only layout. Verified in-browser: under `retro_2005` the tags textarea computes
+`background: rgb(255,255,255)`, `border-radius: 0px`, `border-width: 2px`, `font-family: Verdana` (all retro) with
+`display: block` + full width (the primitive). Checked against the default dark, `light`, and `retro_2005` themes.
+
+No markup changed — CSS only.
+
 ## [2.188.0] - 2026-07-24 - Commissions: file attachments + archive
 
 > **Two adds to Commissions.** (1) **Attachments** — open a commission and drop in any file (reference sheets, WIPs,

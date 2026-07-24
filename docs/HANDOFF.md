@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-24
-**Current version (master):** 2.188.0 — **Commissions: file attachments + archive** (spec `docs/specs/commission_files.md`).
+**Current version (master):** 2.188.1 — **Form-field fix (CSS only).** `.field` control styling was scoped to
+`.artwork-upload`, so the Artwork **Details** panel (+ Image Tool, Promo Maker, which had no `.field` CSS at all)
+rendered browser-default controls: ~150px wide, no padding/border, and monospace textareas (`font-size` was set but
+never `font-family`). Promoted `.field` to a shared primitive in `components.css` (label above, full-width control,
+`font-family: inherit`, focus ring, `resize:vertical`, capped lone selects) and deleted the superseded copy from
+`artwork.css`. Theme-safe: `html[data-theme=…] textarea` (0,1,2) outranks `.field textarea` (0,1,1), so themes keep
+the chrome and the primitive gives layout — verified in-browser on dark/light/retro_2005. **When adding a form,
+use `<label class="field">Caption <input></label>` — don't re-scope field CSS per module.**
+
+**Prior — 2.188.0 — Commissions: file attachments + archive** (spec `docs/specs/commission_files.md`).
 Attachments: any file ≤25 MB per commission, stored on disk under `config.DATA_DIR/commission_files/<cid>/` (persistent
 volume, NO new table — dir listing IS the list); `routes/commissions_api.py` POST/GET/GET{file}/DELETE with
 `_safe_name` + `_resolve_attachment` traversal guard; non-images served attachment+nosniff. Archive: `commissions.archived`
