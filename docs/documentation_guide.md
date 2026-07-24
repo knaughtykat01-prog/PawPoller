@@ -6448,6 +6448,17 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   (known limitation, spec §9). This completes the Masterpiece build (phases 0–7): a single image now has the full
   master lifecycle a story always had.
 
+- **Artwork surfaces variants (2.190.0).** The artwork detail endpoint used to return only the single master `image`;
+  now `artwork_reader.list_artworks` and `routes/artwork_api.get_artwork_detail` both carry `variants` (declared renders
+  from `masterpiece.json`), and the detail also returns `images` (all folder files, the strip's fallback source).
+  Frontend (`artwork.js`): `_variantTiles(a)` renders a tile per non-primary variant after the master card in the
+  gallery grid; the detail (`renderDetail`) shows a `.artwork-detail-alts` thumbnail strip that swaps the main image.
+  Read-only — variant *management* stays on the Masterpiece detail. `.artwork-detail-alts` is in the safe-mode blur
+  list (`safe_mode.css`) so NSFW thumbnails blur. No write path touched.
+- **Masterpiece detail prev/next (2.190.0).** `masterpieces.js._renderDetailNav(name)` locates the open piece in the
+  cached grid order (`_cache`; fetches on a deep link; falls back to the full list when the piece is junk) and injects
+  `‹ Prev / n / m / Next ›` into the `.work-back` bar (styled via the scoped `.work-back.mp-detail-topnav` so the
+  shared bar elsewhere is untouched). `_onNavKey` maps ←/→ to `_navPrev`/`_navNext` while on a detail and not typing.
 - **merge-as-variant carries the absorbed piece's own variants (2.189.2).** When `absorb` has declared variants,
   folding it into `keep` now carries the **whole set**, not just its hero. Before, only `art_absorb.image` was copied
   and `shutil.rmtree(absorb)` deleted the rest of its variant images, its variant labels were lost, and

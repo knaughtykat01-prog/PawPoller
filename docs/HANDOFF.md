@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-24
-**Current version (master):** 2.189.2 — **merge-as-variant carries absorb's OWN variants.** Was: only absorb's hero
+**Current version (master):** 2.190.0 — **Artwork shows variants + Masterpiece prev/next.** (1) Artwork gallery
+renders a tile per variant (`artwork.js._variantTiles`, dashed border + "variant" badge) and the detail shows a
+click-through thumbnail strip (`.artwork-detail-alts`, in the safe-mode blur set). Backend: `list_artworks` +
+`get_artwork_detail` now carry `variants` (+ detail `images`) — read-only surfacing, no write path. (2) `‹ Prev/Next ›`
++ ←/→ keys on the Masterpiece detail (`_renderDetailNav`/`_onNavKey`, cached grid order, scoped `.mp-detail-topnav`).
++3 tests (test_artwork_variants_expose). **Recovery note:** checked the VM for merge-lost art — no auto-backups exist,
+but a perceptual-hash cross-check of all 67 linked uploads vs local images found only 2 mismatches (both single-piece,
+not merge targets) — no mass loss; old flatten only hurt multi-image absorbs, and absorbs were single-render uploads.
+
+**Prior — 2.189.2 — merge-as-variant carries absorb's OWN variants.** Was: only absorb's hero
 copied over, its other variant images `rmtree`'d, members flattened onto one key (verified). Now: each of absorb's
 declared variants becomes a distinct variant on keep — primary → base key, sub-variant `sk` → `<base>-<sk>` (label
 `"<merge label> — <sub label>"`), uniquified; every image copied; members re-keyed per-variant. `mq.merge_as_variant`

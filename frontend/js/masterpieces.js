@@ -542,6 +542,47 @@ window.Masterpieces = {
             return;
         }
         this._paintDetail(name, m);
+        this._renderDetailNav(name);
+    },
+
+    /* Prev/next navigation across the grid list (2.190.0). Uses the cached grid
+     * order (active pieces); on a deep link with no cache, fetches it. Arrows +
+     * a position counter go in the top back-bar; ←/→ keys step too. */
+    async _renderDetailNav(name) {
+        let list = this._cache;
+        if (!list) {
+            try { list = ((await API.getMasterpieces()) || {}).masterpieces || []; this._cache = list; }
+            catch (e) { return; }
+        }
+        // Active pieces in grid order; if the open piece is junk, fall back to all.
+        let names = list.filter(m => m.status !== 'junk').map(m => m.name);
+        let idx = names.indexOf(name);
+        if (idx === -1) { names = list.map(m => m.name); idx = names.indexOf(name); }
+        if (idx === -1) return;
+        const prev = idx > 0 ? names[idx - 1] : null;
+        const next = idx < names.length - 1 ? names[idx + 1] : null;
+        this._navPrev = prev; this._navNext = next;
+        const back = document.querySelector('.work-back');
+        if (!back || back.querySelector('.mp-nav')) return;
+        back.classList.add('mp-detail-topnav');
+        const btn = (n, cls, label, title) => n
+            ? `<a class="btn btn-sm ${cls}" href="#/masterpieces/${encodeURIComponent(n)}" title="${title}">${label}</a>`
+            : `<span class="btn btn-sm is-disabled" aria-disabled="true">${label}</span>`;
+        back.insertAdjacentHTML('beforeend', `
+            <span class="mp-nav">
+                ${btn(prev, 'mp-nav-prev', '&lsaquo; Prev', 'Previous (←)')}
+                <span class="mp-nav-pos muted">${idx + 1} / ${names.length}</span>
+                ${btn(next, 'mp-nav-next', 'Next &rsaquo;', 'Next (→)')}
+            </span>`);
+    },
+
+    /* ←/→ step through pieces while on a masterpiece detail (not while typing). */
+    _onNavKey(e) {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        if (!/^#\/masterpieces\/[^/]/.test(location.hash || '')) return;
+        if (e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+        const to = e.key === 'ArrowLeft' ? this._navPrev : this._navNext;
+        if (to) { e.preventDefault(); location.hash = `#/masterpieces/${encodeURIComponent(to)}`; }
     },
 
     _ratingCls(r) {
@@ -786,6 +827,7 @@ window.Masterpieces = {
     _init() {
         if (this._wired) return;
         this._wired = true;
+        document.addEventListener('keydown', (e) => this._onNavKey(e));
         document.addEventListener('click', (e) => {
             const save = e.target.closest('[data-mp-save]');
             if (save) { e.preventDefault(); this._saveCanonical(); return; }

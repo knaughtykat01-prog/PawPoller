@@ -233,9 +233,31 @@ window.Artwork = {
         }
         grid.className = 'artwork-grid';
         grid.innerHTML = items.map(m =>
-            m._src === 'lib' ? this._card(m.a)
+            m._src === 'lib' ? this._card(m.a) + this._variantTiles(m.a)
                 : m._src === 'master' ? this._masterCard(m.m)
                     : this._discoveredCard(m.d)).join('');
+    },
+
+    /* A tile per NON-primary variant of a library piece, rendered right after its
+     * master card (2.190.0) — so the gallery shows every render, not just the
+     * master. Read-only: variant management lives on the Masterpiece detail.
+     * Links to the piece's detail, where the strip lets you page through them. */
+    _variantTiles(a) {
+        const vs = (a.variants || []).filter(v => v && v.key && v.image);
+        if (!vs.length) return '';
+        return vs.map(v => {
+            const rAttr = ` data-rating="${this.esc((v.rating || a.rating || '').toLowerCase())}"`;
+            return `
+            <a class="artwork-card artwork-card--variant" href="#/artwork/image/${encodeURIComponent(a.name)}"
+               title="${this.esc(v.label || v.key)} — a variant of ${this.esc(a.title || a.name)}">
+                <div class="artwork-card-cover"${rAttr} style="background-image:url('${this._imgUrl(a.name, v.image)}')"></div>
+                <span class="artwork-card-vbadge">variant</span>
+                <div class="artwork-card-body">
+                    <div class="artwork-card-title">${this.esc(a.title || a.name)}</div>
+                    <div class="artwork-card-meta"><span class="artwork-card-vlabel">${this.esc(v.label || v.key)}</span></div>
+                </div>
+            </a>`;
+        }).join('');
     },
 
     /* ── Masters (unify) ────────────────────────────────────────
@@ -839,7 +861,23 @@ window.Artwork = {
             return;
         }
         const cover = data.image
-            ? `<img class="artwork-detail-img" data-rating="${this.esc((data.rating || '').toLowerCase())}" src="${this._imgUrl(name, data.image)}" alt="${this.esc(data.title)}">` : '';
+            ? `<img class="artwork-detail-img" id="art-detail-img" data-rating="${this.esc((data.rating || '').toLowerCase())}" src="${this._imgUrl(name, data.image)}" alt="${this.esc(data.title)}">` : '';
+        // Variant strip (2.190.0): declared variants render labeled; a piece with
+        // only undeclared alt files falls back to the raw folder images. Clicking
+        // a thumbnail swaps the main image. Read-only — managed in Masterpieces.
+        const _variants = data.variants || [];
+        const _chips = _variants.length
+            ? _variants.map(v => ({ img: v.image, label: v.label || v.key || 'Primary' }))
+            : (data.images || []).map((f, i) => ({ img: f, label: i === 0 ? 'Primary' : `Alt ${i}` }));
+        const altStrip = _chips.length > 1
+            ? `<div class="artwork-detail-alts" data-rating="${this.esc((data.rating || '').toLowerCase())}">
+                ${_chips.map((c, i) => `
+                    <button type="button" class="artwork-alt${i === 0 ? ' is-active' : ''}"
+                        data-art-alt="${this._imgUrl(name, c.img)}" title="${this.esc(c.label)}">
+                        <img src="${this._imgUrl(name, c.img)}" alt="" loading="lazy">
+                        <span class="artwork-alt-label">${this.esc(c.label)}</span>
+                    </button>`).join('')}
+               </div>` : '';
         const pubRows = (data.publications || []).map(p => {
             const plat = this._plat(p.platform);
             const st = p.stats || {};
@@ -879,7 +917,7 @@ window.Artwork = {
                 </div>
             </div>
             <div class="artwork-detail">
-                <div class="artwork-detail-col">${cover}</div>
+                <div class="artwork-detail-col">${cover}${altStrip}</div>
                 <div class="artwork-detail-col">
                     <div class="card">
                         <h3>Details <span class="muted" style="font-weight:400;font-size:.8rem">— edit the canonical record</span></h3>
@@ -950,6 +988,14 @@ window.Artwork = {
         await this._populateAccountSelectors();
 
         document.getElementById('art-delete').addEventListener('click', () => this._delete(name));
+        // Variant strip: swap the main image (2.190.0).
+        document.querySelectorAll('.artwork-detail-alts .artwork-alt').forEach(btn =>
+            btn.addEventListener('click', () => {
+                const main = document.getElementById('art-detail-img');
+                if (main) main.src = btn.dataset.artAlt;
+                document.querySelectorAll('.artwork-detail-alts .artwork-alt')
+                    .forEach(b => b.classList.toggle('is-active', b === btn));
+            }));
         document.getElementById('art-detail-publish').addEventListener('click', () => this._publishMore(name));
         document.getElementById('art-edit-save').addEventListener('click', () => this._saveMeta(name, data));
         document.getElementById('art-edit-tagbrowse').addEventListener('click', () => this._openTagLibrary('art-edit-tags'));

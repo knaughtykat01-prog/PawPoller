@@ -86,6 +86,15 @@ def get_artwork_detail(name: str):
     finally:
         conn.close()
 
+    # Variants (2.190.0) — the declared renders (SFW/NSFW/rough/…) live on the
+    # masterpiece.json, un-cascaded. `images` is every image file in the folder,
+    # so the detail can show a strip even for pieces with only undeclared alts.
+    raw = artwork_reader.read_raw_metadata(name) or {}
+    variants = [v for v in (raw.get("variants") or [])
+                if isinstance(v, dict) and v.get("image")]
+    images = sorted(f.name for f in artwork.path.iterdir()
+                    if f.suffix.lower() in artwork_reader.IMAGE_EXTENSIONS)
+
     return {
         "name": artwork.name,
         "title": artwork.title,
@@ -100,6 +109,8 @@ def get_artwork_detail(name: str):
         "categories": artwork.categories_by_platform,
         "platforms": artwork.platforms,
         "alt_text": artwork.alt_text,
+        "variants": variants,
+        "images": images,
         "created_at": artwork.created_at,
         "publications": pubs,
     }

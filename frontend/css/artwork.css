@@ -115,6 +115,45 @@
     color: var(--text-muted);
     font-size: 13px;
 }
+/* Variant tiles (2.190.0) — a render of a library piece, shown right after its
+   master card. Dimmed border + a corner badge distinguish them from masters. */
+.artwork-card--variant { border-style: dashed; }
+.artwork-card--variant:hover { border-style: solid; }
+.artwork-card-vbadge {
+    position: absolute; top: 6px; left: 6px; z-index: 2;
+    font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    padding: .1rem .35rem; border-radius: 999px;
+    background: rgba(0, 0, 0, .6); color: #fff;
+}
+.artwork-card-vlabel {
+    font-size: 11px; font-weight: 600;
+    color: var(--text-secondary);
+    border: 1px solid var(--card-border-inner, var(--border)); border-radius: 999px;
+    padding: 0 .4rem;
+}
+
+/* Detail variant strip (2.190.0) — thumbnails under the main image; click swaps. */
+.artwork-detail-alts {
+    display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .7rem;
+}
+.artwork-alt {
+    display: flex; flex-direction: column; align-items: center; gap: .2rem;
+    width: 72px; padding: 0; border: 0; background: none; cursor: pointer;
+    font: inherit; color: var(--text-muted);
+}
+.artwork-alt img {
+    width: 72px; height: 72px; object-fit: cover;
+    border-radius: var(--radius-sm); background: var(--bg-tertiary);
+    border: 2px solid transparent; transition: border-color .12s ease;
+}
+.artwork-alt:hover img { border-color: var(--border); }
+.artwork-alt.is-active img { border-color: var(--accent); }
+.artwork-alt-label {
+    font-size: 10.5px; line-height: 1.2; max-width: 72px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.artwork-alt.is-active .artwork-alt-label { color: var(--text-primary); }
+
 .artwork-card-body { padding: .6rem .7rem; }
 .artwork-card-title {
     font-weight: 600;

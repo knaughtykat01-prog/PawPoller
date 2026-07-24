@@ -12,6 +12,34 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.190.0] - 2026-07-24 - Artwork shows variants · prev/next arrows on a Masterpiece
+
+> **Two things.** (1) The Artwork gallery now shows a tile for **every variant**, not just the master — each render
+> (SFW/NSFW/rough/…) gets its own tile (marked "variant"), and opening a piece shows a **strip of thumbnails** under the
+> main image you can click through. (2) On a Masterpiece, **‹ Prev / Next ›** arrows (and your ←/→ keys) step to the
+> next or previous piece without going back to the grid.
+
+Both from Rhys. Chose "Both" surfaces for the artwork variants.
+
+**Artwork variants (was: only the master image was ever shown).** The artwork detail endpoint returned just the single
+`image`; the gallery card was one-per-folder. Now:
+- `artwork_reader.list_artworks` + `routes/artwork_api.get_artwork_detail` carry `variants` (the declared renders from
+  `masterpiece.json`); the detail also returns `images` (every file in the folder) so a piece with only undeclared
+  alts still gets a strip.
+- **Grid:** `artwork.js._variantTiles(a)` renders a tile per non-primary variant right after the master card
+  (dashed border + "variant" badge + the variant's label), linking to the piece. **Detail:** a thumbnail strip under
+  the main image (`artwork-detail-alts`); clicking swaps the displayed image. Read-only — variant *management* stays on
+  the Masterpiece detail. `.artwork-detail-alts` added to the safe-mode blur set so NSFW thumbnails blur with the rest.
+- No backend write path touched; purely surfacing existing data.
+
+**Masterpiece prev/next (`masterpieces.js`).** `_renderDetailNav(name)` finds the open piece in the cached grid order
+(active pieces; falls back to a fetch on a deep link, or to the full list if the piece is junk) and drops
+**‹ Prev / N / M / Next ›** into the detail's back-bar. `_onNavKey` steps with ←/→ while on a detail and not typing in
+a field. Scoped CSS (`.work-back.mp-detail-topnav`) so the shared back-bar elsewhere is unaffected.
+
+**Tests:** `tests/test_artwork_variants_expose.py` — `list_artworks` carries variants (empty for a plain piece); the
+detail endpoint returns `variants` + `images`. Artwork/masterpiece regression (33) green.
+
 ## [2.189.2] - 2026-07-24 - Merging a piece that has its own variants now carries them all over
 
 > **Folding a piece that already has variants keeps them.** Before, if you merged a Masterpiece that itself had

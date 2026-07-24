@@ -152,6 +152,9 @@ def list_artworks() -> list[dict]:
             "tags": data.get("tags", {}),
             "characters": data.get("characters", []),
             "platforms": data.get("platforms", []),
+            # Declared variants (2.190.0) so the gallery can show a tile per render,
+            # not just the master. Empty for a plain single-image piece.
+            "variants": data.get("variants", []),
             "import_source": data.get("import_source", {}),
             "created_at": data.get("created_at", ""),
         })
