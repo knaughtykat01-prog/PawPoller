@@ -6923,3 +6923,57 @@ Refinements in **2.88.0**:
   `<a class="btn btn-secondary" href="#/accounts">Manage accounts →</a>` (plain hash link, no JS handler);
   (2) a `.pset-trademark` line stating the platform names/logos are trademarks of their owners, shown for
   identification only, PawPoller unaffiliated. Styles in `components.css` under the `.pset-footer` block.
+
+## 23. Gap-wave-5 creator features (2.186 / 2.187)
+
+The last parked creator batch from `docs/specs/user_gap_analysis.md` §3, specced in `docs/specs/gap_wave5.md`.
+Multi-user/roles is the only item still deferred (it unwinds the hardened single-admin model — needs its own design pass).
+
+### 23.1 Watermark on export (2.186, `posting/watermark.py`)
+Stamps a configurable text credit onto artwork just before it posts. **One choke point covers every image platform:**
+`posting/manager.post_artwork` calls `watermark.apply(package.file_path)` between `build_artwork_package` and
+`poster.validate` (so the size check sees the real bytes), swaps `package.file_path` to the stamped temp copy, and
+deletes the temps after the whole platform loop (accumulated in `_wm_temps` — a retry within an iteration re-posts the
+same package, so temps must outlive it). `apply(src, settings) -> (path, tmp_or_None)` mirrors `_prepare_bsky_image`'s
+cleanup contract and **never raises** — a bad font / odd image returns `(src, None)` so a watermark error can't block a
+post. PIL `ImageDraw`/`ImageFont` (DejaVu → arial → `load_default()`); font ~3.5% of the short edge, soft shadow,
+opacity clamped 0.1–1.0; PNG keeps transparency else flattened JPEG q92. 4 settings
+(`artwork_watermark_enabled/text/position/opacity`) in `routes/artwork_api.py` get/save + a Publishing-accordion UI
+block in `app.js`. `Pillow` explicitly pinned in `requirements-server.txt` (was only transitive via weasyprint).
+
+### 23.2 Cross-platform series (2.186, display-only v1)
+Groups ordered distinct stories into a named series. **Storage = `story.json` fields** `series` (name) + `series_index`
+(int) — stories are file-based, no new table. Read path: `StoryInfo` + `_load_from_story_json` + `_story_entry`
+(`posting/story_reader.py`; index coerced via `int(data.get("series_index", 0) or 0)` so a string/"" never raises),
+passed through `assemble_works` (`routes/submissions_api.py`) and the story-detail endpoint (`routes/posting_api.py`).
+Write path reuses the existing arbitrary-metadata PUT (`MetadataSaveRequest`). UI: a "📚 Series #n" badge on library
+cards + a pill on the story-detail hero (`frontend/js/bookshelf.js`), a Series / No.-in-series field pair in the
+Metadata editor's Story Info (`frontend/js/metadata_editor.js`), and a "Series" library sort (groups by series name
+then index). **v1 is display-only** — no poster emits AO3-series / SF-folders yet (documented add-on).
+
+### 23.3 Beta-reader draft share (2.186, `database/share_tokens.py`)
+A tokenised, read-only public link to preview a story draft — no login. **Table** `share_tokens`
+(`share_token PK, story_name, created_at, expires_at, enabled`), `ensure_share_tokens_table` wired into
+`db.py._run_migrations`. Token = `secrets.token_urlsafe`; `is_live(row)` gates enabled + not-expired (unparseable
+expiry treated as non-expiring rather than lock-out). **Endpoints** (`routes/editor_api.py`):
+`POST/GET .../stories/{name}/share`, `DELETE .../share/{token}`, plus a reusable `render_story_share_html(story_name)`
+(prefers the story's styled theme with CSS inlined, else a minimal readable wrapper around clean HTML; returns None on
+missing story → clean 404). **Public route** `@app.get("/share/{token}")` in `dashboard.py`: look up → `is_live` →
+render, else an **identical 404 page** (unknown / revoked / expired are indistinguishable). `"/share/"` added to
+`_AUTH_EXEMPT_PREFIXES`; a dedicated **script-free CSP** `_build_share_csp` (`default-src 'none'`, inline styles +
+images/fonts only) — the one surface a stranger can reach serves user-authored prose, so stored markup can't execute
+script. UI: a "🔗 Share draft" button in the editor's secondary cluster → an on-demand modal (mint with optional
+expiry, copy, revoke) in `frontend/js/editor.js`.
+
+### 23.4 Commissions module (2.187)
+A lightweight client/commission tracker. **Single self-contained table** (deliberately simpler than Collections —
+no polymorphic members / rollup). `database/commissions_schema.sql` — `commissions(id, client_name, description,
+price REAL, currency, status, due_date, artwork_name, deliver_sites TEXT JSON, notes, created_at, updated_at)`;
+registered in `db.py init_db`'s schema-load list. Status set `{quote, accepted, wip, paid, delivered}` validated in
+the handlers. `database/commissions_queries.py` (CRUD; `deliver_sites` normalised to a JSON string on write, parsed to
+a list on read; dated rows sort soonest-first, undated last). `routes/commissions_api.py` (`/api/commissions` +
+`/{id}`), included in `dashboard.py`. Frontend: `frontend/js/commissions.js` (`window.Commissions`) — a status-column
+**board** (soonest-due sort, inline `→ next` advance + a detail-page status `<select>`) — + `commissions.css`, a
+**Commissions** nav entry, routes `#/commissions` / `#/commissions/:id`. CSP-safe delegated clicks (`data-comm-*`),
+modals reuse the `.guide-modal` shell. Money is data only (no payment integration); `artwork_name` deep-links a
+delivered piece (`#/artwork/image/<name>`); `deliver_sites` picks from the poster set (`_ALL_POSTER_IDS`).
