@@ -12,6 +12,43 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.188.0] - 2026-07-24 - Commissions: file attachments + archive
+
+> **Two adds to Commissions.** (1) **Attachments** — open a commission and drop in any file (reference sheets, WIPs,
+> screenshots, a contract PDF, a source zip), up to 25 MB each; images show as thumbnails, everything else as a
+> download chip. (2) **Archive** — once a commission's done, hit **Archive** and it drops off the active board into a
+> tidy Archived list (nothing is deleted; **Unarchive** brings it back). A "📦 Archived (N)" link appears on the board
+> once you've archived anything.
+
+Follow-up to 2.187 (spec `docs/specs/commission_files.md`).
+
+**Attachments (any file).** Files live on disk under the persistent data volume, **not in SQLite** — one folder per
+commission (`config.DATA_DIR/commission_files/<cid>/`, i.e. `/app/data/...` in Docker, so uploads survive a rebuild);
+the directory listing IS the file list, so there's no new table.
+- `routes/commissions_api.py`: `POST /{cid}/files` (multipart, ≤25 MB → 413 over, 404 if the commission is gone),
+  `GET /{cid}/files` (dir stat, newest first, `is_image` flag + a serve URL), `GET /{cid}/files/{filename}`,
+  `DELETE /{cid}/files/{filename}`. The commission-delete handler now `rmtree`s the folder too.
+- **Safety:** `_safe_name` reduces an upload to a separator-free basename (`[A-Za-z0-9._ -]`, else `_`), collisions
+  get ` (n)`; `_resolve_attachment` re-anchors `{filename}` inside the folder with a `relative_to` guard (mirrors
+  `posting_api.get_story_image`). Images serve inline with their image content-type; **everything else** is
+  `application/octet-stream` + `Content-Disposition: attachment` + `X-Content-Type-Options: nosniff`, so a stored
+  `.html` can't render/execute in the owner's session.
+- **Frontend:** an Attachments section on the commission detail page — a drag-drop / click-to-browse zone
+  (`multiple`), image thumbnails + non-image file chips, per-file delete (`frontend/js/commissions.js`,
+  `commissions.css`); `api.js` `uploadCommissionFile / getCommissionFiles / deleteCommissionFile`.
+
+**Archive completed.** `commissions.archived` (INTEGER 0/1) — added to `commissions_schema.sql` for fresh installs
+**and** a guarded `ALTER TABLE` in `db.py._run_migrations` (the 2.187 table already exists on the VM without it, so
+the migration is required). `commissions_queries`: `list_commissions(archived=False)`, `set_archived`,
+`count_archived`, `archived` in the update allowed-set. API list takes `?archived=1` and returns `archived_count`.
+Frontend: the board shows active by default; a bookmarkable `#/commissions/archived` view (route added in `app.js`)
+lists archived cards with **Unarchive**; Archive/Unarchive actions on cards + the detail header. Archived rows never
+appear in the active status columns.
+
+**Tests:** `tests/test_commission_files.py` (archive filter/count/unarchive; safe-name + traversal guard; upload →
+list → download (bytes + attachment headers) → delete; collision dedupe; oversized 413; upload-to-missing 404;
+commission-delete removes the folder).
+
 ## [2.187.0] - 2026-07-24 - Commissions tracker
 
 > **New Commissions tracker.** A simple board to keep track of client commissions — who it's for, the price, the due

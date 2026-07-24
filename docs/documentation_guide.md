@@ -6977,3 +6977,20 @@ a list on read; dated rows sort soonest-first, undated last). `routes/commission
 **Commissions** nav entry, routes `#/commissions` / `#/commissions/:id`. CSP-safe delegated clicks (`data-comm-*`),
 modals reuse the `.guide-modal` shell. Money is data only (no payment integration); `artwork_name` deep-links a
 delivered piece (`#/artwork/image/<name>`); `deliver_sites` picks from the poster set (`_ALL_POSTER_IDS`).
+
+**Attachments + archive (2.188, spec `docs/specs/commission_files.md`).**
+- **Attachments (any file).** Files live on disk, **not in SQLite** — one folder per commission
+  (`config.DATA_DIR/commission_files/<cid>/`, i.e. the `/app/data` persistent volume in Docker); the directory listing
+  is the file list, so there's no attachments table. `routes/commissions_api.py`: `POST /{cid}/files` (multipart,
+  ≤`_MAX_FILE_BYTES` 25 MB → 413), `GET /{cid}/files` (dir stat, newest first, `is_image` + serve URL),
+  `GET /{cid}/files/{filename}`, `DELETE /{cid}/files/{filename}`; the commission-delete handler `rmtree`s the folder.
+  `_safe_name` (separator-free basename, collision → ` (n)`) + `_resolve_attachment` (`relative_to` guard, mirrors
+  `posting_api.get_story_image`) block traversal at both write and read. Images serve inline with their content-type;
+  non-images serve `application/octet-stream` + `Content-Disposition: attachment` + `X-Content-Type-Options: nosniff`
+  (a stored `.html` can't execute in the owner's session). Frontend: a drop-zone (drag-drop + `multiple` browse) +
+  thumbnail/file-chip grid with per-file delete on the detail page.
+- **Archive.** `commissions.archived` INTEGER 0/1 — in `commissions_schema.sql` (fresh) **and** a guarded
+  `ALTER TABLE` in `db.py._run_migrations` (the 2.187 table predates the column on existing DBs). `list_commissions(
+  archived=False)` / `set_archived` / `count_archived`; API list takes `?archived=1` and returns `archived_count`.
+  Board shows active by default; bookmarkable `#/commissions/archived` view (route in `app.js`) with Unarchive;
+  Archive/Unarchive on cards + detail header. Archived rows never appear in the active status columns.

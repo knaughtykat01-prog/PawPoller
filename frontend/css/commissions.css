@@ -142,3 +142,65 @@
 .comm-site-box input { width: auto; margin: 0; }
 .comm-msg { color: var(--danger, #c0392b); font-size: .85rem; min-height: 1.1em; margin-bottom: .5rem; }
 .comm-actions { display: flex; gap: .5rem; }
+
+/* ── Archive toolbar + flat archived grid ───────────────────────── */
+.comm-toolbar { margin: 0 0 1rem; }
+.comm-toolbar:empty { margin: 0; }
+.comm-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: .8rem;
+    align-items: start;
+}
+
+/* ── Attachments (2.188) ────────────────────────────────────────── */
+.comm-attach { margin-top: 1.4rem; }
+.comm-dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 1.1rem;
+    text-align: center;
+    background: var(--bg-primary);
+    transition: border-color .12s ease, background .12s ease;
+}
+.comm-dropzone.is-drag { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg-primary)); }
+.comm-dropzone-main { margin: 0 0 .3rem; }
+.comm-dropzone-hint { font-size: .8rem; margin: 0; }
+
+.comm-files {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: .7rem;
+    margin-top: .9rem;
+}
+.comm-files-empty { grid-column: 1 / -1; font-size: .85rem; }
+
+.comm-file { position: relative; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg-primary); }
+.comm-file-del {
+    position: absolute; top: 4px; right: 4px;
+    width: 22px; height: 22px; line-height: 20px;
+    border: none; border-radius: 50%;
+    background: rgba(0, 0, 0, .6); color: #fff;
+    font-size: 15px; cursor: pointer; padding: 0;
+    opacity: 0; transition: opacity .12s ease;
+}
+.comm-file:hover .comm-file-del, .comm-file:focus-within .comm-file-del { opacity: 1; }
+
+/* image tiles */
+.comm-file--img { display: flex; flex-direction: column; }
+.comm-file--img img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; display: block; background: var(--bg-secondary); }
+.comm-file--img figcaption {
+    padding: .35rem .45rem; font-size: .72rem; line-height: 1.3;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text-secondary);
+}
+
+/* non-image file chips */
+.comm-file--doc .comm-file-doc-link {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .6rem .7rem; text-decoration: none; color: inherit;
+}
+.comm-file-ico { font-size: 1.4rem; flex: 0 0 auto; }
+.comm-file-name { flex: 1 1 auto; font-size: .82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comm-file-size { color: var(--text-muted); font-size: .72rem; flex: 0 0 auto; }
+.comm-file--img .comm-file-size { display: inline; }

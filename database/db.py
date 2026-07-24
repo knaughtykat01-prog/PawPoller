@@ -1077,6 +1077,17 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     from database import share_tokens as _share_tokens
     _share_tokens.ensure_share_tokens_table(conn)
 
+    # Migration: commission archive flag (2.188). The commissions table shipped
+    # in 2.187 without it, so existing DBs need the additive column; the schema
+    # file carries it for fresh installs. Guarded on the table existing (legacy
+    # DBs run migrations before the schema-load list).
+    if _table_exists(conn, "commissions"):
+        try:
+            conn.execute("ALTER TABLE commissions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+
     # Migration: fold Cross-Platform links into Collections (they are the same
     # idea — one piece across platforms). Adds a provenance column so the fold is
     # idempotent and reversible (the submission_links rows are NOT deleted), then

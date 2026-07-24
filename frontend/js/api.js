@@ -187,11 +187,22 @@ const API = {
     scanImageHashes(limit) { return this.post(`/api/collections/hash-scan${limit ? `?limit=${limit}` : ''}`, {}); },
 
     /* ── Commissions (client / commission tracker — gap-wave-5 §4) ── */
-    getCommissions() { return this.get('/api/commissions'); },
+    getCommissions(archived = false) { return this.get('/api/commissions', archived ? { archived: 1 } : {}); },
     getCommission(id) { return this.get(`/api/commissions/${id}`); },
     createCommission(body) { return this.post('/api/commissions', body); },
     updateCommission(id, body) { return this.patch(`/api/commissions/${id}`, body); },
     deleteCommission(id) { return this.del(`/api/commissions/${id}`); },
+    /* Attachments (2.188) — any file, ≤25 MB. */
+    getCommissionFiles(id) { return this.get(`/api/commissions/${id}/files`); },
+    uploadCommissionFile(id, file) {
+        const fd = new FormData();
+        fd.append('file', file);
+        return fetch(`/api/commissions/${id}/files`, { method: 'POST', body: fd })
+            .then(r => { if (!r.ok) return r.text().then(t => { throw new Error(t || `Upload failed: ${r.status}`); }); return r.json(); });
+    },
+    deleteCommissionFile(id, filename) {
+        return this.del(`/api/commissions/${id}/files/${encodeURIComponent(filename)}`);
+    },
 
     /* ── Masterpieces (master record per image — Phase 1/2 read, Phase 3 write) ── */
     getMasterpieces() { return this.get('/api/masterpieces'); },

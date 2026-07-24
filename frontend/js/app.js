@@ -1196,6 +1196,8 @@ const App = {
             if (window.Collections) window.Collections.renderDetail(parts[1]);
         } else if (parts[0] === 'collections') {
             if (window.Collections) window.Collections.render();
+        } else if (parts[0] === 'commissions' && parts[1] === 'archived') {
+            if (window.Commissions) window.Commissions.render(true);
         } else if (parts[0] === 'commissions' && parts[1]) {
             if (window.Commissions) window.Commissions.renderDetail(parts[1]);
         } else if (parts[0] === 'commissions') {

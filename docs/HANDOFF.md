@@ -1,11 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-24
-**Current version (master):** 2.187.0 — **Commissions tracker** (gap-wave-5 §4, spec `docs/specs/gap_wave5.md`).
-New sidebar module `#/commissions`: single-table client/commission board (status columns quote→accepted→wip→paid→
-delivered, soonest-due sort, inline advance). `commissions_schema.sql` + `commissions_queries.py` (CRUD; `deliver_sites`
-JSON round-trip) + `routes/commissions_api.py` + `commissions.js`/`.css` + api.js + nav/script/route wiring. Money is
-data only. +7 tests (test_commissions).
+**Current version (master):** 2.188.0 — **Commissions: file attachments + archive** (spec `docs/specs/commission_files.md`).
+Attachments: any file ≤25 MB per commission, stored on disk under `config.DATA_DIR/commission_files/<cid>/` (persistent
+volume, NO new table — dir listing IS the list); `routes/commissions_api.py` POST/GET/GET{file}/DELETE with
+`_safe_name` + `_resolve_attachment` traversal guard; non-images served attachment+nosniff. Archive: `commissions.archived`
+column (schema + **guarded ALTER migration** — 2.187 table exists on VM without it), `?archived=1` list + `archived_count`,
+`#/commissions/archived` view, Archive/Unarchive on cards+detail. Frontend: drop-zone + thumbnail/file-chip grid on the
+detail page. +9 tests (test_commission_files).
+
+**Prior — 2.187.0 — Commissions tracker** (gap-wave-5 §4, spec `docs/specs/gap_wave5.md`). New sidebar module
+`#/commissions`: single-table client/commission board (status columns quote→accepted→wip→paid→delivered, soonest-due
+sort, inline advance). `commissions_schema.sql` + `commissions_queries.py` (CRUD) + `routes/commissions_api.py` +
+`commissions.js`/`.css`. Money is data only. +7 tests (test_commissions).
 
 **Prior — 2.186.0 — Wave-5 trio: watermark · series · beta-share** (gap-wave-5 §1–3, spec `docs/specs/gap_wave5.md`).
 §1 **Watermark on export** — `posting/watermark.py` `apply()` at the single `manager.post_artwork` choke point (temp

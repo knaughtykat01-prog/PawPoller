@@ -15,8 +15,10 @@ CREATE TABLE IF NOT EXISTS commissions (
     artwork_name  TEXT DEFAULT '',                 -- links a delivered piece (#/artwork/image/<name>)
     deliver_sites TEXT DEFAULT '[]',               -- JSON array of platform codes
     notes         TEXT DEFAULT '',
+    archived      INTEGER NOT NULL DEFAULT 0,      -- completed → off the active board (not deleted)
     created_at    TEXT DEFAULT (datetime('now')),
     updated_at    TEXT DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_commissions_status ON commissions(status);
+CREATE INDEX IF NOT EXISTS idx_commissions_archived ON commissions(archived);

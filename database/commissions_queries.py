@@ -48,11 +48,23 @@ def create_commission(conn: sqlite3.Connection, *, client_name: str,
     return cur.lastrowid
 
 
-def list_commissions(conn: sqlite3.Connection) -> list[dict]:
+def list_commissions(conn: sqlite3.Connection, archived: bool = False) -> list[dict]:
+    """Active commissions by default; pass archived=True for the archived pile."""
     return [_row(r) for r in conn.execute(
-        "SELECT * FROM commissions ORDER BY "
+        "SELECT * FROM commissions WHERE archived = ? ORDER BY "
         # Undated rows sink to the bottom; otherwise soonest-due first.
-        "CASE WHEN due_date = '' THEN 1 ELSE 0 END, due_date ASC, id DESC").fetchall()]
+        "CASE WHEN due_date = '' THEN 1 ELSE 0 END, due_date ASC, id DESC",
+        (1 if archived else 0,)).fetchall()]
+
+
+def count_archived(conn: sqlite3.Connection) -> int:
+    return conn.execute("SELECT COUNT(*) FROM commissions WHERE archived = 1").fetchone()[0]
+
+
+def set_archived(conn: sqlite3.Connection, cid: int, archived: bool) -> None:
+    conn.execute(
+        "UPDATE commissions SET archived = ?, updated_at = datetime('now') WHERE id = ?",
+        (1 if archived else 0, cid))
 
 
 def get_commission(conn: sqlite3.Connection, cid: int) -> dict | None:
@@ -62,7 +74,7 @@ def get_commission(conn: sqlite3.Connection, cid: int) -> dict | None:
 
 def update_commission(conn: sqlite3.Connection, cid: int, **fields) -> None:
     allowed = {"client_name", "description", "price", "currency", "status",
-               "due_date", "artwork_name", "deliver_sites", "notes"}
+               "due_date", "artwork_name", "deliver_sites", "notes", "archived"}
     sets, params = [], []
     for k, v in fields.items():
         if k not in allowed or v is None:
@@ -71,6 +83,8 @@ def update_commission(conn: sqlite3.Connection, cid: int, **fields) -> None:
             v = _clean_sites(v)
         elif k == "price":
             v = float(v or 0)
+        elif k == "archived":
+            v = 1 if v else 0
         elif k == "status" and v not in STATUSES:
             continue
         sets.append(f"{k} = ?")
