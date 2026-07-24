@@ -414,7 +414,30 @@ window.Bookshelf = {
                     ${blurb}
                     <div class="book-plats">${plats}</div>
                 </div>
+            </a>${this._variantBooks(w)}`;
+    },
+
+    /* A tile per non-primary variant of an artwork work (2.190.1), rendered right
+     * after its master card so the Library shows every render, not just the
+     * master. Read-only — variant management lives on the Masterpiece detail. */
+    _variantBooks(w) {
+        const vs = w.variants || [];
+        if (!vs.length || !w.detail_route) return '';
+        return vs.map(v => {
+            const rAttr = ` data-rating="${this.esc((v.rating || w.rating || '').toLowerCase())}"`;
+            const cover = v.thumb_url
+                ? `<div class="book-cover"${rAttr} style="background-image:url('${this.esc(v.thumb_url)}')"><span class="book-vbadge">variant</span></div>`
+                : `<div class="book-cover book-cover--blank"${rAttr}><span class="book-vbadge">variant</span></div>`;
+            return `
+            <a class="book book--variant" href="${this.esc(w.detail_route)}"
+               title="${this.esc(v.label || v.key)} — a variant of ${this.esc(w.title || w.name)}">
+                ${cover}
+                <div class="book-spine">
+                    <div class="book-title">${this.esc(w.title || w.name)}</div>
+                    <div class="book-meta"><span class="book-vlabel">${this.esc(v.label || v.key)}</span></div>
+                </div>
             </a>`;
+        }).join('');
     },
 
     /* ── Work detail (stories) ─────────────────────────────────── */

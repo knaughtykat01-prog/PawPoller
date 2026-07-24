@@ -45,6 +45,24 @@ def test_list_artworks_plain_piece_has_empty_variants(artwork_archive):
     assert row["variants"] == []
 
 
+def test_works_api_carries_artwork_variants(artwork_archive, monkeypatch):
+    """The Library grid (bookshelf) reads /api/works — assemble_works must pass
+    each artwork's non-primary variants (with a ready thumb_url), or the Library
+    shows only the master (the 2.190.0 miss: tiles were built for the retired
+    Artwork hub instead)."""
+    from fastapi.testclient import TestClient
+    import dashboard
+    monkeypatch.setattr(dashboard.config, "is_dashboard_auth_required", lambda: False)
+    c = TestClient(dashboard.app)
+
+    name = _piece_with_variant(artwork_archive)
+    works = c.get("/api/works", params={"type": "artwork"}).json()["works"]
+    w = next(x for x in works if x["name"] == name)
+    # Primary is the master card; only the non-primary variant is a tile.
+    assert [v["label"] for v in w["variants"]] == ["NSFW"]
+    assert w["variants"][0]["thumb_url"].startswith("/api/artwork/image?")
+
+
 def test_detail_endpoint_returns_variants_and_images(artwork_archive, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient

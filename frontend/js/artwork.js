@@ -233,31 +233,9 @@ window.Artwork = {
         }
         grid.className = 'artwork-grid';
         grid.innerHTML = items.map(m =>
-            m._src === 'lib' ? this._card(m.a) + this._variantTiles(m.a)
+            m._src === 'lib' ? this._card(m.a)
                 : m._src === 'master' ? this._masterCard(m.m)
                     : this._discoveredCard(m.d)).join('');
-    },
-
-    /* A tile per NON-primary variant of a library piece, rendered right after its
-     * master card (2.190.0) — so the gallery shows every render, not just the
-     * master. Read-only: variant management lives on the Masterpiece detail.
-     * Links to the piece's detail, where the strip lets you page through them. */
-    _variantTiles(a) {
-        const vs = (a.variants || []).filter(v => v && v.key && v.image);
-        if (!vs.length) return '';
-        return vs.map(v => {
-            const rAttr = ` data-rating="${this.esc((v.rating || a.rating || '').toLowerCase())}"`;
-            return `
-            <a class="artwork-card artwork-card--variant" href="#/artwork/image/${encodeURIComponent(a.name)}"
-               title="${this.esc(v.label || v.key)} — a variant of ${this.esc(a.title || a.name)}">
-                <div class="artwork-card-cover"${rAttr} style="background-image:url('${this._imgUrl(a.name, v.image)}')"></div>
-                <span class="artwork-card-vbadge">variant</span>
-                <div class="artwork-card-body">
-                    <div class="artwork-card-title">${this.esc(a.title || a.name)}</div>
-                    <div class="artwork-card-meta"><span class="artwork-card-vlabel">${this.esc(v.label || v.key)}</span></div>
-                </div>
-            </a>`;
-        }).join('');
     },
 
     /* ── Masters (unify) ────────────────────────────────────────

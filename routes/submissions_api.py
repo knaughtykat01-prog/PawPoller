@@ -142,6 +142,18 @@ def assemble_works(
         for a in artworks:
             platforms, count, pids, stats = enrich("artwork", a["name"])
             img = a.get("image", "")
+            # Non-primary variants (2.190.1) so the Library can show a tile per
+            # render. Each carries a ready thumb_url (same shape as the master's).
+            variant_tiles = [
+                {
+                    "key": v.get("key", ""),
+                    "label": v.get("label") or v.get("key") or "",
+                    "rating": v.get("rating", "") or a.get("rating", ""),
+                    "thumb_url": f"/api/artwork/image?name={quote(a['name'])}&file={quote(v.get('image', ''))}",
+                }
+                for v in (a.get("variants") or [])
+                if v.get("key") and v.get("image")
+            ]
             works.append({
                 "content_type": "artwork",
                 "name": a["name"],
@@ -156,6 +168,7 @@ def assemble_works(
                     f"/api/artwork/image?name={quote(a['name'])}&file={quote(img)}"
                     if img else ""
                 ),
+                "variants": variant_tiles,
                 "detail_route": f"#/artwork/image/{quote(a['name'])}",
                 "meta": "",
                 "created_at": a.get("created_at", ""),

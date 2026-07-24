@@ -12,6 +12,26 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.190.1] - 2026-07-24 - Fix: artwork variant tiles now show in the Library (not the retired hub)
+
+> **The variant tiles now actually appear.** 2.190.0 added them to the old Artwork hub, which was retired — so they
+> never showed in the Library where your artwork lives. They're now on the Library's artwork shelf: each render gets
+> its own tile after the master.
+
+2.190.0 put `_variantTiles` in `artwork.js`'s `_applyHubFilters` — but the Artwork hub was retired in 2.155.0
+(`#/artwork` → `#/library/type/artwork`), so that code path is dead. The Library renders artwork via `bookshelf.js`
+`_book(w)` over `/api/works`. Moved to the right surface:
+- `routes/submissions_api.assemble_works` now passes each artwork's non-primary `variants` (label + rating + a ready
+  `thumb_url`) into the work dict. (`list_artworks` already carried them since 2.190.0.)
+- `bookshelf.js._variantBooks(w)` renders a `.book--variant` tile per variant right after the master book (dashed
+  cover + "variant" badge + the variant's label), linking to the piece's detail. Blurs under safe mode like any
+  `.book-cover`.
+- Reverted the dead `artwork.js` hub-grid change. The **detail** strip (2.190.0) was already on the live
+  `#/artwork/image/` page and is unaffected.
+
+**Test:** `test_works_api_carries_artwork_variants` hits `/api/works?type=artwork` and asserts the non-primary variant
+(with its thumb_url) comes through — the path the Library actually uses.
+
 ## [2.190.0] - 2026-07-24 - Artwork shows variants · prev/next arrows on a Masterpiece
 
 > **Two things.** (1) The Artwork gallery now shows a tile for **every variant**, not just the master — each render

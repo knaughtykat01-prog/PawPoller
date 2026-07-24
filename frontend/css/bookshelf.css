@@ -121,6 +121,21 @@
     font-family: var(--font-serif); font-weight: 700; font-size: 3.4rem;
     color: color-mix(in srgb, var(--accent) 65%, var(--text-muted)); opacity: .8;
 }
+/* Variant books (2.190.1) — a render of an artwork piece, shown right after its
+   master book. Dashed cover + a corner badge distinguish them from the master. */
+.book--variant .book-cover { border-style: dashed; }
+.book--variant:hover .book-cover { border-style: solid; }
+.book-vbadge {
+    position: absolute; top: 6px; left: 6px; z-index: 2;
+    font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    padding: .1rem .35rem; border-radius: 999px;
+    background: rgba(0,0,0,.6); color: #fff;
+}
+.book-vlabel {
+    font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    border: 1px solid var(--card-border-inner); border-radius: 999px; padding: 0 .4rem;
+}
+
 /* Truth-telling ribbon */
 .book-ribbon {
     position: absolute; top: .55rem; left: .55rem;

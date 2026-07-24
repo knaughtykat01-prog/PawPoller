@@ -1,7 +1,16 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-24
-**Current version (master):** 2.190.0 — **Artwork shows variants + Masterpiece prev/next.** (1) Artwork gallery
+**Current version (master):** 2.190.1 — **Fix: artwork variant tiles show in the Library.** 2.190.0 added them to the
+retired Artwork hub (`artwork.js._applyHubFilters` — dead since `#/artwork`→`#/library/type/artwork`). The Library
+renders artwork via `bookshelf.js._book` over `/api/works`, so: `submissions_api.assemble_works` now passes each
+artwork's non-primary `variants` (label+rating+thumb_url); `bookshelf.js._variantBooks(w)` renders a `.book--variant`
+tile per variant after the master. Dead hub-grid change reverted; the 2.190.0 detail strip (`#/artwork/image/`) was
+already live. **Also — the recovery hash-check's 2 "misses" are MISLINKS, not lost art:** `Growing Into It` → FA 37056160
+("Embarrassed"), `That's Why the Cat Was There` → FA 32589211 ("Harness Kitten"); wrong FA uploads attached (pooling
+wrong stats). Fix = unlink on the masterpiece detail (pending Rhys confirm).
+
+**Prior — 2.190.0 — Artwork shows variants + Masterpiece prev/next.** (1) Artwork gallery
 renders a tile per variant (`artwork.js._variantTiles`, dashed border + "variant" badge) and the detail shows a
 click-through thumbnail strip (`.artwork-detail-alts`, in the safe-mode blur set). Backend: `list_artworks` +
 `get_artwork_detail` now carry `variants` (+ detail `images`) — read-only surfacing, no write path. (2) `‹ Prev/Next ›`
