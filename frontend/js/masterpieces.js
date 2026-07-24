@@ -905,12 +905,14 @@ window.Masterpieces = {
         if (!label) { set('Give the variant a label (e.g. NSFW, Rough).'); return; }
         const key = label.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'variant';
         if (!window.confirm(`Fold “${this._current}” into “${target}” as the “${label}” VARIANT?\n\n`
-            + `This image moves into that Masterpiece as a labeled alternate and keeps its own stats. This can't be undone.`)) return;
+            + `This piece moves into that Masterpiece as a labeled alternate, keeping its stats. If it has its own `
+            + `variants, they come across too. You can Separate it back out later.`)) return;
         set('Folding in…');
         try {
-            await API.mergeAsVariant({ keep: target, absorb: this._current, key, label });
+            const r = await API.mergeAsVariant({ keep: target, absorb: this._current, key, label });
             this._cache = null;
-            this._toast('success', `Folded into ${target} as “${label}”`);
+            const extra = (r && r.variants_added > 1) ? ` (${r.variants_added} variants carried over)` : '';
+            this._toast('success', `Folded into ${target} as “${label}”${extra}`);
             window.location.hash = `#/masterpieces/${encodeURIComponent(target)}`;
         } catch (e) { set('Failed: ' + (e.message || e)); }
     },

@@ -6448,6 +6448,16 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   (known limitation, spec §9). This completes the Masterpiece build (phases 0–7): a single image now has the full
   master lifecycle a story always had.
 
+- **merge-as-variant carries the absorbed piece's own variants (2.189.2).** When `absorb` has declared variants,
+  folding it into `keep` now carries the **whole set**, not just its hero. Before, only `art_absorb.image` was copied
+  and `shutil.rmtree(absorb)` deleted the rest of its variant images, its variant labels were lost, and
+  `mq.merge_as_variant` moved *all* its members onto the single new key (per-variant attribution flattened). Now the
+  route builds a `keymap` (absorb `variant_key` → keep `variant_key`): absorb's primary → the (uniquified) base key,
+  each sub-variant `sk` → `<base>-<sk>` with label `"<merge label> — <sub label>"`; every render's image is copied in
+  and each member re-keyed via the map. `mq.merge_as_variant`'s 4th arg is now that keymap (a bare string still works
+  = the old flatten, kept for the direct-call test). A plain-piece merge is unchanged (one entry, its hero, its
+  members). **If you add a variant carry path, keep the keymap the single source of truth for both the on-disk entries
+  and the member re-keying** — they must not drift.
 - **Variant separate + rename (2.189.0, spec `docs/specs/masterpiece_variant_split.md`).** Closes two gaps in the
   2.158 variants feature. **Rename — `PATCH /{name}/variants/{key}`** `{label?, key?, rating?}`: a `key` change
   migrates `masterpiece_members.variant_key` (`mq.rename_variant_key`) so per-variant stats follow. This matters —

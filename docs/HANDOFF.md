@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-24
-**Current version (master):** 2.189.1 — **Fix: merge-as-variant key collision.** Live 409 (`variant key 'nsfw'
+**Current version (master):** 2.189.2 — **merge-as-variant carries absorb's OWN variants.** Was: only absorb's hero
+copied over, its other variant images `rmtree`'d, members flattened onto one key (verified). Now: each of absorb's
+declared variants becomes a distinct variant on keep — primary → base key, sub-variant `sk` → `<base>-<sk>` (label
+`"<merge label> — <sub label>"`), uniquified; every image copied; members re-keyed per-variant. `mq.merge_as_variant`
+now takes a **keymap** (bare string = back-compat flatten). Response adds `variants_added`. Plain-piece merges
+unchanged. +2 tests (carry-over + carry→split round-trip).
+
+**Prior — 2.189.1 — Fix: merge-as-variant key collision.** Live 409 (`variant key 'nsfw'
 already exists`). Cause: the frontend slugifies the typed label into the key, and 2.189.0's rename edits the label but
 keeps the key — so label/key drift, and a fresh "NSFW" label collided with a stale `nsfw` key whose label read
 "SFW Nude". Nothing corrupt (server state inspected). Fix: `merge-as-variant` **uniquifies** (`nsfw` → `nsfw-2`, base

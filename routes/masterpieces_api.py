@@ -282,11 +282,15 @@ def _write_variants(name: str, variants: list[dict]) -> None:
 
 @masterpieces_router.post("/merge-as-variant")
 def merge_as_variant_ep(body: dict):
-    """Fold ``absorb`` into ``keep`` as a labeled VARIANT of the same piece:
-    absorb's image is copied into keep's folder, a variants entry is appended,
-    and absorb's members move over re-keyed (their stats stay attributed).
+    """Fold ``absorb`` into ``keep`` as labeled VARIANT(s) of the same piece.
     Body: {keep, absorb, key, label?, rating?}. The dup-finder's third option —
-    for different RENDERS of one piece, where /merge (identical image) is wrong."""
+    for different RENDERS of one piece, where /merge (identical image) is wrong.
+
+    If ``absorb`` has its OWN declared variants, ALL of them are carried across
+    as distinct variants on ``keep`` (2.189.2) — its images are copied in, its
+    variant labels preserved (prefixed with this merge's label), and each
+    member re-keyed to its carried variant. Before this, only absorb's hero came
+    over and its other variant images + per-variant attribution were discarded."""
     keep = (body.get("keep") or "").strip()
     absorb = (body.get("absorb") or "").strip()
     key = (body.get("key") or "").strip().lower()
@@ -299,45 +303,81 @@ def merge_as_variant_ep(body: dict):
         art_absorb = artwork_reader.load_artwork(absorb)
     except FileNotFoundError:
         raise HTTPException(404, detail="Masterpiece not found")
-    variants = _raw_variants(keep)
-    # Uniquify rather than 409 (2.189.1). The key is DERIVED mechanically from
-    # the label the user typed — they never choose one — and a merge always
-    # APPENDS a new variant, it never targets an existing one. So a clash is an
-    # artifact of that derivation, not a user mistake, and dead-ending on it just
-    # blocks a legitimate merge. Hit for real: re-labelling a variant leaves its
-    # key stale, so a fresh "NSFW" label collided with an existing 'nsfw' key
-    # whose label by then read "SFW Nude" — invisible, since the UI shows labels.
-    existing = {v["key"] for v in variants}
-    if key in existing:
-        base, n = key[:28], 2
-        while f"{base}-{n}" in existing:
-            n += 1
-        key = f"{base}-{n}"
 
-    # Copy absorb's hero image in as the variant image.
     from pathlib import Path
     import shutil
-    src = Path(art_absorb.path) / art_absorb.image
-    if not src.is_file():
-        raise HTTPException(422, detail=f"{absorb} has no hero image to absorb")
-    i = 2
-    while (Path(art_keep.path) / f"image_{i}{src.suffix.lower()}").exists():
-        i += 1
-    dst = Path(art_keep.path) / f"image_{i}{src.suffix.lower()}"
-    shutil.copy2(src, dst)
 
+    variants = _raw_variants(keep)
     # Seed keep's own primary as an explicit variant on first use, so the set is
-    # self-describing (primary '' + the new one).
+    # self-describing (primary '' + whatever we're adding).
     if not variants:
         variants = [{"key": "", "label": body.get("primary_label") or "Primary",
                      "image": art_keep.image, "rating": ""}]
-    variants.append({"key": key, "label": (body.get("label") or key).strip(),
-                     "image": dst.name, "rating": (body.get("rating") or "").strip().lower()})
+
+    label = (body.get("label") or key).strip()
+    rating0 = (body.get("rating") or "").strip().lower()
+
+    # The renders absorb contributes: its declared variants, or — for a plain
+    # piece — a single synthetic primary pointing at its hero.
+    b_variants = _raw_variants(absorb)
+    b_renders = b_variants or [{"key": "", "label": "",
+                                "image": art_absorb.image,
+                                "rating": (getattr(art_absorb, "rating", "") or "")}]
+
+    # Collision-free destination keys. Derived keys clash for mundane reasons
+    # (the key comes from the typed label, and renames leave keys stale), so we
+    # uniquify rather than 409 — a merge only ever APPENDS variants. absorb's
+    # sub-variants are namespaced under the base key so they stay grouped.
+    taken = {v["key"] for v in variants}
+
+    def _uniq(k: str) -> str:
+        k = k[:32] or "variant"
+        if k not in taken:
+            taken.add(k)
+            return k
+        base, n = k[:28], 2
+        while f"{base}-{n}" in taken:
+            n += 1
+        k2 = f"{base}-{n}"
+        taken.add(k2)
+        return k2
+
+    base_key = _uniq(key)
+    keymap = {"": base_key}                       # absorb primary → base variant
+    prim = next((r for r in b_renders if r["key"] == ""), None)
+    plan = [{"image": (prim or {}).get("image") or art_absorb.image,
+             "akey": base_key, "label": label,
+             "rating": (prim or {}).get("rating") or rating0}]
+    for r in b_renders:
+        if r["key"] == "":
+            continue
+        akey = _uniq(f"{base_key}-{r['key']}")
+        keymap[r["key"]] = akey
+        plan.append({"image": r["image"], "akey": akey,
+                     "label": f"{label} — {r['label'] or r['key']}",
+                     "rating": (r.get("rating") or "")})
+
+    # Copy each render's image into keep's folder + append its variants entry.
+    i = 2
+    base_image = ""
+    for step in plan:
+        src = Path(art_absorb.path) / step["image"]
+        if not src.is_file():
+            raise HTTPException(422, detail=f"{absorb}: variant image '{step['image']}' is missing")
+        while (Path(art_keep.path) / f"image_{i}{src.suffix.lower()}").exists():
+            i += 1
+        dst = Path(art_keep.path) / f"image_{i}{src.suffix.lower()}"
+        shutil.copy2(src, dst)
+        i += 1
+        if step["akey"] == base_key:
+            base_image = dst.name
+        variants.append({"key": step["akey"], "label": step["label"],
+                         "image": dst.name, "rating": step["rating"]})
     _write_variants(keep, variants)
 
     conn = get_connection()
     try:
-        moved = mq.merge_as_variant(conn, keep, absorb, key)
+        moved = mq.merge_as_variant(conn, keep, absorb, keymap)
         conn.execute("DELETE FROM image_hashes WHERE platform = '__mp__' AND submission_id = ?", (absorb,))
         conn.commit()
     finally:
@@ -347,7 +387,8 @@ def merge_as_variant_ep(body: dict):
     except OSError:
         logger.warning("merge-as-variant: could not remove folder for %s", absorb)
     return {"status": "merged-as-variant", "keep": keep, "absorbed": absorb,
-            "key": key, "members_moved": moved, "variant_image": dst.name}
+            "key": base_key, "variants_added": len(plan), "members_moved": moved,
+            "variant_image": base_image}
 
 
 @masterpieces_router.post("/{name}/variants")

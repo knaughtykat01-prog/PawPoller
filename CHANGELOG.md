@@ -12,6 +12,33 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.189.2] - 2026-07-24 - Merging a piece that has its own variants now carries them all over
+
+> **Folding a piece that already has variants keeps them.** Before, if you merged a Masterpiece that itself had
+> variants into another one, only its main image came across — its other variant images were **deleted** and their
+> stats were lumped together. Now every variant is carried over: each image is copied in, its label is kept (prefixed
+> with the merge's name, e.g. "Beta — Rough"), and each one keeps its own site-links and stats. You can still Separate
+> any of them back out afterwards.
+
+Follow-up to Rhys asking *"i want the variants to also merge"* — verified against the old behaviour first (a merged-in
+piece's non-hero variant images were `rmtree`'d with its folder, its variant labels lost, and every one of its members
+collapsed onto the single new key).
+
+- **`merge-as-variant` carries the full variant set.** When `absorb` has declared variants, each becomes a distinct
+  variant on `keep`: its primary maps to the merge key (label = the merge label), and each sub-variant `sk` maps to
+  `<base>-<sk>` (label = `"<merge label> — <sub label>"`), all uniquified against `keep`'s existing keys. Every
+  render's image is copied into `keep`'s folder; members are re-keyed **per variant** so per-variant attribution
+  survives. A plain piece (no variants) behaves exactly as before — one variant, its hero, its members.
+- `masterpiece_queries.merge_as_variant` now takes a **keymap** (`absorb variant_key → keep variant_key`); a bare
+  string is kept as back-compat for the old flatten. Response gains `variants_added` (keeps `variant_image`, now the
+  base render's copied file, and `key` = the base key).
+- Frontend: the fold confirm no longer claims "can't be undone" (Separate exists since 2.189.0) and notes variants come
+  across; the toast reports how many were carried.
+
+**Tests:** +2 in `test_masterpiece_variant_split.py` — a merge of a piece with its own `rough` variant lands as
+`beta` + `beta-rough` with **both** images copied and members split correctly (not flattened, not deleted), and a
+carried sub-variant then Separates back out cleanly with its member. Existing variant + back-compat suites (19) green.
+
 ## [2.189.1] - 2026-07-24 - Fix: folding a variant in no longer fails with "variant key already exists"
 
 > **Merging a variant won't dead-end any more.** Folding a piece in could fail with *"variant key 'nsfw' already

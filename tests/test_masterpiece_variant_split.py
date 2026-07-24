@@ -224,6 +224,70 @@ def test_merge_uniquifies_a_colliding_key(client):
         conn.close()
 
 
+def test_merge_carries_absorbs_own_variants(client):
+    """2.189.2: folding a piece that ITSELF has variants must carry them all
+    across — not copy only its hero and flatten its members (the old behaviour,
+    which silently deleted the other variant images)."""
+    keep = _make_art(title="Alpha")
+    absorb = _make_art(title="Bravo", colour=(20, 200, 90))
+    rough_img = _declare(client, absorb, "rough", "Rough")   # absorb's OWN variant
+    conn = get_connection()
+    mq.add_member(conn, absorb, "fa", "100")                    # absorb primary
+    mq.add_member(conn, absorb, "ib", "200", variant_key="rough")  # absorb's rough
+    conn.commit()
+    conn.close()
+
+    r = client.post("/api/masterpieces/merge-as-variant",
+                    json={"keep": keep, "absorb": absorb, "key": "beta", "label": "Beta"})
+    assert r.status_code == 200, r.text
+    assert r.json()["variants_added"] == 2          # primary + rough, not 1
+
+    from posting import artwork_reader
+    art = artwork_reader.load_artwork(keep)
+    vs = {v["key"]: v for v in client.get(f"/api/masterpieces/{keep}").json()["variants"]}
+    # Alpha's own primary, Bravo's primary as 'beta', Bravo's rough as 'beta-rough'.
+    assert set(vs) == {"", "beta", "beta-rough"}
+    assert vs["beta"]["label"] == "Beta"
+    assert vs["beta-rough"]["label"] == "Beta — Rough"
+    # BOTH of Bravo's images were copied in (hero + rough), not just the hero.
+    imgs = sorted(f.name for f in Path(art.path).iterdir()
+                  if f.suffix.lower() in artwork_reader.IMAGE_EXTENSIONS)
+    assert len(imgs) == 3                            # alpha hero + 2 carried
+    assert vs["beta"]["image"] in imgs and vs["beta-rough"]["image"] in imgs
+
+    conn = get_connection()
+    try:
+        # Members keep their per-variant attribution — NOT flattened onto one key.
+        assert [m["submission_id"] for m in mq.get_members(conn, keep, "beta")] == ["100"]
+        assert [m["submission_id"] for m in mq.get_members(conn, keep, "beta-rough")] == ["200"]
+    finally:
+        conn.close()
+    # Absorb is gone.
+    assert client.get(f"/api/masterpieces/{absorb}").status_code == 404
+
+
+def test_carry_then_split_restores_a_sub_variant(client):
+    """The carried sub-variant is a first-class variant, so Separate pulls it
+    back out cleanly with its member."""
+    keep = _make_art(title="Alpha")
+    absorb = _make_art(title="Bravo", colour=(20, 200, 90))
+    _declare(client, absorb, "rough", "Rough")
+    conn = get_connection()
+    mq.add_member(conn, absorb, "ib", "200", variant_key="rough")
+    conn.commit()
+    conn.close()
+    client.post("/api/masterpieces/merge-as-variant",
+                json={"keep": keep, "absorb": absorb, "key": "beta", "label": "Beta"})
+
+    s = client.post(f"/api/masterpieces/{keep}/variants/beta-rough/split", json={})
+    assert s.status_code == 200, s.text
+    conn = get_connection()
+    try:
+        assert [m["submission_id"] for m in mq.get_members(conn, s.json()["new_name"])] == ["200"]
+    finally:
+        conn.close()
+
+
 def test_merge_then_split_round_trips(client):
     """The property that makes folding safe: merge-as-variant is now undoable."""
     keep = _make_art(title="Keeper")

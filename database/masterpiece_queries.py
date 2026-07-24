@@ -147,23 +147,35 @@ def move_variant_members(conn: sqlite3.Connection, from_name: str, variant_key: 
 
 
 def merge_as_variant(conn: sqlite3.Connection, keep: str, absorb: str,
-                     variant_key: str) -> int:
-    """Fold ``absorb`` into ``keep`` as a VARIANT: members move over carrying
-    ``variant_key`` (their stats stay attributed to that variant), and absorb's
-    index row is removed. Unlike :func:`merge_masterpieces` (same image, amnesia)
-    this is for different renders of one piece — nothing is discarded except
-    PK-colliding members already on ``keep``. Returns members moved. The caller
-    handles the on-disk side (copy absorb's image into keep's folder + append
-    the variants entry in masterpiece.json) before deleting absorb's folder."""
+                     keymap) -> int:
+    """Fold ``absorb`` into ``keep`` as variant(s): its members move over, each
+    re-keyed via ``keymap`` (its stats stay attributed), and absorb's index row
+    is removed. Unlike :func:`merge_masterpieces` (same image, amnesia) this is
+    for different renders of one piece — nothing is discarded except PK-colliding
+    members already on ``keep``.
+
+    ``keymap`` maps *absorb*'s ``variant_key`` → *keep*'s ``variant_key``. When
+    absorb has its OWN sub-variants, this carries each across as a distinct
+    variant on keep instead of flattening them (2.189.2). A member whose key
+    isn't in the map falls back to the primary mapping (``''``). Passing a bare
+    string is back-compat for the old "all members → this one key" flatten.
+
+    The caller handles the on-disk side (copy absorb's variant images into keep's
+    folder + append the variants entries in masterpiece.json) before deleting
+    absorb's folder. Returns members moved."""
+    if isinstance(keymap, str):
+        keymap = {"": keymap}
+    default = keymap.get("", next(iter(keymap.values()), ""))
     ensure_indexed(conn, keep)
     moved = 0
     for m in get_members(conn, absorb):
+        dest = keymap.get(m["variant_key"], default)
         cur = conn.execute(
             "INSERT OR IGNORE INTO masterpiece_members "
             "(masterpiece_name, platform, submission_id, account_id, role, linked_via, variant_key) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (keep, m["platform"], m["submission_id"], m["account_id"],
-             m["role"], m["linked_via"], variant_key or ""))
+             m["role"], m["linked_via"], dest or ""))
         moved += cur.rowcount
     conn.execute("DELETE FROM masterpiece_members WHERE masterpiece_name = ?", (absorb,))
     conn.execute("DELETE FROM masterpieces WHERE name = ?", (absorb,))
