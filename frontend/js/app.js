@@ -1196,6 +1196,10 @@ const App = {
             if (window.Collections) window.Collections.renderDetail(parts[1]);
         } else if (parts[0] === 'collections') {
             if (window.Collections) window.Collections.render();
+        } else if (parts[0] === 'commissions' && parts[1]) {
+            if (window.Commissions) window.Commissions.renderDetail(parts[1]);
+        } else if (parts[0] === 'commissions') {
+            if (window.Commissions) window.Commissions.render();
         } else if (parts[0] === 'masterpieces' && parts[1] === 'duplicates') {
             // Duplicate-finder / merge review (2.144.0).
             if (window.Masterpieces) window.Masterpieces.renderDuplicates();
@@ -10310,6 +10314,27 @@ const App = {
                         </label>
                         <p style="font-size:12px;color:var(--text-muted);margin:2px 0 0">Adds a small credit line to story and artwork descriptions when you publish. It's how other creators discover PawPoller. (Never added to short microblog posts.)</p>
                     </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:14px;border-top:1px solid var(--card-border-inner);padding-top:12px">
+                        <label class="settings-toggle-row">
+                            <span>🖊️ Watermark artwork on export</span>
+                            <input type="checkbox" id="art-wm-enabled">
+                        </label>
+                        <p style="font-size:12px;color:var(--text-muted);margin:2px 0 6px">Stamps a small text credit onto artwork images when you publish them (galleries + Bluesky). Doesn't touch your stored originals.</p>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                            <input type="text" id="art-wm-text" class="search-input" placeholder="e.g. @yourhandle" style="max-width:220px">
+                            <select id="art-wm-position" class="search-input" style="max-width:160px">
+                                <option value="bottom-right">Bottom right</option>
+                                <option value="bottom-left">Bottom left</option>
+                                <option value="bottom-center">Bottom center</option>
+                                <option value="top-right">Top right</option>
+                                <option value="top-left">Top left</option>
+                            </select>
+                            <label style="font-size:12px;color:var(--text-muted)">Opacity
+                                <input type="range" id="art-wm-opacity" min="0.1" max="1" step="0.1" value="0.5" style="vertical-align:middle"></label>
+                            <button class="btn btn-sm btn-secondary" id="art-wm-save">Save</button>
+                            <span id="art-wm-msg" class="muted" style="font-size:12px"></span>
+                        </div>
+                    </div>
                     </div>
                 </details>
 
@@ -14004,6 +14029,29 @@ const App = {
             // modal (the app's .modal-overlay convention — there's no shared confirm
             // helper) with "Keep it on 💛" (reverts, saves nothing) / "Turn off
             // anyway" (saves off).
+            // Watermark settings (gap-wave-5 §1) — loaded from /api/artwork/settings,
+            // saved back the same way (artwork_* keys, separate from posting settings).
+            API.getArtworkSettings().then(a => {
+                const en = document.getElementById('art-wm-enabled'); if (en) en.checked = !!a.artwork_watermark_enabled;
+                const tx = document.getElementById('art-wm-text'); if (tx) tx.value = a.artwork_watermark_text || '';
+                const po = document.getElementById('art-wm-position'); if (po) po.value = a.artwork_watermark_position || 'bottom-right';
+                const op = document.getElementById('art-wm-opacity'); if (op) op.value = a.artwork_watermark_opacity ?? 0.5;
+            }).catch(() => {});
+            document.getElementById('art-wm-save')?.addEventListener('click', async () => {
+                const msg = document.getElementById('art-wm-msg');
+                try {
+                    await API.saveArtworkSettings({
+                        artwork_watermark_enabled: !!document.getElementById('art-wm-enabled')?.checked,
+                        artwork_watermark_text: document.getElementById('art-wm-text')?.value.trim() || '',
+                        artwork_watermark_position: document.getElementById('art-wm-position')?.value || 'bottom-right',
+                        artwork_watermark_opacity: parseFloat(document.getElementById('art-wm-opacity')?.value) || 0.5,
+                    });
+                    if (msg) { msg.textContent = 'Saved.'; msg.style.color = 'var(--success)'; }
+                } catch (err) {
+                    if (msg) { msg.textContent = 'Failed: ' + (err.message || err); msg.style.color = 'var(--danger)'; }
+                }
+            });
+
             const _attribToggle = document.getElementById('posting-attribution-toggle');
             _attribToggle?.addEventListener('change', async () => {
                 if (_attribToggle.checked) {

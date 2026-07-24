@@ -229,6 +229,8 @@ def get_story_detail(story_name: str):
             "category": story_json_data.get("category", ""),
             "warnings": story_json_data.get("warnings", []),
             "fandom": story_json_data.get("fandom", ""),
+            "series": story_json_data.get("series", ""),                       # gap-wave-5 §2
+            "series_index": int(story_json_data.get("series_index", 0) or 0),
             "characters": story_json_data.get("characters", []),
             "relationships": story_json_data.get("relationships", []),
             "total_chapters": story.total_chapters,

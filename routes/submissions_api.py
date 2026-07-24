@@ -122,6 +122,8 @@ def assemble_works(
                 "description": s.get("description", ""),
                 "category": s.get("category", ""),
                 "warnings": s.get("warnings") or [],
+                "series": s.get("series", ""),                 # gap-wave-5 §2
+                "series_index": s.get("series_index", 0) or 0,
                 "platforms": platforms,
                 "stats": stats,
                 "publication_count": count,

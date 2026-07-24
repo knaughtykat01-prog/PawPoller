@@ -1,13 +1,22 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-23
-**Current version (master):** 2.185.0 — **Self-host security hardening** (spec `docs/specs/gap_wave4_security.md`).
-Reframe: 2FA/rate-limit/bcrypt/signed-sessions already existed. Fixed: `bcrypt`/`pyotp`/`itsdangerous` missing from
-`requirements.txt` (+spec hiddenimports) — clean-install auth crash. HIGH: `dashboard-setup` now loopback-gated
-(opt-out `PAWPOLLER_ALLOW_OPEN_SETUP=1`) — closed a first-run takeover→vault-exfil. Added: 2FA backup codes
-(`auth_totp_backup_codes` hashes in vault; accepted at login+disable; require-password-to-enable; regenerate endpoint),
-global soft-throttle, HSTS, constant-time api-key + dummy-bcrypt username path. Docs: SELF_HOST_SECURITY.md, SIGNING.md,
-TERMS/PRIVACY templates, ASVS note. +6 tests (test_auth_hardening). Installers on v2.184.0.
+**Last updated:** 2026-07-24
+**Current version (master):** 2.187.0 — **Commissions tracker** (gap-wave-5 §4, spec `docs/specs/gap_wave5.md`).
+New sidebar module `#/commissions`: single-table client/commission board (status columns quote→accepted→wip→paid→
+delivered, soonest-due sort, inline advance). `commissions_schema.sql` + `commissions_queries.py` (CRUD; `deliver_sites`
+JSON round-trip) + `routes/commissions_api.py` + `commissions.js`/`.css` + api.js + nav/script/route wiring. Money is
+data only. +7 tests (test_commissions).
+
+**Prior — 2.186.0 — Wave-5 trio: watermark · series · beta-share** (gap-wave-5 §1–3, spec `docs/specs/gap_wave5.md`).
+§1 **Watermark on export** — `posting/watermark.py` `apply()` at the single `manager.post_artwork` choke point (temp
+copy, swap `package.file_path`, clean after every post/retry via `_wm_temps`); never raises. 4 settings in
+`artwork_api` + Publishing-accordion UI; `Pillow` pinned in `requirements-server.txt`. §2 **Series (display-only)** —
+`story.json` `series`+`series_index` through `StoryInfo`/`_story_entry`/`assemble_works`/`posting_api` detail; badge on
+library cards + story-page pill + Metadata Story-Info fields + "Series" library sort. §3 **Beta-reader draft share** —
+`database/share_tokens.py` (migration-wired), `render_story_share_html` + POST/GET/DELETE in `editor_api`, public
+`@app.get("/share/{token}")` (auth-exempt, **script-free CSP** `_build_share_csp`), 404-identical on
+unknown/revoked/expired; "🔗 Share draft" editor modal. +16 tests (test_wave5). Multi-user/roles still deferred.
+Installers on v2.184.0.
 
 **Prior — 2.184.0 — Wave 3: threads (G8) + posting insights + persona defaults** (spec
 `docs/specs/gap_wave3.md`). Persona defaults: additive persona columns + manifest sync + detail-page card + Quick

@@ -8,6 +8,7 @@ platform posters (which handle the actual HTTP uploads).
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
@@ -353,12 +354,24 @@ async def post_artwork(
     artwork = artwork_reader.load_artwork(artwork_name)
     results: list[dict[str, Any]] = []
 
+    _wm_temps: list[str] = []   # watermark temp files, cleaned after the loop
     for platform in platforms:
         account_id = _resolve_account_id(platform, account_ids.get(platform))
         poster = _get_poster(platform, account_id)
         package = artwork_reader.build_artwork_package(artwork, platform)
         if extras:
             package.extra.update(extras)
+
+        # Watermark (gap-wave-5 §1): swap in a stamped temp copy before
+        # validation (so the size check sees the real bytes) and post that.
+        # No-op / never raises when disabled or on any PIL error. Temps are
+        # collected and deleted after the whole loop (a retry within an
+        # iteration re-posts the same package, so they must outlive it).
+        from posting import watermark
+        _wm_path, _wm_tmp = watermark.apply(package.file_path)
+        if _wm_tmp:
+            package.file_path = _wm_path
+            _wm_temps.append(_wm_tmp)
 
         # Validate
         errors = poster.validate(package)
@@ -475,6 +488,13 @@ async def post_artwork(
             "error": result.error,
             "duration": result.duration_seconds,
         })
+
+    # Clean up watermark temp files (gap-wave-5 §1) now every post + retry is done.
+    for _t in _wm_temps:
+        try:
+            os.remove(_t)
+        except OSError:
+            pass
 
     # Discord announce (gap G4) — once per publish if any platform succeeded.
     # Best-effort; announce_publish self-gates on config + never raises.

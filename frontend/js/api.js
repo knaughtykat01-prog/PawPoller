@@ -186,6 +186,13 @@ const API = {
     // thumbnails so image-based suggestions can surface (2.114.0).
     scanImageHashes(limit) { return this.post(`/api/collections/hash-scan${limit ? `?limit=${limit}` : ''}`, {}); },
 
+    /* ── Commissions (client / commission tracker — gap-wave-5 §4) ── */
+    getCommissions() { return this.get('/api/commissions'); },
+    getCommission(id) { return this.get(`/api/commissions/${id}`); },
+    createCommission(body) { return this.post('/api/commissions', body); },
+    updateCommission(id, body) { return this.patch(`/api/commissions/${id}`, body); },
+    deleteCommission(id) { return this.del(`/api/commissions/${id}`); },
+
     /* ── Masterpieces (master record per image — Phase 1/2 read, Phase 3 write) ── */
     getMasterpieces() { return this.get('/api/masterpieces'); },
     getMasterpiece(name) { return this.get(`/api/masterpieces/${encodeURIComponent(name)}`); },
@@ -764,6 +771,17 @@ const API = {
     getEditorStories() { return this.get('/api/editor/stories'); },
     getEditorStoryContent(name) {
         return this.get(`/api/editor/stories/${encodeURIComponent(name)}/content`);
+    },
+    /* Beta-reader draft share (gap-wave-5 §3) — read-only public preview links. */
+    createShareLink(name, expiresDays = null) {
+        return this.post(`/api/editor/stories/${encodeURIComponent(name)}/share`,
+            { expires_days: expiresDays });
+    },
+    listShareLinks(name) {
+        return this.get(`/api/editor/stories/${encodeURIComponent(name)}/share`);
+    },
+    revokeShareLink(token) {
+        return this.del(`/api/editor/share/${encodeURIComponent(token)}`);
     },
     postStory(data) { return this.post('/api/posting/post', data); },
     updateStory(data) { return this.post('/api/posting/update', data); },

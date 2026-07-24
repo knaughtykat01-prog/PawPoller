@@ -92,6 +92,8 @@ class StoryInfo:
     characters: list[str] = None                      # list of character tags
     relationships: list[str] = None                   # list of relationship tags
     work_skin_path: Path | None = None                # path to Work_Skin.css if present
+    series: str = ""                                  # series name (gap-wave-5 §2), display grouping
+    series_index: int = 0                             # position within the series (1-based; 0 = unset)
 
     def __post_init__(self):
         if self.descriptions is None:
@@ -208,6 +210,8 @@ def _story_entry(path: Path, parent_name: str = "") -> dict:
             entry["platforms"] = list(data.get("platforms", {}).keys())
             entry["images"] = data.get("images", {})
             entry["warnings"] = data.get("warnings", [])
+            entry["series"] = data.get("series", "")               # gap-wave-5 §2
+            entry["series_index"] = int(data.get("series_index", 0) or 0)
         except Exception as e:
             logger.warning("Failed to read story.json for %s: %s", name, e)
 
@@ -517,6 +521,8 @@ def _load_from_story_json(story_name: str, story_path: Path, json_path: Path) ->
         characters=raw_characters,
         relationships=raw_relationships,
         work_skin_path=work_skin_path,
+        series=data.get("series", ""),
+        series_index=int(data.get("series_index", 0) or 0),
     )
 
 

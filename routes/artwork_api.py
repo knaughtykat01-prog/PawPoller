@@ -565,6 +565,11 @@ def get_artwork_settings():
         "artwork_fa_gender": s.get("artwork_fa_gender", ""),
         "artwork_ws_subtype": s.get("artwork_ws_subtype", ""),
         "artwork_sf_sub_type": s.get("artwork_sf_sub_type", ""),
+        # Watermark on export (gap-wave-5 §1)
+        "artwork_watermark_enabled": s.get("artwork_watermark_enabled", False),
+        "artwork_watermark_text": s.get("artwork_watermark_text", ""),
+        "artwork_watermark_position": s.get("artwork_watermark_position", "bottom-right"),
+        "artwork_watermark_opacity": s.get("artwork_watermark_opacity", 0.5),
     }
 
 
@@ -575,6 +580,8 @@ def save_artwork_settings(body: dict):
         "artwork_enabled", "artwork_archive_path", "artwork_default_platforms",
         "artwork_default_rating", "artwork_fa_category", "artwork_fa_species",
         "artwork_fa_gender", "artwork_ws_subtype", "artwork_sf_sub_type",
+        "artwork_watermark_enabled", "artwork_watermark_text",
+        "artwork_watermark_position", "artwork_watermark_opacity",
     }
     config.save_settings({k: v for k, v in body.items() if k in allowed_keys})
     return {"status": "saved"}

@@ -206,6 +206,126 @@ def _word_count(text: str) -> int:
     return len(text.split())
 
 
+# Self-contained wrapper for the beta-share fallback path (when a story has no
+# styled theme/template). Placeholders filled via .replace — CSS braces make
+# str.format unsafe here. A calm, readable single-column reading view.
+_SHARE_FALLBACK_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>__TITLE__</title>
+<style>
+:root { color-scheme: light dark; }
+body {
+  margin: 0; padding: 3rem 1.25rem 5rem;
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.7; font-size: 1.08rem;
+  color: #1c1a17; background: #f7f4ee;
+}
+main { max-width: 42rem; margin: 0 auto; }
+h1, h2, h3 { font-family: 'Helvetica Neue', Arial, sans-serif; line-height: 1.25; }
+h1 { font-size: 1.9rem; margin: 0 0 1.5rem; }
+hr { border: none; text-align: center; margin: 2rem 0; }
+hr::before { content: '* * *'; letter-spacing: .5em; color: #9a8f7d; }
+img { max-width: 100%; height: auto; }
+.share-note {
+  max-width: 42rem; margin: 0 auto 2.5rem; padding: .6rem .9rem;
+  font-family: 'Helvetica Neue', Arial, sans-serif; font-size: .82rem;
+  color: #6b6155; background: #efe9dd; border: 1px solid #e0d8c8; border-radius: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  body { color: #e7e2d8; background: #17150f; }
+  .share-note { color: #b3ab9c; background: #211e16; border-color: #33301f; }
+}
+</style>
+</head>
+<body>
+<div class="share-note">Read-only draft preview shared via PawPoller. Please don't redistribute.</div>
+<main>
+__BODY__
+</main>
+</body>
+</html>"""
+
+
+def render_story_share_html(story_name: str) -> str | None:
+    """Render a story to a self-contained, styled HTML document for the public
+    beta-reader share route (gap-wave-5 §3). Returns None if the story or its
+    MASTER.md is missing — the caller turns that into a clean 404. Never raises
+    for missing/bad input.
+
+    Prefers the story's own styled theme (CHAPTER_STYLING.md + the styling
+    template) with the CSS inlined (mirrors the /preview styled_html path);
+    falls back to a minimal readable wrapper around clean HTML when the
+    theme/template aren't present. Read-only — a courtesy preview.
+    """
+    import html as _html
+    from editor.converter import (
+        convert_to_clean_html,
+        convert_to_styled_html_external_css,
+        parse_chapter_styling,
+    )
+
+    archive = get_archive_path()
+    try:
+        story_dir = (archive / story_name).resolve()
+        story_dir.relative_to(archive.resolve())
+    except (ValueError, OSError):
+        return None
+    if not story_dir.is_dir():
+        return None
+    master = _get_master_path(story_dir)
+    if not master.is_file():
+        return None
+    content = master.read_text(encoding="utf-8")
+
+    # Preferred: the story's own styled theme, CSS inlined so it's self-contained.
+    theme: dict = {}
+    styling_path = story_dir / "CHAPTER_STYLING.md"
+    if styling_path.is_file():
+        try:
+            theme = parse_chapter_styling(styling_path.read_text(encoding="utf-8"))
+        except Exception:
+            theme = {}
+    template = ""
+    template_path = archive / "Reference_Guides" / "Styling" / "HTML_CSS" / "STYLING_REFERENCE.md"
+    if template_path.is_file():
+        template = template_path.read_text(encoding="utf-8")
+    if theme and template:
+        try:
+            result = convert_to_styled_html_external_css(
+                content, theme, template, mode="full", css_href="style.css")
+            source_html = result.full_story.output if result.full_story else ""
+            if source_html:
+                return source_html.replace(
+                    '<link rel="stylesheet" href="style.css">',
+                    f"<style>\n{result.css}\n</style>",
+                )
+        except Exception as e:
+            logger.warning("Styled share render failed for %s, falling back: %s", story_name, e)
+
+    # Fallback: minimal readable wrapper around clean (body-only) HTML.
+    try:
+        body = convert_to_clean_html(content).output
+    except Exception as e:
+        logger.warning("Clean share render failed for %s: %s", story_name, e)
+        return None
+    title = story_dir.name.replace("_", " ")
+    sj = story_dir / "story.json"
+    if sj.is_file():
+        try:
+            title = json.loads(sj.read_text(encoding="utf-8")).get("title") or title
+        except (json.JSONDecodeError, OSError):
+            pass
+    return (
+        _SHARE_FALLBACK_TEMPLATE
+        .replace("__TITLE__", _html.escape(title))
+        .replace("__BODY__", body)
+    )
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -2577,6 +2697,93 @@ async def save_metadata(story_name: str, req: MetadataSaveRequest):
         "ok": True,
         "last_modified": sj.stat().st_mtime,
     }
+
+
+# ---------------------------------------------------------------------------
+# Beta-reader draft share (gap-wave-5 §3)
+# ---------------------------------------------------------------------------
+
+class ShareCreateRequest(BaseModel):
+    expires_days: int | None = None  # None/0 = never expires
+
+
+def _share_public_url(token: str) -> str:
+    """Build the public share URL. Honours PAWPOLLER_PUBLIC_BASE_URL when set
+    (server deploy behind Caddy/Cloudflare); otherwise a relative path the
+    frontend resolves against the current origin."""
+    base = (os.environ.get("PAWPOLLER_PUBLIC_BASE_URL") or "").rstrip("/")
+    return f"{base}/share/{token}" if base else f"/share/{token}"
+
+
+@editor_router.post("/stories/{story_name:path}/share")
+async def create_share(story_name: str, req: ShareCreateRequest):
+    """Mint a read-only public share link for a story draft. Returns the token
+    and its URL. A story may hold several live links (one per reader)."""
+    from database.db import get_connection
+    from database import share_tokens
+
+    # Validate the story exists (raises 404 otherwise).
+    _resolve_story_dir(story_name)
+
+    expires_at = None
+    if req.expires_days and req.expires_days > 0:
+        from datetime import datetime, timedelta, timezone
+        expires_at = (datetime.now(timezone.utc)
+                      + timedelta(days=int(req.expires_days))).isoformat()
+
+    conn = get_connection()
+    try:
+        row = share_tokens.create_token(conn, story_name, expires_at=expires_at)
+    finally:
+        conn.close()
+    return {
+        "ok": True,
+        "token": row["share_token"],
+        "url": _share_public_url(row["share_token"]),
+        "expires_at": row.get("expires_at"),
+        "created_at": row.get("created_at"),
+    }
+
+
+@editor_router.get("/stories/{story_name:path}/share")
+async def list_shares(story_name: str):
+    """List active (enabled) share links for a story, newest first."""
+    from database.db import get_connection
+    from database import share_tokens
+
+    _resolve_story_dir(story_name)
+    conn = get_connection()
+    try:
+        rows = share_tokens.list_active_tokens(conn, story_name)
+    finally:
+        conn.close()
+    return {
+        "shares": [
+            {
+                "token": r["share_token"],
+                "url": _share_public_url(r["share_token"]),
+                "created_at": r.get("created_at"),
+                "expires_at": r.get("expires_at"),
+                "live": share_tokens.is_live(r),
+            }
+            for r in rows
+        ]
+    }
+
+
+@editor_router.delete("/share/{token}")
+async def revoke_share(token: str):
+    """Revoke (soft-delete) a share link. Idempotent — revoking an already
+    revoked/unknown token returns ok:false rather than erroring."""
+    from database.db import get_connection
+    from database import share_tokens
+
+    conn = get_connection()
+    try:
+        changed = share_tokens.revoke_token(conn, token)
+    finally:
+        conn.close()
+    return {"ok": changed}
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,79 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.187.0] - 2026-07-24 - Commissions tracker
+
+> **New Commissions tracker.** A simple board to keep track of client commissions — who it's for, the price, the due
+> date, what stage it's at (quote → accepted → in progress → paid → delivered), and where you delivered it. Find it in
+> the sidebar under **Commissions**. It's only a tracker: no payments are processed, the money is just noted for your
+> own records.
+
+Gap-wave-5 §4 (spec `docs/specs/gap_wave5.md`). A self-contained single-table module (deliberately simpler than
+Collections — no polymorphic members/rollup), copying the Collections full-stack skeleton across its surfaces.
+
+- **DB:** `database/commissions_schema.sql` — `commissions(id, client_name, description, price REAL, currency, status,
+  due_date, artwork_name, deliver_sites TEXT JSON, notes, created_at, updated_at)`; registered in `db.py init_db`'s
+  schema-load list (idempotent `CREATE TABLE IF NOT EXISTS`, `idx_commissions_status`). Status set
+  `{quote, accepted, wip, paid, delivered}`.
+- **Queries:** `database/commissions_queries.py` (CRUD). `deliver_sites` normalised to a JSON array of platform-code
+  strings on write and parsed back to a list on read (`_clean_sites`/`_row`); `list_commissions` sorts dated rows
+  soonest-first, undated last; bad status coerces to `quote` on create and is skipped on update.
+- **API:** `routes/commissions_api.py` (`/api/commissions` GET/POST + `/{id}` GET/PATCH/DELETE), included in
+  `dashboard.py`. Status validated in the handlers (400 on bad value); list returns the status vocabulary so the
+  frontend renders columns without hardcoding.
+- **Frontend:** `frontend/js/commissions.js` (hub board grouped by status, soonest-due first, inline status-advance +
+  per-card `→ next`; detail view with an inline status `<select>`; CSP-safe delegated clicks, no inline handlers) +
+  `frontend/css/commissions.css`; `api.js` methods; nav entry + `<script>`/`<link>` in `index.html`;
+  `#/commissions` + `#/commissions/{id}` dispatch in `app.js`. Money is data only. `artwork_name` deep-links a
+  delivered piece (`#/artwork/image/<name>`); `deliver_sites` picks from the poster set (`_ALL_POSTER_IDS`).
+- **Tests:** `tests/test_commissions.py` (CRUD, status validation, `deliver_sites` JSON round-trip + junk-drop,
+  due-date ordering, API layer via TestClient).
+
+## [2.186.0] - 2026-07-24 - Watermark on export · cross-platform series · beta-reader draft share
+
+> **Three creator features.** (1) **Watermark** — switch on a small text credit (your handle) and PawPoller stamps it
+> onto your artwork automatically before posting, on every gallery site at once. Set it up in Settings → General →
+> Publishing. (2) **Series** — group related stories into a named series with a number (like "Velvet & Vice #3"); set
+> it in a story's **Metadata**, and it shows on your library cards and the story page, with a new "Series" sort in the
+> library. (3) **Share a draft** — create a private, read-only web link to a story draft so a beta reader can read it
+> with no login, and revoke it whenever you want (the **🔗 Share draft** button in the editor).
+
+Gap-wave-5 §1–3 (spec `docs/specs/gap_wave5.md`). The M/S trio; multi-user/roles stays deferred.
+
+**§1 Watermark on export.** One choke point covers every image platform: `posting/manager.post_artwork` between
+`build_artwork_package` and `validate` calls `watermark.apply` and swaps `package.file_path` to a watermarked temp
+copy, cleaned up after every post + retry (accumulated in `_wm_temps`).
+- New `posting/watermark.py` `apply(src, settings) -> (path, tmp_or_None)` (PIL `ImageDraw`/`ImageFont`; DejaVu →
+  arial → `load_default()` fallback), mirroring `_prepare_bsky_image`'s cleanup contract. Never raises — a bad
+  font/odd image returns `(src, None)` so a watermark error can't block a post. Font ~3.5% of the short edge, soft
+  shadow, opacity clamped 0.1–1.0; PNG keeps transparency, else flattened JPEG q92.
+- Settings (4 keys) in `routes/artwork_api.py` get/save: `artwork_watermark_enabled/text/position/opacity`; UI block
+  in the Publishing accordion (`app.js`). Explicit `Pillow` pin added to `requirements-server.txt`.
+
+**§2 Cross-platform series (display-only v1).** Storage = `story.json` fields `series` + `series_index` (stories are
+file-based; no new table). Read path: `StoryInfo`, `_load_from_story_json`, `_story_entry` (`story_reader.py`),
+passed through `assemble_works` (`submissions_api.py`) and the story-detail endpoint (`posting_api.py`). Write path
+reuses the existing arbitrary-metadata PUT. UI: a "📚 Series #n" badge on library cards + a pill on the story page
+(`bookshelf.js`), a Series/No.-in-series pair in the Metadata editor's Story Info (`metadata_editor.js`), and a
+"Series" library sort that groups by series then index. No poster emits AO3-series/SF-folders yet (documented add-on).
+
+**§3 Beta-reader draft share.** A tokenised, read-only public link to preview a draft — no login.
+- New `database/share_tokens.py` (`ensure_share_tokens_table`: `share_token PK, story_name, created_at, expires_at,
+  enabled`), wired into `_run_migrations`. Token = `secrets.token_urlsafe`; `is_live` gates enabled + not-expired.
+- Endpoints (`routes/editor_api.py`): `POST/GET .../stories/{name}/share`, `DELETE .../share/{token}`, plus a
+  reusable `render_story_share_html` (styled theme with CSS inlined, else a minimal readable wrapper around clean
+  HTML).
+- Public route `@app.get("/share/{token}")` in `dashboard.py`: look up → `is_live` → render, else an identical 404
+  page (unknown/revoked/expired are indistinguishable). `"/share/"` added to `_AUTH_EXEMPT_PREFIXES`; a dedicated
+  **script-free** CSP (`_build_share_csp`, `default-src 'none'`) — the one surface a stranger can reach serves user
+  prose, so stored markup can't execute script.
+- UI: a "🔗 Share draft" button in the editor's secondary cluster → an on-demand modal to mint (with optional expiry),
+  copy, and revoke links (`editor.js`, `api.js`).
+
+**Tests:** `tests/test_wave5.py` (16) — watermark distinct-temp/passthrough/safe-on-missing; series round-trip through
+story.json → StoryInfo/_story_entry incl. string-coercion; share tokens create/lookup/expire/revoke + the public
+route end-to-end (create → fetch → revoke → 404, script-free CSP asserted). Full suite green (688 pre-commissions).
+
 ## [2.185.0] - 2026-07-24 - Self-host security hardening (2FA recovery codes + a first-run fix)
 
 > **Security tightening for anyone running PawPoller on the internet.** (1) 2FA now gives you **10 backup codes** when

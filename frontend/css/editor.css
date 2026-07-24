@@ -801,6 +801,20 @@ html:not([data-mobile="1"]) .editor-actions {
     margin-bottom: 14px;
 }
 
+/* Two-up row (e.g. Series name + number-in-series). Columns stack on narrow
+   drawers via the flex-wrap. gap-wave-5 §2. */
+.metadata-field-row {
+    flex-direction: row;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.metadata-field-col {
+    display: flex;
+    flex-direction: column;
+}
+.metadata-field-col--grow { flex: 1 1 60%; min-width: 160px; }
+.metadata-field-col--narrow { flex: 0 1 90px; min-width: 80px; }
+
 .metadata-field label {
     display: flex;
     align-items: center;

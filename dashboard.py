@@ -41,6 +41,7 @@ from routes.posting_api import posting_router
 from routes.artwork_api import artwork_router
 from routes.posts_api import posts_router
 from routes.collections_api import collections_router
+from routes.commissions_api import commissions_router
 from routes.masterpieces_api import masterpieces_router
 from routes.whatsnew_api import whatsnew_router
 from routes.backup_api import backup_router
@@ -169,6 +170,9 @@ _cached_csp: str | None = None
 _cached_epub_viewer_csp: str | None = None
 
 
+_cached_share_csp: str | None = None
+
+
 _cached_theme_hash: str | None = None
 
 
@@ -241,6 +245,31 @@ def _build_epub_viewer_csp() -> str:
     return _cached_epub_viewer_csp
 
 
+def _build_share_csp() -> str:
+    """CSP for the public read-only ``/share/{token}`` draft preview.
+
+    A beta-share is the one surface an unauthenticated stranger can reach, and
+    the rendered body is user-authored story prose. It's self-contained HTML
+    with an inline ``<style>`` and needs NO scripts — so ``script-src`` is
+    denied outright (``default-src 'none'`` with no script-src). Inline styles
+    plus images/fonts only. Stored markup in a draft therefore cannot execute
+    script even if it slipped past the converter.
+    """
+    global _cached_share_csp
+    if _cached_share_csp is not None:
+        return _cached_share_csp
+    _cached_share_csp = (
+        "default-src 'none'; "
+        "style-src 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' data: https://fonts.gstatic.com; "
+        "img-src 'self' data: https:; "
+        "base-uri 'none'; "
+        "form-action 'none'; "
+        "frame-ancestors 'none'"
+    )
+    return _cached_share_csp
+
+
 def _build_csp() -> str:
     """Build Content-Security-Policy, adding Turnstile origins when configured.
 
@@ -285,9 +314,10 @@ def _build_csp() -> str:
 
 def invalidate_csp_cache() -> None:
     """Clear the cached CSP so it's rebuilt on the next request."""
-    global _cached_csp, _cached_epub_viewer_csp
+    global _cached_csp, _cached_epub_viewer_csp, _cached_share_csp
     _cached_csp = None
     _cached_epub_viewer_csp = None
+    _cached_share_csp = None
 
 
 @app.middleware("http")
@@ -305,6 +335,9 @@ async def security_headers_middleware(request: Request, call_next):
     # Anything else gets the strict default.
     if request.url.path == "/epub-viewer.html":
         response.headers["Content-Security-Policy"] = _build_epub_viewer_csp()
+    elif request.url.path.startswith("/share/"):
+        # Public beta-share draft preview — script-free CSP (see _build_share_csp).
+        response.headers["Content-Security-Policy"] = _build_share_csp()
     else:
         response.headers["Content-Security-Policy"] = _build_csp()
     return response
@@ -386,7 +419,7 @@ _AUTH_EXEMPT_PATHS = frozenset({
     "/manifest.webmanifest",
     "/sw.js",
 })
-_AUTH_EXEMPT_PREFIXES = ("/css/", "/js/", "/vendor/", "/img/", "/api/ig/pubmedia/")
+_AUTH_EXEMPT_PREFIXES = ("/css/", "/js/", "/vendor/", "/img/", "/api/ig/pubmedia/", "/share/")
 
 # Endpoints that return stored credentials / full data backups or perform
 # destructive actions. On an UNCONFIGURED (no-password) instance these must
@@ -490,6 +523,7 @@ app.include_router(artwork_router)  # Artwork hub routes (/api/artwork/*)
 app.include_router(posts_router)    # Posts (microblog) module routes (/api/posts/*)
 app.include_router(works_router)    # Unified Submissions hub (/api/works)
 app.include_router(collections_router)  # Collections (master container) routes (/api/collections/*)
+app.include_router(commissions_router)  # Commissions (client tracker) routes (/api/commissions/*)
 app.include_router(masterpieces_router)  # Masterpieces (master image record) routes (/api/masterpieces/*)
 app.include_router(whatsnew_router)  # In-app "What's new" changelog popup (/api/whatsnew)
 app.include_router(backup_router)    # Backup & restore (/api/backup/*)
@@ -596,6 +630,46 @@ async def serve_epub_viewer():
     raw = (frontend_dir / "epub-viewer.html").read_text(encoding="utf-8")
     rendered = raw.replace("__APP_VERSION__", config.APP_VERSION)
     return Response(content=rendered, media_type="text/html")
+
+
+_SHARE_404_HTML = (
+    "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
+    "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+    "<meta name='robots' content='noindex, nofollow'><title>Link not found</title>"
+    "<style>body{font-family:system-ui,Arial,sans-serif;background:#17150f;color:#e7e2d8;"
+    "display:flex;min-height:100vh;margin:0;align-items:center;justify-content:center;text-align:center}"
+    "div{max-width:22rem;padding:1rem}h1{font-size:1.3rem;margin:0 0 .5rem}p{color:#b3ab9c;line-height:1.6}</style>"
+    "</head><body><div><h1>This draft link isn't available</h1>"
+    "<p>It may have been revoked, expired, or never existed. Ask whoever shared it for a fresh link.</p>"
+    "</div></body></html>"
+)
+
+
+@app.get("/share/{token}")
+async def serve_shared_draft(token: str):
+    """Public, read-only beta-reader preview of a story draft (gap-wave-5 §3).
+
+    No login: the token IS the credential. Look it up → check enabled + not
+    expired → render the story's self-contained styled HTML. Any miss (unknown
+    token, revoked, expired, or a story that vanished) returns an identical 404
+    page so a probe can't distinguish "wrong token" from "revoked".
+    """
+    from database.db import get_connection
+    from database import share_tokens
+    from routes import editor_api
+
+    conn = get_connection()
+    try:
+        row = share_tokens.get_token(conn, token)
+    finally:
+        conn.close()
+    if not share_tokens.is_live(row):
+        return Response(content=_SHARE_404_HTML, media_type="text/html", status_code=404)
+
+    html = editor_api.render_story_share_html(row["story_name"])
+    if html is None:
+        return Response(content=_SHARE_404_HTML, media_type="text/html", status_code=404)
+    return Response(content=html, media_type="text/html")
 
 
 if __name__ == "__main__":

@@ -830,6 +830,7 @@ const Editor = {
                                 </div>
                             </div>
                             <button id="editor-publish-btn" class="btn btn-sm btn-outline" title="Check publishability across all platforms">Publish</button>
+                            <button id="editor-share-btn" class="btn btn-sm btn-outline" title="Create a read-only public link to share this draft with a beta reader">&#128279; Share draft</button>
                             <button id="editor-format-btn" class="btn btn-sm btn-outline" title="Format source code (Shift+Alt+F)">Format</button>
                             <div class="format-tabs" id="format-tabs">
                                 <button class="format-tab active" data-fmt="clean_html">Clean HTML</button>
@@ -1013,6 +1014,7 @@ const Editor = {
                 document.getElementById('downloads-dropdown-menu')?.classList.remove('open');
             });
             document.getElementById('editor-publish-btn')?.addEventListener('click', () => PublishCheck.open(storyName));
+            document.getElementById('editor-share-btn')?.addEventListener('click', () => this._openShareDraft(storyName));
             document.getElementById('editor-format-btn')?.addEventListener('click', () => this.formatSource());
             document.getElementById('editor-chapter-nav')?.addEventListener('change', (e) => this._jumpToChapter(parseInt(e.target.value)));
             document.querySelectorAll('.panel-toggle').forEach(btn => {
@@ -1842,6 +1844,125 @@ const Editor = {
         } finally {
             if (btn) btn.disabled = false;
         }
+    },
+
+    // ---------------------------------------------------------------------------
+    // Beta-reader draft share (gap-wave-5 §3)
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Open the "Share this draft" modal: mint / list / revoke read-only public
+     * links to preview a story draft. Built as a self-contained overlay (the
+     * editor's other dialogs live in the page template; this one is created on
+     * demand so it costs nothing until used).
+     */
+    async _openShareDraft(storyName) {
+        document.getElementById('share-draft-overlay')?.remove();
+        const overlay = document.createElement('div');
+        overlay.className = 'create-story-overlay open';
+        overlay.id = 'share-draft-overlay';
+        overlay.innerHTML = `
+            <div class="create-story-dialog share-draft-dialog" role="dialog" aria-modal="true" aria-label="Share draft" style="max-width:560px;width:92vw">
+                <h3>&#128279; Share this draft</h3>
+                <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
+                    Creates a <strong>public, read-only</strong> link anyone can open — no login needed.
+                    They'll see this story as a clean reading page. Handy for beta readers.
+                    You can revoke a link at any time.
+                </p>
+                <div class="share-draft-controls" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:14px">
+                    <label class="create-story-label" style="flex:0 0 auto;margin:0">
+                        Expires
+                        <select id="share-expires" class="create-story-input">
+                            <option value="0">Never</option>
+                            <option value="7">In 7 days</option>
+                            <option value="30">In 30 days</option>
+                            <option value="90">In 90 days</option>
+                        </select>
+                    </label>
+                    <button id="share-create-btn" class="btn btn-sm">Create link</button>
+                </div>
+                <div id="share-list" class="share-draft-list">
+                    <div style="color:var(--text-muted);font-size:0.85rem">Loading existing links…</div>
+                </div>
+                <div class="create-story-actions" style="margin-top:14px">
+                    <button class="btn btn-sm btn-outline" id="share-close-btn">Close</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+
+        const close = () => overlay.remove();
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+        overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+        document.getElementById('share-close-btn').addEventListener('click', close);
+
+        const renderList = (shares) => {
+            const list = document.getElementById('share-list');
+            if (!list) return;
+            if (!shares.length) {
+                list.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem">No active links yet — create one above.</div>`;
+                return;
+            }
+            list.innerHTML = shares.map(s => {
+                const abs = /^https?:/i.test(s.url) ? s.url : (location.origin + s.url);
+                const exp = s.expires_at
+                    ? `expires ${new Date(s.expires_at).toLocaleDateString()}`
+                    : 'never expires';
+                const stale = s.live === false ? ' · <span style="color:var(--danger)">expired</span>' : '';
+                return `<div class="share-draft-row" data-token="${Utils.escapeHtml(s.token)}"
+                        style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+                    <input class="share-draft-url create-story-input" type="text" readonly
+                           value="${Utils.escapeHtml(abs)}" style="flex:1 1 220px;min-width:180px" />
+                    <button class="btn btn-sm share-copy">Copy</button>
+                    <button class="btn btn-sm btn-outline share-revoke">Revoke</button>
+                    <span style="flex-basis:100%;color:var(--text-muted);font-size:0.78rem">${exp}${stale}</span>
+                </div>`;
+            }).join('');
+            list.querySelectorAll('.share-copy').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const url = btn.closest('.share-draft-row').querySelector('.share-draft-url').value;
+                    if (navigator.clipboard) {
+                        navigator.clipboard.writeText(url).then(
+                            () => window.toast?.success('Link copied'),
+                            () => window.toast?.error('Copy failed — select the link and copy manually'));
+                    } else {
+                        const inp = btn.closest('.share-draft-row').querySelector('.share-draft-url');
+                        inp.select(); document.execCommand('copy');
+                        window.toast?.success('Link copied');
+                    }
+                });
+            });
+            list.querySelectorAll('.share-revoke').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const token = btn.closest('.share-draft-row').dataset.token;
+                    try {
+                        await API.revokeShareLink(token);
+                        window.toast?.info('Link revoked');
+                        load();
+                    } catch (err) { window.toast?.error('Revoke failed'); }
+                });
+            });
+        };
+
+        const load = async () => {
+            try {
+                const data = await API.listShareLinks(storyName);
+                renderList(data.shares || []);
+            } catch (err) {
+                const list = document.getElementById('share-list');
+                if (list) list.innerHTML = `<div style="color:var(--danger);font-size:0.85rem">Couldn't load existing links.</div>`;
+            }
+        };
+
+        document.getElementById('share-create-btn').addEventListener('click', async () => {
+            const days = parseInt(document.getElementById('share-expires').value) || 0;
+            try {
+                await API.createShareLink(storyName, days || null);
+                window.toast?.success('Share link created');
+                load();
+            } catch (err) { window.toast?.error('Could not create link'); }
+        });
+
+        await load();
     },
 
     // ---------------------------------------------------------------------------

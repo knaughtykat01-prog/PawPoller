@@ -326,6 +326,16 @@ const MetaEditor = {
                         <label for="meta-fandom">Fandom</label>
                         <input type="text" id="meta-fandom" data-field="fandom" value="${this._escape(md.fandom || '')}" autocomplete="off" />
                     </div>
+                    <div class="metadata-field metadata-field-row">
+                        <div class="metadata-field-col metadata-field-col--grow">
+                            <label for="meta-series">Series</label>
+                            <input type="text" id="meta-series" data-field="series" value="${this._escape(md.series || '')}" autocomplete="off" placeholder="Optional — group related works, e.g. &quot;Velvet &amp; Vice&quot;" />
+                        </div>
+                        <div class="metadata-field-col metadata-field-col--narrow">
+                            <label for="meta-series-index">No. in series</label>
+                            <input type="number" id="meta-series-index" data-field="series_index" value="${this._escape(String(md.series_index || ''))}" min="0" step="1" autocomplete="off" placeholder="#" />
+                        </div>
+                    </div>
                     <div class="metadata-field">
                         <label for="meta-rating">Rating</label>
                         <select id="meta-rating" data-field="rating">

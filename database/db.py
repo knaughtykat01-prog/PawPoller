@@ -47,6 +47,7 @@ _E621_SCHEMA_PATH = config.resource_path("database/e621_schema.sql")  # e621 tab
 _POSTING_SCHEMA_PATH = config.resource_path("database/posting_schema.sql")  # Posting module tables
 _POSTS_SCHEMA_PATH = config.resource_path("database/posts_schema.sql")      # Posts (microblog) module tables
 _COLLECTIONS_SCHEMA_PATH = config.resource_path("database/collections_schema.sql")  # Collections (master container) tables
+_COMMISSIONS_SCHEMA_PATH = config.resource_path("database/commissions_schema.sql")  # Commissions (client tracker) tables
 
 
 def get_connection() -> sqlite3.Connection:
@@ -126,6 +127,8 @@ def init_db() -> None:
         conn.executescript(posts_schema_sql)
         collections_schema_sql = _COLLECTIONS_SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(collections_schema_sql)
+        commissions_schema_sql = _COMMISSIONS_SCHEMA_PATH.read_text(encoding="utf-8")
+        conn.executescript(commissions_schema_sql)
         # Apply any migrations for tables added after the original schema release.
         _run_migrations(conn)
         conn.commit()
@@ -1067,6 +1070,12 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     # sources incl. the legacy IB/FA comment tables). Additive, idempotent.
     from database import inbox_queries as _inbox
     _inbox.ensure_inbox_tables(conn)
+
+    # Migration: beta-reader draft share tokens (gap-wave-5 §3). One table
+    # mapping a url-safe token → story folder, gated by enabled + expiry. The
+    # public /share/{token} route reads it. Additive, idempotent.
+    from database import share_tokens as _share_tokens
+    _share_tokens.ensure_share_tokens_table(conn)
 
     # Migration: fold Cross-Platform links into Collections (they are the same
     # idea — one piece across platforms). Adds a provenance column so the fold is

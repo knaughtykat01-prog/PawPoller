@@ -217,6 +217,7 @@ window.Bookshelf = {
                     <option value="views">Most viewed</option>
                     <option value="favorites">Most favourited</option>
                     <option value="comments">Most comments</option>
+                    <option value="series">Series</option>
                 </select>`;
         el.innerHTML = `
             <div class="shelf-controls">
@@ -262,6 +263,19 @@ window.Bookshelf = {
         }
         if (this._sort === 'title') list.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
         else if (this._sort === 'platforms') list.sort((a, b) => (b.platforms || []).length - (a.platforms || []).length);
+        // Group by series (gap-wave-5 §2): series-less works sink to the bottom,
+        // then within a series they order by index, then title.
+        else if (this._sort === 'series') list.sort((a, b) => {
+            const sa = a.series || '', sb = b.series || '';
+            if (!sa && !sb) return (a.title || '').localeCompare(b.title || '');
+            if (!sa) return 1;
+            if (!sb) return -1;
+            const byName = sa.localeCompare(sb);
+            if (byName) return byName;
+            const ia = a.series_index || 0, ib = b.series_index || 0;
+            if (ia !== ib) return ia - ib;
+            return (a.title || '').localeCompare(b.title || '');
+        });
         // Performance sorts — pooled across every platform the work is live on
         // (backend supplies w.stats; 2.147.0). Feeds the Overview stat-card links.
         else if (['views', 'favorites', 'comments'].includes(this._sort)) {
@@ -376,6 +390,10 @@ window.Bookshelf = {
         const warns = (w.warnings || []).length
             ? ` <span class="book-warn" title="${this.esc(w.warnings.join(', '))}">⚠</span>` : '';
         const category = w.category ? `<span class="book-category">${this.esc(w.category)}</span>` : '';
+        // Series badge (gap-wave-5 §2) — "📚 Series #n"; index shown only when set.
+        const series = w.series
+            ? `<span class="book-series" title="Series: ${this.esc(w.series)}">📚 ${this.esc(w.series)}${w.series_index ? ' #' + w.series_index : ''}</span>`
+            : '';
         const blurb = w.description
             ? `<div class="book-blurb">${this.esc(w.description.slice(0, 120))}${w.description.length > 120 ? '…' : ''}</div>`
             : '';
@@ -392,6 +410,7 @@ window.Bookshelf = {
                 <div class="book-spine">
                     <div class="book-title">${this.esc(w.title || w.name)}${warns}</div>
                     <div class="book-meta">${w.meta ? this.esc(w.meta) : (isStory ? 'Story' : 'Artwork')}${rating ? ' · ' : ''}${rating}${category ? ' ' : ''}${category}${draftTag ? ' ' + draftTag : ''}</div>
+                    ${series ? `<div class="book-series-line">${series}</div>` : ''}
                     ${blurb}
                     <div class="book-plats">${plats}</div>
                 </div>
@@ -461,6 +480,10 @@ window.Bookshelf = {
         const ratingPill = d.rating ? `<span class="work-tag">${this.esc(d.rating)}</span>` : '';
         const wordsPill = d.total_words ? `<span class="work-tag">${this._num(d.total_words)} words</span>` : '';
         const chapPill = d.total_chapters ? `<span class="work-tag">${d.total_chapters} chapter${d.total_chapters === 1 ? '' : 's'}</span>` : '';
+        // Series pill (gap-wave-5 §2) — "📚 <name> #<n>", index only when set.
+        const seriesPill = d.series
+            ? `<span class="work-tag work-tag--series" title="Part of the series “${this.esc(d.series)}”">📚 ${this.esc(d.series)}${d.series_index ? ' #' + d.series_index : ''}</span>`
+            : '';
         const summary = d.summary || d.description || '';
 
         // "Published to" — one row per platform with live counts + a link.
@@ -547,7 +570,7 @@ window.Bookshelf = {
                 <div class="work-head">
                     <div class="shelf-eyebrow">${this.esc(d.author ? 'by ' + d.author : 'A work')}</div>
                     <h1 class="work-title">${this.esc(d.title || name)}</h1>
-                    <div class="work-tags">${ratingPill}${chapPill}${wordsPill}</div>
+                    <div class="work-tags">${ratingPill}${chapPill}${wordsPill}${seriesPill}</div>
                     ${summary ? `<p class="work-summary">${this.esc(summary)}</p>` : ''}
                 </div>
                 ${margin}
