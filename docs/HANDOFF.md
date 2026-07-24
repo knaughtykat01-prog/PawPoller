@@ -1,7 +1,14 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-24
-**Current version (master):** 2.190.1 — **Fix: artwork variant tiles show in the Library.** 2.190.0 added them to the
+**Current version (master):** 2.190.2 — **Masterpieces "＋ Add variant" (upload a render straight in).**
+`POST /api/masterpieces/{name}/variants/upload` (multipart file+label?+rating?) — the missing 3rd variant path (the
+others need the file already in-folder or another Masterpiece to merge). Saves non-clobbering, seeds primary, derives
++ uniquifies the key from the label (can't 409). `masterpieces.js`: ＋ Add variant button in the hero actions →
+prompt label → `API.uploadMasterpieceVariant` → re-render. +3 tests. Static `/variants/upload` path declared so it
+never shadows `/variants/{key}`.
+
+**Prior — 2.190.1 — Fix: artwork variant tiles show in the Library.** 2.190.0 added them to the
 retired Artwork hub (`artwork.js._applyHubFilters` — dead since `#/artwork`→`#/library/type/artwork`). The Library
 renders artwork via `bookshelf.js._book` over `/api/works`, so: `submissions_api.assemble_works` now passes each
 artwork's non-primary `variants` (label+rating+thumb_url); `bookshelf.js._variantBooks(w)` renders a `.book--variant`

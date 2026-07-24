@@ -244,6 +244,16 @@ const API = {
     declareMasterpieceVariant(name, body) {
         return this.post(`/api/masterpieces/${encodeURIComponent(name)}/variants`, body);
     },
+    /* Upload a fresh image straight in as a labeled variant (2.190.2). */
+    uploadMasterpieceVariant(name, file, label, rating = '') {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('label', label || '');
+        fd.append('rating', rating || '');
+        return fetch(`/api/masterpieces/${encodeURIComponent(name)}/variants/upload`,
+            { method: 'POST', body: fd })
+            .then(r => { if (!r.ok) return r.text().then(t => { throw new Error(t || `Upload failed: ${r.status}`); }); return r.json(); });
+    },
     deleteMasterpieceVariant(name, key) {
         return this.del(`/api/masterpieces/${encodeURIComponent(name)}/variants/${encodeURIComponent(key)}`);
     },

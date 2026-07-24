@@ -6469,6 +6469,12 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   = the old flatten, kept for the direct-call test). A plain-piece merge is unchanged (one entry, its hero, its
   members). **If you add a variant carry path, keep the keymap the single source of truth for both the on-disk entries
   and the member re-keying** — they must not drift.
+- **Upload a variant (2.190.2).** `POST /{name}/variants/upload` (multipart `file`, `label?`, `rating?`) — the third
+  variant-creation path alongside `POST /variants` (declare an in-folder image) and `/merge-as-variant` (fold another
+  Masterpiece). Reuses the replace-image upload guards (415/413/400), saves non-clobbering, seeds the primary entry on
+  first use, and derives+uniquifies the key from the label (so it can't 409). The static `/variants/upload` segment is
+  declared so it never shadows `/variants/{key}/…`. Frontend: a **＋ Add variant** file input in the Masterpiece
+  detail's hero actions (`masterpieces.js._addVariantUpload`, `API.uploadMasterpieceVariant`).
 - **Variant separate + rename (2.189.0, spec `docs/specs/masterpiece_variant_split.md`).** Closes two gaps in the
   2.158 variants feature. **Rename — `PATCH /{name}/variants/{key}`** `{label?, key?, rating?}`: a `key` change
   migrates `masterpiece_members.variant_key` (`mq.rename_variant_key`) so per-variant stats follow. This matters —

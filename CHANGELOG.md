@@ -12,6 +12,28 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.190.2] - 2026-07-24 - Masterpieces: "＋ Add variant" — upload a render straight in
+
+> **Add a variant by uploading a file.** On a Masterpiece there's now a **＋ Add variant** button next to Replace
+> image: pick an image, give it a label (NSFW, Rough, PFP…), and it's added as a variant — no need to already have the
+> file in the folder or another Masterpiece to merge.
+
+Rhys ask. The three variant paths were: declare an image *already in the folder* (`POST /variants`), fold another
+Masterpiece in (`/merge-as-variant`), or replace the hero. None took a **brand-new file** — so adding a render meant
+importing it as its own artwork first, then merging. This closes that.
+
+- **`POST /api/masterpieces/{name}/variants/upload`** (multipart: `file`, `label?`, `rating?`). Mirrors the
+  replace-image upload (415 non-image / 413 over the 50 MB cap / 400 empty), saves the file into the folder with a
+  non-clobbering name, seeds the primary entry if this is the first variant, and appends the new one. The key is
+  **derived from the label and uniquified** (same as merge), so it can't 409. Static path declared so it never
+  shadows `/variants/{key}/…`.
+- Frontend (`masterpieces.js`): a **＋ Add variant** `<label class="btn">` file input in the hero actions; on pick it
+  prompts for a label, uploads via `API.uploadMasterpieceVariant`, and re-renders. Shown even with no variants yet, so
+  it can seed the first one (the Manage-variants panel only appears once variants exist).
+
+**Tests:** +3 in `test_masterpiece_variant_split.py` — upload adds a labeled render (file lands in the folder, primary
+seeded), a second same-label upload uniquifies to `rough-2`, and a non-image is rejected 415. Suite 16 green.
+
 ## [2.190.1] - 2026-07-24 - Fix: artwork variant tiles now show in the Library (not the retired hub)
 
 > **The variant tiles now actually appear.** 2.190.0 added them to the old Artwork hub, which was retired — so they

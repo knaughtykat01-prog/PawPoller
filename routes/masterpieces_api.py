@@ -12,7 +12,7 @@ then (expected).
 import logging
 import re
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from database.db import get_connection
 from database import masterpiece_queries as mq
@@ -417,6 +417,59 @@ def declare_variant(name: str, body: dict):
                      "image": image, "rating": (body.get("rating") or "").strip().lower()})
     _write_variants(name, variants)
     return {"status": "declared", "key": key}
+
+
+@masterpieces_router.post("/{name}/variants/upload")
+async def upload_variant(name: str, file: UploadFile = File(...),
+                         label: str = Form(""), rating: str = Form("")):
+    """Upload a fresh image straight in as a new labeled variant (2.190.2).
+
+    Complements the other two paths: `POST /variants` declares an image already
+    in the folder, `/merge-as-variant` folds another Masterpiece in — this one
+    takes a brand-new file. The key is derived from the label (the user never
+    types one) and uniquified, so it can't collide (mirrors merge's behaviour)."""
+    from pathlib import Path
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in artwork_reader.IMAGE_EXTENSIONS:
+        raise HTTPException(415, detail=(
+            f"Unsupported image type: {ext or '(none)'}. "
+            f"Allowed: {', '.join(artwork_reader.IMAGE_EXTENSIONS)}"))
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, detail="Empty image upload")
+    if len(data) > _MAX_IMAGE_BYTES:
+        raise HTTPException(413, detail="Image exceeds the 50 MB archive cap")
+
+    try:
+        art = artwork_reader.load_artwork(name)
+    except FileNotFoundError:
+        raise HTTPException(404, detail="Masterpiece not found")
+
+    folder = Path(art.path)
+    stem = re.sub(r"[^\w.\-]", "_", Path(file.filename or "variant").stem) or "variant"
+    target = folder / f"{stem}{ext}"
+    n = 1
+    while target.exists():
+        target = folder / f"{stem}_v{n}{ext}"
+        n += 1
+    target.write_bytes(data)
+
+    variants = _raw_variants(name)
+    if not variants:
+        variants = [{"key": "", "label": "Primary", "image": art.image, "rating": ""}]
+    label = (label or "").strip()
+    base = re.sub(r"[^a-z0-9_-]+", "-", label.lower()).strip("-")[:32] or "variant"
+    existing = {v["key"] for v in variants}
+    key = base
+    if key in existing:
+        b, i = base[:28], 2
+        while f"{b}-{i}" in existing:
+            i += 1
+        key = f"{b}-{i}"
+    variants.append({"key": key, "label": label or key, "image": target.name,
+                     "rating": (rating or "").strip().lower()})
+    _write_variants(name, variants)
+    return {"status": "added", "key": key, "label": label or key, "image": target.name}
 
 
 @masterpieces_router.delete("/{name}/variants/{key}")

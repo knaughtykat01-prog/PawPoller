@@ -723,6 +723,10 @@ window.Masterpieces = {
                             ⇪ Replace image
                             <input type="file" id="mp-replace-file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
                         </label>
+                        <label class="btn btn-sm" title="Upload another render (SFW/NSFW/rough…) straight in as a labeled variant of this piece.">
+                            ＋ Add variant
+                            <input type="file" id="mp-addvariant-file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+                        </label>
                         <span id="mp-replace-msg" class="muted"></span>
                     </div>
                 </div>
@@ -883,6 +887,12 @@ window.Masterpieces = {
                 if (f && this._current) this._replaceImage(this._current, f);
                 return;
             }
+            if (e.target.id === 'mp-addvariant-file') {
+                const f = e.target.files && e.target.files[0];
+                if (f && this._current) this._addVariantUpload(this._current, f);
+                e.target.value = '';   // allow re-picking the same file
+                return;
+            }
             // Fold picker: show the label field only for the "variant" choice.
             if (e.target.name === 'mp-fold-kind') {
                 const wrap = document.getElementById('mp-fold-vlabel-wrap');
@@ -974,6 +984,26 @@ window.Masterpieces = {
             await this.renderDetail(name);           // re-render with the new hero + gallery
         } catch (err) {
             set('Replace failed: ' + (err.message || err));
+        }
+    },
+
+    /* Upload a fresh image straight in as a labeled variant (2.190.2). Prompts
+       for a label, then POSTs the file to /variants/upload and re-renders. */
+    async _addVariantUpload(name, file) {
+        const label = (window.prompt('Label for this variant (e.g. NSFW, Rough, PFP):', '') || '').trim();
+        if (!label) { this._toast('info', 'Add-variant cancelled'); return; }
+        const msg = document.getElementById('mp-replace-msg');
+        const set = t => { if (msg) msg.textContent = t || ''; };
+        set('Uploading variant…');
+        try {
+            const res = await API.uploadMasterpieceVariant(name, file, label);
+            this._cache = null;
+            this._toast('success', `Added variant “${res.label || res.key}”`);
+            set('');
+            await this.renderDetail(name);
+        } catch (err) {
+            set('');
+            this._toast('error', 'Add variant failed: ' + (err.message || err));
         }
     },
 

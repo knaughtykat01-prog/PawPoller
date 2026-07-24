@@ -224,6 +224,41 @@ def test_merge_uniquifies_a_colliding_key(client):
         conn.close()
 
 
+def test_upload_variant_adds_a_labeled_render(client):
+    """2.190.2: upload a fresh image straight in as a variant (no prior folder
+    file, no other masterpiece to merge)."""
+    name = _make_art(title="Ki")
+    r = client.post(f"/api/masterpieces/{name}/variants/upload",
+                    data={"label": "NSFW", "rating": "adult"},
+                    files={"file": ("nsfw.png", _png((10, 80, 200)), "image/png")})
+    assert r.status_code == 200, r.text
+    assert r.json()["key"] == "nsfw"
+    from posting import artwork_reader
+    vs = {v["key"]: v for v in client.get(f"/api/masterpieces/{name}").json()["variants"]}
+    # Seeds the primary + the uploaded one; the new file is in the folder.
+    assert set(vs) == {"", "nsfw"}
+    assert vs["nsfw"]["label"] == "NSFW" and vs["nsfw"]["rating"] == "adult"
+    imgs = {f.name for f in artwork_reader.load_artwork(name).path.iterdir()
+            if f.suffix.lower() in artwork_reader.IMAGE_EXTENSIONS}
+    assert vs["nsfw"]["image"] in imgs
+
+
+def test_upload_variant_derives_unique_key_from_label(client):
+    name = _make_art(title="Ki")
+    client.post(f"/api/masterpieces/{name}/variants/upload", data={"label": "Rough"},
+                files={"file": ("a.png", _png(), "image/png")})
+    r2 = client.post(f"/api/masterpieces/{name}/variants/upload", data={"label": "Rough"},
+                     files={"file": ("b.png", _png((5, 5, 5)), "image/png")})
+    assert r2.json()["key"] == "rough-2"          # uniquified, no collision
+
+
+def test_upload_variant_rejects_non_image(client):
+    name = _make_art(title="Ki")
+    r = client.post(f"/api/masterpieces/{name}/variants/upload", data={"label": "x"},
+                    files={"file": ("notes.txt", b"hi", "text/plain")})
+    assert r.status_code == 415
+
+
 def test_merge_carries_absorbs_own_variants(client):
     """2.189.2: folding a piece that ITSELF has variants must carry them all
     across — not copy only its hero and flatten its members (the old behaviour,
