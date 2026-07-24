@@ -604,6 +604,7 @@ CREDENTIAL_FIELDS = frozenset({
     "auth_password_hash", "auth_api_keys",
     "auth_session_secret", "auth_totp_secret",
     "auth_totp_enabled", "auth_totp_pending_secret",
+    "auth_totp_backup_codes",   # 2FA recovery codes (SHA-256 hashes) — gap-wave-4
     "dashboard_password", "dashboard_user",
     # Integrations
     "telegram_bot_token", "telegram_chat_id",
@@ -1039,7 +1040,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.184.0"
+APP_VERSION = "2.185.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL
@@ -1221,7 +1222,14 @@ def validate_api_key(key: str) -> bool:
     key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
     settings = get_settings()
     api_keys = settings.get("auth_api_keys", [])
-    return any(k.get("hash") == key_hash for k in api_keys)
+    # Constant-time compare (gap-wave-4) — evaluate every key so a match can't be
+    # timed. compare_digest over the two hex digests avoids the `==` short-circuit.
+    import hmac as _hmac
+    matched = False
+    for k in api_keys:
+        if _hmac.compare_digest(str(k.get("hash", "")), key_hash):
+            matched = True
+    return matched
 
 
 def migrate_dashboard_auth() -> None:

@@ -37,8 +37,17 @@ This shapes applicability throughout:
 - **TLS (V12), HSTS, HTTP→HTTPS redirect** — the app binds to loopback and expects a
   TLS-terminating reverse proxy (e.g. Caddy or nginx with Let's Encrypt). These controls live
   at the **edge**, which is the self-hoster's responsibility; verdicts note this as "edge".
+  (Since **2.185.0** the app also emits its own `Strict-Transport-Security` header when it sees
+  an https request, so HSTS is belt-and-braces.)
 - The most consequential residual risk is **credential custody** — see the Known Gaps
   register.
+
+> **2.185.0 hardening pass** (see `SELF_HOST_SECURITY.md` for the operator-facing version). Closed: an
+> unauthenticated first-run-setup takeover on an exposed unconfigured instance (setup is now loopback-gated, opt-out
+> `PAWPOLLER_ALLOW_OPEN_SETUP=1`). Added: **2FA backup/recovery codes** (recovery path for a lost authenticator;
+> require-password to enable), a **global soft-throttle** on distributed brute-force, **HSTS**, and constant-time
+> API-key + username-timing paths. Still-open known gaps below (stateless logout non-revocation, breached-password
+> check, SSRF thumbnail proxy) are unchanged and now also captured in the self-host doc's "Known limitations".
 
 ## Scoring legend
 

@@ -295,6 +295,12 @@ async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
     for header, value in _BASE_SECURITY_HEADERS.items():
         response.headers[header] = value
+    # HSTS (gap-wave-4): tell the browser to only ever reach this origin over
+    # https once it's seen it there — defends against first-contact downgrade /
+    # cookie leak. Only when the effective request is https (behind a trusted
+    # proxy uvicorn rewrites the scheme); never on plain-http LAN use.
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     # /epub-viewer.html needs a relaxed CSP for epub.js's blob: URLs.
     # Anything else gets the strict default.
     if request.url.path == "/epub-viewer.html":
@@ -314,14 +320,34 @@ _AUTH_FAIL_WINDOW = 300      # seconds (5 minutes)
 _AUTH_FAIL_MAX = 10          # max failures before lockout
 _auth_failures: dict[str, list[float]] = {}   # IP -> list of failure timestamps
 
+# Global soft-throttle (gap-wave-4): the per-IP limiter above is defeated by IP
+# rotation (IPv6 ranges, botnets). This counts ALL failures across every IP in
+# the window; once it crosses a high threshold, login attempts take a fixed
+# delay (see _global_soft_throttle_secs). It deliberately never hard-locks —
+# the real admin's correct password still works, just a couple seconds slower
+# during an active distributed attack. Turnstile is the stronger opt-in.
+_GLOBAL_FAIL_THRESHOLD = 50   # failures across all IPs in the window
+_GLOBAL_THROTTLE_SECS = 2.0   # delay added per attempt once tripped
+_global_failures: list[float] = []
+
 
 def _record_auth_failure(ip: str) -> None:
-    """Record a failed auth attempt from *ip*."""
+    """Record a failed auth attempt from *ip* (+ the global counter)."""
     now = time.monotonic()
     attempts = _auth_failures.setdefault(ip, [])
     attempts.append(now)
     cutoff = now - _AUTH_FAIL_WINDOW
     _auth_failures[ip] = [t for t in attempts if t > cutoff]
+    _global_failures.append(now)
+    _global_failures[:] = [t for t in _global_failures if t > cutoff]
+
+
+def _global_soft_throttle_secs() -> float:
+    """Seconds a login should stall right now given global failure pressure
+    (0 when below threshold). Never blocks — just slows distributed guessing."""
+    cutoff = time.monotonic() - _AUTH_FAIL_WINDOW
+    _global_failures[:] = [t for t in _global_failures if t > cutoff]
+    return _GLOBAL_THROTTLE_SECS if len(_global_failures) >= _GLOBAL_FAIL_THRESHOLD else 0.0
 
 
 def _is_rate_limited(ip: str) -> bool:

@@ -1,7 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-23
-**Current version (master):** 2.184.0 — **Wave 3: threads (G8) + posting insights + persona defaults** (spec
+**Current version (master):** 2.185.0 — **Self-host security hardening** (spec `docs/specs/gap_wave4_security.md`).
+Reframe: 2FA/rate-limit/bcrypt/signed-sessions already existed. Fixed: `bcrypt`/`pyotp`/`itsdangerous` missing from
+`requirements.txt` (+spec hiddenimports) — clean-install auth crash. HIGH: `dashboard-setup` now loopback-gated
+(opt-out `PAWPOLLER_ALLOW_OPEN_SETUP=1`) — closed a first-run takeover→vault-exfil. Added: 2FA backup codes
+(`auth_totp_backup_codes` hashes in vault; accepted at login+disable; require-password-to-enable; regenerate endpoint),
+global soft-throttle, HSTS, constant-time api-key + dummy-bcrypt username path. Docs: SELF_HOST_SECURITY.md, SIGNING.md,
+TERMS/PRIVACY templates, ASVS note. +6 tests (test_auth_hardening). Installers on v2.184.0.
+
+**Prior — 2.184.0 — Wave 3: threads (G8) + posting insights + persona defaults** (spec
 `docs/specs/gap_wave3.md`). Persona defaults: additive persona columns + manifest sync + detail-page card + Quick
 Publish seeding. Insights: `/api/analytics/insights` (INSIGHT_* module maps in analytics_queries — use these, not the
 4 older local copies); relative-engagement buckets; date-only platforms weekday-only. Threads: child post rows

@@ -32,3 +32,12 @@ keyring>=25.0
 # source/dev installs get it here; packaged desktop users auto-detect a system
 # install or fall back. Loose floor so it can track X's changing API.
 gallery-dl>=1.32
+
+# Dashboard auth (login + 2FA + signed sessions). These are imported directly by
+# routes/dashboard_auth.py + config.py; they were previously only in
+# requirements-server.txt, so a source/dev `pip install -r requirements.txt`
+# would crash auth on ImportError (gap-wave-4 fix). The frozen desktop build
+# also lists them in pawpoller.spec hiddenimports (lazy imports evade static scan).
+bcrypt>=4.2.0
+pyotp>=2.9.0
+itsdangerous>=2.2.0

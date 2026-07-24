@@ -14055,6 +14055,25 @@ const App = {
     /* ── Security Tab Helpers ─────────────────────────────────
      * Lazy-loaded sections for TOTP and API keys within the Security tab. */
 
+    /* Render one-time 2FA backup codes into #totp-codes-display (gap-wave-4).
+     * Shown once — the server only stores hashes. Includes a copy button. */
+    _showBackupCodes(codes) {
+        const disp = document.getElementById('totp-codes-display');
+        if (!disp || !Array.isArray(codes) || !codes.length) return;
+        disp.innerHTML = `
+            <div style="margin-top:14px;padding:12px;border:1px solid var(--accent);border-radius:8px">
+                <p style="font-size:13px;margin:0 0 8px"><strong>🔑 Backup codes</strong> — save these now. Each works once if you lose your authenticator. They won't be shown again.</p>
+                <div style="display:grid;grid-template-columns:repeat(2,max-content);gap:4px 24px;font-family:monospace;font-size:14px;margin-bottom:10px">
+                    ${codes.map(c => `<span>${Utils.escapeHtml(c)}</span>`).join('')}
+                </div>
+                <button class="btn btn-sm btn-outline" id="totp-copy-codes">Copy all</button>
+            </div>`;
+        document.getElementById('totp-copy-codes')?.addEventListener('click', (e) => {
+            navigator.clipboard?.writeText(codes.join('\n'));
+            e.currentTarget.textContent = 'Copied ✓';
+        });
+    },
+
     async _loadTotpSection() {
         const body = document.getElementById('sec-totp-body');
         const badge = document.getElementById('sec-totp-badge');
@@ -14066,20 +14085,47 @@ const App = {
             if (badge) badge.textContent = enabled ? '-- Enabled' : '-- Disabled';
 
             if (enabled) {
+                const remaining = status.backup_codes_remaining || 0;
+                const lowCodes = remaining <= 2;
                 body.innerHTML = `
                     <p style="color:var(--success);font-size:13px;margin-bottom:12px">Two-factor authentication is <strong>enabled</strong>.</p>
-                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">To disable, enter your password and a current 2FA code.</p>
+                    <div style="font-size:13px;margin-bottom:12px;padding:8px 10px;border-radius:8px;background:${lowCodes ? 'var(--danger-dim,rgba(220,80,80,.12))' : 'var(--bg-hover)'}">
+                        🔑 <strong>${remaining}</strong> backup code${remaining === 1 ? '' : 's'} left${lowCodes ? ' — running low, regenerate a fresh set.' : '.'}
+                        Use one in place of an authenticator code if you lose your device.
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+                            <input type="password" id="totp-regen-pw" class="search-input" placeholder="Password" style="max-width:220px">
+                            <button class="btn btn-sm btn-outline" id="totp-regen-btn">Regenerate backup codes</button>
+                        </div>
+                    </div>
+                    <div id="totp-codes-display"></div>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">To disable, enter your password and a current 2FA code (or a backup code).</p>
                     <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
                         <input type="password" id="totp-disable-pw" class="search-input" placeholder="Password" style="max-width:300px">
                     </div>
                     <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:8px">
-                        <input type="text" id="totp-disable-code" class="search-input" placeholder="6-digit code" style="max-width:200px" inputmode="numeric" maxlength="6">
+                        <input type="text" id="totp-disable-code" class="search-input" placeholder="6-digit code or backup code" style="max-width:240px">
                     </div>
                     <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
                         <button class="btn btn-danger" id="totp-disable-btn">Disable 2FA</button>
                         <span id="totp-msg" style="font-size:13px"></span>
                     </div>
                 `;
+                document.getElementById('totp-regen-btn')?.addEventListener('click', async () => {
+                    const pw = document.getElementById('totp-regen-pw').value;
+                    const disp = document.getElementById('totp-codes-display');
+                    if (!pw) { disp.innerHTML = '<span style="color:var(--danger);font-size:12px">Enter your password first.</span>'; return; }
+                    try {
+                        const res = await fetch('/api/auth/totp-backup-codes/regenerate', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }),
+                        });
+                        const d = await res.json();
+                        if (!res.ok) throw new Error(d.detail || 'failed');
+                        this._showBackupCodes(d.backup_codes);
+                        setTimeout(() => this._loadTotpSection(), 30000);
+                    } catch (err) {
+                        disp.innerHTML = `<span style="color:var(--danger);font-size:12px">${Utils.escapeHtml(err.message || err)}</span>`;
+                    }
+                });
                 document.getElementById('totp-disable-btn')?.addEventListener('click', async () => {
                     const btn = document.getElementById('totp-disable-btn');
                     const msg = document.getElementById('totp-msg');
@@ -14113,11 +14159,13 @@ const App = {
                         </div>
                         <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:12px">
                             <input type="text" id="totp-verify-code" class="search-input" placeholder="6-digit code" style="max-width:200px" inputmode="numeric" maxlength="6">
+                            <input type="password" id="totp-verify-pw" class="search-input" placeholder="Your account password" style="max-width:280px">
                         </div>
                         <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
                             <button class="btn btn-success" id="totp-verify-btn">Verify & Enable</button>
                             <span id="totp-msg" style="font-size:13px"></span>
                         </div>
+                        <div id="totp-codes-display"></div>
                     </div>
                 `;
                 document.getElementById('totp-setup-btn')?.addEventListener('click', async () => {
@@ -14150,13 +14198,17 @@ const App = {
                     const btn = e.target;
                     const msg = document.getElementById('totp-msg');
                     const code = document.getElementById('totp-verify-code').value.trim();
+                    const password = document.getElementById('totp-verify-pw')?.value || '';
                     if (!code) { msg.textContent = 'Enter the 6-digit code.'; msg.style.color = 'var(--danger)'; return; }
+                    if (!password) { msg.textContent = 'Enter your account password.'; msg.style.color = 'var(--danger)'; return; }
                     btn.disabled = true;
                     try {
-                        await API.totpEnable({ code });
-                        msg.textContent = '2FA enabled!';
+                        const res = await API.totpEnable({ code, password });
+                        msg.textContent = '2FA enabled! Save your backup codes below.';
                         msg.style.color = 'var(--success)';
-                        setTimeout(() => this._loadTotpSection(), 1000);
+                        // Show the one-time backup codes; leave them up (don't auto-reload
+                        // the section) so the user can copy them before they're gone.
+                        this._showBackupCodes(res && res.backup_codes);
                     } catch (err) {
                         let m = err.message.replace(/^API \d+:\s*/, '');
                         try { m = JSON.parse(m).detail || m; } catch {}

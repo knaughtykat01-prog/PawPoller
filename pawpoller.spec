@@ -59,6 +59,11 @@ a = Analysis(
         'apscheduler.schedulers.asyncio',
         'apscheduler.triggers.interval',
         'PIL',
+        # Dashboard auth libs — imported lazily inside functions, so the static
+        # scan can miss them; pin them explicitly (gap-wave-4).
+        'bcrypt',
+        'pyotp',
+        'itsdangerous',
         *_platform_hidden,
     ],
     hookspath=[],

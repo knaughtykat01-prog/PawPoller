@@ -12,6 +12,39 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.185.0] - 2026-07-24 - Self-host security hardening (2FA recovery codes + a first-run fix)
+
+> **Security tightening for anyone running PawPoller on the internet.** (1) 2FA now gives you **10 backup codes** when
+> you turn it on — save them; each works once if you lose your authenticator, so you can never get locked out. (2) A
+> first-run hole is closed: setting the admin password now has to be done from the machine itself (or with a deliberate
+> opt-in), so nobody on the network can grab an unconfigured instance first. (3) Under-the-hood hardening (brute-force
+> slowdown, HSTS). Plus new self-host security + terms/privacy docs. If you don't self-host on the open internet,
+> nothing changes for you.
+
+Direction "self-host & security". A scout + adversarial security review reframed this from "build 2FA" (already fully
+built + login-enforced) to fix/harden/document — findings in `docs/specs/gap_wave4_security.md`.
+
+- **Latent dep bug fixed:** `bcrypt`/`pyotp`/`itsdangerous` were only in `requirements-server.txt` — a clean
+  `pip install -r requirements.txt` (the self-host path) crashed auth on ImportError. Added to `requirements.txt` +
+  `pawpoller.spec` hiddenimports.
+- **HIGH — first-run takeover closed:** `/api/auth/dashboard-setup` on an unconfigured, exposed instance let a remote
+  attacker claim the admin password → login → exfil the credential vault via settings-sync. Setup is now
+  **loopback-only** unless `PAWPOLLER_ALLOW_OPEN_SETUP=1`.
+- **2FA backup codes (+ require password to enable):** 10 one-time codes (SHA-256-hashed in the vault, shown once),
+  accepted at login and at disable; regenerate endpoint; remaining count + low-codes nudge in Settings → Security.
+  Enabling 2FA now needs the account password (stops a hijacked session binding an attacker's authenticator →
+  durable lockout).
+- **Hardening:** global soft-throttle on distributed (IP-rotating) brute-force (never hard-locks the admin); `HSTS`
+  header on https; constant-time API-key compare (`hmac.compare_digest`); timing-uniform username path (dummy bcrypt).
+- **Docs (§2/§4/§5):** `docs/security/SELF_HOST_SECURITY.md` (threat model, loopback setup, forwarded-IPs/HSTS, 2FA +
+  recovery + vault-key posture, known-gaps register), `docs/security/SIGNING.md` (unsigned-installer decision),
+  `docs/TERMS_TEMPLATE.md` + `docs/PRIVACY_TEMPLATE.md`, ASVS note.
+
+Already-solid (confirmed by the review, unchanged): bcrypt KDF, signed sessions w/ rotation-on-password-change, per-IP
+lockout, encrypted vault, Turnstile, CSRF posture. +6 tests (`test_auth_hardening.py`). Full suite pre-deploy.
+
+---
+
 ## [2.184.0] - 2026-07-24 - Wave 3: threads, posting insights, and persona defaults
 
 > **Three new things.** (1) **Threads** — in Posts, "🧵 + Add part" builds a multi-part thread; on Bluesky and Mastodon

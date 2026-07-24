@@ -11,7 +11,9 @@ Inkbunny auth validates credentials against the live Inkbunny API for polling.
 
 from __future__ import annotations
 import hashlib
+import hmac
 import logging
+import os
 import secrets
 from datetime import datetime, timezone
 
@@ -24,6 +26,12 @@ import config
 logger = logging.getLogger(__name__)
 dashboard_auth_router = APIRouter(prefix="/api/auth")
 
+# Real dummy bcrypt hash (gap-wave-4): verified against when the username is
+# wrong so a bad-username login pays the same bcrypt cost as a bad-password one,
+# closing the timing side-channel that would otherwise enumerate valid usernames.
+# Computed once at import (a valid hash — checkpw rejects malformed ones).
+_DUMMY_HASH = config.hash_password("pawpoller-timing-dummy")
+
 
 def _sanitize_for_log(value: str, limit: int = 64) -> str:
     """Make a user-supplied string safe to interpolate into a log line.
@@ -35,6 +43,43 @@ def _sanitize_for_log(value: str, limit: int = 64) -> str:
         return "-"
     cleaned = "".join(c for c in str(value) if c.isprintable() and c not in "\r\n")
     return (cleaned[:limit] + "…") if len(cleaned) > limit else (cleaned or "-")
+
+
+# -- 2FA backup / recovery codes (gap-wave-4) --------------------------------
+# 10 one-time codes issued at 2FA enable, shown ONCE, stored only as SHA-256
+# hashes in the vault (`auth_totp_backup_codes`). Accepted at login and at
+# disable so a lost authenticator can't lock the owner out. High-entropy random
+# codes → SHA-256 is sufficient (same rationale as API keys), no bcrypt needed.
+_BACKUP_CODE_COUNT = 10
+
+
+def _hash_backup_code(code: str) -> str:
+    return hashlib.sha256(code.strip().replace("-", "").lower().encode("utf-8")).hexdigest()
+
+
+def _generate_backup_codes() -> tuple[list[str], list[str]]:
+    """Return (plaintext codes to show once, hashes to store)."""
+    plain = ["-".join((secrets.token_hex(2), secrets.token_hex(2)))
+             for _ in range(_BACKUP_CODE_COUNT)]
+    return plain, [_hash_backup_code(c) for c in plain]
+
+
+def _consume_backup_code(code: str, settings: dict) -> bool:
+    """If `code` matches an unused backup-code hash, remove it and persist.
+    Returns True on a successful consume. Constant-time per-candidate compare."""
+    stored = list(settings.get("auth_totp_backup_codes") or [])
+    if not stored or not code:
+        return False
+    target = _hash_backup_code(code)
+    hit = None
+    for h in stored:
+        if hmac.compare_digest(str(h), target):
+            hit = h
+    if hit is None:
+        return False
+    stored.remove(hit)
+    config.save_settings({"auth_totp_backup_codes": stored})
+    return True
 
 
 # -- Dashboard Status --------------------------------------------------------
@@ -64,6 +109,10 @@ def dashboard_status(request: Request):
         "auth_required": auth_required,
         "authenticated": authenticated,
         "totp_enabled": totp_enabled,
+        # Remaining 2FA backup codes (gap-wave-4) — only meaningful to an
+        # authenticated caller; drives the "regenerate" nudge in Settings.
+        "backup_codes_remaining": (
+            len(settings.get("auth_totp_backup_codes") or []) if authenticated else 0),
         "turnstile_site_key": turnstile_site_key if auth_required else "",
     }
 
@@ -79,12 +128,19 @@ async def dashboard_login(request: Request, body: dict):
     controls cookie max_age: True = 30 days, False = 24 hours (session).
     """
     # Import rate limiting helpers from dashboard.py (same process)
-    from dashboard import _record_auth_failure, _is_rate_limited
+    from dashboard import _record_auth_failure, _is_rate_limited, _global_soft_throttle_secs
 
     client_ip = request.client.host if request.client else "unknown"
     if _is_rate_limited(client_ip):
         logger.warning("Auth: login blocked by rate limiter (ip=%s)", client_ip)
         raise HTTPException(429, "Too many failed attempts. Try again later.")
+    # Global soft-throttle (gap-wave-4): slow every attempt while a distributed
+    # (IP-rotating) attack is in progress. Never blocks; the real admin's correct
+    # login still succeeds, just a couple seconds slower.
+    _throttle = _global_soft_throttle_secs()
+    if _throttle:
+        import asyncio
+        await asyncio.sleep(_throttle)
 
     username = body.get("username", "").strip()
     password = body.get("password", "")
@@ -119,16 +175,26 @@ async def dashboard_login(request: Request, body: dict):
             logger.warning("Auth: login failed — bad credentials (ip=%s user=%s)", client_ip, _log_user)
             raise HTTPException(401, "Invalid username or password.")
     else:
-        if username != stored_user or not config.verify_password(password, stored_hash):
+        # Timing-uniform (gap-wave-4): always spend bcrypt time, even on a wrong
+        # username (verify against the dummy hash), so latency can't enumerate
+        # the valid username. `pw_ok` gates the actual decision.
+        pw_ok = config.verify_password(password, stored_hash if username == stored_user else _DUMMY_HASH)
+        if username != stored_user or not pw_ok:
             _record_auth_failure(client_ip)
             logger.warning("Auth: login failed — bad credentials (ip=%s user=%s)", client_ip, _log_user)
             raise HTTPException(401, "Invalid username or password.")
 
-    # Check TOTP if enabled
+    # Check TOTP if enabled — accept a valid TOTP code OR an unused backup code
+    # (gap-wave-4), so a lost authenticator can't lock the owner out.
     if settings.get("auth_totp_secret") and settings.get("auth_totp_enabled"):
         import pyotp
         totp = pyotp.TOTP(settings["auth_totp_secret"])
-        if not totp_code or not totp.verify(totp_code, valid_window=1):
+        totp_ok = bool(totp_code) and totp.verify(totp_code, valid_window=1)
+        if not totp_ok and totp_code and _consume_backup_code(totp_code, settings):
+            totp_ok = True
+            remaining = len(config.get_settings().get("auth_totp_backup_codes") or [])
+            logger.info("Auth: login via 2FA backup code (ip=%s, %d left)", client_ip, remaining)
+        if not totp_ok:
             _record_auth_failure(client_ip)
             logger.warning("Auth: login failed — bad 2FA code (ip=%s user=%s)", client_ip, _log_user)
             raise HTTPException(401, "Invalid or missing 2FA code.")
@@ -167,7 +233,7 @@ async def dashboard_login(request: Request, body: dict):
 # -- Dashboard Setup (first-time) -------------------------------------------
 
 @dashboard_auth_router.post("/dashboard-setup")
-def dashboard_setup(body: dict):
+def dashboard_setup(request: Request, body: dict):
     """First-time password setup.  Only works when no auth is configured.
 
     This endpoint is exempt from auth (obviously — there's no password yet).
@@ -176,6 +242,24 @@ def dashboard_setup(body: dict):
     settings = config.get_settings()
     if settings.get("auth_password_hash") or settings.get("dashboard_password"):
         raise HTTPException(403, "Dashboard auth is already configured. Use change-password instead.")
+
+    # HARDENING (gap-wave-4, security-review HIGH): on an UNCONFIGURED instance
+    # this endpoint sets the admin password with no auth. If the server is
+    # exposed (server.py binds 0.0.0.0), a remote attacker could race to claim
+    # the password, then log in and exfiltrate the whole credential vault via
+    # /api/settings/sync. So first-run setup must come from the local operator
+    # (loopback) — the desktop app and localhost qualify. A self-hoster who
+    # genuinely needs remote first-run on a trusted network sets
+    # PAWPOLLER_ALLOW_OPEN_SETUP=1 as a conscious opt-in.
+    from dashboard import _client_is_loopback
+    if not _client_is_loopback(request) and os.environ.get("PAWPOLLER_ALLOW_OPEN_SETUP") != "1":
+        client_ip = request.client.host if request.client else "?"
+        logger.warning("Auth: remote dashboard-setup refused (ip=%s) — loopback only", client_ip)
+        raise HTTPException(
+            403,
+            "First-time password setup must be done from the machine running PawPoller "
+            "(localhost). Open the dashboard there, or set PAWPOLLER_ALLOW_OPEN_SETUP=1 to "
+            "allow remote setup on a trusted network.")
 
     username = body.get("username", "admin").strip() or "admin"
     password = body.get("password", "")
@@ -263,15 +347,22 @@ def totp_setup():
 def totp_enable(body: dict):
     """Verify a TOTP code and activate 2FA.
 
-    The user must provide a valid code generated from the pending secret
-    to prove they've configured their authenticator app correctly.
+    The user must provide a valid code generated from the pending secret AND
+    their account password (gap-wave-4: requiring the password stops a brief
+    session hijack from binding an attacker's authenticator and locking the
+    owner out). Returns one-time backup codes to store — shown ONCE.
     """
     import pyotp
     code = body.get("code", "").strip()
+    password = body.get("password", "")
     if not code:
         raise HTTPException(400, "Verification code is required.")
 
     settings = config.get_settings()
+    stored_hash = settings.get("auth_password_hash", "")
+    if not stored_hash or not config.verify_password(password, stored_hash):
+        raise HTTPException(401, "Your account password is required to enable 2FA.")
+
     pending = settings.get("auth_totp_pending_secret")
     if not pending:
         raise HTTPException(400, "No pending TOTP setup. Call /totp-setup first.")
@@ -280,14 +371,37 @@ def totp_enable(body: dict):
     if not totp.verify(code, valid_window=1):
         raise HTTPException(400, "Invalid code. Check your authenticator app and try again.")
 
-    # Activate: move pending secret to active
+    # Activate: move pending secret to active + issue recovery codes.
+    plain_codes, hashes = _generate_backup_codes()
     config.save_settings({
         "auth_totp_secret": pending,
         "auth_totp_enabled": True,
+        "auth_totp_backup_codes": hashes,
     })
     config.delete_settings_keys(["auth_totp_pending_secret"])
-    logger.info("TOTP 2FA enabled")
-    return {"status": "success", "message": "Two-factor authentication enabled."}
+    logger.info("TOTP 2FA enabled (+%d backup codes)", len(plain_codes))
+    return {
+        "status": "success",
+        "message": "Two-factor authentication enabled.",
+        "backup_codes": plain_codes,
+    }
+
+
+@dashboard_auth_router.post("/totp-backup-codes/regenerate")
+def totp_regenerate_backup_codes(body: dict):
+    """Replace the backup codes with a fresh set (invalidating the old ones).
+    Requires the account password. Returns the new codes ONCE (gap-wave-4)."""
+    password = body.get("password", "")
+    settings = config.get_settings()
+    stored_hash = settings.get("auth_password_hash", "")
+    if not stored_hash or not config.verify_password(password, stored_hash):
+        raise HTTPException(401, "Your account password is required.")
+    if not settings.get("auth_totp_enabled"):
+        raise HTTPException(400, "2FA is not enabled.")
+    plain_codes, hashes = _generate_backup_codes()
+    config.save_settings({"auth_totp_backup_codes": hashes})
+    logger.info("TOTP backup codes regenerated (%d)", len(plain_codes))
+    return {"status": "success", "backup_codes": plain_codes}
 
 
 @dashboard_auth_router.post("/totp-disable")
@@ -306,11 +420,14 @@ def totp_disable(body: dict):
     if not totp_secret:
         raise HTTPException(400, "2FA is not enabled.")
 
+    # Accept a live TOTP code OR an unused backup code (gap-wave-4) so a lost
+    # authenticator can still be turned off from the UI (with the password).
     totp = pyotp.TOTP(totp_secret)
-    if not totp.verify(code, valid_window=1):
-        raise HTTPException(400, "Invalid 2FA code.")
+    if not ((code and totp.verify(code, valid_window=1)) or _consume_backup_code(code, settings)):
+        raise HTTPException(400, "Invalid 2FA code (use an authenticator code or a backup code).")
 
-    config.delete_settings_keys(["auth_totp_secret", "auth_totp_enabled", "auth_totp_pending_secret"])
+    config.delete_settings_keys(["auth_totp_secret", "auth_totp_enabled",
+                                 "auth_totp_pending_secret", "auth_totp_backup_codes"])
     logger.info("TOTP 2FA disabled")
     return {"status": "success", "message": "Two-factor authentication disabled."}
 
