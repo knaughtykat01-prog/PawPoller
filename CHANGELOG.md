@@ -12,6 +12,18 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.191.1] - 2026-07-26 - Itaku setup guide: where the auth token actually is
+
+> **Clearer Itaku instructions.** The guide now spells out exactly where to find the auth token: it's **not a cookie**
+> — it's the value after "Authorization: Token …" in a Network request (or in Local Storage). Follows the 2.191.0 fix
+> that added the token field.
+
+The IK poster sends the token as `Authorization: Token <token>` (a Django-style API token) — so it's not among the
+site's cookies, which is where it's natural to look. `platform_guides.js` `ik` entry rewritten: username = tracking,
+token = posting; step-by-step for pulling the token from DevTools → Network → Request Headers (copy after "Token ") or
+Local Storage; an explicit "it is NOT a cookie" note; `renew` re-pointed at the real failure text. No behaviour change —
+copy only.
+
 ## [2.191.0] - 2026-07-26 - Itaku: you can now enter the auth token needed to post
 
 > **Fixes "Itaku auth token not configured" when posting.** The Itaku settings panel only had a username box and said

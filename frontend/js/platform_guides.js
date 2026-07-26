@@ -164,18 +164,21 @@
 
     // ── Itaku ────────────────────────────────────────────────
     ik: {
-      kind: 'Analytics', difficulty: 'Easy',
-      summary: 'Track likes/comments on an Itaku gallery.',
-      need: ['An Itaku username', 'Optional: an auth token for full-resolution / private work'],
+      kind: 'Analytics + posting', difficulty: 'Easy',
+      summary: 'Track an Itaku gallery; add an auth token to post to it.',
+      need: ['An Itaku username (for tracking)', 'An auth token (only for posting) — from your logged-in session'],
       steps: [
-        { t: 'Find the username', b: 'The Itaku account you want to track.',
+        { t: 'Find the username', b: 'The Itaku account to track. Tracking needs nothing else — you can stop here.',
           link: { label: 'itaku.ee', url: 'https://itaku.ee' } },
-        { t: '(Optional) grab an auth token', b: 'For full-res imports or private posts, copy your Itaku auth token from the logged-in session.' },
-        { t: 'Connect in PawPoller', b: 'Enter the target username (and auth token if you have one) in Settings.' },
+        { t: 'Grab your auth token — only if you want to POST', b: 'It is an API token, NOT a cookie (so it is not in the Cookies list). Log in at itaku.ee, open DevTools (F12) → Network tab, scroll your feed so requests appear, click any request to itaku.ee, and under Request Headers find "Authorization: Token abc123…" — copy only the part AFTER "Token " (the abc123… itself). Alternatively: DevTools → Application → Local Storage → itaku.ee, and copy the saved token value.' },
+        { t: 'Connect in PawPoller', b: 'Enter the username in Settings → Itaku. To also post, paste the token in the Auth token box and Save — the panel will then show "posting enabled".' },
       ],
-      paste: 'Settings → Itaku → Target user (+ auth token)',
-      renew: { when: 'If you supplied an auth token and it lapses', how: 'Grab a fresh token from your logged-in Itaku session.' },
-      notes: ['Public stats work with just the username; the token only unlocks full-res / private content.'],
+      paste: 'Settings → Itaku → username (+ Auth token to post)',
+      renew: { when: 'If posting fails with "auth token not configured" or stops working', how: 'Grab a fresh token the same way (Network tab → the value after "Authorization: Token ") and Save it again.' },
+      notes: [
+        'Tracking works with just the username. The auth token is needed ONLY to post (and for full-res / private imports).',
+        'The token is NOT a browser cookie — it is the value after "Token " in the Authorization request header, or the token in Local Storage.',
+      ],
     },
 
     // ── Bluesky ──────────────────────────────────────────────

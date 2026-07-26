@@ -1,7 +1,9 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-26
-**Current version (master):** 2.191.0 — **Itaku auth token in the UI (fixes posting).** The IK settings panel only had
+**Current version (master):** 2.191.1 — **Itaku setup-guide copy** (where to find the auth token: Authorization: Token header / Local Storage, NOT a cookie). Follows 2.191.0 (added the token field). Copy-only.
+
+**Prior — 2.191.0 — Itaku auth token in the UI (fixes posting).** The IK settings panel only had
 a username field ("no auth required") but posting needs `ik_auth_token` with nowhere to enter it. `routes/ik_api.py`:
 `/auth/connect` takes optional `auth_token`; new `POST /auth/token` (set/replace/clear w/o re-validating username);
 `/auth/status` returns `has_auth_token`; disconnect clears it. Default account reads flat `ik_auth_token` (verified via
