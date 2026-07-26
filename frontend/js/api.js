@@ -493,6 +493,7 @@ const API = {
      */
     getIKAuthStatus() { return this.get('/api/ik/auth/status'); },
     ikConnect(data) { return this.post('/api/ik/auth/connect', data); },
+    ikSetToken(auth_token) { return this.post('/api/ik/auth/token', { auth_token }); },
     ikDisconnect() { return this.post('/api/ik/auth/disconnect'); },
     getIKStatus() { return this.get('/api/ik/status'); },
     getIKSummary(params) { return this.get('/api/ik/summary', params); },

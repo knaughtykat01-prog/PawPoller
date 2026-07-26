@@ -11084,6 +11084,18 @@ const App = {
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">Posting</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Posting to Itaku needs an auth token (tracking doesn't). Copy it from your logged-in Itaku session.</div>
+                        </div>
+                        <span class="telegram-status ${ikAuth.has_auth_token ? 'connected' : 'disconnected'}">${ikAuth.has_auth_token ? 'Auth token set — posting enabled' : 'No token — tracking only'}</span>
+                    </div>
+                    <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:520px">
+                        <input type="password" id="ik-auth-token" class="search-input" style="flex:1;min-width:220px" autocomplete="off" placeholder="${ikAuth.has_auth_token ? 'Replace auth token' : 'Paste auth token to enable posting'}">
+                        <button class="btn btn-secondary" id="ik-savetoken-btn">${ikAuth.has_auth_token ? 'Update token' : 'Save token'}</button>
+                        <span id="ik-token-msg" style="font-size:13px"></span>
+                    </div>
                     <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                         <button class="btn btn-primary" id="ik-poll-btn">IK Poll Now</button>
                         <button class="btn btn-secondary" id="ik-resync-btn">IK Full Resync</button>
@@ -11091,9 +11103,10 @@ const App = {
                         <span id="ik-msg" style="font-size:13px"></span>
                     </div>
                     ` : `
-                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to Itaku by entering the username to track. No auth required — just enter the username.</p>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Enter the username to <strong>track</strong> Itaku. To also <strong>post</strong> to Itaku, add your auth token (copied from your logged-in Itaku session) — tracking works without it.</p>
                     <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
                         <input type="text" id="ik-target-user" class="search-input" placeholder="Itaku username to track">
+                        <input type="password" id="ik-auth-token" class="search-input" placeholder="Auth token (optional — required to post)" autocomplete="off">
                     </div>
                     <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
                         <button class="btn btn-primary" id="ik-connect-btn">Connect</button>
@@ -13015,6 +13028,7 @@ const App = {
                 ikConnectBtn.addEventListener('click', async () => {
                     const msg = document.getElementById('ik-msg');
                     const target_user = document.getElementById('ik-target-user').value.trim();
+                    const auth_token = (document.getElementById('ik-auth-token')?.value || '').trim();
                     if (!target_user) {
                         msg.textContent = 'Username is required';
                         msg.style.color = 'var(--danger)';
@@ -13024,7 +13038,7 @@ const App = {
                     ikConnectBtn.textContent = 'Connecting...';
                     msg.textContent = '';
                     try {
-                        await API.ikConnect({ target_user });
+                        await API.ikConnect({ target_user, auth_token });
                         msg.textContent = 'Connected!';
                         msg.style.color = 'var(--success)';
                         setTimeout(() => this.renderSettings(), 1000);
@@ -13035,6 +13049,28 @@ const App = {
                         msg.style.color = 'var(--danger)';
                         ikConnectBtn.textContent = 'Connect';
                         ikConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            // IK Save token: set/replace the auth token on an already-connected
+            // account (enables posting) without re-validating the username.
+            const ikSaveTokenBtn = document.getElementById('ik-savetoken-btn');
+            if (ikSaveTokenBtn) {
+                ikSaveTokenBtn.addEventListener('click', async () => {
+                    const tmsg = document.getElementById('ik-token-msg');
+                    const token = (document.getElementById('ik-auth-token')?.value || '').trim();
+                    if (!token) { if (tmsg) { tmsg.textContent = 'Paste a token first'; tmsg.style.color = 'var(--danger)'; } return; }
+                    ikSaveTokenBtn.disabled = true;
+                    try {
+                        await API.ikSetToken(token);
+                        if (tmsg) { tmsg.textContent = 'Saved — posting enabled'; tmsg.style.color = 'var(--success)'; }
+                        setTimeout(() => this.renderSettings(), 900);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        if (tmsg) { tmsg.textContent = detail; tmsg.style.color = 'var(--danger)'; }
+                        ikSaveTokenBtn.disabled = false;
                     }
                 });
             }

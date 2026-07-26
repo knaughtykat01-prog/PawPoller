@@ -49,6 +49,9 @@ def ik_auth_status():
         "has_credentials": has_credentials,
         "has_data": has_data,
         "username": settings.get("ik_target_user", ""),
+        # Tracking needs only the username; POSTING needs the auth token. Surface
+        # it so the UI can show posting-readiness + an add-token affordance.
+        "has_auth_token": bool(settings.get("ik_auth_token")),
     }
 
 
@@ -57,11 +60,15 @@ async def ik_connect(body: dict):
     """Validate an Itaku username by checking it exists on the public API.
 
     Auth flow:
-      1. Receive target username from the frontend
+      1. Receive target username (+ optional auth token) from the frontend
       2. Create a temporary IKClient and check the user exists
-      3. If valid, save ik_target_user to settings.json
+      3. If valid, save ik_target_user (+ ik_auth_token if given) to settings
+
+    The username alone enables tracking/reading; the optional auth token is what
+    POSTING to Itaku needs (it authenticates the upload as your account).
     """
     target_user = body.get("target_user", "").strip()
+    auth_token = (body.get("auth_token") or "").strip()
 
     if not target_user:
         raise HTTPException(400, "Target user is required (the Itaku user to track)")
@@ -79,18 +86,34 @@ async def ik_connect(body: dict):
     if not result:
         raise HTTPException(404, "Itaku user not found — check the username.")
 
-    config.save_settings({
-        "ik_target_user": target_user,
-        "ik_notifications_enabled": True,
-    })
+    payload = {"ik_target_user": target_user, "ik_notifications_enabled": True}
+    if auth_token:
+        payload["ik_auth_token"] = auth_token   # CREDENTIAL_FIELD → auto-vaulted
+    config.save_settings(payload)
 
-    return {"status": "success", "message": f"Connected — tracking {target_user}"}
+    msg = f"Connected — tracking {target_user}"
+    if auth_token:
+        msg += " (auth token saved — posting enabled)"
+    return {"status": "success", "message": msg}
+
+
+@ik_router.post("/auth/token")
+def ik_set_token(body: dict):
+    """Set / replace / clear the Itaku auth token WITHOUT re-validating the
+    username — for an already-connected account that wants to enable posting.
+    Tracking works without it; posting needs it. An empty token clears it."""
+    token = (body.get("auth_token") or "").strip()
+    if not token:
+        config.delete_settings_keys(["ik_auth_token"])
+        return {"status": "cleared", "message": "Auth token cleared — tracking only"}
+    config.save_settings({"ik_auth_token": token})
+    return {"status": "success", "message": "Auth token saved — posting enabled"}
 
 
 @ik_router.post("/auth/disconnect")
 def ik_disconnect():
-    """Clear Itaku target user from settings."""
-    config.delete_settings_keys(["ik_target_user"])
+    """Clear Itaku target user + auth token from settings."""
+    config.delete_settings_keys(["ik_target_user", "ik_auth_token"])
     config.save_settings({"ik_notifications_enabled": False})
     return {"status": "success", "message": "Itaku disconnected"}
 

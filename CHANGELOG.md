@@ -12,6 +12,34 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.191.0] - 2026-07-26 - Itaku: you can now enter the auth token needed to post
+
+> **Fixes "Itaku auth token not configured" when posting.** The Itaku settings panel only had a username box and said
+> "no auth required" — but posting to Itaku needs an auth token, and there was nowhere to put it. Now there's an
+> **auth-token field**: add it on the Itaku panel (paste it from your logged-in Itaku session) and posting works. The
+> panel also shows whether posting is enabled. Tracking still needs only the username.
+
+Reported from live: `IK post failed: Itaku auth token not configured (ik_auth_token)` — the poster correctly flagged a
+permanent config error and didn't retry, but the UI gave no way to supply the token. Diagnosed on the server: the
+default Itaku account had `ik_target_user` set but no `ik_auth_token` — and the Settings → Itaku form exposed only the
+username, with copy ("No auth required — just enter the username") that's true for tracking but wrong for posting.
+
+- **Backend (`routes/ik_api.py`):** `/auth/connect` now accepts an optional `auth_token` (saved as `ik_auth_token`, a
+  CREDENTIAL_FIELD → auto-vaulted); new **`POST /api/ik/auth/token`** sets / replaces / clears the token *without*
+  re-validating the username (so an already-connected account can enable posting); `/auth/status` returns
+  `has_auth_token`; `/auth/disconnect` clears the token too. The default account reads the flat `ik_auth_token`
+  (`resolve_account_credentials`, `is_default` → unsuffixed key), so this is exactly what the poster's
+  `_resolve_creds("ik")` reads.
+- **Frontend (`app.js`, `api.js`):** the connect form gains an optional auth-token input and honest copy (username =
+  track, token = post); the connected panel gains a **Posting** status row (token set / tracking-only) plus a
+  paste-token + **Save token** control, so you can add it after connecting. `API.ikSetToken`.
+
+**Tests:** `tests/test_itaku_auth_token.py` — status `has_auth_token`; set-token vaults it + empty clears it;
+disconnect clears both. (Connect-with-token isn't unit-tested — it hits Itaku's live user-validation API.)
+
+**Note:** this only adds the missing input. You still supply the token (from your logged-in Itaku session) — it can't
+be fetched for you. Re-post the piece that failed once the token's in.
+
 ## [2.190.2] - 2026-07-24 - Masterpieces: "＋ Add variant" — upload a render straight in
 
 > **Add a variant by uploading a file.** On a Masterpiece there's now a **＋ Add variant** button next to Replace
