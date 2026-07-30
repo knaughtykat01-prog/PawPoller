@@ -12,6 +12,52 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.193.4] - 2026-07-30 - Request URLs are no longer logged at all (the fix that actually worked)
+
+> **Tokens are genuinely out of the logs now — verified against the live server, not just tests.** The previous two
+> attempts didn't work in practice. This one removes the logging that was leaking them rather than trying to clean it up
+> afterwards. Trade-off: you no longer get a log line for every outgoing web request. Still true: **log files written
+> before today contain credentials** — clear them.
+
+**Two scrubbing mechanisms shipped and both failed in production**, while being provably correct everywhere else:
+
+| | mechanism | outcome |
+|---|---|---|
+| 2.193.1 | `handler.addFilter` on both root handlers | installed, correct, **ineffective in prod** |
+| 2.193.2 | `logging.setLogRecordFactory` | installed, correct, **ineffective in prod** |
+
+Evidence gathered on the VM for 2.193.2 before giving up on it: the marker logged from *inside* the running process
+confirmed `factory=install.<locals>.factory handlers=2`; the patterns were verified against the real token's exact shape
+(10 digits, `:`, 35 chars including a hyphen) and scrubbed it; `/proc` showed a **single** process (pid 1,
+`python server.py`); nothing in site-packages or app code calls `setLogRecordFactory` or `makeLogRecord`; and the raw
+line was timestamped *after* the factory was set. That combination should be impossible. **The reason was never
+found** — and a credential leak is not something to keep betting on a mechanism that cannot be verified end to end.
+
+**So this stops the record existing instead of transforming it.** httpx logs `HTTP Request: %s %s "%s %d %s"` for every
+call at INFO, and that line was the source of every observed leak — Threads/Instagram/Tumblr carry the token in the
+query string, Telegram in the path. `httpx`, `httpcore` and `httpx._client` are raised to `WARNING`, so the record is
+never created. No record, nothing to leak, nothing depending on a transformation surviving. This is deliberately blunt;
+it is also the only layer with no failure mode.
+
+- **Cost:** no per-request INFO lines from httpx. `PAWPOLLER_LOG_REQUEST_URLS=1` restores them (still scrubbed by the
+  factory + filters — belt-and-braces, not a guarantee). Genuine httpx `WARNING`/`ERROR` still surface; tested.
+- **Self-verifying.** `install()` scrubs a synthetic Telegram URL on every boot and logs the result next to the factory
+  name, handler count, secret count and silencing state. **If that line is absent or its canary is unmasked, redaction
+  is not running.** The absence of exactly this evidence is what made the two earlier failures take hours to see.
+
+Verified in production: `0` raw tokens in the live stream, `0` httpx lines, bot still polling, `0` tracebacks.
++2 tests (suppression leaves no record; env escape hatch restores it) — 18 redaction tests, full suite **766 passed**.
+
+## [2.193.3] - 2026-07-30 - Log redaction announces itself at startup (diagnostic)
+
+> **Groundwork for finding a bug.** The app now says, in its own log, whether credential scrubbing is switched on.
+
+Shipped as a diagnostic mid-investigation, hence no user-facing behaviour change. 2.193.1 and 2.193.2 were both
+installed correctly when imported — in tests *and* inside the production container — yet neither redacted the running
+app's logs, and there was no way to tell from outside whether `install()` had taken effect in-process. `install()` now
+logs, at WARNING, the record-factory name, handler count, secret count and module path. Kept permanently: a security
+control that cannot be observed cannot be trusted. Extended in 2.193.4 with a canary.
+
 ## [2.193.2] - 2026-07-30 - Fix: 2.193.1's log scrubbing did not actually work
 
 > **2.193.1 did not do what it said.** The log scrubbing was in place but wasn't being applied to the running app's

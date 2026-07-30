@@ -7153,6 +7153,40 @@ If you touch this file, keep the three regression tests passing — each encodes
 `test_record_factory_redacts_with_no_handler_filters`, `test_concurrent_logging_does_not_deadlock`,
 `test_scrub_never_touches_config`.
 
+### 24a.1 The layer the guarantee actually rests on (2.193.4) — read this first
+**Scrubbing is NOT what keeps tokens out of the logs.** Two scrubbing mechanisms shipped and both failed in production:
+
+| version | mechanism | result |
+|---|---|---|
+| 2.193.1 | `handler.addFilter` on both root handlers | installed + correct, **ineffective in prod** |
+| 2.193.2 | `logging.setLogRecordFactory` | installed + correct, **ineffective in prod** |
+
+For 2.193.2 the following were all confirmed on the live VM: the startup marker, logged *from inside the running
+process*, reported `factory=install.<locals>.factory handlers=2`; the patterns matched and scrubbed the real token's
+exact shape; `/proc` showed a **single** process (pid 1, `python server.py`); nothing in site-packages or app code calls
+`setLogRecordFactory` or `makeLogRecord`; and the raw line was timestamped **after** the factory was set. That
+combination should be impossible and **the cause was never found.**
+
+So the working fix removes the source: `silence_url_loggers()` raises `httpx`, `httpcore` and `httpx._client` to
+`WARNING`. httpx logs `HTTP Request: %s %s "%s %d %s"` at INFO for **every** call, and that line carried every observed
+leak (Threads/Instagram/Tumblr put the token in the query string; Telegram puts it in the path
+`/bot<id>:<secret>/getUpdates`). With the record never created there is nothing to transform and nothing that can fail.
+
+**Do not re-litigate this by re-enabling request logging and trusting the scrubbers.** If you need per-request lines for
+debugging, set `PAWPOLLER_LOG_REQUEST_URLS=1` temporarily and treat scrubbing as best-effort while it is on. Genuine
+httpx `WARNING`/`ERROR` records are unaffected either way.
+
+**The canary is the contract.** Every boot logs:
+
+```
+log redaction ACTIVE — factory=… handlers=… secrets=… url_loggers_silenced=True canary=…/bot[REDACTED]
+```
+
+If that line is **missing**, `install()` did not run. If `canary=` shows an **unmasked** token, scrubbing is broken. If
+`url_loggers_silenced=False`, the env override is set and request URLs are being logged. Check it after any change to
+logging setup or entry points — it is the only in-process evidence the control is live, and its absence is precisely
+what let two broken releases reach production.
+
 ### Two layers, and why both are needed
 1. **Pattern** — sensitive query/form parameter names, the Telegram bot path token, `Bearer`/`Token` schemes,
    `Authorization`/`Cookie`/`X-Api-Key` headers. Catches credentials in code that does not exist yet, but only in shapes

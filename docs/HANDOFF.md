@@ -1,7 +1,24 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-30
-**Current version (master):** 2.193.2 — **Fix: 2.193.1's log scrubbing did not work in production.** It shipped and was
+**Current version (master):** 2.193.4 — **Request URLs are no longer logged at all.** THE fix, after two that didn't
+work. `httpx`/`httpcore`/`httpx._client` raised to `WARNING` so the leaking record is never created (httpx logs the full
+URL at INFO for every call; Threads/IG/Tumblr carry the token in the query string, Telegram in the path — every observed
+leak was one of those lines). Deliberately blunt, and the only layer with no failure mode. Scrubbing (factory +
+filters) stays as defence but the guarantee no longer rests on it.
+**Why:** 2.193.1 (handler filters) and 2.193.2 (record factory) BOTH failed in production while provably correct —
+marker logged from inside the live process confirmed the right factory + 2 handlers; patterns verified against the real
+token's exact shape; `/proc` showed a single process; nothing calls `setLogRecordFactory`/`makeLogRecord`; raw line
+timestamped AFTER the factory was set. **Never explained.** Don't re-litigate it; if you need per-request logs use
+`PAWPOLLER_LOG_REQUEST_URLS=1` and treat scrubbing as best-effort.
+**Self-verifying:** every boot logs `log redaction ACTIVE — factory=… handlers=… secrets=… url_loggers_silenced=…
+canary=…/bot[REDACTED]`. **If that line is missing or the canary is unmasked, redaction is NOT running.**
+Verified in prod: 0 raw tokens, 0 httpx lines, bot polling, 0 tracebacks. Suite **766 passed**.
+**⚠ Pre-fix log files still contain live tokens — rotate/clear them.**
+
+**Prior — 2.193.3 —** diagnostic: `install()` announces itself at startup (see above; extended with a canary in 2.193.4).
+
+**Prior — 2.193.2 — Fix attempt: 2.193.1's log scrubbing did not work in production.** (Also ineffective; see 2.193.4.) It shipped and was
 deployed before being verified against real traffic. On the VM the filter WAS on both root handlers and redacted
 correctly when invoked via `docker exec` in that same container, yet every `httpx` line from the running app came
 through raw; the exact runtime reason was never pinned down, which is the lesson — the mechanism depended on too much
