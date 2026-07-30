@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-30
-**Current version (master):** 2.193.0 — **Unified art detail page + variant deep-links.** Artwork and Masterpieces
+**Current version (master):** 2.193.1 — **SECURITY: credentials were being printed to the logs.** Found while scanning
+the 2.193.0 deploy output on prod. Nothing logged them deliberately — **httpx logs the full request URL at INFO**, and
+Threads/Instagram/Tumblr put the token in the query string while Telegram puts it in the *path*
+(`/bot<id>:<secret>/getUpdates`). Live tokens were in `server.log`, `docker logs` and the dashboard Logs view. New
+`log_redaction.py` installed from all three logging entry points right after `basicConfig`. Two layers: **pattern**
+(sensitive query/form params, telegram bot path, Bearer/Token, Authorization/Cookie headers) + **value** (the real
+secrets from the vault, so a token is unfindable in any shape — exception reprs, response bodies, future f-strings).
+Hazards handled: redacts **`record.args`** not just `msg` (httpx puts the URL in args — a msg-only filter would catch
+nothing); filters attach to **handlers** not the logger (a root-logger filter is skipped for propagated library
+records); **thread-local recursion guard** because reading settings can itself log; never raises, never drops a record;
+identity fields (`username`/handles) stay legible and values <8 chars are never masked. +13 tests.
+**⚠ Pre-2.193.1 log files still contain live tokens — rotate/clear them.** Deployed to prod.
+
+**Prior — 2.193.0 — Unified art detail page + variant deep-links.** Artwork and Masterpieces
 opened two different pages over ONE record (`masterpiece.json` is a back-compat superset of `artwork.json`; both
 endpoints load via `artwork_reader.load_artwork`; no discriminator exists in the data). Merged onto the Masterpiece
 renderer — `Artwork.renderDetail` delegates, old body kept unreachable as `_renderDetailLegacy` for one release.

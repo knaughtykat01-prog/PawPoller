@@ -40,6 +40,15 @@ logging.basicConfig(
         ),
     ],
 )
+
+# Strip credentials from every record before any handler sees it (2.193.1).
+# httpx logs the full request URL at INFO, and Threads/Instagram/Tumblr/Telegram
+# carry tokens in the query string or path — so `docker compose logs` and
+# server.log were both printing live credentials. Installed immediately after
+# basicConfig so no request logging can precede it.
+import log_redaction
+log_redaction.install()
+
 logger = logging.getLogger("server")
 
 # CF proxy debug logging is extremely verbose (every request/response/cookie).

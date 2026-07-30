@@ -7120,6 +7120,46 @@ comment rows) both read numbers computed server-side by FA/IB/Bluesky, already i
 can reach either. **Do not** subtract a local count to compensate: the local and remote tallies drift (deleted comments,
 the 25-fetch capture cap, throttled polls) and the subtraction eventually goes negative.
 
+## 24a. Log credential redaction (`log_redaction.py`, 2.193.1)
+
+**Nothing logged credentials on purpose.** `httpx` logs the complete request URL at INFO for every call, and several
+platforms carry the secret in the URL itself — Threads / Instagram / Tumblr in the query string, **Telegram in the
+path** (`api.telegram.org/bot<id>:<secret>/getUpdates`). So live tokens were written to `LOGS_DIR/server.log`,
+`docker compose logs`, and the dashboard's own Logs view. Found by scanning the 2.193.0 deploy's startup output.
+
+`log_redaction.install()` is called from **all three** logging entry points (`server.py`, `main.py`, `dashboard.py`)
+immediately after `basicConfig`, so no request can be logged before the filter exists.
+
+### Two layers, and why both are needed
+1. **Pattern** — sensitive query/form parameter names, the Telegram bot path token, `Bearer`/`Token` schemes,
+   `Authorization`/`Cookie`/`X-Api-Key` headers. Catches credentials in code that does not exist yet, but only in shapes
+   it already knows.
+2. **Value** — the real secret values read from the settings vault (`config.is_credential_key`). This is what makes the
+   guarantee hold: a token stays unfindable when it appears with no recognisable shape at all — inside an exception
+   repr, a response body, or an f-string added in a future change.
+
+### Four hazards, each of which would have silently defeated it
+- **`record.args`, not just `record.msg`.** httpx logs
+  `('HTTP Request: %s %s "%s %d %s"', method, url, …)` — the URL is an *argument*. A filter that only scrubbed `msg`
+  would redact nothing on the exact lines that leak. Both are rewritten (tuple and dict arg forms).
+- **Attach to handlers, not the logger.** A filter on the root *logger* is **not** consulted for records propagated up
+  from child loggers, so every `httpx` record would bypass it. `install()` is handler-scoped and idempotent.
+- **Recursion.** Value redaction calls `config.get_settings()`, and that can log (vault warnings), which re-enters the
+  filter → infinite recursion. A `threading.local` guard makes the filter a pass-through while it is refreshing.
+  Regression-tested in `test_reading_settings_cannot_recurse_through_the_filter`.
+- **Never break logging.** Every path is wrapped in `try/except`; a broken vault degrades to pattern-only. `filter()`
+  always returns `True` — it rewrites, it never drops a record.
+
+### Deliberate non-goals
+- **Identity fields stay readable.** `username` / `*_identifier` / handles are in `CREDENTIAL_FIELDS` but are not
+  secrets, and masking them turns "logging in as KnaughtyKat" into noise. `_IDENTITY_HINTS` exempts them.
+- **Values under 8 chars are never masked** — short strings collide with ordinary log text and would mangle real lines.
+- **Log files already on disk are NOT retroactively cleaned.** The filter only affects lines written after it installs;
+  pre-2.193.1 logs still contain live tokens and must be rotated or cleared manually.
+
+Secret values are sorted longest-first so a token containing a shorter secret as a substring is masked whole rather than
+leaving a tail. The value cache refreshes at most every 60 s.
+
 ## 25. Unified art detail page (2.193.0)
 
 Spec: `docs/specs/self_comments_and_unified_detail.md` Part B.

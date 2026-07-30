@@ -12,6 +12,49 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.193.1] - 2026-07-30 - Security: access tokens no longer appear in the logs
+
+> **Logs are now scrubbed of anything sensitive.** Tokens, passwords and keys are replaced with `[REDACTED]` before a
+> line is ever written, so a log file is safe to open, keep, or attach to a bug report. Worth knowing: **log files
+> written before this update aren't covered** — clear them out if any have been somewhere you don't control.
+
+Found while scanning the 2.193.0 deploy's startup output on the production VM. Nothing was logging credentials
+deliberately: **httpx logs the full request URL at INFO for every call**, and Threads / Instagram / Tumblr carry the
+token in the query string while Telegram carries it in the *path*
+(`api.telegram.org/bot<id>:<secret>/getUpdates`). Every one of those was landing in `server.log`, `docker logs`, and
+the dashboard's own Logs view in plaintext.
+
+New `log_redaction.py`, installed from all three logging entry points (`server.py`, `main.py`, `dashboard.py`)
+immediately after `basicConfig` so nothing can be logged before it. Two layers, because either alone is insufficient:
+
+1. **Pattern redaction** — sensitive query/form parameters (`access_token`, `refresh_token`, `api_key`,
+   `client_secret`, `password`, `sid`, `code`, …), the Telegram bot path token, `Bearer`/`Token` auth schemes, and
+   `Authorization`/`Cookie`/`X-Api-Key` headers. Covers credentials belonging to code not yet written — but only in
+   shapes it recognises.
+2. **Value redaction** — the actual secret values out of the settings vault, so a token is unfindable even with no
+   recognisable shape at all: an exception repr, a response body, an f-string someone adds next year. This is what
+   makes the guarantee hold rather than being best-effort.
+
+Implementation notes, each of which was a real hazard:
+- **`record.args`, not just `record.msg`.** httpx logs `('HTTP Request: %s %s "%s %d %s"', method, url, …)` — the URL
+  is an *arg*. A msg-only filter would have redacted nothing at all here. Tested explicitly.
+- **Filter on the handlers, not the logger.** A filter on the root *logger* is not consulted for records propagated up
+  from library loggers, so an `httpx` record would bypass it entirely.
+- **Recursion guard.** Value redaction reads settings, and reading settings can itself log (vault warnings) — which
+  re-enters the filter. A thread-local flag makes it a pass-through while refreshing. Regression-tested.
+- **Never breaks logging.** Every path is wrapped; a broken vault degrades to pattern-only rather than raising inside a
+  handler. `filter()` always returns True — it only rewrites, never drops.
+- **Identity stays readable.** Usernames/handles are in `CREDENTIAL_FIELDS` but aren't secrets, and masking them would
+  turn "logging in as KnaughtyKat" into noise; `_IDENTITY_HINTS` exempts them. Values under 8 chars are never redacted
+  either — short strings collide with ordinary log text.
+- Secret values sort longest-first, so a token containing a shorter secret as a substring is masked whole instead of
+  leaving a tail.
+
+Value cache refreshes at most every 60s. +13 tests (`tests/test_log_redaction.py`) covering the real observed token
+shapes, the args path, the recursion guard, over-redaction of ordinary lines, and hostile input.
+
+**Not covered by this change:** log files already on disk. The filter only affects lines written from now on.
+
 ## [2.193.0] - 2026-07-30 - One art detail page, and variant tiles open their own render
 
 > **Artwork and Masterpieces now open the same page.** Clicking a piece from your Artwork shelf used to give you a

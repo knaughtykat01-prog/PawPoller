@@ -57,6 +57,13 @@ logging.basicConfig(
         ),
     ],
 )
+
+# Strip credentials from every record before any handler sees it (2.193.1) —
+# httpx logs full request URLs, several platforms put tokens in them. Desktop
+# app.log is as exposed as the server's: users attach it to bug reports.
+import log_redaction
+log_redaction.install()
+
 logger = logging.getLogger("main")
 
 

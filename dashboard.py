@@ -65,6 +65,14 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
+
+# Credential redaction (2.193.1). basicConfig() is a no-op when a handler is
+# already configured (server.py/main.py import this module), but install() is
+# idempotent and handler-scoped, so calling it here covers the case where
+# dashboard.py IS the entry point (uvicorn dashboard:app).
+import log_redaction
+log_redaction.install()
+
 logger = logging.getLogger("dashboard")
 
 
