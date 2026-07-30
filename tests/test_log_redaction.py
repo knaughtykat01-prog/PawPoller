@@ -228,6 +228,48 @@ def test_set_secrets_survives_garbage():
     assert "SYNTHETICpatternstillworks" not in out
 
 
+def test_url_logging_is_suppressed_so_no_record_exists_to_leak():
+    """The only layer that cannot fail in transformation: no record at all.
+
+    Scrubbing was verifiably installed and verifiably correct in isolation, yet
+    verifiably ineffective in production twice (2.193.1 handler filters, 2.193.2
+    record factory). httpx's INFO request line is where every observed leak came
+    from, so its level is raised and the record is never created.
+    """
+    import io
+    log_redaction.install()
+    assert logging.getLogger("httpx").level == logging.WARNING
+
+    buf = io.StringIO()
+    handler = logging.StreamHandler(buf)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    lg = logging.getLogger("httpx")
+    lg.propagate = False
+    lg.addHandler(handler)
+    try:
+        lg.info("HTTP Request: GET %s",
+                "https://api.telegram.org/bot3333300000:SYNTHETICneverlogged/x")
+        assert buf.getvalue() == "", "httpx INFO still emitted a record"
+        # A genuine httpx problem must still surface.
+        lg.warning("connection pool exhausted")
+        assert "connection pool exhausted" in buf.getvalue()
+    finally:
+        lg.removeHandler(handler)
+        lg.propagate = True
+
+
+def test_request_url_logging_can_be_re_enabled(monkeypatch):
+    """Escape hatch for debugging; the scrubbing layers still apply."""
+    monkeypatch.setenv("PAWPOLLER_LOG_REQUEST_URLS", "1")
+    logging.getLogger("httpx").setLevel(logging.NOTSET)
+    log_redaction.silence_url_loggers()
+    assert logging.getLogger("httpx").level != logging.WARNING
+    assert log_redaction._SILENCED is False
+    monkeypatch.delenv("PAWPOLLER_LOG_REQUEST_URLS")
+    log_redaction.silence_url_loggers()          # restore for other tests
+    assert log_redaction._SILENCED is True
+
+
 def test_install_is_idempotent():
     log_redaction.install()
     log_redaction.install()

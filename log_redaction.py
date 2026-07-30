@@ -192,12 +192,50 @@ def install(*_args, **_kwargs) -> None:
         if not any(isinstance(f, SecretRedactingFilter) for f in handler.filters):
             handler.addFilter(SecretRedactingFilter())
 
-    # Announce it. This is not noise: it is the only evidence, from inside the
-    # running process, that the control is actually active. 2.193.1 shipped a
-    # version that was provably installed when imported yet did nothing for the
-    # live app, and the absence of any such marker is what made that take hours
-    # to see. If this line is missing from a log, redaction is NOT running.
+    silence_url_loggers()
+
+    # Announce it, and CANARY-TEST it in the same breath. This is not noise: it
+    # is the only evidence, from inside the running process, that the control is
+    # actually active. Two previous attempts (2.193.1, 2.193.2) were provably
+    # installed — correct factory, filters on both handlers, patterns verified
+    # against the real token shape, single process — and still emitted raw
+    # tokens for the live app. The failure was never explained. So the control
+    # now proves itself on every boot instead of being assumed.
+    canary = ("https://api.telegram.org/bot1234500000:"
+              "CANARYcanaryCANARYcanary")
+    scrubbed = scrub(canary)
     logging.getLogger(__name__).warning(
-        "log redaction ACTIVE — factory=%s handlers=%d secrets=%d module=%s",
+        "log redaction ACTIVE — factory=%s handlers=%d secrets=%d "
+        "url_loggers_silenced=%s canary=%s",
         getattr(logging.getLogRecordFactory(), "__qualname__", "?"),
-        len(root.handlers), len(_SECRETS), __file__)
+        len(root.handlers), len(_SECRETS), _SILENCED, scrubbed)
+
+
+# Loggers that emit full request URLs at INFO. httpx logs
+# 'HTTP Request: %s %s "%s %d %s"' for EVERY call, and Threads/Instagram/Tumblr
+# put the token in the query string while Telegram puts it in the path — so
+# these lines are where every observed leak came from.
+#
+# Their level is raised so the record is never created. This is deliberately
+# blunt, and it is the only layer that does not depend on the record surviving a
+# transformation: no record, nothing to leak. It exists because scrubbing was
+# demonstrably installed and demonstrably correct in isolation, yet demonstrably
+# ineffective in production, twice — and a credential leak is not something to
+# keep betting on a mechanism I could not verify end to end.
+#
+# Cost: you lose per-request INFO lines from httpx. Set
+# PAWPOLLER_LOG_REQUEST_URLS=1 to keep them (they are then still scrubbed by the
+# factory and filters, which is belt-and-braces rather than a guarantee).
+_URL_LOGGERS = ("httpx", "httpcore", "httpx._client")
+_SILENCED = False
+
+
+def silence_url_loggers() -> None:
+    global _SILENCED
+    import os
+    if os.environ.get("PAWPOLLER_LOG_REQUEST_URLS", "").strip() in ("1", "true", "yes"):
+        _SILENCED = False
+        return
+    for name in _URL_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
+    _SILENCED = True
