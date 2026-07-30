@@ -29,6 +29,7 @@ from html import escape as _esc
 import httpx
 
 from polling import notifications
+from polling import self_comment
 from polling.notifications import describe_error
 
 import config
@@ -303,6 +304,10 @@ async def run_fa_poll_cycle(account_id: int | None = None, force_full: bool = Fa
         cookie_b=creds.get("fa_cookie_b", ""),
         **proxy_kwargs(settings, "fa"),
     )
+    # Our own handle(s), for excluding self-comments from "new comment" counts
+    # (2.192.0). FA has always known its username — it just never used it here.
+    my_handles = ({self_comment.normalise_handle(creds.get("fa_username", ""))}
+                  if creds.get("fa_username") else set())
 
     try:
         conn = get_connection()
@@ -419,15 +424,22 @@ async def run_fa_poll_cycle(account_id: int | None = None, force_full: bool = Fa
                         scraped = await client.get_submission_comments(sub_id)
                         # Batch insert: get existing comment_ids first to identify new ones
                         existing_cids = {r["comment_id"] for r in fa_queries.get_fa_comments(conn, sub_id)}
-                        new_count = fa_queries.upsert_fa_comments_batch(conn, account_id, scraped)
+                        fa_queries.upsert_fa_comments_batch(conn, account_id, scraped, my_handles)
                         conn.commit()
-                        stats["new_comments_found"] += new_count
+                        # Count and announce only comments that are NOT ours
+                        # (2.192.0). The batch insert's total_changes cannot tell
+                        # our rows apart, so the tally is derived here from the
+                        # same is-own test the insert used.
                         for c in scraped:
-                            if str(c["comment_id"]) not in existing_cids:
-                                new_comment_details.append({
-                                    "username": c.get("username", ""),
-                                    "title": detail.get("title", ""),
-                                })
+                            if str(c["comment_id"]) in existing_cids:
+                                continue
+                            if self_comment.is_own_author(c.get("username", ""), my_handles):
+                                continue
+                            stats["new_comments_found"] += 1
+                            new_comment_details.append({
+                                "username": c.get("username", ""),
+                                "title": detail.get("title", ""),
+                            })
                     except Exception as ce:
                         # Comment fetch failure is non-fatal.
                         logger.warning("Failed to fetch FA comments for %d: %s", sub_id, ce, exc_info=True)

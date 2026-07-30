@@ -208,19 +208,31 @@ def upsert_fa_comment(conn: sqlite3.Connection, comment: dict, account_id: int =
         return False
 
 
-def upsert_fa_comments_batch(conn: sqlite3.Connection, account_id: int, comments: list[dict]) -> int:
-    """Batch insert FA comments. Returns count of new comments."""
+def upsert_fa_comments_batch(conn: sqlite3.Connection, account_id: int, comments: list[dict],
+                             own_handles: set[str] | None = None) -> int:
+    """Batch insert FA comments. Returns count of new comments.
+
+    *own_handles* (2.192.0) is the set of normalised handles that mean "us"; a
+    matching comment is stored with is_own = 1 so it never counts as new
+    engagement. The returned count still reflects rows inserted — callers that
+    report "new comments" filter on is_own themselves, because
+    ``total_changes`` cannot distinguish which rows were ours.
+    """
     if not comments:
         return 0
+    from polling import self_comment
+
     before = conn.total_changes
     conn.executemany(
         """INSERT OR IGNORE INTO fa_comments (comment_id, account_id, submission_id, username, comment_text,
-           commented_at, first_seen_at, reply_to, reply_level, is_deleted)
-           VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)""",
+           commented_at, first_seen_at, reply_to, reply_level, is_deleted, is_own)
+           VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?)""",
         [(str(c["comment_id"]), account_id, c["submission_id"], c.get("username", ""),
           c.get("comment_text", ""), c.get("commented_at"),
           c.get("reply_to"), c.get("reply_level", 0),
-          1 if c.get("is_deleted") else 0) for c in comments],
+          1 if c.get("is_deleted") else 0,
+          1 if self_comment.is_own_author(c.get("username", ""), own_handles or set()) else 0)
+         for c in comments],
     )
     return conn.total_changes - before
 
@@ -242,8 +254,9 @@ def get_fa_recent_comments(conn: sqlite3.Connection, limit: int = 20, account_id
     sql = ("SELECT c.*, s.title as submission_title"
            " FROM fa_comments c"
            " JOIN fa_submissions s ON c.submission_id = s.submission_id")
-    if where:
-        sql += " WHERE " + where
+    # Our own comments are not activity to report back to us (2.192.0).
+    where = (where + " AND " if where else "") + "COALESCE(c.is_own, 0) = 0"
+    sql += " WHERE " + where
     sql += " ORDER BY c.first_seen_at DESC LIMIT ?"
     params.append(limit)
     rows = conn.execute(sql, params).fetchall()

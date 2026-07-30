@@ -5,6 +5,7 @@
 - ``POST /api/inbox/handled``  — mark/unmark one comment handled.
 - ``POST /api/inbox/reply``    — native reply where the platform supports it
   (Stage B: bsky / mast / e621). Everything else replies on-site via permalink.
+- ``POST /api/inbox/backfill-own`` — re-run own-comment detection (2.192.0).
 
 Reply creds resolve exactly like the Posts publisher (explicit account, else the
 platform default, else legacy flat keys) — the comment row remembers which of
@@ -18,6 +19,7 @@ from fastapi import APIRouter, HTTPException
 
 from database.db import get_connection
 from database import inbox_queries
+from polling import self_comment
 
 logger = logging.getLogger(__name__)
 inbox_router = APIRouter(prefix="/api/inbox", tags=["inbox"])
@@ -25,12 +27,30 @@ inbox_router = APIRouter(prefix="/api/inbox", tags=["inbox"])
 _REPLYABLE = {"bsky", "mast", "e621"}
 
 
+_own_backfilled = False
+
+
 @inbox_router.get("")
 def get_inbox(platform: str | None = None, unhandled: bool = False,
               limit: int = 200):
-    """The unified inbox + an unhandled count for the nav badge."""
+    """The unified inbox + an unhandled count for the nav badge.
+
+    Own comments are reported handled by get_inbox itself (2.192.0), so they can
+    never reach the badge count.
+    """
+    global _own_backfilled
     conn = get_connection()
     try:
+        # Retro-flag historical self-comments once per process — opening the
+        # Inbox is the first place a user would notice them. Not run from
+        # _run_migrations because Mastodon/Bluesky handles are only known after
+        # a login has happened.
+        if not _own_backfilled:
+            _own_backfilled = True
+            try:
+                self_comment.backfill_own_comments(conn)
+            except Exception as e:  # noqa: BLE001 — never fail the feed over it
+                logger.warning("Self-comment backfill skipped: %s", e)
         items = inbox_queries.get_inbox(conn, platform=platform or None,
                                         unhandled_only=unhandled,
                                         limit=max(1, min(limit, 500)))
@@ -39,6 +59,23 @@ def get_inbox(platform: str | None = None, unhandled: bool = False,
     finally:
         conn.close()
     return {"items": items, "unhandled_count": unhandled_count}
+
+
+@inbox_router.post("/backfill-own")
+def backfill_own():
+    """Re-run own-comment detection over stored comments.
+
+    Worth calling after connecting an account or fixing a handle: identity is
+    resolved at login, so rows captured before that was known stay unflagged
+    until this runs.
+    """
+    conn = get_connection()
+    try:
+        flagged = self_comment.backfill_own_comments(conn)
+    finally:
+        conn.close()
+    return {"ok": True, "flagged": flagged,
+            "total": sum(flagged.values()) if flagged else 0}
 
 
 @inbox_router.post("/handled")

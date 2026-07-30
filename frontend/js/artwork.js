@@ -828,7 +828,34 @@ window.Artwork = {
 
     /* ── Detail ─────────────────────────────────────────────── */
 
+    /* UNIFIED ART DETAIL (2.193.0).
+     *
+     * There used to be two pages for one record: this one (reached from
+     * #/artwork/image/{name}) and the Masterpiece detail (#/masterpieces/{name}).
+     * They were never two entities — masterpiece.json is a back-compatible
+     * SUPERSET of artwork.json, both endpoints load through the same
+     * artwork_reader.load_artwork(), and list_masterpieces adopts every artwork
+     * folder into the index. There is no discriminator anywhere in the data.
+     *
+     * The Masterpiece renderer was the superset of the two (variants + per-variant
+     * stats, members, pHash linking, sync-to-sites, growth chart, collections,
+     * junk, replace-image, fold, prev/next), so it won. The four things only this
+     * page had — publish now, schedule, delete, alt text — were ported into it.
+     *
+     * BOTH routes stay live and render the same page, deliberately: detail_route
+     * is authored server-side in submissions_api.py and consumed by the Library,
+     * showcase, queue, commissions and Image Tool, so a redirect would have meant
+     * repointing all of them for no user-visible gain.
+     *
+     * The old renderer below is kept, unreachable, only as the port reference for
+     * anything that turns out to have been missed; delete it once this has had a
+     * release in the wild. */
     async renderDetail(name) {
+        if (window.Masterpieces) return window.Masterpieces.renderDetail(name);
+        return this._renderDetailLegacy(name);
+    },
+
+    async _renderDetailLegacy(name) {
         const app = document.getElementById('app');
         app.innerHTML = `<div class="loading-spinner">Loading…</div>`;
         let data;

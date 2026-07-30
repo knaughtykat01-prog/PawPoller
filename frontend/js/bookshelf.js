@@ -419,7 +419,13 @@ window.Bookshelf = {
 
     /* A tile per non-primary variant of an artwork work (2.190.1), rendered right
      * after its master card so the Library shows every render, not just the
-     * master. Read-only — variant management lives on the Masterpiece detail. */
+     * master.
+     *
+     * 2.193.0: each tile now links to its OWN variant via the '?v=<key>' selector
+     * the backend puts on v.detail_route. Before this the key was dropped and
+     * every variant tile opened the master's hero image, which is exactly what
+     * made the two detail pages feel inconsistent. Falls back to the master route
+     * if an older payload has no per-variant route. */
     _variantBooks(w) {
         const vs = w.variants || [];
         if (!vs.length || !w.detail_route) return '';
@@ -429,7 +435,7 @@ window.Bookshelf = {
                 ? `<div class="book-cover"${rAttr} style="background-image:url('${this.esc(v.thumb_url)}')"><span class="book-vbadge">variant</span></div>`
                 : `<div class="book-cover book-cover--blank"${rAttr}><span class="book-vbadge">variant</span></div>`;
             return `
-            <a class="book book--variant" href="${this.esc(w.detail_route)}"
+            <a class="book book--variant" href="${this.esc(v.detail_route || w.detail_route)}"
                title="${this.esc(v.label || v.key)} — a variant of ${this.esc(w.title || w.name)}">
                 ${cover}
                 <div class="book-spine">

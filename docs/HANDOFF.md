@@ -1,7 +1,35 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-26
-**Current version (master):** 2.191.1 — **Itaku setup-guide copy** (where to find the auth token: Authorization: Token header / Local Storage, NOT a cookie). Follows 2.191.0 (added the token field). Copy-only.
+**Last updated:** 2026-07-30
+**Current version (master):** 2.193.0 — **Unified art detail page + variant deep-links.** Artwork and Masterpieces
+opened two different pages over ONE record (`masterpiece.json` is a back-compat superset of `artwork.json`; both
+endpoints load via `artwork_reader.load_artwork`; no discriminator exists in the data). Merged onto the Masterpiece
+renderer — `Artwork.renderDetail` delegates, old body kept unreachable as `_renderDetailLegacy` for one release.
+Ported in the only four Artwork-only capabilities: publish now, schedule + pending list, delete, alt text. **Both
+routes stay live** (no redirect — `detail_route` is server-authored in `submissions_api.py:172` and consumed by 6
+surfaces). Variant deep-link rides a query tail `?v=<key>` (NOT a path segment — artwork names may contain `/`);
+`App.route()` splits `?…` off before segmenting. Opening a variant selects that render *with the sibling strip still
+shown*. Fixed two latent bugs: the `.art-plat-row` vs `artwork-plat-row` selector mismatch meant "already-posted →
+dim/disable" had **never** fired, and per-platform Override-tags inputs were rendered but never read (now written to
+the per-platform tag map before publish, since `POST /api/artwork/publish` has no `tag_overrides` param). +7 tests;
+full suite **748 passed**. No JS test harness exists, so the merged renderer itself is NOT covered — backend only.
+Spec: `docs/specs/self_comments_and_unified_detail.md`. **NOT deployed / NOT tagged** (Rhys: no release yet).
+
+**Prior — 2.192.0 — Self-comments no longer count as new comments.** New `polling/self_comment.py`.
+IB and FA had **no** filter at all → own comments toasted, pushed to Telegram, counted in `new_comments_found`, sat in
+the Inbox as "to answer", and ranked the posting account as its own **top fan**. The four A1 platforms' filter
+(`inbox_capture.py:75`) was actively wrong: it compared `split("@")[0]` on both sides, so a Mastodon
+`@rhys@other.instance` matched our `@rhys@our.instance`. Now a full normalised-handle match, with OUR side widened for
+Mastodon's varying `acct` format; bsky's email-capable `bsky_identifier` is discarded when it contains `@`. Rows are
+**stored + flagged `is_own`**, never dropped (dropping them would make the capture-count delta re-fetch that thread
+forever, and a bad match would be unrecoverable). `get_top_fans` / recent-comment feeds exclude them; `get_inbox` keeps
+them as thread context but reports them handled, which also retro-fixes rows the old new-rows-only auto-handle could
+never reach. `remember_own_handle` persists `<code>_own_handle` (plaintext — a handle is not a secret) because mast/bsky
+resolve identity only at login and the read-side filters have no client. `backfill_own_comments()` runs once per process
+on first `GET /api/inbox` + `POST /api/inbox/backfill-own`. Migration adds `is_own` to all three comment tables with
+each ALTER **and its index together in `_run_migrations`** (never a `*_schema.sql` — schema load runs first).
+**Known limitation:** `milestone_comments` and `total_comments` read the platform's own server-side count, which
+includes your replies; no local flag can reach them. +13 tests — the first coverage `inbox_capture.py` has ever had.
 
 **Prior — 2.191.0 — Itaku auth token in the UI (fixes posting).** The IK settings panel only had
 a username field ("no auth required") but posting needs `ik_auth_token` with nowhere to enter it. `routes/ik_api.py`:

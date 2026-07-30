@@ -37,6 +37,7 @@ def ensure_inbox_tables(conn: sqlite3.Connection) -> None:
             permalink       TEXT NOT NULL DEFAULT '',
             submission_title TEXT NOT NULL DEFAULT '',
             meta            TEXT NOT NULL DEFAULT '{}',
+            is_own          INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (platform, comment_id)
         )""")
     conn.execute("""
@@ -65,20 +66,26 @@ def upsert_platform_comment(
     submission_title: str = "",
     account_id: int | None = None,
     meta: dict | None = None,
+    is_own: bool = False,
 ) -> bool:
     """Insert a captured comment; ignore if already seen. Returns True if new.
 
     INSERT OR IGNORE keeps first_seen_at stable (the notification-order
     timestamp) — platforms don't expose edit history worth tracking here.
+
+    *is_own* marks a comment written by the posting account (2.192.0). Stored,
+    not skipped: dropping it would leave the captured count permanently below
+    the platform's reported count, so the delta check would re-fetch that thread
+    every cycle forever.
     """
     cur = conn.execute(
         """INSERT OR IGNORE INTO platform_comments
             (platform, comment_id, submission_id, account_id, author, body,
-             commented_at, permalink, submission_title, meta)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             commented_at, permalink, submission_title, meta, is_own)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (platform, str(comment_id), str(submission_id), account_id,
          author, body, commented_at, permalink, submission_title,
-         json.dumps(meta or {})),
+         json.dumps(meta or {}), 1 if is_own else 0),
     )
     conn.commit()
     return cur.rowcount > 0
@@ -119,7 +126,11 @@ def get_inbox(conn: sqlite3.Connection, *, platform: str | None = None,
     first (by when OUR poller first saw each comment — the user's notification
     experience), each row shaped identically:
     {platform, comment_id, submission_id, submission_title, author, body,
-     commented_at, first_seen_at, permalink, handled, can_reply, meta}
+     commented_at, first_seen_at, permalink, handled, can_reply, meta, is_own}
+
+    ``is_own`` rows (written by the posting account) stay in the feed as thread
+    context but are always reported handled, so they can never inflate the
+    "N to answer" count.
 
     IB/FA permalinks are constructed (submission page + comment anchor); the
     A1 platforms store theirs at capture time. Missing tables (legacy DBs) are
@@ -142,7 +153,7 @@ def get_inbox(conn: sqlite3.Connection, *, platform: str | None = None,
                c.commented_at, c.first_seen_at,
                'https://inkbunny.net/s/' || c.submission_id
                    || '#commentid_' || c.comment_id AS permalink,
-               '{}' AS meta
+               '{}' AS meta, COALESCE(c.is_own, 0) AS is_own
           FROM comments c LEFT JOIN submissions s USING (submission_id)""")
 
     # FurAffinity — dedicated table; hide moderator-deleted comments.
@@ -154,14 +165,15 @@ def get_inbox(conn: sqlite3.Connection, *, platform: str | None = None,
                c.commented_at, c.first_seen_at,
                'https://www.furaffinity.net/view/' || c.submission_id
                    || '/#cid:' || c.comment_id AS permalink,
-               '{}' AS meta
+               '{}' AS meta, COALESCE(c.is_own, 0) AS is_own
           FROM fa_comments c LEFT JOIN fa_submissions s USING (submission_id)
          WHERE COALESCE(c.is_deleted, 0) = 0""")
 
     # Stage-A1 platforms — unified capture table.
     _grab("""
         SELECT platform, comment_id, submission_id, submission_title,
-               author, body, commented_at, first_seen_at, permalink, meta
+               author, body, commented_at, first_seen_at, permalink, meta,
+               COALESCE(is_own, 0) AS is_own
           FROM platform_comments""")
 
     # Handled flags in one read.
@@ -181,7 +193,13 @@ def get_inbox(conn: sqlite3.Connection, *, platform: str | None = None,
     for r in rows:
         if platform and r["platform"] != platform:
             continue
-        r["handled"] = (r["platform"], str(r["comment_id"])) in handled
+        r["is_own"] = bool(r.get("is_own"))
+        # Your own comment is never something to answer, so it is forced handled
+        # (2.192.0). Deriving it here rather than writing inbox_state at capture
+        # time is deliberate: it also fixes rows captured BEFORE 2.192.0, and
+        # rows the old auto-handle branch could never reach because it only ran
+        # inside `if is_new:` and so never retro-handled an existing row.
+        r["handled"] = r["is_own"] or (r["platform"], str(r["comment_id"])) in handled
         if unhandled_only and r["handled"]:
             continue
         r["can_reply"] = r["platform"] in replyable

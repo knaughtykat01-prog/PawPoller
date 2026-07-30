@@ -1071,6 +1071,38 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     from database import inbox_queries as _inbox
     _inbox.ensure_inbox_tables(conn)
 
+    # Migration: is_own on all three comment tables (2.192.0). A comment written
+    # by the posting account is not engagement — it must not count as a new
+    # comment, notify, or rank in Top Fans. Rows are kept and flagged rather
+    # than dropped so the Inbox can still show them as thread context.
+    #
+    # The ALTER and its index live HERE together, never in a *_schema.sql: the
+    # schema load runs BEFORE this function, so a schema file that indexed a
+    # migration-added column would crash every upgrade (and fresh-install tests
+    # would not catch it, because there the column exists by the time it runs).
+    #
+    # platform_comments gets the column in its CREATE TABLE too (see
+    # inbox_queries.ensure_inbox_tables) for fresh installs — that CREATE is
+    # IF NOT EXISTS, so upgraders would otherwise never receive it.
+    for _ct in ("comments", "fa_comments", "platform_comments"):
+        if not _table_exists(conn, _ct):
+            continue
+        try:
+            conn.execute(
+                f"ALTER TABLE {_ct} ADD COLUMN is_own INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+    if _table_exists(conn, "comments"):
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_own "
+                     "ON comments(is_own, first_seen_at)")
+    if _table_exists(conn, "fa_comments"):
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_fa_comments_own "
+                     "ON fa_comments(is_own, first_seen_at)")
+    if _table_exists(conn, "platform_comments"):
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_platform_comments_own "
+                     "ON platform_comments(platform, is_own)")
+
     # Migration: beta-reader draft share tokens (gap-wave-5 §3). One table
     # mapping a url-safe token → story folder, gated by enabled + expiry. The
     # public /share/{token} route reads it. Additive, idempotent.

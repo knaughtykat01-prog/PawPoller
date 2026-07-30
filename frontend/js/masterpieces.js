@@ -579,7 +579,9 @@ window.Masterpieces = {
     /* ←/→ step through pieces while on a masterpiece detail (not while typing). */
     _onNavKey(e) {
         if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-        if (!/^#\/masterpieces\/[^/]/.test(location.hash || '')) return;
+        // Both routes render this page (2.193.0), so arrow-stepping works on either.
+        const h = location.hash || '';
+        if (!/^#\/masterpieces\/[^/]/.test(h) && !/^#\/artwork\/image\/[^/]/.test(h)) return;
         if (e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
         const to = e.key === 'ArrowLeft' ? this._navPrev : this._navNext;
         if (to) { e.preventDefault(); location.hash = `#/masterpieces/${encodeURIComponent(to)}`; }
@@ -592,13 +594,31 @@ window.Masterpieces = {
         return 'mp-rating';
     },
 
+    /* Which variant the URL asked for (2.193.0): '#/…/My_Art?v=nsfw' → 'nsfw'.
+     * Rides a query tail rather than a path segment because artwork names may
+     * contain '/', which would make '…/v/nsfw' ambiguous with the name itself.
+     * Clicking a variant tile in the Library lands here, and the page opens on
+     * THAT render with every sibling still in the strip beside it. */
+    _variantFromHash() {
+        const h = window.location.hash || '';
+        const q = h.indexOf('?');
+        if (q === -1) return '';
+        try { return new URLSearchParams(h.slice(q + 1)).get('v') || ''; }
+        catch (e) { return ''; }
+    },
+
     _paintDetail(name, m) {
         const root = document.getElementById('mp-detail');
         if (!root) return;
+        // Kept for the delegated handlers (_applyOverrides needs the existing
+        // per-platform tag map so an override doesn't clobber the others).
+        this._detail = m;
 
         const t = m.totals || {};
         const heroUrl = this._canonUrl(name, m.image);
         const _mpRating = this.esc((m.rating || '').toLowerCase());  // drives SFW blur
+        // NB: the hero <img> src is patched to the selected variant below (mainUrl
+        // is computed after the chips), so a '?v=' deep link opens on that render.
         const hero = heroUrl
             ? `<img class="mp-hero-img" id="mp-hero-img" data-rating="${_mpRating}" src="${this.esc(heroUrl)}" alt="${this.esc(m.title || name)}">`
             : `<div class="mp-hero-ph">🖼️</div>`;
@@ -615,16 +635,28 @@ window.Masterpieces = {
                     + ` · 💬 ${this._fmt((v.totals || {}).comments)} · ${v.member_count || 0} site${(v.member_count || 0) === 1 ? '' : 's'}`,
             }))
             : imgs.map((f, i) => ({ u: this._canonUrl(name, f), label: i === 0 ? 'Primary' : `Alt ${i}`, st: '' }));
+        // Which chip opens selected (2.193.0). A '?v=<key>' from a Library variant
+        // tile preselects that render; otherwise the hero (index 0) as before.
+        const wantKey = this._variantFromHash();
+        let selIdx = 0;
+        if (wantKey && variants.length) {
+            const i = variants.findIndex(v => (v.key || '') === wantKey);
+            if (i >= 0) selIdx = i;
+        }
         const gallery = chips.length > 1
             ? `<div class="mp-alts" data-rating="${_mpRating}">${chips.map((c, i) => `
-                <div class="mp-altwrap${i === 0 ? ' is-active' : ''}" data-mp-img="${this.esc(c.u)}"
+                <div class="mp-altwrap${i === selIdx ? ' is-active' : ''}" data-mp-img="${this.esc(c.u)}"
                      data-vstats="${this.esc(c.st)}" role="button" tabindex="0">
                     <img class="mp-alt" src="${this.esc(c.u)}" alt="" loading="lazy">
                     <div class="mp-alt-label">${this.esc(c.label)}</div>
                 </div>`).join('')}</div>`
             : '';
         const vstatsLine = chips.length > 1
-            ? `<div class="mp-vstats muted" id="mp-vstats">${this.esc(chips[0].st)}</div>` : '';
+            ? `<div class="mp-vstats muted" id="mp-vstats">${this.esc(chips[selIdx].st)}</div>` : '';
+        // The selected render drives the stage image AND the ambient backdrop, so
+        // a deep-linked variant doesn't open behind the hero's blur.
+        const mainUrl = (chips[selIdx] && chips[selIdx].u) || heroUrl;
+        const selLabel = selIdx > 0 && chips[selIdx] ? chips[selIdx].label : '';
         // Variant manager (2.189.0). The chips above are a VIEWER; this is where
         // you rename one or separate it back out into its own Masterpiece.
         // Only for declared variants — unlabeled 2.152 alts have nothing to manage.
@@ -731,13 +763,17 @@ window.Masterpieces = {
                     </div>
                 </div>
                 <div class="mp-head-info">
-                    <div class="mp-title">${this.esc(m.title || name)}</div>
+                    <div class="mp-title">${this.esc(m.title || name)}${selLabel
+                        ? ` <span class="muted mp-selvariant" style="font-weight:400;font-size:.75em">— ${this.esc(selLabel)}</span>`
+                        : ''}</div>
                     <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">${rating}${junkBadge}
                         ${personas ? `<span class="mp-personas">${personas}</span>` : ''}
                         <button class="btn btn-sm" data-add-collection data-mtype="masterpiece"
                             data-mref="${this.esc(name)}" data-label="${this.esc(m.title || name)}"
                             title="Bundle this piece (with its companion story / announcement posts) into a Collection">＋ Add to Collection</button>
-                        ${junkBtn}</div>
+                        ${junkBtn}
+                        <button class="btn btn-sm btn-danger" data-mp-delete type="button"
+                            title="Delete this piece from your library. Already-published posts stay live on each platform. Prefer 🗑 Junk if you only want it out of the grid.">Delete</button></div>
                     <div class="mp-headline">
                         <div class="mp-headline-item"><span class="mp-headline-num">${this._fmt(t.views)}</span><span class="mp-headline-label">Views</span></div>
                         <div class="mp-headline-item"><span class="mp-headline-num">${this._fmt(t.favorites)}</span><span class="mp-headline-label">Favorites</span></div>
@@ -756,6 +792,10 @@ window.Masterpieces = {
                         <input class="mp-input" id="mp-e-title" value="${this.esc(m.title || '')}"></label>
                     <label class="mp-field"><span>Description</span>
                         <textarea class="mp-input" id="mp-e-desc" rows="4">${this.esc(m.description || '')}</textarea></label>
+                    <label class="mp-field"><span>Alt text
+                            <span class="muted">(for screen readers; used as the Bluesky image description)</span></span>
+                        <input class="mp-input" id="mp-e-alt" value="${this.esc(m.alt_text || '')}"
+                            placeholder="e.g. A grey wolf in a red jacket grins at the viewer"></label>
                     <div class="mp-field-row">
                         <label class="mp-field"><span>Rating</span>
                             <select class="mp-input" id="mp-e-rating">${ratingOpts}</select></label>
@@ -777,6 +817,29 @@ window.Masterpieces = {
             <div class="mp-section">
                 <div class="mp-section-title">Published to</div>
                 ${locTable}
+            </div>
+
+            <div class="mp-section">
+                <div class="mp-section-title">Publish to more
+                    <span class="muted" style="font-weight:400;font-size:.8rem">— post this image to sites it isn't on yet</span>
+                </div>
+                <div id="mp-detail-platforms"></div>
+                <div class="mp-edit-actions">
+                    <button class="btn btn-primary btn-sm" data-mp-publish type="button">Publish now</button>
+                    <button class="btn btn-sm" data-mp-schedule-toggle type="button">&#128340; Schedule&hellip;</button>
+                    <span class="mp-edit-msg muted" id="mp-pub-msg"></span>
+                </div>
+                <div class="schedule-form" id="mp-schedule-form" style="display:none">
+                    <div class="schedule-form-inner">
+                        <label class="schedule-label" for="mp-schedule-datetime">Publish the ticked platforms at:</label>
+                        <input type="datetime-local" class="schedule-datetime" id="mp-schedule-datetime">
+                        <div class="schedule-form-actions">
+                            <button class="btn btn-sm btn-primary" data-mp-schedule-confirm type="button">Confirm schedule</button>
+                            <button class="btn btn-sm btn-outline" data-mp-schedule-cancel type="button">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="schedule-pending" id="mp-scheduled-list"></div>
             </div>
 
             <div class="mp-section">
@@ -820,10 +883,185 @@ window.Masterpieces = {
                 <div class="mp-chart-wrap"><canvas id="mp-combined-chart"></canvas></div>
             </div>`;
 
+        // Open on the selected render (2.193.0) — patched after innerHTML because
+        // the chip list, and therefore the selection, is computed after `hero`.
+        if (mainUrl && mainUrl !== heroUrl) {
+            const heroImg = document.getElementById('mp-hero-img');
+            const bg = document.getElementById('mp-stage-bg');
+            if (heroImg) heroImg.src = mainUrl;
+            if (bg) bg.src = mainUrl;
+        }
+
+        // Publish-to-more picker (ported from the Artwork detail, 2.193.0). Reuses
+        // Artwork's live shared helpers rather than duplicating the platform rows.
+        this._wireDetailPublish(name, m);
+
         // Same-image suggestions (native pHash) + combined time-series (≥2 points).
         this._loadSuggestions();
         this._loadChart(name);
         this._foldTarget = null;      // reset the "fold into" choice per detail open
+    },
+
+    /* ── Publish / schedule / delete (ported from the Artwork detail, 2.193.0) ──
+     * The old Artwork page owned these four capabilities and nothing else the
+     * Masterpiece page didn't already do better, so they move here and this
+     * becomes the single art detail page.
+     *
+     * Two latent bugs are fixed in the move:
+     *  1. The old code queried '.art-plat-row' but _renderPlatformRows emits
+     *     'artwork-plat-row', so the "already posted → dim and disable" pass had
+     *     never once fired. Corrected selector below.
+     *  2. The per-platform "Override tags" inputs were rendered but never read by
+     *     the publish or schedule paths — typed overrides were silently dropped.
+     *     _platformOverrides() now collects them for both. */
+    async _wireDetailPublish(name, m) {
+        const host = document.getElementById('mp-detail-platforms');
+        if (!host || !window.Artwork) return;
+
+        window.Artwork._renderPlatformRows(host);
+
+        // Dim + disable platforms this piece is already posted to. Both the
+        // publications list and the resolved member locations count as "posted",
+        // since a linked upload IS a live post on that site.
+        const posted = new Set([
+            ...(m.publications || []).filter(p => p.status === 'posted').map(p => p.platform),
+            ...(m.locations || []).map(l => l.platform),
+        ].filter(Boolean));
+        host.querySelectorAll('.artwork-plat-row').forEach(row => {
+            if (!posted.has(row.dataset.platform)) return;
+            row.style.opacity = '.5';
+            const cb = row.querySelector('.art-plat-check');
+            if (cb) { cb.disabled = true; cb.title = 'Already on this site'; }
+        });
+        await window.Artwork._populateAccountSelectors();
+        this._loadScheduled(name);
+    },
+
+    /* Ticked platforms + their chosen account + any per-platform tag override. */
+    _publishSelection() {
+        const host = document.getElementById('mp-detail-platforms');
+        if (!host) return { platforms: [], accountIds: {}, overrides: {} };
+        const platforms = Array.from(host.querySelectorAll('.art-plat-check:checked'))
+            .map(c => c.value);
+        const accountIds = {};
+        host.querySelectorAll('.art-acct-select').forEach(sel => {
+            if (platforms.includes(sel.dataset.platform)) {
+                accountIds[sel.dataset.platform] = parseInt(sel.value, 10);
+            }
+        });
+        const overrides = {};
+        host.querySelectorAll('.art-plat-tags').forEach(inp => {
+            const p = inp.dataset.platform;
+            if (!platforms.includes(p)) return;
+            const tags = (inp.value || '').split(',').map(s => s.trim()).filter(Boolean);
+            if (tags.length) overrides[p] = tags;
+        });
+        return { platforms, accountIds, overrides };
+    },
+
+    /* Persist per-platform tag overrides BEFORE publishing.
+     *
+     * There is no tag_overrides parameter on POST /api/artwork/publish — the
+     * documented mechanism is the per-platform tag map in masterpiece.json, which
+     * save_artwork_metadata preserves and every poster cascades from. Writing the
+     * override there (rather than inventing a request field the backend would
+     * ignore) is what makes it actually take effect, and it makes the override
+     * durable and visible on the record instead of a one-shot. */
+    async _applyOverrides(name, overrides) {
+        const keys = Object.keys(overrides || {});
+        if (!keys.length) return;
+        const tags = { ...((this._detail || {}).canonical_tags || {}) };
+        keys.forEach(p => { tags[p] = overrides[p]; });
+        await API.updateArtwork(name, { tags });
+    },
+
+    async _publishNow(name) {
+        const msg = document.getElementById('mp-pub-msg');
+        const { platforms, accountIds, overrides } = this._publishSelection();
+        if (!platforms.length) { if (msg) msg.textContent = 'Tick at least one site.'; return; }
+        if (msg) msg.textContent = 'Publishing…';
+        try {
+            await this._applyOverrides(name, overrides);
+            const res = await API.publishArtwork({
+                artwork_name: name, platforms, account_ids: accountIds,
+            });
+            const ok = res.successes || 0, fail = res.failures || 0;
+            this._toast(fail ? 'error' : 'success', `Published: ${ok} ok, ${fail} failed`);
+            this.renderDetail(name);
+        } catch (err) {
+            if (msg) msg.textContent = 'Publish failed: ' + err.message;
+        }
+    },
+
+    async _confirmSchedule(name) {
+        const msg = document.getElementById('mp-pub-msg');
+        const val = (document.getElementById('mp-schedule-datetime') || {}).value;
+        if (!val) { if (msg) msg.textContent = 'Pick a date and time.'; return; }
+        const when = new Date(val);
+        if (isNaN(when.getTime())) { if (msg) msg.textContent = 'Invalid date/time.'; return; }
+        if (when.getTime() < Date.now()) { if (msg) msg.textContent = 'Pick a time in the future.'; return; }
+        const { platforms, accountIds, overrides } = this._publishSelection();
+        if (!platforms.length) { if (msg) msg.textContent = 'Tick at least one site.'; return; }
+
+        // datetime-local is LOCAL; toISOString() hands the backend a UTC instant,
+        // so 8pm AEST fires at 8pm AEST.
+        const isoStr = when.toISOString();
+        if (msg) msg.textContent = 'Scheduling…';
+        await this._applyOverrides(name, overrides);
+        let ok = 0, fail = 0;
+        for (const platform of platforms) {
+            try {
+                await API.scheduleArtwork({
+                    artwork_name: name, platform, scheduled_at: isoStr,
+                    account_id: accountIds[platform],
+                });
+                ok++;
+            } catch (err) { fail++; console.warn('Schedule failed for', platform, err); }
+        }
+        this._toast(fail ? 'error' : 'success',
+            `Scheduled ${ok} site${ok === 1 ? '' : 's'} for ${when.toLocaleString()}`
+            + (fail ? `, ${fail} failed` : ''));
+        const form = document.getElementById('mp-schedule-form');
+        if (form) form.style.display = 'none';
+        if (msg) msg.textContent = '';
+        this._loadScheduled(name);
+    },
+
+    async _loadScheduled(name) {
+        const box = document.getElementById('mp-scheduled-list');
+        if (!box) return;
+        let items = [];
+        try {
+            const resp = await API.getArtworkScheduled(name);
+            items = (resp.items || []).filter(i => i.status === 'pending' && i.scheduled_at);
+        } catch (e) { return; }
+        if (!items.length) { box.innerHTML = ''; return; }
+        items.sort((a, b) => (a.scheduled_at || '').localeCompare(b.scheduled_at || ''));
+        let html = '<div class="schedule-pending-header">Scheduled</div>';
+        for (const it of items) {
+            // Stored 'YYYY-MM-DD HH:MM:SS' is UTC; make it a real instant, then localise.
+            const when = new Date(it.scheduled_at.replace(' ', 'T') + 'Z').toLocaleString();
+            const plat = (window.PLATFORMS || []).find(p => p.code === it.platform);
+            html += '<div class="schedule-pending-item">'
+                + '<span class="schedule-pending-icon">&#128340;</span> '
+                + this.esc(plat ? plat.name : it.platform) + ' &mdash; ' + this.esc(when)
+                + ' <button class="btn btn-xs btn-outline" data-mp-sched-cancel="' + it.queue_id + '">Cancel</button>'
+                + '</div>';
+        }
+        box.innerHTML = html;
+    },
+
+    async _deletePiece(name) {
+        if (!confirm('Delete this piece from your library?\n\nAny already-published posts stay live on '
+            + 'each platform. If you only want it out of the grid, use 🗑 Junk instead — that keeps '
+            + 'the folder and every site link.')) return;
+        try {
+            await API.deleteArtwork(name);
+            this._toast('success', 'Deleted');
+            window.location.hash = '#/library/type/artwork';
+        } catch (err) {
+            this._toast('error', 'Delete failed: ' + err.message);
+        }
     },
 
     /* ── Membership management (Phase 3) ── */
@@ -849,6 +1087,43 @@ window.Masterpieces = {
             if (det) { e.preventDefault(); this._detach(det.dataset.platform, det.dataset.sid); return; }
             const junk = e.target.closest('[data-mp-junk]');
             if (junk) { e.preventDefault(); this._setJunk(junk); return; }
+            // Publish / schedule / delete — ported from the Artwork detail (2.193.0).
+            const pub = e.target.closest('[data-mp-publish]');
+            if (pub) { e.preventDefault(); this._publishNow(this._current); return; }
+            const schedT = e.target.closest('[data-mp-schedule-toggle]');
+            if (schedT) {
+                e.preventDefault();
+                const form = document.getElementById('mp-schedule-form');
+                const input = document.getElementById('mp-schedule-datetime');
+                if (form) {
+                    const showing = form.style.display !== 'none';
+                    form.style.display = showing ? 'none' : '';
+                    if (!showing && input && !input.value && window.Artwork) {
+                        input.value = window.Artwork._defaultScheduleLocal();
+                    }
+                }
+                return;
+            }
+            const schedC = e.target.closest('[data-mp-schedule-cancel]');
+            if (schedC) {
+                e.preventDefault();
+                const form = document.getElementById('mp-schedule-form');
+                if (form) form.style.display = 'none';
+                return;
+            }
+            const schedOk = e.target.closest('[data-mp-schedule-confirm]');
+            if (schedOk) { e.preventDefault(); this._confirmSchedule(this._current); return; }
+            const schedX = e.target.closest('[data-mp-sched-cancel]');
+            if (schedX) {
+                e.preventDefault();
+                const qid = parseInt(schedX.dataset.mpSchedCancel, 10);
+                API.cancelArtworkScheduled(this._current, qid)
+                    .then(() => this._loadScheduled(this._current))
+                    .catch(err => this._toast('error', 'Cancel failed: ' + err.message));
+                return;
+            }
+            const del = e.target.closest('[data-mp-delete]');
+            if (del) { e.preventDefault(); this._deletePiece(this._current); return; }
             const foldPick = e.target.closest('[data-mp-fold-pick]');
             if (foldPick) { e.preventDefault(); this._pickFoldTarget(); return; }
             const fold = e.target.closest('[data-mp-fold]');
@@ -1095,6 +1370,7 @@ window.Masterpieces = {
             rating: val('mp-e-rating'),
             characters: list(val('mp-e-chars')),
             tags: list(val('mp-e-tags')),
+            alt_text: val('mp-e-alt').trim(),
         };
     },
 

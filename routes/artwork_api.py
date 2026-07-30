@@ -79,13 +79,6 @@ def get_artwork_detail(name: str):
     except FileNotFoundError:
         raise HTTPException(404, detail=f"Artwork not found: {name}")
 
-    conn = get_connection()
-    try:
-        pubs = posting_queries.get_publications_with_stats(
-            conn, story_name=name, content_type="artwork")
-    finally:
-        conn.close()
-
     # Variants (2.190.0) — the declared renders (SFW/NSFW/rough/…) live on the
     # masterpiece.json, un-cascaded. `images` is every image file in the folder,
     # so the detail can show a strip even for pieces with only undeclared alts.
@@ -94,6 +87,31 @@ def get_artwork_detail(name: str):
                 if isinstance(v, dict) and v.get("image")]
     images = sorted(f.name for f in artwork.path.iterdir()
                     if f.suffix.lower() in artwork_reader.IMAGE_EXTENSIONS)
+    # Hero first (2.193.0) — matches GET /api/masterpieces/{name}. The unified
+    # detail page renders the strip in payload order, so an unordered list put
+    # the hero in the middle of its own gallery.
+    if artwork.image in images:
+        images.remove(artwork.image)
+        images.insert(0, artwork.image)
+
+    conn = get_connection()
+    try:
+        pubs = posting_queries.get_publications_with_stats(
+            conn, story_name=name, content_type="artwork")
+        # Per-variant rollups (2.193.0), so this payload is interchangeable with
+        # the masterpiece one. Guarded: a folder with no members rolls up to
+        # zeroes rather than failing the whole detail read.
+        try:
+            from database import masterpiece_queries as _mq
+            variants = [
+                {**v, "totals": _mq.rollup_members(conn, name, v.get("key", ""))["totals"],
+                 "member_count": len(_mq.rollup_members(
+                     conn, name, v.get("key", ""))["members"])}
+                for v in variants]
+        except Exception:  # noqa: BLE001 — stats are a nicety, the page is not
+            pass
+    finally:
+        conn.close()
 
     return {
         "name": artwork.name,

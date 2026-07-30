@@ -62,9 +62,12 @@ def get_top_fans(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
         pass
 
     # IB comments -- COUNT(*) gives total comments per user across all submissions.
+    # is_own = 0 excludes our own comments (2.192.0): before that filter the
+    # posting account ranked as its own top fan.
     try:
         rows = conn.execute(
-            "SELECT username, COUNT(*) as comment_count FROM comments GROUP BY username"
+            "SELECT username, COUNT(*) as comment_count FROM comments"
+            " WHERE COALESCE(is_own, 0) = 0 GROUP BY username"
         ).fetchall()
         for r in rows:
             name = r["username"]
@@ -79,7 +82,8 @@ def get_top_fans(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
     # comment activity contributes to FA users' scores.
     try:
         rows = conn.execute(
-            "SELECT username, COUNT(*) as comment_count FROM fa_comments GROUP BY username"
+            "SELECT username, COUNT(*) as comment_count FROM fa_comments"
+            " WHERE COALESCE(is_own, 0) = 0 GROUP BY username"
         ).fetchall()
         for r in rows:
             name = r["username"]

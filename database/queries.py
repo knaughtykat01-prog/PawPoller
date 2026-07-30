@@ -304,22 +304,28 @@ def get_recent_faves(conn: sqlite3.Connection, limit: int = 20, account_id: int 
 # Inkbunny comments are tracked individually, similar to faving_users above.
 # Each comment has a unique comment_id from the API, used for deduplication.
 
-def upsert_comment(conn: sqlite3.Connection, comment: dict) -> bool:
+def upsert_comment(conn: sqlite3.Connection, comment: dict,
+                   is_own: bool = False) -> bool:
     """Insert a comment if not already tracked. Returns True if new.
 
     Same deduplication strategy as upsert_faving_user: rely on the UNIQUE
     constraint on comment_id and catch IntegrityError for duplicates.
     Comments are immutable once inserted -- we never update their text.
+
+    *is_own* flags a comment written by the posting account (2.192.0) so it is
+    excluded from new-comment counts, notifications and Top Fans while staying
+    readable as thread context.
     """
     try:
         conn.execute(
             """INSERT INTO comments (comment_id, submission_id, username, comment_text,
-               commented_at, first_seen_at, is_reply, reply_to_comment_id)
-               VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?)""",
+               commented_at, first_seen_at, is_reply, reply_to_comment_id, is_own)
+               VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)""",
             (
                 comment["comment_id"], comment["submission_id"], comment.get("username", ""),
                 comment.get("comment_text", ""), comment.get("commented_at"),
                 1 if comment.get("is_reply") else 0, comment.get("reply_to_comment_id"),
+                1 if is_own else 0,
             ),
         )
         return True
@@ -348,8 +354,9 @@ def get_recent_comments(conn: sqlite3.Connection, limit: int = 20, account_id: i
     sql = ("SELECT c.*, s.title as submission_title"
            " FROM comments c"
            " JOIN submissions s ON c.submission_id = s.submission_id")
-    if where:
-        sql += " WHERE " + where
+    # Our own comments are not activity to report back to us (2.192.0).
+    where = (where + " AND " if where else "") + "COALESCE(c.is_own, 0) = 0"
+    sql += " WHERE " + where
     sql += " ORDER BY c.first_seen_at DESC LIMIT ?"
     params.append(limit)
     rows = conn.execute(sql, params).fetchall()

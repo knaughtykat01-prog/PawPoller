@@ -852,8 +852,17 @@ const App = {
     route() {
         this._stopAutoRefresh();
 
-        /* Parse hash: '#/fa/submission/42' -> hash='/fa/submission/42', parts=['fa','submission','42'] */
-        const hash = window.location.hash.slice(1) || '/';
+        /* Parse hash: '#/fa/submission/42' -> hash='/fa/submission/42', parts=['fa','submission','42']
+           A '?key=value' tail is split off BEFORE the path is segmented (2.193.0),
+           so route params never leak into the last path segment — the unified art
+           detail uses '#/artwork/image/My_Art?v=nsfw' to preselect a variant, and
+           without this the name would come through as 'My_Art?v=nsfw'. Read the
+           tail via App.routeQuery(). No pre-2.193 route uses '?', so this is inert
+           for every other page. */
+        const rawHash = window.location.hash.slice(1) || '/';
+        const _q = rawHash.indexOf('?');
+        const hash = _q === -1 ? rawHash : rawHash.slice(0, _q);
+        this._routeQuery = _q === -1 ? '' : rawHash.slice(_q + 1);
         const parts = hash.split('/').filter(Boolean);
 
         /* Full-screen pages hide the sidebar, context bar, bottom nav, and

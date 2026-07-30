@@ -7055,3 +7055,129 @@ delivered piece (`#/artwork/image/<name>`); `deliver_sites` picks from the poste
   archived=False)` / `set_archived` / `count_archived`; API list takes `?archived=1` and returns `archived_count`.
   Board shows active by default; bookmarkable `#/commissions/archived` view (route in `app.js`) with Unarchive;
   Archive/Unarchive on cards + detail header. Archived rows never appear in the active status columns.
+
+## 24. Own-account comment detection (`is_own`, 2.192.0)
+
+Spec: `docs/specs/self_comments_and_unified_detail.md` Part A.
+
+**The problem.** A comment written by the posting account is not engagement, but it counted as a NEW comment nearly
+everywhere: desktop toasts, Telegram pushes, `new_comments_found`, the Inbox "N to answer" badge, the recent-comments
+activity feed, and the **Top Fans leaderboard** — where the posting account ranked as its own top fan.
+
+**Store and flag, never drop.** `is_own INTEGER NOT NULL DEFAULT 0` on all three comment tables. Dropping self-comments
+at ingestion would leave the captured count permanently below the platform's reported count, so `inbox_capture`'s delta
+gate would re-fetch that thread every cycle forever — and a wrong identity match would be unrecoverable rather than
+fixable by re-running the backfill.
+
+### 24.1 `polling/self_comment.py`
+- `normalise_handle(v)` — trim, casefold, strip ONE leading `@`. **Never splits on an interior `@`.**
+- `own_handles(conn, platform, account_id=None)` — every normalised form meaning "us": the persisted
+  `<code>_own_handle`, plus the platform's canonical identity key (`username` / `fa_username` / `e621_username` /
+  `da_target_user` / `bsky_identifier`), reading both the bare and `acct_<id>_`-namespaced key.
+- `is_own_author(author, handles)` — full-string match. Empty handle set ⇒ always False (unknown identity reads as a
+  stranger, never as "everyone is me").
+- `remember_own_handle(conn, platform, handle, account_id)` — persists the login-resolved handle. **Plaintext,
+  deliberately NOT in `CREDENTIAL_FIELDS`** — a handle is not a secret.
+- `backfill_own_comments(conn)` — idempotent retro-flag.
+
+**Why OUR side is widened instead of narrowing the incoming author.** The pre-2.192 check compared
+`author.lower().lstrip("@").split("@")[0]` against the same transform of our handle — local part only — so a Mastodon
+commenter `@rhys@some.other.instance` matched our own `@rhys@our.instance`. Mastodon's `acct` is legitimately a bare
+local name for home-instance users and `user@host` for remote ones, so `own_handles` adds the bare local part of *our*
+stored handle. A match on it still means a home-instance user of that name (us); `rhys@other.social` matches neither
+entry. Bluesky handles never contain `@` (`rhys.bsky.social`), so a `bsky_identifier` containing one is an email login
+and is discarded rather than compared.
+
+### 24.2 Where it applies
+| Layer | Location | Behaviour |
+|---|---|---|
+| IB ingest | `polling/poller.py:394` | flags; skips `new_comments_found` + `new_comment_details` ⇒ no toast, no Telegram |
+| FA ingest | `polling/fa_poller.py:422` | same; tally derived per-comment (`total_changes` can't tell our rows apart) |
+| A1 ingest | `polling/inbox_capture.py` | flags; own rows excluded from the returned `captured` count |
+| Top Fans | `analytics_queries.py:66-89` | `COALESCE(is_own,0) = 0` on both the IB and FA legs |
+| Activity feeds | `queries.get_recent_comments`, `fa_queries.get_fa_recent_comments` | excluded |
+| Inbox | `inbox_queries.get_inbox` | **kept in the feed** as thread context, but reported `handled` |
+
+`get_inbox` deriving `handled` from `is_own` (rather than writing `inbox_state` at capture time) is what retro-fixes
+rows captured before 2.192.0 **and** rows the old auto-handle could never reach — it only ran inside `if is_new:`, so an
+already-stored self-comment was permanently stuck as unhandled.
+
+### 24.3 Migration + backfill
+The `ALTER TABLE` for each of `comments` / `fa_comments` / `platform_comments` sits with its index **together inside
+`db.py._run_migrations`**. This is not stylistic: the schema load runs BEFORE `_run_migrations`, so a `*_schema.sql`
+that indexed a migration-added column would crash every upgrade while fresh-install tests passed (the column exists by
+the time they run). `platform_comments` additionally carries the column in its `CREATE TABLE` in
+`inbox_queries.ensure_inbox_tables` — that CREATE is `IF NOT EXISTS`, so upgraders would otherwise never receive it.
+
+Backfill is deliberately NOT in `_run_migrations` (mast/bsky handles are only known after login, mirroring
+`backfill_credential_stamps` from 2.170). It fires once per process on the first `GET /api/inbox`, and
+`POST /api/inbox/backfill-own` re-runs it after connecting an account.
+
+### 24.4 Known limitation — platform-reported counts
+`milestone_comments` (`polling/telegram.py:31-46`, `:444-471`) and the `total_comments` summary stat
+(`database/queries.py:445` — `COALESCE(SUM(comments_count),0)` over the *submissions* table, **not** a COUNT over
+comment rows) both read numbers computed server-side by FA/IB/Bluesky, already inclusive of your replies. No local flag
+can reach either. **Do not** subtract a local count to compensate: the local and remote tallies drift (deleted comments,
+the 25-fetch capture cap, throttled polls) and the subtraction eventually goes negative.
+
+## 25. Unified art detail page (2.193.0)
+
+Spec: `docs/specs/self_comments_and_unified_detail.md` Part B.
+
+**Artwork and Masterpiece were never two entities.** `masterpiece.json` is a back-compatible SUPERSET of `artwork.json`
+(`posting/artwork_reader.py:43-49`, `_meta_path` accepts either); `routes/artwork_api.py:78` and
+`routes/masterpieces_api.py:749` both load through `artwork_reader.load_artwork()`; `list_masterpieces` adopts **every**
+artwork folder into the index via `mq.ensure_indexed_bulk`, and the `masterpieces` table is a thin name-keyed index, not
+a source of truth. There is no discriminator in the data — only two frontend renderers over one record.
+
+**One renderer, both routes.** `Masterpieces.renderDetail` / `_paintDetail` is canonical (it was the superset: variants
++ per-variant stats, members, pHash linking, sync-to-sites, growth chart, collections, junk, replace-image, fold,
+prev/next). `Artwork.renderDetail` delegates to it; the old body is retained unreachable as `_renderDetailLegacy` for
+one release as a port reference. Ported in — the only four capabilities the Artwork page had that this one lacked:
+publish now, schedule + pending list + cancel, delete, alt text (`_wireDetailPublish`, `_publishSelection`,
+`_publishNow`, `_confirmSchedule`, `_loadScheduled`, `_deletePiece`, reusing Artwork's live `_renderPlatformRows` /
+`_populateAccountSelectors` / `_defaultScheduleLocal`).
+
+Both `#/masterpieces/{name}` and `#/artwork/image/{name}` stay live with **no redirect** — `detail_route` is authored
+server-side (`routes/submissions_api.py:172`) and consumed by the Library grid, showcase, publish queue, commissions,
+Image Tool and post-upload redirects, so redirecting would mean repointing all of them for no user-visible gain.
+
+### 25.1 Variant deep-link — why a query tail, not a path segment
+The selector is `?v=<key>`: `#/artwork/image/{name}?v=nsfw`. Artwork names may contain `/` (the router does
+`parts.slice(2).join('/')`), so a `…/v/nsfw` path segment would be ambiguous with the name itself. `App.route()` splits
+a `?…` tail off the hash BEFORE segmenting the path — inert for every pre-2.193 route, none of which use `?` — and
+`Masterpieces._variantFromHash()` reads it.
+
+On load the page selects that variant: hero image, ambient `#mp-stage-bg` backdrop and the `#mp-vstats` line all follow
+it, **with the full sibling strip still rendered and that chip marked active**. The hero `src` is patched after
+`innerHTML` because the chip list (and therefore the selection) is computed after the `hero` string is built.
+
+`submissions_api` puts a per-variant `detail_route` on each tile; `bookshelf.js._variantBooks` uses it, falling back to
+the master route for older payloads. Before this the key was dropped entirely, so every variant tile opened the master
+hero — the original complaint.
+
+### 25.2 Payload alignment
+So either endpoint can feed the one renderer:
+- `GET /api/masterpieces/{name}` additionally returns `alt_text`, `publications`, `titles`, `descriptions`, `categories`.
+- `GET /api/artwork/images/{name}` hero-orders `images` and enriches each variant with `totals` + `member_count`.
+- `PATCH /api/masterpieces/{name}` accepts `alt_text` (previously settable only from the Artwork page, so a piece opened
+  as a Masterpiece could not get a Bluesky image description).
+
+### 25.3 Two latent bugs fixed in the move
+1. The old code queried `#art-detail-platforms .art-plat-row`, but `_renderPlatformRows` emits
+   `class="artwork-plat-row"` (`artwork.js:586`) — the "already-posted platforms are dimmed and disabled" pass had
+   **never once fired**. The posted set now also unions resolved member `locations` with `publications`, since a linked
+   upload IS a live post on that site.
+2. The per-platform **Override tags** inputs were rendered but never read by the publish or schedule paths — typed
+   overrides were silently discarded. There is no `tag_overrides` parameter on `POST /api/artwork/publish`, so
+   `_applyOverrides` writes them into the piece's per-platform tag map (the documented mechanism
+   `save_artwork_metadata` preserves and every poster cascades from) before publishing. Inventing a request field the
+   backend ignored would have reproduced the same bug one layer up.
+
+### 25.4 Do not unify against the dead hub
+`frontend/js/artwork.js:56-506` (~450 lines) is the retired Artwork hub — `#/artwork` redirects to
+`#/library/type/artwork`, so `Artwork.render()` has no reachable caller and every helper in that range is bound only by
+the click delegate installed inside `render()` itself. Deleting it is backlog **L2**, gated behind **L1** (which keeps
+`_foldMasters` / `_masterCard` / `_splitMaster` as the port source for a possible masters-folding revival). Live entry
+points are `renderQuick` (`:1283`), `renderUpload` (`:507`), `renderDetail` (`:831`), `renderLog`, `renderIgnored`, and
+the shared helpers.

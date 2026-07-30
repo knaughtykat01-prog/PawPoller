@@ -744,6 +744,15 @@ def get_masterpiece(name: str):
 
     ``canonical_tags`` is the master record's per-platform tag map; ``tags`` is the
     union actually observed on the live member uploads (empty until members exist).
+
+    2.193.0 — this is now the payload behind the UNIFIED art detail page, reached
+    from both ``#/masterpieces/{name}`` and ``#/artwork/image/{name}``. The four
+    fields the old Artwork-only page needed (``alt_text``, ``publications``,
+    ``titles``/``descriptions``/``categories`` for per-platform publish
+    overrides) are therefore served here too, so the page is one request rather
+    than a merge of two endpoints. Every artwork folder already IS a masterpiece
+    — same folder, same ``masterpiece.json``, same ``load_artwork`` — so this is
+    filling in a payload gap, not conflating two entities.
     """
     try:
         art = artwork_reader.load_artwork(name)
@@ -770,6 +779,10 @@ def get_masterpiece(name: str):
             vroll = mq.rollup_members(conn, name, v["key"])
             variants.append({**v, "totals": vroll["totals"],
                              "member_count": len(vroll["members"])})
+        # Publish/schedule surface (ported from the Artwork detail page, 2.193.0).
+        from database import posting_queries as _pq
+        pubs = _pq.get_publications_with_stats(
+            conn, story_name=name, content_type="artwork")
         return {
             "name": art.name,
             "status": mq.get_status(conn, name),
@@ -790,6 +803,12 @@ def get_masterpiece(name: str):
             "totals": roll["totals"],
             "tags": roll["tags"],
             "persona_ids": roll["persona_ids"],
+            # ── unified-detail additions (2.193.0) ──
+            "alt_text": art.alt_text,
+            "publications": pubs,
+            "titles": art.titles_by_platform,
+            "descriptions": art.descriptions_by_platform,
+            "categories": art.categories_by_platform,
         }
     finally:
         conn.close()
@@ -904,8 +923,13 @@ def update_masterpiece(name: str, body: dict):
     """Edit the Masterpiece's canonical record (writes ``masterpiece.json``).
 
     Editable fields: title / description / rating / characters / tags (the
-    canonical *default* tag set — per-platform overrides are preserved). This is
-    the "edit once" half; pushing it to the live uploads is POST /{name}/sync.
+    canonical *default* tag set — per-platform overrides are preserved) /
+    alt_text. This is the "edit once" half; pushing it to the live uploads is
+    POST /{name}/sync.
+
+    ``alt_text`` joined here in 2.193.0: it was previously editable only on the
+    now-merged Artwork detail page, so a piece opened as a Masterpiece had no way
+    to set the Bluesky image description.
     """
     try:
         raw = artwork_reader.read_raw_metadata(name)
@@ -924,6 +948,8 @@ def update_masterpiece(name: str, body: dict):
         updates["rating"] = r
     if "characters" in body and isinstance(body["characters"], list):
         updates["characters"] = [str(c).strip() for c in body["characters"] if str(c).strip()]
+    if "alt_text" in body:
+        updates["alt_text"] = str(body.get("alt_text") or "").strip()
     if "tags" in body and isinstance(body["tags"], list):
         # Set the canonical (default) tags; keep any real per-platform overrides
         # from the RAW file (not the cascaded ArtworkInfo).

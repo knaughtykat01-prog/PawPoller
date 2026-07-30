@@ -12,6 +12,114 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.193.0] - 2026-07-30 - One art detail page, and variant tiles open their own render
+
+> **Artwork and Masterpieces now open the same page.** Clicking a piece from your Artwork shelf used to give you a
+> different page than clicking the same piece under Masterpieces — one had publishing, the other had variants, stats
+> and linking. There's now one page with everything, and both links still work. Clicking a **variant** tile finally
+> opens *that* render, with all its siblings in the strip beside it, instead of dumping you on the main image. You can
+> also set alt text on any piece now, and delete from the detail page.
+
+Two renderers over ONE record. `masterpiece.json` is a back-compatible superset of `artwork.json`
+(`posting/artwork_reader.py:43-49`), `routes/artwork_api.py:78` and `routes/masterpieces_api.py:749` both load via
+`artwork_reader.load_artwork()`, and `list_masterpieces` adopts *every* artwork folder into the index — there is no
+discriminator anywhere in the data. So this was never two entities, just two views.
+
+**Merged onto the Masterpiece renderer** (the superset: variants + per-variant stats, members, pHash linking,
+sync-to-sites, growth chart, collections, junk, replace-image, fold, prev/next). `Artwork.renderDetail` now delegates
+to `Masterpieces.renderDetail`; the old body is retained unreachable as `_renderDetailLegacy` for one release as a port
+reference. Ported in — the only four things the Artwork page had that this one didn't: **publish now**, **schedule +
+pending list + cancel**, **delete**, **alt text**. New `_wireDetailPublish` / `_publishSelection` / `_publishNow` /
+`_confirmSchedule` / `_loadScheduled` / `_deletePiece`, reusing Artwork's live `_renderPlatformRows`,
+`_populateAccountSelectors` and `_defaultScheduleLocal` rather than duplicating them.
+
+**Both routes stay live, deliberately.** `#/masterpieces/{name}` and `#/artwork/image/{name}` render the same page, no
+redirect: `detail_route` is authored server-side (`routes/submissions_api.py:172`) and consumed by the Library,
+showcase, publish queue, commissions and Image Tool, so redirecting would have meant repointing all of them for no
+user-visible gain. `tests/test_works.py:133` needed no change either.
+
+**Variant deep-link.** Selector rides a query tail — `#/artwork/image/{name}?v=nsfw` — not a path segment, because
+artwork names may contain `/` and `…/v/nsfw` would be ambiguous with the name. `App.route()` now splits a `?…` tail off
+the hash BEFORE segmenting the path (inert for every pre-2.193 route, none of which use `?`), and
+`Masterpieces._variantFromHash()` reads it. The page opens with that variant selected — hero image, ambient backdrop
+and per-variant stat line all follow it — **with the full sibling strip still rendered and that chip marked active**.
+`submissions_api` now puts a per-variant `detail_route` on each tile and `bookshelf.js._variantBooks` uses it; before
+this the key was dropped entirely, so every variant tile landed on the master hero.
+
+**Payload alignment** so either endpoint can feed the one renderer: `GET /api/masterpieces/{name}` additionally returns
+`alt_text`, `publications`, `titles`, `descriptions`, `categories`; `GET /api/artwork/images/{name}` now hero-orders
+`images` and enriches each variant with `totals` + `member_count`. `PATCH /api/masterpieces/{name}` accepts `alt_text`
+(previously settable only from the Artwork page, so a piece opened as a Masterpiece could not get a Bluesky image
+description).
+
+**Two latent bugs fixed in the move:**
+1. The old code queried `#art-detail-platforms .art-plat-row`, but `_renderPlatformRows` emits
+   `class="artwork-plat-row"` (`artwork.js:586`) — so the "already-posted platforms are dimmed and disabled" pass had
+   **never once fired**. Corrected selector, and the posted set now unions `publications` with resolved member
+   `locations` (a linked upload IS a live post on that site).
+2. The per-platform **Override tags** inputs were rendered (`artwork.js:593-598`) but never read by `_publishMore` or
+   `_confirmSchedule` — typed overrides were silently discarded. There is no `tag_overrides` parameter on
+   `POST /api/artwork/publish`, so `_applyOverrides` writes them to the piece's per-platform tag map (the documented
+   mechanism `save_artwork_metadata` preserves and every poster cascades from) before publishing. The override now
+   takes effect *and* persists visibly on the record instead of being a one-shot.
+
+Deliberately NOT done: deleting the retired Artwork hub block (`artwork.js:56-506`, ~450 dead lines). Backlog **L1**
+keeps `_foldMasters`/`_masterCard`/`_splitMaster` as the port source for a possible masters-folding revival and **L2**
+(the deletion) is gated behind that decision. +7 tests (`tests/test_unified_art_detail.py`); suite 748 green.
+
+## [2.192.0] - 2026-07-30 - Your own comments no longer count as new comments
+
+> **Your own replies stopped showing up as new comments on your own posts.** Commenting on your own work used to
+> trigger a notification, count toward "new comments", sit in the Inbox as something to answer, and even rank **you** as
+> your own top fan. Your comments are still there for context — they just aren't treated as engagement any more.
+> Historical ones get cleaned up automatically the next time you open the Inbox.
+
+New `polling/self_comment.py` owns identity matching. Rows are **stored and flagged** (`is_own`), never dropped:
+dropping them would leave the captured count permanently below the platform's reported count, so the delta check would
+re-fetch that thread every cycle forever — and a wrong handle match would be unrecoverable rather than fixable by
+re-running the backfill.
+
+**IB and FA had no filter at all.** `polling/poller.py:394` and `polling/fa_poller.py:422` now resolve our handle once
+per cycle (both platforms have always *known* their username — they just never used it here) and skip the
+`new_comments_found` increment and the `new_comment_details.append`, so no toast and no Telegram push. `upsert_comment`
+and `upsert_fa_comments_batch` take the flag. FA's tally is derived per-comment rather than from
+`conn.total_changes`, which cannot tell our rows apart.
+
+**The A1 filter was actively wrong, not just weak.** `polling/inbox_capture.py:75` compared
+`author.lower().lstrip("@").split("@")[0]` against the same transform of our handle — **local part only** — so a
+Mastodon commenter `@rhys@some.other.instance` matched our own `@rhys@our.instance` and a stranger's comment was
+silently marked as ours. Replaced with a full normalised-handle match. Mastodon's varying `acct` format (bare local
+name for home-instance users, `user@host` for remote) is handled by widening OUR side of the comparison instead —
+which cannot produce that false positive. Bluesky's `bsky_identifier` is a *login* field that may hold an email, so a
+value containing `@` is discarded rather than compared.
+
+**Read-side exclusions:** `get_top_fans` (`analytics_queries.py:66-89`, both the IB and FA legs) — the most visible
+symptom; `get_recent_comments` / `get_fa_recent_comments` activity feeds; and `get_inbox`, which keeps own rows in the
+feed as thread context but reports them `handled`, so the "N to answer" badge can never count them. Deriving handled
+from `is_own` rather than writing `inbox_state` at capture time also fixes rows captured before this release and rows
+the old auto-handle could never reach (it only ran inside `if is_new:`, so an already-stored self-comment was
+permanently stuck).
+
+**Identity persistence.** Bluesky and Mastodon only know their handle after `validate_session()`, and Mastodon has no
+handle setting at all (`mast_instance_url` + `mast_access_token` are its only credential fields). `remember_own_handle`
+persists the resolved handle to `<code>_own_handle` — plaintext, deliberately **not** in `CREDENTIAL_FIELDS`, since a
+handle is not a secret — so the read-side filters and the backfill work with no client instance.
+
+**Backfill.** `backfill_own_comments()` retro-flags stored rows, idempotent, mirroring the `backfill_credential_stamps`
+pattern (2.170): not run from `_run_migrations`, because handles may not be known at migration time. Fires once per
+process on the first `GET /api/inbox`, plus `POST /api/inbox/backfill-own` to re-run after connecting an account.
+
+**Migration.** `is_own INTEGER NOT NULL DEFAULT 0` on `comments`, `fa_comments` and `platform_comments`, with each
+`ALTER` and its index together inside `_run_migrations` — never in a `*_schema.sql`, since the schema load runs
+*before* migrations and a schema file indexing a migration-added column would crash every upgrade while fresh-install
+tests passed. `platform_comments` also gets the column in its `CREATE TABLE` (that CREATE is `IF NOT EXISTS`, so
+upgraders would otherwise never receive it).
+
+**Known limitation, unchanged:** `milestone_comments` and the `total_comments` summary stat read the platform's own
+`comments_count`/`replies` value (`polling/telegram.py:31-46`; `database/queries.py:445`), computed server-side and
+already inclusive of your replies. No local flag can reach them, and subtracting a local count would drift and
+eventually go negative. +13 tests (`tests/test_self_comments.py`), the first coverage `inbox_capture.py` has ever had.
+
 ## [2.191.1] - 2026-07-26 - Itaku setup guide: where the auth token actually is
 
 > **Clearer Itaku instructions.** The guide now spells out exactly where to find the auth token: it's **not a cookie**

@@ -27,6 +27,7 @@ from database.db import get_connection
 from polling.notifications import describe_error
 from database import queries
 from polling import notifications
+from polling import self_comment
 
 logger = logging.getLogger(__name__)
 
@@ -265,6 +266,9 @@ async def run_poll_cycle(account_id: int | None = None, force_full: bool = False
     creds = config.resolve_account_credentials("ib", account_id, is_default, settings)
     ib_user = creds.get("username", "") or (config.INKBUNNY_USERNAME if is_default else "")
     ib_pass = creds.get("password", "") or (config.INKBUNNY_PASSWORD if is_default else "")
+    # Our own handle(s), for excluding self-comments from "new comment" counts
+    # (2.192.0). IB has always known its username — it just never used it here.
+    my_handles = {self_comment.normalise_handle(ib_user)} if ib_user else set()
     from polling.cf_proxy import proxy_kwargs
     client = InkbunnyClient(username=ib_user, password=ib_pass,
                             **proxy_kwargs(settings, "ib"))
@@ -391,8 +395,12 @@ async def run_poll_cycle(account_id: int | None = None, force_full: bool = False
                     try:
                         scraped = await client.scrape_comments(sub_id)
                         for c in scraped:
-                            is_new = queries.upsert_comment(conn, c)
-                            if is_new:
+                            # A comment we wrote ourselves is not engagement: it
+                            # is stored and flagged, but must not count as new,
+                            # toast, or push to Telegram (2.192.0).
+                            mine = self_comment.is_own_author(c.get("username", ""), my_handles)
+                            is_new = queries.upsert_comment(conn, c, is_own=mine)
+                            if is_new and not mine:
                                 stats["new_comments_found"] += 1
                                 new_comment_details.append({"username": c.get("username", ""), "title": db_dict.get("title", "")})
                         # Release the write lock before the next iteration's awaits.
