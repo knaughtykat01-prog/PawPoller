@@ -72,6 +72,7 @@ logging.basicConfig(
 # dashboard.py IS the entry point (uvicorn dashboard:app).
 import log_redaction
 log_redaction.install()
+config.refresh_log_secrets()   # seed the secret list; config pushes on every save
 
 logger = logging.getLogger("dashboard")
 

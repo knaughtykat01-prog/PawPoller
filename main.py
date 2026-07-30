@@ -63,6 +63,7 @@ logging.basicConfig(
 # app.log is as exposed as the server's: users attach it to bug reports.
 import log_redaction
 log_redaction.install()
+config.refresh_log_secrets()   # seed the secret list; config pushes on every save
 
 logger = logging.getLogger("main")
 

@@ -7128,7 +7128,30 @@ path** (`api.telegram.org/bot<id>:<secret>/getUpdates`). So live tokens were wri
 `docker compose logs`, and the dashboard's own Logs view. Found by scanning the 2.193.0 deploy's startup output.
 
 `log_redaction.install()` is called from **all three** logging entry points (`server.py`, `main.py`, `dashboard.py`)
-immediately after `basicConfig`, so no request can be logged before the filter exists.
+immediately after `basicConfig`, followed by `config.refresh_log_secrets()` to seed the secret list.
+
+### 24a.0 Why a record factory, and why logging never calls config (2.193.2)
+**2.193.1 shipped a handler-filter version that did not work in production.** On the VM the filter was present on both
+root handlers and redacted correctly when invoked via `docker exec` inside that same container — yet every `httpx` line
+from the running app came through raw. The runtime reason was never isolated, and that is the point: handler-attached
+state is not reliable enough to bet a security control on (uvicorn calls `logging.config.dictConfig()` during startup,
+in a thread).
+
+It also had two defects that both trace to one decision — letting the filter call `config.get_settings()`:
+- `if self._values and (now - self._values_at) < TTL` — an **empty tuple is falsy**, so the cache never engaged and a
+  settings read (file I/O + Fernet decrypt) happened on *every log record*.
+- The filter took its own lock, then `config._settings_lock`. Any thread holding those in the opposite order deadlocks;
+  this hung a local reproduction of the real startup sequence.
+
+So: **scrubbing happens in a `LogRecordFactory`** (at record creation, before any handler is consulted), and **the
+dependency is inverted** — `config` *pushes* secret values in via `set_secrets()` on every `save_settings`, and
+`log_redaction` does not import `config` at all (`secrets_from_settings()` takes `is_credential_key` as an argument). At
+log time the module only reads a module-level tuple: no I/O, no locks, nothing that can block or raise. Handler filters
+are still attached, but purely as a second line of defence.
+
+If you touch this file, keep the three regression tests passing — each encodes one of the failures above:
+`test_record_factory_redacts_with_no_handler_filters`, `test_concurrent_logging_does_not_deadlock`,
+`test_scrub_never_touches_config`.
 
 ### Two layers, and why both are needed
 1. **Pattern** — sensitive query/form parameter names, the Telegram bot path token, `Bearer`/`Token` schemes,

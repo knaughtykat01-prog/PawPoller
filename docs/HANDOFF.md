@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-30
-**Current version (master):** 2.193.1 — **SECURITY: credentials were being printed to the logs.** Found while scanning
+**Current version (master):** 2.193.2 — **Fix: 2.193.1's log scrubbing did not work in production.** It shipped and was
+deployed before being verified against real traffic. On the VM the filter WAS on both root handlers and redacted
+correctly when invoked via `docker exec` in that same container, yet every `httpx` line from the running app came
+through raw; the exact runtime reason was never pinned down, which is the lesson — the mechanism depended on too much
+runtime state. Two defects found by inspection, both from one bad decision (**letting the filter call into `config`**):
+a falsy-empty-tuple cache guard meant `get_settings()` — file I/O + Fernet decrypt — ran on **every log record**; and
+taking the filter's lock then `config._settings_lock` deadlocks against the reverse order (it hung a local repro of the
+real startup). Redesigned: scrubbing moved to a **`LogRecordFactory`** (immune to handler wiring, which matters because
+uvicorn calls `dictConfig`), and **logging never calls config** — config *pushes* secrets via
+`log_redaction.set_secrets()` on every save, seeded by `config.refresh_log_secrets()`. `log_redaction` no longer imports
+config. 3 regression tests target the exact failure modes (unfiltered-handler, 8×200-thread no-deadlock, zero
+`get_settings` at log time). **⚠ Pre-fix log files still contain live tokens — rotate/clear them.**
+
+**Prior — 2.193.1 — SECURITY: credentials were being printed to the logs.** (Mechanism did not work; see 2.193.2.) Found while scanning
 the 2.193.0 deploy output on prod. Nothing logged them deliberately — **httpx logs the full request URL at INFO**, and
 Threads/Instagram/Tumblr put the token in the query string while Telegram puts it in the *path*
 (`/bot<id>:<secret>/getUpdates`). Live tokens were in `server.log`, `docker logs` and the dashboard Logs view. New

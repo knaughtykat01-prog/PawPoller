@@ -12,6 +12,44 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.193.2] - 2026-07-30 - Fix: 2.193.1's log scrubbing did not actually work
+
+> **2.193.1 did not do what it said.** The log scrubbing was in place but wasn't being applied to the running app's
+> logs, so tokens kept being written. This replaces the mechanism with one that can't be bypassed. Same advice stands:
+> **log files written before this update still contain credentials** — clear them out.
+
+**2.193.1 shipped broken and I did not catch it before deploying.** Verified on the production VM after deploy: the
+filter was installed on both root handlers, redacted correctly when invoked via `docker exec` **inside that same
+container**, and yet every `httpx` line from the running app came through raw. Root cause was never pinned down by
+inspection — which is itself the lesson: the mechanism was too dependent on runtime state to reason about.
+
+Two concrete defects found by reading it back, both stemming from one bad decision — **letting the log filter call into
+`config`**:
+
+1. **A settings read per log record.** `if self._values and (now - self._values_at) < TTL` — an empty tuple is falsy, so
+   the TTL cache never engaged and `config.get_settings()` (file I/O + Fernet decrypt) ran on *every* record.
+2. **A deadlock.** The filter took its own lock and then `config._settings_lock`; any thread holding those in the
+   opposite order deadlocks. This hung a local reproduction of the real startup sequence.
+
+Redesigned so neither is possible:
+
+- **Scrubbing moved to a `LogRecordFactory`.** Records are scrubbed at creation, so it cannot be defeated by handler
+  wiring — which matters because uvicorn calls `logging.config.dictConfig()` and handler-attached state is exactly what
+  that kind of call makes unreliable. Handler filters remain as a second line of defence, but nothing depends on them.
+- **Logging never calls config.** `config` now *pushes* its secret values in via `log_redaction.set_secrets()` on every
+  `save_settings`, seeded once at startup by `config.refresh_log_secrets()`. At log time this module reads a
+  module-level tuple: no I/O, no locks, no recursion risk, nothing that can block or raise. `log_redaction` no longer
+  imports `config` at all — `secrets_from_settings()` takes `is_credential_key` as an argument.
+
+Three new tests target the exact failure modes, so this can't silently regress:
+`test_record_factory_redacts_with_no_handler_filters` (handler deliberately unfiltered),
+`test_concurrent_logging_does_not_deadlock` (8 threads × 200 records, must complete),
+`test_scrub_never_touches_config` (asserts zero `get_settings` calls at log time). The previously-hanging reproduction of
+the real startup path now completes and redacts in all four phases, including from worker threads after uvicorn
+configures logging. 16 tests total.
+
+**Verified in production this time before claiming it works** — not just in tests.
+
 ## [2.193.1] - 2026-07-30 - Security: access tokens no longer appear in the logs
 
 > **Logs are now scrubbed of anything sensitive.** Tokens, passwords and keys are replaced with `[REDACTED]` before a

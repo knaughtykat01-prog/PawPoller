@@ -376,9 +376,37 @@ def save_settings(data: dict) -> None:
                 pass
             raise
 
+    # Keep the log scrubber's secret list current (2.193.2). PUSHED from here
+    # rather than pulled from inside the logging path on purpose: a filter that
+    # calls get_settings() does file I/O + a Fernet decrypt per log record, and
+    # taking the filter's lock then _settings_lock deadlocks against a thread
+    # holding them the other way round. See log_redaction's module docstring.
+    _push_log_secrets(current)
+
     # Fire a debounced push to the cloud server (no-op when not configured
     # or when this save originated from a pull merge — auto_sync handles both).
     _schedule_auto_sync_push()
+
+
+def _push_log_secrets(settings: dict) -> None:
+    """Hand the current secret values to the log scrubber. Never raises."""
+    try:
+        import log_redaction
+        log_redaction.set_secrets(
+            log_redaction.secrets_from_settings(settings, is_credential_key))
+    except Exception:  # noqa: BLE001 — redaction bookkeeping is never fatal
+        pass
+
+
+def refresh_log_secrets() -> None:
+    """Re-read settings and refresh the log scrubber's secret list.
+
+    Called once at startup by the entry points, after logging is configured.
+    """
+    try:
+        _push_log_secrets(get_settings())
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def delete_settings_keys(keys: list[str]) -> None:
@@ -1040,7 +1068,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.193.1"
+APP_VERSION = "2.193.2"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL
