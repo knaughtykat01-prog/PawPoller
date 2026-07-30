@@ -191,3 +191,13 @@ def install(*_args, **_kwargs) -> None:
     for handler in root.handlers:
         if not any(isinstance(f, SecretRedactingFilter) for f in handler.filters):
             handler.addFilter(SecretRedactingFilter())
+
+    # Announce it. This is not noise: it is the only evidence, from inside the
+    # running process, that the control is actually active. 2.193.1 shipped a
+    # version that was provably installed when imported yet did nothing for the
+    # live app, and the absence of any such marker is what made that take hours
+    # to see. If this line is missing from a log, redaction is NOT running.
+    logging.getLogger(__name__).warning(
+        "log redaction ACTIVE — factory=%s handlers=%d secrets=%d module=%s",
+        getattr(logging.getLogRecordFactory(), "__qualname__", "?"),
+        len(root.handlers), len(_SECRETS), __file__)
