@@ -137,7 +137,7 @@ class TestClientContract:
     def test_platform_set_matches_clients(self):
         # The DB-side platform set and the client roster must agree.
         assert followers.FOLLOWER_PLATFORMS == {
-            "ws", "da", "wp", "ik", "bsky", "tw", "mast", "pix"}
+            "ws", "da", "wp", "ik", "bsky", "tw", "mast", "pix", "fn"}
 
 
 # ── API endpoint ──────────────────────────────────────────────

@@ -27,6 +27,7 @@
         { code: 'ig',   label: 'Instagram',    emoji: '\u{1F4F8}', color: 'var(--platform-ig)',   pollOnly: true  },
         { code: 'e621', label: 'e621',         emoji: '\u{1F43E}', color: 'var(--platform-e621)', pollOnly: false },
         { code: 'fn',   label: 'FurryNetwork', emoji: '\u{1F310}', color: '#3b8ed0',               pollOnly: false },
+        { code: 'fbr',  label: 'Furbooru',     emoji: '\u{1F5BC}', color: '#3d7b3d',               pollOnly: true  },
     ];
 
     // Display order is alphabetical by label (case-insensitive) everywhere that
@@ -41,7 +42,14 @@
     // Weasyl ship SVGs (scalable); the rest are PNGs. Trademarks of their owners
     // — see the disclaimer on the Platforms hub.
     const _svgLogos = ['ik', 'ws', 'mast', 'tum', 'pix', 'thr', 'ig', 'e621'];
-    PLATFORMS.forEach(p => { p.logo = '/img/platforms/' + p.code + (_svgLogos.includes(p.code) ? '.svg' : '.png'); });
+    // Platforms with no bundled logo asset fall back to their emoji (the tile
+    // renderer treats a null logo that way). Keeps a broken <img> off the hub.
+    const _noLogo = ['fn', 'fbr'];
+    PLATFORMS.forEach(p => {
+        p.logo = _noLogo.includes(p.code)
+            ? null
+            : '/img/platforms/' + p.code + (_svgLogos.includes(p.code) ? '.svg' : '.png');
+    });
 
     /* platformRoute(code, sub) — hash route for a platform sub-view.
      *

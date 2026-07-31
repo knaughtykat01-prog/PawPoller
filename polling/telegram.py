@@ -45,6 +45,7 @@ PLATFORM_METRICS = {
     "thr": {"views": "views", "faves": "likes", "comments": "replies"},
     "e621": {"views": "score", "faves": "favorites_count", "comments": "comments_count"},
     "fn":  {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
+    "fbr": {"views": "score", "faves": "favorites_count", "comments": "comments_count"},
 }
 
 # Single source for each platform's (snapshot_table, submission_table) pair —
@@ -67,6 +68,7 @@ PLATFORM_TABLES = {
     "thr": ("thr_snapshots", "thr_submissions"),
     "e621": ("e621_snapshots", "e621_submissions"),
     "fn":  ("fn_snapshots", "fn_submissions"),
+    "fbr": ("fbr_snapshots", "fbr_submissions"),
 }
 
 # Default milestone thresholds — overridden by settings.json if configured.
@@ -128,8 +130,8 @@ async def send_telegram(text: str) -> bool:
 
 # ── Poll cycle summary ───────────────────────────────────────
 
-PLATFORM_EMOJI = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺", "sqw": "🦑", "ao3": "📖", "da": "🎨", "wp": "📙", "ik": "🎯", "bsky": "🦋", "tw": "🐦", "mast": "🐘", "tum": "📘", "pix": "🖌", "thr": "🧵", "ig": "📷", "e621": "🐾", "fn": "🌐"}
-PLATFORM_NAME = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter", "mast": "Mastodon", "tum": "Tumblr", "pix": "Pixiv", "thr": "Threads", "ig": "Instagram", "e621": "e621", "fn": "FurryNetwork"}
+PLATFORM_EMOJI = {"ib": "🐾", "fa": "🦊", "ws": "🦎", "sf": "🐺", "sqw": "🦑", "ao3": "📖", "da": "🎨", "wp": "📙", "ik": "🎯", "bsky": "🦋", "tw": "🐦", "mast": "🐘", "tum": "📘", "pix": "🖌", "thr": "🧵", "ig": "📷", "e621": "🐾", "fn": "🌐", "fbr": "🖼"}
+PLATFORM_NAME = {"ib": "Inkbunny", "fa": "FurAffinity", "ws": "Weasyl", "sf": "SoFurry", "sqw": "SquidgeWorld", "ao3": "AO3", "da": "DeviantArt", "wp": "Wattpad", "ik": "Itaku", "bsky": "Bluesky", "tw": "X/Twitter", "mast": "Mastodon", "tum": "Tumblr", "pix": "Pixiv", "thr": "Threads", "ig": "Instagram", "e621": "e621", "fn": "FurryNetwork", "fbr": "Furbooru"}
 
 
 # ── Persona / account context (multi-account notification labelling) ─────────

@@ -622,6 +622,24 @@ const API = {
     triggerFNPoll() { return this.post('/api/fn/poll/trigger'); },
     fullFNResync() { return this.post('/api/fn/poll/full-resync'); },
     getFNPollProgress() { return this.get('/api/fn/poll/progress'); },
+    /* ── Furbooru convenience methods ─────────────────────────────
+     * Philomena public read API (booru; SCORE model like e621).
+     * username required; API key optional (raises the anon rate cap).
+     */
+    getFBRAuthStatus() { return this.get('/api/fbr/auth/status'); },
+    fbrConnect(data) { return this.post('/api/fbr/auth/connect', data); },
+    fbrDisconnect() { return this.post('/api/fbr/auth/disconnect'); },
+    getFBRStatus() { return this.get('/api/fbr/status'); },
+    getFBRSummary(params) { return this.get('/api/fbr/summary', params); },
+    getFBRSubmissions(params) { return this.get('/api/fbr/submissions', params); },
+    getFBRSubmission(id) { return this.get(`/api/fbr/submissions/${encodeURIComponent(id)}`); },
+    getFBRSnapshots(id, params) { return this.get(`/api/fbr/submissions/${encodeURIComponent(id)}/snapshots`, params); },
+    getFBRAggregate(params) { return this.get('/api/fbr/aggregate', params); },
+    getFBRComparison(ids, params) { return this.get('/api/fbr/comparison', { ids: ids.join(','), ...params }); },
+    getFBRPollLog(limit) { return this.get('/api/fbr/poll_log', { limit }); },
+    triggerFBRPoll() { return this.post('/api/fbr/poll/trigger'); },
+    fullFBRResync() { return this.post('/api/fbr/poll/full-resync'); },
+    getFBRPollProgress() { return this.get('/api/fbr/poll/progress'); },
     /* ── THR (Threads) convenience methods ────────────────────────
      * Official Graph API (OAuth long-lived token). Posts identified by media ids.
      * Metrics: views, likes, reposts, replies, quotes.
@@ -685,11 +703,11 @@ const API = {
      * download, not JSON to be parsed in-page.
      */
     exportSubmissions(platform) {
-        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions', sqw: '/api/sqw/export/submissions', ao3: '/api/ao3/export/submissions', da: '/api/da/export/submissions', wp: '/api/wp/export/submissions', ik: '/api/ik/export/submissions', bsky: '/api/bsky/export/submissions', tw: '/api/tw/export/submissions', mast: '/api/mast/export/submissions', tum: '/api/tum/export/submissions', pix: '/api/pix/export/submissions', thr: '/api/thr/export/submissions', e621: '/api/e621/export/submissions', fn: '/api/fn/export/submissions' };
+        const urls = { ib: '/api/export/submissions', fa: '/api/fa/export/submissions', ws: '/api/ws/export/submissions', sf: '/api/sf/export/submissions', sqw: '/api/sqw/export/submissions', ao3: '/api/ao3/export/submissions', da: '/api/da/export/submissions', wp: '/api/wp/export/submissions', ik: '/api/ik/export/submissions', bsky: '/api/bsky/export/submissions', tw: '/api/tw/export/submissions', mast: '/api/mast/export/submissions', tum: '/api/tum/export/submissions', pix: '/api/pix/export/submissions', thr: '/api/thr/export/submissions', e621: '/api/e621/export/submissions', fn: '/api/fn/export/submissions', fbr: '/api/fbr/export/submissions' };
         window.open(urls[platform] || urls.ib, '_blank');
     },
     exportSnapshots(platform, id) {
-        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots', sqw: '/api/sqw/export/snapshots', ao3: '/api/ao3/export/snapshots', da: '/api/da/export/snapshots', wp: '/api/wp/export/snapshots', ik: '/api/ik/export/snapshots', bsky: '/api/bsky/export/snapshots', tw: '/api/tw/export/snapshots', mast: '/api/mast/export/snapshots', tum: '/api/tum/export/snapshots', pix: '/api/pix/export/snapshots', thr: '/api/thr/export/snapshots', e621: '/api/e621/export/snapshots', fn: '/api/fn/export/snapshots' };
+        const bases = { ib: '/api/export/snapshots', fa: '/api/fa/export/snapshots', ws: '/api/ws/export/snapshots', sf: '/api/sf/export/snapshots', sqw: '/api/sqw/export/snapshots', ao3: '/api/ao3/export/snapshots', da: '/api/da/export/snapshots', wp: '/api/wp/export/snapshots', ik: '/api/ik/export/snapshots', bsky: '/api/bsky/export/snapshots', tw: '/api/tw/export/snapshots', mast: '/api/mast/export/snapshots', tum: '/api/tum/export/snapshots', pix: '/api/pix/export/snapshots', thr: '/api/thr/export/snapshots', e621: '/api/e621/export/snapshots', fn: '/api/fn/export/snapshots', fbr: '/api/fbr/export/snapshots' };
         const url = (bases[platform] || bases.ib) + (id ? `?id=${id}` : '');
         window.open(url, '_blank');
     },

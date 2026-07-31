@@ -1649,6 +1649,89 @@ const Components = {
         `;
     },
 
+    // ── Furbooru Components ──────────────────────────────────────
+    // Furbooru is a Philomena booru — SCORE model, identical shape to e621.
+
+    fbrTopList(items, valueKey, labelKey = 'title', idKey = 'submission_id') {
+        if (!items || items.length === 0) {
+            return '<p style="color:var(--text-muted);font-size:13px">No data yet</p>';
+        }
+        const lis = items.map(item => `
+            <li>
+                <span class="top-title" data-nav="/fbr/submission/${encodeURIComponent(item[idKey])}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
+            </li>
+        `).join('');
+        return `<ul class="top-list">${lis}</ul>`;
+    },
+
+    /**
+     * Furbooru submissions table.
+     * Columns: Title, Type, Score, Favorites, Comments, Posted. Booru score
+     * (upvotes − downvotes, may be negative) is the headline metric.
+     */
+    fbrSubmissionsTable(submissions) {
+        if (!submissions || submissions.length === 0) {
+            return `<div class="empty-state"><h3>No posts</h3><p>Connect your Furbooru account and run a poll to fetch data.</p></div>`;
+        }
+        const rows = submissions.map(s => `
+            <tr>
+                <td data-label="Title"><a href="#/fbr/submission/${encodeURIComponent(s.submission_id)}">${Utils.escapeHtml(Utils.truncate(s.title, 45))}</a></td>
+                <td data-label="Type">${Utils.escapeHtml(Components.E621_TYPE_LABELS[s.content_type] || s.content_type || 'Image')}</td>
+                <td data-label="Score">${Utils.formatNumber(s.score || 0)} ${Utils.formatDelta(s.score_delta)}</td>
+                <td data-label="Favorites">${Utils.formatNumber(s.favorites_count || 0)} ${Utils.formatDelta(s.favorites_delta)}</td>
+                <td data-label="Comments">${Utils.formatNumber(s.comments_count || 0)} ${Utils.formatDelta(s.comments_delta)}</td>
+                <td data-label="Posted">${Utils.formatDate(s.posted_at)}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table" id="fbr-submissions-table" data-mobile-cards>
+                <thead>
+                    <tr>
+                        <th data-sort="title">Title</th>
+                        <th data-sort="content_type">Type</th>
+                        <th data-sort="score">Score</th>
+                        <th data-sort="favorites_count">Favorites</th>
+                        <th data-sort="comments_count">Comments</th>
+                        <th data-sort="posted_at">Posted</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
+    /**
+     * Furbooru poll history table with color-coded status.
+     */
+    fbrPollLogTable(polls) {
+        if (!polls || polls.length === 0) {
+            return '<p style="color:var(--text-muted)">No Furbooru polls recorded yet.</p>';
+        }
+        const rows = polls.map(p => `
+            <tr>
+                <td>${Utils.formatDateTime(p.started_at)}</td>
+                <td><span style="color:${p.status === 'success' ? 'var(--success)' : p.status === 'error' ? 'var(--danger)' : 'var(--warning)'}">${p.status}</span></td>
+                <td>${p.submissions_found || 0}</td>
+                <td>${p.snapshots_inserted || 0}</td>
+                <td>${p.duration_seconds ? p.duration_seconds.toFixed(1) + 's' : '--'}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${Utils.escapeHtml(p.error_message || '')}</td>
+            </tr>
+        `).join('');
+
+        return `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th><th>Status</th><th>Subs</th><th>Snaps</th><th>Duration</th><th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
     // ── THR Components ───────────────────────────────────────────
 
     /**

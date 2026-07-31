@@ -628,6 +628,8 @@ CREDENTIAL_FIELDS = frozenset({
     "e621_api_key",
     # FurryNetwork (OAuth password grant; login email stays plaintext identity)
     "fn_password", "fn_refresh_token", "fn_access_token",
+    # Furbooru (Philomena) — optional API key; username stays plaintext identity
+    "fbr_api_key",
     # CF proxy
     "cf_worker_url", "cf_worker_key",
     # Dashboard auth
@@ -701,6 +703,8 @@ PLATFORM_CREDENTIAL_FIELDS = {
     "tg": ["tg_bot_token", "tg_channel"],
     # FurryNetwork (poll+post gallery). Email + password → OAuth token/refresh.
     "fn": ["fn_username", "fn_password", "fn_refresh_token", "fn_access_token"],
+    # Furbooru (Philomena booru; poll-only). Username + optional API key.
+    "fbr": ["fbr_username", "fbr_api_key"],
 }
 
 # ── Proactive credential-age tracking (backlog W) ──────────────────
@@ -1080,7 +1084,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.200.0"
+APP_VERSION = "2.201.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

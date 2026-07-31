@@ -91,6 +91,9 @@ const App = {
     _fnSortState: { field: 'views', order: 'desc' },
     _fnCompareIds: new Set(),
     _fnCompareMetric: 'views',
+    _fbrSortState: { field: 'score', order: 'desc' },
+    _fbrCompareIds: new Set(),
+    _fbrCompareMetric: 'score',
     _twSortState: { field: 'views', order: 'desc' },
     _twCompareIds: new Set(),
     _twCompareMetric: 'views',
@@ -1129,6 +1132,14 @@ const App = {
             this.renderFNDetail(parts[2]);
         } else if (parts[0] === 'fn' && parts[1] === 'compare') {
             this.renderFNCompare();
+        } else if (parts[0] === 'fbr' && (!parts[1] || parts[1] === '')) {
+            this.renderFBRDashboard();
+        } else if (parts[0] === 'fbr' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderFBRSubmissions();
+        } else if (parts[0] === 'fbr' && parts[1] === 'submission' && parts[2]) {
+            this.renderFBRDetail(parts[2]);
+        } else if (parts[0] === 'fbr' && parts[1] === 'compare') {
+            this.renderFBRCompare();
         } else if (parts[0] === 'tw' && (!parts[1] || parts[1] === '')) {
             this.renderTWDashboard();
         } else if (parts[0] === 'tw' && parts[1] === 'submissions' && !parts[2]) {
@@ -1562,6 +1573,7 @@ const App = {
                 { key: 'tw', auth: auth.twAuth?.has_credentials, name: 'Twitter', statusFn: 'getTWStatus', logFn: 'getTWPollLog', tableFn: 'twPollLogTable' },
                 { key: 'e621', auth: auth.e621Auth?.has_credentials, name: 'e621', statusFn: 'getE621Status', logFn: 'getE621PollLog', tableFn: 'e621PollLogTable' },
                 { key: 'fn', auth: auth.fnAuth?.has_credentials, name: 'FurryNetwork', statusFn: 'getFNStatus', logFn: 'getFNPollLog', tableFn: 'fnPollLogTable' },
+                { key: 'fbr', auth: auth.fbrAuth?.has_credentials, name: 'Furbooru', statusFn: 'getFBRStatus', logFn: 'getFBRPollLog', tableFn: 'fbrPollLogTable' },
             ];
             // Alphabetical by name (Inkbunny is rendered separately, first).
             platforms.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
@@ -1659,7 +1671,7 @@ const App = {
     _platformLabels: {
         ib: 'Inkbunny', fa: 'FurAffinity', ws: 'Weasyl', sf: 'SoFurry',
         sqw: 'SquidgeWorld', ao3: 'AO3', da: 'DeviantArt', wp: 'Wattpad',
-        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr', pix: 'Pixiv', thr: 'Threads', ig: 'Instagram', e621: 'e621', fn: 'FurryNetwork',
+        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr', pix: 'Pixiv', thr: 'Threads', ig: 'Instagram', e621: 'e621', fn: 'FurryNetwork', fbr: 'Furbooru',
     },
 
     /* Settings → Platforms → "Session health" card. Renders the per-platform
@@ -1667,7 +1679,7 @@ const App = {
      * "Check sessions now" button, which fires the server-side re-validation
      * (fire-and-forget) and reloads the results after it's had time to run. */
     async _initSessionHealthCard() {
-        const CHECKABLE = ['ao3', 'sf', 'sqw', 'bsky', 'mast', 'tum', 'pix', 'thr', 'ig', 'e621', 'fn'];
+        const CHECKABLE = ['ao3', 'sf', 'sqw', 'bsky', 'mast', 'tum', 'pix', 'thr', 'ig', 'e621', 'fn', 'fbr'];
         const LABELS = (window.PlatformHealth && window.PlatformHealth.LABELS) || {};
         const DOT = { valid: 'connected', expired: 'disconnected', error: 'warn', unconfigured: 'muted' };
         const WORD = { valid: 'Valid', expired: 'Expired', error: 'Unverified', unconfigured: 'Not configured' };
@@ -1767,7 +1779,7 @@ const App = {
      * Falls back to the cached snapshot only if the health fetch fails/empty. */
     async _configuredPollCodes() {
         const ALL = ['ib', 'fa', 'ws', 'sf', 'sqw', 'ao3', 'da', 'wp', 'ik',
-            'bsky', 'tw', 'mast', 'tum', 'pix', 'thr', 'ig', 'e621', 'fn'];
+            'bsky', 'tw', 'mast', 'tum', 'pix', 'thr', 'ig', 'e621', 'fn', 'fbr'];
         try {
             const health = await API.getPlatformsHealth();
             if (health && typeof health === 'object') {
@@ -1782,7 +1794,7 @@ const App = {
             bsky: a.bskyAuth?.has_credentials, tw: a.twAuth?.has_credentials, mast: a.mastAuth?.has_credentials,
             tum: a.tumAuth?.has_credentials, pix: a.pixAuth?.has_credentials, thr: a.thrAuth?.has_credentials,
             ig: a.igAuth?.has_credentials, e621: a.e621Auth?.has_credentials,
-            fn: a.fnAuth?.has_credentials };
+            fn: a.fnAuth?.has_credentials, fbr: a.fbrAuth?.has_credentials };
         return ALL.filter(c => cached[c]);
     },
 
@@ -1818,7 +1830,7 @@ const App = {
         if (!confirm(`Full resync re-fetches every ${label} submission from scratch. This can take several minutes and will hit ${label}'s rate limits hard. Continue?`)) return;
         btn.disabled = true;
         btn.textContent = 'Syncing...';
-        const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync', mast: 'fullMASTResync', tum: 'fullTUMResync', pix: 'fullPIXResync', thr: 'fullTHRResync', ig: 'fullIGResync', e621: 'fullE621Resync' };
+        const fns = { ib: 'fullResync', fa: 'fullFAResync', ws: 'fullWSResync', sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync', wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync', mast: 'fullMASTResync', tum: 'fullTUMResync', pix: 'fullPIXResync', thr: 'fullTHRResync', ig: 'fullIGResync', e621: 'fullE621Resync', fn: 'fullFNResync', fbr: 'fullFBRResync' };
         try {
             await API[fns[platform]]();
             btn.textContent = 'Done!';
@@ -2870,7 +2882,7 @@ const App = {
             bsky: () => API.getBSKYSummary(), tw: () => API.getTWSummary(),
             mast: () => API.getMASTSummary(), tum: () => API.getTUMSummary(),
             pix: () => API.getPIXSummary(), thr: () => API.getTHRSummary(), ig: () => API.getIGSummary(),
-            e621: () => API.getE621Summary(),
+            e621: () => API.getE621Summary(), fn: () => API.getFNSummary(), fbr: () => API.getFBRSummary(),
         };
         const [results, health] = await Promise.all([
             Promise.all(plats.map(p =>
@@ -8409,6 +8421,331 @@ const App = {
         input?.addEventListener('input', doFilter);
     },
 
+    async renderFBRDashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getFBRSummary({ account_id: this._acctId('fbr') }),
+                API.getFBRAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('fbr') }),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const fbrPins = (pins.pins || []).filter(p => p.platform === 'fbr');
+            const fbrGoals = (goals.goals || []).filter(g => g.platform === 'fbr' || g.platform === 'all');
+
+            const fbrHealth = window.PlatformHealth && window.PlatformHealth.get('fbr');
+            const isUnconfigured = fbrHealth && fbrHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>Furbooru Dashboard</h2></div>
+                    ${Components.platformEmptyState('fbr', isUnconfigured ? {} : { reason: 'Furbooru is configured but no posts have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Furbooru Dashboard</h2>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" data-poll="fbr">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="fbr">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="fbr">Export CSV</button>
+                    </div>
+                </div>
+
+                ${fbrPins.length ? Components.pinnedSubmissions(fbrPins, 'fbr') : ''}
+                ${fbrGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(fbrGoals)}</div>` : ''}
+
+                <div class="stats-grid">
+                    ${Components.statCard('Total Posts', summary.total_submissions, null, '#/fbr/submissions')}
+                    ${Components.statCard('Total Score', summary.total_score || 0)}
+                    ${Components.statCard('Total Favorites', summary.total_favorites || 0)}
+                    ${Components.statCard('Total Comments', summary.total_comments || 0)}
+                </div>
+
+                ${summary.growth_rates ? Components.growthRateCards(summary.growth_rates, { views: 'score/day', faves: 'faves/day', comments: 'comments/day' }) : ''}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Score Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-views"></canvas></div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Top Scored</h3>
+                        ${Components.fbrTopList(summary.top_scored, 'score', 'title', 'submission_id')}
+                    </div>
+                    <div class="chart-container">
+                        <h3>Top Favorited</h3>
+                        ${Components.fbrTopList(summary.top_faved, 'favorites_count', 'title', 'submission_id')}
+                    </div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Fastest Growing (24h)</h3>
+                        ${Components.fbrTopList(summary.fastest_growing, 'score_gained', 'title', 'submission_id')}
+                    </div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-views', agg.snapshots, ['score']);
+            }
+
+            this._bindDateRange(() => this.renderFBRDashboard());
+            this._bindPinAndGoalActions(() => this.renderFBRDashboard());
+            this._startAutoRefresh(() => this.renderFBRDashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading Furbooru dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── Furbooru Submissions ────────────────────────────────────────
+
+    async renderFBRSubmissions() {
+        this._loading();
+        try {
+            const data = await API.getFBRSubmissions({
+                sort_by: this._fbrSortState.field,
+                order: this._fbrSortState.order,
+                account_id: this._acctId('fbr'),
+            });
+
+            const _vm = localStorage.getItem('pp-view-mode') || 'grid';
+            // Furbooru (Philomena) CDN images are hotlinkable — use the thumb URL directly.
+            const fbrGridRenderer = (subs) => Components.submissionCardGrid(
+                subs,
+                {
+                    idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumbnail_url', proxyThumb: false,
+                    typeKey: 'content_type', typeLabels: Components.E621_TYPE_LABELS,
+                    detailRoute: '/fbr/submission', dateKey: 'posted_at',
+                    stats: [
+                        { key: 'score', deltaKey: 'score_delta', label: 'score' },
+                        { key: 'favorites_count', deltaKey: 'favorites_delta', label: 'favorites' },
+                        { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
+                    ],
+                }
+            );
+            const gridHtml = fbrGridRenderer(data.submissions);
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>Furbooru Posts</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search posts...">
+                    <div class="view-toggle">
+                        <button class="view-toggle-btn ${_vm === 'grid' ? 'active' : ''}" data-view="grid" title="Grid view">&#9638;</button>
+                        <button class="view-toggle-btn ${_vm === 'list' ? 'active' : ''}" data-view="list" title="List view">&#9776;</button>
+                    </div>
+                </div>
+                <div id="grid-container" style="${_vm !== 'grid' ? 'display:none' : ''}">${gridHtml}</div>
+                <div id="table-container" class="table-scroll" style="${_vm !== 'list' ? 'display:none' : ''}">
+                    ${Components.fbrSubmissionsTable(data.submissions)}
+                </div>
+            `;
+
+            this._setContent(html);
+            this._bindViewToggle();
+            this._bindFBRTableSort();
+            this._bindFBRSearch(data.submissions, fbrGridRenderer);
+            this._startAutoRefresh(() => this.renderFBRSubmissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading Furbooru posts</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── Furbooru Submission Detail ──────────────────────────────────
+
+    async renderFBRDetail(postId) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getFBRSubmission(postId),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const fullId = sub.submission_id;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'fbr' && String(p.submission_id) === String(fullId));
+            const currentTags = sub.tags || [];
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/fbr/submissions" class="back-link">&larr; Back to Furbooru Posts</a>
+                <div class="detail-header">
+                    ${sub.thumbnail_url ? `<img class="detail-thumb" src="${Utils.escapeHtml(Utils.safeUrl(sub.thumbnail_url) || '')}" alt="" style="max-width:160px;border-radius:8px;margin-right:16px">` : ''}
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)} &middot; ${Utils.escapeHtml(Components.E621_TYPE_LABELS[sub.content_type] || sub.content_type || 'Image')}${sub.rating ? ' &middot; ' + Utils.escapeHtml(sub.rating) : ''}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on Furbooru</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.score || 0)} <span class="lbl">score</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.favorites_count || 0)} <span class="lbl">favorites</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.comments_count || 0)} <span class="lbl">comments</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="fbr" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="fbr" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+
+                ${Components.growthRateCards(data.growth_rates, { views: 'score/day', faves: 'faves/day', comments: 'comments/day' })}
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container">
+                    <h3>Stats Over Time</h3>
+                    <div class="chart-wrap"><canvas id="chart-detail"></canvas></div>
+                </div>
+            `;
+
+            this._setContent(html);
+
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots, ['score', 'favorites_count', 'comments_count']);
+            }
+
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getFBRSnapshots(postId, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots, ['score', 'favorites_count', 'comments_count']);
+            });
+
+            this._bindDetailPinTag('fbr', fullId, allTags.tags || [], () => this.renderFBRDetail(postId));
+            this._startAutoRefresh(() => this.renderFBRDetail(postId));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading Furbooru post</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    // ── Furbooru Compare ────────────────────────────────────────────
+
+    async renderFBRCompare() {
+        this._loading();
+        try {
+            const data = await API.getFBRSubmissions({ sort_by: 'score', order: 'desc', account_id: this._acctId('fbr') });
+            const subs = data.submissions;
+
+            const chips = subs.map(s => `
+                <label class="compare-chip ${this._fbrCompareIds.has(String(s.submission_id)) ? 'selected' : ''}" data-id="${Utils.escapeHtml(String(s.submission_id))}">
+                    <input type="checkbox" ${this._fbrCompareIds.has(String(s.submission_id)) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>
+            `).join('');
+
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Compare Furbooru Posts</h2>
+                    <div>
+                        <select class="filter-select" id="compare-metric">
+                            <option value="score" ${this._fbrCompareMetric === 'score' ? 'selected' : ''}>Score</option>
+                            <option value="favorites_count" ${this._fbrCompareMetric === 'favorites_count' ? 'selected' : ''}>Favorites</option>
+                            <option value="comments_count" ${this._fbrCompareMetric === 'comments_count' ? 'selected' : ''}>Comments</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 Furbooru posts to compare their trends over time.</p>
+                <div class="compare-select">${chips}</div>
+
+                ${Components.dateRangeBar(this._dateRange)}
+
+                <div class="chart-container" id="compare-chart-container" style="${this._fbrCompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3>
+                    <div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._fbrCompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 posts above to see their trends compared.</p></div>' : ''}
+            `;
+
+            this._setContent(html);
+
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = chip.dataset.id;
+                    if (this._fbrCompareIds.has(id)) {
+                        this._fbrCompareIds.delete(id);
+                    } else if (this._fbrCompareIds.size < 5) {
+                        this._fbrCompareIds.add(id);
+                    }
+                    this.renderFBRCompare();
+                });
+            });
+
+            const metricSelect = document.getElementById('compare-metric');
+            if (metricSelect) {
+                metricSelect.addEventListener('change', () => {
+                    this._fbrCompareMetric = metricSelect.value;
+                    this._loadFBRComparisonChart();
+                });
+            }
+
+            this._bindDateRange(() => this._loadFBRComparisonChart());
+
+            if (this._fbrCompareIds.size >= 2) {
+                await this._loadFBRComparisonChart();
+            }
+
+            this._startAutoRefresh(() => this.renderFBRCompare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadFBRComparisonChart() {
+        try {
+            if (this._fbrCompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getFBRComparison([...this._fbrCompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, this._fbrCompareMetric);
+        } catch (e) {
+            console.error('Failed to load Furbooru comparison chart:', e);
+        }
+    },
+
+    _bindFBRTableSort() {
+        document.querySelectorAll('#fbr-submissions-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const field = th.dataset.sort;
+                if (this._fbrSortState.field === field) {
+                    this._fbrSortState.order = this._fbrSortState.order === 'desc' ? 'asc' : 'desc';
+                } else {
+                    this._fbrSortState.field = field;
+                    this._fbrSortState.order = 'desc';
+                }
+                this.renderFBRSubmissions();
+            });
+        });
+    },
+
+    // Furbooru variant of _bindSearch(). Filters by text (title only).
+    _bindFBRSearch(allSubmissions, gridRenderer) {
+        const input = document.getElementById('search-input');
+        const doFilter = () => {
+            const q = (input?.value || '').toLowerCase();
+            let filtered = allSubmissions;
+            if (q) {
+                filtered = filtered.filter(s => (s.title || '').toLowerCase().includes(q));
+            }
+            const grid = document.getElementById('grid-container');
+            if (grid && gridRenderer) grid.innerHTML = gridRenderer(filtered);
+            document.getElementById('table-container').innerHTML = Components.fbrSubmissionsTable(filtered);
+            this._bindFBRTableSort();
+        };
+        input?.addEventListener('input', doFilter);
+    },
+
     // ── THR Dashboard ─────────────────────────────────────────
     // Threads dashboard with Views, Likes, Reposts, Replies (+ Quotes).
 
@@ -9395,7 +9732,7 @@ const App = {
                 // Determine platform badge colour and the correct hash route prefix
                 const badgeMap = { fa: '<span class="platform-badge fa">FA</span>', ws: '<span class="platform-badge ws">WS</span>', sf: '<span class="platform-badge sf">SF</span>', sqw: '<span class="platform-badge sqw">SqW</span>', ao3: '<span class="platform-badge ao3">AO3</span>', da: '<span class="platform-badge da">DA</span>', wp: '<span class="platform-badge wp">WP</span>', ik: '<span class="platform-badge ik">IK</span>', bsky: '<span class="platform-badge bsky">BSKY</span>', tw: '<span class="platform-badge tw">TW</span>', ib: '<span class="platform-badge ib">IB</span>' };
                 const badge = badgeMap[m.platform] || badgeMap.ib;
-                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', pix: '/pix/submission/', thr: '/thr/submission/', ig: '/ig/submission/', e621: '/e621/submission/', ib: '/submission/' };
+                const prefixMap = { fa: '/fa/submission/', ws: '/ws/submission/', sf: '/sf/submission/', sqw: '/sqw/submission/', ao3: '/ao3/submission/', da: '/da/submission/', wp: '/wp/submission/', ik: '/ik/submission/', bsky: '/bsky/submission/', tw: '/tw/submission/', mast: '/mast/submission/', tum: '/tum/submission/', pix: '/pix/submission/', thr: '/thr/submission/', ig: '/ig/submission/', e621: '/e621/submission/', fn: '/fn/submission/', fbr: '/fbr/submission/', ib: '/submission/' };
                 const prefix = prefixMap[m.platform] || prefixMap.ib;
                 return `
                     <tr>
@@ -9832,7 +10169,7 @@ const App = {
         try {
             // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
             // Polling tab data is loaded lazily when the user clicks into it.
-            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, e621Auth, updateInfo, postingSettings, browserLoginInfo, setupStatus, digest, tgChannel, fnAuth] = await Promise.all([
+            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, e621Auth, updateInfo, postingSettings, browserLoginInfo, setupStatus, digest, tgChannel, fnAuth, fbrAuth] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
@@ -9861,6 +10198,7 @@ const App = {
                 API.getDigestStatus().catch(() => ({ enabled: false, interval_days: 7, recipients: [], recipients_raw: '', smtp_host: 'smtp.gmail.com', smtp_port: 587, smtp_username: '', smtp_from: '', smtp_use_tls: true, has_password: false, last_sent_at: null })),
                 API.getTelegramChannel().catch(() => ({ channel: '', has_own_token: false, uses_notification_bot: false, configured: false })),
                 API.getFNAuthStatus().catch(() => ({ has_credentials: false, username: '' })),
+                API.getFBRAuthStatus().catch(() => ({ has_credentials: false, username: '' })),
             ]);
 
             // Resolve effective mode for hide/show logic. Falls back to inferred
@@ -9874,7 +10212,7 @@ const App = {
             const _pollingOwner = setupStatus.polling_owner || (_isServer ? 'local' : (_isPaired ? 'server' : 'local'));
 
             // Store auth state for lazy-loaded polling tab
-            this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, e621Auth };
+            this._pollingAuth = { faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, e621Auth, fnAuth, fbrAuth };
 
             // Store browser login availability for platform connect forms
             const _browserLoginAvailable = browserLoginInfo.available;
@@ -11877,6 +12215,44 @@ const App = {
                     </div>
                 </details>
 
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${fbrAuth.has_credentials ? 'connected' : 'disconnected'}"></span>Furbooru${fbrAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(fbrAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
+                    ${fbrAuth.has_credentials ? `
+                    <div class="settings-row">
+                        <div><span class="settings-label">Status</span></div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(fbrAuth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">Furbooru desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for Furbooru activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-fbr-notifications" ${prefs.fbr_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="fbr-poll-btn">Furbooru Poll Now</button>
+                        <button class="btn btn-secondary" id="fbr-resync-btn">Full Resync</button>
+                        <button class="btn btn-danger" id="fbr-disconnect-btn">Disconnect</button>
+                        <span id="fbr-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Track your own <strong>Furbooru</strong> uploads' score, favourites and comments. Enter your Furbooru <strong>username</strong> — that's all that's required (Furbooru's read API is public). Optionally add an <strong>API key</strong> (Furbooru → <em>Account → Settings</em>) to raise the anonymous rate limit. Poll-only.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="fbr-username" class="search-input" placeholder="Furbooru username" autocomplete="username">
+                        <input type="password" id="fbr-api-key" class="search-input" placeholder="API key (optional)">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="fbr-connect-btn">Connect</button>
+                        <span id="fbr-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                    </div>
+                </details>
+
                 </div><!-- /tab:platforms -->
 
                 <!-- ═══ TAB: Polling ═══ -->
@@ -12191,6 +12567,8 @@ const App = {
                     if (document.getElementById('pref-thr-notifications')) prefs.thr_notifications_enabled = !!chk('pref-thr-notifications');
                     if (document.getElementById('pref-ig-notifications')) prefs.ig_notifications_enabled = !!chk('pref-ig-notifications');
                     if (document.getElementById('pref-e621-notifications')) prefs.e621_notifications_enabled = !!chk('pref-e621-notifications');
+                    if (document.getElementById('pref-fn-notifications')) prefs.fn_notifications_enabled = !!chk('pref-fn-notifications');
+                    if (document.getElementById('pref-fbr-notifications')) prefs.fbr_notifications_enabled = !!chk('pref-fbr-notifications');
 
                     await API.savePreferences(prefs);
 
@@ -12230,7 +12608,8 @@ const App = {
                         sf: 'triggerSFPoll', sqw: 'triggerSQWPoll', ao3: 'triggerAO3Poll', da: 'triggerDAPoll',
                         wp: 'triggerWPPoll', ik: 'triggerIKPoll', bsky: 'triggerBSKYPoll', tw: 'triggerTWPoll',
                         mast: 'triggerMASTPoll', tum: 'triggerTUMPoll', pix: 'triggerPIXPoll',
-                        thr: 'triggerTHRPoll', ig: 'triggerIGPoll', e621: 'triggerE621Poll' };
+                        thr: 'triggerTHRPoll', ig: 'triggerIGPoll', e621: 'triggerE621Poll',
+                        fn: 'triggerFNPoll', fbr: 'triggerFBRPoll' };
                     const codes = await this._configuredPollCodes();
                     const triggers = codes.map(c => API[TRIGGERS[c]]());
                     const results = await Promise.allSettled(triggers);
@@ -12266,7 +12645,8 @@ const App = {
                         sf: 'fullSFResync', sqw: 'fullSQWResync', ao3: 'fullAO3Resync', da: 'fullDAResync',
                         wp: 'fullWPResync', ik: 'fullIKResync', bsky: 'fullBSKYResync', tw: 'fullTWResync',
                         mast: 'fullMASTResync', tum: 'fullTUMResync', pix: 'fullPIXResync',
-                        thr: 'fullTHRResync', ig: 'fullIGResync', e621: 'fullE621Resync' };
+                        thr: 'fullTHRResync', ig: 'fullIGResync', e621: 'fullE621Resync',
+                        fn: 'fullFNResync', fbr: 'fullFBRResync' };
                     const codes = await this._configuredPollCodes();
                     const resyncs = codes.map(c => API[RESYNCS[c]]());
                     const results = await Promise.allSettled(resyncs);
@@ -14276,6 +14656,74 @@ const App = {
                 fnNotifToggle.addEventListener('change', async (e) => {
                     try {
                         await API.savePreferences({ fn_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
+            // ── Furbooru connect / disconnect / poll / notifications ──
+            // Connect sends username (required) + api_key (optional — the
+            // Philomena read API is public; a key only raises the rate cap).
+            const fbrConnectBtn = document.getElementById('fbr-connect-btn');
+            if (fbrConnectBtn) {
+                fbrConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('fbr-msg');
+                    const username = document.getElementById('fbr-username').value.trim();
+                    const api_key = document.getElementById('fbr-api-key').value.trim();
+                    if (!username) {
+                        msg.textContent = 'Username is required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    fbrConnectBtn.disabled = true;
+                    fbrConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.fbrConnect({ username, api_key });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        fbrConnectBtn.textContent = 'Connect';
+                        fbrConnectBtn.disabled = false;
+                    }
+                });
+            }
+            const fbrDisconnectBtn = document.getElementById('fbr-disconnect-btn');
+            if (fbrDisconnectBtn) {
+                fbrDisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect Furbooru? This clears your credentials.')) return;
+                    try {
+                        await API.fbrDisconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+            const fbrPollBtn = document.getElementById('fbr-poll-btn');
+            if (fbrPollBtn) {
+                fbrPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: fbrPollBtn, msgId: 'fbr-msg', platform: 'fbr', apiMethod: 'triggerFBRPoll',
+                }));
+            }
+            const fbrResyncBtn = document.getElementById('fbr-resync-btn');
+            if (fbrResyncBtn) {
+                fbrResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: fbrResyncBtn, msgId: 'fbr-msg', platform: 'fbr', apiMethod: 'fullFBRResync',
+                }));
+            }
+            const fbrNotifToggle = document.getElementById('pref-fbr-notifications');
+            if (fbrNotifToggle) {
+                fbrNotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ fbr_notifications_enabled: e.target.checked });
                     } catch (err) {
                         e.target.checked = !e.target.checked;
                         alert('Failed to save preference: ' + err.message);

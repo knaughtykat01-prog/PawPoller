@@ -14,7 +14,7 @@ from polling.multi_account import get_poll_cycles, poll_platform_accounts
 def test_registry_has_all_platforms():
     assert set(get_poll_cycles().keys()) == {
         "ib", "fa", "ws", "da", "wp", "ik", "bsky", "tw", "sf", "sqw",
-        "ao3", "mast", "tum", "pix", "thr", "ig", "e621",
+        "ao3", "mast", "tum", "pix", "thr", "ig", "e621", "fn", "fbr",
     }
 
 
