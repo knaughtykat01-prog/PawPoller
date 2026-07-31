@@ -12,6 +12,30 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.194.0] - 2026-07-31 - Wrong-link auditor for Masterpieces (+ auto-backups on)
+
+> **Find site-links pointing at the wrong upload.** On "Tidy up Masterpieces" there's a new **Wrong links** scan: it
+> compares each linked upload's image to the piece's own image (by fingerprint, no AI) and flags any that don't match —
+> a link attached to the wrong artwork, which quietly pools someone else's stats. Review and unlink in a click; nothing
+> changes until you do. Also: **automatic daily backups are now on** (keep 3).
+
+First of the deterministic (no-AI) roadmap items. The mislink check is the perceptual-hash cross-check that found the
+two bad FA links earlier, now a standing tool.
+
+- **`GET /api/masterpieces/mislink-audit`** — for every Masterpiece folder, dHash its local images, then compare each
+  member's stored image hash (from polling) against them; flag members past `HAMMING_THRESHOLD`. Members with no stored
+  hash are skipped (unjudgeable). Returns `{name, title, platform, submission_id, distance, view_url, thumbnail_url,
+  member_title}`. Static path declared before `/{name}`. Native + offline — no model, nothing leaves the box.
+- **Frontend:** a third **Wrong links** section on `#/masterpieces/duplicates` (`_loadMislinks`) behind a Scan button
+  (it fingerprints every local image, so it's on-demand); each flagged row shows the mismatched upload's thumbnail +
+  links and an **Unlink** (`removeMasterpieceMember`, the upload stays live on-platform). `API.masterpieceMislinkAudit`.
+- **Ops — auto-backups enabled** on the server: `auto_backup_enabled=true`, daily, `keep=3` (~200 MB/zip; keep=3 not 7
+  because the data volume sits at 85%). Backups land in `/app/data/auto-backups` — same volume, so this guards against
+  the app-logic data loss we hit (bad merges/edits), NOT disk failure; keep taking occasional off-box exports for that.
+
+**Tests:** `tests/test_mislink_audit.py` — flags a member whose image differs, ignores a matching member and an
+un-hashed one, and reports nothing for a clean library. (Uses patterned fixtures — solid colours all dHash to zero.)
+
 ## [2.193.4] - 2026-07-30 - Request URLs are no longer logged at all (the fix that actually worked)
 
 > **Tokens are genuinely out of the logs now — verified against the live server, not just tests.** The previous two

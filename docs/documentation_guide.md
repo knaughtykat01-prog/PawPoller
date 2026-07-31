@@ -6469,6 +6469,15 @@ A **Masterpiece** is the image analog of a story's `MASTER.md`: the canonical re
   = the old flatten, kept for the direct-call test). A plain-piece merge is unchanged (one entry, its hero, its
   members). **If you add a variant carry path, keep the keymap the single source of truth for both the on-disk entries
   and the member re-keying** — they must not drift.
+- **Wrong-link auditor (2.194.0).** `GET /api/masterpieces/mislink-audit` — for each Masterpiece folder, dHash its
+  local images, then compare every member's stored image hash (populated by polling) against them; flag members whose
+  best distance exceeds `image_hash.HAMMING_THRESHOLD`. Members with no stored hash are skipped (unjudgeable, not
+  flagged). It's the perceptual-hash cross-check that surfaced two mislinked FA uploads during the 2.190 recovery
+  audit, now a standing tool. Native + offline (no model — see the no-AI product rule). Static `/mislink-audit` path is
+  declared before `GET /{name}`. Frontend: a "Wrong links" section on `#/masterpieces/duplicates`
+  (`masterpieces.js._loadMislinks`) behind a Scan button (fingerprinting every local image is heavy, so on-demand);
+  each flagged row → Unlink (`removeMasterpieceMember`; the upload stays live on-platform). NB tests must use patterned
+  fixtures — a solid-colour image dHashes to all-zero, so every solid colour "matches".
 - **Upload a variant (2.190.2).** `POST /{name}/variants/upload` (multipart `file`, `label?`, `rating?`) — the third
   variant-creation path alongside `POST /variants` (declare an in-folder image) and `/merge-as-variant` (fold another
   Masterpiece). Reuses the replace-image upload guards (415/413/400), saves non-clobbering, seeds the primary entry on

@@ -281,6 +281,9 @@ const API = {
     removeMasterpieceMember(name, platform, submissionId) {
         return this.del(`/api/masterpieces/${encodeURIComponent(name)}/members?platform=${encodeURIComponent(platform)}&submission_id=${encodeURIComponent(submissionId)}`);
     },
+    // Wrong-link auditor (2.192.0): members whose platform image doesn't match
+    // the piece locally (perceptual hash). Read-only scan.
+    masterpieceMislinkAudit() { return this.get('/api/masterpieces/mislink-audit'); },
     // Canonical edit (writes masterpiece.json) + Sync-all (push to editable members).
     patchMasterpiece(name, body) { return this.patch(`/api/masterpieces/${encodeURIComponent(name)}`, body); },
     syncMasterpiece(name, body = {}) { return this.post(`/api/masterpieces/${encodeURIComponent(name)}/sync`, body); },

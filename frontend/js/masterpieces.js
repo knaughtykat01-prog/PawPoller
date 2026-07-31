@@ -235,9 +235,73 @@ window.Masterpieces = {
             <h2 class="mp-sec-h" style="margin-top:2rem">Same image, more than one Masterpiece <span class="muted mp-sec-sub">by image match</span></h2>
             <p class="muted mp-sec-note">Pick the one to keep and merge the rest into it — their site-links move over
             and the duplicate record is removed (the image is identical, so nothing is lost).</p>
-            <div id="mp-dups"><div class="loading-spinner">Scanning your images…</div></div>`;
+            <div id="mp-dups"><div class="loading-spinner">Scanning your images…</div></div>
+
+            <h2 class="mp-sec-h" style="margin-top:2rem">Wrong links <span class="muted mp-sec-sub">by image fingerprint</span></h2>
+            <p class="muted mp-sec-note">Finds site-links whose image doesn't match the piece's own image — a link
+            pointing at the <em>wrong</em> upload, which then pools a different piece's stats. It compares by image
+            fingerprint (no AI); nothing changes until you unlink.</p>
+            <div id="mp-mislinks"><button class="btn btn-sm" id="mp-mislink-scan">Scan for wrong links</button></div>`;
         this._loadVariantSuggestions();
         this._loadDuplicates();
+        document.getElementById('mp-mislink-scan')?.addEventListener('click', () => this._loadMislinks());
+    },
+
+    /* Wrong-link auditor (2.192.0) — the perceptual-hash cross-check as a button.
+     * Native/offline: compares each site-link's stored image hash to the piece's
+     * LOCAL images; flags any that don't match. Read-only until you unlink. */
+    async _loadMislinks() {
+        const wrap = document.getElementById('mp-mislinks');
+        if (!wrap) return;
+        wrap.innerHTML = `<div class="loading-spinner">Fingerprinting your images…</div>`;
+        let flagged;
+        try {
+            const d = await API.masterpieceMislinkAudit();
+            flagged = (d && d.flagged) || [];
+        } catch (err) {
+            wrap.innerHTML = `<div class="card error">Scan failed: ${this.esc(err.message)}</div>`;
+            return;
+        }
+        if (!flagged.length) {
+            wrap.innerHTML = `<div class="empty-state"><p class="muted">No wrong links found — every site-link matches its piece. ✅</p></div>`;
+            return;
+        }
+        wrap.innerHTML = flagged.map(f => {
+            const p = this._plat(f.platform);
+            const thumbUrl = this._thumbSrc(f.platform, f.thumbnail_url);
+            const thumb = thumbUrl
+                ? `<img class="mp-loc-thumb" src="${this.esc(thumbUrl)}" alt="" loading="lazy">`
+                : `<span class="mp-loc-thumb mp-loc-thumb--none"></span>`;
+            const open = f.view_url
+                ? `<a class="pub-open" href="${this.esc(Utils.safeUrl(f.view_url) || '#')}" target="_blank" rel="noopener">open ↗</a>` : '';
+            return `<div class="mp-mislink-row" data-name="${this.esc(f.name)}" data-platform="${this.esc(f.platform)}" data-sid="${this.esc(f.submission_id)}">
+                ${thumb}
+                <div class="mp-mislink-info">
+                    <a href="#/masterpieces/${encodeURIComponent(f.name)}">${this.esc(f.title)}</a>
+                    <div class="muted">linked to ${this.esc(p.label)} #${this.esc(f.submission_id)}${f.member_title ? ' — “' + this.esc(f.member_title) + '”' : ''} · looks different (distance ${f.distance})</div>
+                </div>
+                <div class="mp-mislink-acts">${open}
+                    <button class="btn btn-sm btn-danger" data-mp-unlink>Unlink</button>
+                </div>
+            </div>`;
+        }).join('');
+        wrap.querySelectorAll('[data-mp-unlink]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const row = btn.closest('.mp-mislink-row');
+                const title = row.querySelector('a').textContent;
+                if (!window.confirm(`Unlink ${row.dataset.platform} #${row.dataset.sid} from “${title}”?\n\n`
+                    + `The upload stays live on the platform — it's just detached from this piece so it stops pooling the wrong stats.`)) return;
+                try {
+                    await API.removeMasterpieceMember(row.dataset.name, row.dataset.platform, row.dataset.sid);
+                    this._cache = null;
+                    row.remove();
+                    this._toast('success', 'Unlinked');
+                    if (!wrap.querySelector('.mp-mislink-row')) {
+                        wrap.innerHTML = `<div class="empty-state"><p class="muted">All cleared. ✅</p></div>`;
+                    }
+                } catch (err) { this._toast('error', 'Unlink failed: ' + (err.message || err)); }
+            });
+        });
     },
 
     /* ── Variant families (by title, 2.160.0) ─────────────────────────────────

@@ -161,6 +161,16 @@
 .mp-vstats { font-size: .8rem; margin-top: .3rem; }
 
 /* Replace-canonical-image control under the hero (2.153.0) */
+/* Wrong-link auditor rows (2.192.0) */
+.mp-mislink-row {
+    display: flex; align-items: center; gap: .7rem;
+    padding: .5rem 0; border-top: 1px solid var(--border);
+}
+.mp-mislink-row:first-child { border-top: none; }
+.mp-mislink-info { flex: 1 1 auto; min-width: 0; font-size: .9rem; }
+.mp-mislink-info .muted { font-size: .78rem; }
+.mp-mislink-acts { display: flex; align-items: center; gap: .6rem; flex-shrink: 0; }
+
 /* Prev/next detail nav (2.190.0) — scoped to the masterpiece back-bar so the
    shared .work-back elsewhere is untouched. */
 .work-back.mp-detail-topnav {

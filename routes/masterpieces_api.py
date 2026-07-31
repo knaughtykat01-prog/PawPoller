@@ -107,6 +107,66 @@ def masterpiece_duplicates():
         conn.close()
 
 
+@masterpieces_router.get("/mislink-audit")
+def masterpiece_mislink_audit():
+    """Find members whose linked platform image doesn't match ANY local image of
+    the Masterpiece — a wrong site-link pooling a different piece's stats. Pure
+    perceptual-hash cross-check (native/offline, no model): each member's stored
+    hash vs the folder's local image hashes; flag anything past the threshold.
+    Members with no stored hash are skipped (can't judge). Returns flagged rows
+    with view/thumbnail links so the user can review + unlink. (2.192.0)"""
+    from database import image_hash
+    from database import collections_queries as cq
+    conn = get_connection()
+    flagged = []
+    try:
+        archive = artwork_reader.get_artwork_archive_path()
+        for d in sorted(archive.iterdir()):
+            if not d.is_dir() or not (d / "masterpiece.json").is_file():
+                continue
+            name = d.name
+            local_hashes = []
+            for f in d.iterdir():
+                if f.suffix.lower() in artwork_reader.IMAGE_EXTENSIONS:
+                    h = image_hash.dhash_from_path(str(f))
+                    if h:
+                        local_hashes.append(h)
+            if not local_hashes:
+                continue
+            title = ""
+            for m in mq.get_members(conn, name):
+                row = conn.execute(
+                    "SELECT phash FROM image_hashes WHERE platform = ? AND submission_id = ?",
+                    (m["platform"], str(m["submission_id"]))).fetchone()
+                if not row or not row["phash"]:
+                    continue  # no stored hash → can't judge
+                best = min((image_hash.hamming(row["phash"], h) for h in local_hashes),
+                           default=999)
+                if best > image_hash.HAMMING_THRESHOLD:
+                    if not title:
+                        try:
+                            title = artwork_reader.load_artwork(name).title
+                        except Exception:
+                            title = name.replace("_", " ")
+                    loc = cq._location_from_submission(
+                        conn, m["platform"], str(m["submission_id"]),
+                        source="masterpiece") or {}
+                    flagged.append({
+                        "name": name,
+                        "title": title or name.replace("_", " "),
+                        "platform": m["platform"],
+                        "submission_id": str(m["submission_id"]),
+                        "distance": best,
+                        "view_url": loc.get("url", ""),
+                        "thumbnail_url": loc.get("thumbnail_url", ""),
+                        "member_title": loc.get("title", ""),
+                    })
+    finally:
+        conn.close()
+    flagged.sort(key=lambda x: -x["distance"])
+    return {"flagged": flagged, "threshold": image_hash.HAMMING_THRESHOLD}
+
+
 @masterpieces_router.get("/variant-suggestions")
 def masterpiece_variant_suggestions():
     """Likely VARIANT families grouped by TITLE — the complement to /duplicates.

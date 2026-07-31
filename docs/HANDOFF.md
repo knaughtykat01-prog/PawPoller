@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-30
-**Current version (master):** 2.193.4 — **Request URLs are no longer logged at all.** THE fix, after two that didn't
+**Last updated:** 2026-07-31
+**Current version (master):** 2.194.0 — **Wrong-link auditor + auto-backups on.** First of the deterministic (NO-AI —
+see the no-AI rule) roadmap. `GET /api/masterpieces/mislink-audit`: dHash each Masterpiece's local images, compare each
+member's stored hash, flag mismatches past `HAMMING_THRESHOLD` (unjudgeable/no-hash skipped). Third "Wrong links"
+section on `#/masterpieces/duplicates` (scan button → flagged rows → Unlink via `removeMasterpieceMember`). +2 tests
+(patterned fixtures — solid colours dHash to zero). **Auto-backups enabled on the VM**: daily, keep=3 (~200MB/zip; 3
+not 7 because the volume is 85% full); local `/app/data/auto-backups` guards app-logic loss, not disk failure.
+**Roadmap (all deterministic, no LLM):** ✅ auto-backups, ✅ mislink auditor · next: repost radar · weekly digest ·
+tag-performance analytics · Telegram-channel posting · Reddit (own project). Fixed a version drift: `consts.ts` was
+stuck at 2.191.1 while `config.py` was 2.193.4 — both now 2.194.0.
+
+**Prior — 2.193.4 — Request URLs are no longer logged at all.** THE fix, after two that didn't
 work. `httpx`/`httpcore`/`httpx._client` raised to `WARNING` so the leaking record is never created (httpx logs the full
 URL at INFO for every call; Threads/IG/Tumblr carry the token in the query string, Telegram in the path — every observed
 leak was one of those lines). Deliberately blunt, and the only layer with no failure mode. Scrubbing (factory +
