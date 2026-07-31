@@ -15423,6 +15423,41 @@ const App = {
 
     // ── Analytics Page ──────────────────────────────────────────
 
+    /* Tag performance (gap-wave-6). Deterministic — no AI: each piece is scored
+     * against its own platform's median, so `index` 1.0 = a typical piece for
+     * that platform; >1 = the tag tends to beat it. Green ≥1.15, muted <0.85. */
+    _tagPerfHtml(tp) {
+        if (!tp || !(tp.tags || []).length) return '';
+        const esc = Utils.escapeHtml;
+        const idxBadge = (v) => {
+            const col = v >= 1.15 ? 'var(--success)' : (v < 0.85 ? 'var(--text-muted)' : 'var(--text)');
+            return `<span style="font-weight:600;color:${col}">${(v).toFixed(2)}×</span>`;
+        };
+        const tagRows = tp.tags.map(t => `<tr>
+            <td>${esc(t.tag)}</td>
+            <td style="text-align:right">${idxBadge(t.index)}</td>
+            <td style="text-align:right">${Utils.formatNumber(t.works)}</td>
+            <td style="text-align:right">${Utils.formatNumber(t.avg_reach)}</td>
+            <td style="text-align:right">${Utils.formatNumber(t.faves)}</td>
+        </tr>`).join('');
+        const pairRows = (tp.pairs || []).map(p => `<tr>
+            <td>${esc(p.tags.join(' + '))}</td>
+            <td style="text-align:right">${idxBadge(p.index)}</td>
+            <td style="text-align:right">${Utils.formatNumber(p.works)}</td>
+        </tr>`).join('');
+        return `
+            <div class="chart-container">
+                <h3>Tag performance <span class="muted" style="font-size:.7em">how much each tag beats a typical post on its platform · index 1.0 = average · ≥${tp.min_works} works</span></h3>
+                <div class="table-scroll"><table class="data-table">
+                    <thead><tr><th>Tag</th><th style="text-align:right">Index</th><th style="text-align:right">Works</th><th style="text-align:right">Avg reach</th><th style="text-align:right">Faves</th></tr></thead>
+                    <tbody>${tagRows}</tbody></table></div>
+                ${pairRows ? `<h4 style="margin:.9rem 0 .4rem">Best combinations</h4>
+                <div class="table-scroll"><table class="data-table">
+                    <thead><tr><th>Tag pair</th><th style="text-align:right">Index</th><th style="text-align:right">Works</th></tr></thead>
+                    <tbody>${pairRows}</tbody></table></div>` : ''}
+            </div>`;
+    },
+
     /* Benchmarks + best-time sections (gap-wave-3 §2+3). Relative-engagement
      * buckets: 1.0 = a typical post on that platform; buckets with < 3 posts
      * are greyed (thin evidence, not advice). */
@@ -15582,10 +15617,11 @@ const App = {
     async renderAnalytics() {
         this._loading();
         try {
-            const [data, insights] = await Promise.all([
+            const [data, insights, tagPerf] = await Promise.all([
                 API.getHistoricalAnalytics({ weeks: 12 }),
                 fetch('/api/analytics/insights?tz_offset=' + (-new Date().getTimezoneOffset()))
                     .then(r => r.ok ? r.json() : null).catch(() => null),
+                API.getTagPerformance({ min_works: 3, limit: 30 }).catch(() => null),
             ]);
 
             const bestMonth = data.best_month || {};
@@ -15639,6 +15675,7 @@ const App = {
                     <div class="chart-wrap" style="min-height:300px"><canvas id="chart-weekly-growth"></canvas></div>
                 </div>` : ''}
                 ${this._insightsHtml(insights)}
+                ${this._tagPerfHtml(tagPerf)}
             `;
 
             this._setContent(html);

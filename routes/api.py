@@ -2570,6 +2570,24 @@ def get_repost_radar(min_age_days: int = 60, limit: int = 25):
         conn.close()
 
 
+@router.get("/analytics/tag-performance")
+def get_tag_performance_route(min_works: int = 3, limit: int = 40,
+                              platform: str = ""):
+    """Which tags/keywords earn engagement across your own posts (gap-wave-6).
+    Deterministic: each piece is normalised against its platform's median so the
+    ranking is fair across platforms. No model. ?platform=fa scopes to one."""
+    from database import analytics_queries
+    min_works = min(50, max(1, int(min_works)))
+    limit = min(200, max(1, int(limit)))
+    conn = get_connection()
+    try:
+        return analytics_queries.get_tag_performance(
+            conn, min_works=min_works, limit=limit,
+            platform=(platform or None))
+    finally:
+        conn.close()
+
+
 # ── Weekly email digest ───────────────────────────────────────
 
 @router.get("/digest/status")

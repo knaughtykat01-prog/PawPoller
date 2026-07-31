@@ -783,6 +783,9 @@ const API = {
     /* Repost Radar: older, well-performing artwork worth resurfacing (deterministic,
      * ranked by pooled engagement + age; no model). params: {min_age_days, limit}. */
     getRepostRadar(params) { return this.get('/api/analytics/repost-radar', params); },
+    /* Tag performance: which tags/keywords earn engagement, normalised per platform
+     * (deterministic, no model). params: {min_works, limit, platform}. */
+    getTagPerformance(params) { return this.get('/api/analytics/tag-performance', params); },
     /* ── Dashboard Auth methods ─────────────────────────────────
      * Self-hosted session auth: login, logout, setup, password change,
      * TOTP 2FA, API keys, and Cloudflare Turnstile config.

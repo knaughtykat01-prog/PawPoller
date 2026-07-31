@@ -901,3 +901,99 @@ def get_repost_candidates(conn: sqlite3.Connection, min_age_days: int = 60,
         })
     out.sort(key=lambda x: (-x["score"], -x["age_days"]))
     return out[:limit]
+
+
+def _norm_tag(t: str) -> str:
+    """Canonicalise a keyword for cross-platform aggregation: lowercase and
+    fold underscores to spaces so FA's ``big_muscle`` and SoFurry's
+    ``big muscle`` count as the same tag (platforms format tags differently —
+    see the tag-format rule)."""
+    return t.strip().lower().replace("_", " ")
+
+
+def get_tag_performance(conn: sqlite3.Connection, min_works: int = 3,
+                        limit: int = 40, platform: str | None = None) -> dict:
+    """Which tags correlate with better engagement across YOUR own posts.
+
+    Deterministic — no model, no AI. It reads the keywords the pollers already
+    captured on each submission alongside that submission's stats, normalises
+    every piece against its OWN platform's median headline metric (so a
+    10k-view SoFurry story and a 200-view FA picture are comparable), then
+    aggregates per tag. ``index`` is the median of those ratios: > 1.0 means
+    pieces carrying that tag beat their platform's typical piece; < 1.0 means
+    they lag. Also returns the best-performing tag PAIRS. Tags appearing on
+    fewer than ``min_works`` pieces are dropped as too noisy to trust.
+    """
+    import statistics
+    from collections import defaultdict
+    from database import collections_queries as _cq
+    try:
+        from polling.telegram import PLATFORM_METRICS
+    except Exception:
+        PLATFORM_METRICS = {}
+
+    tag_agg: dict = defaultdict(lambda: {"works": 0, "reach": 0, "faves": 0, "ratios": []})
+    pair_agg: dict = defaultdict(lambda: {"works": 0, "ratios": []})
+
+    for code, table in INSIGHT_TABLES.items():
+        if platform and code != platform:
+            continue
+        primary = INSIGHT_PRIMARY.get(code, "views")
+        fcol = (PLATFORM_METRICS.get(code) or {}).get("faves")
+        sel_faves = fcol if fcol else "0"
+        try:
+            rows = conn.execute(
+                f"SELECT keywords, {primary} AS m, {sel_faves} AS f FROM {table}"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            continue   # table lacks keywords / the metric column on this install
+        ms = [(r["m"] or 0) for r in rows]
+        if not ms:
+            continue
+        med = statistics.median(ms)
+        for r in rows:
+            tags = _cq._parse_tags(r["keywords"])
+            if not tags:
+                continue
+            m = r["m"] or 0
+            f = r["f"] or 0
+            ratio = (m / med) if med and med > 0 else 0.0
+            norm = sorted({_norm_tag(t) for t in tags if t and t.strip()})
+            for t in norm:
+                a = tag_agg[t]
+                a["works"] += 1
+                a["reach"] += m
+                a["faves"] += f
+                a["ratios"].append(ratio)
+            # Best pairs — bound the per-row combinatorics (skip mega-tagged rows
+            # so one 80-tag piece can't emit thousands of pairs).
+            if 2 <= len(norm) <= 25:
+                for i in range(len(norm)):
+                    for j in range(i + 1, len(norm)):
+                        p = pair_agg[(norm[i], norm[j])]
+                        p["works"] += 1
+                        p["ratios"].append(ratio)
+
+    tags_out = []
+    for t, a in tag_agg.items():
+        if a["works"] < min_works:
+            continue
+        idx = statistics.median(a["ratios"]) if a["ratios"] else 0
+        tags_out.append({
+            "tag": t, "works": a["works"], "reach": a["reach"], "faves": a["faves"],
+            "avg_reach": round(a["reach"] / a["works"]) if a["works"] else 0,
+            "index": round(idx, 2),
+        })
+    tags_out.sort(key=lambda x: (x["index"], x["reach"]), reverse=True)
+
+    pair_min = max(min_works, 3)
+    pairs_out = []
+    for (x, y), p in pair_agg.items():
+        if p["works"] < pair_min:
+            continue
+        idx = statistics.median(p["ratios"]) if p["ratios"] else 0
+        pairs_out.append({"tags": [x, y], "works": p["works"], "index": round(idx, 2)})
+    pairs_out.sort(key=lambda x: (x["index"], x["works"]), reverse=True)
+
+    return {"tags": tags_out[:limit], "pairs": pairs_out[:15],
+            "min_works": min_works, "tag_universe": len(tag_agg)}

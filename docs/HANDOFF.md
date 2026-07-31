@@ -1,7 +1,17 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-31
-**Current version (master):** 2.196.0 — **Weekly digest email.** Third deterministic (NO-AI) roadmap item. New module
+**Current version (master):** 2.197.0 — **Tag performance analytics.** Fourth deterministic (NO-AI) roadmap item.
+`analytics_queries.get_tag_performance(conn, min_works=3, limit=40, platform=None)`: per submission table, takes the
+platform's median headline metric (`INSIGHT_PRIMARY`), scores each piece `metric/median`, attributes that ratio to each
+keyword; a tag's **index** = median of its ratios (>1 beats the platform's typical piece). Also raw reach/faves/works +
+best tag **pairs** (bounded to ≤25-tag rows). `_norm_tag` folds case + underscores→spaces so `big_muscle`≡`big muscle`.
+`GET /api/analytics/tag-performance`. New **Tag performance** section on `#/analytics` (`_tagPerfHtml`): top tags + best
+combinations, index badge (green ≥1.15). +4 tests (`tests/test_tag_performance.py`). Reads keywords the pollers already
+captured — no model, nothing new stored. **Roadmap:** ✅ auto-backups, ✅ mislink auditor, ✅ repost radar, ✅ weekly
+digest, ✅ tag-performance analytics · next: Telegram-channel posting · Reddit (own project).
+
+**Prior — 2.196.0 — Weekly digest email.** Third deterministic (NO-AI) roadmap item. New module
 `polling/email_digest.py` (build → render → send → orchestrate): `build_weekly_digest_data` pools per-platform 7-day
 deltas + totals + gainers (reusing `polling/telegram.py`'s `_get_digest_deltas`/`_get_platform_totals`/`_get_watcher_stats`)
 + follower growth + watchers + a 3-piece Repost-Radar tie-in; `render_weekly_digest_html`/`_text` render an email-safe

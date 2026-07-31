@@ -12,6 +12,30 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.197.0] - 2026-07-31 - Tag performance analytics
+
+> **See which of your tags actually pull views.** The Analytics page has a new **Tag performance** table: for every
+> keyword you post with, it works out how much better (or worse) those pieces do than a typical post — so a tag with an
+> index of 1.4× means work tagged that way tends to beat your average by 40%. It compares each piece against others on
+> the *same* platform, so big-view SoFurry stories and smaller FA pics are judged fairly. There's a "best combinations"
+> table too. All your own numbers, no AI. Tags on fewer than 3 pieces are hidden as too thin to trust.
+
+Fourth deterministic (no-AI) roadmap item. Reads the keywords the pollers already captured on each submission, next to
+that submission's stats — no model, nothing new to store.
+
+- **`analytics_queries.get_tag_performance(conn, min_works=3, limit=40, platform=None)`** — for each submission table it
+  takes the platform's median headline metric (`INSIGHT_PRIMARY`), then for every piece computes `metric / median` and
+  attributes that ratio to each of its keywords. A tag's **index** is the median of its ratios (>1 = beats the platform's
+  typical piece). Also aggregates raw reach + faves + work-count, and the best-performing tag **pairs** (bounded to rows
+  with ≤25 tags so one mega-tagged piece can't emit thousands of pairs). Tags are normalised with `_norm_tag`
+  (lowercase + underscores→spaces) so FA's `big_muscle` and SoFurry's `big muscle` merge. `min_works` is the noise floor.
+- **`GET /api/analytics/tag-performance?min_works=3&limit=40&platform=`** (`routes/api.py`).
+- **Frontend:** a **Tag performance** section on `#/analytics` (`_tagPerfHtml`) — top tags (tag, index badge, works, avg
+  reach, faves) + a **Best combinations** table. Index ≥1.15 shows green, <0.85 muted. `API.getTagPerformance`.
+
+**Tests:** `tests/test_tag_performance.py` (4) — index ranks over/under-performers correctly, `min_works` is the noise
+floor, platform scoping works, and `_norm_tag` merges underscore/case variants.
+
 ## [2.196.0] - 2026-07-31 - Weekly digest email
 
 > **Get your week emailed to you.** New *Settings → Weekly digest* tab: PawPoller can now send you a tidy weekly
